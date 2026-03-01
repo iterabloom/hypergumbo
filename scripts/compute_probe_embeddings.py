@@ -13,13 +13,25 @@ Output:
 """
 import base64
 import logging
+import os
+import re
 from pathlib import Path
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 # Suppress sentence-transformers warnings
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
+# Work around httpx bug with IPv6 CIDR in NO_PROXY
+_IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
+for _var in ("NO_PROXY", "no_proxy"):
+    _value = os.environ.get(_var)
+    if _value:
+        _filtered = [e.strip() for e in _value.split(",")
+                     if not _IPV6_CIDR_PATTERN.match(e.strip())]
+        os.environ[_var] = ",".join(_filtered)
+
+from sentence_transformers import SentenceTransformer
 
 # Models used for embeddings
 UNIXCODER_MODEL_NAME = "microsoft/unixcoder-base"
@@ -54,13 +66,14 @@ def encode_probes_b64(model: SentenceTransformer, probes: list[str]) -> str:
 def main():
     # Import probes from the source file
     import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "hypergumbo-core" / "src"))
 
-    from hypergumbo.sketch_embeddings import (
+    from hypergumbo_core.sketch_embeddings import (
         README_DESCRIPTION_PROBES,
         ANSWER_PATTERNS,
         BIG_PICTURE_QUESTIONS,
         ADDITIONAL_FILES_PROBES,
+        NEGATIVE_PATTERNS,
     )
 
     # Part 1: UnixCoder embeddings (768 dim)
@@ -75,6 +88,9 @@ def main():
 
     print(f"Encoding big picture questions ({len(BIG_PICTURE_QUESTIONS)})...")
     bigpic_b64 = encode_probes_b64(unixcoder, BIG_PICTURE_QUESTIONS)
+
+    print(f"Encoding negative patterns ({len(NEGATIVE_PATTERNS)})...")
+    negative_b64 = encode_probes_b64(unixcoder, NEGATIVE_PATTERNS)
 
     # Part 2: ModernBERT embeddings (256 dim truncated) for additional files
     print(f"\nLoading model: {MODERNBERT_MODEL_NAME}")
@@ -97,7 +113,7 @@ def main():
     ).decode("ascii")
 
     # Write output file
-    output_path = Path(__file__).parent.parent / "src" / "hypergumbo" / "_embedding_data.py"
+    output_path = Path(__file__).parent.parent / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "_embedding_data.py"
 
     content = f'''"""Pre-computed probe embeddings for sketch_embeddings.py.
 
@@ -133,6 +149,12 @@ BIGPIC_PROBES_B64 = (
     "{bigpic_b64}"
 )
 
+# Negative patterns: {len(NEGATIVE_PATTERNS)} probes, 768 dimensions
+# Used in extract_config_embedding() to penalize non-config content
+NEGATIVE_PROBES_B64 = (
+    "{negative_b64}"
+)
+
 # 5W1H probes for Additional Files ordering: {len(ADDITIONAL_FILES_PROBES)} probes, {MODERNBERT_TRUNCATE_DIM} dimensions
 # Used in _format_additional_files() for semantic ranking
 ADDITIONAL_FILES_PROBES_B64 = (
@@ -155,6 +177,7 @@ ADDITIONAL_FILES_PROBES_B64 = (
     verify("README", readme_b64, len(README_DESCRIPTION_PROBES))
     verify("ANSWER", answer_b64, len(ANSWER_PATTERNS))
     verify("BIGPIC", bigpic_b64, len(BIG_PICTURE_QUESTIONS))
+    verify("NEGATIVE", negative_b64, len(NEGATIVE_PATTERNS))
     verify("5W1H", additional_files_b64, len(ADDITIONAL_FILES_PROBES), dims=MODERNBERT_TRUNCATE_DIM)
 
     print("\nDone!")

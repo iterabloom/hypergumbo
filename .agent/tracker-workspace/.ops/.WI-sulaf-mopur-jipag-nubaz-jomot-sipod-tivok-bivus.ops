@@ -1,0 +1,41 @@
+- op: create  # 050a
+  at: '2026-02-25T18:33:34Z'  # 050a
+  by: agent  # 050a
+  actor: jgstern_agent  # 050a
+  clock: 1  # 050a
+  nonce: 050a  # 050a
+  data:  # 050a
+    kind: work_item  # 050a
+    title: "Warn about unread human messages when adding discussion"  # 050a
+    status: todo_soft  # 050a
+    priority: 3  # 050a
+    parent:  # 050a
+    tags: []  # 050a
+    before: []  # 050a
+    duplicate_of: []  # 050a
+    not_duplicate_of: []  # 050a
+    pr_ref:  # 050a
+    description: "When using the discuss subcommand (or any subcommand that changes the Activity/Discussion field like update --note), the CLI should check whether there are unread messages from the human (heuristic: the most recent message before the new action is by: human). If there are, print the unread human message and the full prior transcript to stdout, prompting the agent to reply via tracker discuss."  # 050a
+    fields: {}  # 050a
+- op: discuss  # 62f3
+  at: '2026-02-25T18:33:42Z'  # 62f3
+  by: agent  # 62f3
+  actor: jgstern_agent  # 62f3
+  clock: 2  # 62f3
+  nonce: 62f3  # 62f3
+  message: "User-specified output format when unread human messages detected:\n\n```\nYour addition to the Activity/Discussion for this item comes after an unread message from the human:\n<message>\n\nFor context, here is the full Activity/Discussion transcript preceding that latest unread message:\n<whole rest of prior transcript>\n\nPlease reply to the human's message using `tracker discuss`.\n```\n\nImplementation notes:\n- Check whether most recent discussion entry before the new action has by: human\n- Print the warning to stdout (not stderr) so the agent sees it\n- Applies to: discuss command, update --note, and any future discussion-modifying commands\n- The heuristic aligns with AGENTS.md single-agent assumption for unread detection"  # 62f3
+- op: update  # a715
+  at: '2026-02-25T19:42:48Z'  # a715
+  by: agent  # a715
+  actor: jgstern_agent  # a715
+  clock: 3  # a715
+  nonce: a715  # a715
+  set:  # a715
+    status: done  # a715
+- op: discuss  # bcb8
+  at: '2026-02-25T19:42:48Z'  # bcb8
+  by: agent  # bcb8
+  actor: jgstern_agent  # bcb8
+  clock: 4  # bcb8
+  nonce: bcb8  # bcb8
+  message: "Implemented in PR #1461. Warns on discuss and update --note when last message is from human. 8 tests."  # bcb8

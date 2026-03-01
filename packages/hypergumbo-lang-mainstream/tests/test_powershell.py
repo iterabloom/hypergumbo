@@ -190,11 +190,12 @@ class TestPowerShellAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "script.ps1").write_text("Write-Host 'Test'")
 
-        with patch.object(ps_module, "is_powershell_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="PowerShell analysis skipped"):
+        with patch.object(ps_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="powershell analysis skipped"):
                 result = ps_module.analyze_powershell(temp_repo)
 
         assert result.skipped is True
+        assert "not available" in result.skip_reason
 
 
 class TestPowerShellAnalysisRun:
@@ -211,6 +212,13 @@ function Main { }
         assert result.run is not None
         assert result.run.pass_id == "powershell-v1"
         assert result.run.files_analyzed >= 1
+
+    def test_empty_repo(self, temp_repo: Path) -> None:
+        """Empty repo returns run with 0 files analyzed."""
+        result = analyze_powershell(temp_repo)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
 
 class TestPowerShellCallResolution:

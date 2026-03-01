@@ -1,0 +1,70 @@
+# Stapler framework patterns (ADR-0003)
+#
+# Kohsuke Stapler is the URL dispatch framework used by Jenkins.
+# URL routing is convention-based: doXxx() methods handle POST/GET,
+# getXxx() methods provide URL traversal (facets/sub-objects).
+#
+# Key signals:
+# - @WebMethod annotation for explicit web endpoints
+# - @RequirePOST annotation constraining HTTP method
+# - doXxx() methods as action handlers
+# - StaplerRequest/StaplerResponse parameter types
+# - Classes implementing Action, RootAction, ModelObject, etc.
+
+id: stapler
+language: [java, kotlin]
+
+patterns:
+  # --- Annotation-based patterns ---
+
+  # @WebMethod marks explicit web endpoints
+  - concept: route
+    decorator: "^WebMethod$"
+    extract_path: "kwargs.name|args[0]"
+
+  # @RequirePOST constrains to POST method
+  - concept: route
+    decorator: "^RequirePOST$"
+
+  # @POST (Stapler 2.x annotation)
+  - concept: route
+    decorator: "^POST$"
+    language: "^(java|kotlin)$"
+
+  # --- Parameter type patterns ---
+  # Methods taking StaplerRequest/StaplerResponse are web handlers
+  - concept: handler
+    parameter_type: "^Stapler(Request|Response)(2)?$"
+
+  # --- Base class patterns (Stapler-routable types) ---
+
+  # RootAction: top-level URL binding (/actionUrl)
+  - concept: controller
+    base_class: "^(RootAction|UnprotectedRootAction)$"
+
+  # Action: sidebar actions, transient actions
+  - concept: controller
+    base_class: "^(Action|InvisibleAction|TransientAction|ProminentProjectAction)$"
+
+  # ManagementLink: Jenkins management pages (/manage/xxx)
+  - concept: controller
+    base_class: "^ManagementLink$"
+
+  # Descriptor: configuration forms, global config
+  - concept: configuration
+    base_class: "^(Descriptor|BuildStepDescriptor|JobPropertyDescriptor|GlobalConfiguration)$"
+
+  # --- Convention-based method patterns ---
+
+  # doXxx methods in Action/RootAction subclasses -> URL handlers
+  - concept: route
+    parent_base_class: "^(Action|InvisibleAction|TransientAction|RootAction|UnprotectedRootAction|ManagementLink|Describable|AbstractProject|Job|Run|View|Computer|Node|GlobalConfiguration)$"
+    method_name: "^do[A-Z]"
+
+  # getXxx methods in Stapler-routable classes -> URL facets (traversal)
+  - concept: url_facet
+    parent_base_class: "^(Action|InvisibleAction|TransientAction|RootAction|UnprotectedRootAction|ManagementLink|Describable|AbstractProject|Job|Run|View|Computer|Node)$"
+    method_name: "^get[A-Z]"
+
+linkers:
+  - http

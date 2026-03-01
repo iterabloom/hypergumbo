@@ -1,0 +1,62 @@
+- op: create  # 691b
+  at: '2026-02-15T00:51:38Z'  # 691b
+  by: agent  # 691b
+  actor: migration  # 691b
+  clock: 1  # 691b
+  nonce: 691b  # 691b
+  data:  # 691b
+    kind: meta_invariant  # 691b
+    title: "Metadata Must Become Graph Structure"  # 691b
+    status: done  # 691b
+    priority: 4  # 691b
+    parent:  # 691b
+    tags: []  # 691b
+    before: []  # 691b
+    duplicate_of: []  # 691b
+    not_duplicate_of: []  # 691b
+    pr_ref:  # 691b
+    justification:  # 691b
+    description: "DONE (create edges from base_classes): Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex, Go (interface assertions)\n\nAll 14 languages with class inheritance / interface satisfaction now extract `base_classes` metadata\n\nThe centralized inheritance linker (`linkers/inheritance.py`) creates extends/implements edges for all languages\n\n**Unified by:**\n\nINV-002 (usage patterns → concepts on nodes)\n\nINV-004 (route metadata → handler edges)\n\nINV-006 (resources macro → route symbols with controller_action)\n\nINV-008 (base_classes → extends/implements edges for Python/JS/TS)\n\nINV-009 (base_classes → extends/implements edges for Ruby/Kotlin)\n\nINV-010 (Django view_name → routes_to edges)\n\n**Implication:** When an analyzer stores relationship information in metadata (view_name,\n\ncontroller_action, etc.), there should be a corresponding linker or enrichment phase that\n\nconverts that metadata into edges or concepts. Metadata alone is not traversable."  # 691b
+    fields:  # 691b
+      statement: "Semantic relationships expressed in metadata must become traversable graph structure."  # 691b
+- op: update  # 4261
+  at: '2026-02-22T04:48:15Z'  # 4261
+  by: agent  # 4261
+  actor: jgstern_agent  # 4261
+  clock: 2  # 4261
+  nonce: '4261'  # 4261
+  set:  # 4261
+    status: todo_hard  # 4261
+    description: "Semantic relationships expressed in metadata must become traversable graph structure.\n\nPreviously marked done based on base_classes → extends edges across 14 languages. However, external bakeoff evaluation (Feb 2026) revealed violations:\n\nREOPENED — known violations:\n- Scala: extracts meta.base_classes but emits no extends/implements edges from the analyzer\n- Groovy: extracts meta.base_classes but emits no extends/implements edges from the analyzer\n- Phoenix routes: route metadata (controller + action) stored but routes_to edges not emitted for aliased controller names (the common case in Elixir)\n- OTP linker: GenServer.call/cast target module stored but not resolved when module name is an Elixir alias (direct dict lookup, no suffix fallback)\n- Go cobra: RunE function reference in struct literal field (cobra.Command{RunE: myFunc}) produces no edge — metadata-as-struct-field is a variant of metadata-not-becoming-graph-structure\n\nUnified by:\nINV-004 (route metadata → handler edges)\nINV-008 (base_classes → extends edges for Python/JS/TS)\nINV-009 (base_classes → extends edges for Ruby/Kotlin)\nINV-010 (Django view_name → routes_to edges)\n\nImplication: When an analyzer stores relationship information in metadata (view_name, controller_action, base_classes, etc.), there must be a corresponding linker or enrichment phase that converts that metadata into edges. Metadata alone is not traversable. This invariant is violated for Scala, Groovy, Phoenix aliases, OTP aliases, and Go struct literal function references."  # 4261
+- op: update  # afc6
+  at: '2026-02-23T07:07:23Z'  # afc6
+  by: agent  # afc6
+  actor: jgstern_agent  # afc6
+  clock: 3  # afc6
+  nonce: afc6  # afc6
+  set:  # afc6
+    status: violated  # afc6
+- op: update  # e4de
+  at: '2026-02-23T17:09:59Z'  # e4de
+  by: agent  # e4de
+  actor: jgstern_agent  # e4de
+  clock: 4  # e4de
+  nonce: e4de  # e4de
+  set:  # e4de
+    status: needs_human_review  # e4de
+    justification: "All 5 violations confirmed fixed: (1) Scala/Groovy base_classes handled by inheritance linker, (2) Phoenix route alias resolution in elixir.py, (3) OTP linker suffix-match in _resolve_handler_module, (4) Go struct literal func refs via keyed_element. All have test coverage. Recommend closing."  # e4de
+- op: discuss  # d792
+  at: '2026-02-25T08:43:42Z'  # d792
+  by: agent  # d792
+  actor: jgstern_agent  # d792
+  clock: 5  # d792
+  nonce: d792  # d792
+  message: "[migrated from justification field] All 5 violations confirmed fixed: (1) Scala/Groovy base_classes handled by inheritance linker, (2) Phoenix route alias resolution in elixir.py, (3) OTP linker suffix-match in _resolve_handler_module, (4) Go struct literal func refs via keyed_element. All have test coverage. Recommend closing."  # d792
+- op: update  # c80c
+  at: '2026-02-25T09:00:23Z'  # c80c
+  by: human  # c80c
+  actor: jgstern  # c80c
+  clock: 6  # c80c
+  nonce: c80c  # c80c
+  set:  # c80c
+    status: holding  # c80c

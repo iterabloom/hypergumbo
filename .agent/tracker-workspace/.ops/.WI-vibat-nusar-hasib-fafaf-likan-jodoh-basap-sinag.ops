@@ -1,0 +1,54 @@
+- op: create  # 6e66
+  at: '2026-02-15T00:51:38Z'  # 6e66
+  by: agent  # 6e66
+  actor: migration  # 6e66
+  clock: 1  # 6e66
+  nonce: '6e66'  # 6e66
+  data:  # 6e66
+    kind: work_item  # 6e66
+    title: "DRY refactor full-suite.yml."  # 6e66
+    status: todo_soft  # 6e66
+    priority: 4  # 6e66
+    parent:  # 6e66
+    tags:  # 6e66
+    - ci_infrastructure  # 6e66
+    before: []  # 6e66
+    duplicate_of: []  # 6e66
+    not_duplicate_of: []  # 6e66
+    pr_ref:  # 6e66
+    justification: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
+    description: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
+    fields: {}  # 6e66
+- op: update  # 99ca
+  at: '2026-02-17T20:42:57Z'  # 99ca
+  by: agent  # 99ca
+  actor: jgstern_agent  # 99ca
+  clock: 2  # 99ca
+  nonce: 99ca  # 99ca
+  set:  # 99ca
+    status: todo_soft  # 99ca
+- op: update  # a7b8
+  at: '2026-02-18T09:03:46Z'  # a7b8
+  by: human  # a7b8
+  actor: jgstern  # a7b8
+  clock: 5  # a7b8
+  nonce: a7b8  # a7b8
+  set:  # a7b8
+    status: needs_human_review  # a7b8
+- op: update  # b266
+  at: '2026-02-18T09:22:06Z'  # b266
+  by: agent  # b266
+  actor: jgstern_agent  # b266
+  clock: 6  # b266
+  nonce: b266  # b266
+  set:  # b266
+    status: wont_do  # b266
+  add:  # b266
+    duplicate_of: [WI-hugir-balik]  # b266
+- op: discuss  # 3bdb
+  at: '2026-02-25T08:44:46Z'  # 3bdb
+  by: agent  # 3bdb
+  actor: jgstern_agent  # 3bdb
+  clock: 7  # 3bdb
+  nonce: 3bdb  # 3bdb
+  message: "[migrated from justification field] Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 3bdb

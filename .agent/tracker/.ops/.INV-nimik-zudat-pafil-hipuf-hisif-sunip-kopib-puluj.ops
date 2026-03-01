@@ -1,0 +1,34 @@
+- op: create  # 90a1
+  at: '2026-02-15T00:51:38Z'  # 90a1
+  by: agent  # 90a1
+  actor: migration  # 90a1
+  clock: 1  # 90a1
+  nonce: 90a1  # 90a1
+  data:  # 90a1
+    kind: invariant  # 90a1
+    title: "Route-to-Handler Edge Completeness"  # 90a1
+    status: done  # 90a1
+    priority: 4  # 90a1
+    parent:  # 90a1
+    tags: []  # 90a1
+    before: []  # 90a1
+    duplicate_of: []  # 90a1
+    not_duplicate_of: []  # 90a1
+    pr_ref:  # 90a1
+    justification:  # 90a1
+    description: ""  # 90a1
+    fields:  # 90a1
+      statement: "Routes should have edges to their handler functions when handler info is available"  # 90a1
+      root_cause: "Analyzers store handler information in metadata (e.g., `controller_action`, `view_name`) but no edges are created from routes to handlers. Analysis showed only 15.8% of routes across bakeoff artifacts had outgoing edges: Ruby: `analyze/ruby.py:392` sets `symbol_ref=None` with comment \"Route DSL doesn't reference a handler symbol directly\" - but `controller_action` IS stored in metadata Elixir: `analyze/elixir.py:403` sets `symbol_ref=None` with comment \"Router DSL doesn't directly reference symbols\""  # 90a1
+      fix: "Created `linkers/route_handler.py` that: 1. Finds route symbols with handler metadata (`controller_action`, `controller`+`action`) 2. Resolves handler references to actual method/function symbols using name matching 3. Creates `routes_to` edges (0.9 confidence) connecting routes to handlers Supported frameworks: Rails: `controller_action = \"users#index\"` → `UsersController#index` Phoenix: `controller` + `action` fields → `Controller.action`"  # 90a1
+      regression_tests:  # 90a1
+      - tests/test_route_handler_linker.py::TestRouteHandlerLinker  # 90a1
+      - tests/test_route_handler_linker.py::TestLinkerEntryPoint  # 90a1
+- op: update  # 8a82
+  at: '2026-02-23T07:07:22Z'  # 8a82
+  by: agent  # 8a82
+  actor: jgstern_agent  # 8a82
+  clock: 2  # 8a82
+  nonce: 8a82  # 8a82
+  set:  # 8a82
+    status: holding  # 8a82

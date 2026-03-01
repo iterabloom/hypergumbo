@@ -257,115 +257,88 @@ contract Token {}
 class TestSolidityAnalysisWithoutTreeSitter:
     """Tests for graceful degradation without tree-sitter."""
 
-    def test_returns_skipped_when_unavailable(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_skipped_when_unavailable(self, temp_repo: Path) -> None:
         """Returns skipped result when tree-sitter not available."""
+        from unittest.mock import patch
         import hypergumbo_lang_extended1.solidity as sol_module
-        monkeypatch.setattr(sol_module, "is_solidity_tree_sitter_available", lambda: False)
 
         (temp_repo / "Token.sol").write_text("contract Token {}")
 
-        result = analyze_solidity(temp_repo)
+        with patch.object(sol_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="solidity analysis skipped"):
+                result = analyze_solidity(temp_repo)
 
         assert result.skipped
-        assert "tree-sitter" in result.skip_reason.lower()
+        assert "not available" in result.skip_reason
 
-    def test_tree_sitter_check_tree_sitter_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Returns False when tree_sitter module is missing."""
-        import importlib.util
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when grammar is not available."""
+        from unittest.mock import patch
         import hypergumbo_lang_extended1.solidity as sol_module
 
-        original_find_spec = importlib.util.find_spec
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return None
-            return original_find_spec(name)
-
-        monkeypatch.setattr(importlib.util, "find_spec", mock_find_spec)
-
-        # Call the actual function - should return False
-        result = sol_module.is_solidity_tree_sitter_available()
-        assert result is False
-
-    def test_tree_sitter_check_solidity_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Returns False when tree_sitter_solidity module is missing."""
-        import importlib.util
-        import hypergumbo_lang_extended1.solidity as sol_module
-
-        original_find_spec = importlib.util.find_spec
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter_solidity":
-                return None
-            return original_find_spec(name)
-
-        monkeypatch.setattr(importlib.util, "find_spec", mock_find_spec)
-
-        # Call the actual function - should return False
-        result = sol_module.is_solidity_tree_sitter_available()
-        assert result is False
+        with patch.object(sol_module._analyzer, "_check_grammar_available", return_value=False):
+            assert sol_module.is_solidity_tree_sitter_available() is False
 
 
 class TestSolidityEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_handles_unreadable_file_symbols(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Gracefully handles files that cannot be read during symbol extraction."""
-        from hypergumbo_lang_extended1.solidity import _extract_symbols_from_file
-        from hypergumbo_core.ir import AnalysisRun
+    def test_empty_file_symbols(self, temp_repo: Path) -> None:
+        """Extracting symbols from an empty file produces no symbols."""
+        from hypergumbo_lang_extended1.solidity import _extract_symbols_from_tree
+        from hypergumbo_core.analyze.base import FileAnalysis
         import tree_sitter
         import tree_sitter_solidity
         import warnings
 
-        (temp_repo / "Token.sol").write_text("contract Token {}")
+        (temp_repo / "Empty.sol").write_text("")
 
-        # Create parser
+        # Create parser and parse
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             language = tree_sitter.Language(tree_sitter_solidity.language())
             parser = tree_sitter.Parser(language)
 
-        run = AnalysisRun.create(pass_id="test", version="0.1.0")
+        source = (temp_repo / "Empty.sol").read_bytes()
+        tree = parser.parse(source)
+        analysis = FileAnalysis()
 
-        # Create a fake file path that doesn't exist
-        fake_path = temp_repo / "nonexistent.sol"
+        _extract_symbols_from_tree(tree, source, str(temp_repo / "Empty.sol"), "test-run-id", analysis)
 
-        # This should trigger OSError and return empty FileAnalysis
-        result = _extract_symbols_from_file(fake_path, parser, run)
+        assert analysis.symbols == []
+        assert analysis.symbol_by_name == {}
 
-        assert result.symbols == []
-        assert result.symbol_by_name == {}
-
-    def test_handles_unreadable_file_edges(self, temp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Gracefully handles files that cannot be read during edge extraction."""
-        from hypergumbo_lang_extended1.solidity import _extract_edges_from_file
-        from hypergumbo_core.ir import AnalysisRun
+    def test_empty_file_edges(self, temp_repo: Path) -> None:
+        """Extracting edges from an empty file produces no edges."""
+        from hypergumbo_lang_extended1.solidity import _extract_edges_from_tree
+        from hypergumbo_core.symbol_resolution import NameResolver
         import tree_sitter
         import tree_sitter_solidity
         import warnings
 
-        (temp_repo / "Token.sol").write_text("contract Token {}")
+        (temp_repo / "Empty.sol").write_text("")
 
-        # Create parser
+        # Create parser and parse
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             language = tree_sitter.Language(tree_sitter_solidity.language())
             parser = tree_sitter.Parser(language)
 
-        run = AnalysisRun.create(pass_id="test", version="0.1.0")
+        source = (temp_repo / "Empty.sol").read_bytes()
+        tree = parser.parse(source)
+        resolver = NameResolver({})
 
-        # Create a fake file path that doesn't exist
-        fake_path = temp_repo / "nonexistent.sol"
-
-        # This should trigger OSError and return empty tuple
-        edges, aliases = _extract_edges_from_file(fake_path, parser, {}, {}, run)
+        edges, aliases = _extract_edges_from_tree(
+            tree, source, str(temp_repo / "Empty.sol"),
+            {}, {}, "test-run-id", resolver,
+        )
 
         assert edges == []
         assert aliases == {}
 
     def test_find_child_by_type_returns_none(self, temp_repo: Path) -> None:
-        """_find_child_by_type returns None when child type not found."""
-        from hypergumbo_lang_extended1.solidity import _find_child_by_type
+        """find_child_by_type returns None when child type not found."""
+        from hypergumbo_core.analyze.base import find_child_by_type
         import tree_sitter
         import tree_sitter_solidity
         import warnings
@@ -382,7 +355,7 @@ class TestSolidityEdgeCases:
         tree = parser.parse(source)
 
         # Try to find a non-existent child type
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
 
     def test_contract_without_name(self, temp_repo: Path) -> None:

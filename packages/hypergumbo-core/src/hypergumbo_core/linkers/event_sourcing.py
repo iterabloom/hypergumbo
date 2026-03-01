@@ -59,11 +59,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "event-sourcing-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("event-sourcing-linker")
 
 
 @dataclass
@@ -214,9 +213,16 @@ SPRING_TRANSACTIONAL_LISTENER_PATTERN = re.compile(
 
 
 def _find_source_files(root: Path) -> Iterator[Path]:
-    """Find files that might contain event patterns."""
+    """Find files that might contain event patterns.
+
+    Skips minified files (``*.min.js``, ``*.min.ts``) because minified
+    libraries produce false-positive event publisher/subscriber symbols
+    for generic names like ``start``, ``end``, ``error``.
+    """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
     for path in find_files(root, patterns):
+        if path.stem.endswith(".min"):
+            continue
         yield path
 
 
@@ -454,7 +460,7 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     kind = "event_publisher" if pattern.pattern_type == "publish" else "event_subscriber"
 
     return Symbol(
-        id=f"{rel_path}::{kind}::{pattern.line}",
+        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{kind}",
         name=f"{pattern.event_name}",
         kind=kind,
         path=pattern.file_path,

@@ -1,0 +1,50 @@
+- op: create  # 8b85
+  at: '2026-02-15T00:51:38Z'  # 8b85
+  by: agent  # 8b85
+  actor: migration  # 8b85
+  clock: 1  # 8b85
+  nonce: 8b85  # 8b85
+  data:  # 8b85
+    kind: invariant  # 8b85
+    title: "Ruby/Kotlin Base Classes Metadata to Extends Edges"  # 8b85
+    status: done  # 8b85
+    priority: 4  # 8b85
+    parent:  # 8b85
+    tags: []  # 8b85
+    before: []  # 8b85
+    duplicate_of: []  # 8b85
+    not_duplicate_of: []  # 8b85
+    pr_ref:  # 8b85
+    justification:  # 8b85
+    description: ""  # 8b85
+    fields:  # 8b85
+      statement: "Ruby and Kotlin class symbols with inheritance must create `extends` or `implements` edges to base classes/interfaces that exist in the analyzed codebase"  # 8b85
+      root_cause: "Ruby and Kotlin analyzers did not extract `base_classes` metadata or create edges. This gap was identified as part of META-001 scope expansion after INV-008."  # 8b85
+      fix: "Added inheritance extraction to both Ruby and Kotlin analyzers: `analyze/ruby.py`: Extracts superclass from `superclass` AST node, creates `extends` edges `analyze/kotlin.py`: Extracts from `delegation_specifiers`, creates `extends` for classes and `implements` for interfaces Ruby handles qualified names like `ActiveRecord::Base` → matches `Base` class Kotlin handles multiple inheritance (class + multiple interfaces)"  # 8b85
+      regression_tests:  # 8b85
+      - tests/test_ruby.py::TestRubyInheritanceEdges  # 8b85
+      - tests/test_kotlin.py::TestKotlinInheritanceEdges  # 8b85
+- op: update  # 4871
+  at: '2026-02-22T04:46:17Z'  # 4871
+  by: agent  # 4871
+  actor: jgstern_agent  # 4871
+  clock: 2  # 4871
+  nonce: '4871'  # 4871
+  set:  # 4871
+    parent: INV-vusog  # 4871
+- op: update  # 9623
+  at: '2026-02-22T04:47:50Z'  # 9623
+  by: agent  # 9623
+  actor: jgstern_agent  # 9623
+  clock: 3  # 9623
+  nonce: '9623'  # 9623
+  set:  # 9623
+    parent: INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv  # 9623
+- op: update  # 1f10
+  at: '2026-02-23T07:07:22Z'  # 1f10
+  by: agent  # 1f10
+  actor: jgstern_agent  # 1f10
+  clock: 4  # 1f10
+  nonce: 1f10  # 1f10
+  set:  # 1f10
+    status: holding  # 1f10

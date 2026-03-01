@@ -1,0 +1,81 @@
+- op: create  # 3bae
+  at: '2026-02-20T20:22:59Z'  # 3bae
+  by: agent  # 3bae
+  actor: jgstern_agent  # 3bae
+  clock: 1  # 3bae
+  nonce: 3bae  # 3bae
+  data:  # 3bae
+    kind: work_item  # 3bae
+    title: "Cross-language type normalization for stable_id"  # 3bae
+    status: todo_soft  # 3bae
+    priority: 3  # 3bae
+    parent:  # 3bae
+    tags:  # 3bae
+    - stable-id  # 3bae
+    - phase-3  # 3bae
+    before:  # 3bae
+    - WI-duzul-kugag-favus-gonim-rifup-mujuj-hinuf-pukut  # 3bae
+    duplicate_of: []  # 3bae
+    not_duplicate_of: []  # 3bae
+    pr_ref:  # 3bae
+    justification:  # 3bae
+    description: "Typed stable_id hashes include normalized signatures. Equivalent types across languages (String/str/string, int/Int/i32, bool/Boolean/boolean) must not collide in the hash. Requires a canonical type mapping table and normalization step before hashing. See ADR-0014 future work items 6-7."  # 3bae
+    fields: {}  # 3bae
+- op: update  # cc1d
+  at: '2026-02-20T21:16:46Z'  # cc1d
+  by: agent  # cc1d
+  actor: jgstern_agent  # cc1d
+  clock: 2  # cc1d
+  nonce: cc1d  # cc1d
+  set:  # cc1d
+    status: needs_human_review  # cc1d
+    justification: "Two of three typed stable_id blockers resolved (generics preserved, visibility extracted). Cross-language type normalization requires architectural decisions: which types to normalize, whether to use a shared mapping table, and whether typed stable_id is even needed yet. Recommend deferring until typed stable_id (WI-duzul) is actively being built."  # cc1d
+- op: update  # 7d9d
+  at: '2026-02-20T21:49:45Z'  # 7d9d
+  by: agent  # 7d9d
+  actor: jgstern_agent  # 7d9d
+  clock: 3  # 7d9d
+  nonce: 7d9d  # 7d9d
+  set:  # 7d9d
+    status: todo_soft  # 7d9d
+    title: "Implement per-language normalize_signature() for typed stable_id"  # 7d9d
+    justification: "Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 7d9d
+    description: "Each language analyzer needs a normalize_signature() method that canonicalizes its own types for the typed stable_id tier. Per-language normalization (Option A): strip FQN prefixes to simple names (java.lang.String → String), normalize generic type params by position (T,U → $0,$1), strip pointer/reference decorators that don't affect interface identity. Cross-language collision is structurally impossible because containing_module_stable_id already separates languages. A cross-language canonical mapping table (Option B) is not foreclosed — it would layer on top of per-language normalization if a use case emerges (e.g., polyglot interface matching). Languages needing normalize_signature(): Java, Kotlin, C#, TypeScript, Dart, Rust, Go, Python, Swift, PHP, Scala."  # 7d9d
+- op: update  # 8842
+  at: '2026-02-20T22:50:33Z'  # 8842
+  by: agent  # 8842
+  actor: jgstern_agent  # 8842
+  clock: 4  # 8842
+  nonce: '8842'  # 8842
+  set:  # 8842
+    status: done  # 8842
+- op: discuss  # 2c97
+  at: '2026-02-20T22:50:40Z'  # 2c97
+  by: agent  # 2c97
+  actor: jgstern_agent  # 2c97
+  clock: 5  # 2c97
+  nonce: 2c97  # 2c97
+  message: "Implemented in PR #1285. Shared utilities in base.py + per-language wrappers for 12 analyzers (Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart). 88 tests, 100% coverage."  # 2c97
+- op: update  # d60f
+  at: '2026-02-22T04:46:17Z'  # d60f
+  by: agent  # d60f
+  actor: jgstern_agent  # d60f
+  clock: 6  # d60f
+  nonce: d60f  # d60f
+  set:  # d60f
+    parent: WI-tadof  # d60f
+- op: update  # 4a73
+  at: '2026-02-22T04:47:51Z'  # 4a73
+  by: agent  # 4a73
+  actor: jgstern_agent  # 4a73
+  clock: 7  # 4a73
+  nonce: 4a73  # 4a73
+  set:  # 4a73
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 4a73
+- op: discuss  # 3423
+  at: '2026-02-25T08:42:41Z'  # 3423
+  by: agent  # 3423
+  actor: jgstern_agent  # 3423
+  clock: 8  # 3423
+  nonce: '3423'  # 3423
+  message: "[migrated from justification field] Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 3423

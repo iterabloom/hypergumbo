@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import requirements as requirements_module
 from hypergumbo_lang_mainstream.requirements import (
-    RequirementsAnalysisResult,
+    _analyzer,
     analyze_requirements,
     find_requirements_files,
     is_requirements_tree_sitter_available,
 )
-
 
 def make_requirements_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a requirements file in the temp directory."""
@@ -20,7 +20,6 @@ def make_requirements_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindRequirementsFiles:
     """Tests for find_requirements_files function."""
@@ -49,7 +48,6 @@ class TestFindRequirementsFiles:
         files = find_requirements_files(tmp_path)
         assert files == []
 
-
 class TestIsRequirementsTreeSitterAvailable:
     """Tests for is_requirements_tree_sitter_available function."""
 
@@ -61,14 +59,13 @@ class TestIsRequirementsTreeSitterAvailable:
         with patch.object(requirements_module, "is_requirements_tree_sitter_available", return_value=False):
             assert requirements_module.is_requirements_tree_sitter_available() is False
 
-
 class TestAnalyzeRequirements:
     """Tests for analyze_requirements function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask>=2.0")
-        with patch.object(requirements_module, "is_requirements_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Requirements analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="requirements analysis skipped"):
                 result = requirements_module.analyze_requirements(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -205,13 +202,13 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         req = next((s for s in result.symbols if s.kind == "requirement"), None)
         assert req is not None
-        assert req.origin == "requirements.tree_sitter"
+        assert req.origin == "requirements-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask")
         result = analyze_requirements(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "requirements.tree_sitter"
+        assert result.run.pass_id == "requirements-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -219,7 +216,9 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run, even with no files
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask>=2.0")

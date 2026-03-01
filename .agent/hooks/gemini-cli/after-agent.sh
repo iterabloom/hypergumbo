@@ -6,6 +6,11 @@
 # Plain text output is explicitly forbidden and will cause failures.
 # To inject a continuation prompt, use decision: "deny" with reason field.
 # Ref: https://geminicli.com/docs/hooks/reference/
+#
+# Decision logic:
+# 1. Pending TODOs (hard/soft, from ledger + work_items.md) → deny (subject to circuit breaker)
+# 2. Cooldown (reflection completed <30 min ago) → deny with cooldown prompt
+# 3. Stale reflection → deny with full checklist
 
 set -euo pipefail
 
@@ -38,13 +43,28 @@ if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
   exit 0
 fi
 
-# Escape the reflection prompt for JSON
-# Use decision: "deny" with reason to inject as new prompt to the agent
-REFLECTION_PROMPT=$(cat "$REPO_ROOT/.agent/stop_reflect.md" | jq -Rs .)
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
 
-cat <<EOF
-{
-  "decision": "deny",
-  "reason": $REFLECTION_PROMPT
-}
-EOF
+# --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  echo "{\"decision\":\"deny\",\"reason\":$REASON}"
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Stopping approved.' "$TOTAL_TODOS" "$HASH_THRESHOLD" | jq -Rs .)
+  echo "{\"decision\":\"allow\",\"reason\":$REASON}"
+  exit 0
+fi
+
+# --- Path 2: Cooldown (reflection completed within last 30 minutes) ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  REASON=$(printf 'Cooldown active (reflection completed %d min ago). Read %s for next actions.' "$ELAPSED_MIN" "$GUIDANCE_FILE_COOLDOWN" | jq -Rs .)
+  echo "{\"decision\":\"deny\",\"reason\":$REASON}"
+  exit 0
+fi
+
+# --- Path 3: Full reflection checklist (stale or no prior reflection) ---
+REASON=$(printf 'Stale reflection (last: %d min ago). Read %s to complete the stop reflection protocol.' "$ELAPSED_MIN" "$GUIDANCE_FILE_REFLECTION" | jq -Rs .)
+echo "{\"decision\":\"deny\",\"reason\":$REASON}"

@@ -1,0 +1,51 @@
+- op: create  # 2409
+  at: '2026-02-20T07:57:57Z'  # 2409
+  by: agent  # 2409
+  actor: jgstern_agent  # 2409
+  clock: 1  # 2409
+  nonce: '2409'  # 2409
+  data:  # 2409
+    kind: invariant  # 2409
+    title: "Fix route stable_id collisions across 6 analyzers"  # 2409
+    status: todo_hard  # 2409
+    priority: 1  # 2409
+    parent:  # 2409
+    tags:  # 2409
+    - stable-id  # 2409
+    - spec-violation  # 2409
+    before: []  # 2409
+    duplicate_of: []  # 2409
+    not_duplicate_of: []  # 2409
+    pr_ref:  # 2409
+    justification:  # 2409
+    description: "Go (Gin/Echo, Gorilla), JS/TS (Express, NestJS), WGSL, and Python (Django CBV) set stable_id to bare HTTP method or entry type strings. This causes all same-method routes to collide (e.g., GET /users and GET /posts both get stable_id='GET'). Spec violation: stable_id should be semantic identity. Fix: use sha256('route:{method}:{path}') for routes, sha256('entry:{type}:{name}') for entry points. See ADR-0014 Phase 0."  # 2409
+    fields:  # 2409
+      statement: "Route stable_id must uniquely identify each route, not just its HTTP method"  # 2409
+      root_cause: "Analyzers set stable_id to bare method string without incorporating path"  # 2409
+- op: update  # 71fc
+  at: '2026-02-20T08:24:23Z'  # 71fc
+  by: agent  # 71fc
+  actor: jgstern_agent  # 71fc
+  clock: 2  # 71fc
+  nonce: 71fc  # 71fc
+  set:  # 71fc
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 71fc
+  add:  # 71fc
+    tags: [phase-0]  # 71fc
+- op: update  # 9e90
+  at: '2026-02-20T09:09:03Z'  # 9e90
+  by: agent  # 9e90
+  actor: jgstern_agent  # 9e90
+  clock: 3  # 9e90
+  nonce: '9e90'  # 9e90
+  set:  # 9e90
+    status: done  # 9e90
+    pr_ref: 'PR #1246'  # 9e90
+- op: update  # 16d7
+  at: '2026-02-23T07:07:25Z'  # 16d7
+  by: agent  # 16d7
+  actor: jgstern_agent  # 16d7
+  clock: 4  # 16d7
+  nonce: 16d7  # 16d7
+  set:  # 16d7
+    status: holding  # 16d7

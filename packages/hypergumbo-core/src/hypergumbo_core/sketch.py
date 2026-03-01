@@ -26,7 +26,6 @@ effectively while remaining coherent.
 from __future__ import annotations
 
 import os
-import warnings
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -34,17 +33,21 @@ from typing import List, Optional
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge
-from .entrypoints import detect_entrypoints, Entrypoint
+from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_centrality,
     apply_tier_weights,
+    apply_utility_symbol_weights,
+    apply_trivial_sink_weights,
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
     compute_raw_in_degree,
-    compute_symbol_importance_density,
     compute_symbol_mention_centrality_batch,
+    compute_truncation_elbow,
+    rank_files,
+    rank_symbols,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -694,22 +697,22 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     "javascript": ["package.json"],
     "typescript": ["package.json", "tsconfig.json"],
     # Go
-    "go": ["go.mod", "go.sum"],
+    "go": ["go.mod"],
     # Java/JVM ecosystem
     "java": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
     "kotlin": ["build.gradle.kts", "settings.gradle.kts", "pom.xml"],
     "scala": ["build.sbt", "build.gradle"],
     "groovy": ["build.gradle", "settings.gradle"],
     # Rust
-    "rust": ["Cargo.toml", "Cargo.lock"],
+    "rust": ["Cargo.toml"],
     # Python
     "python": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"],
     # PHP
-    "php": ["composer.json", "composer.lock"],
+    "php": ["composer.json"],
     # Ruby
-    "ruby": ["Gemfile", "Gemfile.lock", ".ruby-version"],
+    "ruby": ["Gemfile", ".ruby-version"],
     # Elixir/Erlang
-    "elixir": ["mix.exs", "mix.lock"],
+    "elixir": ["mix.exs"],
     "erlang": ["rebar.config"],
     # Haskell
     "haskell": ["package.yaml", "stack.yaml", "cabal.project"],
@@ -732,19 +735,19 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     # Dart/Flutter
     "dart": ["pubspec.yaml"],
     # Julia
-    "julia": ["Project.toml", "Manifest.toml"],
+    "julia": ["Project.toml"],
     # Nix
-    "nix": ["flake.nix", "flake.lock", "default.nix", "shell.nix"],
+    "nix": ["flake.nix", "default.nix", "shell.nix"],
     # Elm
     "elm": ["elm.json"],
     # PureScript
     "purescript": ["spago.dhall", "packages.dhall"],
     # Crystal
-    "crystal": ["shard.yml", "shard.lock"],
+    "crystal": ["shard.yml"],
     # Lua
     "lua": ["*.rockspec", ".luacheckrc"],
     # R
-    "r": ["DESCRIPTION", "renv.lock", "NAMESPACE"],
+    "r": ["DESCRIPTION", "NAMESPACE"],
     # Perl
     "perl": ["cpanfile", "Makefile.PL", "Build.PL", "META.json"],
     # HCL/Terraform
@@ -760,6 +763,12 @@ CONFIG_FILES = list({
 
 # Subdirectories to check for config files (monorepo support)
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
+
+# Exact-name manifest files for monorepo discovery (depth 1-2 glob).
+# Derived from CONFIG_FILES_BY_LANG, excluding glob patterns like *.csproj.
+_MONOREPO_MANIFEST_NAMES: frozenset[str] = frozenset(
+    f for files in CONFIG_FILES_BY_LANG.values() for f in files if "*" not in f
+)
 
 # Key dependencies to highlight (db drivers, frameworks, etc.)
 INTERESTING_DEPS = frozenset({
@@ -778,6 +787,46 @@ INTERESTING_DEPS = frozenset({
 
 # License file names to check
 LICENSE_FILES = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"]
+
+# Directories excluded from embedding-based config candidate discovery.
+# These contain documentation, tests, examples, etc. — not project config.
+_CONFIG_EXCLUDE_DIRS: frozenset[str] = frozenset({
+    "docs", "doc", "documentation",
+    "test", "tests", "testing",
+    "examples", "example",
+    "samples", "sample",
+    "fixtures", "testdata", "test_data",
+    "spec", "specs",
+})
+
+# Filenames excluded from config candidates regardless of directory.
+# JSON Schema definitions match config probes but aren't project config.
+_CONFIG_EXCLUDE_NAMES: frozenset[str] = frozenset({
+    "schema.json",
+})
+
+
+def _is_config_excluded_path(rel_path: str) -> bool:
+    """Check if a relative path should be excluded from config candidates.
+
+    Excludes paths whose directory components overlap with _CONFIG_EXCLUDE_DIRS
+    or whose filename is in _CONFIG_EXCLUDE_NAMES.
+
+    Args:
+        rel_path: Relative path string (e.g., "docs/schema.json").
+
+    Returns:
+        True if the path should be excluded.
+    """
+    from pathlib import PurePosixPath
+    parts = PurePosixPath(rel_path).parts
+    # Check directory components (all but the last part, which is the filename)
+    if any(part in _CONFIG_EXCLUDE_DIRS for part in parts[:-1]):
+        return True
+    # Check filename
+    if parts and parts[-1] in _CONFIG_EXCLUDE_NAMES:
+        return True
+    return False
 
 
 def _section_header(title: str, exclude_tests: bool = False) -> str:
@@ -1076,18 +1125,24 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     return lines
 
 
-def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
+def _collect_config_content(
+    repo_root: Path,
+) -> tuple[list[tuple[str, str]], set[Path]]:
     """Collect all config file content as (filename, content) pairs.
 
     Used by embedding mode to have raw content for semantic selection.
+    Also scans depth 1-2 for monorepo manifests (e.g., packages/core/pyproject.toml).
 
     Args:
         repo_root: Path to repository root.
 
     Returns:
-        List of (prefixed_filename, content) tuples.
+        Tuple of (config_content, seen_paths) where config_content is a list
+        of (prefixed_filename, content) tuples and seen_paths tracks absolute
+        paths already collected.
     """
     config_content: list[tuple[str, str]] = []
+    seen_paths: set[Path] = set()
 
     for config_name in CONFIG_FILES:
         for subdir in CONFIG_SUBDIRS:
@@ -1099,21 +1154,34 @@ def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
                 content = config_path.read_text(encoding="utf-8", errors="replace")
                 prefix = f"{subdir}/" if subdir else ""
                 config_content.append((f"{prefix}{config_name}", content))
+                seen_paths.add(config_path.resolve())
             except OSError:  # pragma: no cover
                 pass  # pragma: no cover
 
-    # Also include LICENSE file content
-    for license_name in LICENSE_FILES:
-        license_path = repo_root / license_name
-        if license_path.exists():
-            try:
-                content = license_path.read_text(encoding="utf-8", errors="replace")[:2000]
-                config_content.append((license_name, content))
-                break  # Only first license file
-            except OSError:  # pragma: no cover
-                pass  # pragma: no cover
+    # Monorepo discovery: scan depth 1-2 for manifest files.
+    # Catches packages/core/pyproject.toml, services/api/package.json, etc.
+    _exclude_dirs = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    for manifest_name in _MONOREPO_MANIFEST_NAMES:
+        for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
+            for match in repo_root.glob(pattern):
+                if not match.is_file():
+                    continue  # pragma: no cover
+                resolved = match.resolve()
+                if resolved in seen_paths:
+                    continue
+                # Skip hidden dirs and excluded dirs
+                rel = match.relative_to(repo_root)
+                parts = rel.parts[:-1]  # directory components only
+                if any(p.startswith(".") or p in _exclude_dirs for p in parts):
+                    continue
+                try:
+                    content = match.read_text(encoding="utf-8", errors="replace")
+                    config_content.append((str(rel), content))
+                    seen_paths.add(resolved)
+                except OSError:  # pragma: no cover
+                    pass  # pragma: no cover
 
-    return config_content
+    return config_content, seen_paths
 
 
 def _get_repo_languages(repo_root: Path) -> set[str]:
@@ -1331,25 +1399,8 @@ def _collect_config_content_with_discovery(
     Returns:
         List of (prefixed_filename, content) tuples.
     """
-    # Start with standard config collection
-    config_content = _collect_config_content(repo_root)
-    seen_paths: set[Path] = set()
-
-    # Track which files we already have
-    for config_name in CONFIG_FILES:
-        for subdir in CONFIG_SUBDIRS:
-            if "*" in config_name:  # pragma: no cover - glob patterns rare in tests
-                # Handle glob patterns
-                pattern = config_name
-                search_dir = repo_root / subdir if subdir else repo_root
-                if search_dir.exists():
-                    for match in search_dir.glob(pattern):
-                        if match.is_file():
-                            seen_paths.add(match)
-            else:
-                config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
-                if config_path.exists():
-                    seen_paths.add(config_path)
+    # Start with standard config collection (includes monorepo discovery)
+    config_content, seen_paths = _collect_config_content(repo_root)
 
     # Also handle glob patterns from CONFIG_FILES
     for config_name in CONFIG_FILES:
@@ -1358,12 +1409,13 @@ def _collect_config_content_with_discovery(
                 search_dir = repo_root / subdir if subdir else repo_root
                 if search_dir.exists():
                     for match in search_dir.glob(config_name):
-                        if match.is_file() and match not in seen_paths:
+                        resolved = match.resolve()
+                        if match.is_file() and resolved not in seen_paths:
                             try:
                                 content = match.read_text(encoding="utf-8", errors="replace")
                                 rel_path = match.relative_to(repo_root)
                                 config_content.append((str(rel_path), content))
-                                seen_paths.add(match)
+                                seen_paths.add(resolved)
                             except OSError:
                                 pass
 
@@ -1377,8 +1429,10 @@ def _collect_config_content_with_discovery(
         if path in seen_paths:
             continue
         try:
-            content = path.read_text(encoding="utf-8", errors="replace")
             rel_path = path.relative_to(repo_root)
+            if _is_config_excluded_path(str(rel_path)):
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
             config_content.append((str(rel_path), content))
             seen_paths.add(path)
         except OSError:
@@ -1506,6 +1560,56 @@ def _build_context_chunk(
     return result
 
 
+def _is_low_quality_chunk(chunk_text: str) -> bool:
+    """Check if a chunk is low-quality noise that should be filtered out.
+
+    Detects horizontal rules, raw JSON structural fragments, and chunks
+    that are mostly punctuation with little meaningful content.
+
+    Args:
+        chunk_text: The text of a candidate chunk.
+
+    Returns:
+        True if the chunk should be rejected as noise.
+    """
+    stripped = chunk_text.strip()
+    if not stripped:
+        return True
+
+    # Count alphanumeric vs total characters (ignoring whitespace)
+    no_ws = stripped.replace(" ", "").replace("\t", "").replace("\n", "")
+    if not no_ws:  # pragma: no cover - unreachable after strip()
+        return True  # pragma: no cover
+    alnum_count = sum(1 for c in no_ws if c.isalnum())
+
+    # Very short meaningful content (<20 alphanumeric chars)
+    if alnum_count < 20:
+        return True
+
+    # High punctuation ratio: >60% non-alphanumeric
+    if alnum_count / len(no_ws) < 0.4:
+        return True
+
+    # Separator lines: mostly repeated single characters (===, ---, ***)
+    lines = [ln.strip() for ln in stripped.split("\n") if ln.strip()]
+    separator_lines = sum(
+        1 for ln in lines
+        if len(ln) >= 3 and len(set(ln)) <= 2
+    )
+    if lines and separator_lines / len(lines) > 0.5:
+        return True
+
+    return False
+
+
+# Threshold for cross-file deduplication in embedding-based config extraction.
+# Chunks with cosine similarity >= this value to an already-selected chunk from
+# a different file are considered near-duplicates and suppressed.  0.95 is high
+# enough that only near-identical text is affected (e.g. identical build-system
+# stanzas across monorepo packages).
+_CROSS_FILE_SIM_THRESHOLD = 0.95
+
+
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
@@ -1593,6 +1697,10 @@ def _extract_config_embedding(
         if processed_files >= max_config_files:  # pragma: no cover
             break
 
+        # Skip files in excluded directories or with excluded filenames
+        if _is_config_excluded_path(source):  # pragma: no cover - defensive, tested via unit test
+            continue  # pragma: no cover
+
         file_lines = [ln.strip() for ln in content.split("\n")]
         _vlog(f"Collecting chunks from {source} ({len(file_lines)} lines)...")
 
@@ -1615,19 +1723,10 @@ def _extract_config_embedding(
         for i in range(0, num_lines, stride):
             sampled_indices.append(non_empty[i][0])  # Get original line index
 
-        # Build context chunks for each sampled line
-        # For license/copying files, enforce minimum chunk size to avoid
-        # undersized chunks (e.g., heading-only fragments like "Preamble")
-        source_lower = source.lower()
-        is_license_file = any(
-            lic.lower() in source_lower for lic in LICENSE_FILES
-        )
-        min_chars = 80 if is_license_file else 0
-
         start_idx = len(all_chunks)
         for center_idx in sampled_indices:
             chunk = _build_context_chunk(
-                file_lines, center_idx, max_chunk_chars, min_chunk_chars=min_chars
+                file_lines, center_idx, max_chunk_chars
             )
             if chunk:  # Skip empty chunks
                 all_chunks.append((source, center_idx, chunk, file_lines))
@@ -1672,7 +1771,16 @@ def _extract_config_embedding(
         all_similarities = np.mean(top_k_values, axis=1)
     else:
         all_similarities = np.mean(combined_sim_matrix, axis=1)  # pragma: no cover
-    _vlog(f"Similarity computation in {(_time.time() - _t1)*1000:.1f}ms")
+    # Negative probe scoring: penalize chunks matching non-config content
+    from .sketch_embeddings import NEGATIVE_PATTERNS
+    negative_embeddings = model.encode(NEGATIVE_PATTERNS, convert_to_numpy=True)
+    neg_norms = np.linalg.norm(negative_embeddings, axis=1, keepdims=True)
+    neg_normalized = negative_embeddings / (neg_norms + 1e-8)
+    neg_sim_matrix = np.dot(all_normalized, neg_normalized.T)
+    max_neg_sim = np.max(neg_sim_matrix, axis=1)
+    negative_weight = 0.3
+    all_similarities = np.maximum(all_similarities - negative_weight * max_neg_sim, 0.0)
+    _vlog(f"Similarity computation (with negative probes) in {(_time.time() - _t1)*1000:.1f}ms")
 
     if progress_callback:  # pragma: no cover - progress callback optional
         progress_callback(total_files, total_files)  # Signal embedding complete
@@ -1684,19 +1792,14 @@ def _extract_config_embedding(
         # Get this file's similarities
         file_similarities = all_similarities[start_idx:end_idx].copy()
 
-        # Apply penalty for LICENSE/COPYING files
-        source_lower = source.lower()
-        if "license" in source_lower or "copying" in source_lower:
-            license_penalty = 0.5
-            file_similarities = file_similarities * license_penalty
-            _vlog(f"  Applied LICENSE penalty ({license_penalty}x) to {source}")
-
         # Collect chunks above threshold
         above_threshold = []
         for i, global_idx in enumerate(range(start_idx, end_idx)):
             sim = float(file_similarities[i])
             if sim >= similarity_threshold:
                 _, center_idx, chunk_text, file_lines = all_chunks[global_idx]
+                if _is_low_quality_chunk(chunk_text):
+                    continue
                 above_threshold.append(
                     (sim, center_idx, chunk_text, file_lines, all_normalized[global_idx])
                 )
@@ -1723,15 +1826,24 @@ def _extract_config_embedding(
     selected_embeddings_per_file: dict[str, list[np.ndarray]] = {
         source: [] for source in file_candidates
     }
+    # Global embedding list for cross-file deduplication (Change A from plan)
+    selected_embeddings_global: list[np.ndarray] = []
 
-    # First: give each file its base allocation
+    # First: give each file its base allocation, skipping cross-file near-duplicates
     for source, candidates in file_candidates.items():
         for sim, center_idx, chunk_text, _file_lines, embedding in candidates[
             :base_per_file
         ]:
+            # Skip if near-duplicate of already-selected chunk from another file
+            if selected_embeddings_global:
+                global_embs = np.array(selected_embeddings_global)
+                max_cross_sim = float(np.max(np.dot(global_embs, embedding)))
+                if max_cross_sim >= _CROSS_FILE_SIM_THRESHOLD:
+                    continue
             selected_chunks.append((sim, source, center_idx, chunk_text))
             picks_per_file[source] += 1
             selected_embeddings_per_file[source].append(embedding)
+            selected_embeddings_global.append(embedding)
 
     # Second: if budget remains, fill with diminishing returns + diversity selection
     remaining_budget = max_lines - len(selected_chunks)
@@ -1754,15 +1866,22 @@ def _extract_config_embedding(
                 picks = picks_per_file[source]
                 marginal = sim / (1 + diminishing_alpha * picks)
 
-                # Compute diversity penalty (max similarity to already-selected from same file)
-                diversity_penalty = 0.0
+                # Intra-file diversity penalty
+                intra_penalty = 0.0
                 if selected_embeddings_per_file[source]:
                     selected_embs = np.array(selected_embeddings_per_file[source])
-                    # embedding is already normalized, selected_embs are normalized
                     chunk_sims = np.dot(selected_embs, embedding)
-                    diversity_penalty = float(np.max(chunk_sims))
+                    intra_penalty = float(np.max(chunk_sims))
 
-                # Adjusted score: diminishing returns * diversity discount
+                # Cross-file diversity penalty
+                cross_penalty = 0.0
+                if selected_embeddings_global:
+                    global_embs = np.array(selected_embeddings_global)
+                    cross_sims = np.dot(global_embs, embedding)
+                    cross_penalty = float(np.max(cross_sims))
+
+                # Strongest penalty wins: intra-file or cross-file
+                diversity_penalty = max(intra_penalty, cross_penalty)
                 adjusted = marginal * (1 - diversity_weight * diversity_penalty)
                 heapq.heappush(
                     pq, (-adjusted, sim, source, center_idx, chunk_text, embedding)
@@ -1776,30 +1895,33 @@ def _extract_config_embedding(
             selected_chunks.append((sim, source, center_idx, chunk_text))
             picks_per_file[source] += 1
             selected_embeddings_per_file[source].append(embedding)
+            selected_embeddings_global.append(embedding)
 
-            # Recompute scores for remaining candidates from the SAME file
-            # (their diversity penalty has changed)
+            # Recompute scores for ALL remaining candidates (cross-file penalty
+            # changed for everyone, not just same-file candidates)
             new_pq: list[tuple[float, float, str, int, str, np.ndarray]] = []
             while pq:
                 neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2 = heapq.heappop(
                     pq
                 )
-                if source2 == source:
-                    # Recompute adjusted score for this candidate
-                    picks = picks_per_file[source2]
-                    marginal = sim2 / (1 + diminishing_alpha * picks)
-                    selected_embs = np.array(selected_embeddings_per_file[source2])
-                    chunk_sims = np.dot(selected_embs, emb2)
-                    diversity_penalty = float(np.max(chunk_sims))
-                    adjusted = marginal * (1 - diversity_weight * diversity_penalty)
-                    new_pq.append(
-                        (-adjusted, sim2, source2, center_idx2, chunk_text2, emb2)
-                    )
-                else:
-                    # Keep original score (unchanged)
-                    new_pq.append(
-                        (neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2)
-                    )
+                picks = picks_per_file[source2]
+                marginal = sim2 / (1 + diminishing_alpha * picks)
+
+                # Intra-file penalty
+                intra_penalty = 0.0
+                if selected_embeddings_per_file[source2]:
+                    sel_embs = np.array(selected_embeddings_per_file[source2])
+                    intra_penalty = float(np.max(np.dot(sel_embs, emb2)))
+
+                # Cross-file penalty (global includes the just-picked embedding)
+                global_embs = np.array(selected_embeddings_global)
+                cross_penalty = float(np.max(np.dot(global_embs, emb2)))
+
+                diversity_penalty = max(intra_penalty, cross_penalty)
+                adjusted = marginal * (1 - diversity_weight * diversity_penalty)
+                new_pq.append(
+                    (-adjusted, sim2, source2, center_idx2, chunk_text2, emb2)
+                )
             # Rebuild heap
             heapq.heapify(new_pq)
             pq = new_pq
@@ -1828,12 +1950,13 @@ def _extract_config_embedding(
         result_lines.append(f"[{source}]")
 
         # Output chunks (context already included, may have ellipsis for subsampled)
-        seen_chunks: set[int] = set()
+        covered_lines: set[int] = set()
         for _sim, center_idx, chunk_text in file_selected:
-            # Deduplicate overlapping chunks by center index
-            if center_idx in seen_chunks:  # pragma: no cover
+            # Deduplicate overlapping 3-line context windows
+            chunk_range = set(range(max(0, center_idx - 1), center_idx + 2))
+            if chunk_range & covered_lines:
                 continue
-            seen_chunks.add(center_idx)
+            covered_lines.update(chunk_range)
 
             # Format chunk - indent and mark with ~ if it contains ellipsis (was subsampled)
             if " ... " in chunk_text:  # pragma: no cover - tested in unit test
@@ -1982,7 +2105,7 @@ def _extract_config_info(
     # Check if output uses [filename] headers (embedding/hybrid modes)
     # If not, just join and truncate (heuristic mode)
     has_file_headers = any(
-        line.startswith("[") and line.endswith("]") and "/" not in line
+        line.startswith("[") and line.endswith("]") and "." in line[1:-1]
         for line in lines
     )
 
@@ -2006,7 +2129,7 @@ def _extract_config_info(
     current_lines: list[str] = []  # pragma: no cover - embedding output only
 
     for line in lines:  # pragma: no cover - embedding output only
-        if line.startswith("[") and line.endswith("]") and "/" not in line:
+        if line.startswith("[") and line.endswith("]") and "." in line[1:-1]:
             if current_file and current_lines:
                 file_sections.append((current_file, current_lines))
             elif current_lines:
@@ -2089,6 +2212,8 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
     Creates clear visual delineation of file boundaries for easier parsing.
+    Uses a fence delimiter long enough to avoid ambiguity with any backtick
+    sequences inside the content (per CommonMark spec).
 
     Args:
         rel_path: Relative path to the file.
@@ -2104,11 +2229,24 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     end_marker = f"------------------- END of {rel_path} "
     end_marker += "-" * max(0, 60 - len(end_marker))
 
+    # Choose a fence delimiter longer than any backtick run in the content
+    # so inner code blocks don't close the outer fence.
+    max_run = 0
+    run = 0
+    for ch in content:
+        if ch == "`":
+            run += 1
+            if run > max_run:
+                max_run = run
+        else:
+            run = 0
+    fence = "`" * max(3, max_run + 1)
+
     return [
         start_marker,
-        "```",
+        fence,
         content.rstrip(),
-        "```",
+        fence,
         end_marker,
         "",  # Blank line for separation
     ]
@@ -2136,52 +2274,171 @@ def _estimate_file_block_tokens(rel_path: str, content: str) -> int:
     return total_chars // 4
 
 
-def _count_test_loc(
-    repo_root: Path,
-    profile: RepoProfile,
-    extra_excludes: Optional[List[str]] = None,
-) -> tuple[int, int]:
-    """Count LOC in test files.
+@dataclass
+class _TestAnalysis:
+    """Cached results from a single source-file walk.
 
-    Only counts source code files (SOURCE_EXTENSIONS), not config/build files.
-    This ensures consistency with the Tests section which also uses SOURCE_EXTENSIONS.
+    Consolidates data that was previously computed by separate walks in
+    ``_count_test_loc``, ``_detect_test_summary``, and the LOC counting
+    portion of ``profile._detect_languages`` into a single directory
+    traversal.
+    """
+
+    test_loc: int = 0
+    test_files: int = 0
+    summary: Optional[str] = None
+    frameworks: set[str] = None  # type: ignore[assignment]
+    language_loc: dict[str, int] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.frameworks is None:  # pragma: no cover - defensive default
+            self.frameworks = set()
+        if self.language_loc is None:  # pragma: no cover - defensive default
+            self.language_loc = {}
+
+
+def _build_ext_to_lang_map() -> dict[str, str]:
+    """Build a mapping from file suffix to language name.
+
+    Uses LANGUAGE_EXTENSIONS from taxonomy. For glob patterns like "*.py",
+    maps ".py" → "python". Non-extension patterns (e.g., "Makefile") are
+    mapped as-is.
+    """
+    from .taxonomy import LANGUAGE_EXTENSIONS
+
+    ext_map: dict[str, str] = {}
+    for lang, patterns in LANGUAGE_EXTENSIONS.items():
+        for pat in patterns:
+            if pat.startswith("*."):
+                ext_map[pat[1:]] = lang  # "*.py" → ".py" → "python"
+            elif pat.startswith("*"):  # pragma: no cover - no current patterns match
+                ext_map[pat[1:]] = lang  # "*_test.go" → "_test.go" → lang
+            else:
+                ext_map[pat] = lang  # "Makefile" → lang
+    return ext_map
+
+
+def _classify_file_language(path: Path, ext_map: dict[str, str]) -> Optional[str]:
+    """Classify a file into a language using the extension map.
+
+    Tries longest-suffix-first matching so ".d.ts" beats ".ts".
+    """
+    name = path.name
+    # Try progressively shorter suffixes
+    for i in range(len(name)):
+        suffix = name[i:]
+        if suffix in ext_map:
+            return ext_map[suffix]
+    return None
+
+
+def _analyze_test_files(
+    repo_root: Path,
+    extra_excludes: Optional[List[str]] = None,
+) -> _TestAnalysis:
+    """Single-walk analysis of all source files.
+
+    Replaces the separate walks previously done by ``_count_test_loc``
+    (test LOC counting), ``_detect_test_summary`` (framework detection),
+    and the LOC counting in ``profile._detect_languages``.
+
+    Walks LANGUAGE_EXTENSIONS + test-only extensions once.  For every file:
+    * counts non-empty lines (per-language LOC)
+    * if it is a test file, accumulates test LOC and collects the path for
+      framework detection
+
+    After the walk it samples up to 20 test files and scans their first
+    5 000 chars for test-framework import patterns.
 
     Args:
         repo_root: Repository root path.
-        profile: Repository profile with detected languages.
-        extra_excludes: Additional exclude patterns.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
 
     Returns:
-        (test_loc, test_files) tuple.
+        ``_TestAnalysis`` with test_loc, test_files, summary string,
+        detected frameworks, and per-language LOC.
     """
-    from .discovery import find_files, DEFAULT_EXCLUDES
+    import re
+    from .taxonomy import LANGUAGE_EXTENSIONS
 
-    # Combine default and extra excludes (same as detect_profile)
     excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:  # pragma: no cover
         excludes.extend(extra_excludes)
 
-    test_loc = 0
-    test_files = 0
-
-    # Use SOURCE_EXTENSIONS (source code only) instead of LANGUAGE_EXTENSIONS
-    # This excludes config/build files like Makefile from test counts
+    # Build combined pattern set from all language extensions + test-only
     all_patterns: set[str] = set()
-    for pattern_list in SOURCE_EXTENSIONS.values():
+    for pattern_list in LANGUAGE_EXTENSIONS.values():
         all_patterns.update(pattern_list)
+    all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
     patterns = list(all_patterns)
 
-    for f in find_files(repo_root, patterns, excludes=excludes):
-        rel_path = str(f.relative_to(repo_root))
-        if _is_test_path(rel_path):
-            test_files += 1
-            try:
-                content = f.read_text(encoding="utf-8", errors="ignore")
-                test_loc += sum(1 for line in content.splitlines() if line.strip())
-            except Exception:  # pragma: no cover
-                pass  # Skip unreadable files
+    # Build extension → language map for per-language LOC classification
+    ext_map = _build_ext_to_lang_map()
 
-    return test_loc, test_files
+    test_loc = 0
+    test_file_paths: list[Path] = []
+    language_loc: dict[str, int] = {}
+    seen: set[Path] = set()
+
+    for f in find_files(repo_root, patterns, excludes=excludes):
+        # Deduplicate: overlapping patterns can yield the same file
+        if f in seen:  # pragma: no cover - defensive dedup
+            continue
+        seen.add(f)
+
+        rel_path = str(f.relative_to(repo_root))
+        is_test = _is_test_path(rel_path)
+
+        try:
+            content = f.read_text(encoding="utf-8", errors="ignore")
+            file_loc = sum(1 for line in content.splitlines() if line.strip())
+        except OSError:  # pragma: no cover
+            continue
+
+        # Accumulate per-language LOC
+        lang = _classify_file_language(f, ext_map)
+        if lang is not None:
+            language_loc[lang] = language_loc.get(lang, 0) + file_loc
+
+        if is_test:
+            test_file_paths.append(f)
+            test_loc += file_loc
+
+    test_files = len(test_file_paths)
+
+    if not test_file_paths:
+        return _TestAnalysis(
+            test_loc=0, test_files=0, summary=None,
+            frameworks=set(), language_loc=language_loc,
+        )
+
+    # Detect frameworks from a sample of test files
+    frameworks_found: set[str] = set()
+    sample_size = min(20, test_files)
+    for test_file in test_file_paths[:sample_size]:
+        try:
+            content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
+            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
+                if re.search(pattern, content):
+                    frameworks_found.add(framework)
+        except OSError:  # pragma: no cover
+            continue
+
+    # Build summary string
+    file_word = "file" if test_files == 1 else "files"
+    if frameworks_found:
+        framework_str = ", ".join(sorted(frameworks_found))
+        summary = f"{test_files} test {file_word} · {framework_str}"
+    else:
+        summary = f"{test_files} test {file_word}"
+
+    return _TestAnalysis(
+        test_loc=test_loc,
+        test_files=test_files,
+        summary=summary,
+        frameworks=frameworks_found,
+        language_loc=language_loc,
+    )
 
 
 def _format_language_stats(
@@ -2189,6 +2446,7 @@ def _format_language_stats(
     repo_root: Optional[Path] = None,
     extra_excludes: Optional[List[str]] = None,
     exclude_tests: bool = False,
+    test_analysis: Optional[_TestAnalysis] = None,
 ) -> str:
     """Format language statistics as a multi-line summary.
 
@@ -2197,6 +2455,9 @@ def _format_language_stats(
         repo_root: If provided, compute and show test LOC separately.
         extra_excludes: Additional exclude patterns for test LOC counting.
         exclude_tests: If True, add [IGNORING TESTS] marker to output.
+        test_analysis: Pre-computed test analysis data. When provided,
+            avoids a redundant directory walk. Computed on demand if
+            ``repo_root`` is given but ``test_analysis`` is ``None``.
 
     Returns:
         Formatted statistics (multi-line if test files detected).
@@ -2228,9 +2489,11 @@ def _format_language_stats(
 
     # Compute test LOC if repo_root provided
     if repo_root is not None:
-        # Always use _count_test_loc to get accurate test counts from the profile
-        # (profile.languages includes all file types: code, markdown, JSON, etc.)
-        test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
+        # Use pre-computed test analysis if available, else compute on demand
+        if test_analysis is None:
+            test_analysis = _analyze_test_files(repo_root, extra_excludes)
+        test_loc = test_analysis.test_loc
+        test_files = test_analysis.test_files
 
         # Always show breakdown format for consistency (with or without -x flag)
         non_test_loc = total_loc - test_loc
@@ -3524,68 +3787,6 @@ def _extract_readme_internal_links(
     return resolved
 
 
-def _extract_python_docstrings(
-    repo_root: Path, symbols: list[Symbol], max_len: int = 80
-) -> dict[str, str]:
-    """Extract docstrings for Python symbols.
-
-    Reads Python files and extracts the first line of docstrings for
-    functions and classes. Returns a dict mapping symbol IDs to docstring
-    summaries (truncated to max_len).
-
-    Args:
-        repo_root: Repository root path.
-        symbols: List of symbols to extract docstrings for.
-        max_len: Maximum length of docstring summary (default 80).
-
-    Returns:
-        Dict mapping symbol ID to first-line docstring summary.
-    """
-    import ast
-
-    docstrings: dict[str, str] = {}
-
-    # Group symbols by file for efficient reading
-    symbols_by_file: dict[str, list[Symbol]] = {}
-    for sym in symbols:
-        if sym.language == "python" and sym.kind in ("function", "class", "method"):
-            symbols_by_file.setdefault(sym.path, []).append(sym)
-
-    for file_path, file_symbols in symbols_by_file.items():
-        try:
-            full_path = repo_root / file_path if not Path(file_path).is_absolute() else Path(file_path)
-            if not full_path.exists():
-                continue
-            source = full_path.read_text(encoding="utf-8", errors="replace")
-            # Suppress SyntaxWarning from invalid escape sequences in analyzed code
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=SyntaxWarning)
-                tree = ast.parse(source)
-        except (SyntaxError, OSError):
-            continue
-
-        # Build a map of (start_line, name) -> docstring
-        node_docstrings: dict[tuple[int, str], str] = {}
-
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                docstring = ast.get_docstring(node)
-                if docstring:
-                    # Take first line only
-                    first_line = docstring.split("\n")[0].strip()
-                    if len(first_line) > max_len:
-                        first_line = first_line[:max_len - 1] + "…"
-                    node_docstrings[(node.lineno, node.name)] = first_line
-
-        # Match symbols to docstrings
-        for sym in file_symbols:
-            key = (sym.span.start_line, sym.name)
-            if key in node_docstrings:
-                docstrings[sym.id] = node_docstrings[key]
-
-    return docstrings
-
-
 # Common programming terms to exclude from domain vocabulary
 _COMMON_TERMS = frozenset({
     # English stopwords
@@ -3693,24 +3894,6 @@ def _extract_domain_vocabulary(
     return [word for word, _ in word_counts.most_common(max_terms)]
 
 
-def _format_vocabulary(terms: list[str], exclude_tests: bool = False) -> str:
-    """Format domain vocabulary as a Markdown section.
-
-    Args:
-        terms: List of domain-specific terms.
-        exclude_tests: If True, add [IGNORING TESTS] marker to header.
-
-    Returns:
-        Markdown-formatted vocabulary section.
-    """
-    if not terms:
-        return ""
-
-    lines = [_section_header("Domain Vocabulary", exclude_tests), ""]
-    lines.append(f"*Key terms: {', '.join(terms)}*")
-
-    return "\n".join(lines)
-
 
 # SOURCE_EXTENSIONS is imported from taxonomy module (ADR-0004 Phase 3)
 
@@ -3806,49 +3989,36 @@ def _format_source_files(
     return "\n".join(lines)
 
 
-def _format_all_files(
-    repo_root: Path,
-    max_files: int = 200,
-    exclude_tests: bool = False,
-) -> str:
-    """Format all files (non-excluded) as a Markdown section."""
-    # Collect all non-excluded files
-    files: list[Path] = []
-    for f in repo_root.rglob("*"):
-        if f.is_file():
-            # Check exclusions
-            excluded = False
-            for part in f.relative_to(repo_root).parts:
-                for pattern in DEFAULT_EXCLUDES:
-                    if part == pattern or (
-                        "*" in pattern and part.endswith(pattern.lstrip("*"))
-                    ):
-                        excluded = True
-                        break
-                if excluded:
-                    break
-            if not excluded and not any(p.startswith(".") for p in f.parts):
-                files.append(f)
 
-    if not files:
-        return ""
+def _select_additional_files_preselected(
+    preselected_files: list[Path],
+    symbols: list[Symbol],
+    in_degree: dict[str, int],
+) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
+    """Fast path for additional file selection when files are already chosen.
 
-    # Sort by path
-    files.sort(key=lambda p: str(p.relative_to(repo_root)))
+    Computes centrality stats on the pre-selected files but skips all file
+    discovery, embedding, and ranking work.
 
-    lines = [_section_header("All Files", exclude_tests), ""]
-
-    for f in files[:max_files]:
-        rel_path = f.relative_to(repo_root)
-        lines.append(f"- `{rel_path}`")
-
-    if len(files) > max_files:
-        lines.append(f"- ... and {len(files) - max_files} more files")
-
-    return "\n".join(lines)
+    Returns:
+        (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
+    """
+    centrality_result = compute_symbol_mention_centrality_batch(
+        files=preselected_files,
+        symbols=symbols,
+        in_degree=in_degree,
+        min_in_degree=2,
+        max_file_size=100 * 1024,
+    )
+    return (
+        preselected_files,
+        preselected_files,  # candidate_files == selected (no overflow)
+        centrality_result.symbols_per_file,
+        centrality_result.name_to_in_degree,
+    )
 
 
-def _format_additional_files(
+def _select_additional_files(
     repo_root: Path,
     source_files: list[Path],
     symbols: list[Symbol],
@@ -3858,47 +4028,17 @@ def _format_additional_files(
     progress_callback: "callable | None" = None,
     centrality_progress_callback: "callable | None" = None,
     cached_centrality_scores: dict[str, float] | None = None,
-    exclude_tests: bool = False,
-    token_budget: int | None = None,
-    include_content: bool = False,
-) -> tuple[str, list[Path], int]:
-    """Format additional files (non-source) as a Markdown section.
+) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
+    """Select additional files using README-first hybrid ordering.
 
-    Uses a README-first hybrid ordering approach:
-    1. README is always first (truncated if it exceeds budget)
-    2. Files linked from README in document order
-    3. Round-robin from similarity-ranked and centrality-ranked files
-
-    When include_content=True, uses dynamic truncation based on median token
-    count of already-selected files.
-
-    Args:
-        repo_root: Repository root path.
-        source_files: List of source files (to be excluded from output).
-        symbols: List of symbols from analysis.
-        in_degree: Raw in-degree counts for symbols.
-        max_files: Maximum files to show.
-        semantic_top_n: Number of files to pick by semantic similarity.
-        progress_callback: Optional callback for embedding progress updates.
-            Called with (current, total) for each embedding computed.
-        centrality_progress_callback: Optional callback for centrality progress.
-            Called with (current, total) for each file scored.
-        cached_centrality_scores: Optional pre-computed centrality scores from
-            run_behavior_map(). Maps relative path strings to scores. When
-            provided, uses these for RANKING (efficiency). Centrality is always
-            recomputed to get per-file symbol data for accurate representativeness.
-        exclude_tests: Whether tests are excluded (for section header).
-        token_budget: Optional token budget for content. Required if include_content=True.
-        include_content: If True, include file contents with dynamic truncation.
+    Discovers candidate files (non-source, non-excluded), ranks them via
+    semantic similarity and symbol-mention centrality, then selects via
+    round-robin from README links, similarity, and centrality rankings.
 
     Returns:
-        Tuple of (Markdown formatted section, list of selected file paths,
-        de-duplicated in-degree sum). The in-degree sum represents how much
-        symbol connectivity is covered by the selected documentation files,
-        counting each unique symbol only once across all selected files.
+        (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
     """
     from fnmatch import fnmatch
-    from statistics import median
 
     from .sketch_embeddings import (
         batch_embed_files,
@@ -3930,6 +4070,9 @@ def _format_additional_files(
 
         return False
 
+    # Create set of source file paths for exclusion
+    source_set = {str(f.relative_to(repo_root)) for f in source_files}
+
     def _is_additional_candidate(filepath: Path) -> bool:
         """Check if file is a valid additional file candidate."""
         if _is_excluded(filepath):
@@ -3944,10 +4087,7 @@ def _format_additional_files(
             all_files.append(f)
 
     if not all_files:
-        return "", [], 0.0
-
-    # Create set of source file paths for exclusion
-    source_set = {str(f.relative_to(repo_root)) for f in source_files}
+        return [], [], {}, {}
 
     # Exclude source files from candidates
     candidate_files = [
@@ -3955,7 +4095,7 @@ def _format_additional_files(
     ]
 
     if not candidate_files:
-        return "", [], 0.0  # pragma: no cover - defensive
+        return [], [], {}, {}  # pragma: no cover - defensive
 
     # ========== README-First Hybrid Ordering ==========
 
@@ -4081,11 +4221,88 @@ def _format_additional_files(
             else:
                 sources_exhausted[2] = True
 
-    # ========== Format Output ==========
+    return selected_files, candidate_files, symbols_per_file, name_to_in_degree
+
+
+def _format_additional_files(
+    repo_root: Path,
+    source_files: list[Path],
+    symbols: list[Symbol],
+    in_degree: dict[str, int],
+    max_files: int = 200,
+    semantic_top_n: int = 10,
+    progress_callback: "callable | None" = None,
+    centrality_progress_callback: "callable | None" = None,
+    cached_centrality_scores: dict[str, float] | None = None,
+    exclude_tests: bool = False,
+    token_budget: int | None = None,
+    include_content: bool = False,
+    section_title: str = "Additional Files",
+    preselected_files: list[Path] | None = None,
+) -> tuple[str, list[Path], int]:
+    """Format additional files (non-source) as a Markdown section.
+
+    Delegates to ``_select_additional_files`` for file discovery and ranking
+    (README-first hybrid ordering with semantic similarity and centrality),
+    or accepts ``preselected_files`` to skip selection entirely.
+
+    Two output modes controlled by ``include_content``:
+    - False (default): file listing only (``## Additional Files``)
+    - True: file contents with dynamic truncation (``## Additional Files Content``)
+
+    Args:
+        repo_root: Repository root path.
+        source_files: List of source files (excluded from candidates).
+        symbols: List of symbols from analysis.
+        in_degree: Raw in-degree counts for symbols.
+        max_files: Maximum files to show (ignored when preselected_files set).
+        semantic_top_n: Files to pick by semantic similarity (ignored when
+            preselected_files set).
+        progress_callback: Embedding progress callback (ignored when
+            preselected_files set).
+        centrality_progress_callback: Centrality progress callback (ignored
+            when preselected_files set).
+        cached_centrality_scores: Pre-computed centrality scores (ignored when
+            preselected_files set).
+        exclude_tests: Whether tests are excluded (for section header marker).
+        token_budget: Token budget for content mode. Required when
+            include_content=True.
+        include_content: If True, include file contents with dynamic truncation.
+        section_title: Header text for the section.
+        preselected_files: Pre-selected file list — skips all discovery,
+            embedding, and ranking. Use when a prior call already determined
+            the file order.
+
+    Returns:
+        Tuple of (Markdown section, selected file paths, de-duplicated
+        in-degree sum).
+    """
+    from statistics import median
+
+    if preselected_files is not None:
+        selected_files, candidate_files, symbols_per_file, name_to_in_degree = (
+            _select_additional_files_preselected(
+                preselected_files, symbols, in_degree,
+            )
+        )
+    else:
+        selected_files, candidate_files, symbols_per_file, name_to_in_degree = (
+            _select_additional_files(
+                repo_root, source_files, symbols, in_degree,
+                max_files=max_files,
+                semantic_top_n=semantic_top_n,
+                progress_callback=progress_callback,
+                centrality_progress_callback=centrality_progress_callback,
+                cached_centrality_scores=cached_centrality_scores,
+            )
+        )
+
+    if not selected_files:
+        return "", [], 0
 
     # Calculate accurate de-duplicated in-degree for representativeness:
-    # 1. Collect unique symbols mentioned across ALL selected files
-    # 2. Sum in-degrees for those unique symbols (no double-counting)
+    # Collect unique symbols mentioned across ALL selected files,
+    # sum in-degrees for those unique symbols (no double-counting).
     unique_symbols_in_selected: set[str] = set()
     for f in selected_files:
         unique_symbols_in_selected.update(symbols_per_file.get(f, set()))
@@ -4094,8 +4311,8 @@ def _format_additional_files(
     )
 
     if not include_content or token_budget is None:
-        # Simple list format (backward compatible)
-        lines = [_section_header("Additional Files", exclude_tests), ""]
+        # Simple list format
+        lines = [_section_header(section_title, exclude_tests), ""]
         for f in selected_files:
             rel_path = f.relative_to(repo_root)
             lines.append(f"- `{rel_path}`")
@@ -4108,7 +4325,7 @@ def _format_additional_files(
 
     # ========== Content Mode with Dynamic Truncation ==========
 
-    lines = [_section_header("Additional Files", exclude_tests), ""]
+    lines = [_section_header(section_title, exclude_tests), ""]
     included_files: list[Path] = []
     token_counts: list[int] = []
     tokens_used = estimate_tokens("\n".join(lines))
@@ -4239,74 +4456,6 @@ TEST_FRAMEWORK_PATTERNS = [
     (r"import org\.junit", "junit"),
     (r"import org\.testng", "testng"),
 ]
-
-
-def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
-    """Detect test files and frameworks, return a summary string and frameworks.
-
-    This is a static analysis - it detects test files using the same path-based
-    detection as the Overview section (_is_test_path), ensuring consistency.
-    Framework detection uses import patterns. It does NOT measure coverage
-    (which requires execution).
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        Tuple of (summary_string, frameworks_set) where:
-        - summary_string: Like "103 test files · pytest, hypothesis" or None if no tests
-        - frameworks_set: Set of detected framework names
-    """
-    import re
-    from .discovery import find_files, DEFAULT_EXCLUDES
-
-    test_files: list[Path] = []
-    frameworks_found: set[str] = set()
-
-    # Find all source files using SOURCE_EXTENSIONS (already imported at module level)
-    # SOURCE_EXTENSIONS is a dict of language -> list of extensions (patterns like "*.py")
-    all_patterns: set[str] = set()
-    for pattern_list in SOURCE_EXTENSIONS.values():
-        all_patterns.update(pattern_list)
-
-    # Also include test-only file extensions not in SOURCE_EXTENSIONS
-    # These are files that are only used for tests, never for regular source code
-    test_only_extensions = ["*.bats"]  # Bash Automated Testing System
-    all_patterns.update(test_only_extensions)
-
-    patterns = list(all_patterns)
-
-    # Find test files using _is_test_path (same as Overview section)
-    for f in find_files(repo_root, patterns, excludes=list(DEFAULT_EXCLUDES)):
-        rel_path = str(f.relative_to(repo_root))
-        if _is_test_path(rel_path):
-            test_files.append(f)
-
-    if not test_files:
-        return None, set()
-
-    # Sample test files to detect frameworks (don't read all of them)
-    sample_size = min(20, len(test_files))
-    sample_files = test_files[:sample_size]
-
-    for test_file in sample_files:
-        try:
-            content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
-            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
-                if re.search(pattern, content):
-                    frameworks_found.add(framework)
-        except OSError:  # pragma: no cover
-            continue
-
-    # Build summary
-    file_count = len(test_files)
-    file_word = "file" if file_count == 1 else "files"
-
-    if frameworks_found:
-        framework_str = ", ".join(sorted(frameworks_found))
-        return f"{file_count} test {file_word} · {framework_str}", frameworks_found
-    else:
-        return f"{file_count} test {file_word}", frameworks_found
 
 
 def _detect_project_binary_names(repo_root: Path) -> list[str]:
@@ -4550,6 +4699,7 @@ def _format_test_summary(
     coverage_stats: tuple[int, int, float] | None = None,
     exclude_tests: bool = False,
     shell_integration_count: int = 0,
+    test_analysis: Optional[_TestAnalysis] = None,
 ) -> str:
     """Format test summary as a Markdown section.
 
@@ -4559,6 +4709,9 @@ def _format_test_summary(
         exclude_tests: If True, show that tests are being ignored.
         shell_integration_count: Number of shell scripts that invoke the project binary.
             These are integration tests that can't be tracked via call graph analysis.
+        test_analysis: Pre-computed test analysis data. When provided,
+            avoids a redundant directory walk. Computed on demand if not
+            supplied.
 
     Returns:
         Markdown section string (always returns a section, even if no tests detected).
@@ -4567,7 +4720,11 @@ def _format_test_summary(
     if exclude_tests:
         return f"{_section_header('Tests', exclude_tests)}\n\n0 tests (excluded via -x flag)"
 
-    summary, frameworks = _detect_test_summary(repo_root)
+    # Use pre-computed test analysis if available, else compute on demand
+    if test_analysis is None:
+        test_analysis = _analyze_test_files(repo_root)
+    summary = test_analysis.summary
+
     if not summary:
         # No tests detected - still show the section for consistency
         return f"{_section_header('Tests', exclude_tests)}\n\nNo test files detected"
@@ -4728,7 +4885,7 @@ def _run_analysis(
         all_symbols = filtered_symbols
         all_edges = filtered_edges
 
-    # Apply supply chain classification to all symbols
+    # Apply supply chain classification to all symbols.
     package_roots = detect_package_roots(repo_root)
     for symbol in all_symbols:
         file_path = repo_root / symbol.path
@@ -4748,6 +4905,70 @@ def _run_analysis(
     return all_symbols, all_edges, coverage_stats
 
 
+# Display groups for entry points, in presentation order.
+# Each group maps a heading to the EntrypointKind values it contains.
+# Groups with zero entries are omitted from output.
+_ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
+    ("CLI & Scripts", {
+        EntrypointKind.CLI_MAIN.value,
+        EntrypointKind.CLI_COMMAND.value,
+        EntrypointKind.MAIN_FUNCTION.value,
+        EntrypointKind.ELECTRON_MAIN.value,
+        EntrypointKind.ELECTRON_PRELOAD.value,
+        EntrypointKind.ELECTRON_RENDERER.value,
+    }),
+    ("HTTP Routes", {
+        EntrypointKind.HTTP_ROUTE.value,
+        EntrypointKind.DJANGO_VIEW.value,
+        EntrypointKind.EXPRESS_ROUTE.value,
+        EntrypointKind.SINATRA_ROUTE.value,
+        EntrypointKind.KTOR_ROUTE.value,
+        EntrypointKind.VAPOR_ROUTE.value,
+        EntrypointKind.PLUG_ROUTE.value,
+        EntrypointKind.HAPI_ROUTE.value,
+        EntrypointKind.FASTIFY_ROUTE.value,
+        EntrypointKind.KOA_ROUTE.value,
+        EntrypointKind.SLIM_ROUTE.value,
+        EntrypointKind.GO_HANDLER.value,
+        EntrypointKind.RUST_HANDLER.value,
+        EntrypointKind.AIOHTTP_VIEW.value,
+        EntrypointKind.TORNADO_HANDLER.value,
+    }),
+    ("Controllers", {
+        EntrypointKind.CONTROLLER.value,
+        EntrypointKind.NESTJS_CONTROLLER.value,
+        EntrypointKind.SPRING_CONTROLLER.value,
+        EntrypointKind.RAILS_CONTROLLER.value,
+        EntrypointKind.PHOENIX_CONTROLLER.value,
+        EntrypointKind.LARAVEL_CONTROLLER.value,
+        EntrypointKind.ASPNET_CONTROLLER.value,
+        EntrypointKind.MICRONAUT_CONTROLLER.value,
+        EntrypointKind.GRAPE_API.value,
+    }),
+    ("GraphQL", {
+        EntrypointKind.GRAPHQL_SERVER.value,
+    }),
+    ("WebSocket Handlers", {
+        EntrypointKind.WEBSOCKET_HANDLER.value,
+    }),
+    ("Event & Background Tasks", {
+        EntrypointKind.EVENT_HANDLER.value,
+        EntrypointKind.BACKGROUND_TASK.value,
+        EntrypointKind.SCHEDULED_TASK.value,
+    }),
+    ("Mobile", {
+        EntrypointKind.ANDROID_ACTIVITY.value,
+        EntrypointKind.ANDROID_APPLICATION.value,
+    }),
+    ("Library API", {
+        EntrypointKind.LIBRARY_EXPORT.value,
+    }),
+    ("Other", {
+        EntrypointKind.CONNECTIVITY_BASED.value,
+    }),
+]
+
+
 def _format_entrypoints(
     entrypoints: list[Entrypoint],
     symbols: list[Symbol],
@@ -4755,30 +4976,73 @@ def _format_entrypoints(
     max_entries: int = 20,
     exclude_tests: bool = False,
 ) -> str:
-    """Format detected entry points as a Markdown section."""
+    """Format detected entry points as a Markdown section grouped by kind.
+
+    Entry points are organized into display groups (CLI & Scripts, HTTP Routes,
+    Controllers, etc.). Groups with zero entries are omitted. Test functions
+    are excluded entirely — the Tests section already covers them.
+
+    Within each group, entries are sorted by confidence (highest first) and
+    capped at max_entries per group.
+    """
     if not entrypoints:
         return ""
 
     # Build symbol lookup for path info
     symbol_by_id = {s.id: s for s in symbols}
 
-    # Sort by confidence (highest first)
-    sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+    # Exclude test functions — the Tests section covers them
+    non_test_eps = [
+        ep for ep in entrypoints
+        if ep.kind != EntrypointKind.TEST_FUNCTION
+    ]
+
+    if not non_test_eps:
+        return ""
+
+    # Bucket entrypoints by group
+    grouped: dict[str, list[Entrypoint]] = {}
+    ungrouped: list[Entrypoint] = []
+    for ep in sorted(non_test_eps, key=lambda e: -e.confidence):
+        placed = False
+        for group_name, kinds in _ENTRYPOINT_GROUPS:
+            if ep.kind.value in kinds:
+                grouped.setdefault(group_name, []).append(ep)
+                placed = True
+                break
+        if not placed:
+            ungrouped.append(ep)
+
+    # Add ungrouped to "Other"
+    if ungrouped:
+        grouped.setdefault("Other", []).extend(ungrouped)
 
     lines = [_section_header("Entry Points", exclude_tests), ""]
 
-    for ep in sorted_eps[:max_entries]:
-        sym = symbol_by_id.get(ep.symbol_id)
-        if sym:
-            rel_path = sym.path
-            if rel_path.startswith(str(repo_root)):
-                rel_path = rel_path[len(str(repo_root)) + 1:]
-            lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
-        else:
-            lines.append(f"- `{ep.symbol_id}` ({ep.label})")
+    repo_root_str = str(repo_root)
+    for group_name, _kinds in _ENTRYPOINT_GROUPS:
+        eps = grouped.get(group_name)
+        if not eps:
+            continue
 
-    if len(entrypoints) > max_entries:
-        lines.append(f"- ... and {len(entrypoints) - max_entries} more entry points")
+        lines.append(f"### {group_name}")
+        lines.append("")
+
+        shown = eps[:max_entries]
+        for ep in shown:
+            sym = symbol_by_id.get(ep.symbol_id)
+            if sym:
+                rel_path = sym.path
+                if rel_path.startswith(repo_root_str):
+                    rel_path = rel_path[len(repo_root_str) + 1:]
+                lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+            else:
+                lines.append(f"- `{ep.symbol_id}` ({ep.label})")
+
+        if len(eps) > max_entries:
+            lines.append(f"- ... and {len(eps) - max_entries} more")
+
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -4811,21 +5075,36 @@ def _format_datamodels(
     # Sort by confidence (highest first) - already sorted but ensure
     sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
 
-    lines = [_section_header("Data Models", exclude_tests), ""]
+    # Truncate to max_entries first, then group
+    shown = sorted_models[:max_entries]
 
-    for model in sorted_models[:max_entries]:
+    # Group by file path (preserves insertion order)
+    grouped: dict[str, list[str]] = {}
+    fallback_lines: list[str] = []
+
+    for model in shown:
         sym = symbol_by_id.get(model.symbol_id)
         if sym:
             rel_path = sym.path
             if rel_path.startswith(str(repo_root)):
                 rel_path = rel_path[len(str(repo_root)) + 1:]
-            # Include framework if known
             if model.framework:
-                lines.append(f"- `{sym.name}` ({model.framework} {model.label}) — `{rel_path}`")
+                bullet = f"  - `{sym.name}` ({model.framework} {model.label})"
             else:
-                lines.append(f"- `{sym.name}` ({model.label}) — `{rel_path}`")
+                bullet = f"  - `{sym.name}` ({model.label})"
+            grouped.setdefault(rel_path, []).append(bullet)
         else:
-            lines.append(f"- `{model.symbol_id}` ({model.label})")
+            fallback_lines.append(f"  - `{model.symbol_id}` ({model.label})")
+
+    lines = [_section_header("Data Models", exclude_tests), ""]
+
+    for path, bullets in grouped.items():
+        lines.append(f"`{path}`:")
+        lines.extend(bullets)
+
+    if fallback_lines:
+        lines.append("Unknown:")
+        lines.extend(fallback_lines)
 
     if len(datamodels) > max_entries:
         lines.append(f"- ... and {len(datamodels) - max_entries} more data models")
@@ -5110,6 +5389,14 @@ def _format_symbols(
         centrality = apply_tier_weights(raw_centrality, key_symbols)
     else:
         centrality = raw_centrality
+
+    # De-weight utility symbols (loggers, clocks, STL accessors)
+    centrality = apply_utility_symbol_weights(centrality, key_symbols)
+
+    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
+    centrality = apply_trivial_sink_weights(
+        centrality, key_symbols, production_edges,
+    )
 
     # Sort by weighted centrality (most called first), then by name for stability
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
@@ -5407,6 +5694,19 @@ def generate_sketch(
     # Collect source files early (needed for accurate LOC counts when exclude_tests=True)
     source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
 
+    # Pre-compute test analysis once (shared by Overview and Tests sections).
+    # Previously _count_test_loc and _detect_test_summary each did their own
+    # full directory walk; this consolidates both into a single pass.
+    # Also computes per-language LOC which we backfill into the profile
+    # when the profile was freshly detected (loc=0).  Cached profiles
+    # already carry their own LOC data and should not be overwritten.
+    test_analysis = _analyze_test_files(repo_root, extra_excludes)
+    profile_has_loc = any(s.loc > 0 for s in profile.languages.values())
+    if not profile_has_loc:
+        for lang, loc in test_analysis.language_loc.items():
+            if lang in profile.languages:
+                profile.languages[lang].loc = loc
+
     # Build base sections (always included)
     sections = []
 
@@ -5428,12 +5728,12 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
+            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
     else:
         header = (
             f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
-            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
+            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
     sections.append(header)
 
@@ -5456,7 +5756,7 @@ def generate_sketch(
 
     # Section 3.25: Tests (static summary - count and frameworks)
     prog.start_phase("tests")
-    test_summary_section = _format_test_summary(repo_root, exclude_tests=exclude_tests)
+    test_summary_section = _format_test_summary(repo_root, exclude_tests=exclude_tests, test_analysis=test_analysis)
     prog.complete_phase("tests")
     if test_summary_section:
         sections.append(test_summary_section)
@@ -5582,17 +5882,31 @@ def generate_sketch(
                 progress_callback=analysis_progress_with_budget
             )
 
-        # Compute raw in-degree and density scores for source file ordering
+        # Compute density scores for source file ordering using rank_files()
+        # (canonical pipeline: edge filtering, hub saturation, full dampening).
+        # Also compute raw in-degree for stats tracking.
+        # Additionally compute per-symbol weighted centrality for truncation elbow.
         raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
+        symbol_centrality: dict[str, float] = {}  # For truncation elbow computation
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
-            by_file: dict[str, list[Symbol]] = {}
-            for sym in symbols:
-                if sym.path:
-                    by_file.setdefault(sym.path, []).append(sym)
-            density_scores = compute_symbol_importance_density(
-                by_file, raw_in_degree, repo_root, min_loc=5
-            )
+            ranked_files = rank_files(symbols, edges)
+            # Normalize paths to relative for consistent lookup by
+            # _format_source_files (which uses str(f.relative_to(repo_root)))
+            density_scores = {}
+            for rf in ranked_files:
+                p = Path(rf.path)
+                try:
+                    key = str(p.relative_to(repo_root)) if p.is_absolute() else rf.path
+                except ValueError:  # pragma: no cover
+                    key = rf.path
+                density_scores[key] = rf.density_score
+
+            # Build per-symbol weighted centrality for truncation elbow
+            ranked_syms = rank_symbols(symbols, edges)
+            symbol_centrality = {
+                rs.symbol.id: rs.weighted_centrality for rs in ranked_syms
+            }
 
     prog.complete_phase("analysis")
 
@@ -5600,7 +5914,8 @@ def generate_sketch(
     if coverage_stats is not None and not exclude_tests:
         # Find and replace the test summary section with coverage info
         updated_test_summary = _format_test_summary(
-            repo_root, coverage_stats, shell_integration_count=shell_integration_count
+            repo_root, coverage_stats, shell_integration_count=shell_integration_count,
+            test_analysis=test_analysis,
         )
         for i, section in enumerate(sections):
             if section.startswith("## Tests"):
@@ -5610,7 +5925,8 @@ def generate_sketch(
         # No call graph coverage but we have shell integration tests
         # (rare: happens when analysis returns no countable symbols)
         updated_test_summary = _format_test_summary(
-            repo_root, shell_integration_count=shell_integration_count
+            repo_root, shell_integration_count=shell_integration_count,
+            test_analysis=test_analysis,
         )
         for i, section in enumerate(sections):
             if section.startswith("## Tests"):
@@ -5666,7 +5982,7 @@ def generate_sketch(
         if datamodels:
             # Data Models get 20% of remaining budget (ADR-0005)
             budget_for_models = (remaining_tokens * 20) // 100
-            max_models = max(3, budget_for_models // 20)  # ~20 tokens per model line
+            max_models = max(3, budget_for_models // 15)  # ~15 tokens per model (grouped format)
 
             dm_section = _format_datamodels(
                 datamodels, symbols, repo_root, max_entries=max_models,
@@ -5727,8 +6043,8 @@ def generate_sketch(
     if remaining_tokens > 50 and source_files:
         # ADR-0005: --with-source mode reduces file listing budget to prioritize code
         if with_source:
-            # With source: shrink file listings to 15% to leave room for actual code
-            budget_for_files = (remaining_tokens * 15) // 100  # 15% of remaining
+            # With source: shrink file listings to 10% to leave room for actual code
+            budget_for_files = (remaining_tokens * 10) // 100  # 10% of remaining
         elif remaining_tokens < 300:
             # Default mode, small budgets: use 66% for file listings
             budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
@@ -5785,8 +6101,8 @@ def generate_sketch(
         # Calculate symbol budget based on remaining tokens
         # ADR-0005: --with-source mode reduces Key Symbols budget to prioritize code
         if with_source and remaining_tokens > 200:
-            # With source: shrink to 30% to leave room for actual code
-            budget_for_symbols = (remaining_tokens * 30) // 100  # 30% of remaining
+            # With source: shrink to 20% to leave room for actual code
+            budget_for_symbols = (remaining_tokens * 20) // 100  # 20% of remaining
             max_symbols = max(MIN_KEY_SYMBOLS, budget_for_symbols // tokens_per_symbol)
         elif remaining_tokens > 200:
             # Default mode: use most of remaining budget for symbols
@@ -5797,9 +6113,8 @@ def generate_sketch(
             # This ensures Key Symbols section appears for every analyzable project
             max_symbols = MIN_KEY_SYMBOLS
 
-        # Extract docstrings for Python symbols
-        docstrings = _extract_python_docstrings(repo_root, symbols)
-        # Get signatures from Symbol.signature field (now includes all languages)
+        # Get docstrings and signatures from Symbol fields (all languages)
+        docstrings = {s.id: s.docstring for s in symbols if s.docstring}
         signatures = {s.id: s.signature for s in symbols if s.signature}
 
         # Track selected symbols for stats
@@ -5842,8 +6157,8 @@ def generate_sketch(
     if remaining_tokens > 50:
         # ADR-0005: --with-source mode reduces Additional Files budget
         if with_source:
-            # With source: shrink to 10% to leave room for actual code
-            budget_for_files = (remaining_tokens * 10) // 100  # 10% of remaining
+            # With source: shrink to 5% to leave room for actual code
+            budget_for_files = (remaining_tokens * 5) // 100  # 5% of remaining
         else:
             # Default mode: use most of remaining budget minus small reserve
             budget_for_files = remaining_tokens - 10
@@ -5897,8 +6212,13 @@ def generate_sketch(
     prog.start_phase("format")
 
     # Section 9: Source Files Content (if with_source is True and we have budget)
-    # ADR-0005: Source Files Content gets 70% of remaining budget, all-or-nothing per file
+    # ADR-0005: Source Files Content gets 70% of remaining budget, dynamic truncation
+    # with elbow-based min floor for early files, median-based floor after 3 files.
     if with_source and source_files and max_tokens is not None:
+        from statistics import median as _median
+
+        MIN_SOURCE_TRUNCATION_TOKENS = 500
+
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
         current_tokens = estimate_tokens(current_sketch)
@@ -5918,11 +6238,13 @@ def generate_sketch(
                 )
 
             source_tokens_used = 0
-            # ADR-0005: allocate 70% of remaining for Source Files Content section
-            source_budget = (remaining_tokens * 70) // 100
+            # ADR-0005: allocate 75% of remaining for Source Files Content section
+            source_budget = (remaining_tokens * 75) // 100
 
             # Track files with content shown for stats
             source_content_files_added: list[Path] = []
+            # Track token counts for median-based truncation floor
+            source_token_counts: list[int] = []
 
             for src_file in ordered_files:
                 try:
@@ -5937,16 +6259,53 @@ def generate_sketch(
                     # Estimate full block size including markers, not just content
                     file_tokens = _estimate_file_block_tokens(str(rel_path), content)
 
-                    # ADR-0005: All-or-nothing per file - skip if file doesn't fit
-                    if source_tokens_used + file_tokens > source_budget:
-                        continue
+                    if source_tokens_used + file_tokens <= source_budget:
+                        # File fits completely
+                        source_content_lines.extend(
+                            _format_file_content_block(str(rel_path), content)
+                        )
+                        source_content_files_added.append(src_file)
+                        source_token_counts.append(file_tokens)
+                        source_tokens_used += file_tokens
+                    else:
+                        # File needs truncation — compute min truncation target
+                        if len(source_token_counts) < 3:
+                            # Early files: use elbow-based floor from symbol centrality
+                            min_tokens = compute_truncation_elbow(
+                                symbols, symbol_centrality, str(rel_path),
+                            )
+                        else:
+                            # After 3 files: use median of already-included files
+                            min_tokens = max(
+                                int(_median(source_token_counts)),
+                                MIN_SOURCE_TRUNCATION_TOKENS,
+                            )
 
-                    source_content_lines.extend(
-                        _format_file_content_block(str(rel_path), content)
-                    )
-                    source_content_files_added.append(src_file)
+                        truncation_target = min(
+                            min_tokens,
+                            source_budget - source_tokens_used - 50,
+                        )
 
-                    source_tokens_used += file_tokens
+                        if truncation_target < MIN_SOURCE_TRUNCATION_TOKENS:
+                            break
+
+                        truncated_content = truncate_to_tokens(content, truncation_target)
+                        if truncated_content != content:
+                            truncated_content += "\n\n[...truncated...]"
+
+                        truncated_tokens = _estimate_file_block_tokens(
+                            str(rel_path), truncated_content
+                        )
+
+                        if source_tokens_used + truncated_tokens <= source_budget:
+                            source_content_lines.extend(
+                                _format_file_content_block(str(rel_path), truncated_content)
+                            )
+                            source_content_files_added.append(src_file)
+                            source_token_counts.append(truncated_tokens)
+                            source_tokens_used += truncated_tokens
+                        else:  # pragma: no cover - block overhead pushes over budget
+                            break
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
                     continue
 
@@ -5985,29 +6344,22 @@ def generate_sketch(
                     "centrality_scores"
                 )
 
-            # Use the new README-first hybrid approach with content
+            # Render content for the already-selected additional files
             additional_content_section, additional_content_files_added, additional_content_centrality = (
                 _format_additional_files(
                     repo_root,
                     source_files=source_files,
                     symbols=symbols,
                     in_degree=raw_in_degree,
-                    max_files=max_additional_files,
-                    semantic_top_n=10,
-                    cached_centrality_scores=cached_centrality,
                     exclude_tests=exclude_tests,
                     token_budget=remaining_tokens - 50,  # Reserve 50 tokens
                     include_content=True,
+                    section_title="Additional Files Content",
+                    preselected_files=additional_files_selected,
                 )
             )
 
             if additional_content_section:
-                # Replace the header to be "Additional Files Content"
-                header_to_replace = _section_header("Additional Files", exclude_tests)
-                new_header = _section_header("Additional Files Content", exclude_tests)
-                additional_content_section = additional_content_section.replace(
-                    header_to_replace, new_header, 1
-                )
                 sections.append(additional_content_section)
 
                 # Track stats using mention centrality

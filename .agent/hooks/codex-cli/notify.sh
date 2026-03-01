@@ -33,17 +33,58 @@ fi
 # TRUE, BROAD, and DEEP all enable autonomous behavior
 # OFF and FALSE both mean disabled (see scripts/loop-toggle)
 MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-if [[ -n "$MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
-  if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
-    # Output the full reflection prompt to stderr
-    # Even though Codex can't auto-continue, this gets the words into context
-    cat >&2 <<'EOF'
-════════════════════════════════════════════════════════════════════
-  AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
-  (If Codex CLI does not auto-continue, review and manually proceed)
-════════════════════════════════════════════════════════════════════
-
-EOF
-    cat "$REPO_ROOT/.agent/stop_reflect.md" >&2
-  fi
+if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
+  exit 0
 fi
+if [[ ! -f "$REPO_ROOT/.agent/LOOP" ]]; then
+  exit 0
+fi
+
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
+
+# --- Path 1: Surface pending TODO items ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  cat >&2 <<BANNER
+================================================================
+  AUTONOMOUS MODE: $TOTAL_TODOS PENDING TODO(s) ($TOTAL_HARD hard, $TOTAL_SOFT soft)
+  Read $GUIDANCE_FILE for details.
+  (If Codex CLI does not auto-continue, review and manually proceed)
+================================================================
+
+BANNER
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  cat >&2 <<BANNER
+================================================================
+  CIRCUIT BREAKER: No progress on $TOTAL_TODOS TODO(s) across $HASH_THRESHOLD stop events.
+  Stopping approved. Read $GUIDANCE_FILE for details.
+================================================================
+
+BANNER
+  exit 0
+fi
+
+# --- Path 2: Cooldown notification ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  cat >&2 <<BANNER
+================================================================
+  AUTONOMOUS MODE ACTIVE - COOLDOWN (reflection completed ${ELAPSED_MIN}m ago)
+  Read $GUIDANCE_FILE_COOLDOWN for next actions.
+  (If Codex CLI does not auto-continue, review and manually proceed)
+================================================================
+
+BANNER
+  exit 0
+fi
+
+# --- Path 3: Full reflection prompt ---
+cat >&2 <<BANNER
+================================================================
+  AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
+  Read $GUIDANCE_FILE_REFLECTION to complete the stop reflection protocol.
+  (If Codex CLI does not auto-continue, review and manually proceed)
+================================================================
+
+BANNER

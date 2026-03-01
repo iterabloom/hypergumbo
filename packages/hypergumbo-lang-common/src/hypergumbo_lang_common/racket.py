@@ -20,40 +20,19 @@ Key constructs extracted:
 """
 
 import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "racket.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("racket")
 
-
-@dataclass
-class RacketAnalysisResult:
-    """Result of analyzing Racket files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def is_racket_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with Racket support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("racket")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_racket_files(root: Path) -> Iterator[Path]:
@@ -64,15 +43,9 @@ def find_racket_files(root: Path) -> Iterator[Path]:
                 yield path
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Racket symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"racket:{rel_path}:{name}:{kind}"
-
-
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8")
+    return node.text.decode("utf-8", errors="replace")
 
 
 def _is_define_form(node: "tree_sitter.Node") -> bool:
@@ -172,25 +145,30 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class RacketAnalyzer:
-    """Analyzer for Racket source files."""
+class _RacketExtractor:
+    """Extraction logic for Racket source files."""
 
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, ts_analyzer: "RacketAnalyzer"):
         self.repo_root = repo_root
+        self._ts_analyzer = ts_analyzer
         self.symbols: list[Symbol] = []
         self.edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> RacketAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Racket files in the repository."""
-        if not is_racket_tree_sitter_available():
+        if not is_racket_tree_sitter_available():  # pragma: no cover
+            # Defense-in-depth: RacketAnalyzer.analyze() gates on
+            # _check_grammar_available() before constructing this extractor,
+            # so this branch is unreachable through the public API.
+            import warnings
             warnings.warn(
                 "Racket analysis skipped: tree-sitter-language-pack not available",
                 UserWarning,
                 stacklevel=2,
             )
-            return RacketAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -205,14 +183,16 @@ class RacketAnalyzer:
         racket_files = list(find_racket_files(self.repo_root))
 
         if not racket_files:
-            return RacketAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in racket_files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(self.symbols)
                 self._extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, self.symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 
@@ -240,7 +220,7 @@ class RacketAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return RacketAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -257,8 +237,12 @@ class RacketAnalyzer:
                     rel_path = str(path.relative_to(self.repo_root))
 
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "fn"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "fn"),
+                        id=make_symbol_id(
+                            "racket", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            name, "function",
+                        ),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                         name=name,
                         kind="function",
                         language="racket",
@@ -280,8 +264,12 @@ class RacketAnalyzer:
                     rel_path = str(path.relative_to(self.repo_root))
 
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "var"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "var"),
+                        id=make_symbol_id(
+                            "racket", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            name, "variable",
+                        ),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="variable"),
                         name=name,
                         kind="variable",
                         language="racket",
@@ -304,8 +292,12 @@ class RacketAnalyzer:
                 rel_path = str(path.relative_to(self.repo_root))
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "struct"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "struct"),
+                    id=make_symbol_id(
+                        "racket", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "class",
+                    ),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class"),
                     name=name,
                     kind="class",
                     language="racket",
@@ -406,19 +398,61 @@ class RacketAnalyzer:
             if _is_define_form(current) and _is_function_define(current):
                 name = _get_function_name(current)
                 if name:
-                    return _make_stable_id(path, self.repo_root, name, "fn")
+                    return make_symbol_id(
+                        "racket", str(path.relative_to(self.repo_root)),
+                        current.start_point[0] + 1, current.end_point[0] + 1,
+                        name, "function",
+                    )
             current = current.parent
         return None  # pragma: no cover
 
 
-def analyze_racket(repo_root: Path) -> RacketAnalysisResult:
+class RacketAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for Racket source files.
+
+    Extracts functions, variables, structs, and call edges.
+    Uses language_pack_name for the racket grammar.
+    """
+
+    lang = "racket"
+    file_patterns: ClassVar[list[str]] = ["**/*.rkt", "**/*.rktl", "**/*.rktd"]
+    language_pack_name = "racket"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run Racket analysis with cross-file symbol registry."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _RacketExtractor(repo_root, self)
+        return extractor.analyze()
+
+
+_analyzer = RacketAnalyzer()
+
+
+def is_racket_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with Racket support is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("racket")
+def analyze_racket(repo_root: Path) -> AnalysisResult:
     """Analyze Racket source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        RacketAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = RacketAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

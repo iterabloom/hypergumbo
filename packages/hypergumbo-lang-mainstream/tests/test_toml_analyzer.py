@@ -7,20 +7,18 @@ Tests verify that the analyzer correctly extracts:
 - Array of tables (e.g., [[bin]])
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream.toml_config import (
     PASS_ID,
-    PASS_VERSION,
-    TomlAnalysisResult,
     analyze_toml_files,
     find_toml_files,
 )
 
-
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "toml-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_table(tmp_path):
     """Test detection of table definitions."""
@@ -37,7 +35,6 @@ version = "0.1.0"
     assert len(tables) >= 1
     assert any(t.name == "package" for t in tables)
 
-
 def test_analyze_nested_table(tmp_path):
     """Test detection of nested tables."""
     toml_file = tmp_path / "config.toml"
@@ -52,7 +49,6 @@ enable = true
 
     tables = [s for s in result.symbols if s.kind == "table"]
     assert len(tables) >= 2
-
 
 def test_analyze_cargo_dependencies(tmp_path):
     """Test detection of Rust dependencies from Cargo.toml."""
@@ -75,7 +71,6 @@ criterion = "0.5"
     assert any(d.name == "serde" for d in deps)
     assert any(d.name == "tokio" for d in deps)
     assert any(d.name == "criterion" for d in deps)
-
 
 def test_analyze_pyproject_dependencies(tmp_path):
     """Test detection of Python dependencies from pyproject.toml."""
@@ -104,7 +99,6 @@ dev = ["pytest", "black"]
     assert "requests" in dep_names
     assert "click" in dep_names
 
-
 def test_analyze_pyproject_scripts(tmp_path):
     """Test detection of CLI entry points from pyproject.toml [project.scripts].
 
@@ -132,7 +126,6 @@ my-tool = "mypackage.tool:run"
     assert my_cli.meta.get("entry_point") == "mypackage.cli:main"
     assert my_cli.canonical_name == "my-cli"  # CLI command name
 
-
 def test_analyze_table_array(tmp_path):
     """Test detection of array of tables (e.g., [[bin]])."""
     toml_file = tmp_path / "Cargo.toml"
@@ -152,7 +145,6 @@ path = "src/server.rs"
     assert any(b.name == "cli" for b in bins)
     assert any(b.name == "server" for b in bins)
 
-
 def test_analyze_library(tmp_path):
     """Test detection of library configuration."""
     toml_file = tmp_path / "Cargo.toml"
@@ -166,7 +158,6 @@ crate-type = ["cdylib"]
     libs = [s for s in result.symbols if s.kind == "library"]
     assert len(libs) >= 1
 
-
 def test_find_toml_files(tmp_path):
     """Test that TOML files are discovered correctly."""
     (tmp_path / "Cargo.toml").write_text("[package]")
@@ -179,7 +170,6 @@ def test_find_toml_files(tmp_path):
     files = list(find_toml_files(tmp_path))
     assert len(files) >= 4
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no TOML files."""
     result = analyze_toml_files(tmp_path)
@@ -187,7 +177,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -202,7 +191,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     toml_file = tmp_path / "broken.toml"
@@ -212,8 +200,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_toml_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, TomlAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -230,7 +217,6 @@ name = "test"
     assert tables[0].span.start_line >= 1
     assert tables[0].span.end_line >= tables[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_mainstream.toml_config import is_toml_tree_sitter_available
@@ -238,7 +224,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_toml_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_workspace_detection(tmp_path):
     """Test detection of Cargo workspace."""
@@ -252,7 +237,6 @@ resolver = "2"
 
     workspaces = [s for s in result.symbols if s.kind == "workspace"]
     assert len(workspaces) >= 1
-
 
 def test_analyze_test_section(tmp_path):
     """Test detection of [[test]] sections."""
@@ -268,7 +252,6 @@ path = "tests/integration.rs"
     assert len(tests) >= 1
     assert any(t.name == "integration_tests" for t in tests)
 
-
 def test_analyze_example_section(tmp_path):
     """Test detection of [[example]] sections."""
     toml_file = tmp_path / "Cargo.toml"
@@ -283,7 +266,6 @@ path = "examples/demo.rs"
     assert len(examples) >= 1
     assert any(e.name == "demo" for e in examples)
 
-
 def test_analyze_bench_section(tmp_path):
     """Test detection of [[bench]] sections."""
     toml_file = tmp_path / "Cargo.toml"
@@ -297,7 +279,6 @@ harness = false
     benchmarks = [s for s in result.symbols if s.kind == "benchmark"]
     assert len(benchmarks) >= 1
     assert any(b.name == "perf_test" for b in benchmarks)
-
 
 def test_build_target_source_file_edge(tmp_path):
     """Test that build targets create edges to their source files."""
@@ -322,7 +303,6 @@ path = "tests/integration.rs"
     assert any("src/cli.rs" in dst for dst in dst_paths)
     assert any("tests/integration.rs" in dst for dst in dst_paths)
 
-
 def test_build_target_path_in_meta(tmp_path):
     """Test that build targets store source path in meta."""
     toml_file = tmp_path / "Cargo.toml"
@@ -340,3 +320,17 @@ path = "src/bin/main.rs"
     mybin = next(b for b in bins if b.name == "mybin")
     assert mybin.meta is not None
     assert mybin.meta.get("path") == "src/bin/main.rs"
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter-toml grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.toml_config as toml_module
+
+    with patch.object(toml_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="toml analysis skipped"):
+            result = toml_module.analyze_toml_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

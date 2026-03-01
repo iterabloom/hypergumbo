@@ -1,0 +1,47 @@
+- op: create  # 8393
+  at: '2026-02-15T00:51:38Z'  # 8393
+  by: agent  # 8393
+  actor: migration  # 8393
+  clock: 1  # 8393
+  nonce: '8393'  # 8393
+  data:  # 8393
+    kind: meta_invariant  # 8393
+    title: "Extraction Completeness"  # 8393
+    status: done  # 8393
+    priority: 4  # 8393
+    parent:  # 8393
+    tags: []  # 8393
+    before: []  # 8393
+    duplicate_of: []  # 8393
+    not_duplicate_of: []  # 8393
+    pr_ref:  # 8393
+    justification:  # 8393
+    description: "Based on EXTENSIVE checking across 25+ repos in 5 bakeoff cohorts:\n\nKnown cases (INV-001, INV-003) are fixed\n\nLambda/closure call attribution audited for Go, Java, Rust, C#, Kotlin, Scala - all\n\nuse implicit walk-up that correctly attributes calls to enclosing methods\n\nC++ test patterns (Google Test, Catch2): Added to test-frameworks.yaml\n\nC header declarations: Verified as correct (declarations don't have call edges)\n\nSpec repos (NO_CALL_EDGES): Verified as correct (declarative code, no callable functions)\n\nGo repos with external deps (LOW_RESOLUTION): Verified as correct (external calls unresolvable)\n\nLanguage metrics (Python, Ruby, Rust, TypeScript, C, C++, Go): All healthy\n\nTheoretical exotic constructs (metaprogrammed code, eval-generated functions) not\n\nfound in any analyzed repos; would require specific failing repos to investigate further\n\n**Unified by:**\n\nINV-001 (call edges must have caller symbols - implies callers are extracted)\n\nINV-003 (nested decorated functions must be extracted)\n\n**Implication:** Special cases (nested functions, lambdas, callbacks) should not silently\n\nskip symbol extraction. If code can be called, it must be extractable."  # 8393
+    fields:  # 8393
+      statement: "Symbols that exist in source code must be extracted for analysis."  # 8393
+- op: update  # 2cde
+  at: '2026-02-22T04:48:36Z'  # 2cde
+  by: agent  # 2cde
+  actor: jgstern_agent  # 2cde
+  clock: 2  # 2cde
+  nonce: 2cde  # 2cde
+  set:  # 2cde
+    status: todo_hard  # 2cde
+    description: "Symbols that exist in source code must be extracted for analysis.\n\nPreviously marked done based on checking across 25+ repos. However, external bakeoff evaluation (Feb 2026) revealed classes of callable code that produce zero edges:\n\nREOPENED — known violations:\n- Function references in struct/object literal fields: ALL 8 major analyzers (Go, Python, JS/TS, Java, Ruby, Rust, C, C++) miss function references in struct/object/dict/hash literal field values. E.g., cobra.Command{RunE: myFunc} produces no edge. This is a universal gap.\n- Function references in variable assignments: var f = myFunc (without calling it) produces no edge in any analyzer.\n- C++ dispatch tables: C has dispatch table detection (dispatches_to edges for function pointers in static array initializers) but C++ does not, despite using identical patterns.\n- Indirect call patterns: Falco's action-object registration and iteration (vector of function pointers) produces zero incoming edges for indirectly-called functions.\n\nWhat IS working:\n- Lambda/closure call attribution: audited for Go, Java, Rust, C#, Kotlin, Scala — all correct\n- Direct call extraction: healthy across all languages\n- Go function reference arguments: _extract_function_reference_edges handles call arguments (0.70 confidence)\n- C static array dispatch tables: dispatches_to edges work for C\n- Decorator/annotation references: Python, JS/TS, Rust all handle these\n\nUnified by:\nINV-001 (call edges must have caller symbols — implies callers are extracted)\nINV-003 (nested decorated functions must be extracted)\n\nImplication: \"If code can be called, it must be extractable\" is violated for indirect call patterns (function pointers, struct field callbacks, dispatch tables) across most languages. The extraction gap is structural: analyzers only walk call_expression AST nodes, not composite_literal, keyed_element, or assignment nodes that contain function references."  # 2cde
+- op: update  # 01dc
+  at: '2026-02-23T07:07:23Z'  # 01dc
+  by: agent  # 01dc
+  actor: jgstern_agent  # 01dc
+  clock: 3  # 01dc
+  nonce: 01dc  # 01dc
+  set:  # 01dc
+    status: violated  # 01dc
+- op: update  # 30d5
+  at: '2026-02-23T17:05:41Z'  # 30d5
+  by: agent  # 30d5
+  actor: jgstern_agent  # 30d5
+  clock: 4  # 30d5
+  nonce: 30d5  # 30d5
+  set:  # 30d5
+    status: holding  # 30d5
+    pr_ref: '1383'  # 30d5

@@ -1,0 +1,54 @@
+- op: create  # d76d
+  at: '2026-02-15T00:51:38Z'  # d76d
+  by: agent  # d76d
+  actor: migration  # d76d
+  clock: 1  # d76d
+  nonce: d76d  # d76d
+  data:  # d76d
+    kind: work_item  # d76d
+    title: "Parallel pytest in ci.yml."  # d76d
+    status: todo_soft  # d76d
+    priority: 4  # d76d
+    parent:  # d76d
+    tags:  # d76d
+    - ci_infrastructure  # d76d
+    before: []  # d76d
+    duplicate_of: []  # d76d
+    not_duplicate_of: []  # d76d
+    pr_ref:  # d76d
+    justification: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
+    description: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
+    fields: {}  # d76d
+- op: update  # 22fe
+  at: '2026-02-17T20:42:57Z'  # 22fe
+  by: agent  # 22fe
+  actor: jgstern_agent  # 22fe
+  clock: 2  # 22fe
+  nonce: 22fe  # 22fe
+  set:  # 22fe
+    status: todo_soft  # 22fe
+- op: update  # 6c81
+  at: '2026-02-18T09:08:12Z'  # 6c81
+  by: human  # 6c81
+  actor: jgstern  # 6c81
+  clock: 5  # 6c81
+  nonce: 6c81  # 6c81
+  set:  # 6c81
+    status: needs_human_review  # 6c81
+- op: update  # 1b0c
+  at: '2026-02-18T09:22:07Z'  # 1b0c
+  by: agent  # 1b0c
+  actor: jgstern_agent  # 1b0c
+  clock: 6  # 1b0c
+  nonce: 1b0c  # 1b0c
+  set:  # 1b0c
+    status: wont_do  # 1b0c
+  add:  # 1b0c
+    duplicate_of: [WI-hugir-balik]  # 1b0c
+- op: discuss  # 7e6f
+  at: '2026-02-25T08:44:46Z'  # 7e6f
+  by: agent  # 7e6f
+  actor: jgstern_agent  # 7e6f
+  clock: 7  # 7e6f
+  nonce: 7e6f  # 7e6f
+  message: "[migrated from justification field] All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # 7e6f

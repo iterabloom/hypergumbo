@@ -12,6 +12,10 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration.
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Nix-specific extraction logic.
+
 1. Check if tree-sitter-nix is available
 2. If not available, return skipped result (not an error)
 3. Parse all .nix files
@@ -28,23 +32,27 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "nix-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("nix")
 
 
 def find_nix_files(repo_root: Path) -> Iterator[Path]:
@@ -54,27 +62,7 @@ def find_nix_files(repo_root: Path) -> Iterator[Path]:
 
 def is_nix_tree_sitter_available() -> bool:
     """Check if tree-sitter with Nix grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_nix") is None:
-        return False  # pragma: no cover
-    return True
-
-
-@dataclass
-class NixAnalysisResult:
-    """Result of analyzing Nix files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"nix:{path}:{start_line}-{end_line}:{name}:{kind}"
+    return _analyzer._check_grammar_available()
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -83,16 +71,11 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract identifier from a node."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -102,7 +85,7 @@ def _get_attrpath_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
         if child.type == "attrpath":
             for grandchild in child.children:
                 if grandchild.type == "identifier":
-                    return _node_text(grandchild, source)
+                    return node_text(grandchild, source)
     return None  # pragma: no cover
 
 
@@ -138,13 +121,13 @@ def _extract_nix_signature(node: "tree_sitter.Node", source: bytes) -> Optional[
                         # Get the identifier from the formal
                         for fc in formal_child.children:
                             if fc.type == "identifier":
-                                params.append(_node_text(fc, source))
+                                params.append(node_text(fc, source))
                                 break
                 # Don't recurse into body for formals style
                 break
             elif child.type == "identifier":
                 # Simple lambda: x: body
-                params.append(_node_text(child, source))
+                params.append(node_text(child, source))
 
         # Check if body is another function_expression (curried)
         body = None
@@ -173,7 +156,7 @@ def _is_derivation_call(node: "tree_sitter.Node", source: bytes) -> bool:
         return False
 
     # Look for mkDerivation, mkShell, buildPythonPackage, etc.
-    text = _node_text(node, source)
+    text = node_text(node, source)
     derivation_funcs = [
         "mkDerivation", "mkShell", "buildPythonPackage", "buildGoModule",
         "buildRustPackage", "buildNpmPackage", "buildPythonApplication",
@@ -197,13 +180,13 @@ def _get_derivation_name(node: "tree_sitter.Node", source: bytes) -> Optional[st
                                     if val.type == "string_expression":
                                         for frag in val.children:
                                             if frag.type == "string_fragment":
-                                                return _node_text(frag, source)
+                                                return node_text(frag, source)
     return None
 
 
 def _find_import_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Find import target from apply_expression."""
-    text = _node_text(node, source).strip()
+    text = node_text(node, source).strip()
     if not text.startswith("import"):
         return None  # pragma: no cover
 
@@ -214,9 +197,9 @@ def _find_import_target(node: "tree_sitter.Node", source: bytes) -> Optional[str
             # Nested apply: import <nixpkgs> {}
             return _find_import_target(child, source)
         elif child.type == "spath_expression":
-            return _node_text(child, source)  # <nixpkgs>
+            return node_text(child, source)  # <nixpkgs>
         elif child.type == "path_expression":
-            return _node_text(child, source)  # ./path.nix
+            return node_text(child, source)  # ./path.nix
         elif child.type == "variable_expression":
             var_name = _get_identifier(child, source)
             if var_name and var_name != "import":
@@ -286,7 +269,7 @@ def _get_call_target_name_nix(node: "tree_sitter.Node", source: bytes) -> Option
             last_ident = None
             for child in first_child.children:
                 if child.type == "identifier":
-                    last_ident = _node_text(child, source)
+                    last_ident = node_text(child, source)
             return last_ident
         else:
             return None  # pragma: no cover - defensive
@@ -297,18 +280,22 @@ def _extract_nix_symbols(
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
-    symbols: list[Symbol],
-    symbol_registry: dict[str, Symbol],
-) -> None:
+    run_id: str,
+) -> tuple[list[Symbol], dict[str, Symbol]]:
     """Extract symbols from Nix AST tree (pass 1).
 
     Args:
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
-        symbols: List to append symbols to
-        symbol_registry: Registry mapping function names to Symbol objects
+        run_id: Execution ID for provenance
+
+    Returns:
+        Tuple of (symbols list, function symbol registry)
     """
+    symbols: list[Symbol] = []
+    symbol_registry: dict[str, Symbol] = {}
+
     for node in iter_tree(root):
         # Process bindings
         if node.type == "binding":
@@ -340,7 +327,7 @@ def _extract_nix_symbols(
                     if drv_name:
                         name = drv_name
 
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, kind)
+                symbol_id = make_symbol_id("nix", rel_path, start_line, end_line, name, kind)
 
                 # Extract signature for functions
                 signature = None
@@ -377,7 +364,7 @@ def _extract_nix_symbols(
             end_line = node.end_point[0] + 1
             # Use file basename as function name for top-level functions
             name = Path(rel_path).stem
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+            symbol_id = make_symbol_id("nix", rel_path, start_line, end_line, name, "function")
 
             sym = Symbol(
                 id=symbol_id,
@@ -401,28 +388,33 @@ def _extract_nix_symbols(
             symbols.append(sym)
             symbol_registry[name] = sym
 
+    return symbols, symbol_registry
+
 
 def _extract_nix_edges(
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
-    edges: list[Edge],
     local_symbols: dict[str, Symbol],
-    resolver: NameResolver,
-) -> None:
+    resolver: "NameResolver",
+) -> list[Edge]:
     """Extract edges from Nix AST tree (pass 2).
 
     Args:
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
-        edges: List to append edges to
         local_symbols: Local symbol registry for finding enclosing functions
         resolver: NameResolver for callee resolution
+
+    Returns:
+        List of extracted edges
     """
+    edges: list[Edge] = []
+
     for node in iter_tree(root):
         if node.type == "apply_expression":
-            text = _node_text(node, source)
+            text = node_text(node, source)
             # Handle import expressions
             if text.strip().startswith("import"):
                 target = _find_import_target(node, source)
@@ -469,8 +461,56 @@ def _extract_nix_edges(
                             evidence_type="static",
                         ))
 
+    return edges
 
-def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
+
+class NixAnalyzer(TreeSitterAnalyzer):
+    """Nix expression analyzer using tree-sitter-nix."""
+
+    lang = "nix"
+    file_patterns: ClassVar[list[str]] = ["*.nix"]
+    grammar_module = "tree_sitter_nix"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Nix symbols from a single file."""
+        analysis = FileAnalysis()
+
+        symbols, symbol_registry = _extract_nix_symbols(
+            tree.root_node, source, rel_path, run.execution_id,
+        )
+
+        analysis.symbols.extend(symbols)
+        # Populate symbol_by_name with function symbols for edge resolution
+        analysis.symbol_by_name.update(symbol_registry)
+
+        return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Only register function symbols for cross-file call resolution."""
+        if symbol.kind == "function":
+            global_symbols[symbol.name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from a Nix file."""
+        return _extract_nix_edges(
+            tree.root_node, source, rel_path, local_symbols, resolver,
+        )
+
+
+_analyzer = NixAnalyzer()
+
+
+@register_analyzer("nix")
+def analyze_nix_files(repo_root: Path) -> AnalysisResult:
     """Analyze Nix files in the repository.
 
     Uses two-pass analysis:
@@ -481,94 +521,6 @@ def analyze_nix_files(repo_root: Path) -> NixAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        NixAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
-    if not is_nix_tree_sitter_available():  # pragma: no cover
-        return NixAnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-nix not installed (pip install tree-sitter-nix)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_nix
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_nix.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize Nix parser: {e}")
-        return NixAnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    nix_files = list(find_nix_files(repo_root))
-
-    # Pass 1: Extract symbols from all files
-    for nix_path in nix_files:
-        try:
-            rel_path = str(nix_path.relative_to(repo_root))
-            source = nix_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Extract symbols
-            _extract_nix_symbols(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                global_symbol_registry,
-            )
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {nix_path}: {e}")  # pragma: no cover
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
-        # Build local symbol map for this file (functions only)
-        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
-
-        _extract_nix_edges(
-            tree.root_node,  # type: ignore
-            source,
-            rel_path,
-            edges,
-            local_symbols,
-            resolver,
-        )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return NixAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

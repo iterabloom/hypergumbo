@@ -1,7 +1,11 @@
 """Tests for Groovy analyzer."""
 from pathlib import Path
-from unittest.mock import patch
 
+import pytest
+
+from hypergumbo_core.analyze.base import find_child_by_type
+from hypergumbo_lang_mainstream import groovy as groovy_module
+from unittest.mock import patch
 
 class TestGroovyHelpers:
     """Tests for Groovy analyzer helper functions."""
@@ -9,7 +13,6 @@ class TestGroovyHelpers:
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
         from unittest.mock import MagicMock
-        from hypergumbo_lang_mainstream.groovy import _find_child_by_type
 
         # Create a mock node with no children matching the type
         mock_node = MagicMock()
@@ -17,9 +20,8 @@ class TestGroovyHelpers:
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "identifier")
+        result = find_child_by_type(mock_node, "identifier")
         assert result is None
-
 
 class TestFindGroovyFiles:
     """Tests for Groovy file discovery."""
@@ -38,7 +40,6 @@ class TestFindGroovyFiles:
         assert any(f.suffix == ".groovy" for f in files)
         assert any(f.name == "build.gradle" for f in files)
 
-
 class TestGroovyTreeSitterAvailability:
     """Tests for tree-sitter-groovy availability checking."""
 
@@ -46,30 +47,15 @@ class TestGroovyTreeSitterAvailability:
         """Returns True when tree-sitter-groovy is available."""
         from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_groovy_tree_sitter_available() is True
+        # Grammar is actually installed in the dev environment
+        assert is_groovy_tree_sitter_available() is True
 
     def test_is_groovy_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
+        """Returns False when grammar is not available."""
         from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
+        with patch.object(groovy_module._analyzer, "_check_grammar_available", return_value=False):
             assert is_groovy_tree_sitter_available() is False
-
-    def test_is_groovy_tree_sitter_available_no_groovy(self) -> None:
-        """Returns False when tree-sitter is available but groovy grammar is not."""
-        from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_groovy_tree_sitter_available() is False
-
 
 class TestAnalyzeGroovyFallback:
     """Tests for fallback behavior when tree-sitter-groovy unavailable."""
@@ -80,12 +66,13 @@ class TestAnalyzeGroovyFallback:
 
         (tmp_path / "test.groovy").write_text("def test() {}")
 
-        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=False):
-            result = analyze_groovy(tmp_path)
+        with patch.object(groovy_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="groovy analysis skipped"):
+                result = analyze_groovy(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-groovy" in result.skip_reason
-
+        assert "not available" in result.skip_reason
+        assert result.run is not None
 
 class TestGroovyClassExtraction:
     """Tests for extracting Groovy classes."""
@@ -111,14 +98,12 @@ class Config {
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "Config" in class_names
-
 
 class TestGroovyMethodExtraction:
     """Tests for extracting Groovy methods."""
@@ -142,12 +127,10 @@ class Utils {
 
         result = analyze_groovy(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert "Utils.doSomething" in method_names
         assert "Utils.calculate" in method_names
-
 
 class TestGroovyFunctionExtraction:
     """Tests for extracting Groovy top-level functions."""
@@ -169,12 +152,10 @@ def calculate(a, b) {
 
         result = analyze_groovy(tmp_path)
 
-
         functions = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in functions]
         assert "greet" in func_names
         assert "calculate" in func_names
-
 
 class TestGroovyImportEdges:
     """Tests for extracting import statements."""
@@ -197,14 +178,12 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) == 2
 
         imported = [e.dst for e in import_edges]
         assert any("groovy.json.JsonSlurper" in dst for dst in imported)
         assert any("java.util.List" in dst for dst in imported)
-
 
 class TestGroovyCallEdges:
     """Tests for extracting function call edges."""
@@ -233,7 +212,6 @@ class Main {
 """)
 
         result = analyze_groovy(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling helper()
@@ -268,15 +246,13 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling doWork() (cross-file via global symbols)
         assert len(call_edges) >= 1
 
-        # Check for cross-file call edge with lower confidence (0.80)
-        cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
+        # Cross-file call: suffix match (0.85) * base (0.80) = 0.68
+        cross_file_edges = [e for e in call_edges if 0.50 <= e.confidence <= 0.85]
         assert len(cross_file_edges) >= 1
-
 
 class TestGradleBuildFile:
     """Tests for analyzing Gradle build files."""
@@ -307,10 +283,8 @@ def customTask() {
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
-
 
 class TestGroovyInterfaceExtraction:
     """Tests for extracting Groovy interfaces."""
@@ -333,12 +307,10 @@ interface Calculator {
 
         result = analyze_groovy(tmp_path)
 
-
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
         assert "Greeter" in interface_names
         assert "Calculator" in interface_names
-
 
 class TestGroovyTraitExtraction:
     """Tests for extracting Groovy traits.
@@ -363,14 +335,12 @@ trait Flyable {
 
         result = analyze_groovy(tmp_path)
 
-
         # tree-sitter-groovy v0.1.2 parses 'trait X' as a function call
         # not a trait declaration. This test documents this limitation.
         # When the grammar is updated, this test should be updated.
         traits = [s for s in result.symbols if s.kind == "trait"]
         # Currently 0 traits due to grammar limitation
         assert len(traits) == 0
-
 
 class TestGroovyEnumExtraction:
     """Tests for extracting Groovy enums."""
@@ -392,12 +362,10 @@ enum Status {
 
         result = analyze_groovy(tmp_path)
 
-
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
         assert "Color" in enum_names
         assert "Status" in enum_names
-
 
 class TestGroovySymbolProperties:
     """Tests for symbol property correctness."""
@@ -415,7 +383,6 @@ class TestGroovySymbolProperties:
 """)
 
         result = analyze_groovy(tmp_path)
-
 
         test_class = next((s for s in result.symbols if s.name == "Test"), None)
         assert test_class is not None
@@ -436,10 +403,8 @@ class Example {
 
         result = analyze_groovy(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         assert any(s.name == "Example.run" for s in methods)
-
 
 class TestGroovyEdgeProperties:
     """Tests for edge property correctness."""
@@ -457,12 +422,10 @@ class Test {}
 
         result = analyze_groovy(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestGroovyEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -475,7 +438,6 @@ class TestGroovyEmptyFile:
         groovy_file.write_text("")
 
         result = analyze_groovy(tmp_path)
-
 
         # Should not crash, may have 0 or minimal symbols
         assert result.run is not None
@@ -493,26 +455,19 @@ class TestGroovyEmptyFile:
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
 
+class TestGroovyEmptyRepo:
+    """Tests for empty repository handling."""
 
-class TestGroovyParserFailure:
-    """Tests for parser failure handling."""
-
-    def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load Groovy parser."""
+    def test_empty_repo(self, tmp_path: Path) -> None:
+        """Empty repo returns result with run metadata and zero files."""
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
-        groovy_file = tmp_path / "test.groovy"
-        groovy_file.write_text("class Test {}")
+        result = analyze_groovy(tmp_path)
 
-        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_groovy.language", side_effect=Exception("Parser error")):
-                result = analyze_groovy(tmp_path)
-
-        assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_handles_unreadable_file(self, tmp_path: Path) -> None:
         """Handles files that can't be read."""
@@ -527,10 +482,8 @@ class TestGroovyParserFailure:
 
         result = analyze_groovy(tmp_path)
 
-
         # Should still process the valid file
         assert result.run is not None
-
 
 class TestGroovySignatureExtraction:
     """Tests for Groovy method signature extraction.
@@ -592,7 +545,6 @@ class Counter {
         assert len(methods) == 1
         # Empty params
         assert methods[0].signature == "()"
-
 
 class TestGroovyImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
@@ -692,7 +644,6 @@ class Main {
         run_calls = [e for e in call_edges if "run" in e.src]
         assert len(run_calls) >= 1
         assert any("helper" in e.dst for e in run_calls)
-
 
 class TestGroovyInheritanceEdges:
     """Tests for Groovy base_classes metadata extraction.
@@ -876,3 +827,426 @@ class User extends BaseModel {
         assert len(extends_edges) == 1
         assert "User" in extends_edges[0].src
         assert "BaseModel" in extends_edges[0].dst
+
+
+class TestGroovyAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in Groovy.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """close() with 3 classes defining close() → no resolved edge."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        groovy_file = tmp_path / "multi.groovy"
+        groovy_file.write_text("""
+class ServiceA {
+    def close() { }
+}
+
+class ServiceB {
+    def close() { }
+}
+
+class ServiceC {
+    def close() { }
+}
+
+def cleanup() {
+    close()
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            assert "ServiceA" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceA, got {edge.dst}"
+            )
+            assert "ServiceB" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceB, got {edge.dst}"
+            )
+            assert "ServiceC" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceC, got {edge.dst}"
+            )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        groovy_file = tmp_path / "two.groovy"
+        groovy_file.write_text("""
+class ServiceA {
+    def run() { }
+}
+
+class ServiceB {
+    def run() { }
+}
+
+def execute() {
+    run()
+}
+""")
+
+        result = analyze_groovy(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestGroovyVisibilityModifiers:
+    """Tests for visibility modifier extraction into Symbol.modifiers."""
+
+    def test_method_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Vis.groovy").write_text("""
+class Vis {
+    public void pubMethod() {}
+    private void privMethod() {}
+    protected void protMethod() {}
+    static void staticMethod() {}
+    void defaultMethod() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.protMethod")
+        assert "protected" in prot.modifiers
+
+        static = next(s for s in result.symbols if s.name == "Vis.staticMethod")
+        assert "static" in static.modifiers
+
+        default = next(s for s in result.symbols if s.name == "Vis.defaultMethod")
+        assert "public" not in default.modifiers
+        assert "private" not in default.modifiers
+
+    def test_class_modifiers(self, tmp_path: Path) -> None:
+        """Classes with modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Classes.groovy").write_text("""
+public class PubClass {}
+abstract class AbsClass {}
+""")
+        result = analyze_groovy(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubClass")
+        assert "public" in pub.modifiers
+
+        abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
+        assert "abstract" in abs_cls.modifiers
+
+
+class TestNormalizeGroovySignature:
+    """Tests for Groovy signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
+        assert normalize_groovy_signature("(String name, int age): String") == "(String,int)String"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
+        assert normalize_groovy_signature(None) is None
+
+
+class TestGroovyDocstrings:
+    """Tests for Groovydoc comment extraction via populate_docstrings_from_tree."""
+
+    def test_groovydoc_block_comment_on_class(self, tmp_path: Path) -> None:
+        """Extracts Groovydoc block comment preceding a class."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "/** Represents a foo entity. */\n"
+            "class Foo {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Foo"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents a foo entity."
+
+    def test_groovydoc_block_comment_on_method(self, tmp_path: Path) -> None:
+        """Extracts Groovydoc block comment preceding a method."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "class Foo {\n"
+            "  /** Computes the sum. */\n"
+            "  def add(int x, int y) { x + y }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "add" in s.name), None)
+        assert method is not None
+        assert method.docstring == "Computes the sum."
+
+    def test_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts line comment preceding a function."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "class Foo {\n"
+            "  // Greets the user.\n"
+            "  def greet() { 'hello' }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        func = next((s for s in result.symbols if "greet" in s.name), None)
+        assert func is not None
+        assert func.docstring == "Greets the user."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Symbol without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Bar.groovy").write_text(
+            "class Bar {\n"
+            "  def run() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "run" in s.name), None)
+        assert method is not None
+        assert method.docstring is None
+
+
+class TestGroovyAnnotations:
+    """Tests for Groovy annotation extraction (INV-kobad)."""
+
+    def test_class_annotation(self, tmp_path: Path) -> None:
+        """Class with @Service annotation should have meta.decorators."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "@Service\n"
+            "class UserService {\n"
+            "    def getUsers() { [] }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "UserService"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Service"
+
+    def test_method_annotation(self, tmp_path: Path) -> None:
+        """Method with @Deprecated annotation should have meta.decorators."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class App {\n"
+            "    @Deprecated\n"
+            "    def oldMethod() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "oldMethod" in s.name), None)
+        assert method is not None
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Deprecated"
+
+    def test_annotation_with_string_args(self, tmp_path: Path) -> None:
+        """Annotation with string argument should capture args."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class App {\n"
+            '    @RequestMapping("/api")\n'
+            "    def handle() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "handle" in s.name), None)
+        assert method is not None
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "RequestMapping"
+        assert "/api" in decorators[0]["args"]
+
+    def test_annotation_with_named_args(self, tmp_path: Path) -> None:
+        """Annotation with named arguments should capture kwargs."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            '@Table(name = "users")\n'
+            "class User {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "User"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Table"
+        assert decorators[0]["kwargs"]["name"] == "users"
+
+    def test_annotation_with_non_string_named_arg(self, tmp_path: Path) -> None:
+        """Annotation with non-string named arg (e.g. integer) should capture raw text."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            '@Timeout(value = 30)\n'
+            "class Worker {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Worker"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Timeout"
+        assert decorators[0]["kwargs"]["value"] == "30"
+
+    def test_no_annotation_no_decorators(self, tmp_path: Path) -> None:
+        """Class without annotations should not have decorators in meta."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class Plain {\n"
+            "    def run() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Plain"), None)
+        assert cls is not None
+        assert cls.meta is None or "decorators" not in (cls.meta or {})
+
+    def test_class_with_annotation_and_base_class(self, tmp_path: Path) -> None:
+        """Class with both annotation and extends should have both in meta."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "@Service\n"
+            "class AdminService extends BaseService {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "AdminService"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        assert "base_classes" in cls.meta
+
+
+class TestGroovyParamTypeInference:
+    """Tests for Groovy parameter type inference (INV-kobad item 4).
+
+    When a method declares typed parameters (e.g. ``void process(Client client)``),
+    calls like ``client.send()`` should resolve to ``Client.send`` even when
+    multiple classes define ``send``.
+    """
+
+    def test_param_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from parameter resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class Client {\n"
+            "    def send() { }\n"
+            "}\n"
+            "\n"
+            "class Server {\n"
+            "    def send() { }\n"
+            "}\n"
+            "\n"
+            "class Service {\n"
+            "    def process(Client client) {\n"
+            "        client.send()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to Client.send, not Server.send
+        assert "Client" in call_edges[0].dst
+
+    def test_param_type_resolves_cross_file(self, tmp_path: Path) -> None:
+        """Type info resolves method call across files via resolver."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Client.groovy").write_text(
+            "class Client {\n"
+            "    def send() { }\n"
+            "}\n"
+        )
+        (tmp_path / "Service.groovy").write_text(
+            "class Service {\n"
+            "    def process(Client client) {\n"
+            "        client.send()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        assert "Client" in call_edges[0].dst
+
+    def test_constructor_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from constructor assignment resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class UserRepository {\n"
+            "    def findAll() { }\n"
+            "}\n"
+            "\n"
+            "class OrderRepository {\n"
+            "    def findAll() { }\n"
+            "}\n"
+            "\n"
+            "class Main {\n"
+            "    def run() {\n"
+            "        def repo = new UserRepository()\n"
+            "        repo.findAll()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "findAll" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to UserRepository.findAll, not OrderRepository.findAll
+        assert "UserRepository" in call_edges[0].dst

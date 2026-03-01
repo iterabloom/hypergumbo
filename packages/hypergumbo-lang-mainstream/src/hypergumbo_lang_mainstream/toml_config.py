@@ -29,14 +29,20 @@ Why This Design
 """
 
 import hashlib
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    iter_tree,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
+
+if TYPE_CHECKING:
+    pass
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -51,31 +57,7 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
 
 
-PASS_ID = "toml-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
-
-
-def is_toml_tree_sitter_available() -> bool:
-    """Check if tree-sitter-toml is available."""
-    try:
-        import tree_sitter
-        import tree_sitter_toml
-
-        tree_sitter.Language(tree_sitter_toml.language())
-        return True
-    except (ImportError, OSError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
-
-
-@dataclass
-class TomlAnalysisResult:
-    """Result of TOML analysis."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    skipped: bool = False
-    skip_reason: str | None = None
-    run: AnalysisRun | None = None
+PASS_ID = make_pass_id("toml")
 
 
 def find_toml_files(root: Path) -> Iterator[Path]:
@@ -86,9 +68,9 @@ def find_toml_files(root: Path) -> Iterator[Path]:
 def _get_key_text(node) -> str:
     """Extract key text from a key node."""
     if node.type == "bare_key":
-        return node.text.decode("utf-8")
+        return node.text.decode("utf-8", errors="replace")
     elif node.type == "quoted_key":  # pragma: no cover - rare in practice
-        text = node.text.decode("utf-8")  # pragma: no cover - rare in practice
+        text = node.text.decode("utf-8", errors="replace")  # pragma: no cover - rare in practice
         return text.strip('"').strip("'")  # pragma: no cover - rare in practice
     elif node.type == "dotted_key":
         # Join dotted key parts
@@ -97,14 +79,14 @@ def _get_key_text(node) -> str:
             if child.type in ("bare_key", "quoted_key"):
                 parts.append(_get_key_text(child))
         return ".".join(parts)
-    return node.text.decode("utf-8") if node.text else ""  # pragma: no cover
+    return node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover
 
 
 def _get_string_value(node) -> str:
     """Extract string value from a string node."""
     if node is None:  # pragma: no cover - defensive
         return ""  # pragma: no cover - defensive
-    text = node.text.decode("utf-8") if node.text else ""
+    text = node.text.decode("utf-8", errors="replace") if node.text else ""
     # Strip quotes - various quote styles supported by TOML
     if text.startswith('"""') and text.endswith('"""'):  # pragma: no cover - multi-line
         return text[3:-3]  # pragma: no cover - multi-line
@@ -302,72 +284,117 @@ def _process_toml_tree(
                 )
 
 
-def analyze_toml_files(root: Path) -> TomlAnalysisResult:
+class TomlAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based TOML configuration analyzer.
+
+    Uses tree-sitter-toml to parse Cargo.toml, pyproject.toml, and other
+    TOML configuration files. Extracts tables, dependencies, build targets,
+    workspaces, and script entry points.
+
+    Overrides ``analyze`` because TOML uses a single-pass approach: both
+    symbols and edges (e.g. build target source paths) are extracted together
+    since file-type-specific processing (Cargo vs pyproject) needs to happen
+    inline.
+    """
+
+    lang = "toml"
+    file_patterns: ClassVar[list[str]] = ["*.toml"]
+    grammar_module = "tree_sitter_toml"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run TOML analysis with single-pass symbol+edge extraction.
+
+        TOML analysis detects file type (Cargo.toml, pyproject.toml) per-file
+        and extracts symbols and edges together in a single pass through
+        ``_process_toml_tree``.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        toml_files = list(set(find_toml_files(repo_root)))
+
+        for toml_file in toml_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                content = toml_file.read_text(encoding="utf-8", errors="replace")
+                tree = parser.parse(bytes(content, "utf-8"))
+                files_analyzed += 1
+
+                rel_path = str(toml_file.relative_to(repo_root))
+                is_cargo = toml_file.name == "Cargo.toml"
+                is_pyproject = toml_file.name == "pyproject.toml"
+
+                _process_toml_tree(
+                    tree.root_node, symbols, edges, rel_path, content,
+                    is_cargo, is_pyproject,
+                )
+
+            except (OSError, IOError):  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                continue  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = TomlAnalyzer()
+
+
+def is_toml_tree_sitter_available() -> bool:
+    """Check if tree-sitter-toml is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("toml")
+def analyze_toml_files(root: Path) -> AnalysisResult:
     """Analyze TOML files in a directory.
 
     Args:
         root: Directory to analyze (can be a file path for single file)
 
     Returns:
-        TomlAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
-    if not is_toml_tree_sitter_available():  # pragma: no cover - toml installed
-        return TomlAnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-toml not installed",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_toml
-
-    lang = tree_sitter.Language(tree_sitter_toml.language())
-    parser = tree_sitter.Parser(lang)
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-    start_time = time.time()
-
-    # Handle single file or directory
-    if root.is_file():  # pragma: no cover - single file mode
-        toml_files = [root] if root.suffix == ".toml" else []  # pragma: no cover
-    else:
-        toml_files = list(set(find_toml_files(root)))
-
-    for toml_file in toml_files:
-        try:
-            content = toml_file.read_text(encoding="utf-8", errors="replace")
-            tree = parser.parse(bytes(content, "utf-8"))
-            files_analyzed += 1
-
-            rel_path = str(toml_file.relative_to(root) if root.is_dir() else toml_file.name)
-            is_cargo = toml_file.name == "Cargo.toml"
-            is_pyproject = toml_file.name == "pyproject.toml"
-
-            # Process the tree using iterative traversal
-            _process_toml_tree(
-                tree.root_node, symbols, edges, rel_path, content, is_cargo, is_pyproject
-            )
-
-        except (OSError, IOError):  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            continue  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return TomlAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(root)
 
 
 def _extract_cargo_dependencies(

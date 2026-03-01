@@ -1,0 +1,36 @@
+- op: create  # b003
+  at: '2026-02-25T17:46:32Z'  # b003
+  by: agent  # b003
+  actor: jgstern_agent  # b003
+  clock: 1  # b003
+  nonce: b003  # b003
+  data:  # b003
+    kind: work_item  # b003
+    title: "Add --note flag to tracker update command"  # b003
+    status: todo_soft  # b003
+    priority: 3  # b003
+    parent:  # b003
+    tags:  # b003
+    - tracker  # b003
+    - dx  # b003
+    before: []  # b003
+    duplicate_of: []  # b003
+    not_duplicate_of: []  # b003
+    pr_ref:  # b003
+    description: "When changing tracker item status, it's natural to want to add a note explaining why in the same command. Currently requires two commands:\n  scripts/tracker update FOO --status done\n  scripts/tracker discuss FOO \"Implemented in PR #1234\"\n\nProposal: Add --note flag to update subcommand as syntactic sugar:\n  scripts/tracker update FOO --status done --note \"Implemented in PR #1234\"\n\nImplementation: When --note is provided, append it as a discussion entry (same as calling discuss) after the status update. No schema changes needed — just an alias for the discuss subcommand triggered within update.\n\nMotivation: META-radiz context was lost when the agent tried --note (which didn't exist), got an error, retried without it, and moved on without using discuss as a fallback."  # b003
+    fields: {}  # b003
+- op: update  # af60
+  at: '2026-02-25T19:43:43Z'  # af60
+  by: agent  # af60
+  actor: jgstern_agent  # af60
+  clock: 2  # af60
+  nonce: af60  # af60
+  set:  # af60
+    status: done  # af60
+- op: discuss  # 1c92
+  at: '2026-02-25T19:43:43Z'  # 1c92
+  by: agent  # 1c92
+  actor: jgstern_agent  # 1c92
+  clock: 3  # 1c92
+  nonce: 1c92  # 1c92
+  message: "Implemented in PR #1458/#1459. Added --note flag to tracker update command and tests."  # 1c92

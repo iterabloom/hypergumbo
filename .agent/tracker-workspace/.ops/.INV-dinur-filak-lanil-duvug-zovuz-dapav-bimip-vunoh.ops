@@ -1,0 +1,47 @@
+- op: create  # 40f7
+  at: '2026-02-22T04:49:53Z'  # 40f7
+  by: agent  # 40f7
+  actor: jgstern_agent  # 40f7
+  clock: 1  # 40f7
+  nonce: 40f7  # 40f7
+  data:  # 40f7
+    kind: invariant  # 40f7
+    title: "Function References in Non-Call Contexts"  # 40f7
+    status: todo_hard  # 40f7
+    priority: 1  # 40f7
+    parent:  # 40f7
+    tags: []  # 40f7
+    before: []  # 40f7
+    duplicate_of: []  # 40f7
+    not_duplicate_of: []  # 40f7
+    pr_ref:  # 40f7
+    justification:  # 40f7
+    description: "Universal gap across all 8 major analyzers. No analyzer detects function references in struct/object literal field values, variable assignments, or collection elements. Go is the only analyzer with dedicated _extract_function_reference_edges but it only fires for call arguments, not struct literal fields. C has partial coverage (static array initializers only). Discovered via external bakeoff evaluation: cobra.Command{RunE: myFunc} in Go produces zero edges."  # 40f7
+    fields:  # 40f7
+      statement: "Function references that appear outside direct call expressions (struct fields, object literal values, variable assignments, array elements) must produce edges to the referenced function"  # 40f7
+      root_cause: "All analyzers only walk call_expression AST nodes for edge extraction. Struct literal fields, object/dict values, array elements, and variable assignments containing function references are not traversed."  # 40f7
+- op: update  # 95a8
+  at: '2026-02-23T07:07:24Z'  # 95a8
+  by: agent  # 95a8
+  actor: jgstern_agent  # 95a8
+  clock: 2  # 95a8
+  nonce: 95a8  # 95a8
+  set:  # 95a8
+    status: violated  # 95a8
+- op: update  # 6db0
+  at: '2026-02-23T14:21:07Z'  # 6db0
+  by: agent  # 6db0
+  actor: jgstern_agent  # 6db0
+  clock: 3  # 6db0
+  nonce: 6db0  # 6db0
+  set:  # 6db0
+    description: "Function references in non-call contexts. Fixed: Java method_reference (PR #1372), Kotlin callable_reference (PR #1372), Go struct_field_reference (PR #1365), Python dict/variable/argument/list references (PR #1373), Ruby method(:name) (PR #1374), Scala eta-expansion (PR #1374), C &function pointer (PR #1375), C++ &function/&Class::method pointer (PR #1375). Remaining: Groovy .& (grammar gap in tree-sitter-groovy, produces ERROR nodes), C#/Swift method references (not yet investigated)."  # 6db0
+- op: update  # 8cce
+  at: '2026-02-23T15:37:49Z'  # 8cce
+  by: agent  # 8cce
+  actor: jgstern_agent  # 8cce
+  clock: 4  # 8cce
+  nonce: 8cce  # 8cce
+  set:  # 8cce
+    status: holding  # 8cce
+    description: "Function references in non-call contexts. Fixed: Java method_reference (PR #1372), Kotlin callable_reference (PR #1372), Go struct_field_reference (PR #1365), Python dict/variable/argument/list references (PR #1373), Ruby method(:name) (PR #1374), Scala eta-expansion (PR #1374), C &function pointer (PR #1375), C++ &function/&Class::method pointer (PR #1375), C# method groups (PR #1378), Swift function references (PR #1380). Remaining: Groovy .& (grammar gap in tree-sitter-groovy, produces ERROR nodes — cannot fix without grammar change)."  # 8cce

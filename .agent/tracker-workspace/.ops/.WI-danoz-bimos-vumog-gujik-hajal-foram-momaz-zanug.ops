@@ -1,0 +1,29 @@
+- op: create  # 2cc5
+  at: '2026-02-22T04:49:43Z'  # 2cc5
+  by: agent  # 2cc5
+  actor: jgstern_agent  # 2cc5
+  clock: 1  # 2cc5
+  nonce: 2cc5  # 2cc5
+  data:  # 2cc5
+    kind: work_item  # 2cc5
+    title: "Phoenix route_handler: resolve Elixir alias...as: patterns"  # 2cc5
+    status: todo_hard  # 2cc5
+    priority: 2  # 2cc5
+    parent: INV-jamad-dakov-pahup-tuliv-sabif-tukid-gosiv-dazab  # 2cc5
+    tags: []  # 2cc5
+    before: []  # 2cc5
+    duplicate_of: []  # 2cc5
+    not_duplicate_of: []  # 2cc5
+    pr_ref:  # 2cc5
+    justification:  # 2cc5
+    description: "Phoenix route_handler suffix scan fails when router uses custom aliases (alias MyAppWeb.UserController, as: UserCtrl). The Elixir analyzer already parses as: directives via _extract_alias_hints but the output is not fed into route metadata. Fix: pass alias map to _extract_phoenix_routes so controller field stores the resolved FQ name. Also parent of INV-nimik (Route-to-Handler Edge Completeness)."  # 2cc5
+    fields: {}  # 2cc5
+- op: update  # 200c
+  at: '2026-02-23T12:41:03Z'  # 200c
+  by: agent  # 200c
+  actor: jgstern_agent  # 200c
+  clock: 2  # 200c
+  nonce: 200c  # 200c
+  set:  # 200c
+    status: done  # 200c
+    pr_ref: 'PR #1367'  # 200c

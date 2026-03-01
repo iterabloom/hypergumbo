@@ -1,0 +1,88 @@
+- op: create  # 128b
+  at: '2026-02-15T00:51:38Z'  # 128b
+  by: agent  # 128b
+  actor: migration  # 128b
+  clock: 1  # 128b
+  nonce: 128b  # 128b
+  data:  # 128b
+    kind: work_item  # 128b
+    title: "Add Assembly analyzer."  # 128b
+    status: todo_soft  # 128b
+    priority: 4  # 128b
+    parent:  # 128b
+    tags:  # 128b
+    - language_additions  # 128b
+    before: []  # 128b
+    duplicate_of: []  # 128b
+    not_duplicate_of: []  # 128b
+    pr_ref:  # 128b
+    justification: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
+    description: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
+    fields: {}  # 128b
+- op: update  # 72af
+  at: '2026-02-17T20:42:55Z'  # 72af
+  by: agent  # 72af
+  actor: jgstern_agent  # 72af
+  clock: 2  # 72af
+  nonce: 72af  # 72af
+  set:  # 72af
+    status: todo_soft  # 72af
+- op: update  # c6ea
+  at: '2026-02-18T09:11:37Z'  # c6ea
+  by: human  # c6ea
+  actor: jgstern  # c6ea
+  clock: 4  # c6ea
+  nonce: c6ea  # c6ea
+  set:  # c6ea
+    priority: 3  # c6ea
+- op: discuss  # 79a6
+  at: '2026-02-18T13:44:37Z'  # 79a6
+  by: agent  # 79a6
+  actor: jgstern_agent  # 79a6
+  clock: 5  # 79a6
+  nonce: 79a6  # 79a6
+  message: "Assembly analyzer scope: Start with x86/x86-64 AT&T and Intel syntax. Detect labels as symbols, call/jmp targets as call edges. Could use tree-sitter-asm if available, otherwise regex-based parsing of common directives (.global, .text, .data)."  # 79a6
+- op: discuss  # 077e
+  at: '2026-02-18T14:01:13Z'  # 077e
+  by: agent  # 077e
+  actor: jgstern_agent  # 077e
+  clock: 6  # 077e
+  nonce: 077e  # 077e
+  message: "Priority consideration: Assembly files are rare in most repos but critical in OS kernels, bootloaders, and embedded projects. Consider starting with ELF-targeted x86-64 since that covers Linux kernel and most open-source assembly usage."  # 077e
+- op: discuss  # 0d3b
+  at: '2026-02-18T14:41:45Z'  # 0d3b
+  by: agent  # 0d3b
+  actor: jgstern_agent  # 0d3b
+  clock: 7  # 0d3b
+  nonce: 0d3b  # 0d3b
+  message: "ARM assembly should also be on the roadmap given the prevalence of ARM in mobile and embedded. ARM syntax is sufficiently different from x86 that it would need its own detection logic."  # 0d3b
+- op: discuss  # eed8
+  at: '2026-02-18T14:55:15Z'  # eed8
+  by: agent  # eed8
+  actor: jgstern_agent  # eed8
+  clock: 8  # eed8
+  nonce: eed8  # eed8
+  message: "RISC-V assembly is also worth considering given the growing adoption. The instruction set is clean and regular which should make parsing straightforward compared to x86 with its legacy prefixes and variable-length encoding."  # eed8
+- op: discuss  # 1759
+  at: '2026-02-18T16:25:47Z'  # 1759
+  by: agent  # 1759
+  actor: jgstern_agent  # 1759
+  clock: 9  # 1759
+  nonce: '1759'  # 1759
+  message: "Auto-sync test 4: Assembly analyzer remains P3 backlog."  # 1759
+- op: update  # 18a1
+  at: '2026-02-18T17:57:02Z'  # 18a1
+  by: agent  # 18a1
+  actor: jgstern_agent  # 18a1
+  clock: 10  # 18a1
+  nonce: 18a1  # 18a1
+  set:  # 18a1
+    status: done  # 18a1
+    justification: "Assembly analyzer merged in PR #1180"  # 18a1
+- op: discuss  # edc4
+  at: '2026-02-25T08:41:25Z'  # edc4
+  by: agent  # edc4
+  actor: jgstern_agent  # edc4
+  clock: 11  # edc4
+  nonce: edc4  # edc4
+  message: "[migrated from justification field] Assembly analyzer merged in PR #1180"  # edc4

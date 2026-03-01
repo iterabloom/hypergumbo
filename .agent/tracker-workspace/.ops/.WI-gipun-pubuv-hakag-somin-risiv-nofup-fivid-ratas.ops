@@ -1,0 +1,21 @@
+- op: create  # f891
+  at: '2026-02-15T00:51:38Z'  # f891
+  by: agent  # f891
+  actor: migration  # f891
+  clock: 1  # f891
+  nonce: f891  # f891
+  data:  # f891
+    kind: work_item  # f891
+    title: "Exclude DERIVED-tier symbols from output by default."  # f891
+    status: done  # f891
+    priority: 4  # f891
+    parent:  # f891
+    tags:  # f891
+    - analysis_quality  # f891
+    before: []  # f891
+    duplicate_of: []  # f891
+    not_duplicate_of: []  # f891
+    pr_ref: PR#925  # f891
+    justification:  # f891
+    description: "Changed default behavior to filter tier 4 (minified/bundled/generated) symbols from behavior map output. Use `--max-tier 4` to include them explicitly. Note: files are still analyzed (the filtering happens post-classification), but their symbols don't appear in the output graph. This eliminates the centrality distortion from minified JS."  # f891
+    fields: {}  # f891

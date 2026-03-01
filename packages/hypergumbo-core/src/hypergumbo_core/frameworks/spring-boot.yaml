@@ -12,17 +12,24 @@ patterns:
   #   - @GetMapping("/path") -> args[0]
   #   - @GetMapping(value = "/path") -> kwargs.value
   # Note: Java annotations are stored in decorators field by the Java analyzer
+  # Method routes inherit path prefix from class-level @RequestMapping (prefix_from_parent)
   - concept: route
     decorator: "^(Get|Post|Put|Delete|Patch)Mapping$"
     extract_path: "args[0]|kwargs.value"
     extract_method: "decorator_suffix"
+    prefix_from_parent: "route"
 
   # Generic request mapping - @RequestMapping
-  # Handles @RequestMapping(value = "/path", method = RequestMethod.GET)
+  # Handles both positional and named arguments:
+  #   - @RequestMapping("/path") -> args[0]
+  #   - @RequestMapping(value = "/path", method = RequestMethod.GET) -> kwargs
+  # On classes: defines path prefix for child method routes
+  # On methods: defines full route (inherits class prefix via prefix_from_parent)
   - concept: route
     decorator: "^RequestMapping$"
-    extract_path: "kwargs.value"
+    extract_path: "args[0]|kwargs.value"
     extract_method: "kwargs.method"
+    prefix_from_parent: "route"
 
   # REST controller - @RestController
   - concept: controller

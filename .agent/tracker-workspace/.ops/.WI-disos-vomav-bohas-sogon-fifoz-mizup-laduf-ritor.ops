@@ -1,0 +1,38 @@
+- op: create  # d2f9
+  at: '2026-02-24T04:32:24Z'  # d2f9
+  by: agent  # d2f9
+  actor: jgstern_agent  # d2f9
+  clock: 1  # d2f9
+  nonce: d2f9  # d2f9
+  data:  # d2f9
+    kind: work_item  # d2f9
+    title: "Bakeoff no-change check: skip re-analysis when hypergumbo code unchanged"  # d2f9
+    status: needs_human_review  # d2f9
+    priority: 3  # d2f9
+    parent:  # d2f9
+    tags:  # d2f9
+    - bakeoff  # d2f9
+    before: []  # d2f9
+    duplicate_of: []  # d2f9
+    not_duplicate_of: []  # d2f9
+    pr_ref:  # d2f9
+    justification:  # d2f9
+    description: "SOURCE: Process health synthesis 4.2, recommendation 3. Before re-running hypergumbo analysis on a repo, check whether any hypergumbo source code changed since the last run for that repo. The bakeoff-features init idempotency fix (e11a15ea) prevents redundant session initialization but not redundant analysis within a session. Some repo-cohort combinations show identical metrics (iceberg C7 vs C8, forgejo C8 vs C9), each generating ~100MB of artifacts. Implementation: store a hash of relevant hypergumbo source files in each output directory; skip analysis if hash matches; flag skipped repos in the cohort report."  # d2f9
+    fields: {}  # d2f9
+- op: update  # 2dee
+  at: '2026-02-24T06:23:26Z'  # 2dee
+  by: human  # 2dee
+  actor: jgstern  # 2dee
+  clock: 2  # 2dee
+  nonce: 2dee  # 2dee
+  set:  # 2dee
+    status: todo_soft  # 2dee
+- op: update  # 3694
+  at: '2026-02-25T15:39:33Z'  # 3694
+  by: agent  # 3694
+  actor: jgstern_agent  # 3694
+  clock: 3  # 3694
+  nonce: '3694'  # 3694
+  set:  # 3694
+    status: done  # 3694
+    pr_ref: '#1448'  # 3694

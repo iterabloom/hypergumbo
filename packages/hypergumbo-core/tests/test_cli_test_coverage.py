@@ -955,3 +955,59 @@ def test_help_all_with_short_flag(capsys) -> None:
     out, _ = capsys.readouterr()
     assert "DETAILED SUBCOMMAND HELP" in out
     assert "hypergumbo test-coverage" in out
+
+
+def test_help_shows_grouped_subcommands(capsys) -> None:
+    """Test that --help shows subcommands with group separators."""
+    from hypergumbo_core.cli import build_parser
+
+    parser = build_parser()
+    # Capture help output
+    import io
+    import sys
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        parser.print_help()
+        out = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    # Should have visual separator between groups
+    assert "----" in out  # Separator line
+
+    # Core commands should come before extras commands
+    # Use specific patterns to avoid false matches
+    sketch_pos = out.find("  sketch ")
+    add_extras_pos = out.find("  add-extras ")
+    assert sketch_pos > 0 and add_extras_pos > 0
+    assert sketch_pos < add_extras_pos, "Core commands should appear before extras"
+
+    # Verify order within core group - use indented patterns
+    slice_pos = out.find("  slice ")
+    compact_pos = out.find("  compact ")
+    assert slice_pos > 0 and compact_pos > 0
+    assert slice_pos < compact_pos, "slice should appear before compact in core group"
+
+    # Verify order within extras group - add-extras before build-grammars
+    remove_extras_pos = out.find("  remove-extras ")
+    build_grammars_pos = out.find("  build-grammars ")
+    assert remove_extras_pos > 0 and build_grammars_pos > 0
+    assert add_extras_pos < remove_extras_pos < build_grammars_pos
+
+
+def test_help_all_shows_group_headers(capsys) -> None:
+    """Test that --help --all shows group headers."""
+    result = main(["--help", "--all"])
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+
+    # Should have group headers
+    assert "CORE ANALYSIS COMMANDS" in out
+    assert "INSTALLATION & MAINTENANCE COMMANDS" in out
+
+    # Core header should come before maintenance header
+    core_pos = out.find("CORE ANALYSIS COMMANDS")
+    maint_pos = out.find("INSTALLATION & MAINTENANCE COMMANDS")
+    assert core_pos < maint_pos

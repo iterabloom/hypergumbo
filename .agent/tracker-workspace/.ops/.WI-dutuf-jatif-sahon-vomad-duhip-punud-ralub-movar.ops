@@ -1,0 +1,21 @@
+- op: create  # e581
+  at: '2026-02-15T00:51:38Z'  # e581
+  by: agent  # e581
+  actor: migration  # e581
+  clock: 1  # e581
+  nonce: e581  # e581
+  data:  # e581
+    kind: work_item  # e581
+    title: "Target: Centralized inheritance linker (`linkers/inheritance.py`) — changed from single-value `dict[str, Symbol]` to multi-value `dict[str, list[Symbol]]` with `_resolve_target_symbol()` using same-file match + deterministic fallback."  # e581
+    status: done  # e581
+    priority: 4  # e581
+    parent:  # e581
+    tags:  # e581
+    - extends_edge_disambiguation  # e581
+    before: []  # e581
+    duplicate_of: []  # e581
+    not_duplicate_of: []  # e581
+    pr_ref: PR pending  # e581
+    justification:  # e581
+    description: "Affects C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex. 4 new tests (same-file class, deterministic fallback, same-file interface, self-inheritance)."  # e581
+    fields: {}  # e581

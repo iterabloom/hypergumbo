@@ -11,17 +11,18 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-llvm is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and resolve targets
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+- Pass 1: Parse all files, extract all symbols into global registry
+- Pass 2: Detect calls and resolve against global symbol registry
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the LLVM IR-specific
+extraction logic.
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-llvm for grammar
+- Uses tree-sitter-llvm for grammar (direct grammar module)
 - Two-pass allows cross-file call resolution (for multi-file IR projects)
 - Same pattern as other tree-sitter analyzers for consistency
 
@@ -37,23 +38,27 @@ LLVM IR-Specific Considerations
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
-PASS_ID = "llvm-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("llvm_ir")
 
 
 def find_llvm_ir_files(repo_root: Path) -> Iterator[Path]:
@@ -61,65 +66,10 @@ def find_llvm_ir_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.ll"])
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"llvm_ir:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:  # pragma: no cover - reserved for future file-level symbols
-    """Generate ID for a LLVM IR file node."""
-    return f"llvm_ir:{path}:1-1:file:file"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
-def is_llvm_tree_sitter_available() -> bool:
-    """Check if tree-sitter with LLVM IR grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_llvm") is None:
-        return False  # pragma: no cover - llvm grammar not installed
-    try:
-        import tree_sitter
-        import tree_sitter_llvm
-
-        tree_sitter.Language(tree_sitter_llvm.language())
-        return True
-    except Exception:  # pragma: no cover - grammar loading failed
-        return False
-
-
-@dataclass
-class LLVMIRAnalysisResult:
-    """Result of analyzing LLVM IR files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: Path
-    symbols: list[Symbol] = field(default_factory=list)
-    calls: list[tuple[str, str, int, int]] = field(default_factory=list)
-    # calls = [(caller_name, callee_name, line, col), ...]
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text content from a node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -129,7 +79,7 @@ def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | 
     """
     for child in iter_tree(header_node):
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             # Remove @ prefix for internal use
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
@@ -139,7 +89,7 @@ def _get_global_var_name(global_node: "tree_sitter.Node", source: bytes) -> str 
     """Extract global variable name from global_global node."""
     for child in global_node.children:
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
 
@@ -151,7 +101,7 @@ def _get_call_target(call_node: "tree_sitter.Node", source: bytes) -> str | None
     """
     for child in iter_tree(call_node):
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
 
@@ -175,7 +125,7 @@ def _extract_arguments(header_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract function signature from function_header."""
     for child in iter_tree(header_node):
         if child.type == "argument_list":
-            return _node_text(child, source)
+            return node_text(child, source)
     return "()"  # pragma: no cover - defensive fallback
 
 
@@ -183,19 +133,19 @@ def _get_return_type(header_node: "tree_sitter.Node", source: bytes) -> str | No
     """Extract return type from function_header."""
     for child in header_node.children:
         if child.type == "type":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover - defensive fallback
 
 
-def _analyze_file(
-    file_path: Path, source: bytes, tree: "tree_sitter.Tree", run_id: str
-) -> FileAnalysis:
-    """Analyze a single LLVM IR file.
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree", source: bytes, rel_path: str,
+    run_id: str, analysis: FileAnalysis,
+) -> list[tuple[str, str, int, int]]:
+    """Extract symbols and call sites from a single LLVM IR file.
 
-    Pass 1: Extract symbols and record call sites for later resolution.
+    Returns a list of call tuples: (caller_name, callee_name, line, col).
     """
-    result = FileAnalysis(path=file_path)
-    rel_path = str(file_path)
+    calls: list[tuple[str, str, int, int]] = []
 
     for node in iter_tree(tree.root_node):
         if node.type == "fn_define":
@@ -214,7 +164,7 @@ def _analyze_file(
                     signature = f"{ret_type or 'void'} @{name}{args}"
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+                    sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "function")
 
                     symbol = Symbol(
                         id=sym_id,
@@ -233,7 +183,8 @@ def _analyze_file(
                         canonical_name=f"@{name}",
                         signature=signature,
                     )
-                    result.symbols.append(symbol)
+                    analysis.symbols.append(symbol)
+                    analysis.symbol_by_name[name] = symbol
 
         elif node.type == "declare":
             # Function declaration (external function)
@@ -251,7 +202,7 @@ def _analyze_file(
                     signature = f"{ret_type or 'void'} @{name}{args}"
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "declaration")
+                    sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "declaration")
 
                     symbol = Symbol(
                         id=sym_id,
@@ -270,7 +221,8 @@ def _analyze_file(
                         canonical_name=f"@{name}",
                         signature=signature,
                     )
-                    result.symbols.append(symbol)
+                    analysis.symbols.append(symbol)
+                    analysis.symbol_by_name[name] = symbol
 
         elif node.type == "global_global":
             # Global variable definition
@@ -278,7 +230,7 @@ def _analyze_file(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "variable")
+                sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "variable")
 
                 symbol = Symbol(
                     id=sym_id,
@@ -296,25 +248,26 @@ def _analyze_file(
                     origin_run_id=run_id,
                     canonical_name=f"@{name}",
                 )
-                result.symbols.append(symbol)
+                analysis.symbols.append(symbol)
+                analysis.symbol_by_name[name] = symbol
 
         elif node.type == "instruction_call":
             # Function call
             caller = _find_enclosing_function(node, source)
             callee = _get_call_target(node, source)
             if caller and callee:
-                result.calls.append((
+                calls.append((
                     caller,
                     callee,
                     node.start_point[0] + 1,
                     node.start_point[1],
                 ))
 
-    return result
+    return calls
 
 
 def _resolve_calls(
-    file_analyses: list[FileAnalysis],
+    all_calls: list[tuple[str, str, int, int]],
     resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
@@ -326,101 +279,106 @@ def _resolve_calls(
     edges: list[Edge] = []
     base_confidence = 0.90
 
-    for file_analysis in file_analyses:
-        for caller_name, callee_name, line, _col in file_analysis.calls:
-            caller_result = resolver.lookup(caller_name)
-            callee_result = resolver.lookup(callee_name)
+    for caller_name, callee_name, line, _col in all_calls:
+        caller_result = resolver.lookup(caller_name)
+        callee_result = resolver.lookup(callee_name)
 
-            if caller_result.found and callee_result.found:
-                caller_sym = caller_result.symbol
-                callee_sym = callee_result.symbol
-                assert caller_sym is not None
-                assert callee_sym is not None
-                # Combine base confidence with resolver confidence
-                confidence = base_confidence * min(
-                    caller_result.confidence, callee_result.confidence
-                )
-                edge = Edge(
-                    id=_make_edge_id(caller_sym.id, callee_sym.id, "calls"),
-                    src=caller_sym.id,
-                    dst=callee_sym.id,
-                    edge_type="calls",
-                    line=line,
-                    confidence=confidence,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                    evidence_type="ast_call_direct",
-                )
-                edges.append(edge)
+        if caller_result.found and callee_result.found:
+            caller_sym = caller_result.symbol
+            callee_sym = callee_result.symbol
+            assert caller_sym is not None
+            assert callee_sym is not None
+            # Combine base confidence with resolver confidence
+            confidence = base_confidence * min(
+                caller_result.confidence, callee_result.confidence
+            )
+            edge = Edge(
+                id=_make_edge_id(caller_sym.id, callee_sym.id, "calls"),
+                src=caller_sym.id,
+                dst=callee_sym.id,
+                edge_type="calls",
+                line=line,
+                confidence=confidence,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                evidence_type="ast_call_direct",
+            )
+            edges.append(edge)
 
     return edges
 
 
-def analyze_llvm_ir(repo_root: Path) -> LLVMIRAnalysisResult:
+# ---------------------------------------------------------------------------
+# LlvmIrAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
+
+
+class LlvmIrAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for LLVM IR files using TreeSitterAnalyzer base class."""
+
+    lang = "llvm_ir"
+    file_patterns: ClassVar[list[str]] = ["*.ll"]
+    grammar_module = "tree_sitter_llvm"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a single LLVM IR file.
+
+        Also stores call tuples in import_aliases under a special key
+        for later retrieval in the edge pass.
+        """
+        analysis = FileAnalysis()
+        calls = _extract_symbols_from_tree(
+            tree, source, rel_path, run.execution_id, analysis,
+        )
+        # Store calls for pass 2 via import_aliases (a dict[str, str] hack:
+        # we serialize the calls list as a string keyed by "__calls__")
+        # Instead, we store them in the analysis object's symbol_by_name under
+        # a special key. The base class passes symbol_by_name to extract_edges.
+        # We'll use a different approach: store calls in a module-level dict.
+        _pending_calls[id(tree)] = calls
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a single LLVM IR file.
+
+        Uses NameResolver for cross-file symbol lookup.
+        """
+        # Re-extract calls from this file's tree (since base class re-parses)
+        calls = _extract_symbols_from_tree(
+            tree, source, rel_path, run.execution_id,
+            FileAnalysis(),  # dummy - we only need the calls
+        )
+        return _resolve_calls(calls, resolver, run.execution_id)
+
+
+# Module-level storage for call tuples between passes
+_pending_calls: dict[int, list[tuple[str, str, int, int]]] = {}
+
+_analyzer = LlvmIrAnalyzer()
+
+
+def is_llvm_tree_sitter_available() -> bool:
+    """Check if tree-sitter with LLVM IR grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("llvm_ir")
+def analyze_llvm_ir(repo_root: Path) -> AnalysisResult:
     """Analyze LLVM IR files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        LLVMIRAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_llvm_tree_sitter_available():
-        skip_reason = (
-            "LLVM IR analysis skipped: requires tree-sitter-llvm "
-            "(pip install tree-sitter-llvm)"
-        )
-        warnings.warn(skip_reason, UserWarning, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return LLVMIRAnalysisResult(
-            run=run, skipped=True, skip_reason="tree-sitter-llvm not available"
-        )
-
-    import tree_sitter
-    import tree_sitter_llvm
-
-    language = tree_sitter.Language(tree_sitter_llvm.language())
-    parser = tree_sitter.Parser(language)
-    run_id = run.execution_id
-
-    file_analyses: list[FileAnalysis] = []
-    files_analyzed = 0
-    symbol_registry: dict[str, Symbol] = {}
-
-    # Pass 1: Parse all files and extract symbols
-    for file_path in find_llvm_ir_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-            file_analysis = _analyze_file(file_path, source, tree, run_id)
-            file_analyses.append(file_analysis)
-            files_analyzed += 1
-
-            # Build symbol registry for cross-file resolution
-            for sym in file_analysis.symbols:
-                # Use name without @ prefix as key
-                symbol_registry[sym.name] = sym
-
-        except Exception:  # nosec B112 # noqa: S112 # pragma: no cover - file read error
-            continue
-
-    # Pass 2: Resolve calls to symbols
-    resolver = NameResolver(symbol_registry)
-    edges = _resolve_calls(file_analyses, resolver, run_id)
-
-    # Collect all symbols
-    all_symbols: list[Symbol] = []
-    for file_analysis in file_analyses:
-        all_symbols.extend(file_analysis.symbols)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return LLVMIRAnalysisResult(
-        symbols=all_symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

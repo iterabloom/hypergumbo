@@ -1,0 +1,72 @@
+- op: create  # 9a2b
+  at: '2026-02-24T04:34:52Z'  # 9a2b
+  by: agent  # 9a2b
+  actor: jgstern_agent  # 9a2b
+  clock: 1  # 9a2b
+  nonce: 9a2b  # 9a2b
+  data:  # 9a2b
+    kind: work_item  # 9a2b
+    title: "Link assessment improvement_ideas to tracker items"  # 9a2b
+    status: needs_human_review  # 9a2b
+    priority: 3  # 9a2b
+    parent: META-radiz-rorul-kotav-higot-zodan-hohoj-vafat-puful  # 9a2b
+    tags:  # 9a2b
+    - bakeoff  # 9a2b
+    before: []  # 9a2b
+    duplicate_of: []  # 9a2b
+    not_duplicate_of: []  # 9a2b
+    pr_ref:  # 9a2b
+    justification:  # 9a2b
+    description: "SOURCE: Process health synthesis recommendation 1. The tracker system (htrac) tracks invariants and work items, but individual improvement_ideas from bakeoff assessment YAMLs are not linked to tracker items. Each assessment generates 3-10 improvement ideas; across 66 assessments that is 200-600 ideas, many recurring. Currently these exist only as free text in YAML files and cohort summaries. Options: (a) Auto-generate tracker items from assessment YAML improvement_ideas, deduplicating against existing items by semantic similarity. (b) Add a tracker_item field to the assessment YAML schema so the assessor or aggregator can reference existing tracker items. (c) Manual triage: after each cohort, review improvement_ideas and create/update tracker items for actionable ones. Option (c) is what happened during this bakeoff but only for a subset of findings."  # 9a2b
+    fields: {}  # 9a2b
+- op: discuss  # f625
+  at: '2026-02-24T06:27:48Z'  # f625
+  by: human  # f625
+  actor: jgstern  # f625
+  clock: 2  # f625
+  nonce: f625  # f625
+  message: "I like both (a) and (b). I think these bakeoff items should be stealth-tier, lest the agentic loop get bogged down in CI. Even a 30-second wait seems to bog things down leading to confusion. This means we want to confirm that auto-sync realizes that stealth items are gitignored and they don't get counted in the threshold mechanism."  # f625
+- op: update  # 131d
+  at: '2026-02-25T08:16:56Z'  # 131d
+  by: human  # 131d
+  actor: jgstern  # 131d
+  clock: 3  # 131d
+  nonce: 131d  # 131d
+  set:  # 131d
+    status: todo_soft  # 131d
+- op: discuss  # 7490
+  at: '2026-02-25T09:47:12Z'  # 7490
+  by: agent  # 7490
+  actor: jgstern_agent  # 7490
+  clock: 4  # 7490
+  nonce: '7490'  # 7490
+  message: "Acknowledged. Will implement bakeoff items as stealth-tier (gitignored). Will verify auto-sync skips stealth items and they don't count toward the sync threshold."  # 7490
+- op: update  # 0a05
+  at: '2026-02-25T20:15:11Z'  # 0a05
+  by: agent  # 0a05
+  actor: jgstern_agent  # 0a05
+  clock: 5  # 0a05
+  nonce: 0a05  # 0a05
+  set: {}  # 0a05
+- op: discuss  # 688b
+  at: '2026-02-25T20:15:11Z'  # 688b
+  by: agent  # 688b
+  actor: jgstern_agent  # 688b
+  clock: 6  # 688b
+  nonce: 688b  # 688b
+  message: "Implemented option (a): auto-ingest improvement_ideas from aggregated summaries into stealth-tier tracker items. New 'ingest' subcommand and '--ingest' flag on aggregate. Auto-sync skips stealth items (stealth dir not in _OPS_PATHS). PR pending."  # 688b
+- op: update  # 857d
+  at: '2026-02-25T20:16:17Z'  # 857d
+  by: agent  # 857d
+  actor: jgstern_agent  # 857d
+  clock: 7  # 857d
+  nonce: 857d  # 857d
+  set:  # 857d
+    status: done  # 857d
+- op: discuss  # bf38
+  at: '2026-02-25T20:16:17Z'  # bf38
+  by: agent  # bf38
+  actor: jgstern_agent  # bf38
+  clock: 8  # bf38
+  nonce: bf38  # bf38
+  message: "PR #1464 merged. Implemented option (a) from the original proposal. Option (b) (tracker_item field in assessment YAML) can be added later when needed."  # bf38

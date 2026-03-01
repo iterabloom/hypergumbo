@@ -5,9 +5,13 @@ in Java applications, Android development, and i18n/l10n bundles.
 
 How It Works
 ------------
-1. Uses tree-sitter-properties grammar from tree-sitter-language-pack
-2. Extracts property key-value pairs
-3. Groups properties by prefix/namespace
+Uses TreeSitterAnalyzer base class for single-pass orchestration:
+1. Pass 1: Extract property key-value pairs with namespace categorization
+2. No Pass 2 (properties files have no cross-references)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the properties-specific
+extraction logic.
 
 Symbols Extracted
 -----------------
@@ -19,6 +23,7 @@ Edges Extracted
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - .properties files are ubiquitous in Java ecosystem
 - Configuration values reveal application behavior
 - Namespace prefixes indicate logical groupings
@@ -27,50 +32,25 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
 
-PASS_ID = "properties.tree_sitter"
-PASS_VERSION = "0.1.0"
-
-
-class PropertiesAnalysisResult:
-    """Result of properties file analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_properties_tree_sitter_available() -> bool:
-    """Check if tree-sitter-properties is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("properties")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+PASS_ID = make_pass_id("properties")
 
 
 def find_properties_files(repo_root: Path) -> list[Path]:
@@ -79,8 +59,12 @@ def find_properties_files(repo_root: Path) -> list[Path]:
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    """Get the text content of a node.
+
+    Uses errors="replace" because .properties files commonly use Latin-1/
+    ISO-8859-1 encoding (Java default), not UTF-8.
+    """
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:
@@ -114,68 +98,25 @@ KNOWN_PREFIXES = {
 }
 
 
-class PropertiesAnalyzer:
-    """Analyzer for Java properties files."""
+def _extract_property_symbols(
+    tree: "tree_sitter.Tree",
+    rel_path: str,
+) -> list[Symbol]:
+    """Extract property symbols from a parsed properties file.
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+    Args:
+        tree: Parsed tree-sitter tree
+        rel_path: Path relative to repo root
 
-    def analyze(self) -> PropertiesAnalysisResult:
-        """Run the properties analysis."""
-        start_time = time.time()
+    Returns:
+        List of property Symbol objects.
+    """
+    symbols: list[Symbol] = []
 
-        files = find_properties_files(self.repo_root)
-        if not files:
-            return PropertiesAnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    for node in iter_tree(tree.root_node):
+        if node.type != "property":
+            continue
 
-        from tree_sitter_language_pack import get_parser
-
-        parser = get_parser("properties")
-
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
-
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "properties", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
-
-        return PropertiesAnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
-
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "property":
-            self._extract_property(node, path)
-
-        for child in node.children:
-            self._extract_symbols(child, path)
-
-    def _extract_property(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a property key-value pair."""
         key = ""
         value = ""
 
@@ -186,10 +127,9 @@ class PropertiesAnalyzer:
                 value = _get_node_text(child)
 
         if not key:
-            return  # pragma: no cover
+            continue  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, key, "property")
+        symbol_id = _make_symbol_id(Path(rel_path), key, "property")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -230,38 +170,44 @@ class PropertiesAnalyzer:
                 "is_sensitive": is_sensitive,
             },
         )
-        self._symbols.append(symbol)
+        symbols.append(symbol)
+
+    return symbols
 
 
-def analyze_properties(repo_root: Path) -> PropertiesAnalysisResult:
+class PropertiesAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Java properties files using tree-sitter-language-pack."""
+
+    lang = "properties"
+    file_patterns: ClassVar[list[str]] = ["*.properties"]
+    language_pack_name = "properties"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract property key-value pairs from a properties file."""
+        analysis = FileAnalysis()
+        analysis.symbols.extend(_extract_property_symbols(tree, rel_path))
+        return analysis
+
+
+_analyzer = PropertiesAnalyzer()
+
+
+def is_properties_tree_sitter_available() -> bool:
+    """Check if tree-sitter-properties is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("properties")
+def analyze_properties(repo_root: Path) -> AnalysisResult:
     """Analyze Java properties files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        PropertiesAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_properties_tree_sitter_available():
-        warnings.warn(
-            "Properties analysis skipped: tree-sitter-properties not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return PropertiesAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "properties", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-properties not available",
-        )
-
-    analyzer = PropertiesAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

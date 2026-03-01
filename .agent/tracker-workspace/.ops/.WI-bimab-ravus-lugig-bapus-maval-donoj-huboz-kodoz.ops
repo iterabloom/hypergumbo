@@ -1,0 +1,91 @@
+- op: create  # 58c2
+  at: '2026-02-24T04:35:56Z'  # 58c2
+  by: agent  # 58c2
+  actor: jgstern_agent  # 58c2
+  clock: 1  # 58c2
+  nonce: 58c2  # 58c2
+  data:  # 58c2
+    kind: work_item  # 58c2
+    title: "Phase 3 deep-dive on PARTIALLY_USEFUL repos from cohorts 14-18"  # 58c2
+    status: needs_human_review  # 58c2
+    priority: 3  # 58c2
+    parent:  # 58c2
+    tags:  # 58c2
+    - bakeoff  # 58c2
+    before:  # 58c2
+    - META-donon-hajit-bajag-kolaf-tuhov-fomin-dujov-zuzih  # 58c2
+    duplicate_of: []  # 58c2
+    not_duplicate_of: []  # 58c2
+    pr_ref:  # 58c2
+    justification:  # 58c2
+    description: "SOURCE: Process health synthesis 3.4, recommendation 2. The bakeoff used a two-phase strategy: Phase 1 (intensive iteration, Feb 18-21) and Phase 2 (validation sweep, Feb 23). Phase 2 tested new repos across cohorts 14-18 (devops: argo-cd, harbor, vault, trivy, falco; observability: prometheus, alertmanager, jaeger; web apps: kong, postal, growthbook; ML/data: airflow, mlflow, feast, kserve, superset). All 16 assessed repos received PARTIALLY_USEFUL. Phase 3 should deep-dive on the repos with the worst quality variance — specifically kserve (broken routes, auto-generated code dominating centrality), alertmanager (hub-pruned orchestrator, missing v2 API), and prometheus (Go method-name collision causing 56% false positive reverse slices). These represent the bottom of the PARTIALLY_USEFUL range and have the most room for improvement. Phase 3 should iterate until either reaching USEFUL or identifying structurally hard blockers that cannot be fixed without new infrastructure."  # 58c2
+    fields: {}  # 58c2
+- op: update  # 4010
+  at: '2026-02-24T05:31:43Z'  # 4010
+  by: agent  # 4010
+  actor: jgstern_agent  # 4010
+  clock: 2  # 4010
+  nonce: '4010'  # 4010
+  set: {}  # 4010
+  remove:  # 4010
+    before: [META-donon]  # 4010
+- op: update  # a966
+  at: '2026-02-24T05:32:18Z'  # a966
+  by: agent  # a966
+  actor: jgstern_agent  # a966
+  clock: 3  # a966
+  nonce: a966  # a966
+  set: {}  # a966
+  remove:  # a966
+    before: [META-donon-hajit-bajag-kolaf-tuhov-fomin-dujov-zuzih]  # a966
+- op: update  # 55fd
+  at: '2026-02-25T08:01:34Z'  # 55fd
+  by: human  # 55fd
+  actor: jgstern  # 55fd
+  clock: 4  # 55fd
+  nonce: 55fd  # 55fd
+  set:  # 55fd
+    status: todo_soft  # 55fd
+- op: update  # 0702
+  at: '2026-02-25T20:49:26Z'  # 0702
+  by: agent  # 0702
+  actor: jgstern_agent  # 0702
+  clock: 5  # 0702
+  nonce: '0702'  # 0702
+  set: {}  # 0702
+- op: discuss  # 23bc
+  at: '2026-02-25T20:49:26Z'  # 23bc
+  by: agent  # 23bc
+  actor: jgstern_agent  # 23bc
+  clock: 6  # 23bc
+  nonce: 23bc  # 23bc
+  message: "Go-swagger handler cache route detection implemented (PR #1466). Alertmanager v2 routes now visible (9 routes). Next: re-run alertmanager assessment, then deep-dive prometheus and kserve."  # 23bc
+- op: update  # 99a3
+  at: '2026-02-25T21:20:51Z'  # 99a3
+  by: agent  # 99a3
+  actor: jgstern_agent  # 99a3
+  clock: 7  # 99a3
+  nonce: 99a3  # 99a3
+  set: {}  # 99a3
+- op: discuss  # 5066
+  at: '2026-02-25T21:20:51Z'  # 5066
+  by: agent  # 5066
+  actor: jgstern_agent  # 5066
+  clock: 8  # 5066
+  nonce: '5066'  # 5066
+  message: "FastAPI add_api_route detection implemented (PR #1467). kserve routes: 6→21. Combined with go-swagger (PR #1466, alertmanager 13→22), both route detection gaps from prior assessments are now fixed. Remaining issues: method-name collision false positives in prometheus reverse slice, centrality ranking inaccuracies across all 3 repos."  # 5066
+- op: discuss  # e6ab
+  at: '2026-02-25T21:50:12Z'  # e6ab
+  by: agent  # e6ab
+  actor: jgstern_agent  # e6ab
+  clock: 9  # e6ab
+  nonce: e6ab  # e6ab
+  message: "Chained-call ambiguity guard merged (PR #1468). Prometheus Manager.Update: 42→17 incoming edges (all legit from manager_test.go). All 3 repos improved: alertmanager 22 routes (go-swagger), kserve 21 routes (add_api_route), prometheus 70 non-test routes, no false-positive centrality inflation."  # e6ab
+- op: update  # edb1
+  at: '2026-02-25T22:28:26Z'  # edb1
+  by: agent  # edb1
+  actor: jgstern_agent  # edb1
+  clock: 10  # edb1
+  nonce: edb1  # edb1
+  set:  # edb1
+    status: done  # edb1

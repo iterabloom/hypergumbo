@@ -41,7 +41,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     """Test run with mocked JS analyzer returning successful results."""
     from unittest.mock import patch
     from hypergumbo_core.ir import Symbol, Span, AnalysisRun
-    from hypergumbo_lang_mainstream.js_ts import JsAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create a JS file to trigger analysis
     (tmp_path / "app.js").write_text("function foo() {}")
@@ -56,7 +56,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
         path=str(tmp_path / "app.js"),
         span=Span(start_line=1, end_line=1, start_col=0, end_col=17),
     )
-    mock_result = JsAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[mock_symbol],
         edges=[],
         run=mock_run,
@@ -84,12 +84,11 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with JS analyzer skipped (tree-sitter not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.js_ts import JsAnalysisResult
-    from hypergumbo_lang_mainstream.php import PhpAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag for JS
     mock_js_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
-    mock_js_result = JsAnalysisResult(
+    mock_js_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_js_run,
@@ -99,7 +98,7 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
 
     # Create mock result for PHP (not skipped, just empty)
     mock_php_run = AnalysisRun.create(pass_id="php-v1", version="test")
-    mock_php_result = PhpAnalysisResult(
+    mock_php_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_php_run,
@@ -129,11 +128,11 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with PHP analyzer skipped (tree-sitter-php not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.php import PhpAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="php-v1", version="test")
-    mock_result = PhpAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -162,11 +161,11 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with C analyzer skipped (tree-sitter-c not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.c import CAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="c-v1", version="test")
-    mock_result = CAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -195,11 +194,11 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Java analyzer skipped (tree-sitter-java not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.java import JavaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="java-v1", version="test")
-    mock_result = JavaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -228,11 +227,11 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Elixir analyzer skipped (tree-sitter-elixir not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.elixir import ElixirAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="elixir-v1", version="test")
-    mock_result = ElixirAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -261,11 +260,11 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Rust analyzer skipped (tree-sitter-rust not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.rust import RustAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="rust-v1", version="test")
-    mock_result = RustAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -294,11 +293,11 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Go analyzer skipped (tree-sitter-go not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.go import GoAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="go-v1", version="test")
-    mock_result = GoAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -327,11 +326,11 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Ruby analyzer skipped (tree-sitter-ruby not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.ruby import RubyAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ruby-v1", version="test")
-    mock_result = RubyAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -360,11 +359,11 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Kotlin analyzer skipped (tree-sitter-kotlin not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.kotlin import KotlinAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="kotlin-v1", version="test")
-    mock_result = KotlinAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -393,11 +392,11 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Swift analyzer skipped (tree-sitter-swift not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.swift import SwiftAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="swift-v1", version="test")
-    mock_result = SwiftAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -426,11 +425,11 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Scala analyzer skipped (tree-sitter-scala not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.scala import ScalaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="scala-v1", version="test")
-    mock_result = ScalaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -459,11 +458,11 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Lua analyzer skipped (tree-sitter-lua not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.lua import LuaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="lua-v1", version="test")
-    mock_result = LuaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -492,11 +491,11 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Haskell analyzer skipped (tree-sitter-haskell not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.haskell import HaskellAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="haskell-v1", version="test")
-    mock_result = HaskellAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -525,11 +524,11 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with OCaml analyzer skipped (tree-sitter-ocaml not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.ocaml import OCamlAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ocaml-v1", version="test")
-    mock_result = OCamlAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -995,7 +994,7 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "tests/test_main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]},
+                "meta": {"concepts": [{"concept": "main_function"}]},
             },
             {
                 "id": "python:src/api.py:1-5:get_user:function",
@@ -1007,12 +1006,24 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/user"}]},
             },
         ],
-        "edges": [],
+        "edges": [
+            {
+                "id": "edge:test-calls-main",
+                "src": "python:tests/test_main.py:1-5:test_main:function",
+                "dst": "python:src/main.py:1-5:main:function",
+                "type": "calls",
+                "confidence": 0.9,
+                "meta": {"evidence_type": "ast_call_direct"},
+            },
+        ],
     }
     input_file = tmp_path / "results.json"
     input_file.write_text(json.dumps(behavior_map))
 
-    # First test WITHOUT --exclude-tests: should show all entrypoints
+    # First test WITHOUT --exclude-tests: test_main with main_function concept
+    # has confidence 0.80 * 0.1 (test penalty) = 0.08, but the connectivity
+    # boost from one outgoing edge pushes it above MIN_ENTRYPOINT_CONFIDENCE
+    # (0.10). Both get_user and test_main should appear.
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "auto"
@@ -1030,9 +1041,12 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     result = cmd_slice(args)
     assert result == 0
     out, _ = capsys.readouterr()
-    assert "test_main" in out or "tests/test_main" in out
+    # Non-test route should be present
+    assert "get_user" in out or "api.py" in out
+    # Test main_function passes confidence threshold (0.10 >= 0.10)
+    assert "test_main" in out
 
-    # Now test WITH --exclude-tests: should NOT show test entrypoints
+    # With --exclude-tests: test_main is filtered by the exclude-tests flag
     args.exclude_tests = True
 
     result = cmd_slice(args)
@@ -1057,7 +1071,7 @@ def test_cmd_slice_list_entries_max_tier(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "supply_chain_tier": 1,
+                "supply_chain": {"tier": 1},
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/user"}]},
             },
             {
@@ -1068,7 +1082,7 @@ def test_cmd_slice_list_entries_max_tier(tmp_path: Path, capsys) -> None:
                 "language": "c",
                 "path": "deps/hiredis/examples/api.c",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "supply_chain_tier": 3,
+                "supply_chain": {"tier": 3},
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/vendor"}]},
             },
         ],
@@ -1115,7 +1129,7 @@ def test_cmd_slice_list_entries_all_filtered_out(tmp_path: Path, capsys) -> None
                 "language": "python",
                 "path": "tests/test_main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "supply_chain_tier": 1,
+                "supply_chain": {"tier": 1},
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]},
             },
             {
@@ -1126,7 +1140,7 @@ def test_cmd_slice_list_entries_all_filtered_out(tmp_path: Path, capsys) -> None
                 "language": "c",
                 "path": "deps/vendor/api.c",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "supply_chain_tier": 3,
+                "supply_chain": {"tier": 3},
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/vendor"}]},
             },
         ],
@@ -1393,6 +1407,146 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "reverse slice" in out
+
+
+def test_cmd_reverse_slice_downweights_test_callers(tmp_path: Path, capsys) -> None:
+    """Reverse slice ranks production callers higher than test callers.
+
+    When --reverse is used, test file callers should be downweighted so
+    production callers rank first in the node_ids list.  This makes reverse
+    slices useful for understanding production call graphs rather than
+    being dominated by test coverage.
+
+    The test builds a graph where the test caller has higher raw centrality
+    (2 incoming edges from test helpers) than the production caller (1 incoming
+    edge from a production helper).  Without test weighting the test caller
+    would rank first; with weighting the production caller wins.
+    """
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/core.py:1-5:target_func:function",
+                "name": "target_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/core.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:prod_caller:function",
+                "name": "prod_caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/handler.py:1-5:prod_helper:function",
+                "name": "prod_helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/handler.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:1-5:test_caller:function",
+                "name": "test_caller",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:6-10:test_helper_a:function",
+                "name": "test_helper_a",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:11-15:test_helper_b:function",
+                "name": "test_helper_b",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 11, "end_line": 15, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:prod->target",
+                "src": "python:src/api.py:1-5:prod_caller:function",
+                "dst": "python:src/core.py:1-5:target_func:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:prod_helper->prod",
+                "src": "python:src/handler.py:1-5:prod_helper:function",
+                "dst": "python:src/api.py:1-5:prod_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:test->target",
+                "src": "python:tests/test_core.py:1-5:test_caller:function",
+                "dst": "python:src/core.py:1-5:target_func:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:helper_a->test",
+                "src": "python:tests/test_core.py:6-10:test_helper_a:function",
+                "dst": "python:tests/test_core.py:1-5:test_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:helper_b->test",
+                "src": "python:tests/test_core.py:11-15:test_helper_b:function",
+                "dst": "python:tests/test_core.py:1-5:test_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "target_func"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = True
+    args.language = None
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    node_ids = data["feature"]["node_ids"]
+
+    # Both callers should be in the slice
+    prod_id = "python:src/api.py:1-5:prod_caller:function"
+    test_id = "python:tests/test_core.py:1-5:test_caller:function"
+    assert prod_id in node_ids
+    assert test_id in node_ids
+
+    # Production caller should rank higher (earlier in list) than test caller
+    # Without test weighting, test_caller has higher centrality (2 incoming
+    # edges vs 1 for prod_caller) and would rank first.
+    assert node_ids.index(prod_id) < node_ids.index(test_id), (
+        f"Production caller should rank higher than test caller in reverse slice, "
+        f"got: {node_ids}"
+    )
 
 
 def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
@@ -2625,6 +2779,297 @@ def test_cmd_slice_files_mode_file_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
+def test_cmd_slice_files_mode_path_suffix_match(tmp_path: Path, capsys) -> None:
+    """Test --files mode matches paths via suffix when exact match fails."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    # Create symbols with ABSOLUTE paths (as they might appear in behavior map)
+    symbols = [
+        Symbol(
+            id="python:src/utils.py:1-5:helper:function",
+            name="helper",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "src" / "utils.py"),  # Absolute path
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    # Changed files list uses RELATIVE paths (as git diff might report)
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("src/utils.py\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, [], tmp_path)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "src/utils.py" in out
+
+
+def test_cmd_slice_files_mode_no_symbols_in_changed_files(tmp_path: Path, capsys) -> None:
+    """Test --files mode with changed files that contain no symbols."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Span
+
+    # Symbols exist but in different files than what changed
+    symbols = [
+        Symbol(
+            id="python:other.py:1-5:func:function",
+            name="func",
+            kind="function",
+            language="python",
+            path="other.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    # Changed file doesn't have any symbols
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("readme.txt\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, [], tmp_path)
+
+    # Should succeed but with empty output
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert out.strip() == ""
+
+
+def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
+    """Test --files mode BFS correctly skips already-visited nodes."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    # Create a diamond dependency pattern:
+    # func_a is called by both func_b and func_c
+    # Both func_b and func_c are called by func_d
+    # If we change func_a, the BFS should visit func_d only once
+    symbols = [
+        Symbol(
+            id="python:a.py:1-5:func_a:function",
+            name="func_a",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:b.py:1-5:func_b:function",
+            name="func_b",
+            kind="function",
+            language="python",
+            path="b.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:c.py:1-5:func_c:function",
+            name="func_c",
+            kind="function",
+            language="python",
+            path="c.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:d.py:1-5:func_d:function",
+            name="func_d",
+            kind="function",
+            language="python",
+            path="d.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    edges = [
+        # func_b calls func_a
+        Edge(
+            id="edge:b->a",
+            src="python:b.py:1-5:func_b:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_c calls func_a
+        Edge(
+            id="edge:c->a",
+            src="python:c.py:1-5:func_c:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_d calls func_b
+        Edge(
+            id="edge:d->b",
+            src="python:d.py:1-5:func_d:function",
+            dst="python:b.py:1-5:func_b:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_d also calls func_c (creating diamond)
+        Edge(
+            id="edge:d->c",
+            src="python:d.py:1-5:func_d:function",
+            dst="python:c.py:1-5:func_c:function",
+            edge_type="calls",
+            line=3,
+        ),
+    ]
+
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("a.py\n")
+
+    output_file = tmp_path / "dependent.txt"
+
+    class Args:
+        files = str(changed_files)
+        output = str(output_file)
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+
+    assert result == 0
+    assert output_file.exists()
+
+    # Should find all four files (a.py changed, b.py and c.py call a, d.py calls both)
+    dependent = output_file.read_text().strip().split("\n")
+    assert "a.py" in dependent
+    assert "b.py" in dependent
+    assert "c.py" in dependent
+    assert "d.py" in dependent
+    # And d.py should appear only once (BFS deduplication)
+    assert dependent.count("d.py") == 1
+
+
+def test_cmd_slice_files_mode_stdout_output(tmp_path: Path, capsys) -> None:
+    """Test --files mode writes to stdout when no output file specified."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    symbols = [
+        Symbol(
+            id="python:main.py:1-5:main:function",
+            name="main",
+            kind="function",
+            language="python",
+            path="main.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:helper.py:1-5:helper:function",
+            name="helper",
+            kind="function",
+            language="python",
+            path="helper.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    edges = [
+        Edge(
+            id="edge:main->helper",
+            src="python:main.py:1-5:main:function",
+            dst="python:helper.py:1-5:helper:function",
+            edge_type="calls",
+            line=2,
+        ),
+    ]
+
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("helper.py\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # No output file = stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Should have written file list to stdout
+    assert "helper.py" in out
+    assert "main.py" in out
+
+
+def test_cmd_slice_files_integration(tmp_path: Path, capsys) -> None:
+    """Test cmd_slice with --files flag (integration test for line 914)."""
+    from hypergumbo_core.cli import cmd_slice
+
+    # Create a behavior map with symbols
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+            },
+            {
+                "id": "python:helper.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "helper.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:main->helper",
+                "src": "python:main.py:1-5:main:function",
+                "dst": "python:helper.py:1-5:helper:function",
+                "type": "calls",
+                "line": 2,
+            },
+        ],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    # Create changed files list
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("helper.py\n")
+
+    # Create output file path
+    output_file = tmp_path / "dependent.txt"
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.files = str(changed_files)
+    args.output = str(output_file)
+    args.max_hops = 10
+    args.input = None
+    args.entry = None
+    args.out = None
+    args.max_files = 100
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    assert output_file.exists()
+
+    dependent = output_file.read_text().strip().split("\n")
+    assert "helper.py" in dependent
+    assert "main.py" in dependent
+
+
 def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     """Test that cmd_compact converts a behavior map to compact form."""
     # Create a test behavior map with some symbols
@@ -2735,3 +3180,156 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     result = cmd_compact(args)
 
     assert result == 1
+
+
+def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
+    """--entry auto with --exclude-tests skips test file entrypoints.
+
+    Regression: previously --entry auto ignored --exclude-tests, causing
+    high-connectivity test file mains (e.g., compiler/test/paranoia.d:main)
+    to be selected over production entrypoints.
+    """
+    # Test file entrypoint with high connectivity (many outgoing edges)
+    test_node = {
+        "id": "d:test/integration/stress.d:1-500:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "d",
+        "path": "test/integration/stress.d",
+        "span": {"start_line": 1, "end_line": 500, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    # Production entrypoint with fewer edges
+    prod_node = {
+        "id": "d:src/main.d:1-50:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "d",
+        "path": "src/main.d",
+        "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    # Helper nodes for edges
+    helpers = [
+        {
+            "id": f"d:src/helper{i}.d:1-10:func{i}:function",
+            "name": f"func{i}",
+            "kind": "function",
+            "language": "d",
+            "path": f"src/helper{i}.d",
+            "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 1},
+        }
+        for i in range(20)
+    ]
+    # Test main calls many helpers (high connectivity)
+    test_edges = [
+        {"id": f"e-test-{i}", "src": test_node["id"], "dst": h["id"], "type": "call"}
+        for i, h in enumerate(helpers)
+    ]
+    # Production main calls a few helpers
+    prod_edges = [
+        {"id": "e-prod-0", "src": prod_node["id"], "dst": helpers[0]["id"], "type": "call"},
+        {"id": "e-prod-1", "src": prod_node["id"], "dst": helpers[1]["id"], "type": "call"},
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [test_node, prod_node] + helpers,
+        "edges": test_edges + prod_edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = True
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # Must select production entry, not test entry
+    assert "src/main.d" in out
+    assert "test/integration" not in out
+
+
+def test_cmd_slice_auto_entry_max_tier_filter(tmp_path: Path, capsys) -> None:
+    """--entry auto with --max-tier filters out higher-tier entrypoints."""
+    tier3_node = {
+        "id": "python:vendor/lib.py:1-5:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "python",
+        "path": "vendor/lib.py",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+        "supply_chain": {"tier": 3},
+    }
+    tier1_node = {
+        "id": "python:src/app.py:1-5:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "python",
+        "path": "src/app.py",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+        "supply_chain": {"tier": 1},
+    }
+    # Give tier3 node many edges to make it higher-scoring
+    helpers = [
+        {
+            "id": f"python:vendor/dep{i}.py:1-3:f{i}:function",
+            "name": f"f{i}",
+            "kind": "function",
+            "language": "python",
+            "path": f"vendor/dep{i}.py",
+            "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 1},
+        }
+        for i in range(15)
+    ]
+    edges = [
+        {"id": f"e-v-{i}", "src": tier3_node["id"], "dst": h["id"], "type": "call"}
+        for i, h in enumerate(helpers)
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [tier3_node, tier1_node] + helpers,
+        "edges": edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = 1
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # Must select tier-1 entry, not tier-3
+    assert "src/app.py" in out
+    assert "vendor/lib.py" not in out

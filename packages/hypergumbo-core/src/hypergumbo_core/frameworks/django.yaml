@@ -14,6 +14,8 @@ patterns:
   # These match against UsageContext records for call-based URL routing
 
   # Django URL patterns - path("/route/", view_func)
+  # Django's path() doesn't specify HTTP methods; the view handles all methods.
+  # Method is left unset (unlike Flask/FastAPI where decorators encode the method).
   - concept: route
     usage:
       kind: "^call$"
@@ -21,7 +23,6 @@ patterns:
       position: "^args\\[1\\]$"
     extract:
       path: "metadata.route_path"
-      method: "literal:GET"
 
   # Django URL patterns - re_path(r"^route/", view_func)
   - concept: route
@@ -31,7 +32,6 @@ patterns:
       position: "^args\\[1\\]$"
     extract:
       path: "metadata.route_path"
-      method: "literal:GET"
 
   # Django URL patterns - url(r"^route/", view_func) (deprecated but still used)
   - concept: route
@@ -41,7 +41,6 @@ patterns:
       position: "^args\\[1\\]$"
     extract:
       path: "metadata.route_path"
-      method: "literal:GET"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Django REST Framework - @api_view(['GET', 'POST'])
@@ -121,6 +120,15 @@ patterns:
   - concept: task
     decorator: "^(shared_task|task|celery\\.task)$"
 
+  # Django template tags - @register.simple_tag, @register.filter, etc.
+  - concept: template_tag
+    decorator: "^register\\.(simple_tag|inclusion_tag|assignment_tag)$"
+
+  # Django template filters - @register.filter
+  - concept: template_filter
+    decorator: "^register\\.filter$"
+
 linkers:
   - http
   - database_query
+  - orm

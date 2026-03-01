@@ -242,7 +242,6 @@ class TestAgdaImportAliases:
         """Extract aliases from renaming directive."""
         from hypergumbo_lang_extended1.agda import (
             _extract_edges_from_file,
-            _make_file_id,
         )
         from hypergumbo_core.symbol_resolution import NameResolver
         import tree_sitter

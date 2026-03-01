@@ -1,0 +1,34 @@
+- op: create  # f121
+  at: '2026-02-26T23:47:16Z'  # f121
+  by: agent  # f121
+  actor: jgstern_agent  # f121
+  clock: 1  # f121
+  nonce: f121  # f121
+  data:  # f121
+    kind: work_item  # f121
+    title: "Remove short-name registration from register_symbol in 10 languages"  # f121
+    status: todo_hard  # f121
+    priority: 2  # f121
+    parent:  # f121
+    tags: []  # f121
+    before: []  # f121
+    duplicate_of: []  # f121
+    not_duplicate_of: []  # f121
+    pr_ref:  # f121
+    description: "PR #1528 fixed Rust register_symbol to stop registering short names (suffix index handles lookups). Same collision-prone pattern exists in C++ Scala Swift Ruby Groovy C# Elixir (unconditional overwrite) and Perl Hack Apex Luau (guarded but order-dependent). Fix: remove short-name registration from all, rely on suffix index."  # f121
+    fields: {}  # f121
+- op: update  # 7c7b
+  at: '2026-02-27T00:33:40Z'  # 7c7b
+  by: agent  # 7c7b
+  actor: jgstern_agent  # 7c7b
+  clock: 2  # 7c7b
+  nonce: 7c7b  # 7c7b
+  set:  # 7c7b
+    status: done  # 7c7b
+- op: discuss  # c782
+  at: '2026-02-27T00:33:40Z'  # c782
+  by: agent  # c782
+  actor: jgstern_agent  # c782
+  clock: 3  # c782
+  nonce: c782  # c782
+  message: "Fixed in PR #1530. Removed short-name registration from register_symbol in 11 languages (C++, Scala, Swift, Ruby, Groovy, C#, Perl, Elixir, Hack, Apex, Luau). Extended suffix index to handle all separators (::, ., #, \\, :). Also fixed Hack namespace propagation and Elixir multi-clause dispatch preservation."  # c782

@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import jsonnet as jsonnet_module
 from hypergumbo_lang_extended1.jsonnet import (
-    JsonnetAnalysisResult,
     analyze_jsonnet,
     find_jsonnet_files,
     is_jsonnet_tree_sitter_available,
@@ -46,7 +46,7 @@ class TestIsJsonnetTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(jsonnet_module, "is_jsonnet_tree_sitter_available", return_value=False):
+        with patch.object(jsonnet_module._analyzer, "_check_grammar_available", return_value=False):
             assert jsonnet_module.is_jsonnet_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeJsonnet:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", "{}")
-        with patch.object(jsonnet_module, "is_jsonnet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Jsonnet analysis skipped"):
+        with patch.object(jsonnet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="jsonnet analysis skipped"):
                 result = jsonnet_module.analyze_jsonnet(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -200,13 +200,13 @@ local add(a, b) = a + b;
         result = analyze_jsonnet(tmp_path)
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
-        assert func.origin == "jsonnet.tree_sitter"
+        assert func.origin == "jsonnet-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", "{}")
         result = analyze_jsonnet(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "jsonnet.tree_sitter"
+        assert result.run.pass_id == "jsonnet-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -214,7 +214,7 @@ local add(a, b) = a + b;
         result = analyze_jsonnet(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """
@@ -224,9 +224,9 @@ local myFunc(x) = x;
         result = analyze_jsonnet(tmp_path)
         func = next((s for s in result.symbols if s.name == "myFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "jsonnet:" in func.id
-        assert "test.jsonnet" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("jsonnet:test.jsonnet:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

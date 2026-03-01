@@ -1,0 +1,29 @@
+- op: create  # ceee
+  at: '2026-02-22T04:50:26Z'  # ceee
+  by: agent  # ceee
+  actor: jgstern_agent  # ceee
+  clock: 1  # ceee
+  nonce: ceee  # ceee
+  data:  # ceee
+    kind: work_item  # ceee
+    title: "C++: port dispatch table detection from C analyzer"  # ceee
+    status: todo_hard  # ceee
+    priority: 1  # ceee
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # ceee
+    tags: []  # ceee
+    before: []  # ceee
+    duplicate_of: []  # ceee
+    not_duplicate_of: []  # ceee
+    pr_ref:  # ceee
+    justification:  # ceee
+    description: "C analyzer (c.py lines 421-541) detects function-pointer dispatch tables in static array initializers, emitting dispatches_to and uses_dispatch_table edges. C++ has no equivalent despite using identical patterns (command dispatch, plugin registries, state machines). Fix: port C's dispatch table detection logic to cpp.py, adapting for C++ AST node types. Discovered via falco bakeoff — load_rules_files has zero incoming calls edges because the action dispatch loop is not captured."  # ceee
+    fields: {}  # ceee
+- op: update  # 06c7
+  at: '2026-02-23T10:41:14Z'  # 06c7
+  by: agent  # 06c7
+  actor: jgstern_agent  # 06c7
+  clock: 2  # 06c7
+  nonce: 06c7  # 06c7
+  set:  # 06c7
+    status: done  # 06c7
+    pr_ref: '1363'  # 06c7

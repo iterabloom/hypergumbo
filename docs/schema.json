@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.2.1"
+      "const": "0.2.2"
     },
     "confidence_model": {
       "type": "string",
@@ -405,6 +405,35 @@
             }
           ],
           "description": "Number of source lines in the symbol body"
+        },
+        "signature": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Function/method signature string, e.g., '(x: int, y: str) -> bool'"
+        },
+        "docstring": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "First-line summary of doc comment (truncated to 80 chars)"
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Semantic modifiers (e.g., 'native', 'public', 'static')"
         }
       },
       "required": [
@@ -452,10 +481,15 @@
             "instantiates",
             "extends",
             "implements",
+            "contains",
+            "dispatches_to",
+            "uses",
             "references",
             "depends_on",
+            "depends_on_manifest",
             "links",
             "sources",
+            "routes_to",
             "script_src",
             "base_image",
             "kernel_launch",
@@ -471,7 +505,9 @@
             "query_references",
             "event_publishes",
             "resolver_implements",
-            "resolver_for_type"
+            "resolver_for_type",
+            "openapi_implements",
+            "subprocess_calls"
           ]
         },
         "line": {

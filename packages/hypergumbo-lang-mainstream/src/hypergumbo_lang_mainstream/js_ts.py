@@ -55,24 +55,27 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
     find_child_by_field,
-    is_grammar_available,
     iter_tree,
+    make_route_stable_id,
+    make_typed_stable_id,
     node_text as _node_text,
 )
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "javascript-ts-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("javascript")
 
 
 def find_js_ts_files(
@@ -204,9 +207,31 @@ def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
     return blocks
 
 
+class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for JavaScript/TypeScript/Svelte/Vue files.
+
+    Overrides ``analyze()`` entirely because JS/TS analysis is extremely
+    complex: it handles multiple file types (JS, TS, Svelte, Vue), uses
+    three passes (symbols, edges, usage contexts), and has custom resolvers
+    (NameResolver, ListNameResolver). The base class provides grammar
+    availability checking via ``_check_grammar_available()``.
+    """
+
+    lang = "javascript"
+    file_patterns: ClassVar[list[str]] = ["*.js", "*.jsx", "*.ts", "*.tsx", "*.svelte", "*.vue"]
+    grammar_module = "tree_sitter_javascript"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the JS/TS analysis using the existing analyze logic."""
+        return _analyze_javascript_impl(repo_root, max_files=max_files)
+
+
+_jsts_analyzer = JstsTreeSitterAnalyzer()
+
+
 def is_tree_sitter_available() -> bool:
     """Check if tree-sitter and required grammars are available."""
-    return is_grammar_available("tree_sitter_javascript")
+    return _jsts_analyzer._check_grammar_available()
 
 
 # Backwards compatibility alias
@@ -217,10 +242,11 @@ JsAnalysisResult = AnalysisResult
 class _ParsedFile:
     """Holds parsed file data for two-pass analysis.
 
-    Note on type inference: Variable method calls (e.g., client.send()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (client = new Client()) but NOT from function returns (client = getClient()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference sources for variable method call resolution (e.g., client.send()):
+    1. Direct constructor calls: client = new Client() → var_types['client'] = 'Client'
+    2. Return type annotations (TypeScript): client = getClient() where
+       getClient(): Client → var_types['client'] = 'Client'
+    3. Parameter type annotations: constructor(private db: Database) → var_types['db'] = 'Database'
     """
 
     path: Path
@@ -230,6 +256,8 @@ class _ParsedFile:
     line_offset: int = 0  # For Svelte script blocks
     # Maps local alias -> module name for 'import * as alias' and 'import alias'
     namespace_imports: dict[str, str] | None = None
+    # Maps imported name -> module path for 'import { Foo } from "module"'
+    named_imports: dict[str, str] | None = None
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -316,6 +344,184 @@ def _extract_namespace_imports(
 
     return namespace_imports
 
+
+def _extract_named_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract named imports from a parsed tree.
+
+    Tracks: import { Foo, Bar as Baz } from 'module' -> Foo: module, Baz: module
+
+    Returns dict mapping imported name (or alias) -> module path.
+    Used to disambiguate type references when multiple files define
+    the same class name (e.g., monorepos with duplicate CatsService).
+    """
+    named_imports: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_statement":
+            continue
+
+        module_name = None
+        import_names: list[str] = []
+
+        for child in node.children:
+            if child.type == "string":
+                module_name = _node_text(child, source).strip("'\"")
+            elif child.type == "import_clause":
+                for clause_child in child.children:
+                    if clause_child.type == "named_imports":
+                        for spec in clause_child.children:
+                            if spec.type == "import_specifier":
+                                # import { Foo as Bar } — use alias (Bar)
+                                # import { Foo } — use original name (Foo)
+                                alias_node = None
+                                original_node = None
+                                for sc in spec.children:
+                                    if sc.type == "identifier":
+                                        if original_node is None:
+                                            original_node = sc
+                                        else:
+                                            alias_node = sc
+                                if alias_node:
+                                    import_names.append(_node_text(alias_node, source))
+                                elif original_node:
+                                    import_names.append(_node_text(original_node, source))
+
+        if module_name:
+            for name in import_names:
+                named_imports[name] = module_name
+
+    return named_imports
+
+
+def _disambiguate_by_import(
+    import_path: str,
+    file_path: Path,
+    full_name: str,
+    symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """Disambiguate same-named symbols using the import path.
+
+    When multiple files define the same symbol name (e.g., NestJS monorepo with
+    duplicate CatsService in different apps), uses the relative import path from
+    ``import { Foo } from './module'`` to select the correct symbol.
+
+    Resolves the import path relative to the importing file's directory and
+    matches against candidate symbol file paths (with extension stripped).
+    Only handles relative imports (starting with '.').
+
+    Returns the matching Symbol, or None if disambiguation fails.
+    """
+    if not import_path.startswith("."):
+        return None  # Non-relative imports can't be disambiguated this way
+
+    candidates = symbols_by_name.get(full_name)
+    if not candidates or len(candidates) < 2:
+        return None  # No disambiguation needed
+
+    # Resolve import path relative to importing file's directory
+    # e.g., './cats.service' relative to '/repo/dir_b/controller.ts'
+    # -> '/repo/dir_b/cats.service'
+    resolved = (file_path.parent / import_path).resolve()
+    resolved_str = str(resolved)
+
+    for candidate in candidates:
+        # Strip file extension: '/repo/dir_b/cats.service.ts' -> '/repo/dir_b/cats.service'
+        candidate_stem = str(Path(candidate.path).with_suffix(""))
+        if candidate_stem == resolved_str:
+            return candidate
+
+    return None
+
+
+def _find_package_root(file_path: Path) -> Path | None:
+    """Walk up from *file_path* to find the nearest directory containing package.json."""
+    current = file_path.parent if file_path.is_file() else file_path
+    while current != current.parent:
+        if (current / "package.json").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _same_package_candidate(
+    file_path: Path,
+    func_name: str,
+    symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """Prefer same-package symbol when multiple packages define the same name.
+
+    When ``symbols_by_name[func_name]`` has multiple candidates, picks the one
+    whose file lives under the same npm package root (nearest ``package.json``
+    ancestor) as *file_path*.  Returns None if there's only one candidate, if
+    no package root is found, or if no candidate matches.
+    """
+    candidates = symbols_by_name.get(func_name)
+    if not candidates or len(candidates) < 2:
+        return None
+
+    pkg_root = _find_package_root(file_path)
+    if pkg_root is None:
+        return None
+
+    pkg_root_str = str(pkg_root)
+    for candidate in candidates:
+        if candidate.path.startswith(pkg_root_str):
+            return candidate
+
+    return None
+
+
+def _is_cross_package(file_path: Path, target_path: str) -> bool:
+    """Check if *target_path* is in a different npm package than *file_path*.
+
+    Returns True when both paths have package.json ancestors and those
+    ancestors differ.  Returns False when either path lacks a package.json
+    ancestor (can't determine package boundary) or when both are in the
+    same package.
+    """
+    src_root = _find_package_root(file_path)
+    if src_root is None:
+        return False
+    target = Path(target_path)
+    dst_root = _find_package_root(target)
+    if dst_root is None:
+        return False
+    return src_root != dst_root
+
+
+# JavaScript built-in constructor and global function names.
+# Calls like `Number(x)`, `String(x)`, `Boolean(x)` are type conversions,
+# not calls to user-defined functions.  Skip these during call resolution
+# to prevent false-positive edges to user-defined components that shadow
+# built-in names (e.g., a React component named `Number`).
+JS_BUILTIN_NAMES: set[str] = {
+    # Primitives / wrapper constructors
+    "Number", "String", "Boolean", "Symbol", "BigInt",
+    # Structural types
+    "Object", "Array", "Function", "RegExp", "Date",
+    # Error hierarchy
+    "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError",
+    "URIError", "EvalError",
+    # Collections
+    "Map", "Set", "WeakMap", "WeakSet",
+    # Async / promise
+    "Promise",
+    # Typed arrays
+    "ArrayBuffer", "DataView", "Int8Array", "Uint8Array",
+    "Uint8ClampedArray", "Int16Array", "Uint16Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    "BigInt64Array", "BigUint64Array",
+    # Other globals
+    "JSON", "Math", "Reflect", "Proxy", "Intl",
+    # Global functions
+    "parseInt", "parseFloat", "isNaN", "isFinite",
+    "encodeURI", "encodeURIComponent", "decodeURI", "decodeURIComponent",
+    "setTimeout", "setInterval", "clearTimeout", "clearInterval",
+    "console", "require",
+}
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
@@ -405,6 +611,47 @@ def _extract_jsts_signature(
         sig += ret_text
 
     return sig
+
+
+def normalize_jsts_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a JS/TS signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(signature, type_params, return_sep=":")
+
+
+def _extract_jsts_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a JS/TS function signature.
+
+    Parses signatures like "(x: number): MyClass" and returns "MyClass".
+    Only handles simple (non-generic) return types — returns None for
+    complex types like "Promise<X>", "X | Y", "X[]", etc.
+
+    The return type in JS/TS signatures appears after "):" at the end,
+    unlike Python which uses " -> ".
+
+    Args:
+        signature: Function signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature:
+        return None
+    # Find the closing paren, then look for ": ReturnType" after it
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0:
+        return None
+    after_paren = signature[paren_idx + 1:].strip()
+    if not after_paren.startswith(":"):
+        return None
+    ret_part = after_paren[1:].strip()
+    # Only handle simple names (identifiers), not generics or unions
+    if ret_part and ret_part.isidentifier():
+        return ret_part
+    return None
 
 
 def _extract_param_types(
@@ -706,9 +953,10 @@ def _extract_express_usage_contexts(
                 handler_ref = symbol_by_position[position_key].id
 
         # Get the receiver name (app, router, express, etc.)
+        # _detect_route_call requires a member_expression callee, so one always exists
         receiver_name = None
-        for child in node.children:
-            if child.type == "member_expression":
+        for child in node.children:  # pragma: no branch
+            if child.type == "member_expression":  # pragma: no branch
                 receiver_name = _get_receiver_name(child, source)
                 break
 
@@ -793,6 +1041,14 @@ def _extract_object_properties(
                         properties[key] = val[1:-1] if len(val) >= 2 else val
                     elif value_node.type == "identifier":
                         properties[key] = _node_text(value_node, source)
+                    elif value_node.type == "member_expression":
+                        # Member access like this.getAllStrategies —
+                        # extract the property name for handler resolution.
+                        prop_id = None
+                        for me_child in value_node.children:
+                            if me_child.type == "property_identifier":
+                                prop_id = _node_text(me_child, source)
+                        properties[key] = prop_id or _node_text(value_node, source)
                     elif value_node.type in ("function_expression", "arrow_function"):
                         # For inline functions, record a special marker
                         properties[key] = "<inline_function>"
@@ -1053,7 +1309,7 @@ def _extract_nextjs_usage_contexts(
                 is_default = True
             elif child.type == "function_declaration":
                 name = _find_name_in_children(child, source)
-                if name:
+                if name:  # pragma: no branch — function_declaration always has a name
                     export_name = name
             elif child.type == "identifier":  # pragma: no cover
                 export_name = _node_text(child, source)
@@ -1252,9 +1508,72 @@ def _extract_library_export_contexts(
     return contexts
 
 
+def _resolve_base_class_js(
+    base_name: str,
+    child_sym: Symbol,
+    candidates_by_name: dict[str, list[Symbol]],
+    parsed_files: list["_ParsedFile"],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes or interfaces share the same name (e.g., NestJS monorepo
+    with multiple CatsService, or test stubs named 'Model'), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import-path match: child's file has ``import { Name } from './path'`` matching
+       a candidate's file path (via ``_disambiguate_by_import``)
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        candidates_by_name: Multi-value lookup: name -> list of Symbol candidates
+        parsed_files: All parsed files (for named_imports lookup)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = candidates_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import-path match: check if child's file imports resolve to a candidate
+    # Find the parsed file for the child symbol to get its named_imports
+    child_file_path = Path(child_path) if child_path else None
+    if child_file_path is not None:
+        for pf in parsed_files:
+            if pf.path == child_file_path:
+                named_imports = pf.named_imports or {}
+                if base_name in named_imports:
+                    import_path = named_imports[base_name]
+                    # Build a symbols_by_name with just our candidates for disambiguation
+                    cand_by_name: dict[str, list[Symbol]] = {base_name: candidates}
+                    match = _disambiguate_by_import(
+                        import_path, pf.path, base_name, cand_by_name
+                    )
+                    if match is not None:
+                        return match
+                break
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
+    classes_by_name: dict[str, list[Symbol]],
+    parsed_files: list["_ParsedFile"],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance.
@@ -1263,9 +1582,14 @@ def _extract_inheritance_edges(
     to base classes/interfaces that exist in the analyzed codebase. This enables
     the type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
 
+    When multiple classes or interfaces share the same name (common in monorepos
+    and repos with test stubs), uses import-aware disambiguation via
+    ``_resolve_base_class_js()`` to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
+        classes_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        parsed_files: All parsed files (for named_imports lookup during disambiguation)
         run: Current analysis run for provenance
 
     Returns:
@@ -1273,11 +1597,13 @@ def _extract_inheritance_edges(
     """
     edges: list[Edge] = []
 
-    # Also build interface symbol lookup
-    interface_symbols: dict[str, Symbol] = {}
+    # Build multi-value interface lookup
+    interfaces_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if sym.kind == "interface":
-            interface_symbols[sym.name] = sym
+            if sym.name not in interfaces_by_name:
+                interfaces_by_name[sym.name] = []
+            interfaces_by_name[sym.name].append(sym)
 
     for sym in symbols:
         if sym.kind != "class":
@@ -1294,9 +1620,11 @@ def _extract_inheritance_edges(
             if "." in base_name:
                 base_name = base_name.split(".")[-1]
 
-            # Check if it's a class (extends) or interface (implements)
-            if base_name in class_symbols:
-                base_sym = class_symbols[base_name]
+            # Try class first, then interface, using disambiguation
+            base_sym = _resolve_base_class_js(
+                base_name, sym, classes_by_name, parsed_files
+            )
+            if base_sym is not None and base_sym.id != sym.id:
                 edge = Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
@@ -1308,17 +1636,102 @@ def _extract_inheritance_edges(
                     evidence_type="ast_extends",
                 )
                 edges.append(edge)
-            elif base_name in interface_symbols:
-                iface_sym = interface_symbols[base_name]
+            else:
+                # Check interfaces
+                iface_sym = _resolve_base_class_js(
+                    base_name, sym, interfaces_by_name, parsed_files
+                )
+                if iface_sym is not None and iface_sym.id != sym.id:
+                    edge = Edge.create(
+                        src=sym.id,
+                        dst=iface_sym.id,
+                        edge_type="implements",
+                        line=sym.span.start_line if sym.span else 0,
+                        confidence=0.95,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="ast_implements",
+                    )
+                    edges.append(edge)
+
+    return edges
+
+
+def _extract_decorator_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from decorator metadata.
+
+    For each symbol (class, method, function) with decorators metadata,
+    creates decorated_by edges to decorator functions that exist in the
+    analyzed codebase. This enables visibility of decorator patterns
+    like NestJS @Controller, @Injectable, @Get, etc.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for decorator lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for decorator relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
+
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the decorator to a symbol.
+            # Only accept function-like symbols as decorator targets — a class,
+            # interface, or type named "Post" is not the @Post() decorator.
+            # This prevents name collision false positives (e.g., NestJS @Post()
+            # resolving to a GraphQL Post data class).
+            _DECORATOR_KINDS = {"function", "method", "arrow_function"}
+            decorator_sym = global_symbols.get(dec_name)
+            if decorator_sym and decorator_sym.kind not in _DECORATOR_KINDS:
+                decorator_sym = None  # Wrong kind — leave as unresolved
+
+            line = sym.span.start_line if sym.span else 0
+
+            if decorator_sym:
                 edge = Edge.create(
                     src=sym.id,
-                    dst=iface_sym.id,
-                    edge_type="implements",
-                    line=sym.span.start_line if sym.span else 0,
+                    dst=decorator_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
                     confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ast_implements",
+                    evidence_type="ast_decorator",
+                )
+                edges.append(edge)
+            else:
+                # Emit unresolved edge for decorators we can't resolve
+                # This helps track framework decorators like @Injectable
+                dst_id = f"typescript:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_decorator_unresolved",
                 )
                 edges.append(edge)
 
@@ -1669,7 +2082,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=http_method,
+                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name},
                         )
                         symbols.append(symbol)
@@ -1697,7 +2110,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=http_method,
+                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
                         )
                         symbols.append(symbol)
@@ -1717,6 +2130,13 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_jsts_signature(node, source)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_jsts_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig,
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                     name=name,
@@ -1726,7 +2146,9 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
+
                 )
                 symbols.append(symbol)
 
@@ -1760,6 +2182,13 @@ def _extract_symbols(
                             end_col=value_node.end_point[1],
                         )
                         signature = _extract_jsts_signature(value_node, source)
+
+                        # Typed stable_id (ADR-0014 §3)
+                        norm_sig = normalize_jsts_signature(signature)
+                        stable_id = make_typed_stable_id(
+                            "function", norm_sig,
+                        ) if norm_sig else None
+
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -1769,6 +2198,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            stable_id=stable_id,
                             signature=signature,
                         )
                         symbols.append(symbol)
@@ -1805,6 +2235,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+
                 )
                 symbols.append(symbol)
 
@@ -1827,6 +2258,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+
                 )
                 symbols.append(symbol)
 
@@ -1849,6 +2281,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+
                 )
                 symbols.append(symbol)
 
@@ -1875,6 +2308,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+
                 )
                 symbols.append(symbol)
 
@@ -1902,7 +2336,12 @@ def _extract_symbols(
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
 
                 http_method, _method_route_path = _detect_nestjs_decorator(node, source)
-                stable_id = http_method if http_method else None
+                if http_method:
+                    # Use route path if available, fall back to method name for identity
+                    _nestjs_path = _method_route_path or full_name
+                    stable_id = make_route_stable_id(http_method, _nestjs_path)
+                else:
+                    stable_id = None
 
                 # Build meta with decorators
                 # Note: Route path combination is handled by enrichment via prefix_from_parent
@@ -1913,6 +2352,12 @@ def _extract_symbols(
                     meta = {"decorators": decorators}
 
                 signature = _extract_jsts_signature(node, source)
+
+                # Typed stable_id for non-route methods (ADR-0014 §3)
+                if stable_id is None:
+                    norm_sig = normalize_jsts_signature(signature)
+                    if norm_sig:
+                        stable_id = make_typed_stable_id(kind, norm_sig)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
@@ -1926,6 +2371,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
+
                 )
                 symbols.append(symbol)
 
@@ -1942,6 +2388,13 @@ def _extract_symbols(
                             end_col=child.end_point[1],
                         )
                         signature = _extract_jsts_signature(child, source)
+
+                        # Typed stable_id (ADR-0014 §3)
+                        norm_sig = normalize_jsts_signature(signature)
+                        stable_id = make_typed_stable_id(
+                            "function", norm_sig,
+                        ) if norm_sig else None
+
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -1951,6 +2404,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            stable_id=stable_id,
                             signature=signature,
                         )
                         symbols.append(symbol)
@@ -1959,32 +2413,113 @@ def _extract_symbols(
     return symbols
 
 
+def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) -> bool:
+    """Check if *name* is shadowed by a parameter of an enclosing function.
+
+    Walks up the AST from *node* looking for ``arrow_function``,
+    ``function_declaration``, ``function_expression``, or ``method_definition``
+    ancestors whose ``formal_parameters`` contain an ``identifier`` child
+    matching *name*.
+
+    This prevents false cross-file edges when a callback parameter (e.g.,
+    ``resolve`` / ``reject`` inside ``new Promise((resolve, reject) => {...})``)
+    happens to share a name with a globally-defined function.
+
+    Walks through ALL enclosing function boundaries (not just the nearest)
+    because JavaScript has lexical scoping — parameters from outer functions
+    are visible in nested callbacks.  For example::
+
+        new Promise(function(resolve, reject) {
+            doAsync(function(err) {
+                resolve(42);  // resolve is from the OUTER function
+            });
+        });
+
+    Stops at ``function_declaration`` boundaries since those represent
+    named top-level functions that form the analysis unit.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in (
+            "arrow_function",
+            "function_declaration",
+            "function_expression",
+            "method_definition",
+        ):
+            for child in current.children:
+                if child.type == "formal_parameters":
+                    for param in child.children:
+                        # JS: direct identifier params
+                        if param.type == "identifier" and _node_text(param, source) == name:
+                            return True
+                        # TS: params wrapped in required_parameter or optional_parameter
+                        if param.type in ("required_parameter", "optional_parameter"):
+                            for pc in param.children:
+                                if pc.type == "identifier" and _node_text(pc, source) == name:
+                                    return True
+                    break
+                # arrow_function with single param (no parens): (x) => ... vs x => ...
+                if current.type == "arrow_function" and child.type == "identifier":
+                    if _node_text(child, source) == name:
+                        return True
+            # Not found in this function's params.  For named function
+            # declarations (top-level), stop — these are analysis units.
+            # For closures (arrow_function, function_expression), continue
+            # walking up since JS lexical scoping makes outer params visible.
+            if current.type == "function_declaration":
+                return False
+            # else: keep walking up through closure scopes
+        current = current.parent
+    return False
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
     file_path: Path,
     global_symbols: dict[str, Symbol],
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    line_offset: int = 0,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
     Returns the Symbol for the enclosing function, or None if not inside one.
 
+    Uses symbol_by_position (keyed by file path + start position) for lookup,
+    which correctly handles monorepos where multiple files define methods with
+    the same name (e.g., CatsController.create in 11 NestJS sample apps).
+    Falls back to global_symbols when symbol_by_position is unavailable.
+
     For arrow functions passed as callbacks (not assigned to variables), looks up
     the symbol by position using symbol_by_position. This enables call attribution
     for patterns like: app.get('/', (req, res) => { helper(); })
     """
+    file_path_str = str(file_path)
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position:
+                pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _find_name_in_children(current, source)
             if name and name in global_symbols:
                 sym = global_symbols[name]
-                if sym.path == str(file_path):
+                if sym.path == file_path_str:
                     return sym
             return None  # pragma: no cover
 
         if current.type == "method_definition":
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position:
+                pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _find_name_in_children(current, source)
             if name:
                 class_ctx = _get_class_context(current, source)
@@ -1992,7 +2527,7 @@ def _get_enclosing_function(
                     full_name = f"{class_ctx}.{name}"
                     if full_name in global_symbols:
                         sym = global_symbols[full_name]
-                        if sym.path == str(file_path):
+                        if sym.path == file_path_str:
                             return sym
             return None  # pragma: no cover
 
@@ -2007,7 +2542,7 @@ def _get_enclosing_function(
                             name = _node_text(child, source)
                             if name in global_symbols:
                                 sym = global_symbols[name]
-                                if sym.path == str(file_path):
+                                if sym.path == file_path_str:
                                     return sym
                     break  # pragma: no cover
                 # Don't go too far up
@@ -2047,6 +2582,8 @@ def _extract_edges(
     method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    named_imports: dict[str, str] | None = None,
+    symbols_by_name: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -2066,13 +2603,19 @@ def _extract_edges(
     - Function parameters (TypeScript): function process(client: Client) -> client has type Client
 
     Type inference does NOT track types from function returns (const client = getClient()).
+
+    Import-path disambiguation (INV-013):
+    When multiple files define the same class name (e.g., NestJS monorepos),
+    ``named_imports`` and ``symbols_by_name`` are used to pick the correct
+    symbol by matching the relative import path against candidate file paths.
+    This applies to Cases 1b (this.property.method()) and 3 (variable.method()).
     """
     if namespace_imports is None:
         namespace_imports = {}
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
     if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     edges: list[Edge] = []
@@ -2158,15 +2701,53 @@ def _extract_edges(
                             break
                 else:
                     # Regular function call - use resolver for suffix matching
-                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
-                    if current_function:
-                        lookup_result = resolver.lookup(func_name)
-                        if lookup_result.found:
-                            # Scale confidence by resolver's confidence multiplier
-                            edge_confidence = 0.85 * lookup_result.confidence
+                    # Skip JS built-in names to prevent false edges to
+                    # user-defined functions that shadow built-ins
+                    # (e.g., Number(x) → React component named Number).
+                    if func_name in JS_BUILTIN_NAMES:
+                        pass  # fall through to callback/middleware handling below
+                    elif _is_shadowed_by_param(node, func_name, source):
+                        pass  # local parameter shadows global — skip resolution
+                    elif (current_function := _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)):
+                        # Try import-path disambiguation first (cross-package
+                        # same-name functions, e.g. two packages both export
+                        # ``process()`` but main.js imports from one specific
+                        # module).  Falls back to resolver if no named import
+                        # exists for this function name.
+                        callee = None
+                        edge_confidence = 0.85
+                        import_module = (named_imports or {}).get(func_name)
+                        if import_module and symbols_by_name:
+                            callee = _disambiguate_by_import(
+                                import_module, file_path, func_name, symbols_by_name,
+                            )
+                            if callee is not None:
+                                edge_confidence = 0.90  # explicit import match
+                        # Try same-package preference (avoids cross-package
+                        # false positives for common names like error,
+                        # resolve, reject when there's no import).
+                        if callee is None and symbols_by_name:
+                            callee = _same_package_candidate(
+                                file_path, func_name, symbols_by_name,
+                            )
+                            if callee is not None:
+                                edge_confidence = 0.85  # same-package heuristic
+                        if callee is None:
+                            lookup_result = resolver.lookup(func_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                # Cross-package guard: the resolver fallback
+                                # should not cross npm packages (import-path
+                                # and same-package checks above already had
+                                # their chance to find a valid callee).
+                                if not _is_cross_package(
+                                    file_path, lookup_result.symbol.path,
+                                ):
+                                    callee = lookup_result.symbol
+                                    edge_confidence = 0.85 * lookup_result.confidence
+                        if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1 + line_offset,
                                 origin=PASS_ID,
@@ -2176,9 +2757,24 @@ def _extract_edges(
                             )
                             edges.append(edge)
 
+                            # Return type inference: if function has a return
+                            # type annotation, track the variable's type
+                            if callee.kind in ("function", "method"):
+                                ret_name = _extract_jsts_return_type_name(
+                                    callee.signature
+                                )
+                                if ret_name and node.parent and node.parent.type == "variable_declarator":
+                                    # Check return type is a known class
+                                    class_result = class_resolver.lookup(ret_name)
+                                    if class_result.found:
+                                        for pc in node.parent.children:
+                                            if pc.type == "identifier":
+                                                var_types[_node_text(pc, source)] = ret_name
+                                                break
+
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -2212,6 +2808,47 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
 
+                        # Case 1b: this.property.method() via constructor injection
+                        # Handles NestJS/Angular patterns like this.catsService.create()
+                        # where catsService is a constructor-injected dependency
+                        elif obj_node and obj_node.type == "member_expression":
+                            # Check if it's this.property pattern
+                            this_node = None
+                            property_name = None
+                            for mc in obj_node.children:
+                                if mc.type == "this":
+                                    this_node = mc
+                                elif mc.type == "property_identifier":
+                                    property_name = _node_text(mc, source)
+                            # If we have this.propertyName and propertyName has a known type
+                            if this_node and property_name and property_name in var_types:
+                                type_class_name = var_types[property_name]
+                                full_name = f"{type_class_name}.{method_name}"
+                                # Try import-path disambiguation first (monorepo duplicate names)
+                                import_module = (named_imports or {}).get(type_class_name)
+                                callee = None
+                                if import_module and symbols_by_name:
+                                    callee = _disambiguate_by_import(
+                                        import_module, file_path, full_name, symbols_by_name,
+                                    )
+                                if callee is None:
+                                    lookup_result = resolver.lookup(full_name)
+                                    if lookup_result.found and lookup_result.symbol is not None:
+                                        callee = lookup_result.symbol
+                                if callee is not None:
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_method_this_property",
+                                        confidence=0.90,
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
+
                         # Case 2: alias.func() via namespace import
                         elif obj_name and obj_name in namespace_imports:
                             # This is a namespace call: alias.func() or alias.Class()
@@ -2220,47 +2857,67 @@ def _extract_edges(
                             import_path = namespace_imports[obj_name]
                             lookup_result = resolver.lookup(method_name, path_hint=import_path)
                             if lookup_result.found and lookup_result.symbol is not None:
-                                is_class = lookup_result.symbol.kind == "class"
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="instantiates" if is_class else "calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                    confidence=0.90 * lookup_result.confidence,
-                                )
-                                edges.append(edge)
-                                edge_added = True
+                                # Cross-package guard: block resolution when
+                                # the target lives in a different npm package.
+                                if _is_cross_package(file_path, lookup_result.symbol.path):
+                                    pass  # suppress cross-package namespace call
+                                else:
+                                    is_class = lookup_result.symbol.kind == "class"
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="instantiates" if is_class else "calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_new" if is_class else "ast_call_namespace",
+                                        confidence=0.90 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
                             type_class_name = var_types[obj_name]
                             full_name = f"{type_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(full_name)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            # Try import-path disambiguation first (monorepo duplicate names)
+                            import_module = (named_imports or {}).get(type_class_name)
+                            callee = None
+                            if import_module and symbols_by_name:
+                                callee = _disambiguate_by_import(
+                                    import_module, file_path, full_name, symbols_by_name,
+                                )
+                            if callee is None:
+                                lookup_result = resolver.lookup(full_name)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    callee = lookup_result.symbol
+                            if callee is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85 * lookup_result.confidence,
+                                    confidence=0.85,
                                 )
                                 edges.append(edge)
                                 edge_added = True
 
-                        # Case 4: Fallback - method name match with low confidence
+                        # Case 4: Fallback - method name match with low confidence.
+                        # Emit only one edge to the best candidate (not all
+                        # candidates) to avoid name-collision fanout where
+                        # every class with the same method name gets linked.
                         if not edge_added:
                             lookup_result = method_resolver.lookup(method_name)
-                            if lookup_result.found and lookup_result.candidates:
-                                for target_sym in lookup_result.candidates:
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                # Cross-package guard: low-confidence method
+                                # inference should not cross npm packages.
+                                if not _is_cross_package(file_path, lookup_result.symbol.path):
                                     edge = Edge.create(
                                         src=current_function.id,
-                                        dst=target_sym.id,
+                                        dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1 + line_offset,
                                         origin=PASS_ID,
@@ -2270,9 +2927,143 @@ def _extract_edges(
                                     )
                                     edges.append(edge)
 
+            # Callback argument references: func(handler) or app.get("/path", handler)
+            # When a bare identifier in the arguments resolves to a function,
+            # create a references edge. Common with Express route handlers,
+            # Array.forEach/map callbacks, and event listener patterns.
+            if args_node is not None:
+                current_function = _get_enclosing_function(
+                    node, source, file_path, global_symbols,
+                    symbol_by_position, line_offset,
+                )
+                if current_function is not None:
+                    for arg in args_node.children:
+                        if arg.type != "identifier":
+                            continue
+                        arg_name = _node_text(arg, source)
+                        if arg_name in JS_BUILTIN_NAMES:
+                            continue
+                        # Parameter shadowing: skip if arg name matches a
+                        # param of an enclosing function (e.g., resolve
+                        # passed to forEach inside a Promise callback).
+                        if _is_shadowed_by_param(arg, arg_name, source):
+                            continue
+                        # Same resolution strategy as direct calls:
+                        # import-path first, then same-package, then global
+                        target: Symbol | None = None
+                        import_module = (named_imports or {}).get(arg_name)
+                        if import_module and symbols_by_name:
+                            target = _disambiguate_by_import(
+                                import_module, file_path, arg_name, symbols_by_name,
+                            )
+                        if target is None and symbols_by_name:
+                            target = _same_package_candidate(
+                                file_path, arg_name, symbols_by_name,
+                            )
+                        if target is None:
+                            target = global_symbols.get(arg_name)
+                        if target is None:  # pragma: no cover - defensive resolver fallback
+                            lookup_result = resolver.lookup(arg_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                target = lookup_result.symbol
+                        # Route symbols can shadow function symbols in
+                        # global_symbols (last-one-wins).  When target is
+                        # a route, prefer the function symbol with the
+                        # same name via symbols_by_name, so the edge
+                        # points to the function definition.
+                        if target is not None and target.kind == "route" and symbols_by_name:
+                            fn_candidates = [
+                                s for s in symbols_by_name.get(arg_name, [])
+                                if s.kind in ("function", "method")
+                            ]
+                            if fn_candidates:
+                                target = fn_candidates[0]
+                        if (
+                            target is not None
+                            and target.kind in ("function", "method", "route")
+                            and target.id != current_function.id
+                        ):
+                            # Cross-package guard: callback args that resolve
+                            # to a different npm package without an explicit
+                            # import are likely false positives (e.g., error()
+                            # in client-admin resolving as a callback ref from
+                            # server code that passes error as argument).
+                            if _is_cross_package(file_path, target.path):
+                                continue
+                            # Avoid duplicate: skip if we already created a
+                            # direct call edge to the same target (the callee
+                            # identifier itself is also an argument child).
+                            if func_node is not None and _node_text(func_node, source) == arg_name:  # pragma: no cover - dedup with direct call
+                                continue
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="callback_argument_reference",
+                                confidence=0.75,
+                            ))
+
+            # Middleware chain edges: for Express-style route registrations
+            # with multiple middleware/handler arguments, create edges between
+            # consecutive handlers so the execution pipeline is visible in
+            # forward/reverse slices.
+            # Example: app.post('/path', auth, validate, handler) creates
+            #   auth→validate and validate→handler edges.
+            if args_node is not None:
+                http_method, route_path = _detect_route_call(node, source)
+                if http_method is not None:
+                    # Collect middleware/handler arguments (skip path string, parens, commas)
+                    chain_symbols: list[Symbol] = []
+                    for arg in args_node.children:
+                        if arg.type in ("(", ")", ",", "string", "template_string"):
+                            continue
+                        resolved: Symbol | None = None
+                        if arg.type == "identifier":
+                            arg_name = _node_text(arg, source)
+                            resolved = global_symbols.get(arg_name)
+                            if resolved is not None and resolved.kind == "route" and symbols_by_name:
+                                fn_cands = [
+                                    s for s in symbols_by_name.get(arg_name, [])
+                                    if s.kind in ("function", "method")
+                                ]
+                                if fn_cands:
+                                    resolved = fn_cands[0]
+                        elif arg.type == "call_expression":
+                            # Factory call like need('txt') — resolve the
+                            # factory function itself.
+                            for child in arg.children:
+                                if child.type == "identifier":
+                                    fn_name = _node_text(child, source)
+                                    resolved = global_symbols.get(fn_name)
+                                    break
+                        if resolved is not None and resolved.kind in ("function", "method", "route"):
+                            # Cross-package guard: middleware chain symbols
+                            # should come from the same package as the
+                            # route registration file.
+                            if not _is_cross_package(file_path, resolved.path):
+                                chain_symbols.append(resolved)
+                    # Create edges between consecutive chain entries
+                    for i in range(len(chain_symbols) - 1):
+                        src_sym = chain_symbols[i]
+                        dst_sym = chain_symbols[i + 1]
+                        if src_sym.id != dst_sym.id:
+                            edges.append(Edge.create(
+                                src=src_sym.id,
+                                dst=dst_sym.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="middleware_chain",
+                                confidence=0.70,
+                            ))
+
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
@@ -2331,6 +3122,80 @@ def _extract_edges(
                             var_types[var_name] = class_name
                             break
 
+        # Object literal function references: {onClick: handleClick}
+        # AST: pair → property_identifier : identifier
+        # When the value is a bare identifier that resolves to a function,
+        # create a references edge. Common in React, Express config, etc.
+        elif node.type == "pair":
+            value_node = None
+            seen_colon = False
+            for pair_child in node.children:
+                if pair_child.type == ":":
+                    seen_colon = True
+                elif seen_colon and pair_child.type == "identifier":
+                    value_node = pair_child
+                    break
+
+            if value_node is not None:
+                ref_name = _node_text(value_node, source)
+                target = global_symbols.get(ref_name)
+                if target is None:  # pragma: no cover - defensive resolver fallback
+                    lookup_result = resolver.lookup(ref_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        target = lookup_result.symbol
+                # Cross-package guard: object field refs should not
+                # cross npm package boundaries.
+                if (
+                    target is not None
+                    and target.kind in ("function", "method")
+                    and not _is_cross_package(file_path, target.path)
+                ):
+                    current_function = _get_enclosing_function(
+                        node, source, file_path, global_symbols,
+                        symbol_by_position, line_offset,
+                    )
+                    if current_function is not None and target.id != current_function.id:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1 + line_offset,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="object_field_reference",
+                            confidence=0.80,
+                        ))
+
+        # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
+        elif node.type == "shorthand_property_identifier":
+            ref_name = _node_text(node, source)
+            target = global_symbols.get(ref_name)
+            if target is None:  # pragma: no cover - defensive resolver fallback
+                lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    target = lookup_result.symbol
+            # Cross-package guard: shorthand props should not cross packages
+            if (
+                target is not None
+                and target.kind in ("function", "method")
+                and not _is_cross_package(file_path, target.path)
+            ):
+                current_function = _get_enclosing_function(
+                    node, source, file_path, global_symbols,
+                    symbol_by_position, line_offset,
+                )
+                if current_function is not None and target.id != current_function.id:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1 + line_offset,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="object_field_reference",
+                        confidence=0.80,
+                    ))
+
     return edges
 
 
@@ -2347,6 +3212,7 @@ def _extract_symbols_and_edges(
     For cross-file resolution, use the two-pass approach in analyze_javascript.
     """
     symbols = _extract_symbols(tree, source, file_path, lang, run)
+    populate_docstrings_from_tree(tree.root_node, source, symbols)
 
     # Build local symbol registry
     global_symbols: dict[str, Symbol] = {}
@@ -2426,6 +3292,7 @@ def _analyze_svelte_file(
         line_offset = block.start_line - 1
 
         symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
 
         # Build local symbol registry for this block
         local_symbols: dict[str, Symbol] = {}
@@ -2486,6 +3353,7 @@ def _analyze_vue_file(
         line_offset = block.start_line - 1
 
         symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
 
         # Build local symbol registry for this block
         local_symbols: dict[str, Symbol] = {}
@@ -2513,6 +3381,7 @@ def _analyze_vue_file(
     return all_symbols, all_edges, True
 
 
+@register_analyzer("javascript", supports_max_files=True)
 def analyze_javascript(
     repo_root: Path, max_files: int | None = None
 ) -> JsAnalysisResult:
@@ -2529,20 +3398,32 @@ def analyze_javascript(
         repo_root: Root directory of the repository
         max_files: Optional limit on number of files to analyze
     """
+    return _jsts_analyzer.analyze(repo_root, max_files=max_files)
+
+
+def _analyze_javascript_impl(
+    repo_root: Path, max_files: int | None = None
+) -> JsAnalysisResult:
+    """Internal implementation of JS/TS analysis.
+
+    Called by JstsTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
     start_time = time.time()
 
     # Create analysis run for provenance
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Check for tree-sitter availability
-    if not is_tree_sitter_available():
-        skip_reason = "JS/TS analysis skipped: requires tree-sitter (pip install hypergumbo[javascript])"
-        warnings.warn(skip_reason, stacklevel=2)
+    if not _jsts_analyzer._check_grammar_available():
+        skip_reason = "javascript analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JsAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="javascript tree-sitter grammar not available",
         )
 
     # Pass 1: Parse all files and extract symbols
@@ -2563,11 +3444,13 @@ def analyze_javascript(
             tree = parser.parse(source)
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)
+            nm_imports = _extract_named_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source, lang=lang,
-                namespace_imports=ns_imports
+                namespace_imports=ns_imports, named_imports=nm_imports
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run)
+            populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
         except (OSError, IOError):
@@ -2592,12 +3475,15 @@ def analyze_javascript(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
+                nm_imports = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports
+                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+                    named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
             files_analyzed += 1
@@ -2623,12 +3509,15 @@ def analyze_javascript(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
+                nm_imports = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports
+                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+                    named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
             files_analyzed += 1
@@ -2639,11 +3528,17 @@ def analyze_javascript(
     global_symbols: dict[str, Symbol] = {}
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
+    # All symbols indexed by name (supports multiple with same name for disambiguation)
+    symbols_by_name: dict[str, list[Symbol]] = {}
     # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        # Multi-value index for import-path disambiguation
+        if sym.name not in symbols_by_name:
+            symbols_by_name[sym.name] = []
+        symbols_by_name[sym.name].append(sym)
         # Index by position for inline handler lookup in UsageContext creation
         symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
@@ -2656,7 +3551,7 @@ def analyze_javascript(
 
     # Pass 2: Extract edges using global symbol registry
     resolver = NameResolver(global_symbols)
-    method_resolver = ListNameResolver(global_methods)
+    method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
@@ -2666,6 +3561,8 @@ def analyze_javascript(
             pf.namespace_imports or {},
             resolver, method_resolver, class_resolver,
             symbol_by_position,
+            pf.named_imports or {},
+            symbols_by_name,
         )
         all_edges.extend(edges)
 
@@ -2698,8 +3595,21 @@ def analyze_javascript(
         all_usage_contexts.extend(library_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
-    inheritance_edges = _extract_inheritance_edges(all_symbols, global_classes, run)
+    # Build multi-value class lookup for disambiguation (INV-015)
+    classes_by_name: dict[str, list[Symbol]] = {}
+    for sym in all_symbols:
+        if sym.kind == "class":
+            if sym.name not in classes_by_name:
+                classes_by_name[sym.name] = []
+            classes_by_name[sym.name].append(sym)
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, classes_by_name, parsed_files, run
+    )
     all_edges.extend(inheritance_edges)
+
+    # Extract decorator edges (INV-012: decorators metadata -> decorated_by edges)
+    decorator_edges = _extract_decorator_edges(all_symbols, global_symbols, run)
+    all_edges.extend(decorator_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

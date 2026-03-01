@@ -1,0 +1,36 @@
+- op: create  # 9b78
+  at: '2026-02-26T18:08:36Z'  # 9b78
+  by: agent  # 9b78
+  actor: jgstern_agent  # 9b78
+  clock: 1  # 9b78
+  nonce: 9b78  # 9b78
+  data:  # 9b78
+    kind: work_item  # 9b78
+    title: "Rslice seed fallback: use top-N in-degree when entrypoint seeds yield empty BFS"  # 9b78
+    status: todo_hard  # 9b78
+    priority: 1  # 9b78
+    parent:  # 9b78
+    tags:  # 9b78
+    - bakeoff  # 9b78
+    - slice  # 9b78
+    before: []  # 9b78
+    duplicate_of: []  # 9b78
+    not_duplicate_of: []  # 9b78
+    pr_ref:  # 9b78
+    description: "12/23 DEEP bakeoff repos have rslice_seeds.json with seeds=[]. Root cause: entrypoint-based seed strategy selects main() functions or bin declarations, which have 0 callers by definition. When entrypoint seeds yield empty results, the system should fall back to top-N high-in-degree symbols. Affected repos: imara-diff, scap, toad, claude-agent-acp, extensions, livekit, workadventure, guacamole-client, guacamole-server, tmux, kamaraflow, bun."  # 9b78
+    fields: {}  # 9b78
+- op: update  # b350
+  at: '2026-02-26T19:11:54Z'  # b350
+  by: agent  # b350
+  actor: jgstern_agent  # b350
+  clock: 2  # b350
+  nonce: b350  # b350
+  set:  # b350
+    status: done  # b350
+- op: discuss  # d916
+  at: '2026-02-26T19:11:54Z'  # d916
+  by: agent  # d916
+  actor: jgstern_agent  # d916
+  clock: 3  # d916
+  nonce: d916  # d916
+  message: "Fixed in PR #1512. Added relaxed fallback to pick_reverse_slice_seeds() and --all/--some batch flags."  # d916

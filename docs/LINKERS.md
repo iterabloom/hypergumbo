@@ -1,15 +1,19 @@
 # Cross-Language Linkers
 
-Hypergumbo includes 15 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+Hypergumbo includes linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
 
 ## Linker Table
 
 | Linker | Description |
 |--------|-------------|
 | JNI | Java `native` methods ↔ C JNI implementations |
+| Cgo | Go `C.funcName()` calls ↔ C/C++ function implementations |
+| Python FFI | Python `ctypes`/`cffi` calls ↔ C/C++ functions, PyO3 Rust ↔ Python |
+| Ruby FFI | Ruby FFI gem `attach_function` ↔ C/C++ functions, `rb_define_method` C extensions |
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
+| OTP | Elixir GenServer.call/cast → handle_call/handle_cast dispatch |
 | Swift/ObjC | `@objc` annotations, `#selector()`, bridging headers |
 | gRPC | Protobuf services, stubs, and servicer implementations |
 | HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
@@ -21,6 +25,11 @@ Hypergumbo includes 15 linkers that connect symbols across language boundaries. 
 | Event Sourcing | EventEmitter, Django signals, Spring events |
 | Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
 | Subprocess | `subprocess.run()` → CLI command handlers (Click, Typer, argparse) |
+| Containment | Class/interface symbols → method/getter/setter symbols (`contains` edges) |
+| Inheritance | `base_classes` metadata → `extends`/`implements` edges across all languages |
+| Route Handler | Route symbols → handler functions (Rails, Phoenix, Laravel, Express, Django) |
+| Type Hierarchy | Interface/abstract methods → concrete implementations (`dispatches_to` edges) |
+| DI Resolution | Interface methods → DI-bound implementation methods (`di_resolves` edges). Supports Guice, Spring, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python injector, Java SPI. Heuristic fallbacks for single-impl and naming conventions. |
 
 ## How Linkers Work
 
@@ -47,13 +56,13 @@ Without linkers, you'd see isolated subgraphs per language. Linkers reveal the a
 
 ## Adding a New Linker
 
-See `src/hypergumbo/linkers/` for examples. Linkers register via decorator:
+See `packages/hypergumbo-core/src/hypergumbo_core/linkers/` for examples. Linkers register via decorator:
 
 ```python
-from hypergumbo.linkers.registry import register_linker
+from hypergumbo_core.linkers.registry import register_linker, LinkerContext, LinkerResult
 
-@register_linker("myprotocol")
-def link_myprotocol(symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
+@register_linker("myprotocol", priority=50)
+def link_myprotocol(ctx: LinkerContext) -> LinkerResult:
     # Find cross-language patterns, return new edges
     ...
 ```

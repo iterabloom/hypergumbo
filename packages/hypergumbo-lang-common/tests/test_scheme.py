@@ -93,7 +93,7 @@ class TestIsSchemeTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_common.scheme as scheme_module
-        with patch.object(scheme_module, "is_scheme_tree_sitter_available", return_value=False):
+        with patch.object(scheme_module._analyzer, "_check_grammar_available", return_value=False):
             assert scheme_module.is_scheme_tree_sitter_available() is False
 
 
@@ -104,12 +104,12 @@ class TestAnalyzeScheme:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_common.scheme as scheme_module
 
-        with patch.object(scheme_module, "is_scheme_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(scheme_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="scheme analysis skipped"):
                 result = scheme_module.analyze_scheme(scheme_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 

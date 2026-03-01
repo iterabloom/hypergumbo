@@ -13,15 +13,17 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-cuda is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all function symbols
-   - Pass 2: Detect kernel launches and create edges
-4. Create call edges for function invocations
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all function symbols
+2. Pass 2: Detect kernel launches and create edges
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the CUDA-specific
+extraction logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-cuda package for grammar
 - Two-pass allows cross-file kernel launch resolution
@@ -30,53 +32,33 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "cuda-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("cuda")
 
 
 def find_cuda_files(repo_root: Path) -> Iterator[Path]:
     """Yield all CUDA files in the repository."""
     yield from find_files(repo_root, ["*.cu", "*.cuh"])
-
-
-def is_cuda_tree_sitter_available() -> bool:
-    """Check if tree-sitter with CUDA grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_cuda") is None:
-        return False  # pragma: no cover
-    return True
-
-
-@dataclass
-class CudaAnalysisResult:
-    """Result of analyzing CUDA files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"cuda:{path}:{start_line}-{end_line}:{name}:{kind}"
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -85,28 +67,15 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover
-
-
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from a function_definition or function_declarator."""
     # Look for function_declarator
-    declarator = _find_child_by_type(node, "function_declarator")
+    declarator = find_child_by_type(node, "function_declarator")
     if declarator:
         # The first identifier child of function_declarator is the name
         for child in declarator.children:
             if child.type == "identifier":
-                return _node_text(child, source)
+                return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -120,21 +89,21 @@ def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional
     return_type: Optional[str] = None
 
     # Find function_declarator for parameters
-    declarator = _find_child_by_type(node, "function_declarator")
+    declarator = find_child_by_type(node, "function_declarator")
     if declarator:
         # Find parameter_list within declarator
         for child in declarator.children:
             if child.type == "parameter_list":
                 for param_child in child.children:
                     if param_child.type == "parameter_declaration":
-                        param_text = _node_text(param_child, source).strip()
+                        param_text = node_text(param_child, source).strip()
                         if param_text:
                             params.append(param_text)
 
     # Find return type (primitive_type, type_identifier, etc.)
     for child in node.children:
         if child.type in ("primitive_type", "type_identifier", "sized_type_specifier"):
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
             break
 
     sig = "(" + ", ".join(params) + ")"
@@ -223,7 +192,7 @@ def _extract_cuda_symbols(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, kind)
+                symbol_id = make_symbol_id("cuda", rel_path, start_line, end_line, func_name, kind)
 
                 # Extract signature
                 signature = _extract_cuda_signature(node, source)
@@ -276,10 +245,10 @@ def _extract_cuda_edges(
             is_kernel_launch = any(child.type == "kernel_call_syntax" for child in node.children)
 
             # Get the function name being called
-            func_node = _find_child_by_type(node, "identifier")
+            func_node = find_child_by_type(node, "identifier")
             if not func_node:  # pragma: no cover - method call edge case
                 # Try field_expression for method calls
-                field_expr = _find_child_by_type(node, "field_expression")  # pragma: no cover
+                field_expr = find_child_by_type(node, "field_expression")  # pragma: no cover
                 if field_expr:  # pragma: no cover
                     # Get the method name
                     for child in field_expr.children:  # pragma: no cover
@@ -289,7 +258,7 @@ def _extract_cuda_edges(
 
             caller = _get_enclosing_cuda_function(node, source, local_symbols)
             if func_node and caller:
-                called_name = _node_text(func_node, source)
+                called_name = node_text(func_node, source)
                 edge_type = "kernel_launch" if is_kernel_launch else "calls"
                 start_line = node.start_point[0] + 1
 
@@ -316,104 +285,63 @@ def _extract_cuda_edges(
                 edges.append(edge)
 
 
-def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
+class CudaAnalyzer(TreeSitterAnalyzer):
+    """CUDA language analyzer using tree-sitter-cuda."""
+
+    lang = "cuda"
+    file_patterns: ClassVar[list[str]] = ["*.cu", "*.cuh"]
+    grammar_module = "tree_sitter_cuda"
+    create_file_symbols = False
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol with case-insensitive lookup key."""
+        global_symbols[symbol.name.lower()] = symbol
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a CUDA file."""
+        analysis = FileAnalysis()
+        symbols: list[Symbol] = []
+        symbol_registry: dict[str, Symbol] = {}
+        _extract_cuda_symbols(tree.root_node, source, rel_path, symbols, symbol_registry)
+        analysis.symbols = symbols
+        # Store symbols by lowercase name for local lookups in pass 2
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name.lower()] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and kernel launch edges from a CUDA file."""
+        edges: list[Edge] = []
+        _extract_cuda_edges(tree.root_node, source, edges, local_symbols, resolver)
+        return edges
+
+
+_analyzer = CudaAnalyzer()
+
+
+def is_cuda_tree_sitter_available() -> bool:
+    """Check if tree-sitter with CUDA grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("cuda")
+def analyze_cuda_files(repo_root: Path) -> AnalysisResult:
     """Analyze CUDA files in the repository.
 
-    Uses two-pass analysis:
-    - Pass 1: Extract all symbols from all files
-    - Pass 2: Extract edges using NameResolver for cross-file resolution
-
-    Args:
-        repo_root: Path to the repository root
-
-    Returns:
-        CudaAnalysisResult with symbols and edges
+    Returns an AnalysisResult with symbols, edges, and provenance.
+    If tree-sitter-cuda is not available, returns a skipped result.
     """
-    if not is_cuda_tree_sitter_available():  # pragma: no cover
-        return CudaAnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-cuda not installed (pip install tree-sitter-cuda)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_cuda
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution: name -> Symbol
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_cuda.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize CUDA parser: {e}")
-        return CudaAnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    cuda_files = list(find_cuda_files(repo_root))
-
-    # Store parsed trees for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
-
-    # Pass 1: Extract symbols from all files
-    for cuda_path in cuda_files:
-        try:
-            rel_path = str(cuda_path.relative_to(repo_root))
-            source = cuda_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Extract symbols
-            _extract_cuda_symbols(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                global_symbol_registry,
-            )
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {cuda_path}: {e}")  # pragma: no cover
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
-        # Build local symbol map for this file
-        local_symbols = {s.name.lower(): s for s in symbols if s.path == rel_path}
-
-        _extract_cuda_edges(
-            tree.root_node,  # type: ignore
-            source,
-            edges,
-            local_symbols,
-            resolver,
-        )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return CudaAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

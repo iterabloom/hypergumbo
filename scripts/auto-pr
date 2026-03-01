@@ -7,10 +7,16 @@ set -euo pipefail
 # Usage:
 #   auto-pr [title] [description]   Push and create PR (queues as vPR on failure)
 #   auto-pr --squash                Force squash merge (discouraged)
+#   auto-pr --timeout SECS          CI polling timeout (default: 2400s = 40 min)
 #   auto-pr list                    Show queued vPRs
 #   auto-pr flush                   Flush all vPRs as single atomic PR
 #   auto-pr status                  Show queue status and next steps
 #   auto-pr --help                  Show help
+#
+# Exit codes:
+#   0 = success (merged, or vPR queued)
+#   1 = failure (CI failed, merge rejected, auth error)
+#   2 = timeout (CI still pending after deadline)
 #
 # Merge Strategy:
 #   Default: fast-forward merge (preserves commit bodies + DCO sign-offs)
@@ -24,18 +30,15 @@ set -euo pipefail
 #   AUTO_PR_SIMULATE_OUTAGE=1 auto-pr    Force push to fail (queues as vPR)
 # ------------------------------------------------------------------
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 FORCE_SQUASH=false
-
-# ------------------------------------------------------------------
-# Load secrets from .env if present
-# ------------------------------------------------------------------
-if [[ -f "$REPO_ROOT/.env" ]]; then
-	set -o allexport
-	source "$REPO_ROOT/.env"
-	set +o allexport
-fi
+CI_POLL_TIMEOUT=""
 
 # ------------------------------------------------------------------
 # Queue management functions
@@ -55,7 +58,7 @@ queue_tip() {
 	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
 		echo ""
 	else
-		tail -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])"
+		tail -1 "$QUEUE_FILE" | json_field "branch"
 	fi
 }
 
@@ -105,10 +108,10 @@ list_queue() {
 
 	while IFS= read -r line; do
 		local vpr branch title ts
-		vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
-		branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
-		title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-		ts=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['ts'])")
+		vpr=$(echo "$line" | json_field "vpr")
+		branch=$(echo "$line" | json_field "branch")
+		title=$(echo "$line" | json_field "title")
+		ts=$(echo "$line" | json_field "ts")
 		echo "  vPR #$vpr: $title"
 		echo "       Branch: $branch"
 		echo "       Queued: $ts"
@@ -150,110 +153,6 @@ show_status() {
 	fi
 }
 
-# ------------------------------------------------------------------
-# Merge helper: tries fast-forward, falls back to squash if --squash
-# Arguments: $1=API_BASE, $2=PR_NUM, $3=TOKEN, $4=TITLE, $5=DESC, $6=ORIG_SHA
-# ------------------------------------------------------------------
-do_merge() {
-	local api_base="$1" pr_num="$2" token="$3" title="$4" desc="$5" orig_sha="$6"
-	local merge_http_code merge_response
-
-	if [[ "$FORCE_SQUASH" == "true" ]]; then
-		# User explicitly requested squash (discouraged)
-		echo "⚠️  Squash merge requested (commit body will be preserved via git notes)"
-
-		# Build squash payload with [from <sha>] in subject
-		local short_sha="${orig_sha:0:7}"
-		local squash_title="$title [from $short_sha]"
-		local merge_payload
-		merge_payload=$(python3 -c "
-import json, sys
-payload = {
-    'do': 'squash',
-    'delete_branch_after_merge': True
-}
-print(json.dumps(payload))
-")
-
-		merge_http_code=$(curl -s -o /tmp/merge_response.json -w "%{http_code}" -X POST \
-			-H "Authorization: token $token" \
-			-H "Content-Type: application/json" \
-			-d "$merge_payload" \
-			"$api_base/pulls/$pr_num/merge")
-
-		if [[ "$merge_http_code" == "200" || "$merge_http_code" == "204" ]] || \
-		   curl -s -H "Authorization: token $token" "$api_base/pulls/$pr_num" | \
-		   python3 -c "import sys,json; exit(0 if json.load(sys.stdin).get('merged') else 1)" 2>/dev/null; then
-			echo "✅ Squash merged!"
-
-			# Fetch the new squash commit and attach a git note with original body
-			git fetch origin "$BASE_BRANCH" --quiet
-			local new_sha
-			new_sha=$(git rev-parse "origin/$BASE_BRANCH")
-
-			if [[ -n "$desc" ]]; then
-				echo "📝 Attaching git note with original commit body..."
-				git notes add -f -m "Original commit body from $orig_sha:
-
-$desc" "$new_sha" 2>/dev/null || true
-
-				# Try to push notes (may fail if no notes ref exists yet)
-				git push origin refs/notes/commits --quiet 2>/dev/null || \
-				git push origin refs/notes/* --quiet 2>/dev/null || true
-				echo "   Note attached to $new_sha"
-			fi
-			return 0
-		else
-			echo "❌ Squash merge failed (HTTP $merge_http_code)"
-			return 1
-		fi
-	fi
-
-	# Default: try fast-forward merge (preserves original commits with bodies + DCO)
-	echo "🚀 Attempting fast-forward merge (preserves commit bodies)..."
-
-	local merge_payload
-	merge_payload='{"do": "fast-forward-only", "delete_branch_after_merge": true}'
-
-	merge_http_code=$(curl -s -o /tmp/merge_response.json -w "%{http_code}" -X POST \
-		-H "Authorization: token $token" \
-		-H "Content-Type: application/json" \
-		-d "$merge_payload" \
-		"$api_base/pulls/$pr_num/merge")
-
-	if [[ "$merge_http_code" == "200" || "$merge_http_code" == "204" ]]; then
-		echo "✅ Fast-forward merged! (commit bodies preserved)"
-		return 0
-	fi
-
-	# Check if it's a divergence error (405 or specific error message)
-	merge_response=$(cat /tmp/merge_response.json 2>/dev/null || echo "{}")
-	if echo "$merge_response" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
-		echo ""
-		echo "❌ Fast-forward not possible: branch has diverged from $BASE_BRANCH"
-		echo ""
-		echo "Please rebase and retry:"
-		echo "  git fetch origin $BASE_BRANCH"
-		echo "  git rebase origin/$BASE_BRANCH"
-		echo "  ./scripts/auto-pr"
-		echo ""
-		echo "Or, if you must squash (loses commit body details):"
-		echo "  ./scripts/auto-pr --squash"
-		return 1
-	fi
-
-	# Check if PR was actually merged despite error code
-	if curl -s -H "Authorization: token $token" "$api_base/pulls/$pr_num" | \
-	   python3 -c "import sys,json; exit(0 if json.load(sys.stdin).get('merged') else 1)" 2>/dev/null; then
-		echo "✅ Verified: PR was successfully merged!"
-		return 0
-	fi
-
-	echo "❌ Merge failed (HTTP $merge_http_code)"
-	echo "Response: $merge_response"
-	return 1
-}
-
 # Flush all vPRs as a single atomic PR
 flush_queue() {
 	local count
@@ -282,24 +181,24 @@ flush_queue() {
 	local tip_branch tip_sha base_branch
 	tip_branch=$(queue_tip)
 	tip_sha=$(git rev-parse "$tip_branch")
-	base_branch=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['base'])")
+	base_branch=$(head -1 "$QUEUE_FILE" | json_field "base")
 
 	# Build PR title and description
 	local pr_title pr_desc vpr_list=""
 
 	if [[ "$count" -eq 1 ]]; then
 		# Single vPR - use its title directly
-		pr_title=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-		pr_desc=$(head -1 "$QUEUE_FILE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('desc', ''))")
+		pr_title=$(head -1 "$QUEUE_FILE" | json_field "title")
+		pr_desc=$(head -1 "$QUEUE_FILE" | json_field "desc")
 	else
 		# Multiple vPRs - create summary
 		pr_title="flush: $count vPRs from offline queue"
 
 		while IFS= read -r line; do
 			local vpr title branch
-			vpr=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['vpr'])")
-			title=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-			branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
+			vpr=$(echo "$line" | json_field "vpr")
+			title=$(echo "$line" | json_field "title")
+			branch=$(echo "$line" | json_field "branch")
 			vpr_list+="- **vPR $vpr/$count**: $title (\`$branch\`)"$'\n'
 		done <"$QUEUE_FILE"
 
@@ -327,8 +226,24 @@ Individual commits are preserved in the history."
 	# Checkout tip and push
 	git checkout "$tip_branch"
 
-	REMOTE_URL="$(git remote get-url origin)"
-	REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+	# Exclude tracker ops files from PR (they flow through tracker sync)
+	local ops_files
+	ops_files=$(git diff --name-only "$base_branch"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	if [[ -n "$ops_files" ]]; then
+		echo "🔧 Excluding tracker ops from flush PR (flows through tracker sync)..."
+		while IFS= read -r f; do
+			if git cat-file -e "$base_branch:$f" 2>/dev/null; then
+				git checkout "$base_branch" -- "$f"
+			else
+				git rm --cached --quiet "$f" 2>/dev/null || true
+			fi
+		done <<<"$ops_files"
+		git commit --amend --no-edit -s
+		tip_sha=$(git rev-parse HEAD)
+		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
+	fi
+
+	detect_api_base
 
 	local max_attempts=3
 	local attempt=1
@@ -344,7 +259,7 @@ Individual commits are preserved in the history."
 
 	local sha
 	while IFS= read -r line; do
-	  sha=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+	  sha=$(echo "$line" | json_field "sha")
 	  if ! git merge-base --is-ancestor "$sha" HEAD; then
 	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
 	    exit 1
@@ -381,45 +296,31 @@ Individual commits are preserved in the history."
 	echo "---------------------------------------------------"
 	echo "🔍 Identifying Pull Request..."
 
-	API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
 	sleep 2
 
-	PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
-
-	PR_INDEX=$(echo "$PR_DATA" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    target = '$tip_sha'
-    found = next((p for p in data if p['head']['sha'].startswith(target)), None)
-    if found:
-        print(found['number'])
-        print(found['head']['sha'])
-    else:
-        sys.exit(1)
-except Exception:
-    sys.exit(1)
-") || {
-		echo "❌ Could not find open PR for commit $tip_sha"
+	# Try branch-based dedup first, then SHA-based search
+	local PR_NUM HEAD_SHA
+	if find_open_pr "branch" "$tip_branch"; then
+		PR_NUM="$FOUND_PR_NUM"
+		HEAD_SHA="$FOUND_PR_SHA"
+	elif find_open_pr "sha" "$tip_sha"; then
+		PR_NUM="$FOUND_PR_NUM"
+		HEAD_SHA="$FOUND_PR_SHA"
+	else
+		echo "❌ Could not find open PR for branch $tip_branch or commit $tip_sha"
 		exit 1
-	}
-
-	PR_NUM=$(echo "$PR_INDEX" | head -n1)
-	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+	fi
 
 	# Update PR body with actual newlines (git push -o can't include them)
 	if [[ -n "$pr_desc" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$pr_desc")
-		curl -s -X PATCH \
-			-H "Authorization: token $TOKEN" \
-			-H "Content-Type: application/json" \
-			-d "$json_body" \
-			"$API_BASE/pulls/$PR_NUM" >/dev/null
+		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
-	# Gate file
-	echo "$PR_NUM" >.git/PR_PENDING
+	# Gate file + cleanup trap
+	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
+	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
 	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
@@ -428,58 +329,52 @@ except Exception:
 	echo "---------------------------------------------------"
 	echo "⏳ Polling CI Status..."
 
-	while true; do
-		STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
+	if [[ -n "$CI_POLL_TIMEOUT" ]]; then
+		export CI_TIMEOUT_SECONDS="$CI_POLL_TIMEOUT"
+	fi
 
-		STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
+	local poll_result=0
+	poll_ci "$HEAD_SHA" || poll_result=$?
 
-		if [[ "$STATE" == "success" ]]; then
-			echo -e "\n✅ CI Passed!"
-			break
-		elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
-			CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    statuses = data.get('statuses', [])
-    failed = []
-    for s in statuses:
-        st = s.get('state') or s.get('status')
-        if st in ['failure', 'error']:
-            failed.append(s.get('context', 'unknown'))
-    print(', '.join(failed))
-except Exception:
-    print('unknown error')
-")
-			echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
-			echo ""
-			echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
-			exit 1
-		fi
-
-		printf "."
-		sleep 10
-	done
+	if [[ $poll_result -eq 1 ]]; then
+		echo ""
+		echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
+		exit 1
+	elif [[ $poll_result -eq 2 ]]; then
+		echo ""
+		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		exit 2
+	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
-	if ! do_merge "$API_BASE" "$PR_NUM" "$TOKEN" "$pr_title" "$pr_desc" "$tip_sha"; then
+	local squash_flag="false"
+	if [[ "$FORCE_SQUASH" == "true" ]]; then
+		squash_flag="--squash"
+	fi
+
+	if ! do_merge "$PR_NUM" "$pr_title" "$pr_desc" "$tip_sha" "$squash_flag"; then
+		echo ""
+		echo "Recovery: ./scripts/merge-pr $PR_NUM"
 		exit 1
 	fi
+
+	# Clear the EXIT trap (merge succeeded)
+	trap - EXIT
 
 	# Cleanup
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up..."
 
-	rm -f .git/PR_PENDING
+	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
 	# Collect all vPR branches for deletion
 	local branches_to_delete=()
 	while IFS= read -r line; do
 		local branch
-		branch=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['branch'])")
+		branch=$(echo "$line" | json_field "branch")
 		branches_to_delete+=("$branch")
 	done <"$QUEUE_FILE"
 
@@ -540,6 +435,12 @@ do_pr() {
 		exit 1
 	fi
 
+	# Check for tracker sync in progress
+	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
+		echo "Error: tracker sync in progress. Wait for htrac sync to complete."
+		exit 1
+	fi
+
 	BRANCH="$(git branch --show-current)"
 	BASE_BRANCH="${BASE_BRANCH:-dev}"
 	if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
@@ -554,8 +455,7 @@ do_pr() {
 		tip=$(queue_tip)
 	fi
 
-	REMOTE_URL="$(git remote get-url origin)"
-	REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
+	detect_api_base
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
 	TITLE="${1:-$(git log -1 --pretty=%s)}"
@@ -566,6 +466,46 @@ do_pr() {
 	echo "🚀 Target: $REPO_SLUG"
 	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
+
+	# Regenerate test manifest to match current commit's diff
+	echo "---------------------------------------------------"
+	echo "📋 Regenerating test manifest..."
+	if "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+		# Guard: don't stage a full-suite manifest (pre-commit hook rejects it,
+		# and the existing committed manifest is likely better anyway)
+		if grep -q "^# Mode: full-suite" .ci/affected-tests.txt 2>/dev/null; then
+			echo "   ⚠️  Manifest regenerated as full-suite (slice failed?) — keeping existing"
+			git checkout -- .ci/affected-tests.txt 2>/dev/null || true
+		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
+			echo "   Manifest updated — amending commit"
+			git add .ci/affected-tests.txt
+			git commit --amend --no-edit -s
+			LOCAL_SHA="$(git rev-parse HEAD)"
+			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
+		else
+			echo "   ✅ Manifest up to date"
+		fi
+	else
+		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
+	fi
+
+	# Exclude tracker ops files from PR (they flow through tracker sync)
+	local ops_files
+	ops_files=$(git diff --name-only "$BASE_BRANCH"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	if [[ -n "$ops_files" ]]; then
+		echo "---------------------------------------------------"
+		echo "🔧 Excluding tracker ops from PR (flows through tracker sync)..."
+		while IFS= read -r f; do
+			if git cat-file -e "$BASE_BRANCH:$f" 2>/dev/null; then
+				git checkout "$BASE_BRANCH" -- "$f"
+			else
+				git rm --cached --quiet "$f" 2>/dev/null || true
+			fi
+		done <<<"$ops_files"
+		git commit --amend --no-edit -s
+		LOCAL_SHA="$(git rev-parse HEAD)"
+		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
+	fi
 
 	# Check if queue is non-empty - if so, queue this too (maintain atomicity)
 	if [[ "$queue_count_val" -gt 0 ]]; then
@@ -594,6 +534,11 @@ do_pr() {
 		echo "❌ Remote unavailable (simulated)"
 		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
 		exit 0
+	fi
+
+	# Check for existing open PR on this branch (deduplication)
+	if find_open_pr "branch" "$BRANCH"; then
+		echo "ℹ️  Found existing open PR #$FOUND_PR_NUM for branch $BRANCH — will reuse"
 	fi
 
 	local max_attempts=3
@@ -633,45 +578,40 @@ do_pr() {
 	echo "---------------------------------------------------"
 	echo "🔍 Identifying Pull Request..."
 
-	API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
 	sleep 2
 
-	PR_DATA=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/pulls?state=open&sort=recentupdate")
+	local PR_NUM HEAD_SHA
 
-	PR_INDEX=$(echo "$PR_DATA" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    target = '$LOCAL_SHA'
-    found = next((p for p in data if p['head']['sha'].startswith(target)), None)
-    if found:
-        print(found['number'])
-        print(found['head']['sha'])
-    else:
-        sys.exit(1)
-except Exception:
-    sys.exit(1)
-") || {
-		echo "❌ Could not find open PR for commit $LOCAL_SHA"
+	# If we found an existing PR by branch earlier, reuse it
+	if [[ -n "${FOUND_PR_NUM:-}" ]]; then
+		PR_NUM="$FOUND_PR_NUM"
+		# Refresh the SHA (push may have updated it)
+		if find_open_pr "branch" "$BRANCH"; then
+			HEAD_SHA="$FOUND_PR_SHA"
+		else
+			HEAD_SHA="$LOCAL_SHA"
+		fi
+	elif find_open_pr "branch" "$BRANCH"; then
+		PR_NUM="$FOUND_PR_NUM"
+		HEAD_SHA="$FOUND_PR_SHA"
+	elif find_open_pr "sha" "$LOCAL_SHA"; then
+		PR_NUM="$FOUND_PR_NUM"
+		HEAD_SHA="$FOUND_PR_SHA"
+	else
+		echo "❌ Could not find open PR for branch $BRANCH or commit $LOCAL_SHA"
 		exit 1
-	}
-
-	PR_NUM=$(echo "$PR_INDEX" | head -n1)
-	HEAD_SHA=$(echo "$PR_INDEX" | tail -n1)
+	fi
 
 	# Update PR body with actual newlines (git push -o can't include them)
 	if [[ -n "$DESC" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$DESC")
-		curl -s -X PATCH \
-			-H "Authorization: token $TOKEN" \
-			-H "Content-Type: application/json" \
-			-d "$json_body" \
-			"$API_BASE/pulls/$PR_NUM" >/dev/null
+		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
-	# Gate file
-	echo "$PR_NUM" >.git/PR_PENDING
+	# Gate file + cleanup trap
+	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
+	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Found PR #$PR_NUM"
 	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
@@ -680,44 +620,40 @@ except Exception:
 	echo "---------------------------------------------------"
 	echo "⏳ Polling CI Status..."
 
-	while true; do
-		STATUS_RESP=$(curl -s -H "Authorization: token $TOKEN" "$API_BASE/commits/$HEAD_SHA/status")
+	if [[ -n "$CI_POLL_TIMEOUT" ]]; then
+		export CI_TIMEOUT_SECONDS="$CI_POLL_TIMEOUT"
+	fi
 
-		STATE=$(echo "$STATUS_RESP" | python3 -c "import sys, json; print(json.load(sys.stdin).get('state', 'pending'))")
+	local poll_result=0
+	poll_ci "$HEAD_SHA" || poll_result=$?
 
-		if [[ "$STATE" == "success" ]]; then
-			echo -e "\n✅ CI Passed!"
-			break
-		elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
-			CONTEXTS=$(echo "$STATUS_RESP" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    statuses = data.get('statuses', [])
-    failed = []
-    for s in statuses:
-        st = s.get('state') or s.get('status')
-        if st in ['failure', 'error']:
-            failed.append(s.get('context', 'unknown'))
-    print(', '.join(failed))
-except Exception:
-    print('unknown error')
-")
-			echo -e "\n❌ CI Failed. Contexts: $CONTEXTS"
-			exit 1
-		fi
-
-		printf "."
-		sleep 10
-	done
+	if [[ $poll_result -eq 1 ]]; then
+		echo ""
+		echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		exit 1
+	elif [[ $poll_result -eq 2 ]]; then
+		echo ""
+		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		exit 2
+	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
 
-	if ! do_merge "$API_BASE" "$PR_NUM" "$TOKEN" "$TITLE" "$DESC" "$LOCAL_SHA"; then
+	local squash_flag="false"
+	if [[ "$FORCE_SQUASH" == "true" ]]; then
+		squash_flag="--squash"
+	fi
+
+	if ! do_merge "$PR_NUM" "$TITLE" "$DESC" "$LOCAL_SHA" "$squash_flag"; then
+		echo ""
+		echo "Recovery: ./scripts/merge-pr $PR_NUM"
 		exit 1
 	fi
+
+	# Clear the EXIT trap (merge succeeded)
+	trap - EXIT
 
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
@@ -731,7 +667,7 @@ cleanup_local() {
 	local branch="$1"
 	local base="$2"
 
-	rm -f .git/PR_PENDING
+	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
 	git checkout "$base"
 
@@ -741,6 +677,8 @@ cleanup_local() {
 	while [[ $attempt -le $max_attempts ]]; do
 		if git pull origin "$base"; then
 			git branch -d "$branch" 2>/dev/null || true
+			# Delete remote branch (keeps Lamport clock branch set small)
+			git push origin --delete "$branch" 2>/dev/null || true
 			return 0
 		fi
 
@@ -782,6 +720,10 @@ while [[ $# -gt 0 ]]; do
 		fi
 		shift
 		;;
+	--timeout)
+		CI_POLL_TIMEOUT="$2"
+		shift 2
+		;;
 	*)
 		break
 		;;
@@ -804,14 +746,20 @@ help | --help | -h)
 	echo "Usage: auto-pr [options] [command] [args]"
 	echo ""
 	echo "Options:"
-	echo "  --squash      Force squash merge (discouraged; use only if fast-forward fails)"
-	echo "                Commit body is preserved via git notes, subject includes [from <sha>]"
+	echo "  --squash        Force squash merge (discouraged; use only if fast-forward fails)"
+	echo "                  Commit body is preserved via git notes, subject includes [from <sha>]"
+	echo "  --timeout SECS  CI polling timeout in seconds (default: 2400 = 40 min)"
 	echo ""
 	echo "Commands:"
 	echo "  (default)     Push branch as PR (uses fast-forward merge by default)"
 	echo "  list          Show queued vPRs"
 	echo "  flush         Push all vPRs as single atomic PR"
 	echo "  status        Show queue status and recommended next steps"
+	echo ""
+	echo "Exit codes:"
+	echo "  0  Success (merged or vPR queued)"
+	echo "  1  Failure (CI failed, merge rejected, auth error)"
+	echo "  2  Timeout (CI still pending after deadline)"
 	echo ""
 	echo "Merge Strategy:"
 	echo "  Default: fast-forward merge (preserves commit bodies and DCO sign-offs)"
@@ -826,6 +774,7 @@ help | --help | -h)
 	echo "  FORGEJO_USER            Codeberg username"
 	echo "  FORGEJO_TOKEN           Codeberg API token"
 	echo "  BASE_BRANCH             Target branch (default: dev)"
+	echo "  CI_TIMEOUT_SECONDS      CI polling timeout (default: 2400)"
 	echo "  AUTO_PR_SIMULATE_OUTAGE Set to 1 to simulate remote outage (for testing)"
 	echo ""
 	echo "vPR (Virtual PR) Workflow:"
@@ -841,4 +790,3 @@ help | --help | -h)
 	do_pr "$@"
 	;;
 esac
-

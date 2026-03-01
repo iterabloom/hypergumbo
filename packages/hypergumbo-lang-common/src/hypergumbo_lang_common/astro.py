@@ -6,10 +6,13 @@ HTML template, optional script, and optional style sections.
 
 How It Works
 ------------
-1. Uses tree-sitter-astro grammar from tree-sitter-language-pack
-2. Extracts frontmatter imports and variables
-3. Identifies component usage in template (capitalized tags)
-4. Extracts client directives (client:load, client:idle, etc.)
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extracts frontmatter imports, variables, component refs, slots, directives
+2. Pass 2: (No separate edge pass -- edges created during symbol extraction)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Astro-specific
+extraction logic.
 
 Symbols Extracted
 -----------------
@@ -25,6 +28,7 @@ Edges Extracted
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Astro components have a unique frontmatter/template structure
 - Component imports reveal dependencies
 - Client directives indicate hydration strategy
@@ -34,50 +38,25 @@ Why This Design
 from __future__ import annotations
 
 import re
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 
-PASS_ID = "astro.tree_sitter"
-PASS_VERSION = "0.1.0"
-
-
-class AstroAnalysisResult:
-    """Result of Astro component analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_astro_tree_sitter_available() -> bool:
-    """Check if tree-sitter-astro is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("astro")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+PASS_ID = make_pass_id("astro")
 
 
 def find_astro_files(repo_root: Path) -> list[Path]:
@@ -87,7 +66,7 @@ def find_astro_files(repo_root: Path) -> list[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
@@ -124,72 +103,36 @@ CLIENT_DIRECTIVES = {
 }
 
 
-class AstroAnalyzer:
-    """Analyzer for Astro component files."""
+class _AstroFileExtractor:
+    """Per-file extraction helper for Astro component files.
 
-    def __init__(self, repo_root: Path) -> None:
+    Maintains stateful ``_current_imports`` mapping that is populated
+    during frontmatter pass and consumed during template pass. A fresh
+    instance is created for each file.
+    """
+
+    def __init__(self, repo_root: Path, run_id: str) -> None:
         self.repo_root = repo_root
         self._symbols: list[Symbol] = []
         self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+        self._execution_id = run_id
         self._current_imports: dict[str, str] = {}  # component name -> import path
 
-    def analyze(self) -> AstroAnalysisResult:
-        """Run the Astro analysis."""
-        start_time = time.time()
+    def extract(
+        self, tree: "tree_sitter.Tree", path: Path, content: bytes
+    ) -> tuple[list[Symbol], list[Edge]]:
+        """Extract symbols and edges from a single Astro file."""
+        self._current_imports = {}
+        self._symbols = []
+        self._edges = []
 
-        files = find_astro_files(self.repo_root)
-        if not files:
-            return AstroAnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
-
-        from tree_sitter_language_pack import get_parser
-
-        parser = get_parser("astro")
-
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_imports = {}
-                self._extract_symbols(tree.root_node, path, content)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
-
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "astro", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
-
-        return AstroAnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
-
-    def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
-    ) -> None:
-        """Extract symbols from a syntax tree node.
-
-        Process frontmatter first to collect imports, then template.
-        """
         # First pass: extract frontmatter imports
-        self._extract_frontmatter_pass(node, path, content)
+        self._extract_frontmatter_pass(tree.root_node, path, content)
 
         # Second pass: extract template content
-        self._extract_template_pass(node, path)
+        self._extract_template_pass(tree.root_node, path)
+
+        return self._symbols, self._edges
 
     def _extract_frontmatter_pass(
         self, node: "tree_sitter.Node", path: Path, content: bytes
@@ -464,35 +407,83 @@ class AstroAnalyzer:
             self._symbols.append(symbol)
 
 
-def analyze_astro(repo_root: Path) -> AstroAnalysisResult:
+class AstroAnalyzer(TreeSitterAnalyzer):
+    """Astro component analyzer using tree-sitter-language-pack."""
+
+    lang = "astro"
+    file_patterns: ClassVar[list[str]] = ["*.astro"]
+    language_pack_name = "astro"
+    create_file_symbols = False
+
+    # Stash repo_root and run_id for the per-file extractor
+    _repo_root: Path | None = None
+    _run_id: str = ""
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from an Astro file.
+
+        Uses _AstroFileExtractor to handle the stateful frontmatter/template
+        two-pass extraction per file. Edges (imports_component) are also
+        created during this pass.
+        """
+        analysis = FileAnalysis()
+
+        # Determine repo_root from file_path and rel_path
+        repo_root = file_path.parent
+        rel_parts = Path(rel_path).parts
+        for _ in rel_parts:
+            repo_root = repo_root.parent
+
+        extractor = _AstroFileExtractor(repo_root, run.execution_id)
+        symbols, edges = extractor.extract(tree, file_path, source)
+        analysis.symbols = symbols
+        # Store edges in import_aliases dict using a special key
+        # so they can be recovered in extract_edges_from_file
+        analysis._astro_edges = edges  # type: ignore[attr-defined]
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Return edges already extracted during symbol pass."""
+        # Edges were already created during extract_symbols_from_file
+        # We need to re-extract them since the base class doesn't pass
+        # them through. Re-run the extraction.
+        repo_root = file_path.parent
+        rel_parts = Path(rel_path).parts
+        for _ in rel_parts:
+            repo_root = repo_root.parent
+
+        extractor = _AstroFileExtractor(repo_root, run.execution_id)
+        _, edges = extractor.extract(tree, file_path, source)
+        return edges
+
+
+_analyzer = AstroAnalyzer()
+
+
+def is_astro_tree_sitter_available() -> bool:
+    """Check if tree-sitter-astro is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("astro")
+def analyze_astro(repo_root: Path) -> AnalysisResult:
     """Analyze Astro component files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        AstroAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_astro_tree_sitter_available():
-        warnings.warn(
-            "Astro analysis skipped: tree-sitter-astro not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AstroAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "astro", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-astro not available",
-        )
-
-    analyzer = AstroAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

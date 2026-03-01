@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Uninstall embedding dependencies from hypergumbo.
+#
+# This removes sentence-transformers and optionally PyTorch to free disk space.
+# hypergumbo will continue to work without embeddings (graceful degradation).
+#
+# Usage:
+#   ./scripts/uninstall-embeddings             # Remove sentence-transformers only
+#   ./scripts/uninstall-embeddings --all       # Also remove PyTorch
+#   ./scripts/uninstall-embeddings --cache     # Also clear model cache
+#
+set -euo pipefail
+
+REMOVE_PYTORCH=false
+CLEAR_CACHE=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --all)
+            REMOVE_PYTORCH=true
+            shift
+            ;;
+        --cache)
+            CLEAR_CACHE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--all] [--cache]"
+            echo ""
+            echo "Options:"
+            echo "  --all     Also remove PyTorch (saves ~2GB)"
+            echo "  --cache   Also clear cached models from ~/.cache/huggingface"
+            echo ""
+            echo "Without options, only removes sentence-transformers."
+            echo "hypergumbo will continue to work without embedding features."
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "=== Uninstalling embedding dependencies ==="
+echo ""
+
+# Check if sentence-transformers is installed
+if ! pip show sentence-transformers >/dev/null 2>&1; then
+    echo "sentence-transformers is not installed."
+
+    if [[ "$CLEAR_CACHE" == "true" ]]; then
+        echo ""
+    else
+        echo "Nothing to do."
+        exit 0
+    fi
+else
+    echo "Removing sentence-transformers..."
+    pip uninstall -y sentence-transformers
+
+    # Remove huggingface-hub if it was only needed for embeddings
+    if pip show huggingface-hub >/dev/null 2>&1; then
+        # Check if anything else needs huggingface-hub
+        DEPENDENTS=$(pip show huggingface-hub 2>/dev/null | grep "Required-by:" | cut -d: -f2 | tr -d ' ')
+        if [[ -z "$DEPENDENTS" ]]; then
+            echo "Removing huggingface-hub (no longer needed)..."
+            pip uninstall -y huggingface-hub
+        fi
+    fi
+
+    echo "✅ sentence-transformers removed"
+fi
+
+# Optionally remove PyTorch
+if [[ "$REMOVE_PYTORCH" == "true" ]]; then
+    echo ""
+    echo "Removing PyTorch..."
+
+    # Remove torch and related packages
+    for pkg in torch torchvision torchaudio; do
+        if pip show "$pkg" >/dev/null 2>&1; then
+            echo "  Removing $pkg..."
+            pip uninstall -y "$pkg" 2>/dev/null || true
+        fi
+    done
+
+    echo "✅ PyTorch removed"
+fi
+
+# Optionally clear model cache
+if [[ "$CLEAR_CACHE" == "true" ]]; then
+    echo ""
+    echo "Clearing model cache..."
+
+    CACHE_DIR="${HF_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/huggingface}"
+
+    if [[ -d "$CACHE_DIR" ]]; then
+        # Show size before clearing
+        CACHE_SIZE=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1 || echo "unknown")
+        echo "  Cache location: $CACHE_DIR"
+        echo "  Cache size: $CACHE_SIZE"
+
+        # Only remove model-related directories, not tokens/credentials
+        rm -rf "$CACHE_DIR/hub" 2>/dev/null || true
+        rm -rf "$CACHE_DIR/transformers" 2>/dev/null || true
+
+        echo "✅ Model cache cleared"
+    else
+        echo "  No cache found at $CACHE_DIR"
+    fi
+fi
+
+echo ""
+echo "=== Embeddings uninstalled ==="
+echo ""
+echo "hypergumbo will continue to work without embedding features."
+echo "To reinstall: ./scripts/install-embeddings"

@@ -1,0 +1,45 @@
+- op: create  # dab9
+  at: '2026-02-20T15:52:24Z'  # dab9
+  by: agent  # dab9
+  actor: jgstern_agent  # dab9
+  clock: 1  # dab9
+  nonce: dab9  # dab9
+  data:  # dab9
+    kind: work_item  # dab9
+    title: "Factor ambiguity guard into ListNameResolver"  # dab9
+    status: todo_hard  # dab9
+    priority: 2  # dab9
+    parent:  # dab9
+    tags: []  # dab9
+    before: []  # dab9
+    duplicate_of: []  # dab9
+    not_duplicate_of: []  # dab9
+    pr_ref:  # dab9
+    justification:  # dab9
+    description: "symbol_resolution.py: Add ambiguity_threshold param to ListNameResolver. When candidate count >= threshold, return unresolved instead of picking arbitrary. Benefits Go/Ruby/PHP/JS without per-language changes."  # dab9
+    fields: {}  # dab9
+- op: update  # aa32
+  at: '2026-02-20T16:57:36Z'  # aa32
+  by: agent  # aa32
+  actor: jgstern_agent  # aa32
+  clock: 2  # aa32
+  nonce: aa32  # aa32
+  set:  # aa32
+    status: done  # aa32
+    pr_ref: 'PR #1270'  # aa32
+- op: update  # 7baa
+  at: '2026-02-22T04:46:06Z'  # 7baa
+  by: agent  # 7baa
+  actor: jgstern_agent  # 7baa
+  clock: 3  # 7baa
+  nonce: 7baa  # 7baa
+  set:  # 7baa
+    parent: INV-lohap  # 7baa
+- op: update  # 5204
+  at: '2026-02-22T04:47:43Z'  # 5204
+  by: agent  # 5204
+  actor: jgstern_agent  # 5204
+  clock: 4  # 5204
+  nonce: '5204'  # 5204
+  set:  # 5204
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 5204

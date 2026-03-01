@@ -1,0 +1,36 @@
+- op: create  # 3a02
+  at: '2026-02-24T04:35:03Z'  # 3a02
+  by: agent  # 3a02
+  actor: jgstern_agent  # 3a02
+  clock: 1  # 3a02
+  nonce: 3a02  # 3a02
+  data:  # 3a02
+    kind: work_item  # 3a02
+    title: "Validate BROAD reflect pipeline end-to-end"  # 3a02
+    status: needs_human_review  # 3a02
+    priority: 3  # 3a02
+    parent: META-radiz-rorul-kotav-higot-zodan-hohoj-vafat-puful  # 3a02
+    tags:  # 3a02
+    - bakeoff  # 3a02
+    before: []  # 3a02
+    duplicate_of: []  # 3a02
+    not_duplicate_of: []  # 3a02
+    pr_ref:  # 3a02
+    justification:  # 3a02
+    description: "SOURCE: Process health synthesis 3.3, recommendation 9. The BROAD reflect pipeline (bakeoff-reflect) has stratified question sampling infrastructure with 74 questions across 8 strata (missing patterns, edge types, language performance, user needs, over-engineering, cross-language, cohort variation, provocative). This infrastructure was designed for parse correctness assessment but has not been used during the DEEP-mode bakeoff (Feb 18-23) and may never have been exercised in practice. Before investing in adaptive question pools or other enhancements, verify that: (a) the BROAD reflect pipeline runs end-to-end without errors, (b) the stratified question sampling produces coherent prompts, (c) the resulting assessments provide useful signal distinct from what DEEP mode provides. If BROAD is not useful, consider whether its question infrastructure should be ported to the DEEP pipeline as a lightweight prior-findings section."  # 3a02
+    fields: {}  # 3a02
+- op: discuss  # d9a8
+  at: '2026-02-25T07:46:59Z'  # d9a8
+  by: agent  # d9a8
+  actor: jgstern_agent  # d9a8
+  clock: 2  # d9a8
+  nonce: d9a8  # d9a8
+  message: "Human decision (2026-02-25): Keep both pipelines, but defer BROAD validation. Focus on DEEP first — too many plates spinning to reliably test BROAD without accidentally using it as a real tool rather than validating it."  # d9a8
+- op: update  # 28c1
+  at: '2026-02-25T07:58:29Z'  # 28c1
+  by: human  # 28c1
+  actor: jgstern  # 28c1
+  clock: 3  # 28c1
+  nonce: 28c1  # 28c1
+  set:  # 28c1
+    priority: 4  # 28c1

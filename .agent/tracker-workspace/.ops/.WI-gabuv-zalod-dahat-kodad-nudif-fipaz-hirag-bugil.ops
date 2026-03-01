@@ -1,0 +1,61 @@
+- op: create  # 7884
+  at: '2026-02-24T04:33:27Z'  # 7884
+  by: agent  # 7884
+  actor: jgstern_agent  # 7884
+  clock: 1  # 7884
+  nonce: '7884'  # 7884
+  data:  # 7884
+    kind: work_item  # 7884
+    title: "Address memory scaling for large repos (500MB+)"  # 7884
+    status: needs_human_review  # 7884
+    priority: 2  # 7884
+    parent:  # 7884
+    tags:  # 7884
+    - bakeoff  # 7884
+    - analysis-quality  # 7884
+    before: []  # 7884
+    duplicate_of: []  # 7884
+    not_duplicate_of: []  # 7884
+    pr_ref:  # 7884
+    justification:  # 7884
+    description: "SOURCE: Process health synthesis 3.10, recommendation 13. gitlab (709MB) pushes hypergumbo to ~5.2 GB RSS and ~101 min CPU time. The human reports past OOM failures on large repos. As the bakeoff curriculum moves to Web App Monoliths (cohort 19: gitlab, chatwoot, keycloak, killbill, jenkins), memory failures become a process health risk. Options: (a) Streaming/incremental graph construction to cap peak memory — process files in batches rather than loading the entire graph into memory at once. (b) Per-repo memory limits with graceful degradation — analyze what fits, report what was skipped. (c) Document the effective repo size ceiling for the current infrastructure. (d) Profile memory usage to identify the largest allocations (likely the edge list or symbol table) and optimize those structures."  # 7884
+    fields: {}  # 7884
+- op: update  # 3e0d
+  at: '2026-02-25T08:08:10Z'  # 3e0d
+  by: human  # 3e0d
+  actor: jgstern  # 3e0d
+  clock: 2  # 3e0d
+  nonce: 3e0d  # 3e0d
+  set:  # 3e0d
+    status: todo_soft  # 3e0d
+    priority: 4  # 3e0d
+- op: discuss  # 3e86
+  at: '2026-02-26T17:33:53Z'  # 3e86
+  by: agent  # 3e86
+  actor: jgstern_agent  # 3e86
+  clock: 3  # 3e86
+  nonce: '3e86'  # 3e86
+  message: "DEEP bakeoff 2026-02-26 results: zed (475MB, 3712 files) completed in 376s without OOM. bun (190MB, 12088 files) in 686s. workadventure (313MB, 3606 files) in 192s. No crashes or memory failures on any of the 23 repos tested. Current ceiling appears functional for repos up to ~500MB. Still worth profiling for optimization, but no longer a blocking reliability concern."  # 3e86
+- op: update  # dd28
+  at: '2026-02-26T17:44:38Z'  # dd28
+  by: agent  # dd28
+  actor: jgstern_agent  # dd28
+  clock: 4  # dd28
+  nonce: dd28  # dd28
+  set:  # dd28
+    status: holding  # dd28
+- op: discuss  # ba16
+  at: '2026-02-26T17:44:38Z'  # ba16
+  by: agent  # ba16
+  actor: jgstern_agent  # ba16
+  clock: 5  # ba16
+  nonce: ba16  # ba16
+  message: "Holding: DEEP bakeoff 2026-02-26 showed no OOM on 23 repos up to 475MB (zed). Memory usage is functional for current repo sizes. Will reopen if users report OOM on specific repos or if we expand to repos >500MB. Not a blocking concern."  # ba16
+- op: update  # 471e
+  at: '2026-02-27T02:06:47Z'  # 471e
+  by: human  # 471e
+  actor: jgstern  # 471e
+  clock: 6  # 471e
+  nonce: 471e  # 471e
+  set:  # 471e
+    status: done  # 471e

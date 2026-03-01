@@ -5,6 +5,11 @@
 # Cursor stop hooks receive JSON input and should return JSON output.
 # To continue the agent loop, return {"followup_message": "..."}
 # Ref: https://cursor.com/docs/agent/hooks
+#
+# Decision logic:
+# 1. Pending TODOs (hard/soft, from ledger + work_items.md) → followup (subject to circuit breaker)
+# 2. Cooldown (reflection completed <30 min ago) → followup with cooldown prompt
+# 3. Stale reflection → followup with full checklist
 
 set -euo pipefail
 
@@ -37,11 +42,28 @@ if [[ "$LOOP_COUNT" -ge 5 ]]; then
   exit 0
 fi
 
-# Escape the reflection prompt for JSON and return as followup_message
-REFLECTION_PROMPT=$(cat "$REPO_ROOT/.agent/stop_reflect.md" | jq -Rs .)
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
 
-cat <<EOF
-{
-  "followup_message": $REFLECTION_PROMPT
-}
-EOF
+# --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  echo "{\"followup_message\":$REASON}"
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  # Circuit breaker tripped — allow stop
+  echo '{}'
+  exit 0
+fi
+
+# --- Path 2: Cooldown (reflection completed within last 30 minutes) ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  REASON=$(printf 'Cooldown active (reflection completed %d min ago). Read %s for next actions.' "$ELAPSED_MIN" "$GUIDANCE_FILE_COOLDOWN" | jq -Rs .)
+  echo "{\"followup_message\":$REASON}"
+  exit 0
+fi
+
+# --- Path 3: Full reflection checklist (stale or no prior reflection) ---
+REASON=$(printf 'Stale reflection (last: %d min ago). Read %s to complete the stop reflection protocol.' "$ELAPSED_MIN" "$GUIDANCE_FILE_REFLECTION" | jq -Rs .)
+echo "{\"followup_message\":$REASON}"

@@ -1,0 +1,44 @@
+- op: create  # beef
+  at: '2026-02-20T16:44:10Z'  # beef
+  by: agent  # beef
+  actor: jgstern_agent  # beef
+  clock: 1  # beef
+  nonce: beef  # beef
+  data:  # beef
+    kind: work_item  # beef
+    title: "Dart: ambiguity guard for mixin methods"  # beef
+    status: todo_soft  # beef
+    priority: 4  # beef
+    parent:  # beef
+    tags: []  # beef
+    before: []  # beef
+    duplicate_of: []  # beef
+    not_duplicate_of: []  # beef
+    pr_ref:  # beef
+    justification:  # beef
+    description: "Dart has mixin methods similar to Java. Direct global_symbols lookup can pick arbitrary candidate."  # beef
+    fields: {}  # beef
+- op: update  # 6369
+  at: '2026-02-20T18:44:25Z'  # 6369
+  by: agent  # 6369
+  actor: jgstern_agent  # 6369
+  clock: 2  # 6369
+  nonce: '6369'  # 6369
+  set:  # 6369
+    priority: 2  # 6369
+- op: update  # 039d
+  at: '2026-02-20T20:11:04Z'  # 039d
+  by: agent  # 039d
+  actor: jgstern_agent  # 039d
+  clock: 3  # 039d
+  nonce: 039d  # 039d
+  set:  # 039d
+    status: done  # 039d
+- op: update  # 2276
+  at: '2026-02-22T04:47:43Z'  # 2276
+  by: agent  # 2276
+  actor: jgstern_agent  # 2276
+  clock: 4  # 2276
+  nonce: '2276'  # 2276
+  set:  # 2276
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 2276

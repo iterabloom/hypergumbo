@@ -6,9 +6,13 @@ collector pause. It runs on the LLVM backend.
 
 How It Works
 ------------
-1. Uses tree-sitter-pony grammar from tree-sitter-language-pack to parse .pony files
-2. Pass 1: Extract actors, classes, interfaces, traits, primitives, methods, constructors
-3. Pass 2: Extract call edges with registry lookup for resolution
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract actors, classes, interfaces, traits, primitives, methods, constructors
+2. Pass 2: Extract call edges with registry lookup for resolution
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Pony-specific extraction
+logic.
 
 Symbols Extracted
 -----------------
@@ -34,50 +38,41 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 
-PASS_ID = "pony.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("pony")
 
-
-class PonyAnalysisResult:
-    """Result of Pony analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_pony_tree_sitter_available() -> bool:
-    """Check if tree-sitter-pony is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("pony")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+# Built-in Pony types and functions to filter
+PONY_BUILTINS = frozenset({
+    # Primitives
+    "None", "Bool", "I8", "I16", "I32", "I64", "I128", "ILong", "ISize",
+    "U8", "U16", "U32", "U64", "U128", "ULong", "USize", "F32", "F64",
+    # Collections
+    "Array", "String", "Map", "Set", "List", "Range",
+    # System
+    "Env", "StdStream", "FileAuth", "NetAuth", "DNSAuth",
+    # Common functions
+    "print", "println", "err", "out", "apply", "create", "size", "push",
+    "pop", "values", "keys", "pairs", "string", "hash", "eq", "ne",
+    "lt", "le", "gt", "ge", "add", "sub", "mul", "div", "rem", "neg",
+    "op_and", "op_or", "op_xor", "op_not", "shl", "shr",
+})
 
 
 def find_pony_files(repo_root: Path) -> list[Path]:
@@ -85,479 +80,474 @@ def find_pony_files(repo_root: Path) -> list[Path]:
     return sorted(find_files(repo_root, ["*.pony"]))
 
 
+def is_pony_tree_sitter_available() -> bool:
+    """Check if tree-sitter-pony is available."""
+    return _analyzer._check_grammar_available()
+
+
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, name: str, kind: str) -> str:
     """Create a stable symbol ID."""
     return f"pony:{path}:{kind}:{name}"
 
 
-class PonyAnalyzer:
-    """Analyzer for Pony files."""
+def _extract_parameters(node: "tree_sitter.Node") -> list[str]:
+    """Extract parameter names from a parameters node."""
+    params: list[str] = []
+    for child in node.children:
+        if child.type == "parameter":
+            for param_child in child.children:
+                if param_child.type == "identifier":
+                    params.append(_get_node_text(param_child))
+                    break
+    return params
 
-    # Built-in Pony types and functions to filter
-    BUILTINS = frozenset({
-        # Primitives
-        "None", "Bool", "I8", "I16", "I32", "I64", "I128", "ILong", "ISize",
-        "U8", "U16", "U32", "U64", "U128", "ULong", "USize", "F32", "F64",
-        # Collections
-        "Array", "String", "Map", "Set", "List", "Range",
-        # System
-        "Env", "StdStream", "FileAuth", "NetAuth", "DNSAuth",
-        # Common functions
-        "print", "println", "err", "out", "apply", "create", "size", "push",
-        "pop", "values", "keys", "pairs", "string", "hash", "eq", "ne",
-        "lt", "le", "gt", "ge", "add", "sub", "mul", "div", "rem", "neg",
-        "op_and", "op_or", "op_xor", "op_not", "shl", "shr",
-    })
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> symbol_id
-        self._current_type: str | None = None
-        self._current_type_id: str | None = None
-        self._current_method: str | None = None
-        self._current_method_id: str | None = None
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+def _extract_constructor(
+    node: "tree_sitter.Node", rel_path: str, current_type: Optional[str],
+) -> Optional[Symbol]:
+    """Extract a constructor (new)."""
+    name = None
+    params: list[str] = []
 
-    def analyze(self) -> PonyAnalysisResult:
-        """Run the Pony analysis."""
-        start_time = time.time()
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
+        elif child.type == "parameters":
+            params = _extract_parameters(child)
 
-        files = find_pony_files(self.repo_root)
-        if not files:
-            return PonyAnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    if not name:
+        return None  # pragma: no cover
 
-        from tree_sitter_language_pack import get_parser
+    full_name = f"{current_type}.{name}" if current_type else name
+    symbol_id = _make_symbol_id(rel_path, full_name, "constructor")
 
-        parser = get_parser("pony")
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
 
-        # Pass 1: Extract symbols
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
+    signature = f"new {name}({', '.join(params)})"
 
-        # Pass 2: Extract edges
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
+    return Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=full_name,
+        kind="constructor",
+        language="pony",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=signature,
+        meta={"params": params, "parent_type": current_type},
+    )
 
-        duration_ms = int((time.time() - start_time) * 1000)
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "pony", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
+def _extract_method(
+    node: "tree_sitter.Node", rel_path: str, current_type: Optional[str],
+) -> Optional[Symbol]:
+    """Extract a method (fun)."""
+    name = None
+    params: list[str] = []
+    capability = ""
 
-        return PonyAnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
+        elif child.type == "parameters":
+            params = _extract_parameters(child)
+        elif child.type == "capability":
+            for cap_child in child.children:
+                if cap_child.type in ("ref", "val", "box", "iso", "trn", "tag"):
+                    capability = cap_child.type
+                    break
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type in ("actor_definition", "class_definition", "interface_definition",
-                         "trait_definition", "primitive_definition"):
-            self._extract_type_definition(node, path)
-            return  # Don't recurse - _extract_type_definition handles members
+    if not name:
+        return None  # pragma: no cover
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+    full_name = f"{current_type}.{name}" if current_type else name
+    symbol_id = _make_symbol_id(rel_path, full_name, "method")
 
-    def _extract_type_definition(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a type definition (actor, class, interface, trait, primitive)."""
-        type_kind = node.type.replace("_definition", "")
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+    cap_str = f" {capability}" if capability else ""
+    signature = f"fun{cap_str} {name}({', '.join(params)})"
+
+    meta: dict = {"params": params, "parent_type": current_type}
+    if capability:
+        meta["capability"] = capability
+
+    return Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=full_name,
+        kind="method",
+        language="pony",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=signature,
+        meta=meta,
+    )
+
+
+def _extract_field(
+    node: "tree_sitter.Node", rel_path: str, current_type: Optional[str],
+) -> Optional[Symbol]:
+    """Extract a field (var or let)."""
+    name = None
+    field_type = "var"
+
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
+        elif child.type in ("var", "let"):
+            field_type = child.type
+
+    if not name:
+        return None  # pragma: no cover
+
+    # Skip underscore-prefixed private fields for cleaner output
+    if name.startswith("_"):
+        return None
+
+    full_name = f"{current_type}.{name}" if current_type else name
+    symbol_id = _make_symbol_id(rel_path, full_name, "field")
+
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+    return Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=full_name,
+        kind="field",
+        language="pony",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=f"{field_type} {name}",
+        meta={"field_type": field_type, "parent_type": current_type},
+    )
+
+
+def _extract_members(
+    node: "tree_sitter.Node", rel_path: str, current_type: str,
+    analysis: FileAnalysis, symbol_registry: dict[str, str],
+) -> None:
+    """Extract members (constructors, methods, fields) from a type."""
+    for child in node.children:
+        if child.type == "constructor":
+            sym = _extract_constructor(child, rel_path, current_type)
+            if sym:
+                analysis.symbols.append(sym)
+                symbol_registry[sym.name] = sym.id
+                analysis.symbol_by_name[sym.name] = sym
+        elif child.type == "method":
+            sym = _extract_method(child, rel_path, current_type)
+            if sym:
+                analysis.symbols.append(sym)
+                symbol_registry[sym.name] = sym.id
+                analysis.symbol_by_name[sym.name] = sym
+        elif child.type == "field":
+            sym = _extract_field(child, rel_path, current_type)
+            if sym:
+                analysis.symbols.append(sym)
+
+
+def _extract_type_definition(
+    node: "tree_sitter.Node", rel_path: str,
+    analysis: FileAnalysis, symbol_registry: dict[str, str],
+) -> None:
+    """Extract a type definition (actor, class, interface, trait, primitive)."""
+    type_kind = node.type.replace("_definition", "")
+    name = None
+
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
+            break
+
+    if not name:
+        return  # pragma: no cover
+
+    symbol_id = _make_symbol_id(rel_path, name, type_kind)
+
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+    # Count members
+    method_count = 0
+    constructor_count = 0
+    field_count = 0
+    for child in node.children:
+        if child.type == "members":
+            for member in child.children:
+                if member.type == "method":
+                    method_count += 1
+                elif member.type == "constructor":
+                    constructor_count += 1
+                elif member.type == "field":
+                    field_count += 1
+
+    meta = {
+        "method_count": method_count,
+        "constructor_count": constructor_count,
+        "field_count": field_count,
+    }
+
+    symbol = Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=name,
+        kind=type_kind,
+        language="pony",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=f"{type_kind} {name}",
+        meta=meta,
+    )
+    analysis.symbols.append(symbol)
+    symbol_registry[name] = symbol_id
+    analysis.symbol_by_name[name] = symbol
+
+    # Extract members
+    for child in node.children:
+        if child.type == "members":
+            _extract_members(child, rel_path, name, analysis, symbol_registry)
+
+
+def _extract_pony_symbols(
+    node: "tree_sitter.Node", rel_path: str,
+    analysis: FileAnalysis, symbol_registry: dict[str, str],
+) -> None:
+    """Extract symbols from a syntax tree node."""
+    if node.type in ("actor_definition", "class_definition", "interface_definition",
+                     "trait_definition", "primitive_definition"):
+        _extract_type_definition(node, rel_path, analysis, symbol_registry)
+        return  # Don't recurse - _extract_type_definition handles members
+
+    for child in node.children:
+        _extract_pony_symbols(child, rel_path, analysis, symbol_registry)
+
+
+def _get_member_expression_name(node: "tree_sitter.Node") -> str:
+    """Get the full name from a member expression (e.g., Counter.create)."""
+    parts: list[str] = []
+    _collect_member_parts(node, parts)
+    return ".".join(parts)
+
+
+def _collect_member_parts(node: "tree_sitter.Node", parts: list[str]) -> None:
+    """Collect parts of a member expression."""
+    for child in node.children:
+        if child.type == "identifier":
+            parts.append(_get_node_text(child))
+        elif child.type == "member_expression":
+            _collect_member_parts(child, parts)
+
+
+def _extract_call_edge(
+    node: "tree_sitter.Node", rel_path: str, run_id: str,
+    symbol_registry: dict[str, str],
+    current_method_id: Optional[str],
+    current_type_id: Optional[str],
+    current_type: Optional[str],
+) -> Optional[Edge]:
+    """Extract a call edge from a call expression."""
+    callee_name = None
+
+    for child in node.children:
+        if child.type == "member_expression":
+            callee_name = _get_member_expression_name(child)
+        elif child.type == "identifier":
+            callee_name = _get_node_text(child)
+
+    if not callee_name:
+        return None  # pragma: no cover
+
+    # Extract the method name for filtering
+    parts = callee_name.split(".")
+    method_name = parts[-1] if parts else callee_name
+    type_name = parts[0] if len(parts) > 1 else ""
+
+    # Skip builtins
+    if method_name in PONY_BUILTINS or type_name in PONY_BUILTINS:
+        return None
+
+    # Determine source
+    src = current_method_id or current_type_id or f"pony:{rel_path}"
+
+    # Try to resolve the target
+    resolved_id = symbol_registry.get(callee_name)
+
+    # Also try type.method format if we have a type
+    if not resolved_id and len(parts) == 2:
+        pass  # Already in type.method format
+    elif not resolved_id and current_type:
+        local_name = f"{current_type}.{callee_name}"
+        resolved_id = symbol_registry.get(local_name)
+
+    if resolved_id:
+        dst = resolved_id
+        confidence = 1.0
+    else:
+        dst = f"pony:unresolved:{callee_name}"
+        confidence = 0.6
+
+    return Edge.create(
+        src=src,
+        dst=dst,
+        edge_type="calls",
+        line=node.start_point[0] + 1,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        evidence_type="static",
+        confidence=confidence,
+        evidence_lang="pony",
+    )
+
+
+def _extract_pony_edges(
+    node: "tree_sitter.Node", rel_path: str, run_id: str,
+    symbol_registry: dict[str, str],
+    current_type: Optional[str],
+    current_type_id: Optional[str],
+    current_method: Optional[str],
+    current_method_id: Optional[str],
+    edges_out: list[Edge],
+) -> None:
+    """Extract call edges from the syntax tree."""
+    # Track current context
+    if node.type in ("actor_definition", "class_definition", "interface_definition",
+                     "trait_definition", "primitive_definition"):
         name = None
-
         for child in node.children:
             if child.type == "identifier":
                 name = _get_node_text(child)
                 break
-
-        if not name:
-            return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, name, type_kind)
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        # Count members
-        method_count = 0
-        constructor_count = 0
-        field_count = 0
+        new_type = name
+        new_type_id = symbol_registry.get(name) if name else None
         for child in node.children:
-            if child.type == "members":
-                for member in child.children:
-                    if member.type == "method":
-                        method_count += 1
-                    elif member.type == "constructor":
-                        constructor_count += 1
-                    elif member.type == "field":
-                        field_count += 1
+            _extract_pony_edges(
+                child, rel_path, run_id, symbol_registry,
+                new_type, new_type_id, None, None, edges_out,
+            )
+        return
 
-        meta = {
-            "method_count": method_count,
-            "constructor_count": constructor_count,
-            "field_count": field_count,
-        }
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=name,
-            kind=type_kind,
-            language="pony",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"{type_kind} {name}",
-            meta=meta,
-        )
-        self._symbols.append(symbol)
-        self._symbol_registry[name] = symbol_id
-
-        # Extract members
-        old_type = self._current_type
-        old_type_id = self._current_type_id
-        self._current_type = name
-        self._current_type_id = symbol_id
-
-        for child in node.children:
-            if child.type == "members":
-                self._extract_members(child, path)
-
-        self._current_type = old_type
-        self._current_type_id = old_type_id
-
-    def _extract_members(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract members (constructors, methods, fields) from a type."""
-        for child in node.children:
-            if child.type == "constructor":
-                self._extract_constructor(child, path)
-            elif child.type == "method":
-                self._extract_method(child, path)
-            elif child.type == "field":
-                self._extract_field(child, path)
-
-    def _extract_constructor(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a constructor (new)."""
+    if node.type in ("constructor", "method"):
         name = None
-        params: list[str] = []
-
         for child in node.children:
             if child.type == "identifier":
                 name = _get_node_text(child)
-            elif child.type == "parameters":
-                params = self._extract_parameters(child)
-
-        if not name:
-            return  # pragma: no cover
-
-        full_name = f"{self._current_type}.{name}" if self._current_type else name
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, full_name, "constructor")
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        signature = f"new {name}({', '.join(params)})"
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=full_name,
-            kind="constructor",
-            language="pony",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=signature,
-            meta={"params": params, "parent_type": self._current_type},
-        )
-        self._symbols.append(symbol)
-        self._symbol_registry[full_name] = symbol_id
-
-    def _extract_method(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a method (fun)."""
-        name = None
-        params: list[str] = []
-        capability = ""
-
+                break
+        full_name = f"{current_type}.{name}" if current_type and name else name
+        new_method_id = symbol_registry.get(full_name) if full_name else None
         for child in node.children:
-            if child.type == "identifier":
-                name = _get_node_text(child)
-            elif child.type == "parameters":
-                params = self._extract_parameters(child)
-            elif child.type == "capability":
-                # capability wraps ref/val/box/iso/trn/tag
-                for cap_child in child.children:
-                    if cap_child.type in ("ref", "val", "box", "iso", "trn", "tag"):
-                        capability = cap_child.type
-                        break
+            _extract_pony_edges(
+                child, rel_path, run_id, symbol_registry,
+                current_type, current_type_id,
+                full_name, new_method_id, edges_out,
+            )
+        return
 
-        if not name:
-            return  # pragma: no cover
+    if node.type == "call_expression":
+        edge = _extract_call_edge(
+            node, rel_path, run_id, symbol_registry,
+            current_method_id, current_type_id, current_type,
+        )
+        if edge:
+            edges_out.append(edge)
 
-        full_name = f"{self._current_type}.{name}" if self._current_type else name
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, full_name, "method")
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
+    for child in node.children:
+        _extract_pony_edges(
+            child, rel_path, run_id, symbol_registry,
+            current_type, current_type_id,
+            current_method, current_method_id, edges_out,
         )
 
-        cap_str = f" {capability}" if capability else ""
-        signature = f"fun{cap_str} {name}({', '.join(params)})"
 
-        meta: dict = {"params": params, "parent_type": self._current_type}
-        if capability:
-            meta["capability"] = capability
+class PonyAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Pony files using TreeSitterAnalyzer base class."""
 
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=full_name,
-            kind="method",
-            language="pony",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=signature,
-            meta=meta,
+    lang = "pony"
+    file_patterns: ClassVar[list[str]] = ["*.pony"]
+    language_pack_name = "pony"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Pony symbols (actors, classes, methods, etc.)."""
+        analysis = FileAnalysis()
+        # Store a per-file symbol registry for edge extraction
+        symbol_registry: dict[str, str] = {}
+        _extract_pony_symbols(
+            tree.root_node, rel_path, analysis, symbol_registry,
         )
-        self._symbols.append(symbol)
-        self._symbol_registry[full_name] = symbol_id
+        # Store the registry in import_aliases for Pass 2 access
+        # We encode it as a special key
+        analysis.import_aliases["__symbol_registry__"] = "present"
+        return analysis
 
-    def _extract_field(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a field (var or let)."""
-        name = None
-        field_type = "var"
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbol by name for cross-file resolution."""
+        global_symbols[symbol.name] = symbol
 
-        for child in node.children:
-            if child.type == "identifier":
-                name = _get_node_text(child)
-            elif child.type in ("var", "let"):
-                field_type = child.type
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a Pony file."""
+        edges: list[Edge] = []
 
-        if not name:
-            return  # pragma: no cover
+        # Build symbol_registry from global_symbols
+        symbol_registry: dict[str, str] = {}
+        for name, sym in global_symbols.items():
+            if isinstance(sym, Symbol):
+                symbol_registry[name] = sym.id
 
-        # Skip underscore-prefixed private fields for cleaner output
-        if name.startswith("_"):
-            return
-
-        full_name = f"{self._current_type}.{name}" if self._current_type else name
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, full_name, "field")
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
+        _extract_pony_edges(
+            tree.root_node, rel_path, run.execution_id,
+            symbol_registry, None, None, None, None, edges,
         )
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=full_name,
-            kind="field",
-            language="pony",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"{field_type} {name}",
-            meta={"field_type": field_type, "parent_type": self._current_type},
-        )
-        self._symbols.append(symbol)
-
-    def _extract_parameters(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract parameter names from a parameters node."""
-        params: list[str] = []
-        for child in node.children:
-            if child.type == "parameter":
-                for param_child in child.children:
-                    if param_child.type == "identifier":
-                        params.append(_get_node_text(param_child))
-                        break
-        return params
-
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract call edges from the syntax tree."""
-        # Track current context
-        if node.type in ("actor_definition", "class_definition", "interface_definition",
-                         "trait_definition", "primitive_definition"):
-            for child in node.children:
-                if child.type == "identifier":
-                    name = _get_node_text(child)
-                    self._current_type = name
-                    self._current_type_id = self._symbol_registry.get(name)
-                    break
-            for child in node.children:
-                self._extract_edges(child, path)
-            self._current_type = None
-            self._current_type_id = None
-            return
-
-        if node.type in ("constructor", "method"):
-            for child in node.children:
-                if child.type == "identifier":
-                    name = _get_node_text(child)
-                    full_name = f"{self._current_type}.{name}" if self._current_type else name
-                    self._current_method = full_name
-                    self._current_method_id = self._symbol_registry.get(full_name)
-                    break
-            for child in node.children:
-                self._extract_edges(child, path)
-            self._current_method = None
-            self._current_method_id = None
-            return
-
-        if node.type == "call_expression":
-            self._extract_call_edge(node, path)
-
-        for child in node.children:
-            self._extract_edges(child, path)
-
-    def _extract_call_edge(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a call edge from a call expression."""
-        callee_name = None
-        rel_path = path.relative_to(self.repo_root)
-
-        for child in node.children:
-            if child.type == "member_expression":
-                callee_name = self._get_member_expression_name(child)
-            elif child.type == "identifier":
-                callee_name = _get_node_text(child)
-
-        if not callee_name:
-            return  # pragma: no cover
-
-        # Extract the method name for filtering
-        parts = callee_name.split(".")
-        method_name = parts[-1] if parts else callee_name
-        type_name = parts[0] if len(parts) > 1 else ""
-
-        # Skip builtins
-        if method_name in self.BUILTINS or type_name in self.BUILTINS:
-            return
-
-        # Determine source
-        src = self._current_method_id or self._current_type_id or f"pony:{rel_path}"
-
-        # Try to resolve the target
-        resolved_id = self._symbol_registry.get(callee_name)
-
-        # Also try type.method format if we have a type
-        if not resolved_id and len(parts) == 2:
-            # Already in type.method format
-            pass
-        elif not resolved_id and self._current_type:
-            # Try current_type.method_name
-            local_name = f"{self._current_type}.{callee_name}"
-            resolved_id = self._symbol_registry.get(local_name)
-
-        if resolved_id:
-            dst = resolved_id
-            confidence = 1.0
-        else:
-            dst = f"pony:unresolved:{callee_name}"
-            confidence = 0.6
-
-        edge = Edge.create(
-            src=src,
-            dst=dst,
-            edge_type="calls",
-            line=node.start_point[0] + 1,
-            origin=PASS_ID,
-            origin_run_id=self._execution_id,
-            evidence_type="static",
-            confidence=confidence,
-            evidence_lang="pony",
-        )
-        self._edges.append(edge)
-
-    def _get_member_expression_name(self, node: "tree_sitter.Node") -> str:
-        """Get the full name from a member expression (e.g., Counter.create)."""
-        parts: list[str] = []
-        self._collect_member_parts(node, parts)
-        return ".".join(parts)
-
-    def _collect_member_parts(self, node: "tree_sitter.Node", parts: list[str]) -> None:
-        """Collect parts of a member expression."""
-        for child in node.children:
-            if child.type == "identifier":
-                parts.append(_get_node_text(child))
-            elif child.type == "member_expression":
-                self._collect_member_parts(child, parts)
+        return edges
 
 
-def analyze_pony(repo_root: Path) -> PonyAnalysisResult:
+_analyzer = PonyAnalyzer()
+
+
+@register_analyzer("pony")
+def analyze_pony(repo_root: Path) -> AnalysisResult:
     """Analyze Pony files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        PonyAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_pony_tree_sitter_available():
-        warnings.warn(
-            "Pony analysis skipped: tree-sitter-pony not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return PonyAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "pony", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-pony not available",
-        )
-
-    analyzer = PonyAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

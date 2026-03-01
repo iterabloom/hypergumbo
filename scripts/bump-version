@@ -1,32 +1,58 @@
 #!/usr/bin/env bash
 # Version bump script for multi-package hypergumbo.
 #
-# Updates version in all 5 package pyproject.toml files and __init__.py files.
+# Updates version in all 5 main package pyproject.toml files and __init__.py files.
+# Optionally bumps the independently-versioned hypergumbo-tracker package.
 #
 # Usage:
-#   ./scripts/bump-version [major|minor|patch|VERSION]
+#   ./scripts/bump-version [major|minor|patch|VERSION] [--tracker TRACKER_VERSION]
 #
 # Examples:
-#   ./scripts/bump-version patch     # 2.0.0 -> 2.0.1
-#   ./scripts/bump-version minor     # 2.0.0 -> 2.1.0
-#   ./scripts/bump-version major     # 2.0.0 -> 3.0.0
-#   ./scripts/bump-version 2.1.0     # Explicit version
+#   ./scripts/bump-version patch                    # 2.0.0 -> 2.0.1
+#   ./scripts/bump-version minor                    # 2.0.0 -> 2.1.0
+#   ./scripts/bump-version major                    # 2.0.0 -> 3.0.0
+#   ./scripts/bump-version 2.1.0                    # Explicit version
+#   ./scripts/bump-version 2.1.0 --tracker 0.2.0   # Also bump tracker
 #
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 [major|minor|patch|VERSION]"
+BUMP_TYPE=""
+TRACKER_VERSION=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tracker)
+            TRACKER_VERSION="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [major|minor|patch|VERSION] [--tracker TRACKER_VERSION]"
+            echo ""
+            echo "Bumps main hypergumbo packages. Optionally bumps tracker."
+            echo ""
+            echo "Options:"
+            echo "  --tracker VERSION   Also bump hypergumbo-tracker to VERSION"
+            exit 0
+            ;;
+        *)
+            BUMP_TYPE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$BUMP_TYPE" ]]; then
+    echo "Usage: $0 [major|minor|patch|VERSION] [--tracker TRACKER_VERSION]"
     exit 1
 fi
-
-BUMP_TYPE="$1"
 
 # Get project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
-# All package pyproject.toml locations
+# All main package pyproject.toml locations (excludes tracker)
 PYPROJECT_FILES=(
     "pyproject.toml"  # Root (legacy, if exists)
     "packages/hypergumbo-core/pyproject.toml"
@@ -36,7 +62,7 @@ PYPROJECT_FILES=(
     "packages/hypergumbo/pyproject.toml"
 )
 
-# All __init__.py locations with __version__
+# All main __init__.py locations with __version__
 INIT_FILES=(
     "src/hypergumbo/__init__.py"  # Legacy (if exists)
     "packages/hypergumbo-core/src/hypergumbo_core/__init__.py"
@@ -93,9 +119,18 @@ if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     exit 1
 fi
 
-# Update all pyproject.toml files
+# Validate tracker version format if provided
+if [[ -n "$TRACKER_VERSION" ]]; then
+    if ! [[ "$TRACKER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        echo "Error: Invalid tracker version format: $TRACKER_VERSION"
+        echo "Expected: MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix"
+        exit 1
+    fi
+fi
+
+# Update all main pyproject.toml files
 echo ""
-echo "Updating pyproject.toml files..."
+echo "Updating main pyproject.toml files..."
 for pyproject in "${PYPROJECT_FILES[@]}"; do
     if [[ -f "$pyproject" ]]; then
         # Update version = "x.y.z" line
@@ -111,15 +146,50 @@ for pyproject in "${PYPROJECT_FILES[@]}"; do
     fi
 done
 
-# Update all __init__.py files
+# Update all main __init__.py files
 echo ""
-echo "Updating __init__.py files..."
+echo "Updating main __init__.py files..."
 for init_file in "${INIT_FILES[@]}"; do
     if [[ -f "$init_file" ]] && grep -q "__version__" "$init_file"; then
         sed -i "s/__version__ = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/__version__ = \"$NEW_VERSION\"/" "$init_file"
         echo "  Updated: $init_file"
     fi
 done
+
+# ─────────────────────────────────────────────────────────────
+# Tracker version bump (independent version)
+# ─────────────────────────────────────────────────────────────
+TRACKER_PYPROJECT="packages/hypergumbo-tracker/pyproject.toml"
+TRACKER_INIT="packages/hypergumbo-tracker/src/hypergumbo_tracker/__init__.py"
+
+if [[ -n "$TRACKER_VERSION" ]]; then
+    echo ""
+    echo "Updating hypergumbo-tracker to $TRACKER_VERSION..."
+
+    if [[ -f "$TRACKER_PYPROJECT" ]]; then
+        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/version = \"$TRACKER_VERSION\"/" "$TRACKER_PYPROJECT"
+        echo "  Updated: $TRACKER_PYPROJECT ($TRACKER_CURRENT -> $TRACKER_VERSION)"
+    fi
+
+    if [[ -f "$TRACKER_INIT" ]] && grep -q "__version__" "$TRACKER_INIT"; then
+        sed -i "s/__version__ = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/__version__ = \"$TRACKER_VERSION\"/" "$TRACKER_INIT"
+        echo "  Updated: $TRACKER_INIT"
+    fi
+else
+    # No --tracker flag: warn if tracker source changed since last tag
+    LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
+    if [[ -n "$LAST_TAG" && -f "$TRACKER_PYPROJECT" ]]; then
+        TRACKER_CHANGES=$(git diff --name-only "$LAST_TAG"..HEAD -- packages/hypergumbo-tracker/src/ 2>/dev/null || echo "")
+        if [[ -n "$TRACKER_CHANGES" ]]; then
+            TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            echo ""
+            echo "Warning: hypergumbo-tracker source changed since $LAST_TAG but --tracker not specified."
+            echo "  Current tracker version: $TRACKER_CURRENT"
+            echo "  Consider: $0 $NEW_VERSION --tracker <NEW_TRACKER_VERSION>"
+        fi
+    fi
+fi
 
 # Prompt to update CHANGELOG
 if [[ -f "CHANGELOG.md" ]]; then
@@ -135,15 +205,31 @@ if [[ -f "CHANGELOG.md" ]]; then
     fi
 fi
 
+# ─────────────────────────────────────────────────────────────
+# Summary
+# ─────────────────────────────────────────────────────────────
 echo ""
 echo "Version bumped: $CURRENT -> $NEW_VERSION"
 echo ""
-echo "Packages updated:"
+echo "Main packages updated:"
 for pyproject in "${PYPROJECT_FILES[@]}"; do
     if [[ -f "$pyproject" ]]; then
         echo "  - $(dirname "$pyproject")"
     fi
 done
+
+if [[ -n "$TRACKER_VERSION" ]]; then
+    echo ""
+    echo "Tracker updated: -> $TRACKER_VERSION"
+    echo "  - packages/hypergumbo-tracker"
+else
+    if [[ -f "$TRACKER_PYPROJECT" ]]; then
+        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        echo ""
+        echo "Tracker: $TRACKER_CURRENT (unchanged)"
+    fi
+fi
+
 echo ""
 echo "Next steps:"
 echo "  1. Review changes: git diff"

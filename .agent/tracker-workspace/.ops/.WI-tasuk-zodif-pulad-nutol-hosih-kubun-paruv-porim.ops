@@ -1,0 +1,49 @@
+- op: create  # b053
+  at: '2026-02-26T21:17:20Z'  # b053
+  by: agent  # b053
+  actor: jgstern_agent  # b053
+  clock: 1  # b053
+  nonce: b053  # b053
+  data:  # b053
+    kind: work_item  # b053
+    title: "Bakeoff diagnose: orphan rate calculation denominator appears wrong"  # b053
+    status: todo_soft  # b053
+    priority: 3  # b053
+    parent:  # b053
+    tags: []  # b053
+    before: []  # b053
+    duplicate_of: []  # b053
+    not_duplicate_of: []  # b053
+    pr_ref:  # b053
+    description: "In the DEEP bakeoff diagnose output, orphan_rate is calculated with a wrong denominator. Example: livekit shows orphan_count=3 but orphan_rate=100.0% — this is 3/3 (number of reverse-slice seeds or similar), not 3/4567 (total nodes). The HIGH_ORPHAN_RATE threshold fires spuriously, inflating WARN verdicts and making diagnostics less trustworthy. Several repos show >50% orphan rates that are not meaningful: tmux (67%), guacamole-client (86%), workadventure (93%), livekit (100%), bun (51%). Fix: use total_nodes as denominator, or change to absolute orphan_count threshold."  # b053
+    fields: {}  # b053
+- op: update  # 5ae6
+  at: '2026-02-26T21:52:09Z'  # 5ae6
+  by: agent  # 5ae6
+  actor: jgstern_agent  # 5ae6
+  clock: 2  # 5ae6
+  nonce: 5ae6  # 5ae6
+  set:  # 5ae6
+    status: done  # 5ae6
+- op: discuss  # 1cb2
+  at: '2026-02-26T21:52:09Z'  # 1cb2
+  by: agent  # 1cb2
+  actor: jgstern_agent  # 1cb2
+  clock: 3  # 1cb2
+  nonce: 1cb2  # 1cb2
+  message: "Same root cause as PR #1519 (test path regex). Already fixed."  # 1cb2
+- op: update  # cc65
+  at: '2026-02-26T21:31:08Z'  # cc65
+  by: agent  # cc65
+  actor: jgstern_agent  # cc65
+  clock: 2  # cc65
+  nonce: cc65  # cc65
+  set:  # cc65
+    status: done  # cc65
+- op: discuss  # 0d05
+  at: '2026-02-26T21:31:08Z'  # 0d05
+  by: agent  # 0d05
+  actor: jgstern_agent  # 0d05
+  clock: 3  # 0d05
+  nonce: 0d05  # 0d05
+  message: "Same root cause as WI-visad: _TEST_PATH_RE bare 't' alternative matched /t anywhere in path, filtering production code in transport/, telemetry/, types/ directories. Fixed in PR #1519 by requiring trailing / for all directory patterns."  # 0d05

@@ -1,0 +1,44 @@
+- op: create  # 0756
+  at: '2026-02-20T16:10:28Z'  # 0756
+  by: agent  # 0756
+  actor: jgstern_agent  # 0756
+  clock: 1  # 0756
+  nonce: '0756'  # 0756
+  data:  # 0756
+    kind: work_item  # 0756
+    title: "C#: ambiguity guard for extension/interface methods"  # 0756
+    status: todo_soft  # 0756
+    priority: 4  # 0756
+    parent:  # 0756
+    tags: []  # 0756
+    before: []  # 0756
+    duplicate_of: []  # 0756
+    not_duplicate_of: []  # 0756
+    pr_ref:  # 0756
+    justification:  # 0756
+    description: "C# extension methods and interface methods can create ambiguity. Apply guard for 3+ candidates."  # 0756
+    fields: {}  # 0756
+- op: update  # 70a7
+  at: '2026-02-20T18:42:36Z'  # 70a7
+  by: agent  # 70a7
+  actor: jgstern_agent  # 70a7
+  clock: 2  # 70a7
+  nonce: 70a7  # 70a7
+  set:  # 70a7
+    priority: 2  # 70a7
+- op: update  # cfca
+  at: '2026-02-20T20:11:03Z'  # cfca
+  by: agent  # cfca
+  actor: jgstern_agent  # cfca
+  clock: 3  # cfca
+  nonce: cfca  # cfca
+  set:  # cfca
+    status: done  # cfca
+- op: update  # e313
+  at: '2026-02-22T04:47:43Z'  # e313
+  by: agent  # e313
+  actor: jgstern_agent  # e313
+  clock: 4  # e313
+  nonce: e313  # e313
+  set:  # e313
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # e313

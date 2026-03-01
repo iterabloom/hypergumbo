@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import hack as hack_module
 from hypergumbo_lang_extended1.hack import (
-    HackAnalysisResult,
     analyze_hack,
     find_hack_files,
     is_hack_tree_sitter_available,
@@ -53,7 +53,7 @@ class TestIsHackTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(hack_module, "is_hack_tree_sitter_available", return_value=False):
+        with patch.object(hack_module._analyzer, "_check_grammar_available", return_value=False):
             assert hack_module.is_hack_tree_sitter_available() is False
 
 
@@ -62,8 +62,8 @@ class TestAnalyzeHack:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", "<?hh\necho 'test';")
-        with patch.object(hack_module, "is_hack_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Hack analysis skipped"):
+        with patch.object(hack_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="hack analysis skipped"):
                 result = hack_module.analyze_hack(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -251,13 +251,13 @@ function add(): int { return 1; }
         result = analyze_hack(tmp_path)
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
-        assert func.origin == "hack.tree_sitter"
+        assert func.origin == "hack-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", "<?hh\necho 'test';")
         result = analyze_hack(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "hack.tree_sitter"
+        assert result.run.pass_id == "hack-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -265,7 +265,7 @@ function add(): int { return 1; }
         result = analyze_hack(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh
@@ -274,9 +274,9 @@ function myFunc(): void {}
         result = analyze_hack(tmp_path)
         func = next((s for s in result.symbols if s.name == "myFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "hack:" in func.id
-        assert "test.hack" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("hack:test.hack:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

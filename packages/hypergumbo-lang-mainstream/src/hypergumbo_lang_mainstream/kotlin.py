@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Object declarations (object)
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
+- Annotations on classes, methods, and objects (meta.decorators)
 - Function call relationships
 - Import statements
 
@@ -30,23 +31,33 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    make_typed_stable_id,
+    node_text,
+    visibility_from_modifiers,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "kotlin-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("kotlin")
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -54,52 +65,195 @@ def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.kt"])
 
 
-def is_kotlin_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Kotlin grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_kotlin") is None:
-        return False
-    return True
-
-
-@dataclass
-class KotlinAnalysisResult:
-    """Result of analyzing Kotlin files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"kotlin:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Kotlin file node (used as import edge source)."""
-    return f"kotlin:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
+def _is_kotlin_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
+
+
+# Kotlin modifier keyword types grouped by category.
+# tree-sitter-kotlin wraps each in a typed node (visibility_modifier,
+# inheritance_modifier, etc.) whose single child is the keyword.
+KOTLIN_MODIFIER_KEYWORDS = {
+    # visibility
+    "public", "private", "protected", "internal",
+    # inheritance
+    "open", "final", "abstract", "sealed",
+    # member
+    "override", "lateinit",
+    # class
+    "data", "inner", "enum", "annotation", "value",
+    # function
+    "inline", "tailrec", "operator", "infix", "suspend",
+}
+
+# Node types that wrap modifier keywords
+_KOTLIN_MODIFIER_NODE_TYPES = {
+    "visibility_modifier", "inheritance_modifier", "member_modifier",
+    "class_modifier", "function_modifier", "type_modifier",
+    "property_modifier", "parameter_modifier",
+}
+
+
+def _extract_modifiers(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a Kotlin declaration node.
+
+    Kotlin tree-sitter groups modifiers under a ``modifiers`` container.
+    Each child is a typed wrapper (e.g. ``visibility_modifier``) whose
+    single child is the keyword token (e.g. ``public``).
+
+    Returns a list of modifier strings like ``["public", "open"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_node in child.children:
+                if mod_node.type in _KOTLIN_MODIFIER_NODE_TYPES:
+                    for kw in mod_node.children:
+                        if kw.type in KOTLIN_MODIFIER_KEYWORDS:
+                            modifiers.append(kw.type)
+    return modifiers
+
+
+def _kotlin_value_to_python(
+    node: "tree_sitter.Node", source: bytes,
+) -> str | int | float | bool | list | None:
+    """Convert a Kotlin tree-sitter AST value node to a Python representation.
+
+    Handles strings, numbers, booleans, identifiers, and arrays.
+    Mirrors Java's ``_java_value_to_python`` for consistency.
+    """
+    if node.type == "string_literal":
+        # Extract content from between quotes
+        for child in node.children:
+            if child.type == "string_content":
+                return node_text(child, source)
+        # Fallback: strip quotes (string_content always present in tree-sitter-kotlin)
+        return node_text(node, source).strip('"')  # pragma: no cover - defensive
+    elif node.type == "number_literal":
+        # tree-sitter-kotlin uses "number_literal" for integers and hex
+        text = node_text(node, source)
+        try:
+            if text.startswith(("0x", "0X")):
+                return int(text, 16)
+            return int(text.rstrip("lL"))
+        except ValueError:  # pragma: no cover - defensive
+            return text
+    elif node.type == "float_literal":
+        # tree-sitter-kotlin uses "float_literal" for decimal floats
+        text = node_text(node, source)
+        try:
+            return float(text.rstrip("fFdD"))
+        except ValueError:  # pragma: no cover - defensive
+            return text
+    elif node.type == "identifier":
+        # tree-sitter-kotlin parses true/false as identifiers
+        text = node_text(node, source)
+        if text == "true":
+            return True
+        elif text == "false":
+            return False
+        return text
+    elif node.type == "navigation_expression":
+        # Handle qualified references like Enum.VALUE
+        return node_text(node, source)
+    elif node.type == "collection_literal":  # pragma: no cover - rare in annotation values
+        # Handle array literals: [value1, value2]
+        result: list[object] = []
+        for child in node.children:
+            if child.type not in ("[", "]", ","):
+                result.append(_kotlin_value_to_python(child, source))
+        return result
+    # Fallback: return text representation
+    return node_text(node, source)  # pragma: no cover - defensive
+
+
+def _extract_annotation_info(
+    annotation_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, object]:
+    """Extract full annotation information from a Kotlin annotation AST node.
+
+    Kotlin annotations have two forms in tree-sitter:
+    1. Simple: ``annotation → @ + user_type`` (e.g., ``@Entity``)
+    2. With args: ``annotation → @ + constructor_invocation → user_type + value_arguments``
+
+    Returns a dict with:
+    - name: annotation name (e.g., "Entity", "Table")
+    - args: list of positional arguments
+    - kwargs: dict of keyword arguments (name=value pairs)
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    for child in annotation_node.children:
+        if child.type == "user_type":
+            # Simple annotation: @Entity
+            name = node_text(child, source)
+        elif child.type == "constructor_invocation":
+            # Annotation with arguments: @Table(name = "users")
+            for ci_child in child.children:
+                if ci_child.type == "user_type":
+                    name = node_text(ci_child, source)
+                elif ci_child.type == "value_arguments":
+                    for va_child in ci_child.children:
+                        if va_child.type != "value_argument":
+                            continue
+                        # Check if this is a named or positional argument.
+                        # Named args have: identifier = value
+                        # Positional args have: value only
+                        # We track the = sign to distinguish name from value
+                        # since both can be "identifier" nodes.
+                        has_eq = any(p.type == "=" for p in va_child.children)
+                        arg_name: str | None = None
+                        arg_value: object = None
+                        found_eq = False
+                        for part in va_child.children:
+                            if part.type == "=" and has_eq:
+                                found_eq = True
+                            elif has_eq and not found_eq and part.type == "identifier":
+                                # Before =: this is the parameter name
+                                arg_name = node_text(part, source)
+                            elif has_eq and found_eq:
+                                # After =: this is the value
+                                arg_value = _kotlin_value_to_python(part, source)
+                            else:
+                                # No = sign: positional argument
+                                arg_value = _kotlin_value_to_python(part, source)
+                        if has_eq and arg_name is not None:
+                            kwargs[arg_name] = arg_value
+                        elif arg_value is not None:
+                            args.append(arg_value)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_annotations(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """Extract all annotations from a Kotlin declaration node.
+
+    Annotations appear inside the ``modifiers`` container alongside
+    visibility/inheritance modifiers. Each annotation is an ``annotation``
+    node type.
+
+    Returns list of annotation info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    decorators: list[dict[str, object]] = []
+
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_child in child.children:
+                if mod_child.type == "annotation":
+                    dec_info = _extract_annotation_info(mod_child, source)
+                    if dec_info["name"]:
+                        decorators.append(dec_info)
+
+    return decorators
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -109,11 +263,11 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
         if current.type in ("class_declaration", "object_declaration"):
             name_node = _find_child_by_field(current, "name")
             if not name_node:  # pragma: no cover - defensive fallback
-                name_node = _find_child_by_type(current, "identifier")
+                name_node = find_child_by_type(current, "identifier")
                 if not name_node:
-                    name_node = _find_child_by_type(current, "type_identifier")
+                    name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -129,9 +283,9 @@ def _get_enclosing_function(
         if current.type == "function_declaration":
             name_node = _find_child_by_field(current, "name")
             if not name_node:  # pragma: no cover - defensive fallback
-                name_node = _find_child_by_type(current, "identifier")
+                name_node = find_child_by_type(current, "identifier")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -168,14 +322,14 @@ def _extract_kotlin_signature(
                     param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                         elif pc.type in ("user_type", "nullable_type", "function_type"):
-                            param_type = _node_text(pc, source)
+                            param_type = node_text(pc, source)
                     if param_name and param_type:
                         params.append(f"{param_name}: {param_type}")
         # Return type comes after function_value_parameters and before function_body
         elif found_params and child.type in ("user_type", "nullable_type", "function_type"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -184,6 +338,44 @@ def _extract_kotlin_signature(
         signature += f": {return_type}"
 
     return signature
+
+
+def normalize_kotlin_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Kotlin signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(signature, type_params, return_sep=":")
+
+
+def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
+    """Extract the return type name from a Kotlin function signature.
+
+    Kotlin signatures use the format ``(params): ReturnType``.
+    Returns the type name only if it is a simple identifier (no generics,
+    no nullable ``?`` suffix). Returns None for Unit return type (which is
+    already omitted from the signature by ``_extract_kotlin_signature``).
+
+    Examples:
+        ``"(): ServiceClient"`` → ``"ServiceClient"``
+        ``"(name: String): User"`` → ``"User"``
+        ``"()"`` → ``None``
+        ``"(): List<String>"`` → ``None``
+        ``"(): String?"`` → ``None``
+    """
+    if not signature:
+        return None
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0:
+        return None  # pragma: no cover - all Kotlin signatures contain parens
+    after_paren = signature[paren_idx + 1:].strip()
+    if not after_paren.startswith(":"):
+        return None
+    ret_part = after_paren[1:].strip()
+    if ret_part and ret_part.isidentifier():
+        return ret_part
+    return None
 
 
 def _extract_param_types(
@@ -209,9 +401,9 @@ def _extract_param_types(
                     param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                         elif pc.type in ("user_type", "nullable_type", "function_type"):
-                            type_text = _node_text(pc, source)
+                            type_text = node_text(pc, source)
                             # Extract base type name (strip nullable ?, generics <>, etc.)
                             if type_text:
                                 # Remove nullable suffix
@@ -259,11 +451,11 @@ def _extract_imports(
             continue
 
         # Find the qualified_identifier
-        id_node = _find_child_by_type(node, "qualified_identifier")
+        id_node = find_child_by_type(node, "qualified_identifier")
         if not id_node:
-            id_node = _find_child_by_type(node, "identifier")
+            id_node = find_child_by_type(node, "identifier")
         if id_node:
-            full_name = _node_text(id_node, source)
+            full_name = node_text(id_node, source)
             # Extract simple name (last part of qualified name)
             simple_name = full_name.split(".")[-1]
             imports[simple_name] = full_name
@@ -331,10 +523,10 @@ def _extract_user_type_name(user_type_node: "tree_sitter.Node", source: bytes) -
     """
     for child in user_type_node.children:
         if child.type in ("simple_identifier", "identifier", "type_identifier"):
-            return _node_text(child, source)
+            return node_text(child, source)
     # Defensive fallback for unexpected AST shapes
     if True:  # pragma: no cover
-        text = _node_text(user_type_node, source)
+        text = node_text(user_type_node, source)
         if "<" in text:
             text = text.split("<")[0]
         return text if text else None
@@ -361,10 +553,10 @@ def _extract_symbols_from_file(
         if node.type == "function_declaration":
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "identifier")
+                name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 enclosing_class = _get_enclosing_class(node, source)
                 if enclosing_class:
                     full_name = f"{enclosing_class}.{func_name}"
@@ -378,9 +570,22 @@ def _extract_symbols_from_file(
 
                 # Extract signature
                 signature = _extract_kotlin_signature(node, source)
+                modifiers = _extract_modifiers(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_kotlin_signature(signature)
+                stable_id = make_typed_stable_id(
+                    kind, norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
+                # Extract annotations (decorators)
+                annotations = _extract_annotations(node, source)
+                func_meta: dict[str, object] | None = None
+                if annotations:
+                    func_meta = {"decorators": annotations}
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
                     kind=kind,
                     language="kotlin",
@@ -393,7 +598,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
+                    modifiers=modifiers,
+                    meta=func_meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -402,14 +610,14 @@ def _extract_symbols_from_file(
         # Class declaration (also handles interfaces in Kotlin AST)
         elif node.type == "class_declaration":
             # Check if it's an interface
-            is_interface = _find_child_by_type(node, "interface") is not None
+            is_interface = find_child_by_type(node, "interface") is not None
 
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "identifier")
+                name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -421,8 +629,15 @@ def _extract_symbols_from_file(
                 if base_classes:
                     meta = {"base_classes": base_classes}
 
+                # Extract annotations (decorators)
+                annotations = _extract_annotations(node, source)
+                if annotations:
+                    if meta is None:
+                        meta = {}
+                    meta["decorators"] = annotations
+
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, type_name, kind),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
                     kind=kind,
                     language="kotlin",
@@ -436,6 +651,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -444,15 +660,21 @@ def _extract_symbols_from_file(
         elif node.type == "object_declaration":
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "type_identifier")
+                name_node = find_child_by_type(node, "type_identifier")
 
             if name_node:
-                object_name = _node_text(name_node, source)
+                object_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract annotations (decorators)
+                obj_annotations = _extract_annotations(node, source)
+                obj_meta: dict[str, object] | None = None
+                if obj_annotations:
+                    obj_meta = {"decorators": obj_annotations}
+
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, object_name, "object"),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
                     kind="object",
                     language="kotlin",
@@ -465,9 +687,13 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
+                    meta=obj_meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
+
+    populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
 
     return analysis
 
@@ -480,6 +706,7 @@ def _extract_edges_from_file(
     imports: dict[str, str],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -497,7 +724,7 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("kotlin", str(file_path))
 
     # Track variable types from constructor calls: val x = ClassName()
     var_types: dict[str, str] = {}
@@ -512,11 +739,11 @@ def _extract_edges_from_file(
         # Detect import statements
         if node.type == "import":
             # Get the qualified identifier being imported
-            id_node = _find_child_by_type(node, "qualified_identifier")
+            id_node = find_child_by_type(node, "qualified_identifier")
             if not id_node:
-                id_node = _find_child_by_type(node, "identifier")
+                id_node = find_child_by_type(node, "identifier")
             if id_node:
-                import_path = _node_text(id_node, source)
+                import_path = node_text(id_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"kotlin:{import_path}:0-0:package:package",
@@ -528,18 +755,32 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 ))
 
+        # Track constructor parameter types: class Ctrl(private val svc: Service)
+        elif node.type == "class_parameter":
+            param_name_node = find_child_by_type(node, "identifier")
+            type_node = find_child_by_type(node, "user_type")
+            if param_name_node and type_node:
+                param_name = node_text(param_name_node, source)
+                type_name = node_text(type_node, source)
+                if type_name:
+                    # Strip generics
+                    if "<" in type_name:
+                        type_name = type_name.split("<")[0]
+                    if type_name[0].isupper():
+                        var_types[param_name] = type_name
+
         # Track variable types from property declarations: val x = ClassName()
         elif node.type == "property_declaration":
             # Find variable_declaration and call_expression children
-            var_decl = _find_child_by_type(node, "variable_declaration")
-            call_expr = _find_child_by_type(node, "call_expression")
+            var_decl = find_child_by_type(node, "variable_declaration")
+            call_expr = find_child_by_type(node, "call_expression")
             if var_decl and call_expr:
-                var_name_node = _find_child_by_type(var_decl, "identifier")
+                var_name_node = find_child_by_type(var_decl, "identifier")
                 # Check if call is a simple constructor (identifier, not navigation)
-                callee_node = _find_child_by_type(call_expr, "identifier")
+                callee_node = find_child_by_type(call_expr, "identifier")
                 if var_name_node and callee_node:
-                    var_name = _node_text(var_name_node, source)
-                    type_name = _node_text(callee_node, source)
+                    var_name = node_text(var_name_node, source)
+                    type_name = node_text(callee_node, source)
                     # Only track if type_name looks like a class (capitalized)
                     if type_name and type_name[0].isupper():
                         var_types[var_name] = type_name
@@ -558,7 +799,7 @@ def _extract_edges_from_file(
                 continue
 
             # Check for navigation_expression (Object.method() or instance.method())
-            nav_node = _find_child_by_type(node, "navigation_expression")
+            nav_node = find_child_by_type(node, "navigation_expression")
             if nav_node:
                 # Navigation expression structure varies:
                 # - Object.method(): identifier . identifier
@@ -570,6 +811,10 @@ def _extract_edges_from_file(
                 for child in nav_node.children:
                     if child.type == "this_expression":
                         receiver_node = child
+                    elif child.type == "navigation_expression":
+                        # Nested: this.property.method() — inner nav is
+                        # this.property, outer identifier is method
+                        receiver_node = child
                     elif child.type == "identifier":
                         if receiver_node is None:
                             receiver_node = child
@@ -577,7 +822,7 @@ def _extract_edges_from_file(
                             method_node = child
 
                 if receiver_node and method_node:
-                    method_name = _node_text(method_node, source)
+                    method_name = node_text(method_node, source)
                     edge_added = False
 
                     # Case 1: this.method() - call on current instance
@@ -600,9 +845,47 @@ def _extract_edges_from_file(
                                 ))
                                 edge_added = True
 
+                    # Case 1b: this.property.method() - call on injected dep
+                    elif receiver_node.type == "navigation_expression":
+                        this_node = find_child_by_type(
+                            receiver_node, "this_expression"
+                        )
+                        prop_node = find_child_by_type(
+                            receiver_node, "identifier"
+                        )
+                        if this_node and prop_node:
+                            prop_name = node_text(prop_node, source)
+                            if prop_name in var_types:
+                                type_name = var_types[prop_name]
+                                candidate = f"{type_name}.{method_name}"
+                                import_hint = imports.get(type_name)
+                                lookup_result = resolver.lookup(
+                                    candidate, path_hint=import_hint
+                                )
+                                if (
+                                    lookup_result.found
+                                    and lookup_result.symbol is not None
+                                ):
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.85
+                                        * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type=(
+                                            "ast_call_this_property"
+                                        ),
+                                    ))
+                                    edge_added = True
+
                     # For non-this cases, get receiver name from identifier node
                     else:
-                        receiver_name = _node_text(receiver_node, source)
+                        receiver_name = node_text(receiver_node, source)
+
+                        resolved_nav_sym = None
 
                         # Case 2: Object.method() - static/object call
                         if receiver_name in class_symbols:
@@ -622,6 +905,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_static",
                                 ))
                                 edge_added = True
+                                resolved_nav_sym = lookup_result.symbol
 
                         # Case 3: instance.method() - use type inference
                         elif receiver_name in var_types:
@@ -642,6 +926,27 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_type_inferred",
                                 ))
                                 edge_added = True
+                                resolved_nav_sym = lookup_result.symbol
+
+                        # Return type tracking for navigation calls
+                        if resolved_nav_sym and resolved_nav_sym.kind in ("function", "method"):
+                            ret_name = _extract_kotlin_return_type_name(
+                                resolved_nav_sym.signature
+                            )
+                            if ret_name and ret_name in class_symbols:
+                                prop_decl = node.parent
+                                if prop_decl and prop_decl.type == "property_declaration":
+                                    var_decl = find_child_by_type(
+                                        prop_decl, "variable_declaration"
+                                    )
+                                    if var_decl:
+                                        var_name_node = find_child_by_type(
+                                            var_decl, "identifier"
+                                        )
+                                        if var_name_node:
+                                            var_types[
+                                                node_text(var_name_node, source)
+                                            ] = ret_name
 
                         # Case 4: Fallback - try qualified name directly
                         if not edge_added:  # pragma: no cover
@@ -662,10 +967,17 @@ def _extract_edges_from_file(
                                 ))
             else:
                 # Simple function call: helper()
-                callee_node = _find_child_by_type(node, "identifier")
+                callee_node = find_child_by_type(node, "identifier")
                 if callee_node:
-                    callee_name = _node_text(callee_node, source)
+                    callee_name = node_text(callee_node, source)
+                    resolved_simple_sym = None
 
+                    # AMB-METHOD guard: when 3+ classes define the same
+                    # method name, suppress the edge to avoid false positives.
+                    if method_resolver is not None:
+                        amb_check = method_resolver.lookup(callee_name)
+                        if not amb_check.found and amb_check.candidates:
+                            continue  # 3+ method candidates, suppress
                     # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
@@ -679,9 +991,9 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        resolved_simple_sym = callee
                     # Check global symbols via resolver
                     else:
-                        # Use import path as hint for disambiguation
                         import_hint = imports.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
@@ -695,14 +1007,183 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
+                            resolved_simple_sym = lookup_result.symbol
+
+                    # Return type tracking for simple function calls
+                    if (
+                        resolved_simple_sym
+                        and resolved_simple_sym.kind in ("function", "method")
+                    ):
+                        ret_name = _extract_kotlin_return_type_name(
+                            resolved_simple_sym.signature
+                        )
+                        if ret_name and ret_name in class_symbols:
+                            prop_decl = node.parent
+                            if (
+                                prop_decl
+                                and prop_decl.type == "property_declaration"
+                            ):
+                                var_decl = find_child_by_type(
+                                    prop_decl, "variable_declaration"
+                                )
+                                if var_decl:
+                                    var_name_node = find_child_by_type(
+                                        var_decl, "identifier"
+                                    )
+                                    if var_name_node:
+                                        var_types[
+                                            node_text(var_name_node, source)
+                                        ] = ret_name
+
+        # Callable references: ::functionName (unqualified)
+        elif node.type == "callable_reference":
+            current_function = _get_enclosing_function(node, source, local_symbols)
+            if current_function is None:  # pragma: no cover
+                continue
+            # Structure: :: identifier
+            ref_name_node = find_child_by_type(node, "identifier")
+            if ref_name_node:
+                ref_name = node_text(ref_name_node, source)
+                # Try enclosing class scope first
+                enclosing_class = _get_enclosing_class(node, source)
+                target_name = (
+                    f"{enclosing_class}.{ref_name}" if enclosing_class else ref_name
+                )
+                lookup_result = resolver.lookup(target_name)
+                if not (lookup_result.found and lookup_result.symbol is not None):
+                    lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        confidence=0.80 * lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="callable_reference",
+                    ))
+
+        # Qualified callable references: App::method or this::method
+        # These appear as navigation_expression with :: separator.
+        elif node.type == "navigation_expression":
+            # Only handle :: references (not normal . navigation)
+            has_double_colon = any(
+                not c.is_named and c.type == "::" for c in node.children
+            )
+            if has_double_colon:
+                current_function = _get_enclosing_function(
+                    node, source, local_symbols,
+                )
+                if current_function is None:  # pragma: no cover
+                    continue
+                named_children = [c for c in node.children if c.is_named]
+                if len(named_children) >= 2:
+                    receiver_node = named_children[0]
+                    method_node = named_children[1]
+                    method_name = node_text(method_node, source)
+
+                    if receiver_node.type == "this_expression":
+                        enclosing_class = _get_enclosing_class(node, source)
+                        target = (
+                            f"{enclosing_class}.{method_name}"
+                            if enclosing_class
+                            else method_name
+                        )
+                    else:
+                        receiver_name = node_text(receiver_node, source)
+                        target = f"{receiver_name}.{method_name}"
+
+                    lookup_result = resolver.lookup(target)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="callable_reference",
+                        ))
 
     return edges
 
 
+def _resolve_base_class_kotlin(
+    base_name: str,
+    child_sym: Symbol,
+    candidates_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes or interfaces share the same name (e.g., test stubs named
+    'Model'), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file has ``import com.example.models.Model`` and a
+       candidate's fully qualified name or file path matches
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        candidates_by_name: Multi-value lookup: name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (simple name -> fully qualified name)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = candidates_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in imports:
+        fqn = imports[base_name]
+        # Convert FQN to path segments for matching against file paths
+        # e.g., "com.example.models.Model" -> try "com/example/models/Model",
+        # then progressively shorter suffixes
+        fqn_as_path = fqn.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            cand_no_ext = cand_path.rsplit(".kt", 1)[0]
+            if cand_no_ext.endswith(fqn_as_path):
+                return cand
+        # Try matching just the last package segment + class name
+        # e.g., "com.example.models.Model" -> "models/Model" matches ".../models/Model.kt"
+        fqn_parts = fqn.split(".")
+        if len(fqn_parts) >= 2:
+            short_path = "/".join(fqn_parts[-2:])
+            for cand in candidates:
+                cand_path = cand.path or ""
+                cand_no_ext = cand_path.rsplit(".kt", 1)[0]
+                if cand_no_ext.endswith(short_path):
+                    return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
-    interface_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    interface_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance (META-001).
@@ -711,10 +1192,15 @@ def _extract_inheritance_edges(
     - extends edges to base classes
     - implements edges to interfaces
 
+    When multiple classes or interfaces share the same name (common in repos with
+    test stubs), uses import-aware disambiguation via ``_resolve_base_class_kotlin()``
+    to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
-        interface_symbols: Map of interface name -> Symbol for interface lookup
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        interface_by_name: Multi-value lookup: interface name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
         run: Current analysis run for provenance
 
     Returns:
@@ -735,14 +1221,22 @@ def _extract_inheritance_edges(
             base_name = base_class_name.split("<")[0] if "<" in base_class_name else base_class_name
 
             # Determine edge type based on whether target is interface or class
-            if base_name in interface_symbols:
-                base_sym = interface_symbols[base_name]
+            # Try interface first, then class, using disambiguation
+            iface_sym = _resolve_base_class_kotlin(
+                base_name, sym, interface_by_name, sym_file_imports
+            )
+            if iface_sym is not None and iface_sym.id != sym.id:
                 edge_type = "implements"
-            elif base_name in class_symbols:
-                base_sym = class_symbols[base_name]
-                edge_type = "extends"
+                base_sym = iface_sym
             else:
-                continue  # External type, no edge
+                class_sym = _resolve_base_class_kotlin(
+                    base_name, sym, class_by_name, sym_file_imports
+                )
+                if class_sym is not None and class_sym.id != sym.id:
+                    edge_type = "extends"
+                    base_sym = class_sym
+                else:
+                    continue  # External type, no edge
 
             edge = Edge.create(
                 src=sym.id,
@@ -759,88 +1253,200 @@ def _extract_inheritance_edges(
     return edges
 
 
-def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
-    """Analyze all Kotlin files in a repository.
+def _extract_annotation_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from annotation metadata.
 
-    Returns a KotlinAnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-kotlin is not available, returns a skipped result.
+    For each symbol with decorators metadata, creates decorated_by edges to
+    annotation types that exist in the analyzed codebase. External annotations
+    (e.g., Spring's @Service, JPA's @Entity) get lower-confidence unresolved
+    edges that still surface the annotation pattern in the graph.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for annotation lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for annotation relationships
     """
-    if not is_kotlin_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-kotlin not available. Install with: pip install hypergumbo[kotlin]",
-            stacklevel=2,
-        )
-        return KotlinAnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-kotlin not available",
-        )
+    edges: list[Edge] = []
 
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    for sym in symbols:
+        if sym.meta is None:
+            continue
 
-    # Import tree-sitter-kotlin
-    try:
-        import tree_sitter_kotlin
-        import tree_sitter
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
 
-        lang = tree_sitter.Language(tree_sitter_kotlin.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            annotation_sym = global_symbols.get(dec_name)
+            line = sym.span.start_line if sym.span else 0
+
+            if annotation_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=annotation_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation",
+                )
+                edges.append(edge)
+            else:
+                # Unresolved edge for external annotations (e.g., @Service, @Entity)
+                dst_id = f"kotlin:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation_unresolved",
+                )
+                edges.append(edge)
+
+    return edges
+
+
+class KotlinAnalyzer(TreeSitterAnalyzer):
+    """Kotlin analyzer using tree-sitter-kotlin grammar."""
+
+    lang = "kotlin"
+    file_patterns: ClassVar[list[str]] = ["*.kt"]
+    grammar_module = "tree_sitter_kotlin"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Analyze all Kotlin files in a repository.
+
+        Returns an AnalysisResult with symbols, edges, and provenance.
+        If tree-sitter-kotlin is not available, returns a skipped result.
+        """
+        if not self._check_grammar_available():
+            warnings.warn(
+                "tree-sitter-kotlin not available. Install with: pip install hypergumbo[kotlin]",
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason="tree-sitter-kotlin not available",
+            )
+
+        start_time = time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        # Import tree-sitter-kotlin
+        try:
+            parser = self._create_parser()
+        except Exception as e:
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"Failed to load Kotlin parser: {e}",
+            )
+
+        # Pass 1: Extract all symbols
+        file_analyses: dict[Path, FileAnalysis] = {}
+        files_skipped = 0
+
+        for kt_file in find_kotlin_files(repo_root):
+            analysis = _extract_symbols_from_file(kt_file, parser, run)
+            if analysis.symbols:
+                file_analyses[kt_file] = analysis
+            else:
+                files_skipped += 1
+
+        # Build global symbol registry
+        global_symbols: dict[str, Symbol] = {}
+        # AMB-METHOD: multi-value method registry for ambiguity guard
+        global_methods: dict[str, list[Symbol]] = {}
+        for analysis in file_analyses.values():
+            for symbol in analysis.symbols:
+                # Store by short name for cross-file resolution
+                short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+                global_symbols[short_name] = symbol
+                global_symbols[symbol.name] = symbol
+                if symbol.kind == "method":
+                    global_methods.setdefault(short_name, []).append(symbol)
+
+        # Pass 2: Extract edges
+        resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for kt_file, analysis in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+
+            edges = _extract_edges_from_file(
+                kt_file, parser, analysis.symbol_by_name, global_symbols,
+                analysis.imports, run, resolver, method_resolver=method_resolver,
+            )
+            all_edges.extend(edges)
+
+        run.files_analyzed = len(file_analyses)
+        run.files_skipped = files_skipped
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return KotlinAnalysisResult(
+
+        # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
+        # Build multi-value lookups for disambiguation (INV-015)
+        class_by_name: dict[str, list[Symbol]] = {}
+        interface_by_name: dict[str, list[Symbol]] = {}
+        for s in all_symbols:
+            if s.kind == "class":
+                if s.name not in class_by_name:
+                    class_by_name[s.name] = []
+                class_by_name[s.name].append(s)
+            elif s.kind == "interface":
+                if s.name not in interface_by_name:
+                    interface_by_name[s.name] = []
+                interface_by_name[s.name].append(s)
+        # Build per-symbol imports mapping for disambiguation
+        sym_file_imports: dict[str, dict[str, str]] = {}
+        for _kt_file, analysis in file_analyses.items():
+            for sym in analysis.symbols:
+                sym_file_imports[sym.id] = analysis.imports
+        inheritance_edges = _extract_inheritance_edges(
+            all_symbols, class_by_name, interface_by_name, sym_file_imports, run
+        )
+        all_edges.extend(inheritance_edges)
+
+        # Extract annotation edges (decorators → decorated_by edges)
+        annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
+        all_edges.extend(annotation_edges)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
             run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Kotlin parser: {e}",
         )
 
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
 
-    for kt_file in find_kotlin_files(repo_root):
-        analysis = _extract_symbols_from_file(kt_file, parser, run)
-        if analysis.symbols:
-            file_analyses[kt_file] = analysis
-        else:
-            files_skipped += 1
+_analyzer = KotlinAnalyzer()
 
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
 
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
+def is_kotlin_tree_sitter_available() -> bool:
+    """Check if tree-sitter-kotlin grammar is available."""
+    return _analyzer._check_grammar_available()
 
-    for kt_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
 
-        edges = _extract_edges_from_file(
-            kt_file, parser, analysis.symbol_by_name, global_symbols,
-            analysis.imports, run, resolver
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
-    class_symbols = {s.name: s for s in all_symbols if s.kind == "class"}
-    interface_symbols = {s.name: s for s in all_symbols if s.kind == "interface"}
-    inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_symbols, interface_symbols, run
-    )
-    all_edges.extend(inheritance_edges)
-
-    return KotlinAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+@register_analyzer("kotlin")
+def analyze_kotlin(repo_root: Path) -> AnalysisResult:
+    """Analyze all Kotlin files in a repository (wrapper)."""
+    return _analyzer.analyze(repo_root)

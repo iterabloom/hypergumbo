@@ -1,0 +1,80 @@
+# Cowboy framework patterns (ADR-0003 v1.1.x)
+#
+# Cowboy is the most popular Erlang HTTP server.
+# Uses pattern matching for routing, handlers implement callbacks.
+# Powers WhatsApp, Discord backend, and many high-traffic services.
+
+id: cowboy
+language: erlang
+
+patterns:
+  # cowboy:start_clear - start HTTP server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^cowboy:start_(clear|tls)$"
+
+  # cowboy:stop_listener
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^cowboy:stop_listener$"
+
+  # cowboy_router:compile - compile routes
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^cowboy_router:compile$"
+
+  # Handler behaviors
+  - concept: handler
+    base_class: "^cowboy_handler$"
+
+  - concept: handler
+    base_class: "^cowboy_rest$"
+
+  - concept: websocket_handler
+    base_class: "^cowboy_websocket$"
+
+  - concept: stream_handler
+    base_class: "^cowboy_stream$"
+
+  - concept: loop_handler
+    base_class: "^cowboy_loop$"
+
+  # Handler callbacks
+  - concept: handler
+    usage:
+      kind: "^function$"
+      name: "^init$"
+
+  - concept: handler
+    usage:
+      kind: "^function$"
+      name: "^(handle|info|terminate)$"
+
+  # REST callbacks
+  - concept: rest_callback
+    usage:
+      kind: "^function$"
+      name: "^(allowed_methods|content_types_accepted|content_types_provided)$"
+
+  # WebSocket callbacks
+  - concept: websocket_callback
+    usage:
+      kind: "^function$"
+      name: "^websocket_(init|handle|info)$"
+
+  # Request/response helpers
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^cowboy_req:(binding|bindings|header|headers|method|path|qs|uri)$"
+
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^cowboy_req:(reply|stream_reply|set_resp_header|set_resp_body)$"
+
+linkers:
+  - http

@@ -1,0 +1,44 @@
+- op: create  # e725
+  at: '2026-02-20T16:13:16Z'  # e725
+  by: agent  # e725
+  actor: jgstern_agent  # e725
+  clock: 1  # e725
+  nonce: e725  # e725
+  data:  # e725
+    kind: work_item  # e725
+    title: "Groovy: ambiguity guard for dynamic dispatch"  # e725
+    status: todo_soft  # e725
+    priority: 4  # e725
+    parent:  # e725
+    tags: []  # e725
+    before: []  # e725
+    duplicate_of: []  # e725
+    not_duplicate_of: []  # e725
+    pr_ref:  # e725
+    justification:  # e725
+    description: "Groovy dynamic dispatch similar to Ruby. Apply guard for 3+ candidates."  # e725
+    fields: {}  # e725
+- op: update  # 1bc6
+  at: '2026-02-20T18:42:37Z'  # 1bc6
+  by: agent  # 1bc6
+  actor: jgstern_agent  # 1bc6
+  clock: 2  # 1bc6
+  nonce: 1bc6  # 1bc6
+  set:  # 1bc6
+    priority: 2  # 1bc6
+- op: update  # d554
+  at: '2026-02-20T20:11:04Z'  # d554
+  by: agent  # d554
+  actor: jgstern_agent  # d554
+  clock: 3  # d554
+  nonce: d554  # d554
+  set:  # d554
+    status: done  # d554
+- op: update  # 3a50
+  at: '2026-02-22T04:47:43Z'  # 3a50
+  by: agent  # 3a50
+  actor: jgstern_agent  # 3a50
+  clock: 4  # 3a50
+  nonce: 3a50  # 3a50
+  set:  # 3a50
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 3a50

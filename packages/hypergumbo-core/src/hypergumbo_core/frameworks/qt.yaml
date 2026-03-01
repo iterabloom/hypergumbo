@@ -1,0 +1,81 @@
+# Qt framework patterns (ADR-0003 v1.1.x)
+#
+# Qt is a comprehensive C++ framework for cross-platform GUI applications.
+# Uses signals/slots for event handling, QObject for object model.
+# Widely used in desktop apps (KDE), automotive, embedded systems.
+
+id: qt
+language: cpp
+
+patterns:
+  # Q_OBJECT macro - enables meta-object features
+  - concept: qt_class
+    usage:
+      kind: "^macro$"
+      name: "^Q_OBJECT$"
+
+  # QObject base class
+  - concept: qt_class
+    base_class: "^QObject$"
+
+  # QWidget base class
+  - concept: widget
+    base_class: "^QWidget$"
+
+  # QMainWindow
+  - concept: main_window
+    base_class: "^QMainWindow$"
+
+  # QDialog
+  - concept: dialog
+    base_class: "^QDialog$"
+
+  # Signals and slots
+  - concept: signal
+    usage:
+      kind: "^call$"
+      name: "^(emit|Q_SIGNAL|signals:)$"
+
+  - concept: slot
+    usage:
+      kind: "^call$"
+      name: "^(Q_SLOT|slots:|Q_SLOTS)$"
+
+  # Connect signals to slots
+  - concept: connection
+    usage:
+      kind: "^call$"
+      name: "^(connect|QObject::connect)$"
+
+  # QApplication entry point
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^QApplication$"
+
+  # QML types
+  - concept: qml_type
+    usage:
+      kind: "^call$"
+      name: "^(qmlRegisterType|QML_ELEMENT|QML_NAMED_ELEMENT)$"
+
+  # Qt property system
+  - concept: property
+    usage:
+      kind: "^macro$"
+      name: "^Q_PROPERTY$"
+
+  # Qt event handlers
+  - concept: event_handler
+    usage:
+      kind: "^method$"
+      name: "^(event|.*Event)$"
+
+  # Qt model/view
+  - concept: model
+    base_class: "^(QAbstractItemModel|QAbstractListModel|QAbstractTableModel)$"
+
+  - concept: view
+    base_class: "^(QListView|QTableView|QTreeView)$"
+
+linkers: []

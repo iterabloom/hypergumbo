@@ -11,6 +11,8 @@ How It Works
    - Phoenix: controller = "UserController", action = "index" → UserController.index
    - Laravel: controller_action = "UserController@index"
    - Express/JS: handler_ref = "userController.list" → list function
+   - Django: view_name = "list_users" or "accounts.views.list_users"
+   - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
 3. Resolve handler reference to actual method/function symbols
 4. Create routes_to edges linking routes to handlers
 
@@ -21,12 +23,20 @@ Why This Design
 - Supports multiple frameworks via pluggable resolution strategies
 - Post-hoc linking works with complete symbol table
 
+Note: Route symbols (kind="route") are created by language analyzers, not by the
+framework pattern enrichment layer. Enrichment adds ``concept: route`` to handler
+symbols (tagging the view function); this linker connects route *entities* to
+handlers via ``routes_to`` edges. Both are derived from the same UsageContext
+extraction pass — see each analyzer's "Route Detection Architecture" docs.
+
 Supported Frameworks
 --------------------
 - Ruby/Rails: controller_action = "controller#action"
 - Elixir/Phoenix: controller + action fields
 - PHP/Laravel: controller_action = "Controller@action"
 - JS/TS Express: handler_ref = "module.function"
+- Python/Django: view_name = "view_function" or "module.view_function"
+- Go/Gin/Echo/Fiber/Chi: handler_name = "functionName" or "pkg.FunctionName"
 """
 
 from __future__ import annotations
@@ -34,14 +44,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "route-handler-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("route-handler-linker")
 
 
 @dataclass
@@ -110,6 +119,65 @@ def _resolve_rails_handler(
         if controller_class in sym_class or sym_class.endswith(controller_class):
             return sym
 
+    # Try suffix matching for deeply namespaced controllers.
+    # Rails routes use short names (e.g., "users#index" → "UsersController#index")
+    # but actual symbols may be deeply namespaced
+    # (e.g., "Api::V1::Accounts::UsersController#index").
+    hash_suffix = f"::{controller_class}#{action}"
+    dot_suffix = f"::{controller_class}.{action}"
+    for name, sym in symbol_by_name.items():
+        if name.endswith(hash_suffix) or name.endswith(dot_suffix):
+            return sym
+
+    # Reverse suffix matching: route has a namespaced controller_action
+    # (e.g., "api/v1/statuses#destroy" → "Api::V1::StatusesController") but the
+    # symbol has a SHORT name (e.g., "StatusesController#destroy") because the
+    # Ruby analyzer only captures the immediately enclosing class. Check if the
+    # normalized controller_class ENDS WITH the symbol's class portion, respecting
+    # namespace boundaries (:: separator) to avoid false positives like
+    # "SubscriptionStatusesController" matching "StatusesController".
+    for name, sym in symbol_by_name.items():
+        for sep in ("#", "."):
+            if sep not in name:
+                continue
+            sym_class_part, sym_action = name.rsplit(sep, 1)
+            if sym_action != action:
+                continue
+            if sym_class_part == controller_class:
+                # Already handled by exact match above.
+                continue  # pragma: no cover
+            # Check namespace-boundary-separated suffix
+            reverse_suffix = f"::{sym_class_part}"
+            if controller_class.endswith(reverse_suffix):
+                return sym
+
+    # Case-insensitive fallback for Rails acronym inflections (ADR-0008).
+    # Rails treats words like IP, HTTP, SMTP, API as acronyms:
+    # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
+    # Our naive CamelCase conversion can't replicate Rails' custom acronym list,
+    # so we fall back to case-insensitive matching after exact match fails.
+    controller_lower = controller_class.lower()
+    for name, sym in symbol_by_name.items():
+        # Check ClassName#action or ClassName.action (case-insensitive on class)
+        for sep in ("#", "."):
+            if sep not in name:
+                continue
+            sym_class_part, sym_action = name.rsplit(sep, 1)
+            if sym_action != action:
+                continue
+            # Full match (case-insensitive on controller class portion)
+            if sym_class_part.lower() == controller_lower:
+                return sym
+            # Suffix match for deeply namespaced controllers
+            ci_suffix = f"::{controller_lower}"
+            if sym_class_part.lower().endswith(ci_suffix):
+                return sym
+            # Reverse suffix (case-insensitive): controller_class ends with
+            # symbol's class portion at a namespace boundary.
+            reverse_ci_suffix = f"::{sym_class_part.lower()}"
+            if controller_lower.endswith(reverse_ci_suffix):
+                return sym
+
     return None
 
 
@@ -152,7 +220,17 @@ def _resolve_laravel_handler(
         if controller in sym_class or sym_class.endswith(controller):
             return sym
 
-    return None  # pragma: no cover - defensive: no match found
+    # Suffix match for PHP backslash-namespaced controllers.
+    # Routes use short names (UserController@index) but symbols may be FQ
+    # (App\Http\Controllers\UserController.index). Match on \Controller.action
+    # suffix to handle namespace resolution.
+    backslash_suffix = f"\\{controller}.{action}"
+    dot_suffix_only = f".{controller}.{action}"
+    for name, sym in symbol_by_name.items():
+        if name.endswith(backslash_suffix) or name.endswith(dot_suffix_only):
+            return sym
+
+    return None
 
 
 def _resolve_phoenix_handler(
@@ -225,6 +303,93 @@ def _resolve_express_handler(
     return None  # pragma: no cover - defensive: no match found
 
 
+def _resolve_django_handler(
+    view_name: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Django view_name to a handler symbol.
+
+    Django URL patterns reference views by name, which can be:
+    - Simple function name: "list_users"
+    - Class-based view: "UserListView"
+    - Module-qualified: "accounts.views.list_accounts"
+
+    Args:
+        view_name: View name from URL pattern metadata
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None
+    """
+
+    def is_handler(sym: Symbol) -> bool:
+        """Check if symbol is a potential Django handler (function or class)."""
+        return sym.kind in ("function", "method", "class")
+
+    # Try exact match first
+    if view_name in symbol_by_name:
+        sym = symbol_by_name[view_name]
+        if is_handler(sym):
+            return sym
+
+    # Extract function/class name from module-qualified reference
+    if "." in view_name:
+        parts = view_name.split(".")
+        simple_name = parts[-1]  # Last part is the view function/class name
+
+        # Try just the simple name
+        if simple_name in symbol_by_name:
+            sym = symbol_by_name[simple_name]
+            if is_handler(sym):
+                return sym
+
+    return None
+
+
+def _resolve_go_handler(
+    handler_name: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Go handler function name to a handler symbol.
+
+    Go web frameworks (Gin, Echo, Fiber, Chi) pass handler functions directly
+    as arguments to route registration calls. The handler can be:
+    - Simple identifier: "listUsers"
+    - Package-qualified: "handlers.GetAPI"
+
+    Args:
+        handler_name: Handler function name from route metadata
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None (excludes route symbols to avoid self-reference)
+    """
+
+    def is_handler(sym: Symbol) -> bool:
+        """Check if symbol is a potential handler (not a route itself)."""
+        return sym.kind in ("function", "method")
+
+    # Try exact match first
+    if handler_name in symbol_by_name:
+        sym = symbol_by_name[handler_name]
+        if is_handler(sym):
+            return sym
+
+    # For qualified names like "handlers.GetAPI", try the last segment
+    if "." in handler_name:
+        func_name = handler_name.rsplit(".", 1)[-1]
+
+        if func_name in symbol_by_name:
+            sym = symbol_by_name[func_name]
+            if is_handler(sym):
+                return sym
+
+        # Try suffix match across all symbols
+        for name, sym in symbol_by_name.items():
+            if name.endswith(f".{func_name}") and is_handler(sym):
+                return sym
+
+    return None
+
+
 def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     """Extract handler reference info from route metadata.
 
@@ -254,7 +419,13 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     if meta.get("handler_ref"):
         return {"type": "express", "handler_ref": meta["handler_ref"]}
 
-    # Django: view_name (handled separately via deferred resolution)
+    # Django: view_name field (e.g., "list_users" or "accounts.views.list_accounts")
+    if meta.get("view_name"):
+        return {"type": "django", "view_name": meta["view_name"]}
+
+    # Go (Gin/Echo/Fiber/Chi): handler_name field (e.g., "listUsers" or "handlers.GetAPI")
+    if meta.get("handler_name"):
+        return {"type": "go", "handler_name": meta["handler_name"]}
 
     return None
 
@@ -272,13 +443,21 @@ def link_routes_to_handlers(
     Returns:
         RouteHandlerResult with new edges and run info
     """
-    # Build symbol lookup by name
+    # Build symbol lookup by name, preferring handler-kind symbols over routes.
+    # In Go/JS/Django, route symbols often share the same name as their handler
+    # function. A naive overwrite would shadow the function with the route,
+    # causing the resolver to fail (routes aren't functions/methods).
     symbol_by_name: dict[str, Symbol] = {}
     for s in symbols:
-        symbol_by_name[s.name] = s
+        existing = symbol_by_name.get(s.name)
+        if existing is None or existing.kind == "route":
+            symbol_by_name[s.name] = s
         # Also index by qualified name if available
         if s.meta and s.meta.get("qualified_name"):
-            symbol_by_name[s.meta["qualified_name"]] = s
+            qn = s.meta["qualified_name"]
+            existing_qn = symbol_by_name.get(qn)
+            if existing_qn is None or existing_qn.kind == "route":
+                symbol_by_name[qn] = s
 
     # Find route symbols
     routes = [s for s in symbols if s.kind == "route"]
@@ -308,6 +487,14 @@ def link_routes_to_handlers(
         elif handler_ref["type"] == "express":
             handler = _resolve_express_handler(
                 handler_ref["handler_ref"], symbol_by_name
+            )
+        elif handler_ref["type"] == "django":
+            handler = _resolve_django_handler(
+                handler_ref["view_name"], symbol_by_name
+            )
+        elif handler_ref["type"] == "go":
+            handler = _resolve_go_handler(
+                handler_ref["handler_name"], symbol_by_name
             )
 
         if handler:

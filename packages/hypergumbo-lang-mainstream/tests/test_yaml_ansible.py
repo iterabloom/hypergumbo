@@ -1,23 +1,25 @@
 """Tests for YAML/Ansible analyzer."""
 from pathlib import Path
+
+import pytest
+from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
 
+from hypergumbo_lang_mainstream import yaml_ansible as yaml_module
 
 class TestYAMLHelpers:
     """Tests for YAML analyzer helper functions."""
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo_lang_mainstream.yaml_ansible import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "block_mapping")
+        result = find_child_by_type(mock_node, "block_mapping")
         assert result is None
-
 
 class TestFindAnsibleFiles:
     """Tests for Ansible file discovery."""
@@ -49,7 +51,6 @@ class TestFindAnsibleFiles:
         assert len(files) == 1
         assert "main.yml" in files[0].name
 
-
 class TestYAMLTreeSitterAvailability:
     """Tests for tree-sitter-yaml availability checking."""
 
@@ -57,18 +58,15 @@ class TestYAMLTreeSitterAvailability:
         """Returns True when tree-sitter-yaml is available."""
         from hypergumbo_lang_mainstream.yaml_ansible import is_yaml_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_yaml_tree_sitter_available() is True
+        result = is_yaml_tree_sitter_available()
+        assert result is True
 
     def test_is_yaml_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
+        """Returns False when grammar is not available."""
         from hypergumbo_lang_mainstream.yaml_ansible import is_yaml_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
+        with patch.object(yaml_module._analyzer, "_check_grammar_available", return_value=False):
             assert is_yaml_tree_sitter_available() is False
-
 
 class TestAnalyzeYAMLFallback:
     """Tests for fallback behavior when tree-sitter-yaml unavailable."""
@@ -79,12 +77,12 @@ class TestAnalyzeYAMLFallback:
 
         (tmp_path / "playbook.yml").write_text("- hosts: all")
 
-        with patch("hypergumbo_lang_mainstream.yaml_ansible.is_yaml_tree_sitter_available", return_value=False):
-            result = analyze_ansible(tmp_path)
+        with patch.object(yaml_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="yaml_ansible analysis skipped"):
+                result = analyze_ansible(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-yaml" in result.skip_reason
-
+        assert "not available" in result.skip_reason
 
 class TestAnsiblePlaybookExtraction:
     """Tests for extracting Ansible playbooks."""
@@ -107,10 +105,8 @@ class TestAnsiblePlaybookExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         playbooks = [s for s in result.symbols if s.kind == "playbook"]
         assert len(playbooks) >= 1
-
 
 class TestAnsibleTaskExtraction:
     """Tests for extracting Ansible tasks."""
@@ -135,11 +131,9 @@ class TestAnsibleTaskExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         tasks = [s for s in result.symbols if s.kind == "task"]
         task_names = [s.name for s in tasks]
         assert "Install packages" in task_names or len(tasks) >= 1
-
 
 class TestAnsibleHandlerExtraction:
     """Tests for extracting Ansible handlers."""
@@ -167,10 +161,8 @@ class TestAnsibleHandlerExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         handlers = [s for s in result.symbols if s.kind == "handler"]
         assert len(handlers) >= 1
-
 
 class TestAnsibleIncludeEdges:
     """Tests for extracting include/import edges."""
@@ -189,10 +181,8 @@ class TestAnsibleIncludeEdges:
 
         result = analyze_ansible(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
-
 
 class TestAnsibleVariableExtraction:
     """Tests for extracting Ansible variables."""
@@ -213,11 +203,9 @@ class TestAnsibleVariableExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         variables = [s for s in result.symbols if s.kind == "variable"]
         var_names = [s.name for s in variables]
         assert "http_port" in var_names or len(variables) >= 1
-
 
 class TestAnsibleSymbolProperties:
     """Tests for symbol property correctness."""
@@ -237,11 +225,9 @@ class TestAnsibleSymbolProperties:
 
         result = analyze_ansible(tmp_path)
 
-
         for symbol in result.symbols:
             assert symbol.language == "ansible"
-            assert symbol.origin == "ansible-v1"
-
+            assert symbol.origin == "yaml_ansible-v1"
 
 class TestAnsibleEdgeProperties:
     """Tests for edge property correctness."""
@@ -259,11 +245,9 @@ class TestAnsibleEdgeProperties:
 
         result = analyze_ansible(tmp_path)
 
-
         for edge in result.edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestAnsibleEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -276,7 +260,6 @@ class TestAnsibleEmptyFile:
         playbook.write_text("")
 
         result = analyze_ansible(tmp_path)
-
 
         assert result.run is not None
 
@@ -291,23 +274,22 @@ class TestAnsibleEmptyFile:
 
         result = analyze_ansible(tmp_path)
 
-
         assert result.run is not None
-
 
 class TestAnsibleParserFailure:
     """Tests for parser failure handling."""
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load YAML parser."""
+        """Handles failure to load YAML parser via _check_grammar_available."""
         from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "test.yml"
         playbook.write_text("- hosts: all")
 
-        with patch("hypergumbo_lang_mainstream.yaml_ansible.is_yaml_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_yaml.language", side_effect=Exception("Parser error")):
+        # When grammar is not available, analyzer returns skipped
+        with patch.object(yaml_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="yaml_ansible analysis skipped"):
                 result = analyze_ansible(tmp_path)
 
         assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+        assert "not available" in result.skip_reason

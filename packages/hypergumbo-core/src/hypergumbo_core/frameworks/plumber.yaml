@@ -1,0 +1,66 @@
+# Plumber framework patterns (ADR-0003 v1.1.x)
+#
+# Plumber is R's REST API framework using comment annotations.
+# Routes are defined via special #* comments above functions.
+# Popular for exposing R models and data as web APIs.
+
+id: plumber
+language: r
+
+patterns:
+  # plumb - create plumber API from file
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^plumb$"
+
+  # Plumber$new - create plumber instance
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^Plumber\\$new$"
+
+  # pr_run - run the API
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^(pr_run|run)$"
+
+  # pr_get, pr_post, etc. - programmatic route registration
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^pr_(get|post|put|delete|head|options|patch)$"
+
+  # pr_filter - middleware/filter
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^pr_filter$"
+
+  # pr_hook - lifecycle hooks
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^pr_hook$"
+
+  # pr_mount - mount sub-routers
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^pr_mount$"
+
+  # pr_static - serve static files
+  - concept: static_handler
+    usage:
+      kind: "^call$"
+      name: "^pr_static$"
+
+  # Serializers
+  - concept: serializer
+    usage:
+      kind: "^call$"
+      name: "^(serializer_json|serializer_csv|serializer_html|serializer_xml)$"
+
+linkers:
+  - http

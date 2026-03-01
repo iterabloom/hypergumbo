@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import smithy as smithy_module
 from hypergumbo_lang_extended1.smithy import (
-    SmithyAnalysisResult,
     analyze_smithy,
     find_smithy_files,
     is_smithy_tree_sitter_available,
@@ -46,7 +46,7 @@ class TestIsSmithyTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(smithy_module, "is_smithy_tree_sitter_available", return_value=False):
+        with patch.object(smithy_module._analyzer, "_check_grammar_available", return_value=False):
             assert smithy_module.is_smithy_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeSmithy:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", "namespace test")
-        with patch.object(smithy_module, "is_smithy_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Smithy analysis skipped"):
+        with patch.object(smithy_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="smithy analysis skipped"):
                 result = smithy_module.analyze_smithy(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -239,13 +239,13 @@ service Weather {}
         result = analyze_smithy(tmp_path)
         svc = next((s for s in result.symbols if s.kind == "service"), None)
         assert svc is not None
-        assert svc.origin == "smithy.tree_sitter"
+        assert svc.origin == "smithy-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", "namespace test")
         result = analyze_smithy(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "smithy.tree_sitter"
+        assert result.run.pass_id == "smithy-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -253,7 +253,8 @@ service Weather {}
         result = analyze_smithy(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """
@@ -264,9 +265,9 @@ service MyService {}
         result = analyze_smithy(tmp_path)
         svc = next((s for s in result.symbols if s.kind == "service"), None)
         assert svc is not None
-        assert svc.id == svc.stable_id
-        assert "smithy:" in svc.id
-        assert "test.smithy" in svc.id
+        assert svc.id != svc.stable_id
+        assert svc.id.startswith("smithy:test.smithy:")
+        assert svc.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """

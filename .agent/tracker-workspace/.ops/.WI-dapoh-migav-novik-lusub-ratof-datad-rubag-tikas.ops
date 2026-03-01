@@ -1,0 +1,53 @@
+- op: create  # 91d4
+  at: '2026-02-20T08:31:42Z'  # 91d4
+  by: agent  # 91d4
+  actor: jgstern_agent  # 91d4
+  clock: 1  # 91d4
+  nonce: 91d4  # 91d4
+  data:  # 91d4
+    kind: work_item  # 91d4
+    title: "Retire location-based stable_id strings in 27 analyzers"  # 91d4
+    status: todo_soft  # 91d4
+    priority: 3  # 91d4
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 91d4
+    tags:  # 91d4
+    - phase-2  # 91d4
+    - stable-id  # 91d4
+    before: []  # 91d4
+    duplicate_of: []  # 91d4
+    not_duplicate_of: []  # 91d4
+    pr_ref:  # 91d4
+    justification:  # 91d4
+    description: "27 analyzers emit stable_id as location-based strings ({lang}:{path}:{name}:{kind}) that survive line shifts but not renames. Replace with signature-based hashes from the base-class compute_stable_id(). Affected analyzers: PureScript, V, Tcl, Haxe, Gleam, Odin, Fennel, Scheme, Racket, Meson, MATLAB, Apex, Janet, Jsonnet, Prisma, Luau, Pascal, Fish, Ada, D, Nim, ASM, HLSL, Starlark, Hack, Smithy, plus others. Depends on base-class compute_stable_id() being proven. See ADR-0014 Phase 2."  # 91d4
+    fields: {}  # 91d4
+- op: update  # 3676
+  at: '2026-02-20T08:34:41Z'  # 3676
+  by: agent  # 3676
+  actor: jgstern_agent  # 3676
+  clock: 2  # 3676
+  nonce: '3676'  # 3676
+  set: {}  # 3676
+  add:  # 3676
+    before: [WI-sapak-nahob-zibod-pobav-vazop-baval-roruj-vufuv]  # 3676
+- op: discuss  # 2c20
+  at: '2026-02-20T11:17:14Z'  # 2c20
+  by: agent  # 2c20
+  actor: jgstern_agent  # 2c20
+  clock: 3  # 2c20
+  nonce: 2c20  # 2c20
+  message: "Pascal proof-of-concept merged (PR #1256). Starting systematic retirement of location-based stable_ids across remaining analyzers."  # 2c20
+- op: update  # 1638
+  at: '2026-02-20T12:09:07Z'  # 1638
+  by: agent  # 1638
+  actor: jgstern_agent  # 1638
+  clock: 4  # 1638
+  nonce: '1638'  # 1638
+  set:  # 1638
+    status: done  # 1638
+- op: discuss  # 1c5f
+  at: '2026-02-20T12:09:12Z'  # 1c5f
+  by: agent  # 1c5f
+  actor: jgstern_agent  # 1c5f
+  clock: 5  # 1c5f
+  nonce: 1c5f  # 1c5f
+  message: "All 27 analyzers converted: PR #1256 (pascal), PR #1257 (18 extended1), PR #1258 (7 common). Zero _make_stable_id functions remain."  # 1c5f

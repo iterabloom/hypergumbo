@@ -34,6 +34,16 @@ class TestDartAnalyzerAvailability:
         # Should be True since we have tree-sitter-language-pack
         assert is_dart_tree_sitter_available() is True
 
+    def test_find_dart_files(self, tmp_path: Path) -> None:
+        """Finds .dart files in a directory."""
+        from hypergumbo_lang_common.dart import find_dart_files
+
+        (tmp_path / "app.dart").write_text("void main() {}")
+        (tmp_path / "other.txt").write_text("not dart")
+        files = list(find_dart_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].suffix == ".dart"
+
 
 class TestDartClassDetection:
     """Tests for Dart class symbol extraction."""
@@ -502,19 +512,24 @@ class TestDartSpanAccuracy:
 class TestDartAnalyzeFallback:
     """Tests for fallback when tree-sitter is unavailable."""
 
-    def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
+    def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter not available."""
+        from unittest.mock import patch
         from hypergumbo_lang_common import dart
-
-        # Mock tree-sitter as unavailable
-        monkeypatch.setattr(dart, "is_dart_tree_sitter_available", lambda: False)
 
         make_dart_file(tmp_path, "main.dart", "void test() {}")
 
-        result = dart.analyze_dart(tmp_path)
+        import pytest
+        with patch.object(
+            dart._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            with pytest.warns(UserWarning, match="dart analysis skipped"):
+                result = dart.analyze_dart(tmp_path)
 
         assert result.skipped
-        assert "tree-sitter" in result.skip_reason.lower() or "dart" in result.skip_reason.lower()
+        assert "not available" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "dart-v1"
@@ -684,6 +699,203 @@ void process({Logger logger}) {
         assert "Logger.log" in edge.dst
 
 
+class TestDartReturnTypeInference:
+    """Tests for return type tracking from function return type annotations."""
+
+    def test_type_inference_from_return_type_annotation(
+        self, tmp_path: Path
+    ) -> None:
+        """Functions with return type annotations enable variable type inference."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+ServiceClient getClient() {
+  return ServiceClient();
+}
+
+void main() {
+  var client = getClient();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should have edge from main to ServiceClient.fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.fetch() via return type inference. "
+            f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+    def test_type_inference_no_annotation_no_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """Functions without return type annotation don't enable type inference."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+getClient() {
+  return ServiceClient();
+}
+
+void main() {
+  var client = getClient();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should NOT resolve via type inference (no return type annotation)
+        type_inferred_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert type_inferred_edge is None
+
+    def test_navigation_call_return_type_inference(
+        self, tmp_path: Path
+    ) -> None:
+        """Method calls (factory.create()) also track return types."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+class Factory {
+  ServiceClient create() {
+    return ServiceClient();
+  }
+}
+
+void main() {
+  var factory = new Factory();
+  var client = factory.create();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should have edge from main to ServiceClient.fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.fetch() via navigation return type inference. "
+            f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+
+class TestDartReturnTypeExtraction:
+    """Unit tests for _extract_dart_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        """Extracts simple return type from Dart signature."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() ServiceClient") == "ServiceClient"
+
+    def test_with_params(self) -> None:
+        """Extracts return type with parameters."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("(String name, int age) User") == "User"
+
+    def test_no_return_type(self) -> None:
+        """Returns None when no return type (void is omitted)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("()") is None
+
+    def test_none_signature(self) -> None:
+        """Returns None for None signature."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name(None) is None
+
+    def test_lowercase_return_type(self) -> None:
+        """Returns None for lowercase return types (primitives like int, String)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() int") is None
+
+    def test_generic_return_type(self) -> None:
+        """Returns None for generic return types (not simple identifier)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() List<String>") is None
+
+
 class TestDartImportHintsExtraction:
     """Tests for import hints extraction for disambiguation."""
 
@@ -744,4 +956,149 @@ void main() {
         assert hints["User"] == "package:models/models.dart"
         assert "Account" in hints
         assert hints["Account"] == "package:models/models.dart"
+
+
+class TestDartAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in Dart.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """close() with 3 classes defining close() → no resolved edge."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        dart_file = tmp_path / "multi.dart"
+        dart_file.write_text("""
+class ServiceA {
+  void close() { }
+}
+
+class ServiceB {
+  void close() { }
+}
+
+class ServiceC {
+  void close() { }
+}
+
+void cleanup() {
+  close();
+}
+""")
+
+        result = analyze_dart(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            assert "ServiceA" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceA, got {edge.dst}"
+            )
+            assert "ServiceB" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceB, got {edge.dst}"
+            )
+            assert "ServiceC" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceC, got {edge.dst}"
+            )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        dart_file = tmp_path / "two.dart"
+        dart_file.write_text("""
+class ServiceA {
+  void run() { }
+}
+
+class ServiceB {
+  void run() { }
+}
+
+void execute() {
+  run();
+}
+""")
+
+        result = analyze_dart(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestDartVisibilityModifiers:
+    """Tests for Dart visibility modifier extraction (underscore convention)."""
+
+    def test_private_symbols_get_private_modifier(self, tmp_path: Path) -> None:
+        """Underscore-prefixed names get 'private' modifier."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class _PrivateClass {
+  void _privateMethod() {}
+}
+
+void _privateFunc() {}
+
+class PublicClass {
+  void publicMethod() {}
+}
+
+void publicFunc() {}
+""")
+        result = analyze_dart(tmp_path)
+
+        priv_cls = next(s for s in result.symbols if s.name == "_PrivateClass")
+        assert "private" in priv_cls.modifiers
+
+        priv_method = next(
+            s for s in result.symbols if s.name == "_PrivateClass._privateMethod"
+        )
+        assert "private" in priv_method.modifiers
+
+        priv_func = next(s for s in result.symbols if s.name == "_privateFunc")
+        assert "private" in priv_func.modifiers
+
+        pub_cls = next(s for s in result.symbols if s.name == "PublicClass")
+        assert "private" not in pub_cls.modifiers
+
+        pub_method = next(
+            s for s in result.symbols if s.name == "PublicClass.publicMethod"
+        )
+        assert "private" not in pub_method.modifiers
+
+        pub_func = next(s for s in result.symbols if s.name == "publicFunc")
+        assert "private" not in pub_func.modifiers
+
+
+class TestNormalizeDartSignature:
+    """Tests for Dart signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature("(int a, int b) int") == "(int,int)int"
+
+    def test_void_function(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature("(String name)") == "(String)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature(None) is None
 

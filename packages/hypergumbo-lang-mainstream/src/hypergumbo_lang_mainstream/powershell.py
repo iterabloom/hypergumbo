@@ -36,24 +36,29 @@ PowerShell-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "powershell-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("powershell")
 
 
 def find_powershell_files(repo_root: Path) -> Iterator[Path]:
@@ -61,57 +66,9 @@ def find_powershell_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.ps1", "*.psm1", "*.psd1"])
 
 
-def is_powershell_tree_sitter_available() -> bool:
-    """Check if tree-sitter with PowerShell grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("powershell")
-        return True
-    except Exception:  # pragma: no cover - powershell grammar not available
-        return False
-
-
-@dataclass
-class PowerShellAnalysisResult:
-    """Result of analyzing PowerShell files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"powershell:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a PowerShell file node (used as import edge source)."""
-    return f"powershell:{path}:1-1:file:file"
-
-
 def _make_edge_id() -> str:
     """Generate a unique edge ID."""
     return f"edge:powershell:{uuid.uuid4().hex[:12]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -128,17 +85,17 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
     Returns signature like "([string]$UserId, [int]$Age)".
     """
     # Find the script_block inside the function
-    script_block = _find_child_by_type(func_node, "script_block")
+    script_block = find_child_by_type(func_node, "script_block")
     if not script_block:
         return "()"
 
     # Find param_block inside script_block
-    param_block = _find_child_by_type(script_block, "param_block")
+    param_block = find_child_by_type(script_block, "param_block")
     if not param_block:
         return "()"
 
     # Find parameter_list inside param_block
-    param_list = _find_child_by_type(param_block, "parameter_list")
+    param_list = find_child_by_type(param_block, "parameter_list")
     if not param_list:
         return "()"  # pragma: no cover - defensive
 
@@ -163,11 +120,11 @@ def _extract_parameter(param_node: "tree_sitter.Node", source: bytes) -> Optiona
             # Look for type_literal in attribute
             for attr in child.children:
                 if attr.type == "attribute":
-                    type_lit = _find_child_by_type(attr, "type_literal")
+                    type_lit = find_child_by_type(attr, "type_literal")
                     if type_lit:
-                        type_str = _node_text(type_lit, source).strip()
+                        type_str = node_text(type_lit, source).strip()
         elif child.type == "variable":
-            var_name = _node_text(child, source).strip()
+            var_name = node_text(child, source).strip()
 
     if var_name:
         if type_str:
@@ -196,7 +153,7 @@ def _make_powershell_symbol(
         start_col=start_col,
         end_col=end_col,
     )
-    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    sym_id = make_symbol_id("powershell", file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
         name=name,
@@ -220,9 +177,9 @@ def _find_enclosing_function_powershell(
     current = node.parent
     while current is not None:
         if current.type == "function_statement":
-            name_node = _find_child_by_type(current, "function_name")
+            name_node = find_child_by_type(current, "function_name")
             if name_node:
-                name = _node_text(name_node, source).strip()
+                name = node_text(name_node, source).strip()
                 sym = local_symbols.get(name)
                 if sym:
                     return sym
@@ -237,15 +194,15 @@ def _process_import_module(
     edges: list[Edge],
 ) -> None:
     """Process Import-Module command to extract module name."""
-    elements_node = _find_child_by_type(node, "command_elements")
+    elements_node = find_child_by_type(node, "command_elements")
     if elements_node:
         for child in elements_node.children:
             if child.type == "generic_token":
-                module_text = _node_text(child, source).strip()
+                module_text = node_text(child, source).strip()
                 if module_text and not module_text.startswith("-"):
                     edges.append(Edge(
                         id=_make_edge_id(),
-                        src=_make_file_id(file_path),
+                        src=make_file_id("powershell", file_path),
                         dst=f"powershell:?:?:{module_text}:module",
                         edge_type="imports",
                         line=node.start_point[0] + 1,
@@ -260,10 +217,10 @@ def _process_using_command(
     edges: list[Edge],
 ) -> None:
     """Process 'using' command to extract module imports."""
-    elements_node = _find_child_by_type(node, "command_elements")
+    elements_node = find_child_by_type(node, "command_elements")
     if elements_node:
         tokens = [
-            _node_text(child, source).strip()
+            node_text(child, source).strip()
             for child in elements_node.children
             if child.type == "generic_token"
         ]
@@ -271,7 +228,7 @@ def _process_using_command(
             module_name = tokens[1]
             edges.append(Edge(
                 id=_make_edge_id(),
-                src=_make_file_id(file_path),
+                src=make_file_id("powershell", file_path),
                 dst=f"powershell:?:?:{module_name}:module",
                 edge_type="imports",
                 line=node.start_point[0] + 1,
@@ -302,9 +259,9 @@ def _extract_powershell_symbols(
                     kind = "function"
                     break
 
-            name_node = _find_child_by_type(node, "function_name")
+            name_node = find_child_by_type(node, "function_name")
             if name_node:
-                func_name = _node_text(name_node, source).strip()
+                func_name = node_text(name_node, source).strip()
                 sig = _extract_function_signature(node, source)
                 sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
@@ -326,9 +283,9 @@ def _extract_powershell_edges(
     """Extract edges from a parsed PowerShell file (pass 2)."""
     for node in iter_tree(tree.root_node):
         if node.type == "command":
-            command_name_node = _find_child_by_type(node, "command_name")
+            command_name_node = find_child_by_type(node, "command_name")
             if command_name_node:
-                command_name = _node_text(command_name_node, source).strip()
+                command_name = node_text(command_name_node, source).strip()
 
                 if command_name.lower() == "import-module":
                     _process_import_module(node, source, file_path, edges)
@@ -359,7 +316,73 @@ def _extract_powershell_edges(
                         ))
 
 
-def analyze_powershell(repo_root: Path) -> PowerShellAnalysisResult:
+class PowerShellAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based PowerShell analyzer.
+
+    Uses tree-sitter-language-pack for the PowerShell grammar.
+    Two-pass analysis: Pass 1 extracts function/filter/workflow symbols,
+    Pass 2 resolves command calls and module imports into edges.
+    """
+
+    lang = "powershell"
+    file_patterns: ClassVar[list[str]] = ["*.ps1", "*.psm1", "*.psd1"]
+    language_pack_name = "powershell"
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract function, filter, and workflow symbols from a PowerShell file."""
+        analysis = FileAnalysis()
+        symbol_registry: dict[str, Symbol] = {}
+
+        _extract_powershell_symbols(
+            tree, source, rel_path, run.execution_id,
+            analysis.symbols, symbol_registry,
+        )
+
+        # Populate symbol_by_name for edge resolution (functions/filters/workflows)
+        analysis.symbol_by_name = {
+            s.name: s for s in analysis.symbols
+            if s.kind in ("function", "filter", "workflow")
+        }
+
+        return analysis
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract import and call edges from a PowerShell file."""
+        edges: list[Edge] = []
+        _extract_powershell_edges(
+            tree, source, rel_path, edges, local_symbols, resolver,
+        )
+        return edges
+
+
+_analyzer = PowerShellAnalyzer()
+
+
+def is_powershell_tree_sitter_available() -> bool:
+    """Check if tree-sitter with PowerShell grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("powershell")
+def analyze_powershell(repo_root: Path) -> AnalysisResult:
     """Analyze all PowerShell files in the repository.
 
     Uses two-pass analysis:
@@ -370,67 +393,6 @@ def analyze_powershell(repo_root: Path) -> PowerShellAnalysisResult:
         repo_root: Path to the repository root.
 
     Returns:
-        PowerShellAnalysisResult with symbols and edges found.
+        AnalysisResult with symbols and edges found.
     """
-    if not is_powershell_tree_sitter_available():
-        warnings.warn("PowerShell analysis skipped: tree-sitter-language-pack not available")
-        return PowerShellAnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("powershell")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_powershell_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            _extract_powershell_symbols(tree, source, rel_path, run_id, all_symbols, global_symbol_registry)
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
-        # Build local symbol map for this file (functions/filters/workflows)
-        local_symbols = {s.name: s for s in all_symbols
-                         if s.path == rel_path and s.kind in ("function", "filter", "workflow")}
-
-        _extract_powershell_edges(tree, source, rel_path, all_edges, local_symbols, resolver)  # type: ignore
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return PowerShellAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

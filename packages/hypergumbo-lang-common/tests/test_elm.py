@@ -266,15 +266,26 @@ quadruple x =
         make_elm_file(tmp_path, "Test.elm", "module Test exposing (..)")
 
         with patch.object(
-            elm_module,
-            "is_elm_tree_sitter_available",
+            elm_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Elm analysis skipped"):
+            with pytest.warns(UserWarning, match="elm analysis skipped"):
                 result = elm_module.analyze_elm(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
+
+
+class TestElmTreeSitterAvailability:
+    """Tests for tree-sitter-elm availability checking."""
+
+    def test_is_elm_tree_sitter_available(self) -> None:
+        """Returns True when grammar is available."""
+        from hypergumbo_lang_common.elm import is_elm_tree_sitter_available
+
+        # In a properly configured dev environment, this should be True
+        assert is_elm_tree_sitter_available() is True
 
 
 class TestElmSignatureExtraction:

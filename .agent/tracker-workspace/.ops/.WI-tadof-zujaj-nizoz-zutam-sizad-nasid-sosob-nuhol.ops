@@ -1,0 +1,58 @@
+- op: create  # 6151
+  at: '2026-02-20T08:22:30Z'  # 6151
+  by: agent  # 6151
+  actor: jgstern_agent  # 6151
+  clock: 1  # 6151
+  nonce: '6151'  # 6151
+  data:  # 6151
+    kind: work_item  # 6151
+    title: "ADR-0014: Generalized Symbol Identity (stable_id / shape_id)"  # 6151
+    status: todo_soft  # 6151
+    priority: 2  # 6151
+    parent:  # 6151
+    tags:  # 6151
+    - stable-id  # 6151
+    - adr-0014  # 6151
+    before: []  # 6151
+    duplicate_of: []  # 6151
+    not_duplicate_of: []  # 6151
+    pr_ref:  # 6151
+    justification:  # 6151
+    description: "Umbrella item for ADR-0014 implementation. Makes stable_id and shape_id universal across all 100+ language analyzers. Four phases: Phase 0 (immediate fixes), Phase 1 (shape_id generalization), Phase 2 (stable_id untyped tier), Phase 3 (stable_id typed tier, deferred). See docs/adr/0014-generalized-symbol-identity.md."  # 6151
+    fields: {}  # 6151
+- op: discuss  # 5261
+  at: '2026-02-20T10:05:36Z'  # 5261
+  by: agent  # 5261
+  actor: jgstern_agent  # 5261
+  clock: 2  # 5261
+  nonce: '5261'  # 5261
+  message: "Phase 0 complete: route collisions (PR #1246), grammar pinning (PR #1247), Hack/Smithy order (PR #1249), containing_module_stable_id + scheme v2 (PR #1250). Phase 1 (shape_id) next."  # 5261
+- op: discuss  # 04fa
+  at: '2026-02-20T11:00:39Z'  # 04fa
+  by: agent  # 04fa
+  actor: jgstern_agent  # 04fa
+  clock: 3  # 04fa
+  nonce: 04fa  # 04fa
+  message: "Phase 2 core infrastructure complete: ArityFlags (PR #1253), compute_stable_id (PR #1254). Remaining: WI-dapoh (retire location-based stable_ids in 27 analyzers)."  # 04fa
+- op: discuss  # 6451
+  at: '2026-02-20T12:09:19Z'  # 6451
+  by: agent  # 6451
+  actor: jgstern_agent  # 6451
+  clock: 4  # 6451
+  nonce: '6451'  # 6451
+  message: "Phase 2 complete: ADR-0014 §2 stable_id retirement finished across all 27 analyzers (PRs #1256-#1258). All analyzers now use compute_stable_id() for sha256-based stable_ids and make_symbol_id() for location-based ids. HLSL also has node_for_symbol wiring for shape_id. Remaining: Phase 3 (typed stable_id tier, WI-duzul) is deferred P4."  # 6451
+- op: update  # ac65
+  at: '2026-02-20T12:12:03Z'  # ac65
+  by: agent  # ac65
+  actor: jgstern_agent  # ac65
+  clock: 5  # ac65
+  nonce: ac65  # ac65
+  set:  # ac65
+    status: done  # ac65
+- op: discuss  # 59f9
+  at: '2026-02-20T12:12:03Z'  # 59f9
+  by: agent  # 59f9
+  actor: jgstern_agent  # 59f9
+  clock: 6  # 59f9
+  nonce: 59f9  # 59f9
+  message: "Closed. Phases 0-2 complete. Phase 3 (typed stable_id tier) tracked separately in WI-duzul (P4, deferred)."  # 59f9

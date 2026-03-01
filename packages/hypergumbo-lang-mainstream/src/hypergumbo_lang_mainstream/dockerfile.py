@@ -30,22 +30,18 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, find_child_by_type, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "dockerfile-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("dockerfile")
 
 
 def find_dockerfiles(repo_root: Path) -> Iterator[Path]:
@@ -66,30 +62,6 @@ def find_dockerfiles(repo_root: Path) -> Iterator[Path]:
                 yield f
 
 
-def is_dockerfile_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Dockerfile grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_dockerfile") is None:
-        return False  # pragma: no cover
-    return True
-
-
-@dataclass
-class DockerfileAnalysisResult:
-    """Result of analyzing Dockerfiles."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"dockerfile:{path}:{start_line}-{end_line}:{name}:{kind}"
-
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
@@ -97,30 +69,17 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover
-
-
 def _extract_image_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract image name from image_spec node."""
-    image_spec = _find_child_by_type(node, "image_spec")
+    image_spec = find_child_by_type(node, "image_spec")
     if image_spec:
         # Get the full image spec including tag
-        name_node = _find_child_by_type(image_spec, "image_name")
-        tag_node = _find_child_by_type(image_spec, "image_tag")
+        name_node = find_child_by_type(image_spec, "image_name")
+        tag_node = find_child_by_type(image_spec, "image_tag")
         if name_node:
-            name = _node_text(name_node, source)
+            name = node_text(name_node, source)
             if tag_node:
-                tag = _node_text(tag_node, source)
+                tag = node_text(tag_node, source)
                 return name + tag
             return name
     return ""  # pragma: no cover
@@ -128,9 +87,9 @@ def _extract_image_name(node: "tree_sitter.Node", source: bytes) -> str:
 
 def _extract_stage_alias(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract AS alias from FROM instruction."""
-    alias_node = _find_child_by_type(node, "image_alias")
+    alias_node = find_child_by_type(node, "image_alias")
     if alias_node:
-        return _node_text(alias_node, source)
+        return node_text(alias_node, source)
     return None
 
 
@@ -138,7 +97,7 @@ def _extract_copy_from(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     """Extract --from=stage from COPY instruction."""
     for child in node.children:
         if child.type == "param":
-            param_text = _node_text(child, source)
+            param_text = node_text(child, source)
             if param_text.startswith("--from="):
                 return param_text[7:]  # Strip "--from="
     return None  # pragma: no cover - COPY without --from
@@ -148,7 +107,7 @@ def _extract_env_name(env_pair_node: "tree_sitter.Node", source: bytes) -> Optio
     """Extract variable name from env_pair node."""
     for child in env_pair_node.children:
         if child.type == "unquoted_string":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -165,7 +124,7 @@ def _extract_arg_name(arg_instruction: "tree_sitter.Node", source: bytes) -> Opt
     """
     for child in arg_instruction.children:
         if child.type == "unquoted_string":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -202,7 +161,7 @@ def _process_dockerfile_tree(
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, end_line, stage_name, "stage")
+            symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, stage_name, "stage")
 
             sym = Symbol(
                 id=symbol_id,
@@ -243,12 +202,12 @@ def _process_dockerfile_tree(
 
         elif node.type == "expose_instruction":
             # Extract exposed port
-            port_node = _find_child_by_type(node, "expose_port")
+            port_node = find_child_by_type(node, "expose_port")
             if port_node:
-                port_value = _node_text(port_node, source)
+                port_value = node_text(port_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, port_value, "exposed_port")
+                symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, port_value, "exposed_port")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -272,13 +231,13 @@ def _process_dockerfile_tree(
 
         elif node.type == "env_instruction":
             # Extract environment variable
-            env_pair = _find_child_by_type(node, "env_pair")
+            env_pair = find_child_by_type(node, "env_pair")
             if env_pair:
                 var_name = _extract_env_name(env_pair, source)
                 if var_name:
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "env_var")
+                    symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, var_name, "env_var")
 
                     sym = Symbol(
                         id=symbol_id,
@@ -306,7 +265,7 @@ def _process_dockerfile_tree(
             if arg_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, arg_name, "build_arg")
+                symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, arg_name, "build_arg")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -355,82 +314,115 @@ def _process_dockerfile_tree(
                     edges.append(edge)
 
 
-def analyze_dockerfiles(repo_root: Path) -> DockerfileAnalysisResult:
+class DockerfileAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based Dockerfile analyzer.
+
+    Uses tree-sitter-dockerfile to parse Dockerfiles and extract build stages,
+    base images, exposed ports, environment variables, build arguments, and
+    multi-stage build dependencies (COPY --from).
+
+    Overrides ``analyze`` because Dockerfile uses a single-pass approach: both
+    symbols and edges (base_image, depends_on) are extracted together since
+    stage references need the stage registry built during the same pass.
+    """
+
+    lang = "dockerfile"
+    file_patterns: ClassVar[list[str]] = ["Dockerfile", "Dockerfile.*", "*.dockerfile"]
+    grammar_module = "tree_sitter_dockerfile"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run Dockerfile analysis with single-pass symbol+edge extraction."""
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        stage_registry: dict[str, str] = {}
+
+        dockerfile_files = list(find_dockerfiles(repo_root))
+
+        for dockerfile_path in dockerfile_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                rel_path = str(dockerfile_path.relative_to(repo_root))
+                source = dockerfile_path.read_bytes()
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                # Reset stage counter for each file
+                stage_counter = [0]
+
+                _process_dockerfile_tree(
+                    tree.root_node,
+                    source,
+                    rel_path,
+                    symbols,
+                    edges,
+                    stage_registry,
+                    stage_counter,
+                )
+
+            except Exception as e:  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                warnings_list.append(f"Failed to parse {dockerfile_path}: {e}")  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = DockerfileAnalyzer()
+
+
+def is_dockerfile_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Dockerfile grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("dockerfile")
+def analyze_dockerfiles(repo_root: Path) -> AnalysisResult:
     """Analyze Dockerfiles in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        DockerfileAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
-    if not is_dockerfile_tree_sitter_available():  # pragma: no cover
-        return DockerfileAnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-dockerfile not installed (pip install tree-sitter-dockerfile)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_dockerfile
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Stage registry for cross-file resolution: name -> symbol_id
-    stage_registry: dict[str, str] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_dockerfile.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize Dockerfile parser: {e}")
-        return DockerfileAnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    dockerfile_files = list(find_dockerfiles(repo_root))
-
-    for dockerfile_path in dockerfile_files:
-        try:
-            rel_path = str(dockerfile_path.relative_to(repo_root))
-            source = dockerfile_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Reset stage counter for each file
-            stage_counter = [0]
-
-            # Process this file
-            _process_dockerfile_tree(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                stage_registry,
-                stage_counter,
-            )
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {dockerfile_path}: {e}")  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return DockerfileAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

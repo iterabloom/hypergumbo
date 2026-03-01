@@ -363,8 +363,8 @@ class TestAdaAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "test.ads").write_text("package Test is end Test;")
 
-        with patch.object(ada_module, "is_ada_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Ada analysis skipped"):
+        with patch.object(ada_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ada analysis skipped"):
                 result = ada_module.analyze_ada(temp_repo)
 
         assert result.skipped is True

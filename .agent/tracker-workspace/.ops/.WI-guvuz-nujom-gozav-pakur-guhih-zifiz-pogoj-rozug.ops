@@ -1,0 +1,21 @@
+- op: create  # 8935
+  at: '2026-02-15T00:51:38Z'  # 8935
+  by: agent  # 8935
+  actor: migration  # 8935
+  clock: 1  # 8935
+  nonce: '8935'  # 8935
+  data:  # 8935
+    kind: work_item  # 8935
+    title: "Target: Java `_extract_edges` extends/implements collision — added `_resolve_base_class_java()` with 3-level disambiguation (same-file, FQN import match, deterministic fallback)."  # 8935
+    status: done  # 8935
+    priority: 4  # 8935
+    parent:  # 8935
+    tags:  # 8935
+    - extends_edge_disambiguation  # 8935
+    before: []  # 8935
+    duplicate_of: []  # 8935
+    not_duplicate_of: []  # 8935
+    pr_ref: 'PR #1016'  # 8935
+    justification:  # 8935
+    description: "Same structural fix as Python/JS/Ruby/Kotlin. 9 regression tests."  # 8935
+    fields: {}  # 8935

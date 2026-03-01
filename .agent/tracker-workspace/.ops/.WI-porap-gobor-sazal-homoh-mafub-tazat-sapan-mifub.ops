@@ -1,0 +1,28 @@
+- op: create  # 611f
+  at: '2026-02-25T09:50:38Z'  # 611f
+  by: agent  # 611f
+  actor: jgstern_agent  # 611f
+  clock: 1  # 611f
+  nonce: 611f  # 611f
+  data:  # 611f
+    kind: work_item  # 611f
+    title: "Complete cohort-019 bakeoff post-processing (diagnose + reflect phases)"  # 611f
+    status: todo_soft  # 611f
+    priority: 3  # 611f
+    parent:  # 611f
+    tags:  # 611f
+    - bakeoff  # 611f
+    before: []  # 611f
+    duplicate_of: []  # 611f
+    not_duplicate_of: []  # 611f
+    pr_ref:  # 611f
+    description: "Cohort-019/iter-001 raw analysis data exists for 3/5 repos (gitlab, chatwoot, killbill) but the bakeoff pipeline did not complete post-processing. Missing: diag/cohort-019/ directory, reflect/cohort-019/ directory, and state.json verdict entries for cohort-019 repos. After fixing the properties.py encoding bug (INV for UnicodeDecodeError), re-run keycloak and jenkins, then run diagnose and reflect phases."  # 611f
+    fields: {}  # 611f
+- op: update  # b114
+  at: '2026-02-25T15:39:33Z'  # b114
+  by: agent  # b114
+  actor: jgstern_agent  # b114
+  clock: 2  # b114
+  nonce: b114  # b114
+  set:  # b114
+    status: done  # b114

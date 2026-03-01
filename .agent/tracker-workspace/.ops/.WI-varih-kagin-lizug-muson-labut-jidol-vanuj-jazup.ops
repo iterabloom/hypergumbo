@@ -1,0 +1,137 @@
+- op: create  # 1f6c
+  at: '2026-02-22T04:49:32Z'  # 1f6c
+  by: agent  # 1f6c
+  actor: jgstern_agent  # 1f6c
+  clock: 1  # 1f6c
+  nonce: 1f6c  # 1f6c
+  data:  # 1f6c
+    kind: work_item  # 1f6c
+    title: "OTP linker: resolve Elixir aliases for GenServer targets"  # 1f6c
+    status: todo_hard  # 1f6c
+    priority: 1  # 1f6c
+    parent: INV-jamad-dakov-pahup-tuliv-sabif-tukid-gosiv-dazab  # 1f6c
+    tags: []  # 1f6c
+    before: []  # 1f6c
+    duplicate_of: []  # 1f6c
+    not_duplicate_of: []  # 1f6c
+    pr_ref:  # 1f6c
+    justification:  # 1f6c
+    description: "GenServer.call(UserCache, :ping) where UserCache is an Elixir alias produces zero otp_call/otp_cast edges. otp.py does direct dict lookup on handler_index with no suffix fallback. Fix: add suffix-match fallback (like Phoenix route_handler has) or resolve aliases using the Elixir analyzer's _extract_alias_hints output. HIGH severity — nearly every real Elixir codebase uses module aliases for cross-module GenServer calls."  # 1f6c
+    fields: {}  # 1f6c
+- op: update  # 8d7b
+  at: '2026-02-23T11:58:49Z'  # 8d7b
+  by: agent  # 8d7b
+  actor: jgstern_agent  # 8d7b
+  clock: 2  # 8d7b
+  nonce: 8d7b  # 8d7b
+  set:  # 8d7b
+    status: done  # 8d7b
+    pr_ref: '1366'  # 8d7b
+- op: update  # d81a
+  at: '2026-02-23T11:58:53Z'  # d81a
+  by: agent  # d81a
+  actor: jgstern_agent  # d81a
+  clock: 3  # d81a
+  nonce: d81a  # d81a
+  set:  # d81a
+    status: done  # d81a
+    pr_ref: '1366'  # d81a
+- op: update  # 9ca8
+  at: '2026-02-24T21:53:36Z'  # 9ca8
+  by: human  # 9ca8
+  actor: jgstern  # 9ca8
+  clock: 4  # 9ca8
+  nonce: 9ca8  # 9ca8
+  set: {}  # 9ca8
+  add:  # 9ca8
+    before: [INV-dinod]  # 9ca8
+- op: update  # 0e15
+  at: '2026-02-24T21:58:39Z'  # 0e15
+  by: human  # 0e15
+  actor: jgstern  # 0e15
+  clock: 5  # 0e15
+  nonce: '0e15'  # 0e15
+  set: {}  # 0e15
+  add:  # 0e15
+    before: [INV-dinod]  # 0e15
+- op: update  # 59ae
+  at: '2026-02-24T21:58:54Z'  # 59ae
+  by: human  # 59ae
+  actor: jgstern  # 59ae
+  clock: 6  # 59ae
+  nonce: 59ae  # 59ae
+  set: {}  # 59ae
+  remove:  # 59ae
+    before: [INV-dinod]  # 59ae
+- op: update  # bae0
+  at: '2026-02-24T21:59:18Z'  # bae0
+  by: human  # bae0
+  actor: jgstern  # bae0
+  clock: 7  # bae0
+  nonce: bae0  # bae0
+  set: {}  # bae0
+  add:  # bae0
+    before: [INV-dinod]  # bae0
+- op: update  # bcbe
+  at: '2026-02-24T22:01:14Z'  # bcbe
+  by: human  # bcbe
+  actor: jgstern  # bcbe
+  clock: 8  # bcbe
+  nonce: bcbe  # bcbe
+  set: {}  # bcbe
+  add:  # bcbe
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # bcbe
+- op: update  # e52a
+  at: '2026-02-24T22:09:32Z'  # e52a
+  by: human  # e52a
+  actor: jgstern  # e52a
+  clock: 9  # e52a
+  nonce: e52a  # e52a
+  set: {}  # e52a
+  remove:  # e52a
+    before: [INV-dinod]  # e52a
+- op: update  # 5a80
+  at: '2026-02-24T22:10:11Z'  # 5a80
+  by: human  # 5a80
+  actor: jgstern  # 5a80
+  clock: 10  # 5a80
+  nonce: 5a80  # 5a80
+  set: {}  # 5a80
+  remove:  # 5a80
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # 5a80
+- op: update  # 1ab3
+  at: '2026-02-24T22:28:51Z'  # 1ab3
+  by: human  # 1ab3
+  actor: jgstern  # 1ab3
+  clock: 11  # 1ab3
+  nonce: 1ab3  # 1ab3
+  set: {}  # 1ab3
+  add:  # 1ab3
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # 1ab3
+- op: update  # 194c
+  at: '2026-02-24T22:29:55Z'  # 194c
+  by: human  # 194c
+  actor: jgstern  # 194c
+  clock: 12  # 194c
+  nonce: 194c  # 194c
+  set: {}  # 194c
+  remove:  # 194c
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # 194c
+- op: update  # b79a
+  at: '2026-02-24T22:32:36Z'  # b79a
+  by: human  # b79a
+  actor: jgstern  # b79a
+  clock: 13  # b79a
+  nonce: b79a  # b79a
+  set: {}  # b79a
+  add:  # b79a
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # b79a
+- op: update  # 614b
+  at: '2026-02-25T01:22:49Z'  # 614b
+  by: human  # 614b
+  actor: jgstern  # 614b
+  clock: 14  # 614b
+  nonce: 614b  # 614b
+  set: {}  # 614b
+  remove:  # 614b
+    before: [INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag]  # 614b

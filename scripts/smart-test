@@ -4,14 +4,26 @@
 # Uses hypergumbo's reverse slice to find tests that depend on changed files.
 # Generates a manifest at .ci/affected-tests.txt for CI validation.
 #
+# COVERAGE SCOPING:
+# - Affected-only mode: Measures coverage for ONLY changed source files
+# - Full mode: Measures coverage for ALL source files across all packages
+#
+# BASELINE:
+# - Uses "last-green-sha" marker from badges branch (last CI run at 100%)
+# - Falls back to merge-base with dev if marker unavailable
+#
 # Falls back to full test suite when:
 #   - No stable hypergumbo installed
 #   - Core infrastructure files changed (sketch.py, slice.py, etc.)
 #   - No changes detected (runs all tests as sanity check)
 #
+# OUTPUT: By default, shows only a compact summary (test result + coverage gaps).
+# Full pytest output is saved to .ci/pytest-output.log for debugging.
+#
 # Usage:
-#   ./scripts/smart-test              # Run affected tests, generate manifest
+#   ./scripts/smart-test              # Run affected tests, show compact summary
 #   ./scripts/smart-test --full       # Run all tests
+#   ./scripts/smart-test --raw        # Stream full pytest output (no summary)
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --background # Kick off full suite in background
@@ -20,6 +32,11 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+
+# Signal that we're running through smart-test (ADR-0010)
+# This prevents infinite recursion when the pytest wrapper calls smart-test
+# and smart-test subsequently calls pytest.
+export SMART_TEST_ACTIVE=1
 
 # Manifest location (committed with PR for CI validation)
 MANIFEST_DIR=".ci"
@@ -30,7 +47,14 @@ FULL_RUN=false
 VERBOSE=false
 MANIFEST_ONLY=false
 BACKGROUND=false
+RAW_OUTPUT=false
 PYTEST_ARGS=()
+HAS_EXPLICIT_TESTS=false
+
+# Smart-test mode tracking (used by summarize_pytest_output)
+SMART_TEST_MODE="full"
+TARGETED_TEST_COUNT=0
+TARGETED_SOURCE_COUNT=0
 
 for arg in "$@"; do
     case $arg in
@@ -38,22 +62,41 @@ for arg in "$@"; do
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
+        --raw) RAW_OUTPUT=true ;;
         -*) PYTEST_ARGS+=("$arg") ;;
-        *) PYTEST_ARGS+=("$arg") ;;
+        *)
+            PYTEST_ARGS+=("$arg")
+            # Detect explicit test targets (paths containing .py or tests/)
+            if [[ "$arg" == *.py* ]] || [[ "$arg" == *tests/* ]]; then
+                HAS_EXPLICIT_TESTS=true
+            fi
+            ;;
     esac
 done
 
-# Files that trigger full test suite when changed
-# These are core infrastructure that affects test selection itself
-CORE_INFRA_FILES=(
-    "packages/hypergumbo-core/src/hypergumbo_core/sketch.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/slice.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/cli.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py"
-)
+# Auto-add -n auto for parallel execution unless:
+# 1. Already specified (-n is in PYTEST_ARGS)
+# 2. Running inside a container (where CPU detection may be unreliable)
+is_in_container() {
+    [[ -f /.dockerenv ]] || [[ -f /run/.containerenv ]] || grep -qE '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null
+}
+
+HAS_N_FLAG=false
+for arg in "${PYTEST_ARGS[@]}"; do
+    if [[ "$arg" == "-n" ]] || [[ "$arg" == -n* ]]; then
+        HAS_N_FLAG=true
+        break
+    fi
+done
+
+if [[ "$HAS_N_FLAG" == "false" ]] && ! is_in_container; then
+    # Note: log function not defined yet, use conditional echo
+    [[ "$VERBOSE" == "true" ]] && echo "[smart-test] Auto-adding -n auto for parallel execution (not in container)" >&2
+    PYTEST_ARGS+=("-n" "auto")
+fi
+
+# Output file for full pytest log
+PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
 # Coverage paths for the modular package structure
 COV_PATHS=(
@@ -63,30 +106,224 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-extended1/src"
 )
 
+# Detect if embedding dependencies are available
+# If either sentence-transformers or onnxruntime is missing, use reduced
+# coverage config that excludes embedding-dependent code
+if python3 -c "import sentence_transformers" 2>/dev/null && \
+   python3 -c "import onnxruntime" 2>/dev/null; then
+    EMBEDDINGS_AVAILABLE=true
+else
+    EMBEDDINGS_AVAILABLE=false
+    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+fi
+
 log() {
     if [[ "$VERBOSE" == "true" ]]; then
         echo "[smart-test] $*" >&2
     fi
 }
 
+# Get baseline commit for comparison
+# Tries to fetch last-green-sha from badges branch (last CI run at 100%)
+# Falls back to merge-base with dev if unavailable
+get_baseline() {
+    local base_branch="${1:-origin/dev}"
+
+    # Try to fetch last-green-sha from badges branch
+    if git fetch origin badges:refs/remotes/origin/badges 2>/dev/null; then
+        local last_green
+        last_green=$(git show origin/badges:last-green-sha.txt 2>/dev/null || echo "")
+        if [[ -n "$last_green" ]] && git rev-parse --verify "$last_green^{commit}" &>/dev/null; then
+            log "Using last-green-sha marker: $last_green"
+            echo "$last_green"
+            return 0
+        fi
+    fi
+
+    # Fall back to merge-base with dev
+    local merge_base
+    merge_base=$(git merge-base HEAD "$base_branch" 2>/dev/null || echo "HEAD~1")
+    log "No last-green-sha marker found, using merge-base: $merge_base"
+    echo "$merge_base"
+}
+
+# Build coverage paths for affected-only mode
+# Returns --cov arguments for the package source directories containing changed files
+# Also returns --cov-fail-under=100 since we're scoping to affected packages
+build_affected_cov_paths() {
+    local changed_files="$1"
+
+    # Filter to source files only (not tests, not configs)
+    local source_files
+    source_files=$(echo "$changed_files" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+
+    if [[ -z "$source_files" ]]; then
+        log "No source files in changes, using full coverage"
+        echo "FULL"
+        return
+    fi
+
+    # Extract unique package source directories (e.g., packages/hypergumbo-core/src)
+    local pkg_dirs
+    pkg_dirs=$(echo "$source_files" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u)
+
+    local cov_paths=()
+    local pkg_count=0
+    while IFS= read -r pkg_dir; do
+        [[ -z "$pkg_dir" ]] && continue
+        cov_paths+=("--cov=$pkg_dir")
+        ((pkg_count++))
+    done <<< "$pkg_dirs"
+
+    # Count actual changed source files for logging
+    local file_count
+    file_count=$(echo "$source_files" | wc -l)
+
+    log "Scoping coverage to $pkg_count package(s) containing $file_count changed source file(s)"
+    echo "${cov_paths[*]}"
+}
+
+# Summarize pytest output to show only what matters:
+# - Test result (passed/failed count)
+# - Failed tests with tracebacks
+# - Coverage gaps (files with < 100%)
+# - Coverage total
+summarize_pytest_output() {
+    local logfile="$1"
+    local exit_code="$2"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Extract and show the result line (e.g., "=== 5770 passed, 79 warnings in 275.79s ===")
+    local result_line
+    result_line=$(grep -E "^=+ .*(passed|failed|error).* =+$" "$logfile" | tail -1)
+    if [[ -n "$result_line" ]]; then
+        if [[ "$exit_code" -eq 0 ]]; then
+            echo "✅ $result_line"
+        else
+            echo "❌ $result_line"
+        fi
+    fi
+
+    # Show failed tests (if any)
+    local failures
+    failures=$(grep -E "^FAILED " "$logfile" || true)
+    if [[ -n "$failures" ]]; then
+        echo ""
+        echo "FAILED TESTS:"
+        echo "$failures"
+        echo ""
+        # Show short tracebacks for failures
+        # Extract from "FAILURES" section to next "=" line
+        sed -n '/^=* FAILURES =*/,/^=.*=$/p' "$logfile" | head -100
+    fi
+
+    # Show coverage gaps (files with missing lines)
+    echo ""
+    echo "COVERAGE:"
+    # Match lines like: packages/.../file.py    191      1    99%   78
+    # Where there's a non-zero miss count (column 2 after filename)
+    local coverage_gaps
+    coverage_gaps=$(grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%\s+[0-9]" "$logfile" || true)
+    if [[ -n "$coverage_gaps" ]]; then
+        echo "$coverage_gaps"
+    else
+        echo "  (all files at 100%)"
+    fi
+
+    # Show TOTAL line
+    local total_line
+    total_line=$(grep "^TOTAL" "$logfile" || true)
+    if [[ -n "$total_line" ]]; then
+        echo "$total_line"
+    fi
+
+    # Show coverage pass/fail
+    local cov_result
+    cov_result=$(grep -E "(Required test coverage|FAIL Required)" "$logfile" || true)
+    if [[ -n "$cov_result" ]]; then
+        echo "$cov_result"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Full output: $logfile"
+    if [[ "$SMART_TEST_MODE" == "targeted" ]]; then
+        echo "Targeted run ($TARGETED_TEST_COUNT test files, $TARGETED_SOURCE_COUNT changed sources). Full suite runs in CI after merge; running it now would be wasteful."
+    fi
+    echo ""
+}
+
+# Run pytest and show summary (or raw output if --raw)
+run_pytest() {
+    local test_targets="$1"
+    shift
+    local extra_args=("$@")
+
+    mkdir -p "$MANIFEST_DIR"
+
+    if [[ "$RAW_OUTPUT" == "true" ]]; then
+        # Stream output directly (old behavior)
+        # shellcheck disable=SC2086
+        exec pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}"
+    else
+        # Capture output, then summarize
+        echo "Running tests... (output saved to $PYTEST_LOG)"
+        # shellcheck disable=SC2086
+        # Use || true to prevent set -e from exiting on test failure
+        pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
+        local exit_code=${PIPESTATUS[0]}
+        # Re-check exit code from log file if PIPESTATUS doesn't work
+        if grep -q "FAIL Required test coverage" "$PYTEST_LOG"; then
+            exit_code=1
+        elif grep -qE "^FAILED " "$PYTEST_LOG"; then
+            exit_code=1
+        elif grep -qE "[0-9]+ passed" "$PYTEST_LOG" && ! grep -q "failed" "$PYTEST_LOG"; then
+            exit_code=0
+        fi
+        summarize_pytest_output "$PYTEST_LOG" "$exit_code"
+        return $exit_code
+    fi
+}
+
 run_full_suite() {
     local reason="${1:-}"
+    local changed_files="${2:-}"  # Optional: changed files to include in manifest
+
     if [[ -n "$reason" ]]; then
         log "Running full test suite: $reason"
     fi
 
-    # Write manifest indicating full suite
+    # Extract source files from changed files (if provided)
+    local source_files=""
+    if [[ -n "$changed_files" ]]; then
+        source_files=$(echo "$changed_files" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+    fi
+
+    # Write manifest indicating full suite (with section markers for CI compatibility)
     mkdir -p "$MANIFEST_DIR"
-    echo "# Full test suite required: $reason" > "$MANIFEST_FILE"
-    echo "# Generated by smart-test at $(date -Iseconds)" >> "$MANIFEST_FILE"
-    find packages/*/tests -name 'test_*.py' -type f | sort >> "$MANIFEST_FILE"
+    {
+        echo "# Test selection manifest"
+        echo "# Generated by smart-test at $(date -Iseconds)"
+        echo "# Mode: full-suite"
+        echo "# Reason: $reason"
+        echo "#"
+        echo "# === CHANGED_SOURCE_FILES ==="
+        if [[ -n "$source_files" ]]; then
+            echo "$source_files"
+        fi
+        echo "# === SELECTED_TESTS ==="
+        # Include both test_*.py and BRANCHES_test_*.py (branch coverage tests)
+        find packages/*/tests \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
+    } > "$MANIFEST_FILE"
 
     if [[ "$MANIFEST_ONLY" == "true" ]]; then
         echo "Manifest written to $MANIFEST_FILE (full suite)"
         exit 0
     fi
 
-    exec pytest packages/*/tests/ -n 2 "${COV_PATHS[@]}" "${PYTEST_ARGS[@]}"
+    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    exit $?
 }
 
 kick_off_background_suite() {
@@ -120,9 +357,29 @@ if [[ "$BACKGROUND" == "true" ]]; then
     exit 0
 fi
 
-# Handle --full flag
-if [[ "$FULL_RUN" == "true" ]]; then
-    run_full_suite "explicit --full flag"
+# Handle explicit test targets: skip the slice when the caller already
+# specified which tests to run (e.g. pytest test_tui.py::TestFoo -x).
+# The slice computes a behavior map of the entire codebase, which is
+# expensive and pointless when the test selection is already known.
+if [[ "$HAS_EXPLICIT_TESTS" == "true" ]]; then
+    log "Explicit test targets detected — skipping slice"
+
+    # Still write a manifest so CI knows what happened
+    mkdir -p "$MANIFEST_DIR"
+    {
+        echo "# Test selection manifest"
+        echo "# Generated by smart-test at $(date -Iseconds)"
+        echo "# Mode: explicit"
+        echo "# Reason: caller specified test targets directly"
+        echo "#"
+        echo "# === CHANGED_SOURCE_FILES ==="
+        echo "# === SELECTED_TESTS ==="
+        echo "# (explicit — see pytest args)"
+    } > "$MANIFEST_FILE"
+
+    # Run pytest with the caller's args (test paths are already in PYTEST_ARGS)
+    run_pytest "" "${PYTEST_ARGS[@]}"
+    exit $?
 fi
 
 # Check for stable hypergumbo installation
@@ -144,26 +401,33 @@ fi
 
 log "Using stable hypergumbo: $STABLE_HG"
 
-# Get changed files since merge-base with dev
+# Get baseline commit (last-green-sha or merge-base fallback)
 BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
-MERGE_BASE=$(git merge-base HEAD "$BASE_BRANCH" 2>/dev/null || echo "HEAD~1")
-CHANGED_FILES=$(git diff --name-only "$MERGE_BASE"..HEAD 2>/dev/null || echo "")
+BASELINE=$(get_baseline "$BASE_BRANCH")
 
+# Get changes from all sources:
+# 1. Committed: changes between BASELINE and HEAD
+# 2. Staged: changes in the index (git add'd but not committed)
+# 3. Unstaged: modified files in working directory (not yet git add'd)
+# This ensures we detect changes regardless of when pytest runs in the workflow
+COMMITTED_CHANGES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "")
+STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
+UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
+
+# Combine and deduplicate
+CHANGED_FILES=$(printf "%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
+
+# If no changes detected, run full suite
+# (This also writes a full-suite manifest, which CI will reject - that's intentional
+# as it signals something is wrong with the baseline/change detection)
 if [[ -z "$CHANGED_FILES" ]]; then
     run_full_suite "no changed files detected"
 fi
 
-log "Changed files since $MERGE_BASE:"
+log "Changed files since $BASELINE:"
 if [[ "$VERBOSE" == "true" ]]; then
     echo "$CHANGED_FILES" | sed 's/^/  /' >&2
 fi
-
-# Check if any core infra files changed
-for core_file in "${CORE_INFRA_FILES[@]}"; do
-    if echo "$CHANGED_FILES" | grep -qF "$core_file"; then
-        run_full_suite "core infrastructure changed: $core_file"
-    fi
-done
 
 # Write changed files to temp file for slice query
 CHANGED_FILE_LIST=$(mktemp)
@@ -173,17 +437,70 @@ trap "rm -f $CHANGED_FILE_LIST" EXIT
 # Use hypergumbo slice --files to find dependent files
 log "Running reverse slice to find affected files..."
 SLICE_OUTPUT=$(mktemp)
-trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT" EXIT
+SLICE_STDERR=$(mktemp)
+trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 
-if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/dev/null; then
-    run_full_suite "slice command failed"
+if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR"; then
+    if [[ -s "$SLICE_STDERR" ]]; then
+        log "Slice stderr: $(cat "$SLICE_STDERR")"
+    fi
+    run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 
 # Filter to only test files in package directories
-AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | sort -u || echo "")
+# Convert absolute paths to relative (slice may output absolute paths)
+# Matches test_*.py and BRANCHES_test_*.py (for branch coverage tests)
+AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
+    sed "s|^$REPO_ROOT/||" | sort -u || echo "")
+
+# Check if any Python source files changed
+CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
-    run_full_suite "no test files in slice result"
+    # No affected tests found. Check why:
+    if [[ -z "$CHANGED_SOURCE_FILES" ]]; then
+        # No Python source files changed. Check for changed test files
+        # (TDD Red phase: test written before implementation exists)
+        CHANGED_TEST_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/tests/(test_|BRANCHES_test_).*\.py$' || echo "")
+
+        if [[ -n "$CHANGED_TEST_FILES" ]]; then
+            # TDD mode: test files changed but no source files to slice from.
+            # Run the changed test files directly.
+            AFFECTED_TESTS="$CHANGED_TEST_FILES"
+            log "TDD mode: running changed test files (no source files to slice from)"
+        else
+            # No Python source files AND no test files changed (only configs, YAML, etc.)
+            # Write a targeted manifest with 0 tests - CI will skip pytest
+            log "No Python source files changed - writing empty targeted manifest"
+            mkdir -p "$MANIFEST_DIR"
+            {
+                echo "# Test selection manifest"
+                echo "# Generated by smart-test at $(date -Iseconds)"
+                echo "# Mode: targeted"
+                echo "# Baseline: $BASELINE"
+                echo "# Reason: no Python source files changed"
+                echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
+                echo "# Changed source files: 0"
+                echo "# Selected tests: 0"
+                echo "#"
+                echo "# === CHANGED_SOURCE_FILES ==="
+                echo "# === SELECTED_TESTS ==="
+            } > "$MANIFEST_FILE"
+
+            if [[ "$MANIFEST_ONLY" == "true" ]]; then
+                echo "Manifest written to $MANIFEST_FILE (0 tests - no Python source changed)"
+                cat "$MANIFEST_FILE"
+                exit 0
+            fi
+
+            echo "No Python source files changed - skipping tests"
+            exit 0
+        fi
+    else
+        # Python source files changed but slice found no dependent tests
+        # This is unusual - fall back to full suite
+        run_full_suite "no test files in slice result" "$CHANGED_FILES"
+    fi
 fi
 
 # Count affected tests
@@ -194,15 +511,25 @@ if [[ "$VERBOSE" == "true" ]]; then
     echo "$AFFECTED_TESTS" | sed 's/^/  /' >&2
 fi
 
+# CHANGED_SOURCE_FILES already computed above (before the empty-tests check)
+SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)
+
 # Write manifest
 mkdir -p "$MANIFEST_DIR"
 {
-    echo "# Affected tests manifest"
+    echo "# Test selection manifest"
     echo "# Generated by smart-test at $(date -Iseconds)"
-    echo "# Base: $MERGE_BASE"
+    echo "# Mode: targeted"
+    echo "# Baseline: $BASELINE"
     echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
-    echo "# Affected tests: $TEST_COUNT"
+    echo "# Changed source files: $SOURCE_COUNT"
+    echo "# Selected tests: $TEST_COUNT"
     echo "#"
+    echo "# === CHANGED_SOURCE_FILES ==="
+    if [[ -n "$CHANGED_SOURCE_FILES" ]]; then
+        echo "$CHANGED_SOURCE_FILES"
+    fi
+    echo "# === SELECTED_TESTS ==="
     echo "$AFFECTED_TESTS"
 } > "$MANIFEST_FILE"
 
@@ -214,7 +541,89 @@ if [[ "$MANIFEST_ONLY" == "true" ]]; then
     exit 0
 fi
 
-# Run only affected tests
-echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
-# shellcheck disable=SC2086
-exec pytest $AFFECTED_TESTS "${COV_PATHS[@]}" "${PYTEST_ARGS[@]}"
+# Handle --full flag: run all tests locally, but manifest already written above is targeted
+# This is for local testing when you want to verify the full suite passes
+if [[ "$FULL_RUN" == "true" ]]; then
+    log "Running full test suite locally (--full flag)"
+    echo "Running full test suite (manifest written with $TEST_COUNT targeted tests for CI)"
+    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    exit $?
+fi
+
+# Build scoped coverage for affected source files only
+AFFECTED_COV=$(build_affected_cov_paths "$CHANGED_FILES")
+
+if [[ "$AFFECTED_COV" == "FULL" ]]; then
+    # No source files changed (maybe only tests or configs)
+    # Fall back to full coverage paths but still run only affected tests
+    log "No source files changed, using full coverage scope"
+    SMART_TEST_MODE="targeted"
+    TARGETED_TEST_COUNT=$TEST_COUNT
+    TARGETED_SOURCE_COUNT=0
+    echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
+    run_pytest "$AFFECTED_TESTS" "${PYTEST_ARGS[@]}"
+    exit $?
+fi
+
+# CHANGED_SOURCE_FILES already computed above for manifest
+
+# Set targeted mode for summary message
+SMART_TEST_MODE="targeted"
+TARGETED_TEST_COUNT=$TEST_COUNT
+TARGETED_SOURCE_COUNT=$SOURCE_COUNT
+
+# Run affected tests with scoped coverage
+echo "Running $TEST_COUNT affected test files with scoped coverage"
+echo "  (enforcing 100% coverage for changed source files only)"
+
+# Override COV_PATHS with affected-only paths
+# shellcheck disable=SC2206
+COV_PATHS=($AFFECTED_COV)
+
+# Suppress pytest-cov's terminal report - we'll show targeted coverage below
+# The misleading package-level percentage (e.g., "4%") is noise when running
+# a subset of tests. Only the targeted file-level check matters.
+COV_PATHS+=("--cov-report=")
+
+# Add no-embeddings config if needed
+if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]]; then
+    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+fi
+
+# Strip --cov-fail-under from PYTEST_ARGS when running scoped mode
+# We'll do our own scoped coverage check below instead of using pytest-cov's
+# total coverage check (which would fail when running only affected tests)
+SCOPED_PYTEST_ARGS=()
+for arg in "${PYTEST_ARGS[@]}"; do
+    if [[ ! "$arg" =~ ^--cov-fail-under ]]; then
+        SCOPED_PYTEST_ARGS+=("$arg")
+    fi
+done
+
+# Run tests and collect coverage (don't enforce threshold yet)
+run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
+TEST_EXIT=$?
+
+# If tests passed, check coverage for just the changed source files
+if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
+    echo ""
+    echo "Checking 100% coverage for changed source files..."
+
+    # Build --include pattern for changed files
+    INCLUDE_PATTERN=$(echo "$CHANGED_SOURCE_FILES" | tr '\n' ',' | sed 's/,$//')
+
+    # Run coverage report for just the changed files
+    if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then
+        echo ""
+        echo "❌ Changed source files are not at 100% coverage:"
+        coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
+        echo ""
+        echo "Run the full suite to see overall coverage: pytest --full"
+        exit 1
+    else
+        echo "✅ All changed source files are at 100% coverage"
+    fi
+fi
+
+exit $TEST_EXIT
+

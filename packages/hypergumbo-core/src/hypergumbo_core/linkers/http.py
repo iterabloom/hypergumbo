@@ -1,7 +1,8 @@
 """HTTP client-server linker for detecting cross-language API calls.
 
-This linker detects HTTP client calls (fetch, axios, requests, OpenAPI clients)
-and links them to server route handlers detected by language analyzers.
+This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
+requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
+Retrofit) and links them to server route handlers detected by language analyzers.
 
 Detected Client Patterns
 ------------------------
@@ -12,11 +13,39 @@ JavaScript/TypeScript:
 - axios.get("/api/users") - Axios library with literal URL
 - axios.get(config.apiUrl) - Axios with variable URL
 - __request(OpenAPI, { method: 'GET', url: '/api/users' }) - OpenAPI generated clients
+- $http.get("/api/users") - AngularJS $http service
+- $http({method: 'GET', url: '/api/users'}) - AngularJS config object
+- $.get("/api/users") - jQuery shorthand
+- $.post("/api/users", data) - jQuery shorthand
+- $.ajax({url: '/api/users', type: 'GET'}) - jQuery $.ajax
 
 Python:
 - requests.get("/api/users") - requests library with literal URL
 - requests.get(API_URL) - requests library with variable URL
 - httpx.get("/api/users") - httpx library
+
+Go:
+- http.Get("/api/users") - net/http standard library
+- http.Post("/api/users", contentType, body) - net/http POST
+- http.Head("/api/users") - net/http HEAD
+- http.NewRequest("DELETE", "/api/users/1", nil) - explicit method
+- http.NewRequestWithContext(ctx, "PATCH", "/api/users/1", body) - with context
+
+Ruby:
+- RestClient.get("/api/users") - rest-client gem
+- HTTParty.get("/api/users") - httparty gem
+- Faraday.get("/api/users") - faraday gem
+- Net::HTTP.get(URI("/api/users")) - stdlib net/http
+- Net::HTTP.post_form(URI("/api/users"), data) - stdlib net/http POST
+- Net::HTTP.get_response(URI("/api/users")) - stdlib net/http
+
+Java:
+- restTemplate.getForObject("/api/users", ...) - Spring RestTemplate
+- restTemplate.postForEntity("/api/users", ...) - Spring RestTemplate
+- restTemplate.exchange("/api/users", HttpMethod.GET, ...) - Spring RestTemplate
+- restTemplate.delete("/api/users/1") - Spring RestTemplate
+- @GET("/api/users") - Retrofit annotation
+- @POST("/api/items") - Retrofit annotation
 
 Variable URL Detection
 ----------------------
@@ -32,7 +61,7 @@ Routes are matched by:
 
 Parameterized routes are supported:
 - /users/:id (Express/Flask style)
-- /users/{id} (FastAPI style)
+- /users/{id} (FastAPI/Retrofit style)
 - /users/<id> (Flask style)
 
 How It Works
@@ -62,11 +91,10 @@ from typing import Iterator
 from urllib.parse import urlparse
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
-PASS_ID = "http-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("http-linker")
 
 
 @dataclass
@@ -140,6 +168,52 @@ JS_OPENAPI_REQUEST_ALT_PATTERN = re.compile(
         url\s*:\s*["']([^"']+)["'][^}]*
         method\s*:\s*["'](\w+)["']""",
     re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# AngularJS $http service patterns
+# $http.get/post/put/patch/delete("url") - method shorthand
+JS_ANGULARJS_HTTP_PATTERN = re.compile(
+    rf"""\$http\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*{_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# $http({method: 'GET', url: '/api/users'}) - config object (method before url)
+JS_ANGULARJS_HTTP_CONFIG_PATTERN = re.compile(
+    r"""\$http\s*\(\s*\{[^}]*
+        method\s*:\s*["'](\w+)["'][^}]*
+        url\s*:\s*["']([^"']+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# $http({url: '/api/users', method: 'POST'}) - config object (url before method)
+JS_ANGULARJS_HTTP_CONFIG_ALT_PATTERN = re.compile(
+    r"""\$http\s*\(\s*\{[^}]*
+        url\s*:\s*["']([^"']+)["'][^}]*
+        method\s*:\s*["'](\w+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.ajax({url: '/api/users', type: 'GET'}) or method: 'GET'
+JS_JQUERY_AJAX_PATTERN = re.compile(
+    r"""\$\.ajax\s*\(\s*\{[^}]*
+        url\s*:\s*["']([^"']+)["'][^}]*
+        (?:type|method)\s*:\s*["'](\w+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.ajax with type/method before url
+JS_JQUERY_AJAX_ALT_PATTERN = re.compile(
+    r"""\$\.ajax\s*\(\s*\{[^}]*
+        (?:type|method)\s*:\s*["'](\w+)["'][^}]*
+        url\s*:\s*["']([^"']+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.get/$.post shorthand - $.get("url", ...) or $.post("url", ...)
+JS_JQUERY_SHORTHAND_PATTERN = re.compile(
+    rf"""\$\.(get|post)\s*\(\s*{_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
 )
 
 
@@ -232,10 +306,91 @@ def _match_route_pattern(request_path: str, route_pattern: str) -> bool:
         return False
 
 
+# Go HTTP client patterns
+# http.Get/Post/Head("url") - supports both literal URLs and variables
+GO_HTTP_SIMPLE_PATTERN = re.compile(
+    rf"""http\.(Get|Post|Head)\s*\(\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# http.NewRequest("METHOD", "url", body) - explicit method
+GO_HTTP_NEW_REQUEST_PATTERN = re.compile(
+    rf"""http\.NewRequest\s*\(\s*["'](\w+)["']\s*,\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# http.NewRequestWithContext(ctx, "METHOD", "url", body) - with context
+GO_HTTP_NEW_REQUEST_CTX_PATTERN = re.compile(
+    rf"""http\.NewRequestWithContext\s*\(\s*\w+\s*,\s*["'](\w+)["']\s*,\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+
+# Ruby HTTP client patterns
+# RestClient.get/post/put/patch/delete("url") - rest-client gem
+# HTTParty.get/post/put/patch/delete("url") - httparty gem
+# Faraday.get/post/put/patch/delete("url") - faraday gem
+RUBY_HTTP_LIB_PATTERN = re.compile(
+    rf"""(?:RestClient|HTTParty|Faraday)\.
+        (get|post|put|patch|delete|head|options)
+        \s*\(\s*
+        {_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Net::HTTP.get/get_response(URI("url")) or Net::HTTP.get(URI.parse("url"))
+# Net::HTTP.post_form(URI("url"), data)
+RUBY_NET_HTTP_PATTERN = re.compile(
+    r"""Net::HTTP\.(get|post_form|get_response)
+        \s*\(\s*
+        URI(?:\.parse)?\s*\(\s*
+        ["']([^"']+)["']""",
+    re.VERBOSE,
+)
+
+# Java RestTemplate patterns
+# restTemplate.getForObject/getForEntity/postForObject/postForEntity/patchForObject("url", ...)
+# Note: `put` and `delete` are excluded because they're too common as generic
+# method names (HashMap.put, List.delete, etc.), causing false positives.
+# Use the exchange() pattern (below) for RestTemplate PUT/DELETE detection.
+JAVA_REST_TEMPLATE_PATTERN = re.compile(
+    rf"""\w+\.(getForObject|getForEntity|postForObject|postForEntity|
+        patchForObject)
+        \s*\(\s*
+        {_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# restTemplate.exchange("url", HttpMethod.METHOD, ...)
+JAVA_REST_TEMPLATE_EXCHANGE_PATTERN = re.compile(
+    rf"""\w+\.exchange\s*\(\s*
+        {_URL_ARG}\s*,\s*
+        HttpMethod\.(\w+)""",
+    re.VERBOSE,
+)
+
+# Retrofit annotations: @GET("/api/users"), @POST("/api/users"), etc.
+JAVA_RETROFIT_ANNOTATION_PATTERN = re.compile(
+    r"""@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)
+        \s*\(\s*
+        ["']([^"']+)["']""",
+    re.VERBOSE,
+)
+
+
 def _find_source_files(root: Path) -> Iterator[Path]:
-    """Find files that might contain HTTP client calls."""
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"]
+    """Find files that might contain HTTP client calls.
+
+    Skips minified files (``*.min.js``, ``*.min.ts``) which can produce
+    false-positive HTTP call detections from compressed library code.
+    """
+    patterns = [
+        "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
+        "**/*.go", "**/*.rb", "**/*.java",
+    ]
     for path in find_files(root, patterns):
+        if path.stem.endswith(".min"):
+            continue
         yield path
 
 
@@ -363,6 +518,316 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
             )
         )
 
+    # Check for AngularJS $http.method() calls - supports variables
+    for match in JS_ANGULARJS_HTTP_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    # Check for AngularJS $http({method: ..., url: ...}) config object
+    angularjs_config_matches = set()
+    for match in JS_ANGULARJS_HTTP_CONFIG_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+        angularjs_config_matches.add(match.start())
+
+    # Check alternative pattern (url before method)
+    for match in JS_ANGULARJS_HTTP_CONFIG_ALT_PATTERN.finditer(content):
+        if match.start() in angularjs_config_matches:  # pragma: no cover
+            continue
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+
+    # Check for jQuery $.get/$.post shorthand
+    for match in JS_JQUERY_SHORTHAND_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    # Check for jQuery $.ajax({url: ..., type/method: ...})
+    jquery_ajax_matches = set()
+    for match in JS_JQUERY_AJAX_PATTERN.finditer(content):
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+        jquery_ajax_matches.add(match.start())
+
+    # Check alternative pattern (type/method before url)
+    for match in JS_JQUERY_AJAX_ALT_PATTERN.finditer(content):
+        if match.start() in jquery_ajax_matches:  # pragma: no cover
+            continue
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
+def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Go file for HTTP client calls.
+
+    Detects standard library net/http patterns:
+    - http.Get/Post/Head("url") — simple shorthand calls
+    - http.NewRequest("METHOD", "url", body) — explicit method
+    - http.NewRequestWithContext(ctx, "METHOD", "url", body) — with context
+    """
+    calls: list[HttpClientCall] = []
+
+    # http.Get/Post/Head("url")
+    for match in GO_HTTP_SIMPLE_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method name, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    # http.NewRequest("METHOD", "url", body)
+    for match in GO_HTTP_NEW_REQUEST_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    # http.NewRequestWithContext(ctx, "METHOD", "url", body)
+    for match in GO_HTTP_NEW_REQUEST_CTX_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    return calls
+
+
+def _scan_ruby_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Ruby file for HTTP client calls.
+
+    Detects three families of Ruby HTTP clients:
+    - RestClient, HTTParty, Faraday: LIB.method("url") pattern
+    - Net::HTTP: Net::HTTP.get/post_form/get_response(URI("url")) pattern
+    """
+    calls: list[HttpClientCall] = []
+
+    # RestClient/HTTParty/Faraday.method("url")
+    for match in RUBY_HTTP_LIB_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="ruby",
+                url_type=url_type,
+            )
+        )
+
+    # Net::HTTP.get/post_form/get_response(URI("url"))
+    for match in RUBY_NET_HTTP_PATTERN.finditer(content):
+        method_name = match.group(1).lower()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        # Map method names to HTTP methods
+        if method_name == "post_form":
+            http_method = "POST"
+        else:
+            # get and get_response both map to GET
+            http_method = "GET"
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="ruby",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
+# Map RestTemplate method names to HTTP methods
+_REST_TEMPLATE_METHOD_MAP = {
+    "getforobject": "GET",
+    "getforentity": "GET",
+    "postforobject": "POST",
+    "postforentity": "POST",
+    "patchforobject": "PATCH",
+}
+
+
+def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Java file for HTTP client calls.
+
+    Detects two families of Java HTTP clients:
+    - Spring RestTemplate: restTemplate.getForObject/postForEntity/exchange/delete/put
+    - Retrofit: @GET/@POST/@PUT/@DELETE/@PATCH annotations
+    """
+    calls: list[HttpClientCall] = []
+
+    # RestTemplate method calls (getForObject, postForEntity, delete, put, etc.)
+    for match in JAVA_REST_TEMPLATE_PATTERN.finditer(content):
+        method_name = match.group(1).lower()
+        # Groups: 1=method name, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        http_method = _REST_TEMPLATE_METHOD_MAP.get(method_name, "GET")
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type=url_type,
+            )
+        )
+
+    # RestTemplate.exchange("url", HttpMethod.METHOD, ...)
+    for match in JAVA_REST_TEMPLATE_EXCHANGE_PATTERN.finditer(content):
+        # Groups: 1=literal URL, 2=variable URL, 3=HTTP method
+        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2)
+        http_method = match.group(3).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type=url_type,
+            )
+        )
+
+    # Retrofit annotations: @GET("/api/users"), @POST("/api/items")
+    for match in JAVA_RETROFIT_ANNOTATION_PATTERN.finditer(content):
+        http_method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type="literal",
+            )
+        )
+
     return calls
 
 
@@ -419,6 +884,12 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
             if file_path.suffix == ".py":
                 calls = _scan_python_file(file_path, content)
+            elif file_path.suffix == ".go":
+                calls = _scan_go_file(file_path, content)
+            elif file_path.suffix == ".rb":
+                calls = _scan_ruby_file(file_path, content)
+            elif file_path.suffix == ".java":
+                calls = _scan_java_file(file_path, content)
             else:
                 calls = _scan_javascript_file(file_path, content)
 

@@ -85,7 +85,7 @@ class TestIsJanetTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_extended1.janet as janet_module
-        with patch.object(janet_module, "is_janet_tree_sitter_available", return_value=False):
+        with patch.object(janet_module._analyzer, "_check_grammar_available", return_value=False):
             assert janet_module.is_janet_tree_sitter_available() is False
 
 
@@ -96,12 +96,12 @@ class TestAnalyzeJanet:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_extended1.janet as janet_module
 
-        with patch.object(janet_module, "is_janet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(janet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="janet analysis skipped"):
                 result = janet_module.analyze_janet(janet_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "janet" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -210,7 +210,7 @@ class TestAnalyzeJanet:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, janet_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

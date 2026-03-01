@@ -1,0 +1,85 @@
+- op: create  # 27dc
+  at: '2026-02-26T06:16:42Z'  # 27dc
+  by: agent  # 27dc
+  actor: jgstern_agent  # 27dc
+  clock: 1  # 27dc
+  nonce: 27dc  # 27dc
+  data:  # 27dc
+    kind: work_item  # 27dc
+    title: "Add permission repair to post-checkout/post-merge git hooks"  # 27dc
+    status: todo_soft  # 27dc
+    priority: 2  # 27dc
+    parent:  # 27dc
+    tags: []  # 27dc
+    before: []  # 27dc
+    duplicate_of: []  # 27dc
+    not_duplicate_of: []  # 27dc
+    pr_ref:  # 27dc
+    description: "Add repair_tracker_perms() shell function to .githooks/post-checkout and .githooks/post-merge. Detects two-user setup, fixes group permissions on .agent/ files owned by current user (chmod g+rw files, chmod g+rwxs dirs, chgrp shared_group). No sudo. Part of htrac permission fix plan."  # 27dc
+    fields: {}  # 27dc
+- op: update  # c504
+  at: '2026-02-26T06:51:56Z'  # c504
+  by: agent  # c504
+  actor: jgstern_agent  # c504
+  clock: 2  # c504
+  nonce: c504  # c504
+  set:  # c504
+    status: needs_human_review  # c504
+- op: discuss  # b5fb
+  at: '2026-02-27T00:39:15Z'  # b5fb
+  by: human  # b5fb
+  actor: jgstern  # b5fb
+  clock: 3  # b5fb
+  nonce: b5fb  # b5fb
+  message: "Please confirm that this task still makes sense in light of the current state of the code."  # b5fb
+- op: discuss  # c5e8
+  at: '2026-02-27T03:13:06Z'  # c5e8
+  by: agent  # c5e8
+  actor: jgstern_agent  # c5e8
+  clock: 4  # c5e8
+  nonce: c5e8  # c5e8
+  message: "Assessed current state: All .agent/ ops files are owned by jgstern_agent:project-dev with mode 2664 (files) and 2775 (dirs). SGID is already set on directories, ensuring new files inherit the project-dev group. There is currently only one user (jgstern_agent) creating tracker files — no second user is observed. The permission repair hook was designed for a hypothetical two-user setup. In the current single-user environment, the SGID setup already handles group inheritance correctly. Recommendation: close as wontfix unless a second user is actually onboarded. If a second user joins, revisit — the hook would ensure files created by user A remain writable by user B via shared group."  # c5e8
+- op: discuss  # e20e
+  at: '2026-02-27T03:21:19Z'  # e20e
+  by: human  # e20e
+  actor: jgstern  # e20e
+  clock: 5  # e20e
+  nonce: e20e  # e20e
+  message: "ok, well here I am as the second user, jgstern, replying to your last message. whether or not this causes the file permissions/ownership to change is unclear to me because there are I think already some self-correcting mechanisms in place. but it has been flaky as we are fighting with some fundamental assumptions/setup of git. so we probably want a belt-and-suspenders approach. we are definitely in a 2-user setup at all times, but sometimes the repair scripts change permissions around to make it difficult to discern that. I just want to be sure that if we do go through with implementing the idea described above that it is done so harmoniously with what already exists."  # e20e
+- op: discuss  # c8f3
+  at: '2026-02-27T03:26:28Z'  # c8f3
+  by: agent  # c8f3
+  actor: jgstern_agent  # c8f3
+  clock: 6  # c8f3
+  nonce: c8f3  # c8f3
+  message: "Thanks for the context — confirmed, we are in a two-user setup (jgstern + jgstern_agent).\n\nRe-assessed in light of existing mechanisms. There are already **5 layers** of permission repair:\n\n1. **Setup wizard (htrac setup)**: Check #12 (_check_group_permissions) scans tracker dirs and auto-fixes g+rw/setgid on files/dirs owned by current user.\n2. **Runtime repair (store.py)**: _ensure_dir_group_writable() runs before every tracker write. Clears umask, sets 0o664 on new files, fixes missing g+w on existing files.\n3. **Cross-user fallback (store.py)**: _take_ownership_via_tmp() handles PermissionError on append by copy-to-/tmp → delete → move-back strategy.\n4. **Config locking (setup.py)**: _config_chmod_fallback() uses the same /tmp trick for config.yaml cross-user chmod.\n5. **Post-checkout/merge hooks**: Currently repair pytest shims only (not .agent/ permissions).\n\nThe gap this WI would fill: post-checkout/merge hooks could proactively repair .agent/ permissions after git operations (checkout, pull/merge) that might create or overwrite files with the wrong group perms. Currently, repairs happen reactively at write-time (layer 2-3) or manually via htrac setup (layer 1).\n\nAssessment: The task still makes sense as belt-and-suspenders, but it's low urgency — layers 1-4 already cover the critical paths. If you still want it implemented, I'd add a lightweight repair_tracker_perms() to post-checkout and post-merge that calls the same logic as _check_group_permissions (find .agent/ files owned by $USER without g+rw, chmod g+rw). Should I proceed, or deprioritize to P4?"  # c8f3
+- op: discuss  # 0c63
+  at: '2026-02-27T04:37:16Z'  # 0c63
+  by: human  # 0c63
+  actor: jgstern  # 0c63
+  clock: 7  # 0c63
+  nonce: 0c63  # 0c63
+  message: "please proceed"  # 0c63
+- op: update  # 34e6
+  at: '2026-02-27T04:37:30Z'  # 34e6
+  by: human  # 34e6
+  actor: jgstern  # 34e6
+  clock: 8  # 34e6
+  nonce: '34e6'  # 34e6
+  set:  # 34e6
+    status: todo_soft  # 34e6
+- op: update  # 0159
+  at: '2026-02-27T05:28:01Z'  # 0159
+  by: agent  # 0159
+  actor: jgstern_agent  # 0159
+  clock: 9  # 0159
+  nonce: '0159'  # 0159
+  set:  # 0159
+    status: done  # 0159
+- op: discuss  # 7f0b
+  at: '2026-02-27T05:28:01Z'  # 7f0b
+  by: agent  # 7f0b
+  actor: jgstern_agent  # 7f0b
+  clock: 10  # 7f0b
+  nonce: 7f0b  # 7f0b
+  message: "Implemented in PR #1543. Added repair-agent-perms.sh shared script + sourced from post-checkout and post-merge hooks. Detects two-user setup via shared group on .agent/tracker* dirs. Fixes g+rw on files, g+rwxs on dirs owned by current user. Silent/best-effort. PR requires human approval (governance files)."  # 7f0b

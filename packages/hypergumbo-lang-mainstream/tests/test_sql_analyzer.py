@@ -9,20 +9,18 @@ Tests verify that the analyzer correctly extracts:
 - Foreign key references (as edges)
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream.sql import (
     PASS_ID,
-    PASS_VERSION,
-    SQLAnalysisResult,
     analyze_sql_files,
     find_sql_files,
 )
 
-
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "sql-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_simple_table(tmp_path):
     """Test detection of simple table definition."""
@@ -45,7 +43,6 @@ CREATE TABLE users (
     assert tables[0].name == "users"
     assert tables[0].language == "sql"
 
-
 def test_analyze_view(tmp_path):
     """Test detection of view definition."""
     sql_file = tmp_path / "views.sql"
@@ -58,7 +55,6 @@ SELECT * FROM users WHERE status = 'active';
     views = [s for s in result.symbols if s.kind == "view"]
     assert len(views) == 1
     assert views[0].name == "active_users"
-
 
 def test_analyze_function(tmp_path):
     """Test detection of function/procedure definition."""
@@ -76,7 +72,6 @@ $$ LANGUAGE SQL;
     assert len(functions) == 1
     assert functions[0].name == "get_user_name"
 
-
 def test_analyze_trigger(tmp_path):
     """Test detection of trigger definition."""
     sql_file = tmp_path / "triggers.sql"
@@ -92,7 +87,6 @@ EXECUTE FUNCTION update_modified_time();
     assert len(triggers) == 1
     assert triggers[0].name == "update_timestamp"
 
-
 def test_analyze_index(tmp_path):
     """Test detection of index definition."""
     sql_file = tmp_path / "indexes.sql"
@@ -107,7 +101,6 @@ CREATE UNIQUE INDEX idx_users_unique_email ON users(email);
     names = {idx.name for idx in indexes}
     assert "idx_users_email" in names
     assert "idx_users_unique_email" in names
-
 
 def test_analyze_foreign_key_reference(tmp_path):
     """Test detection of foreign key relationships as edges."""
@@ -134,7 +127,6 @@ CREATE TABLE orders (
     assert len(ref_edges) >= 1
     # The orders table should reference users
 
-
 def test_analyze_multiple_files(tmp_path):
     """Test analysis across multiple SQL files."""
     schema = tmp_path / "schema.sql"
@@ -149,7 +141,6 @@ def test_analyze_multiple_files(tmp_path):
     kinds = {s.kind for s in result.symbols}
     assert "table" in kinds
     assert "view" in kinds
-
 
 def test_analyze_stored_procedure(tmp_path):
     """Test detection of stored procedure definition.
@@ -173,7 +164,6 @@ $$ LANGUAGE SQL;
     funcs = [s for s in result.symbols if s.kind == "function"]
     assert len(funcs) >= 1
 
-
 def test_find_sql_files(tmp_path):
     """Test that SQL files are discovered correctly."""
     (tmp_path / "schema.sql").write_text("SELECT 1;")
@@ -185,7 +175,6 @@ def test_find_sql_files(tmp_path):
     files = list(find_sql_files(tmp_path))
     assert len(files) >= 2  # schema.sql and subdir/more.sql at minimum
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no SQL files."""
     result = analyze_sql_files(tmp_path)
@@ -193,7 +182,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -208,7 +196,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     sql_file = tmp_path / "broken.sql"
@@ -218,8 +205,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_sql_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, SQLAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -237,7 +223,6 @@ def test_span_information(tmp_path):
     assert tables[0].span.start_line >= 1
     assert tables[0].span.end_line >= tables[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     # This test verifies the skip logic exists
@@ -246,7 +231,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_sql_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 class TestSQLSignatureExtraction:
     """Tests for SQL function signature extraction."""

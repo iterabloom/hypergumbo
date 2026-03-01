@@ -1,0 +1,37 @@
+- op: create  # a042
+  at: '2026-02-26T02:44:50Z'  # a042
+  by: agent  # a042
+  actor: jgstern_agent  # a042
+  clock: 1  # a042
+  nonce: a042  # a042
+  data:  # a042
+    kind: work_item  # a042
+    title: "Express Controller.route() pattern detection"  # a042
+    status: todo_soft  # a042
+    priority: 2  # a042
+    parent:  # a042
+    tags:  # a042
+    - framework  # a042
+    - express  # a042
+    - routes  # a042
+    before: []  # a042
+    duplicate_of: []  # a042
+    not_duplicate_of: []  # a042
+    pr_ref:  # a042
+    description: "DEEP bakeoff cohort #20 (unleash): 214 routes registered via this.route({method, path, handler, permission}) are invisible. Only 47 routes detected (mostly from test files). The Controller base class wraps Express Router — this.route() eventually calls this.app[method](path, ...). Common pattern in structured Express apps. Need framework YAML pattern or Express analyzer enhancement to detect this.route({method: 'get', path: '/foo', handler: this.bar})."  # a042
+    fields: {}  # a042
+- op: update  # a77c
+  at: '2026-02-26T03:20:46Z'  # a77c
+  by: agent  # a77c
+  actor: jgstern_agent  # a77c
+  clock: 2  # a77c
+  nonce: a77c  # a77c
+  set:  # a77c
+    status: done  # a77c
+- op: discuss  # 905e
+  at: '2026-02-26T03:20:46Z'  # 905e
+  by: agent  # 905e
+  actor: jgstern_agent  # 905e
+  clock: 3  # 905e
+  nonce: 905e  # 905e
+  message: "Fixed via member_expression handling in _extract_object_properties(). The Hapi config-object extractor already accepted 'this' as a receiver; only the handler value extraction was missing. this.route({method:'get', path:'/', handler: this.getAllStrategies}) now produces UsageContext with handler_name='getAllStrategies'."  # 905e

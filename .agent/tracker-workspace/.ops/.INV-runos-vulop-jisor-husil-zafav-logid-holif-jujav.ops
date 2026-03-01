@@ -1,0 +1,39 @@
+- op: create  # ca61
+  at: '2026-02-25T09:49:46Z'  # ca61
+  by: agent  # ca61
+  actor: jgstern_agent  # ca61
+  clock: 1  # ca61
+  nonce: ca61  # ca61
+  data:  # ca61
+    kind: invariant  # ca61
+    title: "Properties analyzer crashes on non-UTF-8 encoded files (UnicodeDecodeError)"  # ca61
+    status: violated  # ca61
+    priority: 2  # ca61
+    parent:  # ca61
+    tags:  # ca61
+    - analysis-quality  # ca61
+    - bakeoff  # ca61
+    before: []  # ca61
+    duplicate_of: []  # ca61
+    not_duplicate_of: []  # ca61
+    pr_ref:  # ca61
+    description: ""  # ca61
+    fields:  # ca61
+      statement: "The properties.py analyzer must handle non-UTF-8 encoded .properties files (Latin-1/ISO-8859-1) without crashing. Hard-coded UTF-8 decoding in _get_node_text() at properties.py:63 causes UnicodeDecodeError on keycloak (byte 0xe9) and jenkins (byte 0xe5)."  # ca61
+      root_cause: "_get_node_text() in properties.py uses node.text.decode('utf-8') without fallback. Properties files in Java projects commonly use Latin-1/ISO-8859-1 encoding. The analyzer should use errors='replace' or try multiple encodings."  # ca61
+- op: update  # 0f99
+  at: '2026-02-25T11:19:10Z'  # 0f99
+  by: agent  # 0f99
+  actor: jgstern_agent  # 0f99
+  clock: 2  # 0f99
+  nonce: 0f99  # 0f99
+  set:  # 0f99
+    status: holding  # 0f99
+- op: update  # deed
+  at: '2026-02-25T17:25:30Z'  # deed
+  by: human  # deed
+  actor: jgstern  # deed
+  clock: 3  # deed
+  nonce: deed  # deed
+  set:  # deed
+    title: "Properties analyzer must handle non-UTF-8 encoded files (UnicodeDecodeError)"  # deed

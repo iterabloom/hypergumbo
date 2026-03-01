@@ -59,6 +59,7 @@ from .selection.filters import (
 )
 from .selection.language_proportional import (
     allocate_language_budget,
+    find_underrepresented_language_seeds,
     group_symbols_by_language,
 )
 from .selection.token_budget import (
@@ -465,6 +466,12 @@ def _build_adjacency_list(
     incoming: Dict[str, set] = {}
 
     for edge in edges:
+        # Skip self-loops — they don't represent useful connectivity
+        # and inflate centrality scores. Common source: visitor patterns,
+        # name collision in multi-file repos (e.g., D's accept() methods).
+        if edge.src == edge.dst:
+            continue
+
         if edge.src not in outgoing:
             outgoing[edge.src] = set()
         outgoing[edge.src].add(edge.dst)
@@ -573,7 +580,7 @@ def select_by_connectivity(
         ConnectivityResult with selected symbols and induced edges.
     """
     symbol_by_id = {s.id: s for s in symbols}
-    edge_set = {(e.src, e.dst): e for e in edges}
+    edge_set = {(e.src, e.dst): e for e in edges if e.src != e.dst}
 
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
@@ -945,12 +952,13 @@ def format_compact_behavior_map(
         compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
         compact_map["nodes_summary"] = result.to_dict()
 
-        # Keep only edges where BOTH endpoints exist in the included set
-        # Using AND (not OR) ensures the induced subgraph has valid connectivity
+        # Keep only edges where BOTH endpoints exist in the included set and
+        # src != dst (self-loops waste budget without useful connectivity).
         included_ids = {s.id for s in result.included.symbols}
         compact_map["edges"] = [
             e for e in behavior_map.get("edges", [])
             if e.get("src") in included_ids and e.get("dst") in included_ids
+            and e.get("src") != e.get("dst")
         ]
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
@@ -1094,19 +1102,31 @@ def select_by_tokens(
     included_ids: set = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
-    # These are semantically important and should always be included
+    # These are semantically important but still subject to the token budget.
+    # When there are more entrypoints than the budget allows (e.g., FastAPI
+    # with ~1400 routes), we cap them to fit.
     if force_include_ids:
         symbol_by_id = {s.id: s for s in symbols}
-        for sid in force_include_ids:
-            if sid in symbol_by_id and sid not in included_ids:
-                sym = symbol_by_id[sid]
-                node_dict = sym.to_dict()
-                node_tokens = estimate_node_tokens(node_dict)
-                included.append(sym)
-                included_centrality += centrality.get(sym.id, 0)
-                tokens_used += node_tokens
-                seen_names.add(sym.name)
-                included_ids.add(sid)
+        # Sort forced symbols by centrality so the most important ones
+        # are included first when the budget is tight
+        forced_syms = [
+            symbol_by_id[sid]
+            for sid in force_include_ids
+            if sid in symbol_by_id
+        ]
+        forced_syms.sort(
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+        for sym in forced_syms:
+            node_dict = sym.to_dict()
+            node_tokens = estimate_node_tokens(node_dict)
+            if tokens_used + node_tokens > available_tokens:
+                break
+            included.append(sym)
+            included_centrality += centrality.get(sym.id, 0)
+            tokens_used += node_tokens
+            seen_names.add(sym.name)
+            included_ids.add(sym.id)
 
     # Then fill remaining budget with highest-centrality symbols
     for sym in sorted_symbols:
@@ -1183,39 +1203,168 @@ def format_tiered_behavior_map(
     Returns:
         Behavior map formatted for the token tier.
     """
-    # Extract entrypoint symbol_ids to force-include them
+    # Extract entrypoint symbol_ids to force-include them.
+    # Only force-include high-confidence entrypoints (>= 0.7) to prevent
+    # test main() functions from crowding out bridge nodes that provide
+    # edges.  Test penalty (0.5x) brings test mains from 0.9 to 0.45,
+    # but the connectivity boost (up to +0.25) can push them to ~0.70.
+    # A threshold of 0.7 cleanly separates real entrypoints (0.8+) from
+    # test/utility code.  Low-confidence entrypoints still compete on
+    # centrality in the regular fill phase.
+    # Cap total force-includes to half the estimated node capacity so
+    # bridge nodes always get budget, mirroring compact mode (line ~900).
+    _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.7
     force_include_ids: set = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
-        for ep in behavior_map.get("entrypoints", []):
+        avg_tokens_per_symbol = 75
+        estimated_capacity = max(
+            1, (target_tokens - TOKENS_BEHAVIOR_MAP_OVERHEAD) // avg_tokens_per_symbol
+        )
+        max_forced = max(1, estimated_capacity // 2)
+
+        # Sort by confidence descending, cap count
+        eligible_eps = sorted(
+            behavior_map.get("entrypoints", []),
+            key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", "")),
+        )
+        for ep in eligible_eps:
+            if len(force_include_ids) >= max_forced:
+                break
+            conf = ep.get("confidence", 0)
+            if conf < _FORCE_INCLUDE_CONFIDENCE_THRESHOLD:
+                break
             sid = ep.get("symbol_id")
             if sid and sid in symbol_ids:
                 force_include_ids.add(sid)
 
-    result = select_by_tokens(
-        symbols, edges, target_tokens, force_include_ids=force_include_ids
+    # Use connectivity-aware selection to ensure the induced subgraph
+    # has edges.  The old centrality-only approach (select_by_tokens)
+    # picked high-centrality nodes independently, producing disconnected
+    # output: all three bakeoff repos had 0 edges in the 4k view.
+    # Connectivity-aware selection starts from entrypoints (seeds) and
+    # expands via the frontier, so selected nodes share edges by design.
+    #
+    # Estimate max_additional from the token budget.  Average node cost
+    # is ~250 tokens; reserve 50% of budget for edges, entrypoints, and
+    # overhead.  The post-selection shrink loop (below) enforces the
+    # exact budget, so over-estimating here is safe.
+    _AVG_TOKENS_PER_NODE = 250
+    node_budget_tokens = target_tokens // 2
+    max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
+
+    # Filter symbols the same way select_by_tokens does: exclude tests,
+    # non-code, and example paths so they don't pollute the tiered view.
+    eligible_symbols = [
+        s for s in symbols
+        if s.kind not in EXCLUDED_KINDS
+        and not _is_test_path(s.path)
+        and not _is_example_path(s.path)
+    ]
+
+    # Language-proportional seeding: inject seeds for dominant languages
+    # whose entrypoints have no outgoing edges (e.g., C main() dispatching
+    # via function pointer tables invisible to tree-sitter).  Without this,
+    # BFS frontier is 100% in languages with dense entrypoints, and the
+    # dominant language gets 0 nodes in the sketch.
+    lang_seeds = find_underrepresented_language_seeds(
+        eligible_symbols, edges, force_include_ids
+    )
+    force_include_ids |= lang_seeds
+
+    conn_result = select_by_connectivity(
+        eligible_symbols, edges, force_include_ids, max_additional
     )
 
-    # Create tiered output
-    tiered_map = dict(behavior_map)
+    # Build the initial tiered output, stripping large non-essential fields
+    _TIERED_STRIP_KEYS = {"analysis_runs", "usage_contexts", "sketch_precomputed"}
+    tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
-    tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]
-    tiered_map["nodes_summary"] = result.to_dict()
 
-    # Keep only edges where BOTH endpoints exist in the included set
-    # Using AND (not OR) ensures the induced subgraph has valid connectivity
-    included_ids = {s.id for s in result.included.symbols}
-    tiered_map["edges"] = [
-        e for e in behavior_map.get("edges", [])
+    included_symbols = list(conn_result.included.symbols)
+    included_ids = {s.id for s in included_symbols}
+
+    # Induced edges: both endpoints in included set, no self-loops
+    all_bmap_edges = behavior_map.get("edges", [])
+    induced_edges = [
+        e for e in all_bmap_edges
         if e.get("src") in included_ids and e.get("dst") in included_ids
+        and e.get("src") != e.get("dst")
     ]
 
-    # Filter entrypoints to only those whose symbol_id exists in included nodes
-    tiered_map["entrypoints"] = [
-        ep for ep in behavior_map.get("entrypoints", [])
+    # Filtered entrypoints
+    all_bmap_eps = behavior_map.get("entrypoints", [])
+    filtered_eps = [
+        ep for ep in all_bmap_eps
         if ep.get("symbol_id") in included_ids
     ]
+
+    tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+    tiered_map["edges"] = induced_edges
+    tiered_map["entrypoints"] = filtered_eps
+    tiered_map["nodes_summary"] = conn_result.to_dict()
+
+    # --- Post-selection budget enforcement ---
+    # Check if the assembled output fits.  If not, shrink by removing
+    # nodes that contribute least to the induced subgraph.  This is the
+    # defence-in-depth that the old code lacked: edges and entrypoints
+    # are now accounted for.
+    #
+    # Removal ordering considers LOCAL edge degree to preserve connectivity.
+    # Prior approach sorted only by (force_include, global_centrality), which
+    # removed non-forced nodes with low global centrality first — even if
+    # those nodes were the only ones providing edges.  Bakeoff cohort #5
+    # (iceberg) showed 169 nodes with 0 edges because all frontier-expanded
+    # production nodes (low global centrality) were removed before
+    # disconnected force-included test entrypoints.
+    actual_tokens = estimate_behavior_map_tokens(tiered_map)
+
+    if actual_tokens > target_tokens and len(included_symbols) > 1:
+        # Compute centrality for removal ordering
+        raw_centrality = compute_centrality(symbols, edges)
+        centrality = apply_tier_weights(raw_centrality, symbols)
+
+        while actual_tokens > target_tokens and len(included_symbols) > 1:
+            # Compute local edge degree from CURRENT induced edges.
+            # This changes each iteration as nodes are removed.
+            local_degree: dict[str, int] = {}
+            for e in induced_edges:
+                src, dst = e.get("src"), e.get("dst")
+                local_degree[src] = local_degree.get(src, 0) + 1
+                local_degree[dst] = local_degree.get(dst, 0) + 1
+
+            # Pick victim: prefer removing nodes that contribute least.
+            # Sort key (ascending = remove first):
+            #   1. has_edges: False < True → remove 0-edge singletons first
+            #   2. is_forced: False < True → remove non-forced first
+            #   3. centrality: low centrality removed first
+            victim = min(
+                included_symbols,
+                key=lambda s: (
+                    local_degree.get(s.id, 0) > 0,
+                    s.id in force_include_ids,
+                    centrality.get(s.id, 0),
+                ),
+            )
+            included_ids.discard(victim.id)
+            included_symbols = [s for s in included_symbols if s.id != victim.id]
+
+            # Incrementally filter edges: remove edges touching victim.
+            # This is O(current_edges) per step instead of O(all_edges).
+            induced_edges = [
+                e for e in induced_edges
+                if e.get("src") != victim.id and e.get("dst") != victim.id
+            ]
+            filtered_eps = [
+                ep for ep in all_bmap_eps
+                if ep.get("symbol_id") in included_ids
+            ]
+
+            tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+            tiered_map["edges"] = induced_edges
+            tiered_map["entrypoints"] = filtered_eps
+            actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
     return tiered_map
 

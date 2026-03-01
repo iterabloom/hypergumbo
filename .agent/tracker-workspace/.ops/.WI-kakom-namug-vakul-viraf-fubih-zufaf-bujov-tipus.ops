@@ -1,0 +1,34 @@
+- op: create  # 5466
+  at: '2026-02-26T06:16:42Z'  # 5466
+  by: agent  # 5466
+  actor: jgstern_agent  # 5466
+  clock: 1  # 5466
+  nonce: '5466'  # 5466
+  data:  # 5466
+    kind: work_item  # 5466
+    title: "Add _check_hooks_path to htrac setup wizard"  # 5466
+    status: todo_soft  # 5466
+    priority: 2  # 5466
+    parent:  # 5466
+    tags: []  # 5466
+    before: []  # 5466
+    duplicate_of: []  # 5466
+    not_duplicate_of: []  # 5466
+    pr_ref:  # 5466
+    description: "New setup check: verify git config core.hooksPath is set to .githooks. Auto-fix if .githooks/ dir exists but core.hooksPath not set. Fall back to --global if .git/config not writable. Insert after check 19 _check_precommit_hook."  # 5466
+    fields: {}  # 5466
+- op: update  # 7df9
+  at: '2026-02-26T07:36:17Z'  # 7df9
+  by: agent  # 7df9
+  actor: jgstern_agent  # 7df9
+  clock: 2  # 7df9
+  nonce: 7df9  # 7df9
+  set:  # 7df9
+    status: done  # 7df9
+- op: discuss  # 8d13
+  at: '2026-02-26T07:36:17Z'  # 8d13
+  by: agent  # 8d13
+  actor: jgstern_agent  # 8d13
+  clock: 3  # 8d13
+  nonce: 8d13  # 8d13
+  message: "PR #1497: added _check_hooks_path to setup wizard"  # 8d13

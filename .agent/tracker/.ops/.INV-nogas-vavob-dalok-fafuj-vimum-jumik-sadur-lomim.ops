@@ -1,0 +1,36 @@
+- op: create  # 6fe4
+  at: '2026-02-15T00:51:38Z'  # 6fe4
+  by: agent  # 6fe4
+  actor: migration  # 6fe4
+  clock: 1  # 6fe4
+  nonce: 6fe4  # 6fe4
+  data:  # 6fe4
+    kind: invariant  # 6fe4
+    title: "Decorator Edge Detection (All Languages with Decorator Metadata)"  # 6fe4
+    status: done  # 6fe4
+    priority: 4  # 6fe4
+    parent:  # 6fe4
+    tags: []  # 6fe4
+    before: []  # 6fe4
+    duplicate_of: []  # 6fe4
+    not_duplicate_of: []  # 6fe4
+    pr_ref:  # 6fe4
+    justification:  # 6fe4
+    description: "Discovery: bakeoff-features-reflect assessment on FastAPI (2026-02-06)\n\n\"FastAPI.get/post/put etc. not in high-connectivity symbols (0 in-degree)\"\n\nDecorator registration pattern not visible in call graph\n\nFix (Python): Added `_resolve_decorator_target()` and `_process_decorators()` functions in\n\n`py.py:_extract_edges()` that:\n\n1. Process `decorator_list` on functions/classes during AST walk\n\n2. Resolve decorator callees (Name, Attribute, Call forms)\n\n3. Create \"decorated_by\" edges from decorated symbol to decorator\n\n4. Handle unresolved decorators with unresolved edges (0.5 confidence)\n\nSupported patterns:\n\nSimple: `@decorator` → resolved to local or imported function\n\nWith args: `@decorator(args)` → extracts function from Call\n\nMethod: `@ClassName.method` → resolved via local_symbols short name lookup\n\nStacked: Multiple decorators create multiple edges\n\nFix (TypeScript): Added `_extract_decorator_edges()` function in `js_ts.py` that:\n\n1. Iterates symbols with `decorators` metadata\n\n2. Resolves decorator names to global symbols\n\n3. Creates \"decorated_by\" edges (or unresolved edges for unknown decorators)\n\nEnables visibility of NestJS patterns like @Controller, @Injectable, @Get, etc.\n\nFix (Java): Added `_extract_annotation_edges()` function in `java.py` that:\n\n1. Iterates symbols with `annotations` metadata\n\n2. Resolves annotation names to global symbols (tries both short and qualified names)\n\n3. Creates \"decorated_by\" edges (or unresolved edges for unknown annotations)\n\nEnables visibility of Spring patterns like @Service, @Controller, @GetMapping, etc.\n\nFix (C#): Added `_extract_attribute_edges()` function in `csharp.py` that:\n\n1. Iterates symbols with `annotations` metadata\n\n2. Resolves attribute names to global symbols (handles Attribute suffix convention)\n\n3. Creates \"decorated_by\" edges (or unresolved edges for unknown attributes)\n\nEnables visibility of ASP.NET patterns like [HttpGet], [Route], [Authorize], etc.\n\nFix (Rust): Added `_extract_attribute_edges()` function in `rust.py` that:\n\n1. Iterates symbols with `annotations` metadata\n\n2. Resolves attribute names to global symbols (handles qualified paths like actix_web::get)\n\n3. Creates \"decorated_by\" edges for all symbol kinds (functions, structs, enums, traits)\n\nEnables visibility of Actix/Axum patterns like #[get(\"/path\")], #[derive(Debug)], etc.\n\nTrade-offs: \n\nPros: Decorators become visible in call graph, better centrality ranking\n\nCons: May create noisy edges for common decorators like `@staticmethod`, `@property`\n\nOption: Filter by decorator type or add confidence weighting\n\nRelated: \n\nINV-003 (nested decorated function extraction) - prerequisite, already FIXED\n\nADR-0003 (rich metadata) - decorators already extracted, just need edges"  # 6fe4
+    fields:  # 6fe4
+      statement: "Decorator/annotation applications should create \"decorated_by\" edges in the call graph"  # 6fe4
+      root_cause: "Analyzers extracted decorator information as metadata (`meta.decorators` or `meta.annotations`) but did not create edges between the decorator and the decorated function. This meant `@app.get(\"/users\")` resulted in: ✅ Metadata on the function: `decorators: [{name: \"app.get\", args: [\"/users\"]}]` ❌ No edge from `app` or `app.get` to the decorated function Result: FastAPI's HTTP method decorators showed 0 in-degree in symbols.txt"  # 6fe4
+      regression_tests:  # 6fe4
+      - test_decorator_edges.py::TestDecoratorEdges  # 6fe4
+      - test_ts_decorator_edges.py::TestTypeScriptDecoratorEdges  # 6fe4
+      - test_java_annotation_edges.py::TestJavaAnnotationEdges  # 6fe4
+      - test_csharp_attribute_edges.py::TestCSharpAttributeEdges  # 6fe4
+      - test_rust_attribute_edges.py::TestRustAttributeEdges  # 6fe4
+- op: update  # 3463
+  at: '2026-02-23T07:07:22Z'  # 3463
+  by: agent  # 3463
+  actor: jgstern_agent  # 3463
+  clock: 2  # 3463
+  nonce: '3463'  # 3463
+  set:  # 3463
+    status: holding  # 3463

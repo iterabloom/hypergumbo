@@ -33,11 +33,28 @@ Confidence Scores
 -----------------
 - 0.95: All semantic detection (based on actual pattern matching)
 
-Connectivity Boost:
+Connectivity Boost (concept-based only):
 - Entrypoints with outgoing edges get a confidence boost (up to +0.25)
 - Boost formula: min(0.25, log(1 + out_edges) / 10)
 - This ranks "interesting" entrypoints higher (those that call many functions)
 - Entrypoints are sorted by final confidence (highest first)
+- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid double-counting
+
+Connectivity-Based Fallback:
+- When no concept-based entrypoints are found, the system falls back to
+  selecting the most-connected callable symbols (functions, methods, constructors)
+- Base confidence: 0.50 (below all concept-based entrypoints)
+- At most 5 fallback entrypoints are selected, ranked by out-degree
+- This ensures --entry auto never hard-fails, even for repos with no
+  matching YAML patterns (e.g., Rust libraries without pub tracking)
+
+Post-Processing Filters (INV-mahap):
+- Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
+  this threshold are excluded. This removes noise entries like library_export
+  entries demoted to 0.08 when semantic entries exist, and test-file entries
+  penalized to 0.08.
+- Count cap (MAX_ENTRYPOINT_COUNT = 50): prevents output flooding for repos
+  with hundreds of high-confidence entries (e.g., microservice gateways)
 """
 from __future__ import annotations
 
@@ -49,6 +66,47 @@ from typing import List
 
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_utility_file
+
+# Minimum confidence threshold for entrypoint inclusion.
+# Entries below this threshold are filtered from detect_entrypoints() results.
+# This addresses INV-mahap: library_export entries demoted to 0.08 (below 0.10)
+# should not appear in --list-entries or --entry auto candidate lists.
+MIN_ENTRYPOINT_CONFIDENCE: float = 0.10
+
+# Base entrypoint cap for small repos (< 5000 nodes).
+# For larger repos, the cap scales proportionally via compute_entrypoint_cap().
+BASE_ENTRYPOINT_CAP: int = 50
+
+# Absolute maximum entrypoint cap, even for very large repos.
+# Prevents pathological output for repos with 100K+ symbols.
+MAX_ENTRYPOINT_CAP: int = 500
+
+# Legacy alias for backwards compatibility with tests importing this name.
+MAX_ENTRYPOINT_COUNT: int = BASE_ENTRYPOINT_CAP
+
+
+def compute_entrypoint_cap(node_count: int) -> int:
+    """Compute the entrypoint cap based on repo size (number of symbols).
+
+    Small repos (< 5000 nodes): BASE_ENTRYPOINT_CAP (50).
+    Larger repos: scales as node_count // 100 (1% of symbols),
+    floored at BASE_ENTRYPOINT_CAP, capped at MAX_ENTRYPOINT_CAP.
+
+    Examples:
+        500 nodes   → 50  (base)
+        5000 nodes  → 50  (base)
+        10000 nodes → 100
+        25000 nodes → 250
+        90000 nodes → 500 (capped)
+
+    Args:
+        node_count: Total number of symbols in the behavior map.
+
+    Returns:
+        Maximum number of entrypoints to return.
+    """
+    scaled = max(BASE_ENTRYPOINT_CAP, node_count // 100)
+    return min(scaled, MAX_ENTRYPOINT_CAP)
 
 
 class EntrypointKind(Enum):
@@ -96,6 +154,10 @@ class EntrypointKind(Enum):
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
+    # Test/benchmark entry points (from test-frameworks.yaml patterns)
+    TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
+    # Connectivity-based fallback (no patterns matched)
+    CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
 
 @dataclass
@@ -153,6 +215,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
     Detected concepts (language conventions, confidence=0.80):
     - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
+    - "test_function" -> TEST_FUNCTION (pytest, JUnit, Go testing, etc.)
+    - "benchmark_function" -> TEST_FUNCTION (Go Benchmark*, Rust #[bench])
+    - "example_function" -> TEST_FUNCTION (Go Example*)
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -479,6 +544,129 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # them for potential future use. Skip for now.
                 pass
 
+            # C subcommand functions (cmd_<name>) -> CLI_COMMAND
+            # Common in git, systemd, busybox: function pointer dispatch
+            # tables map string names to cmd_* handlers.
+            elif concept_type == "command_by_name":
+                if EntrypointKind.CLI_COMMAND in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CLI_COMMAND,
+                    confidence=0.80,  # Naming convention - higher than generic
+                    label=f"CLI command (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CLI_COMMAND)
+
+            # Test/benchmark concepts -> TEST_FUNCTION
+            # Confidence is moderate (0.80) since test functions are real
+            # entry points for test runners. The test-file penalty (0.1x)
+            # applied later ensures they don't dominate --entry auto.
+            elif concept_type in (
+                "test_function", "benchmark_function", "example_function",
+            ):
+                if EntrypointKind.TEST_FUNCTION in added_kinds:
+                    continue
+                label_prefix = {
+                    "test_function": "Test",
+                    "benchmark_function": "Benchmark",
+                    "example_function": "Example",
+                }.get(concept_type, "Test")
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.TEST_FUNCTION,
+                    confidence=0.80,
+                    label=f"{label_prefix}: {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.TEST_FUNCTION)
+
+    # --- Pass 2: Direct route symbol detection ---
+    # Go (and potentially other analyzers) create symbols with kind="route"
+    # that carry route metadata (route_path, http_method) directly in sym.meta
+    # rather than going through YAML concept enrichment.  These symbols are
+    # found by the routes CLI command (which checks both concepts and kind)
+    # but were missed by entrypoint detection until now.
+    # Track existing route entrypoint symbol_ids to avoid duplicates.
+    route_ep_ids = {ep.symbol_id for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
+
+    for sym in symbols:
+        if sym.kind != "route":
+            continue
+        if sym.id in route_ep_ids:
+            continue
+        meta = sym.meta or {}
+        method = meta.get("http_method", "")
+        path = meta.get("route_path", "")
+        if method and path:
+            label = f"HTTP {method.upper()} {path}"
+        elif method:
+            label = f"HTTP {method.upper()} route"
+        elif path:
+            label = f"HTTP route {path}"
+        else:
+            label = "HTTP route"
+        entrypoints.append(Entrypoint(
+            symbol_id=sym.id,
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.90,  # Slightly lower than concept-enriched (0.95)
+            label=label,
+        ))
+
+    return entrypoints
+
+
+_CALLABLE_KINDS = frozenset({"function", "method", "constructor"})
+_MAX_CONNECTIVITY_ENTRYPOINTS = 5
+
+
+def _connectivity_fallback(
+    nodes: List[Symbol],
+    edges: List[Edge],
+) -> List[Entrypoint]:
+    """Select entrypoints based on outgoing edge count when no patterns match.
+
+    This is a last-resort fallback for repos where no YAML patterns produce
+    entrypoints (e.g., Rust libraries without visibility tracking, or repos
+    in languages without any framework/convention patterns).
+
+    Only callable symbols (functions, methods, constructors) are considered.
+    Confidence is set to 0.50, lower than any concept-based entrypoint, so
+    these never outrank pattern-detected entries in mixed scenarios.
+
+    Returns at most _MAX_CONNECTIVITY_ENTRYPOINTS entries, sorted by
+    descending out-degree.
+    """
+    # Count outgoing edges per symbol
+    outgoing: dict[str, int] = defaultdict(int)
+    for edge in edges:
+        outgoing[edge.src] += 1
+
+    # Filter to callable symbols with at least one outgoing edge
+    candidates: list[tuple[Symbol, int]] = []
+    for node in nodes:
+        if node.kind not in _CALLABLE_KINDS:
+            continue
+        out_count = outgoing.get(node.id, 0)
+        if out_count > 0:
+            candidates.append((node, out_count))
+
+    if not candidates:
+        return []
+
+    # Sort by out-degree descending, take top N
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    top = candidates[:_MAX_CONNECTIVITY_ENTRYPOINTS]
+
+    entrypoints: List[Entrypoint] = []
+    for sym, _out_count in top:
+        lang = sym.language or "unknown"
+        entrypoints.append(Entrypoint(
+            symbol_id=sym.id,
+            kind=EntrypointKind.CONNECTIVITY_BASED,
+            confidence=0.50,
+            label=f"High-connectivity {lang} {sym.kind}: {sym.name}",
+        ))
+
     return entrypoints
 
 
@@ -526,6 +714,40 @@ def detect_entrypoints(
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
 
+    # Deduplicate declaration vs definition entrypoints (C forward declarations).
+    # Functions like cmd_add appear twice: once from builtin.h (declaration) and
+    # once from builtin/add.c (definition). They have different symbol_ids so the
+    # above dedup doesn't catch them. When both exist for the same symbol name,
+    # keep only the definition (non-declaration).
+    symbol_lookup_for_dedup: dict[str, Symbol] = {node.id: node for node in nodes}
+    name_groups: dict[str, list[Entrypoint]] = defaultdict(list)
+    for ep in unique_entrypoints:
+        sym = symbol_lookup_for_dedup.get(ep.symbol_id)
+        if sym:
+            name_groups[sym.name].append(ep)
+    deduped_entrypoints: List[Entrypoint] = []
+    for _name, eps in name_groups.items():
+        if len(eps) > 1:
+            # Prefer non-declaration symbols over declarations
+            non_decl = [
+                ep for ep in eps
+                if "declaration" not in (
+                    symbol_lookup_for_dedup.get(ep.symbol_id).modifiers
+                    if symbol_lookup_for_dedup.get(ep.symbol_id) else []
+                )
+            ]
+            deduped_entrypoints.extend(non_decl if non_decl else eps)
+        else:
+            deduped_entrypoints.extend(eps)
+    unique_entrypoints = deduped_entrypoints
+
+    # Connectivity-based fallback: when no concept-based entrypoints found,
+    # select the most-connected callable symbols as pseudo-entrypoints.
+    # This ensures --entry auto never hard-fails, even for repos with no
+    # matching YAML patterns (e.g., Rust libraries without pub tracking).
+    if not unique_entrypoints:
+        unique_entrypoints = _connectivity_fallback(nodes, edges)
+
     # Build lookup from symbol_id to Symbol for penalty calculations
     symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
 
@@ -536,9 +758,14 @@ def detect_entrypoints(
         if sym is None:
             continue  # pragma: no cover - symbol should always exist
 
-        # Penalty for test files (50% reduction)
+        # Penalty for test files (90% reduction).
+        # Must be aggressive: in repos like DMD where 98% of main()
+        # functions are in test files, a modest penalty (0.5) leaves
+        # test entrypoints at 0.40 confidence — high enough to dominate
+        # auto-slicing selections.  0.1 pushes them to 0.08, well below
+        # any production entrypoint.
         if sym.path and is_test_file(sym.path):
-            ep.confidence *= 0.5
+            ep.confidence *= 0.1
 
         # Penalty for utility/example/docs files (50% reduction)
         # These are demonstration code, not production entrypoints
@@ -550,22 +777,155 @@ def detect_entrypoints(
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
 
-    # Boost confidence based on connectivity (outgoing edges)
-    # An entrypoint that calls many other functions is more "interesting"
+    # Application demotion: when real semantic entrypoints exist (routes,
+    # commands, main, controllers), library_export entries are just API
+    # visibility markers, not developer-facing entrypoints.  Heavily demote
+    # them so routes/commands dominate the entrypoint list.
+    #
+    # This fixes the "forgejo problem": 7,474 Go uppercase-symbol exports
+    # drowning out 772 meaningful HTTP routes.  The demotion is language-
+    # agnostic — any app with routes+exports benefits.
+    #
+    # Only semantic entrypoints trigger demotion.  TEST_FUNCTION and
+    # LIBRARY_EXPORT themselves do not count (a library with tests but
+    # no routes should keep its exports at full confidence).
+    _SEMANTIC_KINDS = frozenset({
+        EntrypointKind.HTTP_ROUTE,
+        EntrypointKind.CLI_COMMAND,
+        EntrypointKind.CLI_MAIN,
+        EntrypointKind.MAIN_FUNCTION,
+        EntrypointKind.CONTROLLER,
+        EntrypointKind.DJANGO_VIEW,
+        EntrypointKind.EXPRESS_ROUTE,
+        EntrypointKind.NESTJS_CONTROLLER,
+        EntrypointKind.SPRING_CONTROLLER,
+        EntrypointKind.RAILS_CONTROLLER,
+        EntrypointKind.PHOENIX_CONTROLLER,
+        EntrypointKind.GO_HANDLER,
+        EntrypointKind.LARAVEL_CONTROLLER,
+        EntrypointKind.RUST_HANDLER,
+        EntrypointKind.ASPNET_CONTROLLER,
+        EntrypointKind.SINATRA_ROUTE,
+        EntrypointKind.KTOR_ROUTE,
+        EntrypointKind.VAPOR_ROUTE,
+        EntrypointKind.PLUG_ROUTE,
+        EntrypointKind.HAPI_ROUTE,
+        EntrypointKind.FASTIFY_ROUTE,
+        EntrypointKind.KOA_ROUTE,
+        EntrypointKind.GRAPE_API,
+        EntrypointKind.TORNADO_HANDLER,
+        EntrypointKind.AIOHTTP_VIEW,
+        EntrypointKind.SLIM_ROUTE,
+        EntrypointKind.MICRONAUT_CONTROLLER,
+        EntrypointKind.GRAPHQL_SERVER,
+        EntrypointKind.BACKGROUND_TASK,
+        EntrypointKind.WEBSOCKET_HANDLER,
+        EntrypointKind.EVENT_HANDLER,
+        EntrypointKind.SCHEDULED_TASK,
+        EntrypointKind.ELECTRON_MAIN,
+        EntrypointKind.ANDROID_ACTIVITY,
+        EntrypointKind.ANDROID_APPLICATION,
+    })
+    has_semantic = any(ep.kind in _SEMANTIC_KINDS for ep in unique_entrypoints)
+    if has_semantic:
+        for ep in unique_entrypoints:
+            if ep.kind == EntrypointKind.LIBRARY_EXPORT:
+                ep.confidence *= 0.1  # 90% reduction, same as test penalty
+
+    # Language dominance: prefer entrypoints from the dominant language.
+    # In a repo that's 95% C and 5% Python, a C main() should rank above
+    # a Python script even when the script has higher connectivity.
+    # Weight = symbol_count / max_language_count, so the dominant language
+    # always gets 1.0 and minority languages get proportionally less.
+    lang_symbol_counts: dict[str, int] = defaultdict(int)
+    for node in nodes:
+        if node.language:
+            lang_symbol_counts[node.language] += 1
+    max_lang_count = max(lang_symbol_counts.values()) if lang_symbol_counts else 1
+
+    def _language_weight(symbol_id: str) -> float:
+        """Language dominance weight: 1.0 for dominant, less for minority."""
+        sym = symbol_lookup.get(symbol_id)
+        if not sym or not sym.language:
+            return 0.0
+        return lang_symbol_counts.get(sym.language, 0) / max_lang_count
+
+    # Boost confidence based on connectivity (outgoing edges).
+    # Uses one-hop transitive reach: an entrypoint's effective out-degree
+    # includes the out-degree of its immediate callees (at 50% weight).
+    # This handles the "thin wrapper" pattern: main() → tryMain() (178 edges)
+    # gets credit for tryMain's connectivity, outranking utility mains that
+    # call many small functions directly.
+    #
+    # The boost is scaled by language dominance: entrypoints from the
+    # dominant language get the full boost, while minority languages get
+    # a reduced boost (minimum 50%). This prevents a Python script with
+    # many outgoing edges from outranking a C main() in a 95% C codebase.
     outgoing_counts: dict[str, int] = defaultdict(int)
+    direct_callees: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
         outgoing_counts[edge.src] += 1
+        direct_callees[edge.src].append(edge.dst)
+
+    def _effective_out_degree(symbol_id: str) -> float:
+        """Compute effective out-degree with one-hop transitive credit."""
+        direct = outgoing_counts.get(symbol_id, 0)
+        # Add callees' out-degree at 50% weight (one hop only, no recursion)
+        transitive = sum(
+            outgoing_counts.get(callee, 0) for callee in direct_callees[symbol_id]
+        )
+        return direct + 0.5 * transitive
 
     for ep in unique_entrypoints:
-        out_edges = outgoing_counts.get(ep.symbol_id, 0)
-        if out_edges > 0:
+        # Skip connectivity boost for CONNECTIVITY_BASED entrypoints:
+        # their selection already incorporates out-degree ranking, so
+        # boosting again would double-count connectivity.
+        if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
+            continue
+        effective_edges = _effective_out_degree(ep.symbol_id)
+        if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
             # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
             # Cap at 0.25 to avoid overwhelming the base confidence
-            connectivity_boost = min(0.25, math.log(1 + out_edges) / 10)
+            raw_boost = min(0.25, math.log(1 + effective_edges) / 10)
+            # Scale by language dominance: dominant language (1.0) gets
+            # full boost, minority language (0.05) gets ~53% of boost.
+            # Formula: 0.5 + 0.5 * weight → range [0.5, 1.0]
+            lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
+            connectivity_boost = raw_boost * lang_scale
             ep.confidence = min(1.0, ep.confidence + connectivity_boost)
 
-    # Sort by confidence (highest first) for better --entry auto behavior
-    unique_entrypoints.sort(key=lambda ep: ep.confidence, reverse=True)
+    # Sort by confidence (highest first) for better --entry auto behavior.
+    # Tiebreakers (in order):
+    # 1. Language dominance: prefer entrypoints from the dominant language.
+    #    In a C-heavy repo, C main() ranks above Python script even if
+    #    the Python script has higher connectivity.
+    # 2. Effective out-degree: when two entrypoints from the same language
+    #    tie on confidence, prefer the one with higher transitive reach.
+    unique_entrypoints.sort(
+        key=lambda ep: (
+            ep.confidence,
+            _language_weight(ep.symbol_id),
+            _effective_out_degree(ep.symbol_id),
+        ),
+        reverse=True,
+    )
+
+    # Filter out entries below minimum confidence threshold.
+    # After all adjustments (test penalty, vendor penalty, library demotion),
+    # entries with very low confidence are noise — e.g., library_export
+    # entries demoted from 0.80 to 0.08 when semantic entries exist.
+    unique_entrypoints = [
+        ep for ep in unique_entrypoints
+        if ep.confidence >= MIN_ENTRYPOINT_CONFIDENCE
+    ]
+
+    # Cap the number of returned entrypoints.
+    # The cap scales with repo size: small repos get 50, large repos up to 500.
+    # This ensures large codebases (GitLab: 90K+ files, 693+ controllers)
+    # don't lose most of their entrypoints to a fixed cap.
+    cap = compute_entrypoint_cap(len(nodes))
+    if len(unique_entrypoints) > cap:
+        unique_entrypoints = unique_entrypoints[:cap]
 
     return unique_entrypoints

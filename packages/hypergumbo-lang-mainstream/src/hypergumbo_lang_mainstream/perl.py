@@ -6,17 +6,15 @@ This analyzer uses tree-sitter to parse Perl files and extract:
 - Function call relationships
 - use/require statements (imports)
 
-If tree-sitter with Perl support is not installed, the analyzer
-gracefully degrades and returns an empty result.
-
 How It Works
 ------------
-1. Check if tree-sitter-language-pack with Perl is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and use/require statements
+Uses the TreeSitterAnalyzer base class with the tree-sitter-perl grammar
+from tree-sitter-language-pack. Full two-pass analysis:
+
+1. extract_symbols_from_file: extracts packages and subroutines
+2. register_symbol: dual-key registration (qualified Package::sub + unqualified sub)
+3. extract_edges_from_file: resolves use/require, function calls, method calls
+4. Per-file package names stored on instance for Pass 2 access
 
 Why This Design
 ---------------
@@ -28,95 +26,42 @@ Why This Design
 Perl-Specific Considerations
 ----------------------------
 - Perl packages define namespaces (package MyModule;)
-- Subroutines are defined with `sub name { ... }`
-- `use Module` imports at compile time
-- `require 'file.pl'` imports at runtime
-- Method calls can be `$obj->method()` or `ClassName->method()`
+- Subroutines are defined with ``sub name { ... }``
+- ``use Module`` imports at compile time
+- ``require 'file.pl'`` imports at runtime
+- Method calls can be ``$obj->method()`` or ``ClassName->method()``
 - Perl has complex calling conventions that can be hard to statically analyze
 """
+
 from __future__ import annotations
 
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "perl-v1"
-PASS_VERSION = "hypergumbo-0.6.0"
+PASS_ID = make_pass_id("perl")
 
 
 def find_perl_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Perl files in the repository."""
     yield from find_files(repo_root, ["*.pl", "*.pm", "*.t"])
-
-
-def is_perl_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Perl grammar is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("perl")
-        return True
-    except Exception:  # pragma: no cover
-        return False
-
-
-@dataclass
-class PerlAnalysisResult:
-    """Result of analyzing Perl files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    package_name: str  # The package name for this file
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"perl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Perl file node (used as import edge source)."""
-    return f"perl:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _find_children_by_type(
@@ -141,15 +86,13 @@ def _extract_perl_signature(
     # Look for signature_params or param_list child (Perl 5.20+ signatures)
     for child in node.children:
         if child.type in ("signature", "signature_params"):  # pragma: no cover - rare
-            # Extract the full signature text
-            sig_text = _node_text(child, source).strip()
+            sig_text = node_text(child, source).strip()
             return sig_text
 
     # Check for prototype (old style) - e.g., sub foo($) { }
-    # This is after bareword and before block
     for child in node.children:
         if child.type == "prototype":  # pragma: no cover - rare syntax
-            proto_text = _node_text(child, source).strip()
+            proto_text = node_text(child, source).strip()
             return proto_text
 
     # No explicit signature found
@@ -161,10 +104,8 @@ def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
 
     Returns "main" if no package statement is found.
     """
-    # Walk backwards through siblings in parent to find package_statement
     current = node.parent
     while current:
-        # Check siblings that appear before this node
         found_self = False
         for sibling in reversed(current.children):
             if sibling is node or (sibling.end_byte <= node.start_byte):
@@ -172,89 +113,9 @@ def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
             if found_self and sibling.type == "package_statement":
                 package_nodes = _find_children_by_type(sibling, "package")
                 if len(package_nodes) >= 2:
-                    return _node_text(package_nodes[1], source)
+                    return node_text(package_nodes[1], source)
         current = current.parent
     return "main"  # pragma: no cover - defensive
-
-
-def _extract_symbols_from_file(
-    tree: "tree_sitter.Tree",
-    source: bytes,
-    file_path: str,
-    run_id: str,
-) -> tuple[list[Symbol], str]:
-    """Extract all symbols from a parsed Perl file.
-
-    Detects:
-    - package_statement (module/package)
-    - subroutine_declaration_statement (sub)
-
-    Returns:
-        Tuple of (symbols list, package name)
-    """
-    symbols: list[Symbol] = []
-    package_name = "main"  # Default Perl package
-
-    for node in iter_tree(tree.root_node):
-        if node.type == "package_statement":
-            # Extract package name
-            package_nodes = _find_children_by_type(node, "package")
-            if len(package_nodes) >= 2:
-                # First is keyword "package", second is the actual name
-                package_name = _node_text(package_nodes[1], source)
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                span = Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, package_name, "module")
-                symbols.append(Symbol(
-                    id=sym_id,
-                    name=package_name,
-                    kind="module",
-                    language="perl",
-                    path=file_path,
-                    span=span,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                ))
-
-        elif node.type == "subroutine_declaration_statement":
-            # Extract subroutine name from bareword child
-            bareword = _find_child_by_type(node, "bareword")
-            if bareword:
-                sub_name = _node_text(bareword, source)
-                # Get current package context for this subroutine
-                current_pkg = _get_current_package(node, source)
-                if current_pkg != "main":
-                    package_name = current_pkg
-                # Qualify with package name for cross-file resolution
-                qualified_name = f"{package_name}::{sub_name}" if package_name != "main" else sub_name
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                span = Span(
-                    start_line=start_line,
-                    end_line=end_line,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, sub_name, "function")
-                symbols.append(Symbol(
-                    id=sym_id,
-                    name=qualified_name,
-                    kind="function",
-                    language="perl",
-                    path=file_path,
-                    span=span,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                    signature=_extract_perl_signature(node, source),
-                ))
-
-    return symbols, package_name
 
 
 def _find_enclosing_function_perl(
@@ -267,105 +128,277 @@ def _find_enclosing_function_perl(
     current = node.parent
     while current:
         if current.type == "subroutine_declaration_statement":
-            bareword = _find_child_by_type(current, "bareword")
+            bareword = find_child_by_type(current, "bareword")
             if bareword:
-                name = _node_text(bareword, source)
+                name = node_text(bareword, source)
                 qualified = f"{package_name}::{name}" if package_name != "main" else name
                 return local_symbols.get(qualified) or local_symbols.get(name)
         current = current.parent
     return None  # pragma: no cover - defensive
 
 
-def _extract_edges_from_file(
-    tree: "tree_sitter.Tree",
-    source: bytes,
-    file_path: str,
-    file_symbols: list[Symbol],
-    resolver: NameResolver,
-    package_name: str,
-    run_id: str,
-) -> list[Edge]:
-    """Extract call and import edges from a parsed Perl file.
+# Builtins to skip when resolving function calls
+_PERL_BUILTINS = frozenset({
+    "print", "say", "die", "warn", "exit", "return",
+    "shift", "push", "pop", "splice", "join", "split",
+    "open", "close", "read", "write", "defined", "ref",
+    "bless", "keys", "values", "each", "exists", "delete",
+    "length", "substr", "index", "rindex", "chomp", "chop",
+    "lc", "uc", "lcfirst", "ucfirst", "scalar", "wantarray",
+})
 
-    Detects:
-    - use_statement: use Module;
-    - require_expression: require 'file.pl';
-    - function calls (ambiguous_function_call_expression, method calls)
+# Pragmas to skip for import edges
+_PERL_PRAGMAS = frozenset({
+    "strict", "warnings", "utf8", "vars", "constant",
+})
+
+
+class PerlAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based Perl analyzer.
+
+    Uses tree-sitter-perl from the language-pack to extract packages,
+    subroutines, and cross-file call/import edges.
+
+    Overrides ``register_symbol`` for dual-key registration: both the
+    qualified name (Package::sub) and the unqualified name (sub) are
+    stored in the global registry for cross-file resolution.
+
+    Stores per-file package names on the instance (``_file_package_names``)
+    for access during Pass 2 edge extraction.
     """
-    edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
 
-    # Build local symbol map for this file (unqualified name -> symbol)
-    local_symbols: dict[str, Symbol] = {}
-    for s in file_symbols:
-        # Store both qualified and unqualified names
-        local_symbols[s.name] = s
-        if "::" in s.name:
-            unqualified = s.name.rsplit("::", 1)[-1]
-            local_symbols[unqualified] = s
+    lang = "perl"
+    file_patterns: ClassVar[list[str]] = ["*.pl", "*.pm", "*.t"]
+    language_pack_name = "perl"
+    create_file_symbols = True
 
-    for node in iter_tree(tree.root_node):
-        # Handle use statements
-        if node.type == "use_statement":
-            package_nodes = _find_children_by_type(node, "package")
-            if package_nodes:
-                module_name = _node_text(package_nodes[0], source)
-                # Skip pragmas like 'strict', 'warnings'
-                if module_name not in ("strict", "warnings", "utf8", "vars", "constant"):
-                    module_id = f"perl:{module_name}:0-0:module:module"
-                    edge = Edge.create(
-                        src=file_id,
-                        dst=module_id,
-                        edge_type="imports",
-                        line=node.start_point[0] + 1,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                        evidence_type="use",
-                        confidence=0.95,
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None
+    ) -> AnalysisResult:
+        """Reset per-file state and delegate to the base class."""
+        self._file_package_names: dict[str, str] = {}
+        return super().analyze(repo_root, max_files)
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract packages and subroutines from a single Perl file.
+
+        Detects package_statement (module/namespace) and
+        subroutine_declaration_statement (sub). Subroutines in non-main
+        packages get qualified names (Package::sub).
+        """
+        analysis = FileAnalysis()
+        package_name = "main"
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "package_statement":
+                package_nodes = _find_children_by_type(node, "package")
+                if len(package_nodes) >= 2:
+                    package_name = node_text(package_nodes[1], source)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    span = Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
                     )
-                    edges.append(edge)
-
-        # Handle require expressions
-        elif node.type == "require_expression":
-            string_node = _find_child_by_type(node, "string_literal")
-            if string_node:
-                content = _find_child_by_type(string_node, "string_content")
-                if content:
-                    required_file = _node_text(content, source)
-                    module_id = f"perl:{required_file}:0-0:file:file"
-                    edge = Edge.create(
-                        src=file_id,
-                        dst=module_id,
-                        edge_type="imports",
-                        line=node.start_point[0] + 1,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                        evidence_type="require",
-                        confidence=0.90,
+                    sym_id = make_symbol_id(
+                        "perl", rel_path, start_line, end_line,
+                        package_name, "module",
                     )
-                    edges.append(edge)
+                    symbol = Symbol(
+                        id=sym_id,
+                        name=package_name,
+                        kind="module",
+                        language="perl",
+                        path=rel_path,
+                        span=span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    )
+                    analysis.symbols.append(symbol)
+                    analysis.symbol_by_name[package_name] = symbol
 
-        # Handle function calls
-        elif node.type in ("function_call_expression", "ambiguous_function_call_expression",
-                           "func0op_call_expression", "func1op_call_expression"):
-            # Get function name from first child (usually 'function' type or bareword)
-            func_node = _find_child_by_type(node, "function")
-            if func_node:
-                func_name = _node_text(func_node, source)
-                # Skip builtins
-                if func_name not in ("print", "say", "die", "warn", "exit", "return",
-                                      "shift", "push", "pop", "splice", "join", "split",
-                                      "open", "close", "read", "write", "defined", "ref",
-                                      "bless", "keys", "values", "each", "exists", "delete",
-                                      "length", "substr", "index", "rindex", "chomp", "chop",
-                                      "lc", "uc", "lcfirst", "ucfirst", "scalar", "wantarray"):
-                    caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
+            elif node.type == "subroutine_declaration_statement":
+                bareword = find_child_by_type(node, "bareword")
+                if bareword:
+                    sub_name = node_text(bareword, source)
+                    current_pkg = _get_current_package(node, source)
+                    if current_pkg != "main":
+                        package_name = current_pkg
+                    qualified_name = (
+                        f"{package_name}::{sub_name}"
+                        if package_name != "main"
+                        else sub_name
+                    )
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    span = Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    )
+                    sym_id = make_symbol_id(
+                        "perl", rel_path, start_line, end_line,
+                        sub_name, "function",
+                    )
+                    symbol = Symbol(
+                        id=sym_id,
+                        name=qualified_name,
+                        kind="function",
+                        language="perl",
+                        path=rel_path,
+                        span=span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        signature=_extract_perl_signature(node, source),
+                    )
+                    analysis.symbols.append(symbol)
+                    # Store both qualified and unqualified for local lookup
+                    analysis.symbol_by_name[qualified_name] = symbol
+                    if "::" in qualified_name:
+                        unqualified = qualified_name.rsplit("::", 1)[-1]
+                        analysis.symbol_by_name[unqualified] = symbol
+
+        # Store package name for Pass 2
+        self._file_package_names[rel_path] = package_name
+        return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups
+        across ``::`` separators.
+        """
+        global_symbols[symbol.name] = symbol
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract call and import edges from a Perl file.
+
+        Detects use_statement, require_expression, function calls
+        (ambiguous/func0op/func1op), and method calls (arrow operator).
+        """
+        edges: list[Edge] = []
+        file_id = make_file_id("perl", rel_path)
+        package_name = self._file_package_names.get(rel_path, "main")
+        run_id = run.execution_id
+
+        for node in iter_tree(tree.root_node):
+            # Handle use statements
+            if node.type == "use_statement":
+                package_nodes = _find_children_by_type(node, "package")
+                if package_nodes:
+                    module_name = node_text(package_nodes[0], source)
+                    if module_name not in _PERL_PRAGMAS:
+                        module_id = f"perl:{module_name}:0-0:module:module"
+                        edge = Edge.create(
+                            src=file_id,
+                            dst=module_id,
+                            edge_type="imports",
+                            line=node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            evidence_type="use",
+                            confidence=0.95,
+                        )
+                        edges.append(edge)
+
+            # Handle require expressions
+            elif node.type == "require_expression":
+                string_node = find_child_by_type(node, "string_literal")
+                if string_node:
+                    content = find_child_by_type(string_node, "string_content")
+                    if content:
+                        required_file = node_text(content, source)
+                        module_id = f"perl:{required_file}:0-0:file:file"
+                        edge = Edge.create(
+                            src=file_id,
+                            dst=module_id,
+                            edge_type="imports",
+                            line=node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            evidence_type="require",
+                            confidence=0.90,
+                        )
+                        edges.append(edge)
+
+            # Handle function calls
+            elif node.type in (
+                "function_call_expression",
+                "ambiguous_function_call_expression",
+                "func0op_call_expression",
+                "func1op_call_expression",
+            ):
+                func_node = find_child_by_type(node, "function")
+                if func_node:
+                    func_name = node_text(func_node, source)
+                    if func_name not in _PERL_BUILTINS:
+                        caller = _find_enclosing_function_perl(
+                            node, source, local_symbols, package_name,
+                        )
+                        if caller:
+                            lookup_result = resolver.lookup(func_name)
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.85 * lookup_result.confidence
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=confidence,
+                                )
+                                edges.append(edge)
+                            else:
+                                unresolved_id = f"perl:?:0-0:{func_name}:function"
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=unresolved_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=0.50,
+                                )
+                                edges.append(edge)
+
+            # Handle method calls (arrow operator)
+            elif node.type == "method_call_expression":
+                method_node = find_child_by_type(node, "method")
+                if method_node:
+                    method_name = node_text(method_node, source)
+                    caller = _find_enclosing_function_perl(
+                        node, source, local_symbols, package_name,
+                    )
                     if caller:
-                        # Resolve callee using resolver only
-                        lookup_result = resolver.lookup(func_name)
+                        lookup_result = resolver.lookup(method_name)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
+                            confidence = 0.75 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -373,156 +406,27 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="function_call",
+                                evidence_type="method_call",
                                 confidence=confidence,
                             )
                             edges.append(edge)
-                        else:
-                            # Unresolved call
-                            unresolved_id = f"perl:?:0-0:{func_name}:function"
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=unresolved_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="function_call",
-                                confidence=0.50,
-                            )
-                            edges.append(edge)
 
-        # Handle method calls (arrow operator)
-        elif node.type == "method_call_expression":
-            # $obj->method() or ClassName->method()
-            method_node = _find_child_by_type(node, "method")
-            if method_node:
-                method_name = _node_text(method_node, source)
-                caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
-                if caller:
-                    # Resolve callee using resolver only
-                    lookup_result = resolver.lookup(method_name)
-                    if lookup_result.found and lookup_result.symbol:
-                        callee = lookup_result.symbol
-                        confidence = 0.75 * lookup_result.confidence
-                        edge = Edge.create(
-                            src=caller.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            evidence_type="method_call",
-                            confidence=confidence,
-                        )
-                        edges.append(edge)
-
-    return edges
+        return edges
 
 
-def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
+_analyzer = PerlAnalyzer()
+
+
+def is_perl_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Perl grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("perl")
+def analyze_perl(repo_root: Path) -> AnalysisResult:
     """Analyze Perl files in a repository.
 
-    Returns a PerlAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter with Perl support is not available, returns a skipped result.
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_perl_tree_sitter_available():
-        skip_reason = (
-            "Perl analysis skipped: requires tree-sitter-language-pack "
-            "(pip install tree-sitter-language-pack)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return PerlAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("perl")
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for perl_file in find_perl_files(repo_root):
-        try:
-            source = perl_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(perl_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=_make_file_id(rel_path),
-            name=rel_path,
-            kind="file",
-            language="perl",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols, package_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-            # Also register unqualified name
-            if "::" in sym.name:
-                unqualified = sym.name.rsplit("::", 1)[-1]
-                if unqualified not in global_symbol_registry:
-                    global_symbol_registry[unqualified] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-            package_name=package_name,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            fa.package_name,
-            run_id,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return PerlAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

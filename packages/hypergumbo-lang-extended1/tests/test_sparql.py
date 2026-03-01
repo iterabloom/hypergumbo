@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import sparql as sparql_module
 from hypergumbo_lang_extended1.sparql import (
-    SPARQLAnalysisResult,
     analyze_sparql,
     find_sparql_files,
     is_sparql_tree_sitter_available,
@@ -52,7 +52,7 @@ class TestIsSPARQLTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(sparql_module, "is_sparql_tree_sitter_available", return_value=False):
+        with patch.object(sparql_module._analyzer, "_check_grammar_available", return_value=False):
             assert sparql_module.is_sparql_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeSPARQL:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", "SELECT * WHERE { ?s ?p ?o }")
-        with patch.object(sparql_module, "is_sparql_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="SPARQL analysis skipped"):
+        with patch.object(sparql_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="sparql analysis skipped"):
                 result = sparql_module.analyze_sparql(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -224,13 +224,13 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         prefix = next((s for s in result.symbols if s.kind == "prefix"), None)
         assert prefix is not None
-        assert prefix.origin == "sparql.tree_sitter"
+        assert prefix.origin == "sparql-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", "SELECT * WHERE { ?s ?p ?o }")
         result = analyze_sparql(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "sparql.tree_sitter"
+        assert result.run.pass_id == "sparql-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -238,7 +238,8 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", """

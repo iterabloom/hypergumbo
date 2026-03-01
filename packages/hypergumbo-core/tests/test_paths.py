@@ -11,6 +11,7 @@ from hypergumbo_core.paths import (
     get_filename,
     is_under_directory,
     is_test_file,
+    is_test_node,
     is_utility_file,
 )
 
@@ -232,6 +233,30 @@ class TestIsTestFile:
         assert is_test_file("spec/support.rb") is True
         assert is_test_file("__tests__/main.js") is True
 
+    def test_spec_only_matches_at_root(self) -> None:
+        """spec/ only matches as first path component, not nested."""
+        # Root-level spec is a test directory (Ruby RSpec convention)
+        assert is_test_file("spec/support.rb") is True
+        assert is_test_file("spec/factories/user.rb") is True
+        # Nested spec is NOT a test directory (e.g., Airflow listeners/spec/)
+        assert is_test_file("airflow/listeners/spec/listener.py") is False
+        assert is_test_file("src/listeners/spec/base.py") is False
+
+    def test_testing_directory(self) -> None:
+        """Files in testing/ directories are test files (Go convention)."""
+        assert is_test_file("src/testing/suite.go") is True
+        assert is_test_file("pkg/utils/testing/helpers.go") is True
+
+    def test_testutil_directory(self) -> None:
+        """Files in testutil/ directories are test files."""
+        assert is_test_file("testutil/helpers.go") is True
+        assert is_test_file("pkg/testutil/mock.go") is True
+
+    def test_testhelper_directories(self) -> None:
+        """Files in testhelper/testhelpers directories are test files."""
+        assert is_test_file("testhelper/setup.py") is True
+        assert is_test_file("testhelpers/factory.rb") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False
@@ -263,7 +288,36 @@ class TestIsUtilityFile:
     def test_benchmarks_directories(self) -> None:
         """Files in benchmark directories are utility files."""
         assert is_utility_file("benchmarks/perf.py") is True
+        assert is_utility_file("benchmark/gcbench/testgc3.d") is True
         assert is_utility_file("bench/speed.go") is True
+
+    def test_build_system_directories(self) -> None:
+        """Files in build system directories are utility files."""
+        assert is_utility_file("vcbuild/msvc-lib.d") is True
+        assert is_utility_file("cmake/FindFoo.cmake") is True
+
+    def test_dev_directories(self) -> None:
+        """Files in dev/ directories are utility files."""
+        assert is_utility_file("dev/check_providers.py") is True
+        assert is_utility_file("dev/update_versions.py") is True
+        assert is_utility_file("dev/breeze/src/tool.py") is True
+
+    def test_contrib_and_hack_directories(self) -> None:
+        """Files in contrib/ and hack/ directories are utility files."""
+        assert is_utility_file("contrib/nginx.conf") is True
+        assert is_utility_file("hack/update-codegen.sh") is True
+
+    def test_devel_prefixed_directories(self) -> None:
+        """Directories starting with 'devel' are utility files.
+
+        Airflow uses devel-common/ for CI tooling (get_console, run_command).
+        This catches devel/, devel-common/, devel-tools/, etc.
+        """
+        assert is_utility_file("devel-common/src/tool.py") is True
+        assert is_utility_file("devel-common/ci/check_providers.py") is True
+        assert is_utility_file("devel/scripts/run.sh") is True
+        # Should NOT match production paths that happen to contain "devel"
+        assert is_utility_file("src/devel_utils.py") is False
 
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
@@ -275,3 +329,74 @@ class TestIsUtilityFile:
         """Directory matching is case-insensitive."""
         assert is_utility_file("Examples/demo.py") is True
         assert is_utility_file("DOCS/guide.md") is True
+
+
+class TestIsTestNode:
+    """Tests for is_test_node: checks both file path and annotations."""
+
+    def test_test_file_path_detected(self) -> None:
+        """Nodes in test file paths are detected as test nodes."""
+        assert is_test_node("tests/test_main.py", None) is True
+        assert is_test_node("test_main.py", None) is True
+
+    def test_non_test_path_no_meta(self) -> None:
+        """Non-test path with no meta is not a test node."""
+        assert is_test_node("src/main.py", None) is False
+
+    def test_non_test_path_empty_meta(self) -> None:
+        """Non-test path with empty meta is not a test node."""
+        assert is_test_node("src/main.py", {}) is False
+
+    def test_rust_test_attribute(self) -> None:
+        """Rust #[test] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_rust_cfg_test_attribute(self) -> None:
+        """Rust #[cfg(test)] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "cfg", "args": ["test"], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_rust_tokio_test_attribute(self) -> None:
+        """Rust #[tokio::test] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "tokio::test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_python_pytest_mark(self) -> None:
+        """Python @pytest.mark.* decorator is not test indicator by itself.
+
+        Python test functions are in test files, not marked by decorator alone.
+        The decorator doesn't indicate the node IS a test, just that it has
+        pytest configuration. is_test_node checks for pytest.fixture though.
+        """
+        meta = {"decorators": [{"name": "pytest.fixture", "args": [], "kwargs": {}}]}
+        # Fixtures are test infrastructure
+        assert is_test_node("src/conftest.py", meta) is False  # conftest is not test_*
+
+    def test_non_test_decorator_ignored(self) -> None:
+        """Decorators like #[derive(Debug)] don't make a node a test."""
+        meta = {"decorators": [{"name": "derive", "args": ["Debug"], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is False
+
+    def test_multiple_decorators_one_test(self) -> None:
+        """If any decorator is a test annotation, node is test."""
+        meta = {"decorators": [
+            {"name": "derive", "args": ["Debug"], "kwargs": {}},
+            {"name": "test", "args": [], "kwargs": {}},
+        ]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_annotations_key_also_checked(self) -> None:
+        """The 'annotations' key is also checked (alternative to 'decorators')."""
+        meta = {"annotations": [{"name": "test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_java_test_annotation(self) -> None:
+        """Java @Test annotation makes node a test node."""
+        meta = {"decorators": [{"name": "Test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/main/java/Foo.java", meta) is True
+
+    def test_junit_annotation(self) -> None:
+        """Java @org.junit.Test annotation makes node a test node."""
+        meta = {"decorators": [{"name": "org.junit.Test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/main/java/Foo.java", meta) is True

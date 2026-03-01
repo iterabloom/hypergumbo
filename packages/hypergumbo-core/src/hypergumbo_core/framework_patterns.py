@@ -1,4 +1,4 @@
-"""Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
+"""Framework pattern matching for symbol enrichment (ADR-0003).
 
 This module provides data-driven framework detection using YAML pattern files.
 Instead of hardcoding framework-specific logic in analyzers, patterns are
@@ -13,10 +13,28 @@ How It Works
 
 Pattern Types
 -------------
+**Definition-based (v0.8.x):** Match against symbol definition metadata.
+
 - Decorator patterns: Match function/method decorators (e.g., @app.get)
 - Base class patterns: Match class inheritance (e.g., BaseModel)
 - Annotation patterns: Match Java annotations (e.g., @RequestMapping)
 - Parameter type patterns: Match function parameter types (e.g., Depends)
+
+**Usage-based (v1.1.x):** Match against UsageContext records for call-based
+frameworks where routing is done via function calls rather than decorators.
+
+- Usage patterns: Match UsageContext kind/name/position (e.g., Django path(),
+  Flask add_url_rule(), Go gin.GET())
+- Extraction expressions: Pull route paths and methods from UsageContext metadata
+
+Relationship to Route Symbols
+-----------------------------
+Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
+function gets tagged as a route handler). This is complementary to — not a
+replacement for — the ``kind="route"`` symbols that language analyzers create.
+Route symbols are first-class IR entities representing the route itself, consumed
+by the ``route_handler`` linker to create ``routes_to`` edges. Both outputs are
+derived from the same UsageContext extraction pass in each analyzer.
 
 Why This Design
 ---------------
@@ -145,6 +163,9 @@ class Pattern:
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
+        modifiers: Regex pattern requiring at least one modifier to match (positive filter)
+        modifiers_exclude: Regex pattern to reject symbols with matching modifiers
+        symbol_path: Regex pattern to match against symbol's file path (search, not match)
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
         prefix_from_parent: Concept name to look up on parent class for path prefix
@@ -165,6 +186,9 @@ class Pattern:
     extract_path: str | None = None
     extract_method: str | None = None
     prefix_from_parent: str | None = None
+    modifiers: str | None = None
+    modifiers_exclude: str | None = None
+    symbol_path: str | None = None
     usage: UsagePatternSpec | None = None
     extract: dict[str, str] | None = None
 
@@ -189,6 +213,15 @@ class Pattern:
         self._symbol_kind_re = (
             re.compile(self.symbol_kind) if self.symbol_kind else None
         )
+        self._modifiers_re = (
+            re.compile(self.modifiers) if self.modifiers else None
+        )
+        self._modifiers_exclude_re = (
+            re.compile(self.modifiers_exclude) if self.modifiers_exclude else None
+        )
+        self._symbol_path_re = (
+            re.compile(self.symbol_path) if self.symbol_path else None
+        )
 
     def matches(self, symbol: Symbol) -> dict[str, Any] | None:
         """Check if this pattern matches the given symbol.
@@ -204,6 +237,27 @@ class Pattern:
         if self._language_re:
             if not symbol.language or not self._language_re.match(symbol.language):
                 return None
+
+        # File path filter: if specified, symbol's file path must match
+        # Used for Python __init__.py library export detection
+        if self._symbol_path_re:
+            if not symbol.path or not self._symbol_path_re.search(symbol.path):
+                return None
+
+        # Modifiers positive filter: require at least one modifier to match
+        # Used for Python re-exported symbols (re_exported modifier)
+        if self._modifiers_re:
+            if not symbol.modifiers:
+                return None
+            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
+                return None
+
+        # Modifiers exclusion filter: reject symbols with any matching modifier
+        # Used to exclude private functions (defp in Elixir, etc.)
+        if self._modifiers_exclude_re and symbol.modifiers:
+            for modifier in symbol.modifiers:
+                if self._modifiers_exclude_re.match(modifier):
+                    return None
 
         # Get symbol metadata for matching
         decorators = symbol.meta.get("decorators", []) if symbol.meta else []
@@ -292,8 +346,20 @@ class Pattern:
                     # Only symbol_name specified, and it matches
                     return result
 
-        # Try symbol_kind match (alone, without symbol_name or parent_base_class/method_name)
-        if self._symbol_kind_re and not self._symbol_name_re and not self._parent_base_class_re and not self._method_name_re:
+        # Try symbol_kind match (alone, without any other specific match field).
+        # If decorator/base_class/annotation/param_type were specified but didn't
+        # match above, we must NOT fall through to symbol_kind-only matching —
+        # those fields are AND conditions, not independent alternatives.
+        if (
+            self._symbol_kind_re
+            and not self._symbol_name_re
+            and not self._parent_base_class_re
+            and not self._method_name_re
+            and not self._decorator_re
+            and not self._base_class_re
+            and not self._annotation_re
+            and not self._param_type_re
+        ):
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
                 return result
@@ -368,21 +434,34 @@ class Pattern:
         return self._extract_single_value(metadata, path)
 
     def _extract_single_value(self, metadata: dict[str, Any], path: str) -> str | None:
-        """Extract a value from metadata using a single path expression."""
+        """Extract a value from metadata using a single path expression.
+
+        Unwraps single-element lists — Java array initializer syntax like
+        ``@GetMapping({ "/vets" })`` produces ``args: [["/vets"]]``, so
+        ``args[0]`` yields ``["/vets"]`` which must be unwrapped to ``"/vets"``.
+        """
         if path.startswith("args["):
             # Extract array index
             try:
                 idx = int(path[5:].rstrip("]"))
                 args = metadata.get("args", [])
                 if idx < len(args):
-                    return str(args[idx])
+                    val = args[idx]
+                    # Unwrap single-element lists (Java array initializers)
+                    if isinstance(val, list) and len(val) == 1:
+                        val = val[0]
+                    return str(val)
             except (ValueError, IndexError):
                 pass
         elif path.startswith("kwargs."):
             key = path[7:]
             kwargs = metadata.get("kwargs", {})
             if key in kwargs:
-                return str(kwargs[key])
+                val = kwargs[key]
+                # Unwrap single-element lists (Java array initializers)
+                if isinstance(val, list) and len(val) == 1:
+                    val = val[0]
+                return str(val)
         else:
             if path in metadata:
                 return str(metadata[path])
@@ -521,15 +600,16 @@ def extract_usage_value(ctx: "UsageContext", expr: str) -> str | None:
                 parts_split = value.split(delim)
                 value = delim.join(parts_split)  # Keep value for next transform
             elif transform == "last":
-                # Assumes previous was split, take last element
-                if " | " in expr:
-                    # Re-parse to find delimiter from previous split
-                    for prev in reversed(parts[:parts.index(transform)]):
-                        if prev.strip().startswith("split:"):
-                            delim = prev.strip()[6:]
-                            parts_split = value.split(delim)
-                            value = parts_split[-1] if parts_split else value
-                            break
+                # Assumes previous was split, take last element.
+                # Re-parse to find delimiter from previous split.
+                # (We're always inside the " | " branch from line 520,
+                # so parts is guaranteed to exist.)
+                for prev in reversed(parts[:parts.index(transform)]):
+                    if prev.strip().startswith("split:"):
+                        delim = prev.strip()[6:]
+                        parts_split = value.split(delim)
+                        value = parts_split[-1] if parts_split else value
+                        break
         return value
 
     # Handle literal values
@@ -582,7 +662,11 @@ def _extract_from_metadata(metadata: dict[str, Any], path: str) -> str | None:
             return str(kwargs[key])
     else:
         if path in metadata:
-            return str(metadata[path])
+            val = metadata[path]
+            # List values (e.g., methods=["GET", "POST"]): join with comma
+            if isinstance(val, list):
+                return ",".join(str(v) for v in val)
+            return str(val)
 
     return None
 
@@ -636,6 +720,9 @@ class FrameworkPatternDef:
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
+                modifiers=p.get("modifiers"),
+                modifiers_exclude=p.get("modifiers_exclude"),
+                symbol_path=p.get("symbol_path"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
                 prefix_from_parent=p.get("prefix_from_parent"),
@@ -668,6 +755,7 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "beego": "go-web",
     "iris": "go-web",
     "prometheus-common": "go-web",  # github.com/prometheus/common/route (chi-like)
+    "xorm": "go-web",  # xorm.io/xorm (Go ORM used by Forgejo/Gitea)
     # Rust web frameworks -> rust-web.yaml
     "actix-web": "rust-web",
     "axum": "rust-web",
@@ -677,6 +765,8 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "gotham": "rust-web",
     "poem": "rust-web",
     "salvo": "rust-web",
+    # Jenkins Stapler URL dispatch -> stapler.yaml
+    "jenkins": "stapler",
     # Java JAX-RS implementations -> jax-rs.yaml
     "dropwizard": "jax-rs",
     "jersey": "jax-rs",
@@ -880,6 +970,170 @@ def _get_concept_path_from_symbol(symbol: "Symbol", concept_name: str) -> str | 
     return None  # pragma: no cover - concept not found on parent
 
 
+def _apply_subresource_locator_paths(
+    symbols: list["Symbol"],
+    class_lookup: dict[tuple[str, str], "Symbol"],
+) -> None:
+    """Propagate accumulated path prefixes through JAX-RS subresource locator chains.
+
+    Subresource locators are methods with a ``resource_path`` concept (from @Path)
+    but NO ``route`` concept (no @GET/@POST).  Their return type references another
+    resource class whose route methods should inherit the full accumulated path.
+
+    Algorithm:
+    1. Build a class-by-name lookup (cross-file).
+    2. Find subresource locator methods (have resource_path, no route, have return_type).
+    3. Accumulate the full path: parent class path + method path.
+    4. Update the target class's route methods by prepending the accumulated path.
+
+    Handles multi-level chains with cycle detection and depth limit.
+    """
+    # Build cross-file class name → Symbol lookup
+    class_by_name: dict[str, "Symbol"] = {}
+    for sym in symbols:
+        if sym.kind == "class":
+            class_by_name[sym.name] = sym
+
+    # Build method → parent class name lookup
+    methods_by_class: dict[str, list["Symbol"]] = {}
+    for sym in symbols:
+        if sym.kind in ("method", "function") and sym.meta:
+            parent_name = _get_parent_class_name(sym)
+            if parent_name:
+                methods_by_class.setdefault(parent_name, []).append(sym)
+
+    # Find subresource locator methods
+    locators: list[tuple["Symbol", str, str]] = []  # (method, accumulated_path, return_type)
+    for sym in symbols:
+        if sym.kind not in ("method", "function") or not sym.meta:
+            continue
+
+        concepts = sym.meta.get("concepts", [])
+        has_resource_path = False
+        has_route = False
+        path_value = None
+
+        for c in concepts:
+            if c.get("concept") == "resource_path":
+                has_resource_path = True
+                path_value = c.get("path", "")
+            elif c.get("concept") == "route":
+                has_route = True
+
+        if has_resource_path and not has_route:
+            return_type = sym.meta.get("return_type")
+            if return_type:
+                # Get parent class's resource_path
+                parent_name = _get_parent_class_name(sym)
+                if parent_name:
+                    parent_sym = class_lookup.get((sym.path, parent_name))
+                    parent_path = None
+                    if parent_sym:
+                        parent_path = _get_concept_path_from_symbol(
+                            parent_sym, "resource_path",
+                        )
+                    accumulated = _combine_route_paths(parent_path, path_value)
+                    if accumulated:
+                        locators.append((sym, accumulated, return_type))
+
+    if not locators:
+        return
+
+    # Propagate accumulated paths to target class route methods
+    # Handle multi-level chains (depth limit 10)
+    # Only seed root-level locators (whose parent class is NOT a target of
+    # another locator).  Chain iteration discovers mid-level locators with
+    # the correct accumulated prefix from their upstream locator.
+    target_classes = {ret for _, _, ret in locators}
+    propagated_prefixes: dict[str, str] = {}  # class_name -> accumulated prefix
+    for method, accumulated_path, return_type in locators:
+        parent_name = _get_parent_class_name(method)
+        if parent_name not in target_classes:
+            propagated_prefixes[return_type] = accumulated_path
+
+    # Iteratively resolve chained locators (A -> B -> C)
+    for _depth in range(10):
+        new_prefixes: dict[str, str] = {}
+        for class_name, prefix in propagated_prefixes.items():
+            class_methods = methods_by_class.get(class_name, [])
+            for method in class_methods:
+                if not method.meta:  # pragma: no cover - defensive
+                    continue
+                concepts = method.meta.get("concepts", [])
+                for c in concepts:
+                    if c.get("concept") == "resource_path" and not any(
+                        cc.get("concept") == "route" for cc in concepts
+                    ):
+                        ret = method.meta.get("return_type")
+                        if ret and ret not in propagated_prefixes:
+                            method_path = c.get("path", "")
+                            new_accumulated = _combine_route_paths(prefix, method_path)
+                            if new_accumulated:
+                                new_prefixes[ret] = new_accumulated
+        if not new_prefixes:
+            break
+        propagated_prefixes.update(new_prefixes)
+
+    # Now update route concepts on target class methods
+    for class_name, prefix in propagated_prefixes.items():
+        target_class = class_by_name.get(class_name)
+        target_class_path = _get_concept_path_from_symbol(
+            target_class, "resource_path",
+        ) if target_class else None
+
+        # Combine subresource prefix with target class's own resource_path
+        if target_class_path is not None:
+            full_class_prefix = _combine_route_paths(prefix, target_class_path)
+        else:
+            full_class_prefix = prefix
+
+        class_methods = methods_by_class.get(class_name, [])
+        for method in class_methods:
+            if not method.meta:  # pragma: no cover - defensive
+                continue
+            concepts = method.meta.get("concepts", [])
+
+            # Get the method's own @Path (resource_path concept), if any
+            method_own_path = None
+            for c in concepts:
+                if c.get("concept") == "resource_path":
+                    method_own_path = c.get("path")
+                    break
+
+            for c in concepts:
+                if c.get("concept") == "route":
+                    current_path = c.get("path")
+                    if current_path:
+                        # Phase 2 already set a path (parent class path + method path)
+                        # Replace the target class prefix with the full subresource prefix
+                        if target_class_path:
+                            stripped = target_class_path.strip("/")
+                            current_stripped = current_path.lstrip("/")
+                            if current_stripped.startswith(stripped):
+                                remainder = current_stripped[len(stripped):]
+                                method_segment = remainder.lstrip("/")
+                            else:  # pragma: no cover - defensive
+                                method_segment = current_path
+                        else:  # pragma: no cover - defensive
+                            method_segment = current_path
+                        # If stripping left nothing but method has its own
+                        # @Path, Phase 3 only prepended parent path — we need
+                        # to re-attach the method's own path segment.
+                        if not method_segment and method_own_path is not None:
+                            method_segment = method_own_path
+                        c["path"] = _combine_route_paths(
+                            full_class_prefix, method_segment,
+                        )
+                    elif method_own_path is not None:
+                        # Route has no path but method has @Path annotation
+                        c["path"] = _combine_route_paths(
+                            full_class_prefix, method_own_path,
+                        )
+                    else:
+                        # No method path at all; use just the class prefix
+                        c["path"] = full_class_prefix
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -916,12 +1170,16 @@ def enrich_symbols(
     # - language-conventions.yaml: CUDA, WGSL, COBOL, LaTeX, Starlark patterns
     # - config-conventions.yaml: NPM, Maven, Cargo dependency patterns
     # - naming-conventions.yaml: Controller, Handler, Service naming heuristics (0.70)
+    # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
+    # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     for convention_id in (
         "main-functions",
         "test-frameworks",
         "language-conventions",
         "config-conventions",
         "naming-conventions",
+        "library-exports",
+        "logging-conventions",
     ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
@@ -1007,6 +1265,12 @@ def enrich_symbols(
                     combined_path = _combine_route_paths(parent_path, method_path)
                     if combined_path:
                         concept["path"] = combined_path
+
+    # Phase 2b: JAX-RS subresource locator path chaining
+    # Methods with @Path (resource_path concept) and a return_type that matches
+    # a class with resource_path or route methods are subresource locators.
+    # Propagate the accumulated path prefix to the target class's route methods.
+    _apply_subresource_locator_paths(symbols, class_lookup)
 
     # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:

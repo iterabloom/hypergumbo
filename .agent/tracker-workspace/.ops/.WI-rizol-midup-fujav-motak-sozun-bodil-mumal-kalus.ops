@@ -1,0 +1,30 @@
+- op: create  # e59c
+  at: '2026-02-20T07:55:59Z'  # e59c
+  by: agent  # e59c
+  actor: jgstern_agent  # e59c
+  clock: 1  # e59c
+  nonce: e59c  # e59c
+  data:  # e59c
+    kind: work_item  # e59c
+    title: "Pin build-from-source grammars to specific commits"  # e59c
+    status: todo_soft  # e59c
+    priority: 2  # e59c
+    parent:  # e59c
+    tags:  # e59c
+    - stable-id  # e59c
+    - reproducibility  # e59c
+    before: []  # e59c
+    duplicate_of: []  # e59c
+    not_duplicate_of: []  # e59c
+    pr_ref:  # e59c
+    justification:  # e59c
+    description: "scripts/build-source-grammars uses git clone --depth 1 from HEAD for Lean and Wolfram grammars (line 105). No commit SHA is pinned, so shape_id values for these languages are non-reproducible across builds. Replace with git clone + git checkout <commit-sha> and track SHAs as constants in the script. See ADR-0014 Phase 0."  # e59c
+    fields: {}  # e59c
+- op: update  # c3c8
+  at: '2026-02-20T07:56:32Z'  # c3c8
+  by: agent  # c3c8
+  actor: jgstern_agent  # c3c8
+  clock: 2  # c3c8
+  nonce: c3c8  # c3c8
+  set:  # c3c8
+    status: wont_do  # c3c8

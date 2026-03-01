@@ -89,7 +89,7 @@ class TestIsRacketTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_common.racket as racket_module
-        with patch.object(racket_module, "is_racket_tree_sitter_available", return_value=False):
+        with patch.object(racket_module._analyzer, "_check_grammar_available", return_value=False):
             assert racket_module.is_racket_tree_sitter_available() is False
 
 
@@ -100,12 +100,12 @@ class TestAnalyzeRacket:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_common.racket as racket_module
 
-        with patch.object(racket_module, "is_racket_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(racket_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="racket analysis skipped"):
                 result = racket_module.analyze_racket(racket_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 

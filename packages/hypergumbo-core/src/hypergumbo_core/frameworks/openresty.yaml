@@ -1,0 +1,86 @@
+# OpenResty/Lapis framework patterns (ADR-0003 v1.1.x)
+#
+# OpenResty embeds Lua in Nginx for high-performance web apps.
+# Lapis is a web framework built on OpenResty.
+# Powers major API gateways like Kong.
+
+id: openresty
+language: lua
+
+patterns:
+  # ngx.* API - OpenResty core
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.(req|var|ctx).*$"
+
+  # ngx.say/print - response output
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.(say|print|exit|redirect|exec)$"
+
+  # ngx.location.capture - subrequest
+  - concept: subrequest
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.location\\.capture.*$"
+
+  # ngx.timer - async timers
+  - concept: timer
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.timer\\.(at|every)$"
+
+  # ngx.shared - shared memory
+  - concept: shared_memory
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.shared.*$"
+
+  # ngx.socket - cosocket API
+  - concept: socket
+    usage:
+      kind: "^call$"
+      name: "^ngx\\.socket\\.(tcp|udp)$"
+
+  # Lapis app class
+  - concept: application
+    base_class: "^lapis\\.Application$"
+
+  # Lapis routes
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(get|post|put|delete|match)$"
+
+  # Lapis respond_to - multi-method routes
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^respond_to$"
+
+  # Lapis before_filter
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^before_filter$"
+
+  # Lapis capture_errors
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^capture_errors.*$"
+
+  # OpenResty/nginx phase handler functions (definition-based).
+  # Functions named after nginx request processing phases are lifecycle
+  # handlers invoked by nginx, not by Lua code. Common in Kong plugins,
+  # ingress-nginx extensions, and any OpenResty application.
+  # Matched names: init, init_worker, ssl_certificate, rewrite, access,
+  # content, balancer, header_filter, body_filter, log, preread.
+  - concept: event_handler
+    symbol_name: "(^|\\.)(?:init_worker|ssl_certificate|rewrite|access|content|balancer|header_filter|body_filter|log|preread)$"
+    symbol_kind: "function"
+
+linkers:
+  - http

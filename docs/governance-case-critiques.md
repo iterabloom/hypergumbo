@@ -22,7 +22,7 @@ The project is transitioning from a manually-driven development workflow to an *
 
 | System | Status | Notes |
 |--------|--------|-------|
-| **Hypergumbo Core** | ✅ Implemented | 67 language analyzers, YAML patterns, all CLI commands |
+| **Hypergumbo Core** | ✅ Implemented | 104 language analyzers, YAML patterns, all CLI commands |
 | **Bakeoff Infrastructure** | ✅ Implemented | `scripts/bakeoff` with all subcommands, `bakeoff-reflect`, `hypergumbo_diag.py` |
 | **Autonomous Governance** | ✅ Implemented | Hook adapters for Claude Code, Gemini CLI, Cursor, Codex CLI; invariant ledger; `./scripts/loop-toggle` |
 
@@ -57,7 +57,7 @@ The project is organized into two specifications:
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| **Spec A (MVP)** | Implemented | AST-based analysis with 67 language support |
+| **Spec A (MVP)** | Implemented | AST-based analysis with 104 language support |
 | **Spec B (Future)** | Planned | Multi-fidelity analysis with language servers (tsserver, pyright, etc.) |
 
 ### 1.3 Identity System
@@ -102,10 +102,10 @@ Files are classified into four tiers based on their relationship to the project:
 
 ### 1.6 YAML-Driven Pattern System
 
-Entrypoint and framework detection is driven by 41 YAML pattern files:
+Entrypoint and framework detection is driven by 87 YAML pattern files:
 
-- **4 convention patterns:** main-functions, test-frameworks, language-conventions, config-conventions
-- **37 framework patterns:** FastAPI, Django, Express, Rails, Spring Boot, etc.
+- **5 convention patterns:** main-functions, test-frameworks, language-conventions, config-conventions, naming-conventions
+- **82 framework patterns:** FastAPI, Django, Express, Rails, Spring Boot, etc.
 
 This separation allows framework-specific behavior to be defined declaratively without modifying analyzer code.
 

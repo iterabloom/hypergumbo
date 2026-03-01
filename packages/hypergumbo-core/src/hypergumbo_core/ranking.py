@@ -9,9 +9,14 @@ How It Works
 ------------
 Ranking uses multiple signals combined:
 
-1. **Centrality**: In-degree centrality measures how many other symbols
-   reference a given symbol. Symbols called by many others are considered
-   more important ("authority" in the codebase).
+1. **Centrality**: Bidirectional centrality uses in-degree as the base
+   signal (how many other symbols reference this one), boosted by a
+   log-scaled out-degree factor.  This rewards *connectors* — symbols
+   that are both depended-on and depend-on-others (e.g., QuerySet, Model)
+   — over pure *sinks* (e.g., exception classes, utility decorators) that
+   have high in-degree but near-zero out-degree.  Extreme in-degree is
+   saturated via ``hub_threshold`` to prevent infrastructure utilities
+   (error sentinels, loggers) from dominating rankings.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -22,10 +27,34 @@ Ranking uses multiple signals combined:
    symbol scores, not just the maximum. This rewards files with multiple
    important symbols rather than one outlier.
 
+4. **Utility Symbol Dampening**: Symbols with infrastructure-utility names
+   (Logger, Clock, Metrics, empty, size, toString, __repr__) get 90%
+   centrality reduction. This supplements hub saturation (which only caps
+   in-degree) with name-based detection of symbols that are plumbing, not
+   architecture. Addresses INV-mahap: DefaultClock.Now with in-degree 474
+   dominated rankings because hub saturation at 100 only reduced effective_in
+   to ~106.
+
+5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
+   lines_of_code <= 5 get 90% centrality reduction.  These are trivial
+   accessors/stubs that accumulate high in-degree through ubiquitous use
+   but have no architectural significance.  Addresses bakeoff cohorts 16-17
+   findings: Timer.Duration (in=98, LoC=3), noopMetric.Inc (in=109, LoC=1),
+   CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
+   rankings despite being plumbing.
+
+6. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+   method calls with confidence <0.5) are excluded from centrality
+   computation. This prevents method name collisions from inflating
+   in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
+   .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
+   Filtering at confidence 0.5 eliminates these artifacts.
+
 Why These Heuristics
 --------------------
-- **Centrality** captures structural importance: heavily-called utilities,
-  core abstractions, and integration points naturally score high.
+- **Centrality** captures structural importance: core abstractions and
+  integration points (connectors) naturally score higher than pure sinks
+  (exception classes, utility decorators imported everywhere).
 
 - **Tier weighting** reflects user intent: when exploring a codebase, you
   usually care more about the project's own code than vendored libraries.
@@ -51,6 +80,7 @@ For combined ranking with all heuristics:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,34 +140,78 @@ class RankedFile:
 def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
+    hub_threshold: int | None = None,
 ) -> Dict[str, float]:
-    """Compute symbol importance using in-degree centrality.
+    """Compute symbol importance using bidirectional centrality.
 
-    Symbols called by many others are considered more important.
-    This uses in-degree as a simple proxy for "authority" in the codebase.
+    Uses in-degree as the base signal (symbols called by many others are
+    important), boosted by a log-scaled out-degree factor.  This rewards
+    *connectors* — symbols that are both depended-on and depend-on-others —
+    over pure *sinks* (exception classes, utility decorators) that have high
+    in-degree but near-zero out-degree.
+
+    The formula is::
+
+        raw_score = effective_in_degree * (1 + ln(1 + out_degree))
+
+    When ``hub_threshold`` is set, in-degree is saturated for symbols above
+    the threshold to prevent infrastructure utilities (error sentinels,
+    loggers, DB accessors) from dominating rankings.  The saturation formula
+    is::
+
+        effective_in = threshold + ln(1 + in_degree - threshold)
+
+    This is nearly a hard cap: a symbol with 200 in-edges and threshold 100
+    gets effective_in ≈ 104.6 instead of 200.  The log term preserves
+    ordering among hubs without letting raw degree dominate.  Saturation
+    happens *before* normalization, which is critical — post-normalization
+    dampening cannot flip relative rankings.
+
+    Scores are normalized to 0-1 after computation.
 
     Args:
         symbols: List of symbols to rank.
         edges: List of edges (calls, imports) between symbols.
+        hub_threshold: In-degree above which saturation applies. None
+            disables saturation.  Default None (off for backward compat).
+            ``rank_symbols`` passes 100.
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
     """
     symbol_ids = {s.id for s in symbols}
     in_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+    out_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
 
     for edge in edges:
-        # Edge uses 'dst' for target in IR
         target = edge.dst
         if target and target in in_degree:
             in_degree[target] += 1
+        source = edge.src
+        if source and source in out_degree:
+            out_degree[source] += 1
+
+    # Bidirectional score: in-degree boosted by log-scaled out-degree
+    scores: Dict[str, float] = {}
+    for sid in symbol_ids:
+        ind = in_degree[sid]
+        outd = out_degree[sid]
+
+        # Saturate extreme in-degree to prevent infrastructure hubs from
+        # dominating.  The log term preserves ordering among hubs.
+        if hub_threshold is not None and ind > hub_threshold:
+            effective_in = hub_threshold + math.log(1 + ind - hub_threshold)
+        else:
+            effective_in = ind
+
+        scores[sid] = effective_in * (1 + math.log(1 + outd))
 
     # Normalize to 0-1 range
-    max_degree = max(in_degree.values()) if in_degree else 1
-    if max_degree == 0:
-        max_degree = 1
+    max_score = max(scores.values()) if scores else 1.0
+    if max_score == 0:
+        max_score = 1.0
 
-    return {sid: count / max_degree for sid, count in in_degree.items()}
+    return {sid: score / max_score for sid, score in scores.items()}
 
 
 def apply_tier_weights(
@@ -206,6 +280,303 @@ def apply_test_weights(
     return weighted
 
 
+# Path patterns for code that is structurally connected but operationally
+# irrelevant to runtime architecture (e.g., database migrations).
+_NOISE_PATH_SEGMENTS = (
+    "/db/migrate/",
+    "/migrations/",
+)
+
+
+def _is_noise_path(path: str) -> bool:
+    """Check if path represents noise code like database migrations.
+
+    Migrations are structurally connected (Migration#up dispatches to all
+    subclass#up methods) but run once and are irrelevant to understanding
+    runtime architecture. De-weighting them prevents inflation of centrality
+    rankings.
+    """
+    path_lower = path.lower()
+    # Check for segments (handles both absolute and relative paths)
+    for seg in _NOISE_PATH_SEGMENTS:
+        if seg in path_lower:
+            return True
+    # Also check path starts (for relative paths like "db/migrate/...")
+    if path_lower.startswith("db/migrate/") or path_lower.startswith("migrations/"):
+        return True
+    return False
+
+
+def apply_noise_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    noise_weight: float = 0.1,
+) -> Dict[str, float]:
+    """Apply noise path weighting to centrality scores.
+
+    Symbols in noise paths (database migrations, etc.) get their centrality
+    reduced by noise_weight. This prevents migration classes from inflating
+    centrality rankings despite being operationally irrelevant to runtime
+    architecture.
+
+    Args:
+        centrality: Centrality scores (possibly already tier-weighted).
+        symbols: List of symbols (used to look up paths).
+        noise_weight: Multiplier for noise path nodes (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to noise-weighted centrality score.
+    """
+    symbol_paths = {s.id: s.path for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        path = symbol_paths.get(sid, "")
+        if _is_noise_path(path):
+            weighted[sid] = score * noise_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
+# Patterns for detecting infrastructure utility symbols by name.
+# These symbols have high in-degree but low domain relevance — they're
+# plumbing, not architecture.  Matching is case-insensitive.
+#
+# Categories:
+#   - Logging classes: Logger, getLogger, log_message
+#   - Logging methods: log, warn, error, debug, info, trace, fatal (+ Go fmt variants)
+#   - Timing: Clock, DefaultClock, SystemClock
+#   - Metrics: Metrics, MetricsCollector, metricsRecorder
+#   - Error sentinels: ErrNotFound, ErrTimeout (Go convention)
+#   - Exception/error classes: IOException, ValueError, GuacamoleServerException
+#   - STL accessors: empty, size, begin, end, length
+#   - Boilerplate: toString, hashCode, equals, __repr__, __str__, __hash__, __eq__
+_UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?i)logger$"),          # Logger, AppLogger, getLogger
+    re.compile(r"(?i)^get_?logger$"),    # getLogger, get_logger
+    re.compile(r"(?i)^log_"),            # log_message, log_error
+    # Logging method names — exact match with optional format suffix (f/ln).
+    # Catches: log, warn, error, debug, info, trace, fatal, Errorf, Warnln, Printf.
+    # Avoids false positives: login, logout, dialog, catalog, handleError, UserInfo,
+    # information, debugger, traceback, warningLevel, fatalError, ErrorHandler.
+    re.compile(r"(?i)^(?:log|warn|error|debug|info|trace|fatal|print)(?:f|ln)?$"),
+    re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
+    re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
+    re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
+    # Exception/error classes: thrown/caught infrastructure, not domain logic.
+    # Catches: IOException, GuacamoleServerException, ValueError, TypeError.
+    # Avoids: ExceptionHandler, ErrorHandler, ErrorResponse, ErrorBoundary.
+    re.compile(r"(?i)Exception$"),       # Java/C# exception classes
+    re.compile(r"^[A-Z].*Error$"),       # PascalCase error classes (ValueError, TypeError)
+    re.compile(r"^(?:empty|size|begin|end|length|capacity)$"),  # STL accessors
+    re.compile(r"^(?:insert|erase|push_back|pop_back|front|back|clear|swap|reserve|resize|at)$"),
+    re.compile(r"^(?:toString|hashCode|equals|compareTo|clone|finalize)$"),  # Java boilerplate
+    re.compile(r"^__(?:repr|str|hash|eq|ne|lt|le|gt|ge|len|bool|init|del)__$"),  # Python dunder
+]
+
+
+def is_utility_symbol(name: str) -> bool:
+    """Check if a symbol name looks like infrastructure utility.
+
+    Infrastructure symbols (loggers, clocks, metrics, error sentinels, STL
+    accessors, boilerplate methods) are plumbing — high in-degree but low
+    domain relevance. This supplements is_utility_file (path-based) with
+    name-based detection.
+
+    Args:
+        name: Symbol name to check.
+
+    Returns:
+        True if the name matches a known utility pattern.
+    """
+    return any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS)
+
+
+# Concepts from framework YAML patterns that indicate infrastructure logging.
+# Symbols enriched with these concepts by logging-conventions.yaml get dampened.
+_LOGGING_CONCEPTS: frozenset[str] = frozenset({"logging", "logger"})
+
+
+def _has_logging_concept(symbol: "Symbol | None") -> bool:
+    """Check if a symbol has a logging-related framework concept."""
+    if symbol is None or not symbol.meta:
+        return False
+    for concept in symbol.meta.get("concepts", []):
+        if isinstance(concept, dict) and concept.get("concept") in _LOGGING_CONCEPTS:
+            return True
+    return False
+
+
+def apply_utility_symbol_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    utility_weight: float = 0.1,
+) -> Dict[str, float]:
+    """Apply utility symbol weighting to centrality scores.
+
+    Symbols whose names match infrastructure utility patterns (loggers,
+    clocks, metrics, STL accessors) OR whose framework concepts indicate
+    logging infrastructure get their centrality reduced by utility_weight.
+    This prevents infrastructure hubs from dominating rankings even after
+    hub saturation dampening.
+
+    Two detection mechanisms (INV-mosag):
+    1. Name-based: regex patterns in _UTILITY_SYMBOL_PATTERNS
+    2. Concept-based: symbols enriched with "logging" concept by
+       logging-conventions.yaml (catches custom logger wrappers,
+       log bridges, logger factory classes)
+
+    Args:
+        centrality: Centrality scores (possibly already tier-weighted).
+        symbols: List of symbols (used to look up names).
+        utility_weight: Multiplier for utility symbol nodes (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to utility-weighted centrality score.
+    """
+    symbol_lookup = {s.id: s for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        sym = symbol_lookup.get(sid)
+        name = sym.name if sym else ""
+        if is_utility_symbol(name) or _has_logging_concept(sym):
+            weighted[sid] = score * utility_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
+def apply_trivial_sink_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    edges: List[Edge],
+    sink_weight: float = 0.1,
+    max_out_degree: int = 1,
+    max_loc: int = 5,
+) -> Dict[str, float]:
+    """Dampen centrality for trivial sinks — short-bodied symbols with near-zero out-degree.
+
+    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
+    rankings purely through raw in-degree even after hub saturation and
+    bidirectional scoring.  The root cause: when the highest in-degree
+    symbols in a codebase are ALL pure sinks, there are no connectors
+    with enough in-degree to overcome the sink's base score.
+
+    Examples dampened by this function:
+      - Timer.Duration (in=98, out=0, LoC=3) — 1-line accessor
+      - noopMetric.Inc (in=109, out=0, LoC=1) — null object stub
+      - CheckError (in=195, out=1, LoC=3) — error-handling wrapper
+      - syncTask.name (in=109, out=0, LoC=2) — trivial accessor
+
+    Detection criteria (all must hold):
+      1. out_degree <= max_out_degree (default 1)
+      2. lines_of_code <= max_loc (default 5)
+
+    This is conservative: most architectural functions have out_degree > 1
+    OR non-trivial body size.  The conjunction prevents false dampening of
+    genuinely important short leaf functions.
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for lines_of_code).
+        edges: Edge list (used to compute out-degree).
+        sink_weight: Multiplier for trivial sinks (default 0.1).
+        max_out_degree: Maximum out-degree to qualify as sink (default 1).
+        max_loc: Maximum lines of code to qualify as trivial (default 5).
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    # Compute out-degree from edges
+    out_degree: Dict[str, int] = {}
+    for edge in edges:
+        if edge.src:
+            out_degree[edge.src] = out_degree.get(edge.src, 0) + 1
+
+    # Build lines-of-code lookup
+    symbol_loc: Dict[str, int] = {}
+    for s in symbols:
+        loc = s.lines_of_code
+        if loc is None and s.span is not None:
+            loc = s.span.end_line - s.span.start_line + 1
+        symbol_loc[s.id] = loc if loc is not None else 0
+
+    weighted = {}
+    for sid, score in centrality.items():
+        outd = out_degree.get(sid, 0)
+        loc = symbol_loc.get(sid, 0)
+        if outd <= max_out_degree and loc <= max_loc:
+            weighted[sid] = score * sink_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
+def apply_common_method_name_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    name_threshold: int = 10,
+    floor: float = 0.1,
+) -> Dict[str, float]:
+    """Dampen centrality for methods whose name appears on many distinct symbols.
+
+    When a method name (e.g., 'execute', 'call', 'perform') is defined on
+    many distinct classes/modules, receiver_call edges with confidence 0.75
+    create massive false positive in-degree because callers of ANY method
+    with that name get attributed to the same target.  This function applies
+    a dampening factor proportional to the number of symbols sharing the name.
+
+    Bakeoff finding WI-luvaj: PartialToViewsMappings#execute (in-degree 2894)
+    dominated rankings because 'execute' appears on 50+ classes and every
+    unresolved `.execute()` call was attributed to it.
+
+    Detection:
+    - Count distinct symbols with each method/function name
+    - Only counts function and method kinds (not class, module, etc.)
+    - If count > name_threshold (default 10), apply dampening:
+      factor = max(floor, name_threshold / count)
+    - e.g., 'execute' on 50 symbols → 10/50 = 0.2x
+    - e.g., 'process' on 15 symbols → 10/15 = 0.67x
+    - e.g., 'analyze_data' on 1 symbol → no dampening
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for name counts).
+        name_threshold: Minimum symbol count before dampening applies (default 10).
+        floor: Minimum dampening factor (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    # Count how many distinct symbols define each method name
+    # Only count callable kinds (function, method) — class names are
+    # expected to repeat across modules
+    _CALLABLE_KINDS = {"function", "method"}
+
+    name_counts: Dict[str, int] = {}
+    symbol_lookup: Dict[str, Symbol] = {}
+    for s in symbols:
+        symbol_lookup[s.id] = s
+        if s.kind in _CALLABLE_KINDS:
+            name_counts[s.name] = name_counts.get(s.name, 0) + 1
+
+    weighted = {}
+    for sid, score in centrality.items():
+        sym = symbol_lookup.get(sid)
+        if sym is None or sym.kind not in _CALLABLE_KINDS:
+            weighted[sid] = score
+            continue
+
+        count = name_counts.get(sym.name, 1)
+        if count > name_threshold:
+            factor = max(floor, name_threshold / count)
+            weighted[sid] = score * factor
+        else:
+            weighted[sid] = score
+
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -250,11 +621,68 @@ def compute_file_scores(
     return file_scores
 
 
+def filter_edges_for_ranking(
+    edges: List[Edge],
+    symbols: List[Symbol],
+    exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
+) -> List[Edge]:
+    """Filter edges for ranking, removing test, import, and low-confidence edges.
+
+    Structural edges (extends, implements) are always preserved because they
+    reflect architectural importance of the target (base class / interface),
+    regardless of whether the source lives in a test file.
+
+    Args:
+        edges: List of edges to filter.
+        symbols: List of symbols (used to look up source paths for test filtering).
+        exclude_test_edges: If True, ignore edges originating from test
+            files. Default True.
+        exclude_import_edges: If True, ignore import/imports_module edges.
+            Import edges represent file-level visibility, not actual call
+            relationships. Default True.
+        min_edge_confidence: Minimum edge confidence to include. Edges below
+            this threshold are excluded. Default 0.0 (include all).
+
+    Returns:
+        Filtered list of edges.
+    """
+    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
+    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
+
+    if exclude_test_edges:
+        symbol_path_by_id = {s.id: s.path for s in symbols}
+        filtered = [
+            e for e in edges
+            if e.edge_type in _STRUCTURAL_EDGE_TYPES
+            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
+        ]
+    else:
+        filtered = list(edges)
+
+    if exclude_import_edges:
+        filtered = [
+            e for e in filtered
+            if e.edge_type not in _IMPORT_EDGE_TYPES
+        ]
+
+    if min_edge_confidence > 0:
+        filtered = [
+            e for e in filtered
+            if e.confidence >= min_edge_confidence
+        ]
+
+    return filtered
+
+
 def rank_symbols(
     symbols: List[Symbol],
     edges: List[Edge],
     first_party_priority: bool = True,
     exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
 ) -> List[RankedSymbol]:
     """Rank symbols by importance using centrality and tier weighting.
 
@@ -268,6 +696,15 @@ def rank_symbols(
             first-party code. Default True.
         exclude_test_edges: If True, ignore edges originating from test
             files when computing centrality. Default True.
+        exclude_import_edges: If True, ignore import/imports_module edges
+            when computing centrality. Import edges represent file-level
+            visibility, not actual call relationships. Default True.
+        min_edge_confidence: Minimum edge confidence to include in
+            centrality computation. Edges below this threshold are
+            excluded. Default 0.0 (include all). Set to 0.5 to exclude
+            low-confidence inferred edges (ast_method_inferred) that
+            inflate in-degree for common method names like .Lock(),
+            .get(), .setValue().
 
     Returns:
         List of RankedSymbol objects sorted by importance (highest first).
@@ -275,26 +712,40 @@ def rank_symbols(
     if not symbols:
         return []
 
-    # Build lookup for filtering edges
-    symbol_path_by_id = {s.id: s.path for s in symbols}
+    filtered_edges = filter_edges_for_ranking(
+        edges, symbols,
+        exclude_test_edges=exclude_test_edges,
+        exclude_import_edges=exclude_import_edges,
+        min_edge_confidence=min_edge_confidence,
+    )
 
-    # Filter edges if requested
-    if exclude_test_edges:
-        filtered_edges = [
-            e for e in edges
-            if not _is_test_path(symbol_path_by_id.get(e.src, ''))
-        ]
-    else:
-        filtered_edges = list(edges)
-
-    # Compute centrality
-    raw_centrality = compute_centrality(symbols, filtered_edges)
+    # Compute centrality with hub saturation (threshold=100 dampens
+    # infrastructure utilities like error sentinels and loggers).
+    raw_centrality = compute_centrality(
+        symbols, filtered_edges, hub_threshold=100
+    )
 
     # Apply tier weighting if enabled
     if first_party_priority:
         weighted_centrality = apply_tier_weights(raw_centrality, symbols)
     else:
         weighted_centrality = raw_centrality
+
+    # De-weight noise paths (database migrations, etc.)
+    weighted_centrality = apply_noise_weights(weighted_centrality, symbols)
+
+    # De-weight utility symbols (loggers, clocks, STL accessors, etc.)
+    weighted_centrality = apply_utility_symbol_weights(weighted_centrality, symbols)
+
+    # De-weight common method names (execute, call, perform, etc.)
+    weighted_centrality = apply_common_method_name_weights(
+        weighted_centrality, symbols,
+    )
+
+    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
+    weighted_centrality = apply_trivial_sink_weights(
+        weighted_centrality, symbols, filtered_edges,
+    )
 
     # Sort by weighted centrality (highest first), then by name for stability
     sorted_symbols = sorted(
@@ -319,14 +770,24 @@ def rank_files(
     edges: List[Edge],
     first_party_priority: bool = True,
     top_k: int = 3,
+    exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
 ) -> List[RankedFile]:
     """Rank files by importance using symbol density scoring.
+
+    Uses the same pipeline as rank_symbols(): edge filtering, hub saturation,
+    tier weighting, and full dampening (noise, utility, common method name,
+    trivial sink) before computing file scores.
 
     Args:
         symbols: List of symbols to analyze.
         edges: List of edges between symbols.
         first_party_priority: If True, apply tier weighting. Default True.
         top_k: Number of top symbols to sum for file score. Default 3.
+        exclude_test_edges: If True, ignore edges from test files. Default True.
+        exclude_import_edges: If True, ignore import edges. Default True.
+        min_edge_confidence: Minimum edge confidence to include. Default 0.0.
 
     Returns:
         List of RankedFile objects sorted by importance (highest first).
@@ -334,13 +795,29 @@ def rank_files(
     if not symbols:
         return []
 
-    # Compute symbol centrality
-    raw_centrality = compute_centrality(symbols, edges)
+    # Filter edges (same as rank_symbols)
+    filtered_edges = filter_edges_for_ranking(
+        edges, symbols,
+        exclude_test_edges=exclude_test_edges,
+        exclude_import_edges=exclude_import_edges,
+        min_edge_confidence=min_edge_confidence,
+    )
+
+    # Compute centrality with hub saturation (same as rank_symbols)
+    raw_centrality = compute_centrality(
+        symbols, filtered_edges, hub_threshold=100
+    )
 
     if first_party_priority:
         centrality = apply_tier_weights(raw_centrality, symbols)
     else:
         centrality = raw_centrality
+
+    # Apply full dampening pipeline (same as rank_symbols)
+    centrality = apply_noise_weights(centrality, symbols)
+    centrality = apply_utility_symbol_weights(centrality, symbols)
+    centrality = apply_common_method_name_weights(centrality, symbols)
+    centrality = apply_trivial_sink_weights(centrality, symbols, filtered_edges)
 
     # Group by file
     by_file = group_symbols_by_file(symbols)
@@ -534,7 +1011,7 @@ def compute_symbol_importance_density(
             # Normalize to relative path for consistent key format
             try:
                 rel_path = str(abs_path.relative_to(repo_root))
-            except ValueError:
+            except ValueError:  # pragma: no cover
                 rel_path = file_path  # Fallback if not under repo_root
 
         loc = compute_file_loc(abs_path)
@@ -643,6 +1120,10 @@ def _compute_centrality_with_python(
 
     Uses a single combined regex pattern for efficiency: O(files) instead of
     O(files * symbols). The pattern matches all symbol names in one pass.
+
+    Note: ripgrep was tried here but removed due to complexity around regex
+    escaping for symbol names containing special characters. The parallelized
+    Python regex approach is sufficient for practical repo sizes.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -759,3 +1240,88 @@ def compute_symbol_mention_centrality(
                 matched_names.add(sym.name)
 
     return total_in_degree / len(content) if content else 0.0
+
+
+def compute_truncation_elbow(
+    symbols: List[Symbol],
+    centrality: Dict[str, float],
+    file_path: str,
+    chars_per_line: int = 80,
+    chars_per_token: int = 4,
+    default_tokens: int = 500,
+) -> int:
+    """Determine the optimal truncation point for a file based on symbol centrality.
+
+    Uses the cumulative centrality curve of symbols ordered by their end_line
+    to find the "elbow" — the point of diminishing returns where most of
+    the file's important symbols have been covered. The elbow is computed
+    using the max-distance-from-chord method (point maximizing perpendicular
+    distance from the line connecting the first and last points on the curve).
+
+    This provides a semantically-informed minimum truncation target: truncate
+    the file at the point where you've captured most of its important content.
+
+    Args:
+        symbols: All symbols in the repository.
+        centrality: Weighted centrality scores (symbol ID → score).
+        file_path: The file path to compute elbow for (matched against symbol.path).
+        chars_per_line: Average characters per line. Default 80.
+        chars_per_token: Average characters per token. Default 4.
+        default_tokens: Returned when elbow cannot be determined. Default 500.
+
+    Returns:
+        Token count representing the optimal truncation point.
+    """
+    # Filter to symbols in this file that have spans and positive centrality
+    file_symbols = [
+        s for s in symbols
+        if s.path == file_path
+        and s.span.end_line > 0
+        and centrality.get(s.id, 0) > 0
+    ]
+
+    if len(file_symbols) < 3:
+        return default_tokens
+
+    # Sort by end_line
+    file_symbols.sort(key=lambda s: s.span.end_line)
+
+    # Build cumulative centrality curve
+    total = sum(centrality.get(s.id, 0) for s in file_symbols)
+    if total <= 0:  # pragma: no cover - filtered to positive centrality above
+        return default_tokens
+
+    cumulative = 0.0
+    points: list[tuple[int, float]] = []
+    for s in file_symbols:
+        cumulative += centrality.get(s.id, 0)
+        points.append((s.span.end_line, cumulative / total))
+
+    # Need at least 3 points for meaningful elbow detection
+    if len(points) < 3:  # pragma: no cover - same as len(file_symbols) check above
+        return default_tokens
+
+    # Max-distance-from-chord method
+    # Chord from first to last point
+    x1, y1 = float(points[0][0]), points[0][1]
+    x2, y2 = float(points[-1][0]), points[-1][1]
+
+    dx = x2 - x1
+    dy = y2 - y1
+    chord_len = math.sqrt(dx * dx + dy * dy)
+
+    if chord_len == 0:  # pragma: no cover - unreachable: y_last=1.0, y_first<1.0
+        return default_tokens
+
+    # Find point with maximum perpendicular distance from chord
+    max_dist = 0.0
+    elbow_line = points[0][0]
+    for px, py in points[1:-1]:  # Exclude endpoints
+        # Perpendicular distance from point to line
+        dist = abs(dy * float(px) - dx * py + x2 * y1 - y2 * x1) / chord_len
+        if dist > max_dist:
+            max_dist = dist
+            elbow_line = px
+
+    # Convert elbow line number to tokens
+    return elbow_line * chars_per_line // chars_per_token

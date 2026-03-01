@@ -1,0 +1,88 @@
+- op: create  # 6616
+  at: '2026-02-15T00:51:38Z'  # 6616
+  by: agent  # 6616
+  actor: migration  # 6616
+  clock: 1  # 6616
+  nonce: '6616'  # 6616
+  data:  # 6616
+    kind: work_item  # 6616
+    title: "Reexamine bakeoff-features session/cohort numbering UX."  # 6616
+    status: todo_soft  # 6616
+    priority: 4  # 6616
+    parent:  # 6616
+    tags:  # 6616
+    - bakeoff_infrastructure  # 6616
+    before: []  # 6616
+    duplicate_of: []  # 6616
+    not_duplicate_of: []  # 6616
+    pr_ref:  # 6616
+    justification: "non-blocking UX issue; does not affect correctness of bakeoff results. The 30-repo bakeoff completed successfully with the current numbering. Will address in a future PR when doing bakeoff infrastructure improvements."  # 6616
+    description: "Currently `init` creates sub-sessions under the latest top-level directory, and cohort numbers auto-increment globally across all sessions. This makes it confusing to map curriculum cohorts (1-6) to actual directory names (cohort-009 through cohort-014). Consider: per-session cohort numbering, or at minimum labeling cohorts with the curriculum name. Deferred: non-blocking UX issue; does not affect correctness of bakeoff results. The 30-repo bakeoff completed successfully with the current numbering. Will address in a future PR when doing bakeoff infrastructure improvements."  # 6616
+    fields: {}  # 6616
+- op: update  # d6b9
+  at: '2026-02-17T20:42:57Z'  # d6b9
+  by: agent  # d6b9
+  actor: jgstern_agent  # d6b9
+  clock: 2  # d6b9
+  nonce: d6b9  # d6b9
+  set:  # d6b9
+    status: todo_soft  # d6b9
+- op: update  # f076
+  at: '2026-02-18T09:10:32Z'  # f076
+  by: human  # f076
+  actor: jgstern  # f076
+  clock: 5  # f076
+  nonce: f076  # f076
+  set:  # f076
+    priority: 3  # f076
+- op: discuss  # 5906
+  at: '2026-02-18T09:11:10Z'  # 5906
+  by: human  # 5906
+  actor: jgstern  # 5906
+  clock: 6  # 5906
+  nonce: '5906'  # 5906
+  message: "Since this item was created we made significant changes to the bakeoff infrastructure, so this item should be reassessed."  # 5906
+- op: discuss  # 259d
+  at: '2026-02-18T13:44:38Z'  # 259d
+  by: agent  # 259d
+  actor: jgstern_agent  # 259d
+  clock: 7  # 259d
+  nonce: 259d  # 259d
+  message: "Bakeoff-features numbering UX: The current session/cohort numbering uses timestamps which are hard to reference. Consider adding human-readable aliases or sequential numbering alongside timestamps for easier cross-referencing in lab notebooks."  # 259d
+- op: discuss  # 6cf4
+  at: '2026-02-18T14:01:13Z'  # 6cf4
+  by: agent  # 6cf4
+  actor: jgstern_agent  # 6cf4
+  clock: 8  # 6cf4
+  nonce: 6cf4  # 6cf4
+  message: "Concrete proposal: Add an optional --alias flag to bakeoff-features init that assigns a short human-readable name (e.g. deep-chatwoot-1) alongside the timestamp directory. The alias would be a symlink in the artifacts directory."  # 6cf4
+- op: discuss  # a5a3
+  at: '2026-02-18T14:41:45Z'  # a5a3
+  by: agent  # a5a3
+  actor: jgstern_agent  # a5a3
+  clock: 9  # a5a3
+  nonce: a5a3  # a5a3
+  message: "Another option: use git tags on the session directory. The symlink approach has cross-platform issues on Windows. A simple JSON index mapping aliases to session paths would be more portable."  # a5a3
+- op: discuss  # 77fa
+  at: '2026-02-18T16:25:48Z'  # 77fa
+  by: agent  # 77fa
+  actor: jgstern_agent  # 77fa
+  clock: 10  # 77fa
+  nonce: 77fa  # 77fa
+  message: "Auto-sync test 4: bakeoff UX improvements remain P3 backlog."  # 77fa
+- op: update  # 8efb
+  at: '2026-02-18T20:06:00Z'  # 8efb
+  by: agent  # 8efb
+  actor: jgstern_agent  # 8efb
+  clock: 11  # 8efb
+  nonce: 8efb  # 8efb
+  set:  # 8efb
+    status: done  # 8efb
+    justification: "Reassessed: resolved by recent bakeoff infrastructure changes. Cohort numbering is now per-session (resets to 001 for each new init). Each init creates a new timestamped top-level directory, not sub-sessions. No global counter confusion remains."  # 8efb
+- op: discuss  # fb03
+  at: '2026-02-25T08:42:40Z'  # fb03
+  by: agent  # fb03
+  actor: jgstern_agent  # fb03
+  clock: 12  # fb03
+  nonce: fb03  # fb03
+  message: "[migrated from justification field] Reassessed: resolved by recent bakeoff infrastructure changes. Cohort numbering is now per-session (resets to 001 for each new init). Each init creates a new timestamped top-level directory, not sub-sessions. No global counter confusion remains."  # fb03

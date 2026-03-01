@@ -11,6 +11,7 @@ Key design decisions:
 """
 
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 def normalize_path(path: str | Path) -> str:
@@ -146,7 +147,8 @@ def is_utility_file(path: str) -> bool:
     - docs_src/, docs/, documentation/ (documentation source)
     - examples/, example/, samples/ (example code)
     - scripts/, tools/, bin/ (utility scripts)
-    - benchmarks/, bench/ (performance tests)
+    - dev/, contrib/, hack/, devel*/ (dev tooling / contributor scripts)
+    - benchmarks/, benchmark/, bench/ (performance tests)
 
     Args:
         path: File path to check
@@ -164,12 +166,20 @@ def is_utility_file(path: str) -> bool:
         "examples", "example", "samples", "sample", "demos", "demo",
         # Scripts/tools
         "scripts", "tools", "bin", "utils", "utilities",
+        # Dev/contrib (e.g., Airflow dev/, Kubernetes hack/, contrib/ dirs)
+        "dev", "contrib", "hack",
+        # Build systems
+        "vcbuild", "cmake",
         # Benchmarks
-        "benchmarks", "bench", "perf",
+        "benchmarks", "benchmark", "bench", "perf",
     }
 
     for part in path_parts[:-1]:  # Exclude filename
-        if part.lower() in utility_dirs:
+        lower = part.lower()
+        if lower in utility_dirs:
+            return True
+        # devel-common/, devel-tools/, etc. — CI/dev tooling directories
+        if lower.startswith("devel"):
             return True
 
     return False
@@ -181,12 +191,12 @@ def is_test_file(path: str) -> bool:
     Used for filtering and deprioritizing test code in analysis results.
 
     Matches:
-    - Files starting with test_ or ending with _test.* (py/js/ts/go)
+    - Files starting with test_ or test- or ending with _test.* (py/js/ts/go)
     - Files starting with spec_ or ending with _spec.* or .spec.*
     - Files ending with .test.* (e.g., main.test.py, main.test.js)
     - Go test files (*_test.go)
     - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
-    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
+    - Files in tests/, test/, t/, spec/, fakes/, mocks/, fixtures/ directories
 
     Args:
         path: File path to check
@@ -197,8 +207,12 @@ def is_test_file(path: str) -> bool:
     filename = get_filename(path)
     filename_lower = filename.lower()
 
-    # Test patterns with _test suffix (any language)
+    # Test patterns with _test suffix or test- prefix (any language)
     if filename.startswith("test_"):
+        return True
+    # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c
+    # Common in C projects. Check for "test-" followed by non-empty string.
+    if filename_lower.startswith("test-"):
         return True
     if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
         return True
@@ -224,9 +238,11 @@ def is_test_file(path: str) -> bool:
     normalized = normalize_path(path)
     path_parts = normalized.split("/")
     test_dirs = {
-        "tests", "test", "spec", "__tests__",  # Test directories
+        "tests", "test", "t", "__tests__",  # Test directories
+        "testing",  # Go convention (e.g., harbor src/testing/, argo-cd utils/testing/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
-        "fixtures", "testdata", "testutils",  # Test support directories
+        "fixtures", "testdata", "testutils", "testutil",  # Test support directories
+        "testhelper", "testhelpers",  # Test helper directories
     }
     # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
     for part in path_parts:
@@ -235,4 +251,74 @@ def is_test_file(path: str) -> bool:
             return True
         if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
             return True
+
+    # spec/ only matches as the first path component (Ruby RSpec convention).
+    # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
+    # interface definitions, not tests.
+    if path_parts and path_parts[0].lower() == "spec":
+        return True
+
+    return False
+
+
+# Annotation names that indicate a test function/method, matched case-sensitively.
+# Covers Rust (#[test], #[cfg(test)], #[tokio::test]), Java/Kotlin (@Test,
+# @org.junit.Test, @org.junit.jupiter.api.Test), and C# ([TestMethod],
+# [Fact], [Theory]).
+_TEST_ANNOTATION_NAMES = frozenset({
+    "test", "Test",
+    "tokio::test", "actix_rt::test", "async_std::test",
+    "org.junit.Test", "org.junit.jupiter.api.Test",
+    "TestMethod", "Fact", "Theory",
+})
+
+
+def _has_test_annotation(decorators: list[Dict[str, Any]]) -> bool:
+    """Check if any decorator/annotation indicates a test function.
+
+    Matches exact annotation names (e.g., ``#[test]``, ``@Test``) and also
+    the Rust ``#[cfg(test)]`` pattern where ``cfg`` has ``"test"`` as an arg.
+    """
+    for dec in decorators:
+        name = dec.get("name", "")
+        if name in _TEST_ANNOTATION_NAMES:
+            return True
+        # Rust #[cfg(test)] — "cfg" with "test" in args
+        if name == "cfg" and "test" in dec.get("args", []):
+            return True
+    return False
+
+
+def is_test_node(path: str, meta: Optional[Dict[str, Any]]) -> bool:
+    """Check if a node is test code, using both file path and annotations.
+
+    Extends ``is_test_file`` by also consulting the node's metadata for
+    language-specific test annotations. This catches:
+
+    - Rust ``#[test]``, ``#[cfg(test)]``, ``#[tokio::test]`` functions
+      inside non-test files (e.g., ``src/lib.rs``)
+    - Java ``@Test`` / ``@org.junit.Test`` methods in production paths
+    - C# ``[TestMethod]`` / ``[Fact]`` attributes
+
+    Args:
+        path: File path of the node.
+        meta: Node metadata dict (may contain ``decorators`` or ``annotations``
+              lists). None or empty dict means no annotation data.
+
+    Returns:
+        True if the node is test code (by path or by annotation).
+    """
+    if is_test_file(path):
+        return True
+
+    if not meta:
+        return False
+
+    # Check both 'decorators' and 'annotations' keys — different analyzers
+    # use different names for the same concept.
+    for key in ("decorators", "annotations"):
+        annotations = meta.get(key)
+        if annotations and _has_test_annotation(annotations):
+            return True
+
     return False

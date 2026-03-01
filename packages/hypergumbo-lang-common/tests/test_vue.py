@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
-from hypergumbo_lang_common.vue import (
-    VueAnalysisResult,
-    analyze_vue,
-    find_vue_files,
-    is_vue_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""
@@ -20,7 +15,6 @@ def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindVueFiles:
     """Tests for find_vue_files function."""
@@ -37,7 +31,6 @@ class TestFindVueFiles:
         files = find_vue_files(tmp_path)
         assert files == []
 
-
 class TestIsVueTreeSitterAvailable:
     """Tests for is_vue_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsVueTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(vue_module, "is_vue_tree_sitter_available", return_value=False):
+        with patch.object(vue_module._analyzer, "_check_grammar_available", return_value=False):
             assert vue_module.is_vue_tree_sitter_available() is False
-
 
 class TestAnalyzeVue:
     """Tests for analyze_vue function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", "<template></template>")
-        with patch.object(vue_module, "is_vue_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Vue analysis skipped"):
+        with patch.object(vue_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="vue analysis skipped"):
                 result = vue_module.analyze_vue(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -179,7 +171,14 @@ class TestAnalyzeVue:
         slot_names = {s.name for s in slots}
         assert slot_names == {"default", "header", "footer"}
 
-    def test_extracts_methods(self, tmp_path: Path) -> None:
+    def test_no_method_symbols(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit method symbols (JS/TS analyzer handles these).
+
+        The JS/TS tree-sitter analyzer processes .vue <script> sections and emits
+        method symbols with language="javascript". The Vue analyzer should NOT
+        duplicate them — it focuses on Vue-specific constructs (template refs,
+        directives, slots, props, style blocks).
+        """
         make_vue_file(tmp_path, "App.vue", """<template>
   <div></div>
 </template>
@@ -199,11 +198,17 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) == 2
-        method_names = {m.name for m in methods}
-        assert method_names == {"handleClick", "fetchData"}
+        assert methods == [], (
+            "Vue analyzer should not emit method symbols — "
+            "JS/TS tree-sitter analyzer handles these"
+        )
 
-    def test_extracts_computed(self, tmp_path: Path) -> None:
+    def test_no_computed_symbols(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit computed symbols (JS/TS analyzer handles these).
+
+        Computed properties in the Options API look like methods to tree-sitter.
+        The JS/TS analyzer already extracts them as method/function symbols.
+        """
         make_vue_file(tmp_path, "App.vue", """<template>
   <div></div>
 </template>
@@ -223,9 +228,10 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         computed = [s for s in result.symbols if s.kind == "computed"]
-        assert len(computed) == 2
-        computed_names = {c.name for c in computed}
-        assert computed_names == {"fullName", "isValid"}
+        assert computed == [], (
+            "Vue analyzer should not emit computed symbols — "
+            "JS/TS tree-sitter analyzer handles these"
+        )
 
     def test_extracts_props_array_syntax(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "Button.vue", """<template>
@@ -375,7 +381,7 @@ export default {
         make_vue_file(tmp_path, "App.vue", "<template></template>")
         result = analyze_vue(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "vue.tree_sitter"
+        assert result.run.pass_id == "vue-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -392,7 +398,7 @@ export default {
         result = analyze_vue(tmp_path)
         comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
         assert comp is not None
-        assert comp.origin == "vue.tree_sitter"
+        assert comp.origin == "vue-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", "<template><Header/></template>")
@@ -508,16 +514,12 @@ export default {
         slot_names = {s.name for s in slots}
         assert slot_names == {"default", "actions"}
 
-        # Check methods
+        # Methods and computed are NOT emitted by Vue analyzer
+        # (JS/TS tree-sitter analyzer handles these from the <script> section)
         methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) == 1
-        assert methods[0].name == "handleError"
-
-        # Check computed
+        assert methods == []
         computed = [s for s in result.symbols if s.kind == "computed"]
-        assert len(computed) == 2
-        computed_names = {c.name for c in computed}
-        assert computed_names == {"fullName", "details"}
+        assert computed == []
 
         # Check props
         props = [s for s in result.symbols if s.kind == "prop"]
@@ -569,3 +571,92 @@ export default {
         button = next((s for s in result.symbols if s.name == "Button"), None)
         assert button is not None
         assert button.meta.get("has_slot_attr") is True
+
+    def test_event_directive_captures_handler_expression(self, tmp_path: Path) -> None:
+        """v-on directives store the handler expression in metadata."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="handleClick">Click</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.meta.get("handler_expression") == "handleClick"
+
+    def test_event_directive_strips_arguments(self, tmp_path: Path) -> None:
+        """Handler expression strips function call arguments."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="handleDelete(item)">Delete</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.meta.get("handler_expression") == "handleDelete"
+
+    def test_bind_directive_no_handler_expression(self, tmp_path: Path) -> None:
+        """v-bind directives don't get handler_expression (not event handlers)."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <img :src="imageUrl"/>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_event_directive_skips_inline_expressions(self, tmp_path: Path) -> None:
+        """Inline expressions (assignments, $emit) don't produce handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="$emit('close')">Close</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_v_on_longform_captures_handler(self, tmp_path: Path) -> None:
+        """v-on:click="method" long-form syntax also captures handler."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button v-on:click="toggleMenu">Menu</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.name == "v-on:click"
+        assert directive.meta.get("handler_expression") == "toggleMenu"
+
+    def test_directive_without_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive without = value has no handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <div v-once></div>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_directive_empty_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive with empty value has no handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="">Click</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_directive_non_identifier_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive with non-identifier value (e.g., !flag) has no handler."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="!isOpen">Toggle</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})

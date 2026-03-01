@@ -238,6 +238,155 @@ def test_edge_id_unique_per_line() -> None:
     assert edge1.edge_key == edge2.edge_key
 
 
+def test_deduplicate_edges_collapses_same_key() -> None:
+    """deduplicate_edges keeps first edge per edge_key, discards rest.
+
+    Multiple call sites from the same function to the same target produce
+    edges with different IDs (line-sensitive) but identical edge_keys
+    (line-insensitive).  For a call graph, one edge per (src, dst, type)
+    is the correct model.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge1 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:b.rb:3-4:Baz#qux:method",
+        edge_type="calls",
+        line=10,
+    )
+    edge2 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:b.rb:3-4:Baz#qux:method",
+        edge_type="calls",
+        line=20,
+    )
+    edge3 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:c.rb:5-6:Other#func:method",
+        edge_type="calls",
+        line=15,
+    )
+
+    result = deduplicate_edges([edge1, edge2, edge3])
+
+    # Two unique relationships, first occurrence kept for duplicates
+    assert len(result) == 2
+    assert result[0].id == edge1.id  # First occurrence kept
+    assert result[1].id == edge3.id  # Different relationship kept
+
+
+def test_deduplicate_edges_removes_self_loops() -> None:
+    """deduplicate_edges with remove_self_loops=True drops src==dst edges."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    normal = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=10,
+    )
+    self_loop = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:a.py:1-2:foo:function",
+        edge_type="calls",
+        line=20,
+    )
+
+    result = deduplicate_edges([normal, self_loop], remove_self_loops=True)
+    assert len(result) == 1
+    assert result[0].id == normal.id
+
+
+def test_deduplicate_edges_handles_none_edge_key() -> None:
+    """Edges with edge_key=None must not collapse into a single edge.
+
+    Regression test: Edge() constructor (not Edge.create()) defaults
+    edge_key to None.  When multiple such edges existed, only the first
+    survived deduplication because None was treated as a valid dedup key.
+    This silently dropped ALL routes_to edges from the route-handler linker.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    # Simulate edges created by the route_handler linker (using Edge constructor)
+    edge_a = Edge(
+        id="edge:route1->handler1",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=10,
+        # edge_key deliberately not set (None) — matches real bug
+    )
+    edge_b = Edge(
+        id="edge:route2->handler2",
+        src="go:server.go:11-11:POST /users:route",
+        dst="go:server.go:40-50:createUser:method",
+        edge_type="routes_to",
+        line=11,
+    )
+    edge_c = Edge(
+        id="edge:dockerfile->stage",
+        src="docker:Dockerfile:1-1:stage1:stage",
+        dst="docker:Dockerfile:10-10:stage2:stage",
+        edge_type="depends_on",
+        line=1,
+    )
+
+    result = deduplicate_edges([edge_a, edge_b, edge_c])
+
+    # All three edges are unique relationships — all must survive
+    assert len(result) == 3, (
+        f"Expected 3 unique edges but got {len(result)}; "
+        f"None edge_key must not cause false deduplication"
+    )
+
+
+def test_deduplicate_edges_none_key_still_deduplicates_true_duplicates() -> None:
+    """True duplicates (same src+dst+type) with None edge_key are still collapsed."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge_a = Edge(
+        id="edge:route1->handler1:line10",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=10,
+    )
+    edge_a_dup = Edge(
+        id="edge:route1->handler1:line15",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=15,
+    )
+
+    result = deduplicate_edges([edge_a, edge_a_dup])
+
+    # Same src+dst+type → should collapse to 1 even with None edge_key
+    assert len(result) == 1
+    assert result[0].id == edge_a.id
+
+
+def test_deduplicate_edges_preserves_different_types() -> None:
+    """Edges with same src/dst but different edge_types are distinct."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    calls_edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=10,
+    )
+    imports_edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="imports",
+        line=10,
+    )
+
+    result = deduplicate_edges([calls_edge, imports_edge])
+    assert len(result) == 2
+
+
 def test_edge_has_quality() -> None:
     """Edge should have quality field with score and reason."""
     edge = Edge.create(
@@ -675,6 +824,29 @@ def test_symbol_from_dict_with_defaults() -> None:
     assert symbol.origin == ""
     assert symbol.supply_chain_tier == 1  # Default
     assert symbol.modifiers == []
+
+
+def test_symbol_roundtrip_preserves_tier() -> None:
+    """to_dict → from_dict must preserve non-default supply_chain_tier.
+
+    Regression test: _node_from_dict (removed) read d.get("supply_chain_tier")
+    but to_dict() nests it under d["supply_chain"]["tier"], so non-default
+    tiers were silently lost during deserialization.
+    """
+    sym = Symbol(
+        id="python:vendor/lib.py:1-10:function:parse",
+        name="parse",
+        kind="function",
+        language="python",
+        path="vendor/lib.py",
+        span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+        supply_chain_tier=3,
+        supply_chain_reason="vendored",
+    )
+    d = sym.to_dict()
+    restored = Symbol.from_dict(d)
+    assert restored.supply_chain_tier == 3
+    assert restored.supply_chain_reason == "vendored"
 
 
 def test_edge_from_dict() -> None:

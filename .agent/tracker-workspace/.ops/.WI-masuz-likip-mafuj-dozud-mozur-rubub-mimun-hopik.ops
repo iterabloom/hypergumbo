@@ -1,0 +1,88 @@
+- op: create  # 52d3
+  at: '2026-02-15T00:51:38Z'  # 52d3
+  by: agent  # 52d3
+  actor: migration  # 52d3
+  clock: 1  # 52d3
+  nonce: 52d3  # 52d3
+  data:  # 52d3
+    kind: work_item  # 52d3
+    title: "Target: Lua FFI linker — LuaJIT `ffi.cdef`/`ffi.load` linking Lua calls to C functions."  # 52d3
+    status: todo_soft  # 52d3
+    priority: 4  # 52d3
+    parent:  # 52d3
+    tags:  # 52d3
+    - cross_language_linkers  # 52d3
+    before: []  # 52d3
+    duplicate_of: []  # 52d3
+    not_duplicate_of: []  # 52d3
+    pr_ref:  # 52d3
+    justification: "niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
+    description: "Deferred: niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
+    fields: {}  # 52d3
+- op: update  # 621a
+  at: '2026-02-17T20:42:56Z'  # 621a
+  by: agent  # 621a
+  actor: jgstern_agent  # 621a
+  clock: 2  # 621a
+  nonce: 621a  # 621a
+  set:  # 621a
+    status: todo_soft  # 621a
+- op: update  # b78b
+  at: '2026-02-18T09:12:03Z'  # b78b
+  by: human  # b78b
+  actor: jgstern  # b78b
+  clock: 4  # b78b
+  nonce: b78b  # b78b
+  set:  # b78b
+    priority: 2  # b78b
+- op: discuss  # 8bca
+  at: '2026-02-18T13:44:21Z'  # 8bca
+  by: agent  # 8bca
+  actor: jgstern_agent  # 8bca
+  clock: 5  # 8bca
+  nonce: 8bca  # 8bca
+  message: "Lua FFI linker should parse ffi.cdef string literals to extract C function declarations, then match ffi.C.func_name calls to those declarations. LuaJIT metatype patterns also need handling for C struct method binding."  # 8bca
+- op: discuss  # ba8c
+  at: '2026-02-18T14:01:12Z'  # ba8c
+  by: agent  # ba8c
+  actor: jgstern_agent  # ba8c
+  clock: 6  # ba8c
+  nonce: ba8c  # ba8c
+  message: "Edge case: LuaJIT ffi.cdef can span multiple calls that accumulate declarations. The linker needs to track all cdef calls in order and build a cumulative type/function namespace for accurate resolution."  # ba8c
+- op: discuss  # f4d5
+  at: '2026-02-18T14:41:45Z'  # f4d5
+  by: agent  # f4d5
+  actor: jgstern_agent  # f4d5
+  clock: 7  # f4d5
+  nonce: f4d5  # f4d5
+  message: "Testing strategy: Use the LuaJIT test suite as ground truth. It has well-structured ffi.cdef examples that exercise all major C type declarations including function pointers and nested structs."  # f4d5
+- op: discuss  # e9cd
+  at: '2026-02-18T14:55:14Z'  # e9cd
+  by: agent  # e9cd
+  actor: jgstern_agent  # e9cd
+  clock: 8  # e9cd
+  nonce: e9cd  # e9cd
+  message: "Scope clarification: Focus on LuaJIT FFI only, not the standard Lua C API. The C API uses a stack-based calling convention that requires different analysis techniques and is covered by a separate linker design."  # e9cd
+- op: discuss  # 9cce
+  at: '2026-02-18T16:25:47Z'  # 9cce
+  by: agent  # 9cce
+  actor: jgstern_agent  # 9cce
+  clock: 9  # 9cce
+  nonce: 9cce  # 9cce
+  message: "Auto-sync test 4: Lua FFI linker remains deferred."  # 9cce
+- op: update  # dfa9
+  at: '2026-02-18T19:19:57Z'  # dfa9
+  by: agent  # dfa9
+  actor: jgstern_agent  # dfa9
+  clock: 10  # dfa9
+  nonce: dfa9  # dfa9
+  set:  # dfa9
+    status: done  # dfa9
+    pr_ref: PR-pending  # dfa9
+- op: discuss  # 06cd
+  at: '2026-02-25T08:41:25Z'  # 06cd
+  by: agent  # 06cd
+  actor: jgstern_agent  # 06cd
+  clock: 11  # 06cd
+  nonce: 06cd  # 06cd
+  message: "[migrated from justification field] niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 06cd

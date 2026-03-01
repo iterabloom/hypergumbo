@@ -70,11 +70,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "websocket-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("websocket-linker")
 
 
 @dataclass
@@ -538,6 +537,12 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             origin_run_id=run.execution_id,
         ))
 
+    # Pattern types that use "message" as a synthetic placeholder for
+    # generic protocol operations (ws.send(), websocket.receive_text(), etc.)
+    # rather than a real named event.  Linking these across files creates
+    # NxM combinatorial explosion without meaningful semantic signal.
+    _GENERIC_PROTOCOL_TYPES = frozenset(("fastapi", "native"))
+
     # Create edges linking senders to receivers with matching events
     edges: list[Edge] = []
     for event, send_patterns in sends.items():
@@ -545,28 +550,39 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             for send_pat in send_patterns:
                 for recv_pat in receives[event]:
                     # Don't link same file to itself for simple patterns
-                    if send_pat.file_path != recv_pat.file_path:
-                        # Confidence depends on whether events are literal or variable
-                        is_variable_match = (
-                            send_pat.event_type == "variable" or recv_pat.event_type == "variable"
-                        )
-                        confidence = 0.65 if is_variable_match else 0.85
-                        evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
-                        edge = Edge.create(
-                            src=_make_file_id(send_pat.file_path),
-                            dst=_make_file_id(recv_pat.file_path),
-                            edge_type="websocket_message",
-                            line=send_pat.line,
-                            evidence_type=evidence_type,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        )
-                        edge.meta = {
-                            "event": event,
-                            "event_type": "variable" if is_variable_match else "literal",
-                        }
-                        edges.append(edge)
+                    if send_pat.file_path == recv_pat.file_path:
+                        continue
+                    # Skip generic protocol send/receive (no named event).
+                    # FastAPI/native websocket.send_*/receive_* are raw
+                    # WebSocket operations—not named events like Socket.io
+                    # emit/on or Django Channels typed messages.
+                    if (
+                        event == "message"
+                        and send_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
+                        and recv_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
+                    ):
+                        continue
+                    # Confidence depends on whether events are literal or variable
+                    is_variable_match = (
+                        send_pat.event_type == "variable" or recv_pat.event_type == "variable"
+                    )
+                    confidence = 0.65 if is_variable_match else 0.85
+                    evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
+                    edge = Edge.create(
+                        src=_make_file_id(send_pat.file_path),
+                        dst=_make_file_id(recv_pat.file_path),
+                        edge_type="websocket_message",
+                        line=send_pat.line,
+                        evidence_type=evidence_type,
+                        confidence=confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    )
+                    edge.meta = {
+                        "event": event,
+                        "event_type": "variable" if is_variable_match else "literal",
+                    }
+                    edges.append(edge)
 
     # Create edges for endpoint connections
     for ep in endpoints:

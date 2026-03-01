@@ -1,0 +1,34 @@
+- op: create  # 88ea
+  at: '2026-02-27T05:58:05Z'  # 88ea
+  by: agent  # 88ea
+  actor: jgstern_agent  # 88ea
+  clock: 1  # 88ea
+  nonce: 88ea  # 88ea
+  data:  # 88ea
+    kind: work_item  # 88ea
+    title: "CI/release pipeline revamp: nightly workflow + release restructure"  # 88ea
+    status: todo_soft  # 88ea
+    priority: 2  # 88ea
+    parent:  # 88ea
+    tags: []  # 88ea
+    before: []  # 88ea
+    duplicate_of: []  # 88ea
+    not_duplicate_of: []  # 88ea
+    pr_ref:  # 88ea
+    description: "Create nightly.yml, reconfigure full-suite.yml triggers, and restructure release.yml job dependencies. Full plan at ~/hypergumbo_lab_notebook/CI-and-releases-revamp.md"  # 88ea
+    fields: {}  # 88ea
+- op: update  # 62d1
+  at: '2026-02-27T07:01:12Z'  # 62d1
+  by: agent  # 62d1
+  actor: jgstern_agent  # 62d1
+  clock: 2  # 62d1
+  nonce: 62d1  # 62d1
+  set:  # 62d1
+    status: done  # 62d1
+- op: discuss  # f805
+  at: '2026-02-27T07:01:12Z'  # f805
+  by: agent  # f805
+  actor: jgstern_agent  # f805
+  clock: 3  # f805
+  nonce: f805  # f805
+  message: "Implemented in PR #1550. Created nightly.yml, reconfigured full-suite.yml triggers, restructured release.yml job dependencies, updated AGENTS.md/CONTRIBUTING.md/RELEASE_SOP.md. PR needs human review (touches AGENTS.md)."  # f805

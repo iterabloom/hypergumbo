@@ -34,48 +34,21 @@ from __future__ import annotations
 
 import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, populate_docstrings_from_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
 
-PASS_ID = "rst.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("rst")
 
 
-class RSTAnalysisResult:
-    """Result of RST analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_rst_tree_sitter_available() -> bool:
-    """Check if tree-sitter-rst is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("rst")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_rst_files(repo_root: Path) -> list[Path]:
@@ -85,7 +58,7 @@ def find_rst_files(repo_root: Path) -> list[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:
@@ -115,7 +88,7 @@ ADMONITION_DIRECTIVES = frozenset({
 })
 
 
-class RSTAnalyzer:
+class _RSTExtractor:
     """Analyzer for RST files."""
 
     def __init__(self, repo_root: Path) -> None:
@@ -127,13 +100,13 @@ class RSTAnalyzer:
         self._section_counter = 0
         self._directive_counter = 0
 
-    def analyze(self) -> RSTAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the RST analysis."""
         start_time = time.time()
 
         files = find_rst_files(self.repo_root)
         if not files:
-            return RSTAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -149,7 +122,9 @@ class RSTAnalyzer:
                 tree = parser.parse(content)
                 self._section_counter = 0
                 self._directive_counter = 0
+                before = len(self._symbols)
                 self._extract_symbols(tree.root_node, path, 0)
+                populate_docstrings_from_tree(tree.root_node, content, self._symbols[before:])
                 self._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue
@@ -165,7 +140,7 @@ class RSTAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return RSTAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -414,35 +389,52 @@ class RSTAnalyzer:
         self._edges.append(edge)
 
 
-def analyze_rst(repo_root: Path) -> RSTAnalysisResult:
+class RSTAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for reStructuredText files.
+
+    Extracts sections, directives, targets, and cross-reference edges.
+    Uses language_pack_name for the rst grammar.
+    """
+
+    lang = "rst"
+    file_patterns: ClassVar[list[str]] = ["**/*.rst"]
+    language_pack_name = "rst"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run RST analysis."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _RSTExtractor(repo_root)
+        return extractor.analyze()
+
+
+_analyzer = RSTAnalyzer()
+
+
+def is_rst_tree_sitter_available() -> bool:
+    """Check if tree-sitter-rst is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("rst")
+def analyze_rst(repo_root: Path) -> AnalysisResult:
     """Analyze RST files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        RSTAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_rst_tree_sitter_available():
-        warnings.warn(
-            "RST analysis skipped: tree-sitter-rst not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return RSTAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "rst", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-rst not available",
-        )
-
-    analyzer = RSTAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

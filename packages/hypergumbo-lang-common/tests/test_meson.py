@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import meson as meson_module
-from hypergumbo_lang_common.meson import (
-    MesonAnalysisResult,
-    analyze_meson,
-    find_meson_files,
-    is_meson_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.meson import analyze_meson, find_meson_files, is_meson_tree_sitter_available
 
 def make_meson_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Meson file in the temp directory."""
@@ -20,7 +15,6 @@ def make_meson_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindMesonFiles:
     """Tests for find_meson_files function."""
@@ -47,7 +41,6 @@ class TestFindMesonFiles:
         files = list(find_meson_files(tmp_path))
         assert files == []
 
-
 class TestIsMesonTreeSitterAvailable:
     """Tests for is_meson_tree_sitter_available function."""
 
@@ -56,16 +49,15 @@ class TestIsMesonTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(meson_module, "is_meson_tree_sitter_available", return_value=False):
+        with patch.object(meson_module._analyzer, "_check_grammar_available", return_value=False):
             assert meson_module.is_meson_tree_sitter_available() is False
-
 
 class TestAnalyzeMeson:
     """Tests for analyze_meson function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", "project('test', 'c')")
-        with patch.object(meson_module, "is_meson_tree_sitter_available", return_value=False):
+        with patch.object(meson_module._analyzer, "_check_grammar_available", return_value=False):
             with pytest.warns(UserWarning, match="Meson analysis skipped"):
                 result = meson_module.analyze_meson(tmp_path)
         assert result.skipped is True
@@ -166,13 +158,13 @@ executable('foo', 'foo.c')
         result = analyze_meson(tmp_path)
         exe = next((s for s in result.symbols if s.name == "foo"), None)
         assert exe is not None
-        assert exe.origin == "meson.tree_sitter"
+        assert exe.origin == "meson-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", "project('test', 'c')")
         result = analyze_meson(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "meson.tree_sitter"
+        assert result.run.pass_id == "meson-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -189,9 +181,9 @@ executable('myapp', 'main.c')
         result = analyze_meson(tmp_path)
         exe = next((s for s in result.symbols if s.name == "myapp"), None)
         assert exe is not None
-        assert exe.id == exe.stable_id
-        assert "meson:" in exe.id
-        assert "meson.build" in exe.id
+        assert exe.id != exe.stable_id
+        assert exe.id.startswith("meson:meson.build:")
+        assert exe.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')

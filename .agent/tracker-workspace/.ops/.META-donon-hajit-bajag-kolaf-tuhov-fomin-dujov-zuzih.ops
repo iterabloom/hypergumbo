@@ -1,0 +1,70 @@
+- op: create  # 7164
+  at: '2026-02-24T04:27:04Z'  # 7164
+  by: agent  # 7164
+  actor: jgstern_agent  # 7164
+  clock: 1  # 7164
+  nonce: '7164'  # 7164
+  data:  # 7164
+    kind: meta_invariant  # 7164
+    title: "Verdict graduation: replace binary/ternary bakeoff verdicts with numeric quality scores"  # 7164
+    status: needs_human_review  # 7164
+    priority: 2  # 7164
+    parent:  # 7164
+    tags:  # 7164
+    - bakeoff  # 7164
+    - process-health  # 7164
+    before: []  # 7164
+    duplicate_of: []  # 7164
+    not_duplicate_of: []  # 7164
+    pr_ref:  # 7164
+    justification:  # 7164
+    description: "SOURCE: Process health synthesis §3.5, §3.7, recommendations 4 and 12.\n\nPROBLEM: Both bakeoff pipelines use verdict scales that collapse into a single dominant bucket. BROAD uses GOOD/WARN — 74% of all data points are WARN. DEEP uses USEFUL/PARTIALLY_USEFUL/NOT_USEFUL — 16/16 assessments from cohorts 14, 15, and 18 returned PARTIALLY_USEFUL.\n\nThe middle verdict covers a vast quality range. At the top: postal (accurate slices, one route-prefix bug, ~65/100). At the bottom: kserve (broken routes, auto-generated code dominating centrality, misseeded reverse slices, ~25/100). Both receive the same verdict, making cohort summaries unable to communicate trajectory or severity distribution.\n\nThe verdict system also punishes improvements: tighter, better slices triggered WARN because they fell below the old avg_slice_nodes threshold of 50. The threshold was recalibrated to 20, but the underlying dynamic — binary verdicts hiding continuous improvement — remains.\n\nOPTIONS:\n(a) Add a numeric quality score (0-100) alongside the existing verdict, scored per-task (A/B/C in DEEP) and aggregated.\n(b) Split the middle tier: PARTIALLY_USEFUL_HIGH / PARTIALLY_USEFUL_LOW (or WARN_MINOR / WARN_MAJOR).\n(c) Replace verdicts entirely with a concern-weighted severity score.\n(d) Keep verdicts but add a \"trajectory\" field: IMPROVING / STABLE / REGRESSING based on comparison with prior iteration.\n\nIMPACT: Without graduation, the summary aggregation counts postal and kserve as identical data points, masking whether fixes are actually improving output quality. The agent's decision loop (summary → what to fix next) receives no signal about which repos are close to USEFUL vs. far from it."  # 7164
+    fields:  # 7164
+      statement: "Bakeoff verdicts must communicate quality trajectory and severity, not just a binary/ternary bucket. A postal (accurate slices, one gap) and a kserve (broken routes, broken centrality, broken seeds) must not receive the same verdict."  # 7164
+- op: update  # cd9d
+  at: '2026-02-24T04:37:42Z'  # cd9d
+  by: agent  # cd9d
+  actor: jgstern_agent  # cd9d
+  clock: 2  # cd9d
+  nonce: cd9d  # cd9d
+  set: {}  # cd9d
+  add:  # cd9d
+    before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # cd9d
+- op: discuss  # fcad
+  at: '2026-02-25T07:46:59Z'  # fcad
+  by: agent  # fcad
+  actor: jgstern_agent  # fcad
+  clock: 3  # fcad
+  nonce: fcad  # fcad
+  message: "Human decision (2026-02-25): option (a)+(d) — numeric quality scores (0-100) plus trajectory field (IMPROVING/STABLE/REGRESSING). Implement for DEEP pipeline first since that is the active focus."  # fcad
+- op: update  # bff7
+  at: '2026-02-25T07:56:44Z'  # bff7
+  by: human  # bff7
+  actor: jgstern  # bff7
+  clock: 4  # bff7
+  nonce: bff7  # bff7
+  set:  # bff7
+    status: violated  # bff7
+- op: update  # 6fc5
+  at: '2026-02-25T15:39:33Z'  # 6fc5
+  by: agent  # 6fc5
+  actor: jgstern_agent  # 6fc5
+  clock: 5  # 6fc5
+  nonce: 6fc5  # 6fc5
+  set:  # 6fc5
+    status: holding  # 6fc5
+    pr_ref: '#1450'  # 6fc5
+- op: discuss  # ec45
+  at: '2026-02-26T03:01:30Z'  # ec45
+  by: human  # ec45
+  actor: jgstern  # ec45
+  clock: 6  # ec45
+  nonce: ec45  # ec45
+  message: "please double-check and confirm as to whether option (a)+(d) was implemented?"  # ec45
+- op: discuss  # e790
+  at: '2026-02-26T04:46:42Z'  # e790
+  by: agent  # e790
+  actor: jgstern_agent  # e790
+  clock: 7  # e790
+  nonce: e790  # e790
+  message: "Confirmed: option (a)+(d) is fully implemented and tested in the DEEP pipeline. Specifically:\n\n(a) Numeric quality scores (0-100): Assessment prompts collect per-task scores for refactoring, new_feature, and understanding. Aggregation computes mean/min/max/median statistics across repos. Implementation in scripts/bakeoff-features-reflect lines 130-140 (prompt rubric), 469-583 (aggregation).\n\n(d) Trajectory field: compute_trajectory() (lines 426-466) compares current vs prior cohort scores. Reports IMPROVING (+5+), STABLE (±5), or REGRESSING (-5+). Prior assessment context is injected into prompts so assessors can evaluate progress.\n\nTest coverage: 8 tests in tests/test_bakeoff_features_reflect.py covering scoring rubric, aggregation math, trajectory computation (improving/stable/regressing), and first-assessment handling.\n\nCHANGELOG entry at line 83: 'DEEP bakeoff verdict graduation (META-donon)'. PR ref: #1450."  # e790

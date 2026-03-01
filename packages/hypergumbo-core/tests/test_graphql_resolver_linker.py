@@ -4,10 +4,13 @@ from pathlib import Path
 from textwrap import dedent
 
 from hypergumbo_core.linkers.graphql_resolver import (
+    _count_graphql_schema,
     _scan_javascript_resolvers,
     _scan_python_resolvers,
+    graphql_resolver_linker,
     link_graphql_resolvers,
 )
+from hypergumbo_core.linkers.registry import LinkerContext
 from hypergumbo_core.ir import Symbol, Span
 
 
@@ -166,6 +169,33 @@ class TestJavaScriptResolverPatterns:
         assert len(patterns) == 1
         assert patterns[0].type_name == "Query"
         assert patterns[0].field_name == "users"
+
+    def test_error_object_not_resolver(self, tmp_path: Path):
+        """PascalCase object literals without GraphQL context must not be resolvers.
+
+        Jenkins notifications/index.js has ERROR: { clearTimeout: ..., hide: ..., }
+        which should not be detected as a GraphQL resolver.
+        """
+        code = dedent('''
+            const NOTIFICATION_TYPES = {
+                ERROR: {
+                    clearTimeout: (timer) => { clearTimeout(timer); },
+                    hide: (el) => { el.style.display = "none"; },
+                    show: (el) => { el.style.display = "block"; },
+                    init: (container) => { container.innerHTML = ""; },
+                },
+                SUCCESS: {
+                    clearTimeout: (timer) => { clearTimeout(timer); },
+                    show: (el) => { el.style.display = "block"; },
+                },
+            };
+        ''')
+        file = tmp_path / "notifications.js"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert patterns == [], (
+            "UI notification objects should not be detected as GraphQL resolvers"
+        )
 
 
 class TestPythonResolverPatterns:
@@ -452,3 +482,61 @@ class TestGraphQLResolverLinker:
         assert symbol.meta["type_name"] == "Query"
         assert symbol.meta["field_name"] == "users"
         assert symbol.stable_id == "Query.users"
+
+
+class TestGraphQLResolverLinkerRegistry:
+    """Tests for the registry-based linker wrapper."""
+
+    def test_graphql_resolver_linker_wrapper(self, tmp_path: Path):
+        """Registry wrapper delegates to link_graphql_resolvers correctly."""
+        resolver = tmp_path / "resolvers.js"
+        resolver.write_text(dedent('''\
+            const resolvers = {
+                Query: {
+                    users: () => [],
+                },
+            };
+        '''))
+
+        schema_sym = Symbol(
+            id="graphql:schema.graphql:1-5:Query:type",
+            name="Query",
+            kind="type",
+            path="schema.graphql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="graphql",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[schema_sym],
+        )
+
+        result = graphql_resolver_linker(ctx)
+
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "graphql_resolver"
+        assert result.run is not None
+
+    def test_count_graphql_schema_requirement(self, tmp_path: Path):
+        """Requirement check counts GraphQL schema symbols."""
+        schema_sym = Symbol(
+            id="graphql:schema.graphql:1-5:Query:type",
+            name="Query",
+            kind="type",
+            path="schema.graphql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="graphql",
+        )
+        non_graphql = Symbol(
+            id="java:Foo.java:1-5:Foo:class",
+            name="Foo",
+            kind="class",
+            path="Foo.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="java",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[schema_sym, non_graphql],
+        )
+        assert _count_graphql_schema(ctx) == 1

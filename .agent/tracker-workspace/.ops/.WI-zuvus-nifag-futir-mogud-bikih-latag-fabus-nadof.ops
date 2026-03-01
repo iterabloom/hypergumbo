@@ -1,0 +1,41 @@
+- op: create  # fbce
+  at: '2026-02-27T00:40:50Z'  # fbce
+  by: agent  # fbce
+  actor: jgstern_agent  # fbce
+  clock: 1  # fbce
+  nonce: fbce  # fbce
+  data:  # fbce
+    kind: work_item  # fbce
+    title: "C analyzer: orphaned header declarations inflate orphan rate by 15-20pp"  # fbce
+    status: todo_soft  # fbce
+    priority: 3  # fbce
+    parent:  # fbce
+    tags: []  # fbce
+    before: []  # fbce
+    duplicate_of: []  # fbce
+    not_duplicate_of: []  # fbce
+    pr_ref:  # fbce
+    description: ""  # fbce
+    fields: {}  # fbce
+- op: discuss  # 3811
+  at: '2026-02-27T00:43:25Z'  # 3811
+  by: agent  # 3811
+  actor: jgstern_agent  # 3811
+  clock: 2  # 3811
+  nonce: '3811'  # 3811
+  message: "Bakeoff cohort 7: tmux 36% orphans, guacamole-server 40%. Root cause: function declarations in .h files and definitions in .c files produce separate Symbol objects with different IDs. register_symbol prefers .c definitions for call resolution, but declarations remain in the IR as orphan nodes. Fix options: (1) merge declaration+definition into single symbol during extraction, (2) filter declarations from output when definition exists, (3) create synthetic declaration->definition edges. Option 1 is cleanest. See deep-20260226-114957 cohort-007 diagnostics."  # 3811
+- op: update  # 6c5c
+  at: '2026-02-27T01:24:10Z'  # 6c5c
+  by: agent  # 6c5c
+  actor: jgstern_agent  # 6c5c
+  clock: 3  # 6c5c
+  nonce: 6c5c  # 6c5c
+  set:  # 6c5c
+    status: done  # 6c5c
+- op: discuss  # 77e8
+  at: '2026-02-27T01:24:10Z'  # 77e8
+  by: agent  # 77e8
+  actor: jgstern_agent  # 77e8
+  clock: 4  # 77e8
+  nonce: '77e8'  # 77e8
+  message: "Fixed in PR #1532. Filters out header declarations when .c definitions exist. register_symbol prefers definitions over declarations. Edges referencing removed declarations are remapped via _remap_edge_ids. Expected to reduce orphan rates by 15-20pp for C repos."  # 77e8

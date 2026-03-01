@@ -1,0 +1,37 @@
+- op: create  # db29
+  at: '2026-02-26T20:27:38Z'  # db29
+  by: agent  # db29
+  actor: jgstern_agent  # db29
+  clock: 1  # db29
+  nonce: db29  # db29
+  data:  # db29
+    kind: work_item  # db29
+    title: "Rust #[test] attribute creates false decorated_by edges to function named test"  # db29
+    status: todo_hard  # db29
+    priority: 1  # db29
+    parent:  # db29
+    tags:  # db29
+    - bakeoff  # db29
+    - rust  # db29
+    - linker  # db29
+    before: []  # db29
+    duplicate_of: []  # db29
+    not_duplicate_of: []  # db29
+    pr_ref:  # db29
+    description: "In rodio, the Rust #[test] attribute creates decorated_by edges pointing to a function literally named 'test' in src/conversions/channels.rs. Every #[test]-annotated function (62+) gets an edge to this node, making it the highest-degree symbol. Same issue likely affects #[inline], #[cfg] etc. (788 decorated_by edges total). Root cause: the decorator-edge linker treats attribute names as function references."  # db29
+    fields: {}  # db29
+- op: update  # d72c
+  at: '2026-02-26T21:00:52Z'  # d72c
+  by: agent  # d72c
+  actor: jgstern_agent  # d72c
+  clock: 2  # d72c
+  nonce: d72c  # d72c
+  set:  # d72c
+    status: done  # d72c
+- op: discuss  # 9243
+  at: '2026-02-26T21:00:53Z'  # 9243
+  by: agent  # 9243
+  actor: jgstern_agent  # 9243
+  clock: 3  # 9243
+  nonce: '9243'  # 9243
+  message: "Fixed in PR #1516. Root cause: _extract_attribute_edges resolved built-in Rust attribute names (test, cfg, inline, etc.) against global_symbols, creating false decorated_by edges when user functions had matching names. Fix: _BUILTIN_RUST_ATTRIBUTES frozenset (45 entries) skips resolution for compiler-provided and common ecosystem attribute names."  # 9243

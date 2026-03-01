@@ -12,18 +12,18 @@ language: java
 patterns:
   # HTTP method annotations - @GET, @POST, @PUT, @DELETE, @PATCH
   # Note: Java analyzer stores annotations as decorators without @ prefix
+  # Method routes inherit path prefix from class-level @Path (prefix_from_parent)
   - concept: route
     decorator: "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$"
     extract_method: "decorator_name_upper"
+    prefix_from_parent: "resource_path"
 
   # Path annotation - marks a resource class or method
+  # On classes: defines base path for all method routes
+  # On methods: defines path segment (combined with class @Path via prefix_from_parent)
   - concept: resource_path
     decorator: "^Path$"
     extract_path: "args[0]"
-
-  # Resource class patterns (commonly extend or implement these)
-  - concept: controller
-    base_class: "^Resource$"
 
   # Provider patterns
   - concept: provider

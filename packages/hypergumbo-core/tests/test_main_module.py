@@ -7,6 +7,8 @@ import pytest
 
 def test_main_module_entry_point(tmp_path, monkeypatch):
     """Test running python -m hypergumbo via runpy."""
+    pytest.importorskip("hypergumbo", reason="requires hypergumbo meta-package")
+
     # Set up argv to run a simple command
     out_file = tmp_path / "out.json"
     monkeypatch.setattr(

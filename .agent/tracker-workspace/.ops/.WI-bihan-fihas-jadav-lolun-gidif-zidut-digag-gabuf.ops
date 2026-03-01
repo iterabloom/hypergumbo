@@ -1,0 +1,21 @@
+- op: create  # aaec
+  at: '2026-02-15T00:51:38Z'  # aaec
+  by: agent  # aaec
+  actor: migration  # aaec
+  clock: 1  # aaec
+  nonce: aaec  # aaec
+  data:  # aaec
+    kind: work_item  # aaec
+    title: "Make `check-package-coverage` run faster."  # aaec
+    status: done  # aaec
+    priority: 4  # aaec
+    parent:  # aaec
+    tags:  # aaec
+    - developer_experience  # aaec
+    before: []  # aaec
+    duplicate_of: []  # aaec
+    not_duplicate_of: []  # aaec
+    pr_ref: PR#922  # aaec
+    justification:  # aaec
+    description: "Implemented parallel execution via background processes. Each package runs in its own subprocess with isolated coverage files. ~15% faster for 2 packages; expected ~3x faster for full 4-package run (wall-clock = slowest package instead of sum). Added `--serial` flag for debugging. User-requested."  # aaec
+    fields: {}  # aaec

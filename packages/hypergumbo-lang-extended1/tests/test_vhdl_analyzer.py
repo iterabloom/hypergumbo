@@ -8,10 +8,10 @@ Tests verify that the analyzer correctly extracts:
 - Architecture-entity relationships
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_extended1.vhdl import (
     PASS_ID,
-    PASS_VERSION,
-    VHDLAnalysisResult,
     analyze_vhdl_files,
     find_vhdl_files,
 )
@@ -20,7 +20,7 @@ from hypergumbo_lang_extended1.vhdl import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "vhdl-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 
 def test_analyze_entity(tmp_path):
@@ -164,7 +164,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_vhdl_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, VHDLAnalysisResult)
+    assert isinstance(result, AnalysisResult)
 
 
 def test_span_information(tmp_path):

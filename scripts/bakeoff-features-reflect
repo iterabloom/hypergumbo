@@ -59,14 +59,14 @@ developer_assessment:
 
 ## Usage
 
-    # Run reflection on latest feature bakeoff results
-    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff
+    # Run reflection on latest feature bakeoff results (uses canonical default workdir)
+    ./scripts/bakeoff-features-reflect
 
     # Specify a specific iteration
-    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff --iteration 1
+    ./scripts/bakeoff-features-reflect --iteration 1
 
-    # Output to custom file
-    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff --out reflect.yaml
+    # Override workdir
+    ./scripts/bakeoff-features-reflect --workdir /path/to/custom/workdir
 
 Environment:
     BAKEOFF_FEATURES_WORKDIR: Override workdir location
@@ -76,8 +76,11 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+DEFAULT_BAKEOFF_DIR = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
 
 # Structured prompt template for the LLM agent
 ASSESSMENT_PROMPT_TEMPLATE = """
@@ -91,7 +94,7 @@ whether hypergumbo's analysis outputs would be useful to you for common developm
 ## Available Artifacts
 The following hypergumbo outputs are available for your assessment:
 {artifact_list}
-
+{prior_context_section}
 ## Assessment Protocol
 
 Examine the artifacts and source code, then evaluate usefulness for these 3 tasks:
@@ -103,6 +106,8 @@ Examine the artifacts and source code, then evaluate usefulness for these 3 task
 4. Evaluate:
    - Does the forward slice show what code depends on this function?
    - Does the reverse slice (rslice.*.json) show what would need to change?
+   - Does the production-only reverse slice (rslice.*.prod.json) separate
+     production callers from test callers effectively?
    - What's missing that a real refactoring would need?
    - What's included that's not actually relevant?
 
@@ -121,6 +126,15 @@ Examine the artifacts and source code, then evaluate usefulness for these 3 task
    - Do the top-ranked symbols match what's actually important?
    - Does the call graph reveal the architecture?
    - Are the cross-file relationships meaningful?
+
+## Scoring Rubric
+
+For each task, assign a numeric score from 0-100:
+- **0-20:** Not useful at all — output is misleading or empty
+- **21-40:** Marginally useful — some signal but mostly noise or gaps
+- **41-60:** Partially useful — real signal mixed with significant gaps/noise
+- **61-80:** Useful — actionable output with minor gaps
+- **81-100:** Highly useful — comprehensive, accurate, directly actionable
 
 ## Output Format
 
@@ -160,8 +174,14 @@ developer_assessment:
       - "misleading or confusing elements"
     notes: "additional observations"
 
+  task_scores:
+    refactoring_score: <0-100>
+    new_feature_score: <0-100>
+    understanding_score: <0-100>
+
   overall_verdict: USEFUL | PARTIALLY_USEFUL | NOT_USEFUL
   confidence: HIGH | MEDIUM | LOW
+  trajectory: IMPROVING | STABLE | REGRESSING | FIRST_ASSESSMENT
 
   improvement_ideas:
     - "specific, actionable suggestion 1"
@@ -173,6 +193,34 @@ developer_assessment:
 
 Be specific and concrete. Reference actual files and functions from the repo.
 Focus on practical utility, not theoretical correctness.
+"""
+
+PRIOR_CONTEXT_TEMPLATE = """
+## Prior Assessment Context
+
+This repo was previously assessed in an earlier cohort. Here are the prior findings
+so you can evaluate whether things have improved, stayed the same, or regressed:
+
+- **Prior verdict:** {prior_verdict}
+- **Prior confidence:** {prior_confidence}
+{prior_scores_section}
+**Prior improvement ideas:**
+{prior_ideas}
+
+**Prior missing items (refactoring):**
+{prior_refactoring_missing}
+
+**Prior missing items (new feature):**
+{prior_new_feature_missing}
+
+**Prior missing items (understanding):**
+{prior_understanding_missing}
+
+When assigning your trajectory field, compare against these prior findings:
+- IMPROVING: Meaningful improvement in output quality vs. prior assessment
+- STABLE: Roughly the same quality (within ~5 points)
+- REGRESSING: Output quality has gotten worse
+- FIRST_ASSESSMENT: Use this if no prior assessment context is provided
 """
 
 
@@ -187,8 +235,12 @@ def get_artifact_list(repo_out_dir: str) -> str:
         "routes.txt": "Detected API routes and endpoints",
         "slice.0.json": "Forward slice from top entrypoint",
         "slice.1.json": "Forward slice from second entrypoint",
-        "rslice.0.json": "Reverse slice (what calls) from top entrypoint",
-        "rslice.1.json": "Reverse slice from second entrypoint",
+        "rslice_seeds.json": "Reverse slice seed selection (method and chosen symbols)",
+        "rslice.0.json": "Reverse slice (what calls this?) from highest in-degree symbol",
+        "rslice.0.prod.json": "Production-only reverse slice (test files excluded)",
+        "rslice.1.json": "Reverse slice from second highest in-degree symbol",
+        "rslice.1.prod.json": "Production-only reverse slice (test files excluded)",
+        "rslice.2.prod.json": "Production-only reverse slice (test files excluded)",
         "slice.tier1.json": "Slice limited to tier-1 (first-party) code",
         "slice.tier2.json": "Slice limited to tier-1 and tier-2 code",
     }
@@ -202,6 +254,41 @@ def get_artifact_list(repo_out_dir: str) -> str:
     return "\n".join(artifacts) if artifacts else "No artifacts found"
 
 
+def _discover_cohort_dirs(workdir: str, subdir: str = "out") -> list[str]:
+    """Return sorted list of cohort directory names under *subdir*.
+
+    E.g. ``["cohort-001", "cohort-002", ...]`` for every directory
+    matching the ``cohort-NNN`` pattern.
+    """
+    base = os.path.join(workdir, subdir)
+    if not os.path.isdir(base):
+        return []
+    return sorted(
+        d for d in os.listdir(base)
+        if d.startswith("cohort-") and os.path.isdir(os.path.join(base, d))
+    )
+
+
+def _load_cohort_repos(workdir: str, cohort_dir_name: str) -> list[str]:
+    """Return the repo name list for a cohort from its metadata.json."""
+    meta_path = os.path.join(
+        workdir, "cohorts", cohort_dir_name, "metadata.json",
+    )
+    if not os.path.exists(meta_path):
+        return []
+    with open(meta_path) as f:
+        meta = json.load(f)
+    return [r["name"] for r in meta.get("repos", [])]
+
+
+def _cohort_number_from_dir(name: str) -> int:
+    """Extract the integer cohort number from a directory name like 'cohort-013'."""
+    try:
+        return int(name.split("-")[1])
+    except (IndexError, ValueError):
+        return 0
+
+
 def load_state(workdir: str) -> dict:
     """Load bakeoff state from workdir."""
     state_path = os.path.join(workdir, "state.json")
@@ -212,21 +299,215 @@ def load_state(workdir: str) -> dict:
         return json.load(f)
 
 
-def generate_assessment_prompt(repo_name: str, repo_path: str, repo_out_dir: str) -> str:
-    """Generate the assessment prompt for a specific repo."""
+def find_prior_assessment(workdir: str, repo_name: str, cohort_number: int):
+    """Find the most recent prior assessment for a repo.
+
+    Searches backward through cohort directories (cohort_number-1 down to 1)
+    for an assessment YAML file for the given repo. Returns the parsed
+    assessment dict or None if no prior exists.
+    """
+    if cohort_number <= 1:
+        return None
+
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return None
+
+    # Search backward from the previous cohort
+    for prev_cohort in range(cohort_number - 1, 0, -1):
+        # Check all iterations (prefer highest)
+        cohort_dir = os.path.join(reflect_base, f"cohort-{prev_cohort:03d}")
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        iter_dirs = sorted(
+            [
+                d
+                for d in os.listdir(cohort_dir)
+                if os.path.isdir(os.path.join(cohort_dir, d))
+                and d.startswith("iter-")
+            ],
+            reverse=True,
+        )
+
+        for iter_dir in iter_dirs:
+            assessment_path = os.path.join(
+                cohort_dir, iter_dir, f"{repo_name}.assessment.yaml"
+            )
+            if os.path.exists(assessment_path):
+                try:
+                    import yaml
+
+                    with open(assessment_path) as f:
+                        data = yaml.safe_load(f)
+                    if data and "developer_assessment" in data:
+                        return data["developer_assessment"]
+                    return data
+                except Exception:
+                    continue
+
+    return None
+
+
+def find_prior_summary(workdir: str, cohort_number: int):
+    """Find the most recent prior summary.yaml with score_statistics.
+
+    Returns the parsed summary dict or None if no prior summary with
+    scores exists.
+    """
+    if cohort_number <= 1:
+        return None
+
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return None
+
+    for prev_cohort in range(cohort_number - 1, 0, -1):
+        cohort_dir = os.path.join(reflect_base, f"cohort-{prev_cohort:03d}")
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        iter_dirs = sorted(
+            [
+                d
+                for d in os.listdir(cohort_dir)
+                if os.path.isdir(os.path.join(cohort_dir, d))
+                and d.startswith("iter-")
+            ],
+            reverse=True,
+        )
+
+        for iter_dir in iter_dirs:
+            summary_path = os.path.join(cohort_dir, iter_dir, "summary.yaml")
+            if os.path.exists(summary_path):
+                try:
+                    import yaml
+
+                    with open(summary_path) as f:
+                        data = yaml.safe_load(f)
+                    if data and "score_statistics" in data:
+                        return data
+                except Exception:
+                    continue
+
+    return None
+
+
+def format_prior_context(prior_assessment: dict) -> str:
+    """Format a prior assessment into a context section for the prompt."""
+    if not prior_assessment:
+        return ""
+
+    prior_verdict = prior_assessment.get("overall_verdict", "unknown")
+    prior_confidence = prior_assessment.get("confidence", "unknown")
+
+    # Format scores if available
+    scores = prior_assessment.get("task_scores", {})
+    if scores:
+        prior_scores_section = (
+            f"- **Prior scores:** "
+            f"refactoring={scores.get('refactoring_score', '?')}, "
+            f"new_feature={scores.get('new_feature_score', '?')}, "
+            f"understanding={scores.get('understanding_score', '?')}\n"
+        )
+    else:
+        prior_scores_section = "- **Prior scores:** not available (pre-scoring assessment)\n"
+
+    # Format improvement ideas
+    ideas = prior_assessment.get("improvement_ideas", [])
+    prior_ideas = "\n".join(f"- {idea}" for idea in ideas[:5]) if ideas else "- (none)"
+
+    # Format missing items from each task
+    def format_missing(section_name):
+        section = prior_assessment.get(section_name, {})
+        missing = section.get("missing", [])
+        return "\n".join(f"- {m}" for m in missing[:3]) if missing else "- (none)"
+
+    return PRIOR_CONTEXT_TEMPLATE.format(
+        prior_verdict=prior_verdict,
+        prior_confidence=prior_confidence,
+        prior_scores_section=prior_scores_section,
+        prior_ideas=prior_ideas,
+        prior_refactoring_missing=format_missing("refactoring"),
+        prior_new_feature_missing=format_missing("new_feature"),
+        prior_understanding_missing=format_missing("understanding"),
+    )
+
+
+def generate_assessment_prompt(
+    repo_name: str,
+    repo_path: str,
+    repo_out_dir: str,
+    prior_assessment: dict = None,
+) -> str:
+    """Generate the assessment prompt for a specific repo.
+
+    If prior_assessment is provided, includes prior findings context
+    so the assessor can compute trajectory.
+    """
     artifact_list = get_artifact_list(repo_out_dir)
     timestamp = datetime.datetime.now().isoformat()
+    prior_context_section = format_prior_context(prior_assessment)
 
     return ASSESSMENT_PROMPT_TEMPLATE.format(
         repo_name=repo_name,
         repo_path=repo_path,
         artifact_list=artifact_list,
         timestamp=timestamp,
+        prior_context_section=prior_context_section,
     )
 
 
+def compute_trajectory(current_scores: dict, prior_scores: dict):
+    """Compute trajectory by comparing current vs prior score statistics.
+
+    Returns a dict with trend (IMPROVING/STABLE/REGRESSING), delta, and
+    prior_mean_score. Returns None if prior_scores is None.
+
+    Threshold: +/- 5 points is considered STABLE.
+    """
+    if prior_scores is None:
+        return None
+
+    current_mean = current_scores.get("mean_score", 0)
+    prior_mean = prior_scores.get("mean_score", 0)
+    delta = current_mean - prior_mean
+
+    if delta > 5:
+        trend = "IMPROVING"
+    elif delta < -5:
+        trend = "REGRESSING"
+    else:
+        trend = "STABLE"
+
+    trajectory = {
+        "trend": trend,
+        "delta": round(delta, 1),
+        "prior_mean_score": round(prior_mean, 1),
+        "current_mean_score": round(current_mean, 1),
+    }
+
+    # Per-task trajectory if available
+    current_per_task = current_scores.get("per_task", {})
+    prior_per_task = prior_scores.get("per_task", {})
+    if current_per_task and prior_per_task:
+        task_deltas = {}
+        for task_name in ["refactoring", "new_feature", "understanding"]:
+            cur = current_per_task.get(task_name, {}).get("mean", 0)
+            pri = prior_per_task.get(task_name, {}).get("mean", 0)
+            task_deltas[task_name] = round(cur - pri, 1)
+        trajectory["per_task_deltas"] = task_deltas
+
+    return trajectory
+
+
 def aggregate_assessments(assessments: list) -> dict:
-    """Aggregate individual assessments into a summary report."""
+    """Aggregate individual assessments into a summary report.
+
+    Handles both legacy assessments (no scores) and new assessments with
+    task_scores. When scores are present, computes statistics (mean, median,
+    min, max) overall and per-task.
+    """
     summary = {
         "total_repos": len(assessments),
         "verdicts": {"USEFUL": 0, "PARTIALLY_USEFUL": 0, "NOT_USEFUL": 0},
@@ -239,6 +520,15 @@ def aggregate_assessments(assessments: list) -> dict:
     all_noise = []
     all_ideas = []
     all_questions = []
+
+    # Score collection
+    overall_scores = []
+    task_scores_by_name = {
+        "refactoring": [],
+        "new_feature": [],
+        "understanding": [],
+    }
+    repo_scores = []
 
     for a in assessments:
         if not a:
@@ -257,6 +547,27 @@ def aggregate_assessments(assessments: list) -> dict:
 
         all_ideas.extend(a.get("improvement_ideas", []))
         all_questions.extend(a.get("questions", []))
+
+        # Collect scores if present
+        scores = a.get("task_scores")
+        if scores:
+            r = scores.get("refactoring_score")
+            n = scores.get("new_feature_score")
+            u = scores.get("understanding_score")
+            if r is not None and n is not None and u is not None:
+                task_scores = [r, n, u]
+                repo_overall = sum(task_scores) / len(task_scores)
+                overall_scores.append(repo_overall)
+                task_scores_by_name["refactoring"].append(r)
+                task_scores_by_name["new_feature"].append(n)
+                task_scores_by_name["understanding"].append(u)
+                repo_scores.append({
+                    "repo": a.get("repo", "unknown"),
+                    "refactoring_score": r,
+                    "new_feature_score": n,
+                    "understanding_score": u,
+                    "overall_score": round(repo_overall, 1),
+                })
 
     # Deduplicate and count
     def count_items(items):
@@ -277,41 +588,87 @@ def aggregate_assessments(assessments: list) -> dict:
     question_counts = count_items(all_questions)
     summary["questions"] = [{"question": q, "count": c} for q, c in question_counts[:10]]
 
+    # Compute score statistics if any scores exist
+    if overall_scores:
+        import statistics as stats_mod
+
+        per_task = {}
+        for task_name, scores_list in task_scores_by_name.items():
+            if scores_list:
+                per_task[task_name] = {
+                    "mean": round(stats_mod.mean(scores_list), 1),
+                    "min": min(scores_list),
+                    "max": max(scores_list),
+                }
+
+        summary["score_statistics"] = {
+            "scored_repos": len(overall_scores),
+            "mean_score": round(stats_mod.mean(overall_scores), 1),
+            "min_score": round(min(overall_scores), 1),
+            "max_score": round(max(overall_scores), 1),
+            "per_task": per_task,
+            "repos": repo_scores,
+        }
+
+        if len(overall_scores) > 1:
+            summary["score_statistics"]["median_score"] = round(
+                stats_mod.median(overall_scores), 1
+            )
+
     return summary
 
 
-def cmd_reflect(args):
-    """Run LLM-driven reflection on feature bakeoff results."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
-    state = load_state(workdir)
+def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR") -> str:
+    """Resolve workdir from CLI arg, env var, or canonical default.
 
-    if not state:
-        print("Error: No feature bakeoff session found.", file=sys.stderr)
-        return 1
+    Resolution order: CLI --workdir > env var > canonical default.
 
-    cohort_number = state.get("cohort_number", 0)
-    iteration = args.iteration or state.get("iteration", 0)
-    pool_path = state.get("pool_path", "")
+    If the resolved directory has no state.json but contains session
+    subdirectories (broad-*/deep-*), returns the most recent one.
+    """
+    workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
+    workdir = os.path.abspath(os.path.expanduser(workdir))
 
-    out_dir = os.path.join(workdir, "out", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
+    # If the workdir itself has state.json, use it directly
+    if os.path.exists(os.path.join(workdir, "state.json")):
+        return workdir
 
+    # Otherwise, look for the most recent session subdirectory
+    if os.path.isdir(workdir):
+        sessions = []
+        for entry in os.scandir(workdir):
+            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
+                state_path = os.path.join(entry.path, "state.json")
+                if os.path.exists(state_path):
+                    sessions.append(entry.path)
+        if sessions:
+            sessions.sort()
+            return sessions[-1]
+
+    return workdir
+
+
+def _reflect_one_cohort(
+    workdir: str,
+    cohort_number: int,
+    iteration: int,
+    repos: list[str],
+    pool_path: str,
+) -> int:
+    """Generate reflection prompts for a single cohort.  Returns prompt count."""
+    out_dir = os.path.join(
+        workdir, "out", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}",
+    )
     if not os.path.isdir(out_dir):
-        print(f"Error: No output found at {out_dir}.", file=sys.stderr)
-        return 1
+        return 0
 
-    current_cohort = state.get("current_cohort", [])
-
-    print(f"Feature Bakeoff Reflection")
-    print(f"  Cohort: #{cohort_number}")
-    print(f"  Iteration: {iteration}")
-    print(f"  Repos: {', '.join(current_cohort)}")
-    print()
-
-    # Generate prompts for each repo
-    prompts_dir = os.path.join(workdir, "reflect", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
+    prompts_dir = os.path.join(
+        workdir, "reflect", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}",
+    )
     os.makedirs(prompts_dir, exist_ok=True)
 
-    for repo_name in current_cohort:
+    count = 0
+    for repo_name in repos:
         repo_path = os.path.join(pool_path, repo_name)
         repo_out = os.path.join(out_dir, repo_name)
 
@@ -319,31 +676,113 @@ def cmd_reflect(args):
             print(f"[{repo_name}] Skipped (no output)")
             continue
 
-        prompt = generate_assessment_prompt(repo_name, repo_path, repo_out)
+        prior = find_prior_assessment(workdir, repo_name, cohort_number)
+        if prior:
+            print(f"[{repo_name}] Found prior assessment (injecting context)")
 
-        # Write prompt to file
+        prompt = generate_assessment_prompt(
+            repo_name, repo_path, repo_out, prior_assessment=prior,
+        )
+
         prompt_path = os.path.join(prompts_dir, f"{repo_name}.prompt.md")
         with open(prompt_path, "w") as f:
             f.write(prompt)
 
         print(f"[{repo_name}] Prompt generated: {prompt_path}")
+        count += 1
+
+    return count
+
+
+def cmd_reflect(args):
+    """Run LLM-driven reflection on feature bakeoff results."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    pool_path = state.get("pool_path", "")
+    default_iteration = args.iteration or state.get("iteration", 0)
+
+    # Determine which cohorts to reflect on
+    use_all = getattr(args, "all", False)
+    use_some = getattr(args, "some", None)
+
+    if use_all or use_some:
+        all_cohort_dirs = _discover_cohort_dirs(workdir, "out")
+        if not all_cohort_dirs:
+            print("Error: No cohort output directories found.", file=sys.stderr)
+            return 1
+        if use_all:
+            cohort_dirs = all_cohort_dirs
+            print(f"Reflecting on all {len(cohort_dirs)} cohort(s)")
+        else:
+            cohort_dirs = all_cohort_dirs[-use_some:]
+            print(f"Reflecting on latest {len(cohort_dirs)} cohort(s)")
+    else:
+        cohort_number = state.get("cohort_number", 0)
+        cohort_dirs = [f"cohort-{cohort_number:03d}"]
+        all_cohort_dirs = _discover_cohort_dirs(workdir, "out")
+        if len(all_cohort_dirs) > 1:
+            print(
+                f"Reflecting on latest cohort only ({cohort_dirs[0]}). "
+                f"Use --all for all {len(all_cohort_dirs)} cohorts."
+            )
+
+    total_prompts = 0
+    last_prompts_dir = ""
+
+    for cohort_dir_name in cohort_dirs:
+        cohort_num = _cohort_number_from_dir(cohort_dir_name)
+        repos = _load_cohort_repos(workdir, cohort_dir_name)
+        if not repos:
+            repos = state.get("current_cohort", [])
+
+        # Find the latest iteration for this cohort
+        iter_base = os.path.join(workdir, "out", cohort_dir_name)
+        if os.path.isdir(iter_base):
+            iters = sorted(
+                d for d in os.listdir(iter_base)
+                if d.startswith("iter-") and os.path.isdir(os.path.join(iter_base, d))
+            )
+            iteration = int(iters[-1].split("-")[1]) if iters else default_iteration
+        else:
+            iteration = default_iteration
+
+        print(f"\nFeature Bakeoff Reflection")
+        print(f"  Cohort: #{cohort_num}")
+        print(f"  Iteration: {iteration}")
+        print(f"  Repos: {', '.join(repos)}")
+        print()
+
+        count = _reflect_one_cohort(
+            workdir, cohort_num, iteration, repos, pool_path,
+        )
+        total_prompts += count
+        last_prompts_dir = os.path.join(
+            workdir, "reflect", f"cohort-{cohort_num:03d}", f"iter-{iteration:03d}",
+        )
 
     print()
     print("=" * 60)
     print("NEXT STEPS")
     print("=" * 60)
     print()
-    print("The reflection prompts have been generated. To complete the assessment:")
+    print(f"Generated {total_prompts} reflection prompt(s). To complete the assessment:")
     print()
     print("1. For each repo, invoke an LLM agent with the prompt:")
-    print(f"   Prompts are in: {prompts_dir}/")
+    if last_prompts_dir:
+        print(f"   Prompts are in: {last_prompts_dir}/")
     print()
     print("2. The agent should have access to:")
     print(f"   - The repo source code at: {pool_path}/<repo_name>/")
-    print(f"   - The hypergumbo artifacts at: {out_dir}/<repo_name>/")
+    print(f"   - The hypergumbo artifacts at: <workdir>/out/<cohort>/<iter>/<repo_name>/")
     print()
     print("3. Save the YAML assessment output to:")
-    print(f"   {prompts_dir}/<repo_name>.assessment.yaml")
+    print(f"   <reflect_dir>/<repo_name>.assessment.yaml")
     print()
     print("4. Run aggregate to synthesize findings:")
     print(f"   ./scripts/bakeoff-features-reflect aggregate --workdir {workdir}")
@@ -352,76 +791,91 @@ def cmd_reflect(args):
     return 0
 
 
-def cmd_aggregate(args):
-    """Aggregate individual assessments into a summary report."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
-    state = load_state(workdir)
-
-    if not state:
-        print("Error: No feature bakeoff session found.", file=sys.stderr)
-        return 1
-
-    cohort_number = state.get("cohort_number", 0)
-    iteration = args.iteration or state.get("iteration", 0)
-
-    prompts_dir = os.path.join(workdir, "reflect", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
-
-    if not os.path.isdir(prompts_dir):
-        print(f"Error: No reflection directory found at {prompts_dir}.", file=sys.stderr)
-        return 1
-
-    # Load all assessments
+def _aggregate_one_cohort(
+    workdir: str,
+    cohort_number: int,
+    iteration: int,
+    repos: list[str],
+) -> dict | None:
+    """Aggregate assessments for a single cohort.  Returns summary or None."""
     import yaml
 
+    prompts_dir = os.path.join(
+        workdir, "reflect",
+        f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}",
+    )
+    if not os.path.isdir(prompts_dir):
+        return None
+
+    # If summary.yaml already exists, return it (idempotent)
+    summary_path = os.path.join(prompts_dir, "summary.yaml")
+    if os.path.exists(summary_path):
+        with open(summary_path) as f:
+            return yaml.safe_load(f)
+
     assessments = []
-    current_cohort = state.get("current_cohort", [])
 
-    for repo_name in current_cohort:
-        assessment_path = os.path.join(prompts_dir, f"{repo_name}.assessment.yaml")
-
-        if not os.path.exists(assessment_path):
-            print(f"[{repo_name}] No assessment found (skipped)")
+    # Load assessments from the directory (discover by file pattern)
+    for fname in sorted(os.listdir(prompts_dir)):
+        if not fname.endswith(".assessment.yaml"):
             continue
-
+        fpath = os.path.join(prompts_dir, fname)
         try:
-            with open(assessment_path) as f:
+            with open(fpath) as f:
                 data = yaml.safe_load(f)
-                if data and "developer_assessment" in data:
-                    assessments.append(data["developer_assessment"])
-                elif data:
-                    assessments.append(data)
-                print(f"[{repo_name}] Loaded assessment")
+            if data and "developer_assessment" in data:
+                assessments.append(data["developer_assessment"])
+            elif data:
+                assessments.append(data)
+            repo_name = fname.replace(".assessment.yaml", "")
+            print(f"[{repo_name}] Loaded assessment")
         except Exception as e:
-            print(f"[{repo_name}] Error loading assessment: {e}")
+            print(f"[{fname}] Error loading assessment: {e}")
 
     if not assessments:
-        print()
-        print("No assessments found to aggregate.")
-        print("Run the reflection prompts first, then save results as:")
-        print(f"  {prompts_dir}/<repo_name>.assessment.yaml")
-        return 1
+        return None
 
-    # Aggregate
     summary = aggregate_assessments(assessments)
     summary["cohort"] = cohort_number
     summary["iteration"] = iteration
     summary["timestamp"] = datetime.datetime.now().isoformat()
 
-    # Write summary
-    summary_path = os.path.join(prompts_dir, "summary.yaml")
+    if "score_statistics" in summary:
+        prior_summary = find_prior_summary(workdir, cohort_number)
+        if prior_summary:
+            prior_stats = prior_summary.get("score_statistics")
+            trajectory = compute_trajectory(summary["score_statistics"], prior_stats)
+            if trajectory:
+                summary["trajectory"] = trajectory
+
     with open(summary_path, "w") as f:
         yaml.dump(summary, f, default_flow_style=False, sort_keys=False)
 
-    print()
-    print("=" * 60)
-    print("REFLECTION SUMMARY")
-    print("=" * 60)
-    print()
+    return summary
+
+
+def _print_aggregate_summary(summary: dict, summary_path: str = "") -> None:
+    """Print a single cohort's aggregation summary."""
     print(f"Assessed repos: {summary['total_repos']}")
     print(f"Verdicts:")
     for verdict, count in summary["verdicts"].items():
         print(f"  {verdict}: {count}")
     print()
+
+    if summary.get("score_statistics"):
+        stats = summary["score_statistics"]
+        print(f"Scores (0-100):")
+        print(f"  Mean: {stats['mean_score']}")
+        print(f"  Range: {stats['min_score']} - {stats['max_score']}")
+        if "per_task" in stats:
+            for task, task_stats in stats["per_task"].items():
+                print(f"  {task}: {task_stats['mean']}")
+        print()
+
+    if summary.get("trajectory"):
+        t = summary["trajectory"]
+        print(f"Trajectory: {t['trend']} ({t['delta']:+.1f} points vs prior)")
+        print()
 
     if summary.get("common_missing"):
         print("Common missing items:")
@@ -435,7 +889,522 @@ def cmd_aggregate(args):
             print(f"  - {item['idea']} (x{item['count']})")
         print()
 
-    print(f"Full summary: {summary_path}")
+    if summary_path:
+        print(f"Full summary: {summary_path}")
+
+
+def cmd_aggregate(args):
+    """Aggregate individual assessments into a summary report."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    pool_path = state.get("pool_path", "")
+    default_iteration = args.iteration or state.get("iteration", 0)
+
+    use_all = getattr(args, "all", False)
+    use_some = getattr(args, "some", None)
+
+    if use_all or use_some:
+        # Aggregate across multiple cohorts
+        all_reflect_dirs = _discover_cohort_dirs(workdir, "reflect")
+        if not all_reflect_dirs:
+            print("Error: No reflection directories found.", file=sys.stderr)
+            return 1
+        if use_all:
+            cohort_dirs = all_reflect_dirs
+            print(f"Aggregating all {len(cohort_dirs)} cohort(s)")
+        else:
+            cohort_dirs = all_reflect_dirs[-use_some:]
+            print(f"Aggregating latest {len(cohort_dirs)} cohort(s)")
+
+        all_summaries = []
+        for cohort_dir_name in cohort_dirs:
+            cohort_num = _cohort_number_from_dir(cohort_dir_name)
+            repos = _load_cohort_repos(workdir, cohort_dir_name)
+
+            # Find latest iteration
+            iter_base = os.path.join(workdir, "reflect", cohort_dir_name)
+            if os.path.isdir(iter_base):
+                iters = sorted(
+                    d for d in os.listdir(iter_base)
+                    if d.startswith("iter-") and os.path.isdir(os.path.join(iter_base, d))
+                )
+                iteration = int(iters[-1].split("-")[1]) if iters else default_iteration
+            else:
+                iteration = default_iteration
+
+            print(f"\n--- Cohort #{cohort_num}, iter {iteration} ---")
+            summary = _aggregate_one_cohort(
+                workdir, cohort_num, iteration, repos,
+            )
+            if summary:
+                all_summaries.append(summary)
+                summary_path = os.path.join(
+                    workdir, "reflect",
+                    f"cohort-{cohort_num:03d}", f"iter-{iteration:03d}",
+                    "summary.yaml",
+                )
+                _print_aggregate_summary(summary, summary_path)
+            else:
+                print("  No assessments found (skipped)")
+
+        # Cross-cohort summary
+        if all_summaries:
+            total_repos = sum(s.get("total_repos", 0) for s in all_summaries)
+            all_verdicts: dict[str, int] = {}
+            for s in all_summaries:
+                for v, c in s.get("verdicts", {}).items():
+                    all_verdicts[v] = all_verdicts.get(v, 0) + c
+
+            print()
+            print("=" * 60)
+            print("CROSS-COHORT SUMMARY")
+            print("=" * 60)
+            print(f"Cohorts aggregated: {len(all_summaries)}")
+            print(f"Total repos assessed: {total_repos}")
+            print(f"Verdicts:")
+            for v, c in all_verdicts.items():
+                print(f"  {v}: {c}")
+
+        return 0
+
+    # Single-cohort mode (default: latest from state)
+    cohort_number = state.get("cohort_number", 0)
+    iteration = args.iteration or state.get("iteration", 0)
+    current_cohort = state.get("current_cohort", [])
+
+    all_reflect_dirs = _discover_cohort_dirs(workdir, "reflect")
+    if len(all_reflect_dirs) > 1:
+        print(
+            f"Aggregating latest cohort only (cohort-{cohort_number:03d}). "
+            f"Use --all for all {len(all_reflect_dirs)} cohorts."
+        )
+
+    summary = _aggregate_one_cohort(
+        workdir, cohort_number, iteration, current_cohort,
+    )
+
+    if not summary:
+        prompts_dir = os.path.join(
+            workdir, "reflect",
+            f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}",
+        )
+        print()
+        print("No assessments found to aggregate.")
+        print("Run the reflection prompts first, then save results as:")
+        print(f"  {prompts_dir}/<repo_name>.assessment.yaml")
+        return 1
+
+    print()
+    print("=" * 60)
+    print("REFLECTION SUMMARY")
+    print("=" * 60)
+    print()
+    summary_path = os.path.join(
+        workdir, "reflect",
+        f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}",
+        "summary.yaml",
+    )
+    _print_aggregate_summary(summary, summary_path)
+
+    # Optional: ingest improvement ideas into tracker
+    if getattr(args, "ingest", False):
+        print()
+        print("Ingesting improvement ideas into stealth tracker items...")
+        created = ingest_improvement_ideas(summary, min_count=2)
+        if created:
+            print(f"Created {len(created)} stealth tracker item(s):")
+            for item in created:
+                print(f"  {item['id']}: {item['idea'][:60]}...")
+        else:
+            print("No new items (all already exist or below threshold).")
+
+    return 0
+
+
+def find_unaggregated(workdir: str) -> list:
+    """Find cohort/iter dirs that have assessments but no summary.yaml.
+
+    Returns a list of dicts: [{"cohort": N, "iteration": M, "path": str,
+    "assessment_count": int}, ...] sorted by cohort then iteration.
+    """
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return []
+
+    unaggregated = []
+
+    for cohort_entry in sorted(os.listdir(reflect_base)):
+        if not cohort_entry.startswith("cohort-"):
+            continue
+        cohort_dir = os.path.join(reflect_base, cohort_entry)
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        try:
+            cohort_num = int(cohort_entry.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+
+        for iter_entry in sorted(os.listdir(cohort_dir)):
+            if not iter_entry.startswith("iter-"):
+                continue
+            iter_dir = os.path.join(cohort_dir, iter_entry)
+            if not os.path.isdir(iter_dir):
+                continue
+
+            try:
+                iter_num = int(iter_entry.split("-")[1])
+            except (IndexError, ValueError):
+                continue
+
+            # Check: has assessments but no summary
+            summary_path = os.path.join(iter_dir, "summary.yaml")
+            if os.path.exists(summary_path):
+                continue
+
+            assessment_count = sum(
+                1
+                for f in os.listdir(iter_dir)
+                if f.endswith(".assessment.yaml")
+            )
+
+            if assessment_count > 0:
+                unaggregated.append({
+                    "cohort": cohort_num,
+                    "iteration": iter_num,
+                    "path": iter_dir,
+                    "assessment_count": assessment_count,
+                })
+
+    return unaggregated
+
+
+def cmd_check(args):
+    """Check for unaggregated assessment sets and optionally aggregate them.
+
+    This command addresses aggregation resilience: when a session dies after
+    subagents complete their assessments but before aggregation runs, the
+    orphaned assessments can be recovered by running this command.
+
+    Returns 0 if all clean (or auto-aggregated), 1 if unaggregated found.
+    """
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+
+    unaggregated = find_unaggregated(workdir)
+
+    if not unaggregated:
+        print("All assessment sets are aggregated.")
+        return 0
+
+    print(f"Found {len(unaggregated)} unaggregated assessment set(s):")
+    for item in unaggregated:
+        print(
+            f"  cohort-{item['cohort']:03d}/iter-{item['iteration']:03d}: "
+            f"{item['assessment_count']} assessment(s)"
+        )
+
+    if not args.auto_aggregate:
+        print()
+        print("Run with --auto-aggregate to aggregate them, or run manually:")
+        for item in unaggregated:
+            print(
+                f"  ./scripts/bakeoff-features-reflect aggregate "
+                f"--workdir {workdir} --iteration {item['iteration']}"
+            )
+        return 1
+
+    # Auto-aggregate each unaggregated set
+    import yaml
+
+    state = load_state(workdir)
+
+    for item in unaggregated:
+        iter_dir = item["path"]
+        print(f"\nAggregating cohort-{item['cohort']:03d}/iter-{item['iteration']:03d}...")
+
+        # Load assessments from the directory
+        assessments = []
+        for f in sorted(os.listdir(iter_dir)):
+            if not f.endswith(".assessment.yaml"):
+                continue
+            try:
+                fpath = os.path.join(iter_dir, f)
+                with open(fpath) as fh:
+                    data = yaml.safe_load(fh)
+                if data and "developer_assessment" in data:
+                    assessments.append(data["developer_assessment"])
+                elif data:
+                    assessments.append(data)
+            except Exception as e:
+                print(f"  Error loading {f}: {e}")
+
+        if not assessments:
+            print(f"  No valid assessments found, skipping.")
+            continue
+
+        summary = aggregate_assessments(assessments)
+        summary["cohort"] = item["cohort"]
+        summary["iteration"] = item["iteration"]
+        summary["timestamp"] = datetime.datetime.now().isoformat()
+        summary["retroactive"] = True
+
+        # Compute trajectory if scores and prior summary exist
+        if "score_statistics" in summary:
+            prior_summary = find_prior_summary(workdir, item["cohort"])
+            if prior_summary:
+                prior_stats = prior_summary.get("score_statistics")
+                trajectory = compute_trajectory(
+                    summary["score_statistics"], prior_stats
+                )
+                if trajectory:
+                    summary["trajectory"] = trajectory
+
+        summary_path = os.path.join(iter_dir, "summary.yaml")
+        with open(summary_path, "w") as fh:
+            yaml.dump(summary, fh, default_flow_style=False, sort_keys=False)
+
+        print(f"  Wrote {summary_path} ({summary['total_repos']} repos)")
+
+    print(f"\nAggregated {len(unaggregated)} set(s).")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Improvement idea ingestion → tracker
+# ---------------------------------------------------------------------------
+
+
+def _tracker_script() -> str:
+    """Return the path to the tracker CLI script."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker")
+
+
+def _list_stealth_titles(tracker_script: str) -> set[str]:
+    """List existing stealth tracker item titles for dedup.
+
+    Returns a set of lowercase titles for case-insensitive matching.
+    """
+    result = subprocess.run(
+        [tracker_script, "--json", "list", "--tier", "stealth"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return set()
+    try:
+        items = json.loads(result.stdout)
+        return {item["title"].lower() for item in items if "title" in item}
+    except (json.JSONDecodeError, KeyError):
+        return set()
+
+
+def _normalize_idea(idea: str) -> str:
+    """Normalize an improvement idea string for dedup comparison.
+
+    Strips whitespace and lowercases for case-insensitive matching.
+    Takes the first 80 chars to match the title truncation.
+    """
+    return idea.strip().lower()[:80]
+
+
+def ingest_improvement_ideas(
+    summary: dict,
+    *,
+    min_count: int = 2,
+    tracker_script: str | None = None,
+    dry_run: bool = False,
+) -> list[dict]:
+    """Create stealth-tier tracker items from aggregated improvement ideas.
+
+    Only ideas appearing in >= min_count assessments are ingested. Ideas are
+    deduplicated against existing stealth items by title prefix.
+
+    Args:
+        summary: Aggregated summary dict with ``improvement_ideas`` key.
+        min_count: Minimum occurrence count to ingest (default 2).
+        tracker_script: Path to tracker CLI script (auto-detected if None).
+        dry_run: If True, report what would be created without calling tracker.
+
+    Returns:
+        List of dicts describing created items: [{"idea": str, "id": str}].
+    """
+    if tracker_script is None:
+        tracker_script = _tracker_script()
+
+    ideas = summary.get("improvement_ideas", [])
+    if not ideas:
+        return []
+
+    # Filter by count threshold
+    candidates = [i for i in ideas if i.get("count", 0) >= min_count]
+    if not candidates:
+        return []
+
+    # Get existing stealth titles for dedup
+    existing = _list_stealth_titles(tracker_script)
+
+    created = []
+    for item in candidates:
+        idea_text = item["idea"]
+        title = idea_text[:80]
+
+        # Dedup: skip if a stealth item with the same title prefix exists
+        if _normalize_idea(idea_text) in existing:
+            continue
+
+        count = item.get("count", 1)
+        description = (
+            f"{idea_text}\n\n"
+            f"Source: bakeoff assessment aggregation "
+            f"(found in {count} assessment(s))."
+        )
+
+        if dry_run:
+            created.append({"idea": idea_text, "id": "(dry-run)"})
+            continue
+
+        result = subprocess.run(
+            [
+                tracker_script,
+                "--no-auto-sync",
+                "add",
+                "--kind", "work_item",
+                "--title", title,
+                "--status", "todo_soft",
+                "--priority", "3",
+                "--tier", "stealth",
+                "--tag", "bakeoff",
+                "--tag", "assessment",
+                "--description", description,
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            item_id = result.stdout.strip()
+            created.append({"idea": idea_text, "id": item_id})
+        else:
+            print(
+                f"  Warning: failed to create tracker item for: "
+                f"{title[:50]}...",
+                file=sys.stderr,
+            )
+            if result.stderr:
+                print(f"    {result.stderr.strip()}", file=sys.stderr)
+
+    return created
+
+
+def cmd_ingest(args):
+    """Ingest improvement ideas from aggregated summary into tracker."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    min_count = getattr(args, "min_count", 2)
+    dry_run = getattr(args, "dry_run", False)
+    default_iteration = args.iteration or state.get("iteration", 0)
+
+    use_all = getattr(args, "all", False)
+    use_some = getattr(args, "some", None)
+
+    import yaml
+
+    if use_all or use_some:
+        all_reflect_dirs = _discover_cohort_dirs(workdir, "reflect")
+        if not all_reflect_dirs:
+            print("Error: No reflection directories found.", file=sys.stderr)
+            return 1
+        if use_all:
+            cohort_dirs = all_reflect_dirs
+        else:
+            cohort_dirs = all_reflect_dirs[-use_some:]
+        print(f"Ingesting from {len(cohort_dirs)} cohort(s) (min_count={min_count})...")
+        if dry_run:
+            print("  (dry-run mode — no items will be created)")
+
+        total_created = []
+        for cohort_dir_name in cohort_dirs:
+            cohort_num = _cohort_number_from_dir(cohort_dir_name)
+            iter_base = os.path.join(workdir, "reflect", cohort_dir_name)
+            if os.path.isdir(iter_base):
+                iters = sorted(
+                    d for d in os.listdir(iter_base)
+                    if d.startswith("iter-") and os.path.isdir(os.path.join(iter_base, d))
+                )
+                iteration = int(iters[-1].split("-")[1]) if iters else default_iteration
+            else:
+                iteration = default_iteration
+
+            summary_path = os.path.join(
+                workdir, "reflect",
+                f"cohort-{cohort_num:03d}", f"iter-{iteration:03d}",
+                "summary.yaml",
+            )
+            if not os.path.exists(summary_path):
+                continue
+
+            with open(summary_path) as f:
+                summary = yaml.safe_load(f)
+
+            created = ingest_improvement_ideas(
+                summary, min_count=min_count, dry_run=dry_run,
+            )
+            total_created.extend(created)
+
+        if total_created:
+            print(f"\nCreated {len(total_created)} stealth tracker item(s):")
+            for item in total_created:
+                print(f"  {item['id']}: {item['idea'][:60]}...")
+        else:
+            print("\nNo new items to create (all already exist or below threshold).")
+        return 0
+
+    # Single cohort mode
+    cohort_number = state.get("cohort_number", 0)
+    iteration = args.iteration or state.get("iteration", 0)
+
+    summary_path = os.path.join(
+        workdir, "reflect",
+        f"cohort-{cohort_number:03d}",
+        f"iter-{iteration:03d}",
+        "summary.yaml",
+    )
+
+    if not os.path.exists(summary_path):
+        print(f"Error: No summary found at {summary_path}", file=sys.stderr)
+        print("Run 'aggregate' first.", file=sys.stderr)
+        return 1
+
+    with open(summary_path) as f:
+        summary = yaml.safe_load(f)
+
+    print(f"Ingesting improvement ideas (min_count={min_count})...")
+    if dry_run:
+        print("  (dry-run mode — no items will be created)")
+
+    created = ingest_improvement_ideas(
+        summary, min_count=min_count, dry_run=dry_run,
+    )
+
+    if created:
+        print(f"\nCreated {len(created)} stealth tracker item(s):")
+        for item in created:
+            print(f"  {item['id']}: {item['idea'][:60]}...")
+    else:
+        print("\nNo new items to create (all already exist or below threshold).")
 
     return 0
 
@@ -452,11 +1421,53 @@ def main():
     p_reflect = subparsers.add_parser("reflect", help="Generate reflection prompts")
     p_reflect.add_argument("--workdir", help="Bakeoff workdir")
     p_reflect.add_argument("--iteration", type=int, help="Specific iteration to reflect on")
+    p_reflect.add_argument("--all", action="store_true",
+                           help="Reflect on all cohorts (default: latest only)")
+    p_reflect.add_argument("--some", type=int, metavar="N",
+                           help="Reflect on latest N cohorts (like --all but capped)")
 
     # aggregate
     p_aggregate = subparsers.add_parser("aggregate", help="Aggregate assessment results")
     p_aggregate.add_argument("--workdir", help="Bakeoff workdir")
     p_aggregate.add_argument("--iteration", type=int, help="Specific iteration")
+    p_aggregate.add_argument(
+        "--ingest", action="store_true",
+        help="Also ingest improvement ideas into stealth tracker items",
+    )
+    p_aggregate.add_argument("--all", action="store_true",
+                             help="Aggregate all cohorts (default: latest only)")
+    p_aggregate.add_argument("--some", type=int, metavar="N",
+                             help="Aggregate latest N cohorts (like --all but capped)")
+
+    # check (aggregation resilience)
+    p_check = subparsers.add_parser(
+        "check", help="Find and optionally aggregate orphaned assessment sets"
+    )
+    p_check.add_argument("--workdir", help="Bakeoff workdir")
+    p_check.add_argument(
+        "--auto-aggregate",
+        action="store_true",
+        help="Automatically aggregate any unaggregated assessment sets",
+    )
+
+    # ingest (improvement ideas → tracker)
+    p_ingest = subparsers.add_parser(
+        "ingest", help="Ingest improvement ideas into stealth tracker items"
+    )
+    p_ingest.add_argument("--workdir", help="Bakeoff workdir")
+    p_ingest.add_argument("--iteration", type=int, help="Specific iteration")
+    p_ingest.add_argument(
+        "--min-count", type=int, default=2, dest="min_count",
+        help="Minimum occurrence count to ingest (default: 2)",
+    )
+    p_ingest.add_argument(
+        "--dry-run", action="store_true", dest="dry_run",
+        help="Report what would be created without calling tracker",
+    )
+    p_ingest.add_argument("--all", action="store_true",
+                          help="Ingest from all cohort summaries (default: latest only)")
+    p_ingest.add_argument("--some", type=int, metavar="N",
+                          help="Ingest from latest N cohort summaries")
 
     args = parser.parse_args()
 
@@ -465,10 +1476,14 @@ def main():
         args.command = "reflect"
         args.workdir = None
         args.iteration = None
+        setattr(args, "all", False)
+        setattr(args, "some", None)
 
     commands = {
         "reflect": cmd_reflect,
         "aggregate": cmd_aggregate,
+        "check": cmd_check,
+        "ingest": cmd_ingest,
     }
 
     return commands[args.command](args)

@@ -1,0 +1,66 @@
+- op: create  # c266
+  at: '2026-02-15T00:51:38Z'  # c266
+  by: agent  # c266
+  actor: migration  # c266
+  clock: 1  # c266
+  nonce: c266  # c266
+  data:  # c266
+    kind: work_item  # c266
+    title: "Add Device Tree (DTS) analyzer."  # c266
+    status: todo_soft  # c266
+    priority: 4  # c266
+    parent:  # c266
+    tags:  # c266
+    - language_additions  # c266
+    before: []  # c266
+    duplicate_of: []  # c266
+    not_duplicate_of: []  # c266
+    pr_ref:  # c266
+    justification: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
+    description: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
+    fields: {}  # c266
+- op: update  # b55a
+  at: '2026-02-17T20:42:56Z'  # b55a
+  by: agent  # b55a
+  actor: jgstern_agent  # b55a
+  clock: 2  # b55a
+  nonce: b55a  # b55a
+  set:  # b55a
+    status: todo_soft  # b55a
+- op: discuss  # f654
+  at: '2026-02-18T13:44:51Z'  # f654
+  by: agent  # f654
+  actor: jgstern_agent  # f654
+  clock: 3  # f654
+  nonce: f654  # f654
+  message: "Device Tree analyzer: DTS files define hardware topology. Key constructs are node definitions (/ { ... }), property assignments, phandle references (&label), and compatible strings. tree-sitter-devicetree exists on GitHub."  # f654
+- op: discuss  # 4be9
+  at: '2026-02-18T14:55:13Z'  # 4be9
+  by: agent  # 4be9
+  actor: jgstern_agent  # 4be9
+  clock: 4  # 4be9
+  nonce: 4be9  # 4be9
+  message: "Device Tree overlays are also important. The analyzer should detect /plugin/ nodes and track which base tree properties they override. This enables understanding hardware customization layers."  # 4be9
+- op: update  # 879a
+  at: '2026-02-18T21:44:59Z'  # 879a
+  by: agent  # 879a
+  actor: jgstern_agent  # 879a
+  clock: 5  # 879a
+  nonce: 879a  # 879a
+  set:  # 879a
+    justification: "Deferred: P4 niche language. DTS files found in kernel repos but not in current bakeoff cohorts."  # 879a
+- op: update  # 75c6
+  at: '2026-02-20T20:30:13Z'  # 75c6
+  by: agent  # 75c6
+  actor: jgstern_agent  # 75c6
+  clock: 6  # 75c6
+  nonce: 75c6  # 75c6
+  set:  # 75c6
+    status: needs_human_review  # 75c6
+- op: discuss  # c947
+  at: '2026-02-25T08:43:42Z'  # c947
+  by: agent  # c947
+  actor: jgstern_agent  # c947
+  clock: 7  # c947
+  nonce: c947  # c947
+  message: "[migrated from justification field] Deferred: P4 niche language. DTS files found in kernel repos but not in current bakeoff cohorts."  # c947

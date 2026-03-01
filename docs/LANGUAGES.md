@@ -1,22 +1,28 @@
 # Supported Languages
 
-Hypergumbo includes 67 language analyzers. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
+Hypergumbo includes language analyzers for dozens of languages and file formats. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
 
 ## Language Table
 
 | Category | Languages |
 |----------|-----------|
 | **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Common Lisp, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
-| **Systems** | C, C++, Zig, Objective-C, CUDA, Fortran, LLVM IR |
-| **Smart Contracts** | Solidity |
-| **Hardware** | Verilog, VHDL, GLSL, WGSL |
-| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Nix, Bash, YAML/Ansible |
-| **Data/Schema** | SQL, GraphQL, JSON, TOML, XML, CSS |
-| **Frontend** | Elm, Vue, Svelte, HTML |
+| **Systems** | C, C++, Zig, Objective-C, D, Ada, Nim, Pascal, V, Odin, Fortran, CUDA, LLVM IR |
+| **Functional** | PureScript, Racket, Scheme, Elm, Gleam, Janet, Fennel |
+| **Frontend/Web** | Vue, Svelte, Astro, HTML, CSS/SCSS |
+| **Smart Contracts** | Solidity, Apex |
+| **Hardware/GPU** | Verilog/SystemVerilog, VHDL, GLSL, HLSL, WGSL |
+| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Meson, Nix, Starlark, Bash, PowerShell, Fish, Puppet, Bitbake, YAML/Ansible |
+| **Data/Schema** | SQL, SPARQL, GraphQL, Protocol Buffers, Thrift, Cap'n Proto, Smithy, Prisma, JSON, TOML, XML, INI, Properties, KDL, JSONNet |
+| **Game Dev** | GDScript, Haxe, Luau |
 | **Proof/Formal** | Agda, Lean*, Wolfram* |
-| **Legacy/Academic** | COBOL, LaTeX |
+| **Documentation** | Markdown, LaTeX, BibTeX, reStructuredText, AsciiDoc |
+| **Testing** | Robot Framework |
+| **Legacy** | COBOL, Tcl, Pony, Hack, Twig |
 
 \* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI). Run `hypergumbo build-grammars` to enable these analyzers.
+
+Analyzers are distributed across three packages: `hypergumbo-lang-mainstream`, `hypergumbo-lang-common`, and `hypergumbo-lang-extended1`. Installing the `hypergumbo` meta-package includes all three.
 
 ## How Analyzers Work
 
@@ -31,10 +37,10 @@ Analyzers are registered via decorator and selected automatically based on file 
 
 ## Adding a New Language
 
-See `src/hypergumbo/analyze/` for examples. The typical pattern:
+See `packages/hypergumbo-lang-*/src/` for examples. The typical pattern:
 
 ```python
-from hypergumbo.analyze.base import register_analyzer
+from hypergumbo_core.analyze.base import register_analyzer
 
 @register_analyzer("mylang", extensions=[".ml"])
 def analyze_mylang(path: Path) -> AnalysisResult:

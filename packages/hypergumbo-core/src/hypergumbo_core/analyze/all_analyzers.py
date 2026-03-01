@@ -1,123 +1,41 @@
-"""Consolidated analyzer registry with plugin discovery for cli.py.
+"""Facade for analyzer dispatch — delegates to the decorator-based registry.
 
-This module provides a single import point for all language analyzers,
-supporting both static registration and dynamic plugin discovery via entry_points.
+This module provides the stable import points used by cli.py and
+partial_install_warnings.py. Internally it delegates to the canonical
+registry in analyze/registry.py (ADR-0012 Step 1).
 
-How It Works
-------------
-- Analyzers can be registered statically in ANALYZERS list
-- Additional analyzers are discovered via entry_points group 'hypergumbo.analyzers'
-- run_all_analyzers() iterates over all discovered analyzers
-
-Why This Design
----------------
-- Single import point: `from hypergumbo_core.analyze.all_analyzers import run_all_analyzers`
-- Plugin support: Language packages register via entry_points in pyproject.toml
-- Backwards compatible: Static ANALYZERS list still works for core analyzers
-- Lazy loading: Analyzer functions loaded at call time for test patchability
+Import points:
+    - cli.py: ``from .analyze.all_analyzers import run_all_analyzers``
+    - partial_install_warnings.py: ``from .analyze.all_analyzers import get_analyzers``
 """
 
 from __future__ import annotations
 
-import importlib.metadata
 from pathlib import Path
-from typing import Any, Callable, NamedTuple
+from typing import Any
 
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
+from .registry import (
+    RegisteredAnalyzer,
+    clear_registry,
+    ensure_discovered,
+    get_all_analyzers as _registry_get_all,
+)
 
 
-class AnalyzerSpec(NamedTuple):
-    """Specification for an analyzer in the registry.
+def get_analyzers() -> list[RegisteredAnalyzer]:
+    """Get all registered analyzers (triggers discovery on first call).
 
-    Attributes:
-        name: Unique identifier for this analyzer (for logging/debugging)
-        module_path: Module path containing the analyzer function
-        func_name: Name of the analyzer function in the module
-        supports_max_files: Whether this analyzer accepts max_files parameter
-        capture_symbols_as: If set, store symbols in a separate variable for linkers
+    Returns list of RegisteredAnalyzer objects from the canonical registry.
     """
-
-    name: str
-    module_path: str
-    func_name: str
-    supports_max_files: bool = False
-    capture_symbols_as: str | None = None
-
-    def get_func(self) -> Callable[..., Any]:
-        """Get the analyzer function via dynamic import.
-
-        This enables patching to work correctly in tests, since
-        we look up the function at call time rather than import time.
-        """
-        import importlib
-        module = importlib.import_module(self.module_path)
-        return getattr(module, self.func_name)
+    ensure_discovered()
+    return list(_registry_get_all())
 
 
-def discover_analyzers() -> list[AnalyzerSpec]:
-    """Discover all registered analyzers from entry_points and static list.
-
-    This function combines:
-    1. Core analyzers from the CORE_ANALYZERS list (no dependencies)
-    2. Analyzers from language packages via 'hypergumbo.analyzers' entry_points
-
-    Returns:
-        Sorted list of AnalyzerSpec, with core analyzers first.
-    """
-    all_specs: list[AnalyzerSpec] = list(CORE_ANALYZERS)
-    seen_names: set[str] = {spec.name for spec in CORE_ANALYZERS}
-
-    # Discover analyzers from entry_points
-    try:
-        eps = importlib.metadata.entry_points(group="hypergumbo.analyzers")
-        for ep in eps:
-            try:
-                # Entry point loads a list of AnalyzerSpec
-                specs_list = ep.load()
-                if isinstance(specs_list, list):
-                    for spec in specs_list:
-                        if spec.name not in seen_names:
-                            all_specs.append(spec)
-                            seen_names.add(spec.name)
-            except Exception:  # pragma: no cover
-                # Skip broken plugins
-                pass
-    except Exception:  # pragma: no cover
-        # Fall back to core analyzers if entry_points unavailable
-        pass
-
-    return all_specs
-
-
-# Core analyzers (no optional dependencies beyond tree-sitter core)
-# These are always available and don't require language-specific packages
-CORE_ANALYZERS: list[AnalyzerSpec] = []
-
-# Cache for discovered analyzers
-_cached_analyzers: list[AnalyzerSpec] | None = None
-
-
-def get_analyzers() -> list[AnalyzerSpec]:
-    """Get all registered analyzers (cached).
-
-    Returns cached list of analyzers, discovering on first call.
-    """
-    global _cached_analyzers
-    if _cached_analyzers is None:
-        _cached_analyzers = discover_analyzers()
-    return _cached_analyzers
-
-
-def clear_analyzer_cache() -> None:  # pragma: no cover
-    """Clear the analyzer cache (useful for testing)."""
-    global _cached_analyzers
-    _cached_analyzers = None
-
-
-# Legacy alias for backwards compatibility
-# Note: This is now dynamically populated on first access
-ANALYZERS: list[AnalyzerSpec] = []
+def clear_analyzer_cache() -> None:
+    """Clear the analyzer cache and registry. For testing only."""
+    clear_registry()
 
 
 def collect_analyzer_result(
@@ -178,8 +96,9 @@ def run_all_analyzers(
 ]:
     """Run all registered analyzers and collect their results.
 
-    This replaces ~800 lines of repetitive analyzer invocation code
-    in run_behavior_map() with a clean loop.
+    Triggers entry-point discovery, then iterates all registered analyzers
+    in priority order. Handles supports_max_files, capture_symbols_as,
+    result collection, and edge deduplication.
 
     Args:
         repo_root: Repository root path
@@ -191,6 +110,8 @@ def run_all_analyzers(
         capture names to symbol lists (e.g., {"c": [...], "java": [...]}
         for the JNI linker).
     """
+    ensure_discovered()
+
     analysis_runs: list[dict] = []
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -199,15 +120,14 @@ def run_all_analyzers(
     limits.max_files_per_analyzer = max_files
     captured_symbols: dict[str, list[Symbol]] = {}
 
-    for spec in get_analyzers():
+    for analyzer in _registry_get_all():
         # Build kwargs based on analyzer capabilities
         kwargs: dict[str, Any] = {}
-        if spec.supports_max_files and max_files is not None:  # pragma: no cover
+        if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
             kwargs["max_files"] = max_files
 
-        # Run the analyzer (get_func enables test patching via lazy import)
-        func = spec.get_func()
-        result = func(repo_root, **kwargs)
+        # Run the analyzer (using get_func() for test patchability)
+        result = analyzer.get_func()(repo_root, **kwargs)
 
         # Collect results
         collect_analyzer_result(
@@ -215,8 +135,8 @@ def run_all_analyzers(
         )
 
         # Capture symbols for linkers if needed (e.g., JNI needs c_symbols and java_symbols)
-        if spec.capture_symbols_as and not result.skipped:
-            captured_symbols[spec.capture_symbols_as] = list(result.symbols)
+        if analyzer.capture_symbols_as and not result.skipped:
+            captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

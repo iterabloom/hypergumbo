@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import puppet as puppet_module
-from hypergumbo_lang_common.puppet import (
-    PuppetAnalysisResult,
-    analyze_puppet,
-    find_puppet_files,
-    is_puppet_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.puppet import analyze_puppet, find_puppet_files, is_puppet_tree_sitter_available
 
 def make_puppet_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Puppet file in the temp directory."""
@@ -20,7 +15,6 @@ def make_puppet_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPuppetFiles:
     """Tests for find_puppet_files function."""
@@ -37,7 +31,6 @@ class TestFindPuppetFiles:
         files = find_puppet_files(tmp_path)
         assert files == []
 
-
 class TestIsPuppetTreeSitterAvailable:
     """Tests for is_puppet_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsPuppetTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(puppet_module, "is_puppet_tree_sitter_available", return_value=False):
+        with patch.object(puppet_module._analyzer, "_check_grammar_available", return_value=False):
             assert puppet_module.is_puppet_tree_sitter_available() is False
-
 
 class TestAnalyzePuppet:
     """Tests for analyze_puppet function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class base {}")
-        with patch.object(puppet_module, "is_puppet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Puppet analysis skipped"):
+        with patch.object(puppet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="puppet analysis skipped"):
                 result = puppet_module.analyze_puppet(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -202,7 +194,7 @@ node 'server' {
         make_puppet_file(tmp_path, "init.pp", "class nginx {}")
         result = analyze_puppet(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "puppet.tree_sitter"
+        assert result.run.pass_id == "puppet-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -219,7 +211,7 @@ node 'server' {
         result = analyze_puppet(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.origin == "puppet.tree_sitter"
+        assert cls.origin == "puppet-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class nginx {}")

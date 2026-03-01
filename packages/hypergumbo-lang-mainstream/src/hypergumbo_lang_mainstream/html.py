@@ -39,15 +39,15 @@ Why This Design
 """
 import re
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.registry import register_analyzer
 
-PASS_ID = "html-pattern-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("html-pattern")
 
 # Regex to match <script src="..."> or <script src='...'>
 SCRIPT_SRC_PATTERN = re.compile(
@@ -68,18 +68,10 @@ def _make_file_id(path: str) -> str:
     return f"html:{path}:1-1:file:file"
 
 
-@dataclass
-class HtmlAnalysisResult:
-    """Result of analyzing HTML files."""
-
-    symbols: list[Symbol]
-    edges: list[Edge]
-    run: AnalysisRun | None = None
-
-
+@register_analyzer("html", supports_max_files=True)
 def analyze_html(
     repo_root: Path, max_files: int | None = None
-) -> HtmlAnalysisResult:
+) -> AnalysisResult:
     """
     Analyze all HTML files in a repository for script tags.
 
@@ -103,7 +95,7 @@ def analyze_html(
         try:
             content = html_file.read_text(errors="ignore")
             files_analyzed += 1
-        except (OSError, IOError):
+        except (OSError, IOError):  # pragma: no cover
             files_skipped += 1
             continue
 
@@ -155,4 +147,4 @@ def analyze_html(
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return HtmlAnalysisResult(symbols=symbols, edges=edges, run=run)
+    return AnalysisResult(symbols=symbols, edges=edges, run=run)

@@ -15,17 +15,18 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-commonlisp is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and use-package statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all symbols into global registry
+2. Pass 2: Detect calls and resolve against global symbol registry
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Common Lisp-specific
+extraction logic.
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
-- Uses tree-sitter-commonlisp for grammar
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
+- Uses tree-sitter-commonlisp for grammar (standalone package)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
 
@@ -44,23 +45,29 @@ Common Lisp-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "commonlisp-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("commonlisp")
 
 
 def find_commonlisp_files(repo_root: Path) -> Iterator[Path]:
@@ -68,71 +75,11 @@ def find_commonlisp_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.lisp", "*.lsp", "*.cl", "*.asd"])
 
 
-def is_commonlisp_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Common Lisp grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_commonlisp") is None:
-        return False  # pragma: no cover - commonlisp grammar not installed
-    try:
-        import tree_sitter
-        import tree_sitter_commonlisp
-        tree_sitter.Language(tree_sitter_commonlisp.language())
-        return True
-    except Exception:  # pragma: no cover - grammar loading failed
-        return False
-
-
-@dataclass
-class CommonLispAnalysisResult:
-    """Result of analyzing Common Lisp files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"commonlisp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Common Lisp file node (used as import edge source)."""
-    return f"commonlisp:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
 
 
 def _get_sym_lit_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract text from a sym_lit node."""
-    return _node_text(node, source).lower()  # Common Lisp is case-insensitive
+    return node_text(node, source).lower()  # Common Lisp is case-insensitive
 
 
 def _get_name_from_node(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -141,7 +88,7 @@ def _get_name_from_node(node: "tree_sitter.Node", source: bytes) -> str | None:
         return _get_sym_lit_text(node, source)
     elif node.type == "kwd_lit":
         # Keyword like :myapp.core - keep the colon
-        return _node_text(node, source).lower()
+        return node_text(node, source).lower()
     return None  # pragma: no cover - defensive fallback for unexpected node types
 
 
@@ -159,11 +106,11 @@ def _extract_defun_info(
     Returns (name, kind, signature) or None if extraction fails.
     """
     # Find defun_header child which contains the definition form and name
-    header = _find_child_by_type(node, "defun_header")
+    header = find_child_by_type(node, "defun_header")
     if not header:
         return None  # pragma: no cover - malformed defun
 
-    header_text = _node_text(header, source).strip()
+    header_text = node_text(header, source).strip()
     # Header looks like: "defun name (params)" or "defmethod name ((x type) y)"
     parts = header_text.split()
     if len(parts) < 2:
@@ -244,7 +191,7 @@ def _is_def_list(inner: list["tree_sitter.Node"], source: bytes) -> tuple[str, s
             # Try to extract signature from param list
             signature = None
             if len(inner) > 2 and inner[2].type == "list_lit":
-                sig_text = _node_text(inner[2], source)
+                sig_text = node_text(inner[2], source)
                 signature = sig_text
             return (kind, name, signature)
 
@@ -285,7 +232,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+                sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -315,7 +262,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+                sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -379,7 +326,7 @@ def _extract_edges_from_file(
     - use-package statements
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("commonlisp", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -447,104 +394,58 @@ def _extract_edges_from_file(
     return edges
 
 
-def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
+class CommonLispAnalyzer(TreeSitterAnalyzer):
+    """Common Lisp language analyzer using tree-sitter-commonlisp.
+
+    Uses the standalone tree_sitter_commonlisp grammar module (not
+    language-pack) since Common Lisp has its own dedicated package.
+    """
+
+    lang = "commonlisp"
+    file_patterns: ClassVar[list[str]] = ["*.lisp", "*.lsp", "*.cl", "*.asd"]
+    grammar_module = "tree_sitter_commonlisp"
+    create_file_symbols = True
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a Common Lisp file."""
+        analysis = FileAnalysis()
+        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Common Lisp file."""
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path, file_symbols,
+            resolver, run.execution_id,
+        )
+
+
+_analyzer = CommonLispAnalyzer()
+
+
+def is_commonlisp_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Common Lisp grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("commonlisp")
+def analyze_commonlisp(repo_root: Path) -> AnalysisResult:
     """Analyze Common Lisp files in a repository.
 
-    Returns a CommonLispAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-commonlisp is not available, returns a skipped result.
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_commonlisp_tree_sitter_available():  # pragma: no cover - tested via mock
-        skip_reason = (
-            "Common Lisp analysis skipped: requires tree-sitter-commonlisp "
-            "(pip install tree-sitter-commonlisp)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return CommonLispAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    import tree_sitter
-    import tree_sitter_commonlisp
-
-    lang = tree_sitter.Language(tree_sitter_commonlisp.language())
-    parser = tree_sitter.Parser(lang)
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for lisp_file in find_commonlisp_files(repo_root):
-        try:
-            source = lisp_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(lisp_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=_make_file_id(rel_path),
-            name="file",
-            kind="file",
-            language="commonlisp",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return CommonLispAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

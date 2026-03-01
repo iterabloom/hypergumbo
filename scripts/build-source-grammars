@@ -23,6 +23,13 @@ set -euo pipefail
 BUILD_DIR="${BUILD_DIR:-/tmp/ts-grammar-build}"
 WHEELS_DIR=""
 
+# Pinned commit SHAs for reproducible builds (ADR-0014 §6).
+# shape_id values depend on tree-sitter CST structure, which can change
+# between grammar versions. Pinning ensures consistent hashes across builds.
+# Update these when intentionally upgrading grammars, and bump SHAPE_ID_SCHEME.
+LEAN_COMMIT="efe6b87145608d12f5996bd7f0cf6095a0e82261"      # 2026-02-20
+WOLFRAM_COMMIT="63ebdac6f040d9082d3d8fa88be96ce24549adc5"   # 2026-02-20
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -79,12 +86,13 @@ if [ -n "$WHEELS_DIR" ]; then
 fi
 
 # Function to build a grammar
-# Args: name, repo_url, function_name, scanner_type (none|c|cc)
+# Args: name, repo_url, function_name, scanner_type (none|c|cc), commit_sha
 build_grammar() {
     local name="$1"
     local repo_url="$2"
     local function_name="$3"
     local scanner_type="${4:-none}"
+    local commit_sha="${5:-}"
 
     local repo_dir="$BUILD_DIR/tree-sitter-$name"
     local pkg_dir="$BUILD_DIR/tree-sitter-$name-py"
@@ -92,17 +100,20 @@ build_grammar() {
 
     echo ""
     echo "=== Building tree-sitter-$name ==="
+    if [ -n "$commit_sha" ]; then
+        echo "Pinned to commit: $commit_sha"
+    fi
 
     # Clone or update the repository (with retry for network issues)
     if [ -d "$repo_dir" ]; then
         echo "Updating existing repo..."
-        git -C "$repo_dir" pull --ff-only 2>/dev/null || true
+        git -C "$repo_dir" fetch origin 2>/dev/null || true
     else
         echo "Cloning $repo_url..."
         local max_retries=3
         local retry=0
         while [ $retry -lt $max_retries ]; do
-            if git clone --depth 1 "$repo_url" "$repo_dir" 2>&1; then
+            if git clone "$repo_url" "$repo_dir" 2>&1; then
                 break
             fi
             retry=$((retry + 1))
@@ -115,6 +126,12 @@ build_grammar() {
                 return 1
             fi
         done
+    fi
+
+    # Checkout pinned commit if specified
+    if [ -n "$commit_sha" ]; then
+        echo "Checking out pinned commit $commit_sha..."
+        git -C "$repo_dir" checkout "$commit_sha" 2>&1
     fi
 
     # Create Python package directory
@@ -244,12 +261,12 @@ SETUPEOF
 # Build tree-sitter-lean
 # Repository: https://github.com/Julian/tree-sitter-lean
 # Has scanner.c (C)
-build_grammar "lean" "https://github.com/Julian/tree-sitter-lean.git" "tree_sitter_lean" "c"
+build_grammar "lean" "https://github.com/Julian/tree-sitter-lean.git" "tree_sitter_lean" "c" "$LEAN_COMMIT"
 
 # Build tree-sitter-wolfram
 # Repository: https://github.com/bostick/tree-sitter-wolfram
 # Has scanner.cc (C++)
-build_grammar "wolfram" "https://github.com/bostick/tree-sitter-wolfram.git" "tree_sitter_wolfram" "cc"
+build_grammar "wolfram" "https://github.com/bostick/tree-sitter-wolfram.git" "tree_sitter_wolfram" "cc" "$WOLFRAM_COMMIT"
 
 echo ""
 echo "=== All grammars built successfully ==="

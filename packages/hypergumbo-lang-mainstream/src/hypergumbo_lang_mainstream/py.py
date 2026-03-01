@@ -19,16 +19,38 @@ Analysis proceeds in two passes for cross-file resolution:
 - Walk AST to find function/method call sites
 - Resolve callees using local symbols first, then imports
 - Detect self.method() calls within classes
+- Detect self.field.method() calls using field type inference from __init__
 - Detect ClassName() instantiation patterns
+- Track return type annotations for variable type inference
 - Create import edges from files to imported symbols
 
 Detected Patterns
 -----------------
 - Function calls: helper(), module.func()
-- Method calls: self.method(), obj.method()
+- Method calls: self.method(), obj.method(), self.field.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
 - Django URL patterns: path(), re_path(), url() calls in urls.py
+- Flask URL rules: app.add_url_rule() calls
+
+Route Detection Architecture
+-----------------------------
+Call-based URL routing (Django path(), Flask add_url_rule()) produces two
+outputs that serve different downstream consumers:
+
+1. **UsageContext records** — matched by YAML framework patterns (django.yaml,
+   flask.yaml) to enrich *handler* symbols with ``concept: route`` metadata.
+   This lets the enrichment layer tag view functions as route handlers.
+
+2. **Route symbols** (``kind="route"``) — consumed by the ``route_handler``
+   linker to create ``routes_to`` edges from route entities to handler symbols.
+   These are first-class nodes in the IR representing the route itself.
+
+Both are derived from the same extraction pass (_extract_django_usage_contexts,
+_extract_flask_usage_contexts). Route symbols are created from the UsageContext
+metadata at the callsite. This avoids duplicating the AST-walking logic while
+preserving both outputs. Go and JS/TS analyzers follow the same dual-output
+pattern.
 
 ID Schemes
 ----------
@@ -53,7 +75,7 @@ Why This Design
 - Two-pass approach enables cross-file call resolution via imports
 - col_offset == 0 heuristic distinguishes top-level from nested functions
 - Import resolution handles both absolute and relative imports
-- Rich metadata enables future FRAMEWORK_PATTERNS phase for semantic detection
+- Rich metadata feeds YAML-driven framework pattern enrichment (ADR-0003)
 """
 import ast
 import hashlib
@@ -63,7 +85,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    make_route_stable_id,
+    make_typed_stable_id,
+    visibility_from_modifiers,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import SymbolResolver
@@ -74,6 +103,33 @@ def find_python_files(
 ) -> Iterator[Path]:
     """Yield all Python files in the repository, excluding common non-source dirs."""
     yield from find_files(repo_root, ["*.py"], max_files=max_files)
+
+
+def _python_visibility_modifiers(name: str) -> list[str]:
+    """Derive visibility modifiers from Python naming convention.
+
+    Single underscore prefix (``_name``) = private.
+    Double underscore prefix without trailing double underscore (``__name``)
+    = private (name-mangled).
+    Dunders (``__name__``) are special methods, not private.
+    No prefix = public (empty list, since Python has no explicit modifier).
+    """
+    # Strip qualified prefix: "Class._method" → check "_method"
+    short = name.rsplit(".", 1)[-1] if "." in name else name
+    if short.startswith("_") and not (short.startswith("__") and short.endswith("__")):
+        return ["private"]
+    return []
+
+
+def normalize_python_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Python signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(
+        signature, type_params, return_sep="->", skip_self=True,
+    )
 
 
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
@@ -89,6 +145,77 @@ def _make_file_id(path: str) -> str:
 def _make_module_id(module_name: str) -> str:
     """Generate ID for an external module (used as import edge destination)."""
     return f"python:{module_name}:0-0:module:module"
+
+
+def _extract_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a function signature string.
+
+    Parses signatures like "(x: int) -> MyClass" and returns "MyClass".
+    Only handles simple (non-generic) return types — returns None for
+    complex types like "Optional[X]", "list[X]", "X | Y", etc.
+
+    Args:
+        signature: Function signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature or " -> " not in signature:
+        return None
+    ret_part = signature.rsplit(" -> ", 1)[1]
+    # Only handle simple names (identifiers), not generics or unions
+    if ret_part.isidentifier():
+        return ret_part
+    return None
+
+
+def _resolve_return_type_class(
+    type_name: str,
+    func_symbol: "Symbol",
+    local_symbols: dict[str, "Symbol"],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    resolver: "SymbolResolver | None" = None,
+) -> "Symbol | None":
+    """Resolve a return type name to a class Symbol.
+
+    Searches for the class in three places (in order):
+    1. The caller's local symbols (same file as the call site)
+    2. The caller's imports
+    3. The function's own module (the return type is usually co-located
+       with the function that returns it)
+
+    Only returns symbols with kind == "class".
+
+    Args:
+        type_name: Simple class name (e.g., "ServiceClient").
+        func_symbol: The function Symbol whose return type we're resolving.
+        local_symbols: Symbols defined in the caller's file.
+        imports: Import mappings from the caller's file.
+        global_symbols: All symbols across the project.
+        resolver: Optional SymbolResolver for efficient lookups.
+
+    Returns:
+        The class Symbol if found, None otherwise.
+    """
+    # Check caller's local symbols first
+    sym = local_symbols.get(type_name)
+    if sym and sym.kind == "class":
+        return sym
+    # Check caller's imports
+    if type_name in imports:
+        module_name, original_name = imports[type_name]
+        sym = _lookup_symbol_by_module(
+            global_symbols, module_name, original_name, resolver=resolver
+        )
+        if sym and sym.kind == "class":
+            return sym
+    # Check function's own module — the return type class is typically
+    # defined in the same file as the function
+    for (_mod, sym_name), sym in global_symbols.items():
+        if sym_name == type_name and sym.kind == "class" and sym.path == func_symbol.path:
+            return sym
+    return None
 
 
 def _lookup_symbol_by_module(
@@ -132,9 +259,12 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "rou
 # These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
-# Flask URL pattern functions (call-based routing)
-# Flask's add_url_rule() is the call-based alternative to @app.route()
-FLASK_URL_FUNCTIONS = {"add_url_rule"}
+# Flask/FastAPI call-based URL routing functions.
+# Flask's add_url_rule() is the call-based alternative to @app.route().
+# FastAPI's add_api_route() registers routes programmatically instead of
+# using @router.get() decorators.  Both take a path string as the first
+# argument and a handler function as a subsequent argument.
+FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -176,6 +306,17 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
         if isinstance(val, (int, float)):
             return -val
         return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    elif isinstance(node, ast.Call):
+        # Function call as decorator arg, e.g., _add_static_prefix("/health").
+        # If the first positional argument is a resolvable literal, return it.
+        # This handles wrapper patterns common in Flask/FastAPI where a helper
+        # function wraps a route path string.
+        if node.args:
+            first_arg = _ast_value_to_python(node.args[0])
+            if isinstance(first_arg, str) and first_arg != "<complex>":
+                return first_arg
+        # Fall through to string representation
+        return _format_annotation(node) or "<complex>"  # pragma: no cover
     elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
         # Complex number literal like 1+2j or 1-2j
         left = _ast_value_to_python(node.left)
@@ -465,62 +606,6 @@ def _has_main_guard(tree: ast.Module) -> bool:
     return False
 
 
-def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
-    """Extract Django URL patterns from path(), re_path(), url() calls.
-
-    Returns list of (start_line, end_line, route_path, view_name).
-    """
-    patterns: list[tuple[int, int, str, str | None]] = []
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-
-        # Check if it's a Django URL function call
-        func_name = None
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
-
-        if func_name not in DJANGO_URL_FUNCTIONS:
-            continue
-
-        # Extract the URL pattern from the first argument
-        if not node.args:  # pragma: no cover
-            continue
-
-        first_arg = node.args[0]
-        route_path = None
-        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            route_path = first_arg.value
-        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
-            continue  # Skip dynamic patterns (f-strings)
-
-        if route_path is None:  # pragma: no cover - unsupported pattern type
-            continue
-
-        # Extract view name from second argument
-        view_name = None
-        if len(node.args) >= 2:
-            second_arg = node.args[1]
-            if isinstance(second_arg, ast.Attribute):
-                # views.user_list -> "user_list"
-                view_name = second_arg.attr
-            elif isinstance(second_arg, ast.Name):
-                # user_list -> "user_list"
-                view_name = second_arg.id
-
-        patterns.append((
-            node.lineno,
-            getattr(node, "end_lineno", node.lineno),
-            route_path,
-            view_name,
-        ))
-
-    return patterns
-
-
 def _extract_django_usage_contexts(
     tree: ast.Module,
     file_path: str,
@@ -584,6 +669,23 @@ def _extract_django_usage_contexts(
                 # Try to resolve to a local symbol
                 if view_name in symbol_by_name:
                     view_ref = symbol_by_name[view_name].id
+            elif isinstance(second_arg, ast.Call):
+                # views.LoginView.as_view() -> "LoginView"
+                # TemplateView.as_view(template_name='...') -> "TemplateView"
+                call_func = second_arg.func
+                if isinstance(call_func, ast.Attribute) and call_func.attr == "as_view":
+                    # Extract the class name from the as_view() call
+                    if isinstance(call_func.value, ast.Attribute):
+                        # views.LoginView.as_view() -> LoginView
+                        view_name = call_func.value.attr
+                        # Try to resolve to a local symbol (class)
+                        if view_name in symbol_by_name:
+                            view_ref = symbol_by_name[view_name].id
+                    elif isinstance(call_func.value, ast.Name):
+                        # LoginView.as_view() -> LoginView
+                        view_name = call_func.value.id
+                        if view_name in symbol_by_name:
+                            view_ref = symbol_by_name[view_name].id
 
         # Build metadata with args info
         args_values = []
@@ -638,16 +740,18 @@ def _extract_flask_usage_contexts(
     file_path: str,
     symbol_by_name: dict[str, Symbol],
 ) -> list[UsageContext]:
-    """Extract UsageContext records for Flask add_url_rule() calls.
+    """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
     Creates UsageContext records that capture how view functions are used
-    in add_url_rule() calls. These are matched against YAML patterns in
-    the enrichment phase.
+    in add_url_rule() and add_api_route() calls. These are matched against
+    YAML patterns in the enrichment phase.
 
     Supported patterns:
     - app.add_url_rule('/users', 'user_list', user_list)
     - app.add_url_rule('/users', view_func=user_list)
     - blueprint.add_url_rule('/items', view_func=get_items, methods=['GET'])
+    - router.add_api_route('/path', handler, methods=['GET'])
+    - router.add_api_route('/path', handler, response_model=Model)
 
     Args:
         tree: The parsed AST module
@@ -690,7 +794,8 @@ def _extract_flask_usage_contexts(
 
         # Extract view function - can be:
         # 1. Third positional arg: add_url_rule('/path', 'name', view_func)
-        # 2. view_func keyword arg: add_url_rule('/path', view_func=handler)
+        # 2. Second positional arg: add_api_route('/path', handler, ...)
+        # 3. view_func keyword arg: add_url_rule('/path', view_func=handler)
         view_ref = None
         view_name = None
 
@@ -705,15 +810,18 @@ def _extract_flask_usage_contexts(
                     view_name = kw.value.attr
                 break
 
-        # If not found in kwargs, check third positional arg
-        if view_name is None and len(node.args) >= 3:
-            third_arg = node.args[2]
-            if isinstance(third_arg, ast.Name):
-                view_name = third_arg.id
+        # If not found in kwargs, check positional args.
+        # add_api_route: second arg is handler ('/path', handler, ...)
+        # add_url_rule: third arg is handler ('/path', 'name', handler)
+        handler_arg_idx = 1 if func_name == "add_api_route" else 2
+        if view_name is None and len(node.args) > handler_arg_idx:
+            handler_arg = node.args[handler_arg_idx]
+            if isinstance(handler_arg, ast.Name):
+                view_name = handler_arg.id
                 if view_name in symbol_by_name:
                     view_ref = symbol_by_name[view_name].id
-            elif isinstance(third_arg, ast.Attribute):
-                view_name = third_arg.attr
+            elif isinstance(handler_arg, ast.Attribute):
+                view_name = handler_arg.attr
 
         # Extract methods if specified
         methods = None
@@ -777,14 +885,40 @@ def _extract_flask_usage_contexts(
     return contexts
 
 
-def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
+def _extract_py_decorator_names(node: ast.FunctionDef | ast.ClassDef) -> str:
+    """Extract sorted, comma-joined decorator names from an AST node.
+
+    Walks the decorator list and extracts plain names (stripping module
+    paths and arguments).  Returns a sorted, comma-joined string suitable
+    for inclusion in stable_id formulas.  Returns empty string when no
+    decorators are present.
+    """
+    names: list[str] = []
+    for dec in node.decorator_list:
+        if isinstance(dec, ast.Name):
+            names.append(dec.id)
+        elif isinstance(dec, ast.Attribute):
+            names.append(dec.attr)
+        elif isinstance(dec, ast.Call):
+            if isinstance(dec.func, ast.Name):
+                names.append(dec.func.id)
+            elif isinstance(dec.func, ast.Attribute):
+                names.append(dec.func.attr)
+    return ",".join(sorted(names))
+
+
+def _compute_stable_id(
+    node: ast.FunctionDef | ast.ClassDef,
+    containing_stable_id: str = "",
+) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
     Returns:
-    sha256({kind}:{param_count}:{arity_flags}:{decorators})
+    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
+    containing_stable_id: stable_id of the enclosing class/module (ADR-0014 §5)
     """
     kind = "function" if isinstance(node, ast.FunctionDef) else "class"
 
@@ -801,22 +935,10 @@ def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
         param_count = 0
         arity_flags = "False,False,False"
 
-    # Extract decorator names
-    decorators = []
-    for dec in node.decorator_list:
-        if isinstance(dec, ast.Name):
-            decorators.append(dec.id)
-        elif isinstance(dec, ast.Attribute):
-            decorators.append(dec.attr)
-        elif isinstance(dec, ast.Call):
-            if isinstance(dec.func, ast.Name):
-                decorators.append(dec.func.id)
-            elif isinstance(dec.func, ast.Attribute):
-                decorators.append(dec.func.attr)
-    decorators_str = ",".join(sorted(decorators))
+    decorators_str = _extract_py_decorator_names(node)
 
-    # Build signature string and hash
-    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}"
+    # Build signature string and hash (ADR-0014 §5: includes containing_stable_id)
+    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}:{containing_stable_id}"
     hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
     return f"sha256:{hash_val}"
 
@@ -854,8 +976,7 @@ def _compute_shape_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     return f"sha256:{hash_val}"
 
 
-PASS_ID = "python-ast-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("python-ast")
 
 
 def _compute_cyclomatic_complexity(node: ast.AST) -> int:
@@ -917,16 +1038,6 @@ def _compute_lines_of_code(node: ast.AST) -> int:
     start = node.lineno
     end = getattr(node, "end_lineno", node.lineno)
     return end - start + 1
-
-
-@dataclass
-class AnalysisResult:
-    """Result of analyzing Python files."""
-
-    symbols: list[Symbol]
-    edges: list[Edge]
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
 
 
 @dataclass
@@ -1149,9 +1260,70 @@ def _extract_import_edges(
     return edges
 
 
+def _resolve_base_class(
+    base_name: str,
+    child_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]],
+) -> Symbol | None:
+    """Resolve a base class name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes share the same name (e.g., 238 classes named 'Model'
+    in Django), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file imports match a candidate's module path
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (imported_name -> (module_name, original_name))
+
+    Returns:
+        The resolved base class Symbol, or None if no match found.
+    """
+    candidates = class_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Extract file path from child symbol ID for same-file check
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base class in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    child_imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in child_imports:
+        import_module, _original_name = child_imports[base_name]
+        # Match import module against candidate file paths
+        # e.g., import_module="db.models" matches candidate path "db/models.py"
+        module_as_path = import_module.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            # Check if candidate path contains the module path
+            # e.g., "db/models.py" contains "db/models"
+            cand_no_ext = cand_path.rsplit(".py", 1)[0]
+            if cand_no_ext.endswith(module_as_path):
+                return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends edges from class inheritance.
@@ -1160,9 +1332,14 @@ def _extract_inheritance_edges(
     base classes that exist in the analyzed codebase. This enables the
     type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
 
+    When multiple classes share the same name (common in large repos like Django
+    where 238 test stubs are named 'Model'), uses import-aware disambiguation
+    via ``_resolve_base_class()`` to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
         run: Current analysis run for provenance
 
     Returns:
@@ -1182,9 +1359,11 @@ def _extract_inheritance_edges(
             # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
             base_name = base_class_name.split("[")[0]
 
-            # Look up base class in the symbol table
-            if base_name in class_symbols:
-                base_sym = class_symbols[base_name]
+            # Resolve to the correct base class, handling name collisions
+            base_sym = _resolve_base_class(
+                base_name, sym, class_by_name, sym_file_imports
+            )
+            if base_sym is not None and base_sym.id != sym.id:
                 edge = Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
@@ -1294,6 +1473,8 @@ def _extract_file_analysis(
                     _format_annotation(base) for base in node.bases
                 ]
 
+            _ds = ast.get_docstring(node)
+            _ds_line = _ds.split("\n")[0].strip()[:80] if _ds else None
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
@@ -1306,6 +1487,8 @@ def _extract_file_analysis(
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
                 meta=class_meta if class_meta else None,
+                docstring=_ds_line,
+                modifiers=_python_visibility_modifiers(node.name),
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -1324,10 +1507,26 @@ def _extract_file_analysis(
                     method_name = f"{class_name}.{item.name}"
 
                     # For Django/DRF class-based views, methods named get/post/etc.
-                    # should have stable_id set to the HTTP method (uppercase for consistency)
-                    stable_id = _compute_stable_id(item)
+                    # use route-style stable_id with class name as path for uniqueness
+                    # (ADR-0014 §4: sha256("route:{method}:{path}"))
                     if item.name.lower() in HTTP_METHODS:
-                        stable_id = item.name.upper()
+                        stable_id = make_route_stable_id(item.name, class_name)
+                    else:
+                        # Try typed tier first (ADR-0014 §3), fall back to untyped
+                        sig = _format_function_signature(item)
+                        norm_sig = normalize_python_signature(sig)
+                        modifiers = _python_visibility_modifiers(method_name)
+                        if norm_sig:
+                            stable_id = make_typed_stable_id(
+                                "method", norm_sig,
+                                visibility_from_modifiers(modifiers),
+                                symbol.stable_id,
+                                _extract_py_decorator_names(item),
+                            )
+                        else:
+                            stable_id = _compute_stable_id(
+                                item, containing_stable_id=symbol.stable_id
+                            )
 
                     # Build rich metadata for method (ADR-0003)
                     method_meta: dict[str, object] = {}
@@ -1343,6 +1542,8 @@ def _extract_file_analysis(
                     if params:
                         method_meta["parameters"] = params
 
+                    _mds = ast.get_docstring(item)
+                    _mds_line = _mds.split("\n")[0].strip()[:80] if _mds else None
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -1355,7 +1556,9 @@ def _extract_file_analysis(
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         lines_of_code=_compute_lines_of_code(item),
                         signature=_format_function_signature(item),
+                        docstring=_mds_line,
                         meta=method_meta if method_meta else None,
+                        modifiers=_python_visibility_modifiers(method_name),
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -1406,6 +1609,21 @@ def _extract_file_analysis(
                 if params:
                     func_meta["parameters"] = params
 
+                # Try typed tier first (ADR-0014 §3), fall back to untyped
+                func_sig = _format_function_signature(node)
+                func_modifiers = _python_visibility_modifiers(node.name)
+                norm_sig = normalize_python_signature(func_sig)
+                if norm_sig:
+                    func_stable_id = make_typed_stable_id(
+                        "function", norm_sig,
+                        visibility_from_modifiers(func_modifiers),
+                        decorators=_extract_py_decorator_names(node),
+                    )
+                else:
+                    func_stable_id = _compute_stable_id(node)
+
+                _fds = ast.get_docstring(node)
+                _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                     name=node.name,
@@ -1413,51 +1631,47 @@ def _extract_file_analysis(
                     language="python",
                     path=str(py_file),
                     span=span,
-                    stable_id=_compute_stable_id(node),
+                    stable_id=func_stable_id,
                     shape_id=_compute_shape_id(node),
                     meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
-                    signature=_format_function_signature(node),
+                    signature=func_sig,
+                    docstring=_fds_line,
+                    modifiers=func_modifiers,
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
 
-    # Detect Django URL patterns (path, re_path, url calls)
-    # Note: This is NOT deprecated - Django URL patterns use function calls,
-    # not decorators, so they cannot be detected via YAML patterns.
-    django_patterns = _extract_django_url_patterns(tree)
-    for start_line, end_line, route_path, view_name in django_patterns:
-        span = Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=0,
-            end_col=0,
-        )
-        # Normalize route path - ensure it starts with /
-        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
-        route_name = f"django:{view_name or 'unknown'}"
+    # Extract usage contexts for call-based frameworks (v1.1.x).
+    # UsageContext records feed into YAML-driven enrichment (concept tagging on
+    # handler symbols). Route symbols are derived from the same contexts for the
+    # route_handler linker, which needs kind="route" symbols to create routes_to
+    # edges. See "Route Detection Architecture" in this module's docstring.
+    usage_contexts: list[UsageContext] = []
+    django_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
+    usage_contexts.extend(django_contexts)
+    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
+
+    # Create route symbols from Django usage contexts.
+    for ctx in django_contexts:
+        route_path = ctx.metadata.get("route_path", "")
+        view_name = ctx.metadata.get("view_name")
         symbol = Symbol(
-            id=_make_symbol_id(str(py_file), start_line, end_line, normalized_path, "route"),
-            name=route_name,
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            name=f"django:{view_name or 'unknown'}",
             kind="route",
             language="python",
             path=str(py_file),
-            span=span,
-            stable_id="GET",  # Django defaults to GET, all methods allowed
+            span=ctx.span,
+            stable_id=make_route_stable_id("GET", route_path),
             meta={
-                "route_path": normalized_path,
+                "route_path": route_path,
                 "http_method": "GET",
                 "view_name": view_name,
             },
         )
         symbols.append(symbol)
-
-    # Extract usage contexts for call-based frameworks (v1.1.x)
-    # This enables YAML-driven pattern matching for Django, Flask, etc.
-    usage_contexts: list[UsageContext] = []
-    usage_contexts.extend(_extract_django_usage_contexts(tree, str(py_file), symbol_by_name))
-    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
 
     # Compute module name for import resolution
     if repo_root is not None:
@@ -1490,11 +1704,18 @@ def _extract_edges(
     Handles:
     - Direct calls: helper(), ClassName()
     - Self method calls: self.method()
+    - Self field method calls: self.field.method() (using field type inference from __init__)
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: variable.method() (with constructor-only type inference)
 
-    Note: Type inference only tracks types from direct constructor calls
-    (stub = Client()), not from function returns (stub = get_client()).
+    Type inference sources:
+    1. Direct constructor calls: stub = Client() → var_types['stub'] = Client
+    2. Return type annotations: stub = get_client() where get_client() -> Client
+       → var_types['stub'] = Client (requires annotation on the function)
+    3. Parameter type annotations: def f(session: Session) → param maps to Session
+
+    Field type inference tracks self.field assignments in __init__ from typed params
+    and constructor calls.
 
     Args:
         tree: The parsed AST
@@ -1508,6 +1729,29 @@ def _extract_edges(
         module_imports = {}
 
     edges: list[Edge] = []
+
+    def _emit_function_ref(name_node: ast.Name, caller: Symbol) -> None:
+        """Emit a 'references' edge if *name_node* resolves to a function/method.
+
+        Used for function references in non-call contexts: call arguments,
+        dict values, variable assignments, and collection literals.
+        """
+        name = name_node.id
+        symbol = local_symbols.get(name)
+        if not symbol and name in imports:
+            mod_name, original_name = imports[name]
+            symbol = _lookup_symbol_by_module(
+                global_symbols, mod_name, original_name, resolver=resolver
+            )
+        if symbol and symbol.kind in ("function", "method"):
+            edges.append(Edge.create(
+                src=caller.id,
+                dst=symbol.id,
+                edge_type="references",
+                line=name_node.lineno,
+                confidence=0.80,
+                evidence_type="function_reference",
+            ))
 
     # Helper to extract edges from a code block (function body, module level, etc.)
     def process_code_block(
@@ -1531,6 +1775,24 @@ def _extract_edges(
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
+                        elif assigned_class and assigned_class.kind in ("function", "method"):
+                            # Return type inference: if the function has a
+                            # return type annotation pointing to a class,
+                            # track the variable's type from that annotation.
+                            ret_name = _extract_return_type_name(
+                                assigned_class.signature
+                            )
+                            if ret_name:
+                                ret_class = _resolve_return_type_class(
+                                    ret_name, assigned_class, local_symbols,
+                                    imports, global_symbols, resolver,
+                                )
+                                if ret_class:
+                                    var_types[target.id] = ret_class
+
+            # Function reference in assignment RHS: callback = my_func
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                _emit_function_ref(node.value, caller_symbol)
 
             # Process calls
             if isinstance(node, ast.Call):
@@ -1538,6 +1800,25 @@ def _extract_edges(
                     node, caller_symbol, local_symbols, imports, global_symbols,
                     module_imports, var_types, edges, resolver
                 )
+                # Function references in call arguments: map(transform, items)
+                for arg in node.args:
+                    if isinstance(arg, ast.Name):
+                        _emit_function_ref(arg, caller_symbol)
+                for kw in node.keywords:
+                    if isinstance(kw.value, ast.Name):
+                        _emit_function_ref(kw.value, caller_symbol)
+
+            # Function references in dict values: {"GET": handle_get}
+            if isinstance(node, ast.Dict):
+                for val in node.values:
+                    if isinstance(val, ast.Name):
+                        _emit_function_ref(val, caller_symbol)
+
+            # Function references in list/tuple: [func_a, func_b]
+            if isinstance(node, (ast.List, ast.Tuple)):
+                for elt in node.elts:
+                    if isinstance(elt, ast.Name):
+                        _emit_function_ref(elt, caller_symbol)
 
             # Recurse into child nodes (but not into nested function defs)
             for child in ast.iter_child_nodes(node):
@@ -1601,14 +1882,241 @@ def _extract_edges(
 
         return param_types
 
+    def _resolve_decorator_target(
+        decorator: ast.expr,
+    ) -> Symbol | None:
+        """Resolve the target of a decorator expression to a Symbol.
+
+        Handles:
+        - @decorator -> decorator function
+        - @decorator(args) -> decorator function
+        - @module.decorator -> module.decorator function
+        - @app.get("/path") -> app.get method
+        """
+        # For Call decorators, extract the actual function being called
+        # @decorator(args) or @app.get("/path")
+        if isinstance(decorator, ast.Call):
+            decorator = decorator.func
+
+        # Simple name: @decorator or @dataclass
+        if isinstance(decorator, ast.Name):
+            name = decorator.id
+            # Check local symbols
+            symbol = local_symbols.get(name)
+            if symbol:
+                return symbol
+            # Check imports (with suffix matching)
+            if name in imports:
+                module_name, original_name = imports[name]
+                return _lookup_symbol_by_module(
+                    global_symbols, module_name, original_name, resolver=resolver
+                )
+
+        # Attribute: @module.decorator or @app.get
+        elif isinstance(decorator, ast.Attribute):
+            if isinstance(decorator.value, ast.Name):
+                receiver_name = decorator.value.id
+                attr_name = decorator.attr
+
+                # Check if receiver is a local class (e.g., @Registry.register)
+                # Methods are stored with short name as key, so look up attr_name
+                # and verify it's a method of the receiver class
+                symbol = local_symbols.get(attr_name)
+                if symbol and symbol.name == f"{receiver_name}.{attr_name}":
+                    return symbol
+
+                # Check if receiver is an imported module (with suffix matching)
+                if receiver_name in module_imports:
+                    module_name = module_imports[receiver_name]
+                    return _lookup_symbol_by_module(
+                        global_symbols, module_name, attr_name, resolver=resolver
+                    )
+
+        return None
+
+    def _process_decorators(
+        decorated_symbol: Symbol,
+        decorator_list: list[ast.expr],
+    ) -> None:
+        """Create decorated_by edges for each decorator on a symbol."""
+        for decorator in decorator_list:
+            decorator_symbol = _resolve_decorator_target(decorator)
+
+            # Get the line number from the decorator itself
+            line = getattr(decorator, "lineno", 0)
+
+            if decorator_symbol:
+                edges.append(Edge.create(
+                    src=decorated_symbol.id,
+                    dst=decorator_symbol.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    evidence_type="ast_decorator",
+                    confidence=0.95,
+                ))
+            else:
+                # Emit unresolved edge for decorators we can't resolve
+                # This helps track framework decorators like @app.get
+                if isinstance(decorator, ast.Call):
+                    dec_func = decorator.func
+                else:
+                    dec_func = decorator
+
+                if isinstance(dec_func, ast.Attribute) and isinstance(
+                    dec_func.value, ast.Name
+                ):
+                    receiver_name = dec_func.value.id
+                    attr_name = dec_func.attr
+                    dst_id = f"python:unresolved:0-0:{receiver_name}.{attr_name}:unresolved"
+                    edges.append(Edge.create(
+                        src=decorated_symbol.id,
+                        dst=dst_id,
+                        edge_type="decorated_by",
+                        line=line,
+                        evidence_type="ast_decorator_unresolved",
+                        confidence=0.50,
+                    ))
+
+            # Check for Django signal receiver decorator: @receiver(signal, ...)
+            # Creates signal_receiver edges from signal to handler
+            _process_signal_receiver(decorated_symbol, decorator, line)
+
+    def _process_signal_receiver(
+        decorated_symbol: Symbol,
+        decorator: ast.expr,
+        line: int,
+    ) -> None:
+        """Create signal_receiver edges for Django @receiver decorators.
+
+        When a function is decorated with @receiver(signal) or @receiver([sig1, sig2]),
+        create signal_receiver edges from each signal to the decorated function.
+        """
+        # Must be a call: @receiver(signal, ...)
+        if not isinstance(decorator, ast.Call):
+            return
+
+        # Check if decorator is "receiver"
+        dec_func = decorator.func
+        decorator_name = None
+        if isinstance(dec_func, ast.Name):
+            decorator_name = dec_func.id
+        elif isinstance(dec_func, ast.Attribute):
+            decorator_name = dec_func.attr
+
+        if decorator_name != "receiver":
+            return
+
+        # Extract signals from first argument
+        if not decorator.args:
+            return
+
+        first_arg = decorator.args[0]
+        signal_nodes: list[ast.expr] = []
+
+        # Handle @receiver([signal1, signal2])
+        if isinstance(first_arg, ast.List):
+            signal_nodes = first_arg.elts
+        else:
+            # Single signal: @receiver(post_save)
+            signal_nodes = [first_arg]
+
+        # Create signal_receiver edges for each signal
+        for signal_node in signal_nodes:
+            signal_symbol = None
+
+            if isinstance(signal_node, ast.Name):
+                signal_name = signal_node.id
+                signal_symbol = local_symbols.get(signal_name)
+                if not signal_symbol and signal_name in imports:
+                    module_name, original_name = imports[signal_name]
+                    signal_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, original_name, resolver=resolver
+                    )
+
+            if signal_symbol:
+                edges.append(Edge.create(
+                    src=signal_symbol.id,
+                    dst=decorated_symbol.id,
+                    edge_type="signal_receiver",
+                    line=line,
+                    evidence_type="django_signal_receiver",
+                    confidence=0.90,
+                ))
+            elif isinstance(signal_node, ast.Name):
+                # Unresolved signal - emit edge anyway for visibility
+                dst_id = f"python:unresolved:0-0:{signal_node.id}:signal"
+                edges.append(Edge.create(
+                    src=dst_id,
+                    dst=decorated_symbol.id,
+                    edge_type="signal_receiver",
+                    line=line,
+                    evidence_type="django_signal_receiver_unresolved",
+                    confidence=0.50,
+                ))
+
+    # Pre-collect class field types for self.field.method() resolution (INV-014).
+    # Scans __init__ methods for self.field = param (typed) and self.field = Class()
+    # assignments, building a per-class map of field name -> type Symbol.
+    class_field_types: dict[str, dict[str, Symbol]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        init_method = None
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__":
+                init_method = item
+                break
+        if init_method is None:
+            continue
+        init_param_types = _extract_param_types(init_method)
+        field_types: dict[str, Symbol] = {}
+        for stmt in ast.walk(init_method):
+            if not isinstance(stmt, ast.Assign):
+                continue
+            for target in stmt.targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    field_name = target.attr
+                    # self.field = param where param has type annotation
+                    if isinstance(stmt.value, ast.Name) and stmt.value.id in init_param_types:
+                        field_types[field_name] = init_param_types[stmt.value.id]
+                    # self.field = ClassName()
+                    elif isinstance(stmt.value, ast.Call):
+                        assigned_class = _resolve_call_target(
+                            stmt.value, local_symbols, imports, global_symbols,
+                            module_imports, resolver
+                        )
+                        if assigned_class and assigned_class.kind == "class":
+                            field_types[field_name] = assigned_class
+        if field_types:
+            class_field_types[node.name] = field_types
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
+                # Process decorators on the function
+                _process_decorators(caller_symbol, node.decorator_list)
                 # Extract types from parameter annotations
                 param_types = _extract_param_types(node)
+                # Merge class field types for self.field.method() resolution
+                if caller_symbol.kind == "method":
+                    class_name = caller_symbol.name.split(".")[0]
+                    if class_name in class_field_types:
+                        for fname, fsym in class_field_types[class_name].items():
+                            if fname not in param_types:
+                                param_types[fname] = fsym
                 process_code_block(node.body, caller_symbol, param_types)
+
+        # Process class decorators
+        elif isinstance(node, ast.ClassDef):
+            class_symbol = local_symbols.get(node.name)
+            if class_symbol:
+                _process_decorators(class_symbol, node.decorator_list)
 
     # Process module-level code for <module> pseudo-nodes
     module_symbol = local_symbols.get("<module>")
@@ -1686,6 +2194,7 @@ def _process_call(
     Handles:
     - Direct calls: helper(), ClassName()
     - Self method calls: self.method()
+    - Self field method calls: self.field.method() (using field type inference)
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: stub.method() (using var_types for type inference)
     """
@@ -1768,6 +2277,25 @@ def _process_call(
                         global_symbols, submodule_name, attr_name, resolver=resolver
                     )
 
+        # Case 2f: self.field.method() - call on injected dependency (INV-014)
+        # Pattern: self.svc.process() where self.svc was assigned from a typed param
+        # or constructor call in __init__. Field types are pre-loaded into var_types.
+        elif (
+            isinstance(func.value, ast.Attribute)
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "self"
+        ):
+            field_name = func.value.attr
+            if field_name in var_types:
+                class_symbol = var_types[field_name]
+                qualified_name = f"{class_symbol.name}.{attr_name}"
+                callee_symbol = local_symbols.get(qualified_name)
+                if not callee_symbol:
+                    for (_mod, sym_name), sym in global_symbols.items():
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
+                            callee_symbol = sym
+                            break
+
     # Emit edge if we resolved the callee
     if callee_symbol:
         if is_instantiation:
@@ -1847,6 +2375,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     )
 
 
+@register_analyzer("python", supports_max_files=True)
 def analyze_python(
     repo_root: Path, max_files: int | None = None
 ) -> AnalysisResult:
@@ -1907,6 +2436,10 @@ def analyze_python(
             if source_symbol:
                 # Add alias: (package, local_name) -> source_symbol
                 global_symbols[(package_name, local_name)] = source_symbol
+                # Mark the source symbol as re-exported from __init__.py
+                # so library-export patterns can detect it
+                if "re_exported" not in source_symbol.modifiers:
+                    source_symbol.modifiers.append("re_exported")
 
     # Create resolver for efficient lookups in Pass 2 (with cached indexes)
     from hypergumbo_core.symbol_resolution import SymbolResolver
@@ -1948,14 +2481,24 @@ def analyze_python(
         all_usage_contexts.extend(analysis.usage_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
-    # Build a class symbol lookup by name
-    class_symbols: dict[str, Symbol] = {}
+    # Build multi-value class lookup: name -> list of candidates
+    # (single-value dict had last-writer-wins bug: 238 Django 'Model' classes
+    # all resolved to a single test stub instead of django.db.models.base.Model)
+    class_by_name: dict[str, list[Symbol]] = {}
     for sym in all_symbols:
         if sym.kind == "class":
-            class_symbols[sym.name] = sym
+            class_by_name.setdefault(sym.name, []).append(sym)
 
-    # Create extends edges for base classes that exist in the repo
-    inheritance_edges = _extract_inheritance_edges(all_symbols, class_symbols, run)
+    # Build symbol ID -> file-level imports mapping for disambiguation
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]] = {}
+    for _py_file, analysis in file_analyses.items():
+        for sym in analysis.symbols:
+            sym_file_imports[sym.id] = analysis.imports
+
+    # Create extends edges with import-aware disambiguation
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, class_by_name, sym_file_imports, run
+    )
     all_edges.extend(inheritance_edges)
 
     # Update run metadata

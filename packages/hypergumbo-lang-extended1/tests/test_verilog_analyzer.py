@@ -8,10 +8,10 @@ Tests verify that the analyzer correctly extracts:
 - Always blocks
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_extended1.verilog import (
     PASS_ID,
-    PASS_VERSION,
-    VerilogAnalysisResult,
     analyze_verilog_files,
     find_verilog_files,
 )
@@ -20,7 +20,7 @@ from hypergumbo_lang_extended1.verilog import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "verilog-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 
 def test_analyze_simple_module(tmp_path):
@@ -134,7 +134,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_verilog_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, VerilogAnalysisResult)
+    assert isinstance(result, AnalysisResult)
 
 
 def test_span_information(tmp_path):

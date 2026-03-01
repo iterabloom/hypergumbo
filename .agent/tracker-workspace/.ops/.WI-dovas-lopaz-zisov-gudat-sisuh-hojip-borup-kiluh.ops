@@ -1,0 +1,89 @@
+- op: create  # 2e47
+  at: '2026-02-15T00:51:38Z'  # 2e47
+  by: agent  # 2e47
+  actor: migration  # 2e47
+  clock: 1  # 2e47
+  nonce: '2e47'  # 2e47
+  data:  # 2e47
+    kind: work_item  # 2e47
+    title: "Target: Node.js N-API linker — `napi_create_function`, `node-addon-api` `Napi::Function::New` linking JS calls to C/C++ addon functions."  # 2e47
+    status: todo_soft  # 2e47
+    priority: 4  # 2e47
+    parent:  # 2e47
+    tags:  # 2e47
+    - cross_language_linkers  # 2e47
+    before: []  # 2e47
+    duplicate_of: []  # 2e47
+    not_duplicate_of: []  # 2e47
+    pr_ref:  # 2e47
+    justification: "lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
+    description: "Deferred: lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
+    fields: {}  # 2e47
+- op: update  # 28bc
+  at: '2026-02-17T08:52:14Z'  # 28bc
+  by: human  # 28bc
+  actor: jgstern  # 28bc
+  clock: 2  # 28bc
+  nonce: 28bc  # 28bc
+  set:  # 28bc
+    status: todo_soft  # 28bc
+    description: "Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 28bc
+- op: update  # fd0a
+  at: '2026-02-18T09:12:08Z'  # fd0a
+  by: human  # fd0a
+  actor: jgstern  # fd0a
+  clock: 4  # fd0a
+  nonce: fd0a  # fd0a
+  set:  # fd0a
+    priority: 2  # fd0a
+- op: discuss  # f90e
+  at: '2026-02-18T13:44:21Z'  # f90e
+  by: agent  # f90e
+  actor: jgstern_agent  # f90e
+  clock: 5  # f90e
+  nonce: f90e  # f90e
+  message: "Node.js N-API linker design: Should detect napi_create_function in C/C++ addon source, map the registered function name to the JS export, and create cross-language edges in the call graph. Also handle node-addon-api C++ wrapper patterns."  # f90e
+- op: discuss  # b671
+  at: '2026-02-18T14:01:12Z'  # b671
+  by: agent  # b671
+  actor: jgstern_agent  # b671
+  clock: 6  # b671
+  nonce: b671  # b671
+  message: "Implementation note: The N-API linker should also handle node-gyp binding.gyp files to identify which C/C++ sources are compiled into the addon, linking the build graph to the runtime call graph."  # b671
+- op: discuss  # 3189
+  at: '2026-02-18T14:41:45Z'  # 3189
+  by: agent  # 3189
+  actor: jgstern_agent  # 3189
+  clock: 7  # 3189
+  nonce: '3189'  # 3189
+  message: "Consider also WASM-based addons. node-gyp is the traditional approach but wasm-bindgen and wasm-pack are increasingly common. The linker should at minimum detect binding.gyp and wasm-pack metadata."  # 3189
+- op: discuss  # 5103
+  at: '2026-02-18T14:55:14Z'  # 5103
+  by: agent  # 5103
+  actor: jgstern_agent  # 5103
+  clock: 8  # 5103
+  nonce: '5103'  # 5103
+  message: "Priority note: Node N-API addons are most commonly found in packages like sharp, bcrypt, and sqlite3. Testing against these real packages would validate the linker design against actual usage patterns."  # 5103
+- op: discuss  # 5748
+  at: '2026-02-18T16:25:47Z'  # 5748
+  by: agent  # 5748
+  actor: jgstern_agent  # 5748
+  clock: 9  # 5748
+  nonce: '5748'  # 5748
+  message: "Auto-sync test 4: N-API linker remains deferred."  # 5748
+- op: update  # 2b74
+  at: '2026-02-18T18:18:39Z'  # 2b74
+  by: agent  # 2b74
+  actor: jgstern_agent  # 2b74
+  clock: 10  # 2b74
+  nonce: 2b74  # 2b74
+  set:  # 2b74
+    status: done  # 2b74
+    justification: "N-API linker merged in upcoming PR"  # 2b74
+- op: discuss  # f7d8
+  at: '2026-02-25T08:41:25Z'  # f7d8
+  by: agent  # f7d8
+  actor: jgstern_agent  # f7d8
+  clock: 11  # f7d8
+  nonce: f7d8  # f7d8
+  message: "[migrated from justification field] N-API linker merged in upcoming PR"  # f7d8

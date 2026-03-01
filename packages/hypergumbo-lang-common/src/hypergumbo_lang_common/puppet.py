@@ -35,48 +35,21 @@ from __future__ import annotations
 
 import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, populate_docstrings_from_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
 
-PASS_ID = "puppet.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("puppet")
 
 
-class PuppetAnalysisResult:
-    """Result of Puppet manifest analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_puppet_tree_sitter_available() -> bool:
-    """Check if tree-sitter-puppet is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("puppet")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_puppet_files(repo_root: Path) -> list[Path]:
@@ -88,7 +61,7 @@ def find_puppet_files(repo_root: Path) -> list[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
@@ -96,7 +69,7 @@ def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
     return f"puppet:{path}:{kind}:{line}:{name}"
 
 
-class PuppetAnalyzer:
+class _PuppetExtractor:
     """Analyzer for Puppet manifest files."""
 
     def __init__(self, repo_root: Path) -> None:
@@ -107,13 +80,13 @@ class PuppetAnalyzer:
         self._files_analyzed = 0
         self._class_registry: dict[str, str] = {}  # class name -> symbol id
 
-    def analyze(self) -> PuppetAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the Puppet analysis."""
         start_time = time.time()
 
         files = find_puppet_files(self.repo_root)
         if not files:
-            return PuppetAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -127,7 +100,9 @@ class PuppetAnalyzer:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(self._symbols)
                 self._extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, self._symbols[before:])
                 self._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue
@@ -143,7 +118,7 @@ class PuppetAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return PuppetAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -460,35 +435,52 @@ class PuppetAnalyzer:
             self._edges.append(edge)
 
 
-def analyze_puppet(repo_root: Path) -> PuppetAnalysisResult:
+class PuppetAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for Puppet manifest files.
+
+    Extracts classes, defined types, resources, nodes, includes, and
+    relationship edges. Uses language_pack_name for the puppet grammar.
+    """
+
+    lang = "puppet"
+    file_patterns: ClassVar[list[str]] = ["**/*.pp"]
+    language_pack_name = "puppet"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run Puppet analysis with cross-file class registry."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _PuppetExtractor(repo_root)
+        return extractor.analyze()
+
+
+_analyzer = PuppetAnalyzer()
+
+
+def is_puppet_tree_sitter_available() -> bool:
+    """Check if tree-sitter-puppet is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("puppet")
+def analyze_puppet(repo_root: Path) -> AnalysisResult:
     """Analyze Puppet manifest files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        PuppetAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_puppet_tree_sitter_available():
-        warnings.warn(
-            "Puppet analysis skipped: tree-sitter-puppet not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return PuppetAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "puppet", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-puppet not available",
-        )
-
-    analyzer = PuppetAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

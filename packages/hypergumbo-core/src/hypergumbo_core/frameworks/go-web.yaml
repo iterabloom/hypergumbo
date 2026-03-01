@@ -76,6 +76,10 @@ patterns:
   - concept: repository
     decorator: "^db\\.(Create|First|Find|Save|Delete|Update|Where)$"
 
+  # XORM engine operations (Forgejo/Gitea ORM)
+  - concept: repository
+    decorator: "^(e|x|engine|sess|session)\\.(Get|Find|Insert|Update|Delete|Exec|Query|Where|ID|Count|Exist|Iterate|Cols|Incr|Decr|SetExpr|AllCols)$"
+
   # Go context handling
   - concept: middleware
     decorator: "^context\\.(WithValue|WithCancel|WithDeadline|WithTimeout)$"

@@ -1,0 +1,52 @@
+- op: create  # 35dd
+  at: '2026-02-15T00:51:38Z'  # 35dd
+  by: agent  # 35dd
+  actor: migration  # 35dd
+  clock: 1  # 35dd
+  nonce: 35dd  # 35dd
+  data:  # 35dd
+    kind: work_item  # 35dd
+    title: "Target: Add `--cov-branch` to CI — INV-011 closed as WON'T DO."  # 35dd
+    status: todo_soft  # 35dd
+    priority: 4  # 35dd
+    parent:  # 35dd
+    tags:  # 35dd
+    - from_inv_011  # 35dd
+    before: []  # 35dd
+    duplicate_of: []  # 35dd
+    not_duplicate_of: []  # 35dd
+    pr_ref:  # 35dd
+    justification: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
+    description: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
+    fields: {}  # 35dd
+- op: update  # b36b
+  at: '2026-02-17T20:42:57Z'  # b36b
+  by: agent  # b36b
+  actor: jgstern_agent  # b36b
+  clock: 2  # b36b
+  nonce: b36b  # b36b
+  set:  # b36b
+    status: todo_soft  # b36b
+- op: update  # 071f
+  at: '2026-02-18T09:06:15Z'  # 071f
+  by: human  # 071f
+  actor: jgstern  # 071f
+  clock: 4  # 071f
+  nonce: 071f  # 071f
+  set:  # 071f
+    status: needs_human_review  # 071f
+- op: update  # 682d
+  at: '2026-02-23T09:16:55Z'  # 682d
+  by: human  # 682d
+  actor: jgstern  # 682d
+  clock: 5  # 682d
+  nonce: 682d  # 682d
+  set:  # 682d
+    status: wont_do  # 682d
+- op: discuss  # 8b73
+  at: '2026-02-25T08:44:46Z'  # 8b73
+  by: agent  # 8b73
+  actor: jgstern_agent  # 8b73
+  clock: 6  # 8b73
+  nonce: 8b73  # 8b73
+  message: "[migrated from justification field] Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 8b73

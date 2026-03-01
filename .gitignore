@@ -11,6 +11,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
 # hypergumbo
 .hypergumbo/
@@ -27,12 +28,17 @@ slice.json
 **/.cursor/state/
 **/*-session/
 AUTONOMOUS_MODE.txt
+.agent/LOOP
+.agent/disabled.LOOP
 
 # Coverage
 .coverage
 .coverage.*
 htmlcov/
 coverage-report.txt
+
+# Snapshot reports (pytest-textual-snapshot)
+snapshot_report.html
 
 # Node (bats testing)
 node_modules/
@@ -41,3 +47,9 @@ package-lock.json
 
 # Hypergumbo cache
 .hypergumbo_cache/
+.ci/pytest-output.log
+
+# Tracker
+**/config.yaml
+!**/config.yaml.template
+.agent/.cache-*.db

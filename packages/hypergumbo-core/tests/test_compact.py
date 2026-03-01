@@ -907,12 +907,27 @@ class TestIsTestPath:
         assert _is_test_path("types/component.test-d.ts")
         assert _is_test_path("dts-test/foo.test-d.tsx")
 
+    def test_java_integration_test_source_set(self):
+        """Gradle/Maven integration test source set detected."""
+        assert _is_test_path(
+            "aws/src/integration/java/org/apache/iceberg/aws/glue/TestGlueCatalogTable.java"
+        )
+        assert _is_test_path(
+            "core/src/integration/java/org/apache/TestBase.java"
+        )
+
     def test_production_files_not_detected(self):
         """Production files are not detected as tests."""
         assert not _is_test_path("src/app.py")
         assert not _is_test_path("lib/utils.ts")
         assert not _is_test_path("pkg/handler.go")
         assert not _is_test_path("components/Button.tsx")
+
+    def test_integration_directory_not_test(self):
+        """Non-src integration directories are not test paths."""
+        # Only /src/integration/ is a test convention, not arbitrary /integration/
+        assert not _is_test_path("services/integration/handler.go")
+        assert not _is_test_path("api/integration/client.py")
 
 
 class TestIsExamplePath:
@@ -1160,6 +1175,7 @@ class TestSelectByTokensFiltering:
 
         # Omitted should include filtered example symbol
         assert result.omitted.count >= 1
+
 
 
 # ============================================================================
@@ -1902,6 +1918,36 @@ class TestConnectivityAwareSelection:
         # D is unconnected, should not be selected
         assert sym_d.id not in selected_ids
 
+    def test_self_loop_edges_excluded_from_adjacency(self):
+        """Self-loop edges are ignored in connectivity-aware selection.
+
+        Self-loops (src == dst) should not inflate a node's connectivity
+        score or appear in the induced subgraph edges.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        sym_a = make_symbol("visitor")
+        sym_b = make_symbol("handler")
+        sym_c = make_symbol("caller")
+        symbols = [sym_a, sym_b, sym_c]
+
+        edges = [
+            make_edge(sym_c.id, sym_a.id),
+            make_edge(sym_c.id, sym_b.id),
+            # Self-loop on visitor
+            make_edge(sym_a.id, sym_a.id),
+        ]
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids={sym_c.id}, max_additional=5
+        )
+
+        # Self-loop should not appear in induced edges
+        for e in result.included_edges:
+            assert e.src != e.dst, (
+                f"Self-loop in induced edges: {e.src} -> {e.dst}"
+            )
+
 
 class TestSelectByConnectivityIntegration:
     """Integration tests for connectivity selection with format functions."""
@@ -1952,3 +1998,651 @@ class TestSelectByConnectivityIntegration:
         for edge in result["edges"]:
             assert edge["src"] in included_ids
             assert edge["dst"] in included_ids
+
+
+class TestTieredTokenBudget:
+    """Tests for token budget compliance in tiered behavior maps.
+
+    Tiered output must fit within the target token budget. Two fixes:
+    1. Force-included entrypoints must be capped (like compact mode does).
+    2. Non-essential fields (analysis_runs, usage_contexts, sketch_precomputed)
+       must be stripped from tiered output.
+    """
+
+    def test_tiered_entrypoints_capped(self):
+        """When many entrypoints exist, tiered mode caps them to fit budget."""
+        # Simulate a repo with many entrypoints (like FastAPI with ~1400 routes)
+        entrypoint_syms = [make_symbol(f"route_{i}") for i in range(50)]
+        other_syms = [make_symbol(f"util_{i}") for i in range(50)]
+        all_symbols = entrypoint_syms + other_syms
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "http_route", "confidence": 0.9 - i * 0.001}
+            for i, s in enumerate(entrypoint_syms)
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        # With 4k budget, we should NOT include all 50 entrypoints
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, [],
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # The total token count of the output should be under budget
+        from hypergumbo_core.compact import estimate_behavior_map_tokens
+        actual_tokens = estimate_behavior_map_tokens(result)
+        assert actual_tokens <= 4000, (
+            f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget. "
+            f"Nodes: {len(result['nodes'])}"
+        )
+
+    def test_tiered_many_entrypoints_still_produces_nodes(self):
+        """With 500+ entrypoints, tiered mode should still include nodes.
+
+        Regression: entrypoint reserve was ep_count * 30 + 400 which for
+        500 entrypoints = 15,400 tokens — exceeding the 4K budget entirely,
+        leaving 0 tokens for nodes. The reserve must be capped.
+        """
+        entrypoint_syms = [make_symbol(f"route_{i}") for i in range(500)]
+        other_syms = [make_symbol(f"util_{i}") for i in range(50)]
+        all_symbols = entrypoint_syms + other_syms
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "http_route", "confidence": 0.9 - i * 0.0001}
+            for i, s in enumerate(entrypoint_syms)
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, [],
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # Must include at least some nodes (not 0)
+        assert len(result["nodes"]) > 0, (
+            "Tiered output has 0 nodes despite 550 available symbols"
+        )
+
+        # Budget compliance
+        actual_tokens = estimate_behavior_map_tokens(result)
+        assert actual_tokens <= 4000, (
+            f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget"
+        )
+
+    def test_tiered_strips_analysis_runs(self):
+        """Tiered output should not include full analysis_runs (too large)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "analysis_runs": [
+                {"analyzer": f"analyzer_{i}", "files": 100, "symbols": 500}
+                for i in range(20)
+            ],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        # analysis_runs should be stripped or summarized
+        assert "analysis_runs" not in result, (
+            "Tiered output should strip analysis_runs to save tokens"
+        )
+
+    def test_tiered_strips_usage_contexts(self):
+        """Tiered output should not include usage_contexts (too large)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "usage_contexts": [
+                {"symbol_id": f"sym_{i}", "context": "call", "source": "file.py"}
+                for i in range(100)
+            ],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        assert "usage_contexts" not in result, (
+            "Tiered output should strip usage_contexts to save tokens"
+        )
+
+    def test_tiered_strips_sketch_precomputed(self):
+        """Tiered output should not include sketch_precomputed (irrelevant)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "sketch_precomputed": {
+                "config_info": "x" * 1000,
+                "vocabulary": ["word"] * 100,
+                "centrality_scores": {"file.py": 0.5},
+            },
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        assert "sketch_precomputed" not in result, (
+            "Tiered output should strip sketch_precomputed to save tokens"
+        )
+
+    def test_tiered_low_confidence_entrypoints_dont_crowd_bridge_nodes(self):
+        """Low-confidence entrypoints should not crowd out bridge nodes.
+
+        Regression: DMD bakeoff found 64k tiered view had 226 nodes but 0 edges.
+        Root cause: 1790 test main() functions were all force-included, filling
+        the budget before bridge nodes that provide edges could be selected.
+        Test mains have confidence ~0.65 (0.9 base * 0.5 test penalty + 0.2
+        connectivity boost), so the threshold must be >= 0.7 to filter them.
+
+        Fix: format_tiered_behavior_map filters force_include_ids by confidence
+        (>= 0.7) and caps count. Low-confidence entrypoints compete on centrality
+        with bridge nodes in the regular fill phase.
+        """
+        # Real entrypoints (high confidence, like actual main functions)
+        real_eps = [make_symbol(f"real_ep_{i}") for i in range(3)]
+        # Test main() entrypoints (confidence 0.65: 0.9 * 0.5 + connectivity)
+        test_eps = [make_symbol(f"test_main_{i}") for i in range(80)]
+        # Bridge nodes that connect real entrypoints (high centrality)
+        bridges = [make_symbol(f"bridge_{i}") for i in range(10)]
+
+        all_symbols = real_eps + test_eps + bridges
+
+        # Edges: real_eps → bridges, bridges → bridges (connected subgraph)
+        edge_list = []
+        for ep in real_eps:
+            edge_list.append(make_edge(ep.id, bridges[0].id))
+        for i in range(len(bridges) - 1):
+            edge_list.append(make_edge(bridges[i].id, bridges[i + 1].id))
+
+        entrypoints = [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9}
+            for ep in real_eps
+        ] + [
+            # 0.65 matches real DMD scenario: test penalty (0.5x) + connectivity
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.65}
+            for ep in test_eps
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edge_list],
+            "entrypoints": entrypoints,
+        }
+
+        # 4k budget: ~35-40 symbols fit. Without the fix, 80 test mains
+        # fill the force-include phase, leaving no room for bridge nodes.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, edge_list,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # Bridge nodes should be present — they provide connectivity
+        bridge_included = sum(1 for b in bridges if b.id in included_ids)
+        assert bridge_included > 0, (
+            f"No bridge nodes included. {len(result['nodes'])} nodes total, "
+            f"0 bridge nodes. Low-confidence test entrypoints crowded them out."
+        )
+
+        # Edges should exist (bridge nodes connect things)
+        assert len(result["edges"]) > 0, (
+            f"Tiered view has {len(result['nodes'])} nodes but 0 edges. "
+            f"Low-confidence test entrypoints crowded out bridge nodes."
+        )
+
+    def test_select_by_tokens_respects_budget_for_forced(self):
+        """Force-included symbols should not exceed token budget."""
+        # Create many symbols to force-include
+        symbols = [make_symbol(f"sym_{i}") for i in range(100)]
+        force_ids = {s.id for s in symbols}  # Force ALL
+
+        result = select_by_tokens(
+            symbols, [],
+            target_tokens=1000,
+            force_include_ids=force_ids,
+        )
+
+        # Total tokens used by included symbols should be under budget
+        total_tokens = sum(
+            estimate_node_tokens(s.to_dict()) for s in result.included.symbols
+        )
+        # Allow for overhead (200 + 200), but shouldn't be wildly over
+        assert total_tokens <= 1000, (
+            f"Force-included symbols use {total_tokens} tokens, "
+            f"exceeds 1000 budget. Included {result.included.count} symbols."
+        )
+
+    def test_tiered_self_loop_edges_excluded(self):
+        """Self-loop edges (src==dst) are excluded from tiered output.
+
+        Regression: DMD bakeoff iter-002 found 28% of 64k view edges were
+        self-loops (visitor pattern self-references where src==dst). These
+        waste token budget and inflate edge counts without adding useful
+        connectivity information.
+        """
+        sym_a = make_symbol("process")
+        sym_b = make_symbol("handle")
+
+        # Normal edge + self-loop
+        normal_edge = make_edge(sym_a.id, sym_b.id)
+        self_loop = make_edge(sym_a.id, sym_a.id)
+        all_edges = [normal_edge, self_loop]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b]],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b], all_edges,
+            target_tokens=10000,
+        )
+
+        # Self-loop should not appear in output edges
+        for e in result["edges"]:
+            assert e.get("src") != e.get("dst"), (
+                f"Self-loop found in tiered output: {e.get('src')} -> {e.get('dst')}"
+            )
+        # Normal edge should still be present
+        assert len(result["edges"]) == 1
+
+    def test_tiered_self_loops_dont_inflate_centrality(self):
+        """Self-loops should not inflate centrality during token selection.
+
+        A symbol with a self-loop should not get extra centrality relative
+        to an otherwise-equivalent symbol without one.
+        """
+        sym_a = make_symbol("visitor_accept")
+        sym_b = make_symbol("handler_process")
+        sym_c = make_symbol("caller")
+
+        # Normal edges: caller -> visitor, caller -> handler
+        # Plus self-loop on visitor
+        edges = [
+            make_edge(sym_c.id, sym_a.id),
+            make_edge(sym_c.id, sym_b.id),
+            make_edge(sym_a.id, sym_a.id),  # self-loop
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], edges,
+            target_tokens=10000,
+        )
+
+        # Self-loop should not be in output
+        for e in result["edges"]:
+            assert e.get("src") != e.get("dst"), (
+                f"Self-loop in output: {e.get('src')} -> {e.get('dst')}"
+            )
+        # Should have exactly 2 edges: caller->visitor, caller->handler
+        assert len(result["edges"]) == 2
+
+    def test_tiered_output_respects_token_budget_with_edges(self):
+        """Tiered output must not exceed the target token budget.
+
+        Regression: DMD bakeoff iter-002 showed 64k tiered view at 175K tokens
+        (2.7x over budget) because induced edges were added without any budget
+        accounting. DMD 16k was 3.4x over budget (54K tokens for 16K target).
+
+        The root cause: format_tiered_behavior_map selects nodes within budget,
+        then adds ALL induced edges and entrypoints without checking if the
+        total output fits. With dense graphs (DMD has 130K edges for 76K nodes),
+        the induced edge set can dwarf the node budget.
+
+        Fix: Post-selection budget validation with node shrinking to fit edges.
+        """
+        # Create a dense graph: 50 nodes, each connected to ~10 others
+        all_symbols = [make_symbol(f"func_{i}") for i in range(50)]
+        all_edges = []
+        for i in range(50):
+            for j in range(1, 11):
+                target = (i + j) % 50
+                if target != i:
+                    all_edges.append(make_edge(
+                        all_symbols[i].id, all_symbols[target].id
+                    ))
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "main_function", "confidence": 0.9}
+            for s in all_symbols[:5]
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # Test with 4k budget — dense graph should NOT blow the budget
+        result_4k = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+        actual_4k = estimate_behavior_map_tokens(result_4k)
+        assert actual_4k <= 4000, (
+            f"4k tiered output is {actual_4k} tokens, exceeds 4000 budget. "
+            f"{len(result_4k['nodes'])} nodes, {len(result_4k['edges'])} edges."
+        )
+
+        # Test with 16k budget
+        result_16k = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=16000,
+            force_include_entrypoints=True,
+        )
+        actual_16k = estimate_behavior_map_tokens(result_16k)
+        assert actual_16k <= 16000, (
+            f"16k tiered output is {actual_16k} tokens, exceeds 16000 budget. "
+            f"{len(result_16k['nodes'])} nodes, {len(result_16k['edges'])} edges."
+        )
+
+    def test_tiered_budget_compliance_edge_heavy_graph(self):
+        """Edge-heavy graph (like DMD visitor pattern) must still comply.
+
+        DMD has ~1.7 edges per node. Many nodes have high fan-out to
+        the same targets. The induced edge set for the selected nodes
+        should be truncated when it would blow the budget.
+        """
+        # 30 nodes, high fan-out: each calls 15 others
+        syms = [make_symbol(f"visit_{i}") for i in range(30)]
+        edges = []
+        for i in range(30):
+            for j in range(15):
+                target = (i + j + 1) % 30
+                if target != i:
+                    edges.append(make_edge(syms[i].id, syms[target].id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in syms],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # 16k budget: should include many nodes but truncate edges to fit
+        result = format_tiered_behavior_map(
+            behavior_map, syms, edges,
+            target_tokens=16000,
+        )
+        actual = estimate_behavior_map_tokens(result)
+        assert actual <= 16000, (
+            f"16k tiered output is {actual} tokens, exceeds 16000 budget. "
+            f"{len(result['nodes'])} nodes, {len(result['edges'])} edges."
+        )
+
+    def test_tiered_4k_produces_edges_when_graph_has_connectivity(self):
+        """4k tiered view should include edges when the graph is connected.
+
+        Regression: All three bakeoff repos (Django, DMD, NestJS) produced
+        0 edges in their 4k views despite having dense graphs. The 4k view
+        selected 7-12 high-centrality nodes independently, without considering
+        whether they were adjacent. A connected subgraph of 5 nodes with
+        edges is more useful than 12 disconnected nodes.
+
+        Fix: Use connectivity-aware selection in format_tiered_behavior_map.
+        """
+        # Create a graph with clear connected components
+        # Component 1: entrypoint -> service -> repository
+        ep = make_symbol("AppController")
+        svc = make_symbol("UserService")
+        repo = make_symbol("UserRepository")
+        # Component 2: isolated high-centrality nodes
+        isolated = [make_symbol(f"util_{i}") for i in range(10)]
+
+        all_symbols = [ep, svc, repo] + isolated
+
+        # Connected edges: ep -> svc -> repo (linear chain)
+        connected_edges = [
+            make_edge(ep.id, svc.id),
+            make_edge(svc.id, repo.id),
+        ]
+        # Also give isolated nodes high in-degree (many edges pointing to them)
+        # so centrality-only selection would prefer them
+        extra_callers = [make_symbol(f"caller_{i}") for i in range(30)]
+        all_symbols.extend(extra_callers)
+        isolated_edges = []
+        for i, caller in enumerate(extra_callers):
+            # Each caller -> 3 isolated utils (boosts their centrality)
+            for j in range(3):
+                idx = (i + j) % len(isolated)
+                isolated_edges.append(make_edge(caller.id, isolated[idx].id))
+
+        all_edges = connected_edges + isolated_edges
+
+        entrypoints = [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9},
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # Should have at least 1 edge (the ep -> svc connection)
+        assert len(result["edges"]) >= 1, (
+            f"4k tiered view has {len(result['nodes'])} nodes but 0 edges. "
+            f"Connectivity-aware selection should produce connected output."
+        )
+
+    def test_shrink_loop_preserves_edges_with_disconnected_seeds(self):
+        """Shrink loop must preserve edges when seeds don't share edges.
+
+        Regression: DEEP bakeoff cohort #5 (iceberg) showed 64k tiered view
+        with 169 nodes but 0 edges, despite select_by_connectivity returning
+        362 nodes with 1056 induced edges. Root cause: the shrink loop sorted
+        removal candidates by (force_include, global_centrality). Force-included
+        seeds (test entrypoints) were protected, but frontier-expanded production
+        nodes (which provided all the edges) had LOW global centrality and were
+        removed first. After shrinking, only disconnected seeds remained.
+
+        Fix: Shrink loop considers local edge degree when choosing victims.
+        Nodes with zero local edges are removed first (they add no connectivity
+        value), and among nodes with edges, those with fewer local edges are
+        preferred for removal.
+        """
+        # 60 entrypoint seeds in integration test paths — each tests a
+        # different subsystem. They don't directly call each other.
+        seeds = [
+            make_symbol(f"test_ep_{i}", path=f"src/integration/Test{i}.java",
+                        kind="method", language="java")
+            for i in range(60)
+        ]
+
+        # 40 production code nodes — each seed calls 2 production funcs.
+        prod = [
+            make_symbol(f"prod_{i}", path="src/main/Prod.java",
+                        kind="method", language="java")
+            for i in range(40)
+        ]
+
+        # Edges: seeds → prod (each seed → 2 prod nodes, with overlap)
+        seed_prod_edges = []
+        for i, s in enumerate(seeds):
+            for j in range(2):
+                idx = (i * 2 + j) % len(prod)
+                seed_prod_edges.append(make_edge(s.id, prod[idx].id))
+
+        # Production backbone: connected chain providing inter-prod edges
+        backbone_edges = [
+            make_edge(prod[i].id, prod[i + 1].id) for i in range(len(prod) - 1)
+        ]
+
+        # 300 callers → 20 popular utilities: inflates global centrality
+        # to make prod nodes look unimportant by comparison.
+        utils = [
+            make_symbol(f"util_{i}", path="src/main/Utils.java",
+                        kind="method", language="java")
+            for i in range(20)
+        ]
+        callers = [
+            make_symbol(f"caller_{i}", path="src/main/Callers.java",
+                        kind="method", language="java")
+            for i in range(300)
+        ]
+        util_edges = []
+        for i, c in enumerate(callers):
+            for j in range(3):
+                idx = (i + j) % len(utils)
+                util_edges.append(make_edge(c.id, utils[idx].id))
+
+        all_symbols = seeds + prod + utils + callers
+        all_edges = seed_prod_edges + backbone_edges + util_edges
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "test_function", "confidence": 1.0}
+            for s in seeds
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # 4k budget: forces aggressive shrinking.
+        # Without the fix, the shrink loop removes all prod nodes (low global
+        # centrality, not force-included) leaving only disconnected seeds
+        # with 0 edges.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # The result must have edges — a graph with zero edges is useless
+        assert len(result["edges"]) > 0, (
+            f"Shrink loop produced {len(result['nodes'])} nodes but 0 edges. "
+            f"Production nodes providing connectivity were removed because "
+            f"they had low global centrality. Shrink should prefer removing "
+            f"disconnected singletons before nodes with local edges."
+        )
+
+    def test_language_proportional_sketch(self):
+        """Dominant language must be represented in budget views.
+
+        Regression: DEEP bakeoff cohort #6 (git) showed 64k tiered view
+        with 99 Python nodes and 0 C nodes, despite git being 99%+ C code.
+        Root cause: Python entrypoints (git-p4.py main) had 33 frontier
+        edges while C entrypoints (common-main.c main) had only 3. BFS
+        frontier was 88% Python, so greedy selection picked Python nodes
+        exclusively.
+
+        Fix: After building the seed set from entrypoints, check language
+        distribution of the frontier. For any language with >10% of total
+        edges but underrepresented in the frontier, inject top-centrality
+        nodes from that language as additional seeds.
+        """
+        # 100 C nodes forming a dense call graph (the dominant language)
+        c_funcs = [
+            make_symbol(f"c_func_{i}", path=f"src/core_{i // 10}.c",
+                        kind="function", language="c")
+            for i in range(100)
+        ]
+        # Dense C call graph: chain + cross-calls = ~200 edges
+        c_edges = []
+        for i in range(99):
+            c_edges.append(make_edge(c_funcs[i].id, c_funcs[i + 1].id))
+        for i in range(0, 100, 5):
+            for j in range(i + 1, min(i + 5, 100)):
+                c_edges.append(make_edge(c_funcs[i].id, c_funcs[j].id))
+
+        # 15 Python nodes forming a small but dense cluster
+        py_funcs = [
+            make_symbol(f"py_func_{i}", path="scripts/tool.py",
+                        kind="function", language="python")
+            for i in range(15)
+        ]
+        py_edges = []
+        for i in range(14):
+            py_edges.append(make_edge(py_funcs[i].id, py_funcs[i + 1].id))
+        for i in range(0, 15, 3):
+            for j in range(i + 1, min(i + 3, 15)):
+                py_edges.append(make_edge(py_funcs[i].id, py_funcs[j].id))
+
+        # 1 C entrypoint with NO outgoing C call edges.
+        # This models git's common-main.c:main which dispatches via
+        # function pointer table — tree-sitter can't resolve those calls.
+        c_main = make_symbol("main", path="src/main.c",
+                             kind="function", language="c")
+        # c_main has zero edges to c_funcs — completely isolated
+
+        # 1 Python entrypoint with edges to all Python funcs (dense frontier)
+        py_main = make_symbol("py_main", path="scripts/tool.py",
+                              kind="function", language="python")
+        py_main_edges = [
+            make_edge(py_main.id, py_funcs[i].id) for i in range(15)
+        ]
+
+        all_symbols = [c_main, py_main] + c_funcs + py_funcs
+        all_edges = c_edges + py_main_edges + py_edges
+
+        entrypoints = [
+            {"symbol_id": c_main.id, "kind": "main_function", "confidence": 1.0},
+            {"symbol_id": py_main.id, "kind": "main_function", "confidence": 1.0},
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # 16k budget: should be enough for ~30 nodes.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=16000,
+            force_include_entrypoints=True,
+        )
+
+        result_nodes = result["nodes"]
+        c_nodes = [n for n in result_nodes if n.get("language") == "c"]
+        py_nodes = [n for n in result_nodes if n.get("language") == "python"]
+
+        # C has ~200 edges (87% of total) and 100 nodes.
+        # Without the fix: BFS from seeds finds no C frontier (c_main is
+        # isolated), so only Python nodes are selected.
+        # With the fix: top-centrality C nodes are injected as seeds,
+        # letting BFS expand into the C subgraph.
+        assert len(c_nodes) >= len(py_nodes), (
+            f"C has {len(c_nodes)} nodes vs Python {len(py_nodes)}. "
+            f"C is the dominant language (100 nodes, {len(c_edges)} edges) "
+            f"but was underrepresented because its entrypoint had zero "
+            f"frontier edges. Language-proportional seeding should fix this."
+        )

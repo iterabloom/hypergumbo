@@ -1,0 +1,38 @@
+- op: create  # c8a4
+  at: '2026-02-20T23:04:03Z'  # c8a4
+  by: agent  # c8a4
+  actor: jgstern_agent  # c8a4
+  clock: 1  # c8a4
+  nonce: c8a4  # c8a4
+  data:  # c8a4
+    kind: work_item  # c8a4
+    title: "Implement stable_id untyped tier generalization (Phase 2)"  # c8a4
+    status: todo_soft  # c8a4
+    priority: 2  # c8a4
+    parent:  # c8a4
+    tags:  # c8a4
+    - phase-2  # c8a4
+    - stable-id  # c8a4
+    before:  # c8a4
+    - WI-duzul  # c8a4
+    duplicate_of: []  # c8a4
+    not_duplicate_of: []  # c8a4
+    pr_ref:  # c8a4
+    justification:  # c8a4
+    description: "ADR-0014 Phase 2: Implement ArityFlags dataclass, classify_parameter_flags() hook in TreeSitterAnalyzer, base-class compute_stable_id() with formula sha256({kind}:{param_count}:{arity_flags}:{decorator_names_sorted}:{containing_stable_id}). Add per-language parameter flag overrides. Retire location-based stable_id strings in 27 analyzers that use them. Prerequisite for Phase 3 (WI-duzul)."  # c8a4
+    fields: {}  # c8a4
+- op: update  # 0fa1
+  at: '2026-02-20T23:07:26Z'  # 0fa1
+  by: agent  # 0fa1
+  actor: jgstern_agent  # 0fa1
+  clock: 2  # 0fa1
+  nonce: 0fa1  # 0fa1
+  set:  # 0fa1
+    status: done  # 0fa1
+- op: discuss  # 08ca
+  at: '2026-02-20T23:07:33Z'  # 08ca
+  by: agent  # 08ca
+  actor: jgstern_agent  # 08ca
+  clock: 3  # 08ca
+  nonce: 08ca  # 08ca
+  message: "Phase 2 already fully implemented. ArityFlags (base.py:90), classify_parameter_flags() (base.py:1128), compute_stable_id() (base.py:1204) all exist. 69 analyzers already use compute_stable_id(). No location-based stable_id strings found. Phase 0 and Phase 1 also complete."  # 08ca

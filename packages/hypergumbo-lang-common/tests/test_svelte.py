@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import svelte as svelte_module
-from hypergumbo_lang_common.svelte import (
-    SvelteAnalysisResult,
-    analyze_svelte,
-    find_svelte_files,
-    is_svelte_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.svelte import analyze_svelte, find_svelte_files, is_svelte_tree_sitter_available
 
 def make_svelte_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Svelte file in the temp directory."""
@@ -20,7 +15,6 @@ def make_svelte_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindSvelteFiles:
     """Tests for find_svelte_files function."""
@@ -37,7 +31,6 @@ class TestFindSvelteFiles:
         files = find_svelte_files(tmp_path)
         assert files == []
 
-
 class TestIsSvelteTreeSitterAvailable:
     """Tests for is_svelte_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsSvelteTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(svelte_module, "is_svelte_tree_sitter_available", return_value=False):
+        with patch.object(svelte_module._analyzer, "_check_grammar_available", return_value=False):
             assert svelte_module.is_svelte_tree_sitter_available() is False
-
 
 class TestAnalyzeSvelte:
     """Tests for analyze_svelte function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<h1>Hello</h1>")
-        with patch.object(svelte_module, "is_svelte_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Svelte analysis skipped"):
+        with patch.object(svelte_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="svelte analysis skipped"):
                 result = svelte_module.analyze_svelte(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -201,13 +193,13 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         slot = next((s for s in result.symbols if s.kind == "slot"), None)
         assert slot is not None
-        assert slot.origin == "svelte.tree_sitter"
+        assert slot.origin == "svelte-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<h1>Hello</h1>")
         result = analyze_svelte(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "svelte.tree_sitter"
+        assert result.run.pass_id == "svelte-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

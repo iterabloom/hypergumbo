@@ -13,17 +13,17 @@ The tree-sitter-ada parser handles .ads (spec), .adb (body), and .ada files.
 
 How It Works
 ------------
-1. Check if tree-sitter with Ada grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all .ads, .adb, and .ada files
-4. Extract package declarations and bodies
-5. Extract function and procedure definitions with signatures
-6. Extract type definitions (records, etc.)
-7. Extract constants
-8. Track with clauses as import edges
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract all symbols from all files
+2. Pass 2: Extract edges (imports + calls) using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Ada-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for Ada grammar
 - Ada is essential for safety-critical systems (aerospace, defense, medical)
@@ -31,24 +31,29 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "ada-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("ada")
 
 
 def find_ada_files(repo_root: Path) -> Iterator[Path]:
@@ -56,66 +61,20 @@ def find_ada_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.ads", "*.adb", "*.ada"])
 
 
-@dataclass
-class AdaAnalysisResult:
-    """Result of analyzing Ada files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
+def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Extract parameters from formal_part node."""
+    formal_part = find_child_by_type(node, "formal_part")
+    if formal_part:
+        return node_text(formal_part, source)
+    return None
 
 
-def is_ada_tree_sitter_available() -> bool:
-    """Check if tree-sitter-ada is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("ada")
-        return True
-    except Exception:  # pragma: no cover - ada grammar not available
-        return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
-
-
-@dataclass
-class _FileContext:
-    """Context for processing a single file."""
-
-    source: bytes
-    rel_path: str
-    file_stable_id: str
-    run_id: str
-    symbols: list[Symbol]
-    edges: list[Edge]
-    package_renames: dict[str, str] = field(default_factory=dict)  # alias -> full_path
-
-
-def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
-                 signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
+def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
+                 source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"ada:{ctx.rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("ada", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -128,158 +87,116 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
         canonical_name=name,
         kind=kind,
         language="ada",
-        path=ctx.rel_path,
+        path=rel_path,
         span=span,
         origin=PASS_ID,
-        origin_run_id=ctx.run_id,
-        stable_id=f"ada:{ctx.rel_path}:{name}",
+        origin_run_id=run_id,
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
 
 
-def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract parameters from formal_part node."""
-    formal_part = _find_child_by_type(node, "formal_part")
-    if formal_part:
-        return _node_text(formal_part, source)
-    return None
-
-
-def _process_package_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_package_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a package declaration (spec)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    pkg_name = _node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
+    pkg_name = node_text(name_node, source)
+    return _make_symbol(analyzer, rel_path, run_id, node, pkg_name, "package", source)
 
 
-def _process_package_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_package_body(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a package body."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    pkg_name = _node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
+    pkg_name = node_text(name_node, source)
+    return _make_symbol(analyzer, rel_path, run_id, node, pkg_name, "package", source)
 
 
-def _process_subprogram_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_subprogram_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function or procedure declaration."""
-    # Look for function_specification or procedure_specification
-    func_spec = _find_child_by_type(node, "function_specification")
-    proc_spec = _find_child_by_type(node, "procedure_specification")
+    func_spec = find_child_by_type(node, "function_specification")
+    proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
-        _process_function_spec(ctx, func_spec)
+        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec)
     elif proc_spec:
-        _process_procedure_spec(ctx, proc_spec)
+        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec)
+    return None  # pragma: no cover - defensive
 
 
-def _process_subprogram_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_subprogram_body(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function or procedure body (implementation)."""
-    func_spec = _find_child_by_type(node, "function_specification")
-    proc_spec = _find_child_by_type(node, "procedure_specification")
+    func_spec = find_child_by_type(node, "function_specification")
+    proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
-        _process_function_spec(ctx, func_spec)
+        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec)
     elif proc_spec:
-        _process_procedure_spec(ctx, proc_spec)
+        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec)
+    return None  # pragma: no cover - defensive
 
 
-def _process_function_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function specification."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    func_name = _node_text(name_node, ctx.source)
+    func_name = node_text(name_node, source)
 
     # Build signature from formal_part and result_profile
     signature_parts = []
-    formal_part = _extract_formal_part(node, ctx.source)
+    formal_part = _extract_formal_part(node, source)
     if formal_part:
         signature_parts.append(formal_part)
 
-    result = _find_child_by_type(node, "result_profile")
+    result = find_child_by_type(node, "result_profile")
     if result:
-        signature_parts.append(_node_text(result, ctx.source))
+        signature_parts.append(node_text(result, source))
 
     signature = " ".join(signature_parts) if signature_parts else None
-    ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
 
 
-def _process_procedure_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a procedure specification."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    proc_name = _node_text(name_node, ctx.source)
-    signature = _extract_formal_part(node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, proc_name, "procedure", signature=signature))
+    proc_name = node_text(name_node, source)
+    signature = _extract_formal_part(node, source)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature)
 
 
-def _process_type_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_type_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a type declaration (record, enum, etc.)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    type_name = _node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, type_name, "type"))
+    type_name = node_text(name_node, source)
+    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source)
 
 
-def _process_object_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_object_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process an object declaration (constant or variable)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    obj_name = _node_text(name_node, ctx.source)
+    obj_name = node_text(name_node, source)
 
     # Check if it's a constant
-    is_constant = _find_child_by_type(node, "constant") is not None
+    is_constant = find_child_by_type(node, "constant") is not None
     kind = "constant" if is_constant else "variable"
 
-    ctx.symbols.append(_make_symbol(ctx, node, obj_name, kind))
-
-
-def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a with clause (import)."""
-    # Find selected_component or identifier for the imported package
-    for child in node.children:
-        if child.type == "selected_component":
-            import_name = _node_text(child, ctx.source)
-            ctx.edges.append(
-                Edge(
-                    id=f"edge:ada:{uuid.uuid4().hex[:12]}",
-                    src=ctx.file_stable_id,
-                    dst=f"ada:?:{import_name}:package",
-                    edge_type="imports",
-                    line=node.start_point[0] + 1,
-                    confidence=0.9,
-                    origin=PASS_ID,
-                    origin_run_id=ctx.run_id,
-                )
-            )
-        elif child.type == "identifier":
-            text = _node_text(child, ctx.source)
-            if text != "with":  # Skip the keyword
-                ctx.edges.append(
-                    Edge(
-                        id=f"edge:ada:{uuid.uuid4().hex[:12]}",
-                        src=ctx.file_stable_id,
-                        dst=f"ada:?:{text}:package",
-                        edge_type="imports",
-                        line=node.start_point[0] + 1,
-                        confidence=0.9,
-                        origin=PASS_ID,
-                        origin_run_id=ctx.run_id,
-                    )
-                )
+    return _make_symbol(analyzer, rel_path, run_id, node, obj_name, kind, source)
 
 
 def _extract_package_renames(
@@ -303,9 +220,9 @@ def _extract_package_renames(
 
         for child in node.children:
             if child.type == "identifier" and alias_name is None:
-                alias_name = _node_text(child, source)
+                alias_name = node_text(child, source)
             elif child.type == "selected_component":
-                full_path = _node_text(child, source)
+                full_path = node_text(child, source)
 
         if alias_name and full_path:
             renames[alias_name] = full_path
@@ -320,17 +237,15 @@ def _get_call_target_name(node: "tree_sitter.Node", source: bytes) -> tuple[Opti
     - target_name is the simple name (last identifier) for resolution
     - receiver is the first part of qualified calls (e.g., "TIO" from "TIO.Put_Line")
     """
-    # For procedure_call_statement: first child is identifier or selected_component
-    # For function_call: first child is identifier or selected_component
     for child in node.children:
         if child.type == "identifier":
-            return (_node_text(child, source), None)
+            return (node_text(child, source), None)
         elif child.type == "selected_component":
             # Get all identifiers for qualified calls
             identifiers: list[str] = []
             for sub in child.children:
                 if sub.type == "identifier":
-                    identifiers.append(_node_text(sub, source))
+                    identifiers.append(node_text(sub, source))
             if identifiers:
                 # last is target, first is receiver
                 target_name = identifiers[-1]
@@ -349,13 +264,13 @@ def _find_enclosing_subprogram(
     while current is not None:
         if current.type == "subprogram_body":
             # Find the function/procedure name
-            func_spec = _find_child_by_type(current, "function_specification")
-            proc_spec = _find_child_by_type(current, "procedure_specification")
+            func_spec = find_child_by_type(current, "function_specification")
+            proc_spec = find_child_by_type(current, "procedure_specification")
             spec = func_spec or proc_spec
             if spec:
-                name_node = _find_child_by_type(spec, "identifier")
+                name_node = find_child_by_type(spec, "identifier")
                 if name_node:
-                    name = _node_text(name_node, source)
+                    name = node_text(name_node, source)
                     sym = local_symbols.get(name)
                     if sym:
                         return sym
@@ -363,117 +278,93 @@ def _find_enclosing_subprogram(
     return None  # pragma: no cover - defensive
 
 
-def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a single tree-sitter node (non-recursive dispatch)."""
-    if node.type == "package_declaration":
-        _process_package_declaration(ctx, node)
-    elif node.type == "package_body":
-        _process_package_body(ctx, node)
-    elif node.type == "subprogram_declaration":
-        _process_subprogram_declaration(ctx, node)
-    elif node.type == "subprogram_body":
-        _process_subprogram_body(ctx, node)
-    elif node.type == "full_type_declaration":
-        _process_type_declaration(ctx, node)
-    elif node.type == "object_declaration":
-        _process_object_declaration(ctx, node)
+class AdaAnalyzer(TreeSitterAnalyzer):
+    """Ada language analyzer using tree-sitter-language-pack."""
 
+    lang = "ada"
+    file_patterns: ClassVar[list[str]] = ["*.ads", "*.adb", "*.ada"]
+    language_pack_name = "ada"
 
-def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
-    """Analyze Ada files in a repository.
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract package, function, procedure, type, and constant symbols."""
+        analysis = FileAnalysis()
 
-    Uses two-pass analysis:
-    - Pass 1: Extract all symbols from all files
-    - Pass 2: Extract edges (imports + calls) using NameResolver
+        for node in iter_tree(tree.root_node):
+            sym: Optional[Symbol] = None
+            if node.type == "package_declaration":
+                sym = _process_package_declaration(self, source, rel_path, run.execution_id, node)
+            elif node.type == "package_body":
+                sym = _process_package_body(self, source, rel_path, run.execution_id, node)
+            elif node.type == "subprogram_declaration":
+                sym = _process_subprogram_declaration(self, source, rel_path, run.execution_id, node)
+            elif node.type == "subprogram_body":
+                sym = _process_subprogram_body(self, source, rel_path, run.execution_id, node)
+            elif node.type == "full_type_declaration":
+                sym = _process_type_declaration(self, source, rel_path, run.execution_id, node)
+            elif node.type == "object_declaration":
+                sym = _process_object_declaration(self, source, rel_path, run.execution_id, node)
 
-    Returns an AdaAnalysisResult with symbols for packages, functions, procedures,
-    types, and constants, plus edges for with clauses (imports) and calls.
-    """
-    if not is_ada_tree_sitter_available():
-        warnings.warn("Ada analysis skipped: tree-sitter-ada unavailable")
-        return AdaAnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-ada unavailable",
-        )
+            if sym:
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
+                if sym.kind in ("function", "procedure"):
+                    analysis.symbol_by_name[sym.name] = sym
 
-    from tree_sitter_language_pack import get_parser
+        return analysis
 
-    parser = get_parser("ada")
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Ada package renaming declarations for disambiguation."""
+        return _extract_package_renames(tree, source)
 
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = str(uuid.uuid4())
-    start_time = time.time()
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object, str]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_ada_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-
-        rel_path = str(file_path.relative_to(repo_root))
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from an Ada file."""
+        edges: list[Edge] = []
         file_stable_id = f"ada:{rel_path}:file:"
 
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=symbols,
-            edges=[],  # Don't collect edges in pass 1
-        )
-
-        # Extract symbols only
         for node in iter_tree(tree.root_node):
-            if node.type in ("package_declaration", "package_body", "subprogram_declaration",
-                             "subprogram_body", "full_type_declaration", "object_declaration"):
-                _process_node(ctx, node)
-
-        # Extract package renames for disambiguation
-        package_renames = _extract_package_renames(tree, source)
-
-        # Register symbols globally
-        for sym in symbols:
-            if sym.path == rel_path:
-                global_symbol_registry[sym.name] = sym
-
-        # Store for pass 2
-        parsed_files.append((rel_path, source, tree, file_stable_id, package_renames))
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges (imports + calls)
-    for rel_path, source, tree, file_stable_id, package_renames in parsed_files:
-        # Build local symbol map for this file (functions/procedures only)
-        local_symbols = {s.name: s for s in symbols
-                         if s.path == rel_path and s.kind in ("function", "procedure")}
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=[],  # Not adding symbols in pass 2
-            edges=edges,
-            package_renames=package_renames,
-        )
-
-        for node in iter_tree(tree.root_node):  # type: ignore
             # Process imports (with_clause)
             if node.type == "with_clause":
-                _process_with_clause(ctx, node)
+                for child in node.children:
+                    if child.type == "selected_component":
+                        import_name = node_text(child, source)
+                        edges.append(
+                            Edge(
+                                id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                                src=file_stable_id,
+                                dst=f"ada:?:{import_name}:package",
+                                edge_type="imports",
+                                line=node.start_point[0] + 1,
+                                confidence=0.9,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            )
+                        )
+                    elif child.type == "identifier":
+                        text = node_text(child, source)
+                        if text != "with":  # Skip the keyword
+                            edges.append(
+                                Edge(
+                                    id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                                    src=file_stable_id,
+                                    dst=f"ada:?:{text}:package",
+                                    edge_type="imports",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.9,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                )
+                            )
 
             # Process procedure calls
             elif node.type == "procedure_call_statement":
@@ -482,7 +373,7 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                     caller = _find_enclosing_subprogram(node, source, local_symbols)
                     if caller:
                         # Get path hint from package renames
-                        path_hint = package_renames.get(receiver) if receiver else None
+                        path_hint = import_aliases.get(receiver) if receiver else None
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
@@ -501,7 +392,7 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                             line=node.start_point[0] + 1,
                             confidence=confidence,
                             origin=PASS_ID,
-                            origin_run_id=run_id,
+                            origin_run_id=run.execution_id,
                         ))
 
             # Process function calls
@@ -511,7 +402,7 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                     caller = _find_enclosing_subprogram(node, source, local_symbols)
                     if caller:
                         # Get path hint from package renames
-                        path_hint = package_renames.get(receiver) if receiver else None
+                        path_hint = import_aliases.get(receiver) if receiver else None
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
@@ -530,18 +421,21 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                             line=node.start_point[0] + 1,
                             confidence=confidence,
                             origin=PASS_ID,
-                            origin_run_id=run_id,
+                            origin_run_id=run.execution_id,
                         ))
 
-    duration_ms = int((time.time() - start_time) * 1000)
-    return AdaAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+        return edges
+
+
+_analyzer = AdaAnalyzer()
+
+
+def is_ada_tree_sitter_available() -> bool:
+    """Check if tree-sitter-ada is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("ada")
+def analyze_ada(repo_root: Path) -> AnalysisResult:
+    """Analyze Ada files in a repository."""
+    return _analyzer.analyze(repo_root)

@@ -1,9 +1,6 @@
-# Hypergumbo Spec (MVP + Future Phases)
+# Hypergumbo Spec
 
-Status: draft, living document.
-
-- Spec A: MVP behavior map (current focus of this repo).
-- Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
+Status: living document.
 
 ## Implementation Status Legend
 
@@ -18,37 +15,68 @@ Status: draft, living document.
 
 *Use `grep "🟨"` to find in-progress items, etc.*
 
-# Spec A — hypergumbo MVP
+## Table of Contents
+
+| § | Title |
+|---|-------|
+| 0 | [One-sentence summary](#0-one-sentence-summary) |
+| 1 | [Goals](#1-goals) |
+| 2 | [Non-goals](#2-non-goals) |
+| 3 | [User experience (CLI)](#3-user-experience-cli) |
+| 4 | [Supported stacks](#4-supported-stacks) |
+| 5 | [Architecture](#5-architecture) |
+| 6 | [Internal representation](#6-internal-representation) |
+| 7 | [Cross-language linkers](#7-cross-language-linkers) |
+| 8 | [Entrypoint detection](#8-entrypoint-detection) |
+| 9 | [Behavior map JSON](#9-behavior-map-json) |
+| 10 | [Sketch output](#10-sketch-output) |
+| 11 | [Slicing behavior](#11-slicing-behavior) |
+| 12 | [Confidence scoring](#12-confidence-scoring) |
+| 13 | [Output reproducibility](#13-output-reproducibility) |
+| 14 | [Supply chain classification](#14-supply-chain-classification) |
+| 15 | [File role classification](#15-file-role-classification) |
+| 16 | [Testing & quality bar](#16-testing--quality-bar) |
+| 17 | [Error handling](#17-error-handling) |
+| 18 | [Known limitations](#18-known-limitations) |
+| 19 | [Autonomous governance](#19-autonomous-governance-adr-0008) |
+| 20 | [Future work](#20-future-work) |
+| A | [Release lifecycle & support](#appendix-a-release-lifecycle--support) |
+| B | [Telemetry & privacy](#appendix-b-telemetry--privacy) |
+| C | [Schema compatibility contract](#appendix-c-schema-compatibility-contract) |
+| D | [Capsule system history](#appendix-d-capsule-system-history) |
 
 ## 0) One-sentence summary
-A local-first CLI that profiles a repo and emits a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
+A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
 
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
 * 🟩 **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
-* 🟩 **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
+* 🟩 **Machine-readable provenance**: Confidence scores and edge evidence use structured fields (not human-readable strings). This enables programmatic filtering and multi-pass merging.
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix D](#appendix-d-capsule-system-history).
-* ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
 
-## 2) Non-goals (for MVP)
+For goals that were considered and rejected, see [Appendix D](#appendix-d-capsule-system-history).
+
+## 2) Non-goals
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
-* No attempt to support *every* language—support a small set well.
-* No incremental analysis daemon (full re-analysis is acceptable for MVP).
+* No attempt to support every language *deeply*—broad coverage via tree-sitter (100+ languages; see [LANGUAGES.md](LANGUAGES.md)), deep call-graph extraction for a smaller set. See [§4 Supported stacks](#4-supported-stacks).
+* No incremental analysis daemon (full re-analysis is acceptable).
 * No LLM-generated analyzer code.
 
 ## 3) User experience (CLI)
 
+**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
+
 ### Install
-* `pipx install hypergumbo` (primary, includes all 67 language analyzers)
+* `pipx install hypergumbo` (primary, includes all language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
 ### Commands
+
 🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
 * If no subcommand is given, assumes sketch mode.
@@ -66,9 +94,6 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
 
-⬛ **`hypergumbo init`** *(removed)*
-Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
-
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
 
@@ -78,51 +103,33 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 🟩 **`hypergumbo catalog [--show-all]`**
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
-⬛ **`hypergumbo export-capsule`** *(removed)*
-Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
-
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
+Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`.
 
-Estimates test coverage by analyzing which functions are called by tests. Uses static analysis only (no code execution). Language agnostic.
+### Analysis options
 
-**Features:**
-* **Hot spots:** Functions called by many tests (potential redundancy)
-* **Cold spots:** Functions not called by any tests (need coverage)
+These options apply to all analysis commands (`run`, `slice`, and default sketch mode).
 
-**Filtering options:**
-* `--min-tests N`: Only show functions called by at least N tests
-* `--max-tests N`: Only show functions called by at most N tests (0 = untested only)
-* `--top N`: Limit output to top N hot/cold spots
+🟩 **`--exclude PATTERN`**
+Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
+* Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
 
-**Example output (text format):**
-```
-Test Coverage Estimate
-======================
-Total functions: 150
-Tested: 120 (80.0%)
-Untested: 30
-Total test functions: 45
+⬜ **`--max-file-bytes N`** (default: 2MB)
+Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
+* Skipped files logged in `limits.truncated_files[]`
 
-Hot Spots (highest test density - tests per LOC)
-------------------------------------------------
-  5.00 t/LOC  ( 15 tests,   3 LOC)  utils.py:10-12   helper()
-  0.60 t/LOC  ( 12 tests,  20 LOC)  core.py:50-69    validate()
+🟩 **`--first-party-only`**
+Analyze only first-party code (tier 1). Equivalent to `--max-tier 1`.
 
-Cold Spots (untested - need coverage)
--------------------------------------
-    0 tests  core.py:100-150  process()  [50 LOC, complexity: 8]
-```
+🟩 **`--max-tier N`** (default: 3)
+Control which supply chain tiers are included in analysis. See [§14](#14-supply-chain-classification) for tier definitions.
 
-**Note:** Hot spots are ranked by test density (tests/LOC), not raw test count. This surfaces small utility functions that are disproportionately tested relative to their size.
-
-**Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
-
-### Key principle
-**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state.
+🟩 **`--no-first-party-priority`**
+Disable tier-based weighting in Key Symbols ranking (use raw centrality instead).
 
 ## 4) Supported stacks
 
-Hypergumbo supports 67 languages via tree-sitter grammars. All are included in the base package.
+Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](LANGUAGES.md) for the full list). All are included in the base package.
 
 **Primary languages (full symbol/edge extraction):**
 * 🟩 **Python** (AST-based, full call edges)
@@ -138,7 +145,7 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 * 🟩 **Kotlin/Scala/Swift** (tree-sitter)
 
 **Additional languages (symbol extraction):**
-* 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and 30+ more
+* 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and many more — see [LANGUAGES.md](LANGUAGES.md) for the full list
 
 **Configuration/data formats:**
 * 🟩 JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
@@ -146,56 +153,71 @@ Hypergumbo supports 67 languages via tree-sitter grammars. All are included in t
 **Markup:**
 * 🟩 HTML (script tag extraction), CSS, LaTeX, Markdown
 
-> The analyzer is "best-effort, explicitly limited," but produces consistent structures.
-
 ### Dependency strategy
-* **All-in-one package**: `pip install hypergumbo` includes Python AST + 40+ tree-sitter grammars as standard dependencies
-* **Tree-sitter grammars included**: JavaScript, TypeScript, PHP, C, C++, Java, Go, Rust, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Elixir, Dart, LaTeX, R, COBOL, and many more
-* **Language pack**: `tree-sitter-language-pack` provides additional grammars (Elixir, COBOL, Dart, LaTeX, R)
+* **All-in-one package**: `pip install hypergumbo` includes Python AST + tree-sitter grammars for all supported languages as standard dependencies (see [LANGUAGES.md](LANGUAGES.md) for the full list)
+* **Grammar sources**: Most grammars are installed as individual PyPI packages (e.g., `tree-sitter-javascript`). A subset (Elixir, COBOL, Dart, LaTeX, R) come from `tree-sitter-language-pack`.
 * **Build-from-source grammars**: Lean, Wolfram built from source in CI for languages lacking PyPI packages
 * **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
 * **Optional extras**:
   - `[embeddings]`: sentence-transformers for embedding-based config extraction
+
 ### Build strategy
 * Tree-sitter grammars with PyPI wheels are installed directly as dependencies
 * Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
 * 100% test coverage required; analyzers gracefully skip when grammars unavailable
 
-## 5) Architecture (local-only)
+## 5) Architecture
 
-### Core packages
+For a file-by-file map of modules, see [ARCHITECTURE.md](ARCHITECTURE.md) (auto-generated by running hypergumbo on itself; run `./scripts/generate-architecture` to update).
 
-**CLI & orchestration:**
-* `cli.py` — CLI entrypoint and command handlers
-* `profile.py` — language/framework detection
-* `discovery.py` — file finding with exclude patterns
+### Analysis pipeline (two-tier model)
 
-**Internal representation:**
-* `ir.py` — Symbol, Edge, Span, AnalysisRun classes
-* `schema.py` — JSON schema versioning and behavior map factory
+The analysis pipeline has two tiers reflecting different information needs.
 
-**Analysis pipeline:**
-* `sketch.py` — token-budgeted Markdown summary generation
-* `entrypoints.py` — YAML-driven entrypoint detection (ADR-0003)
-* `slice.py` — graph slicing for context extraction
-* `metrics.py` — analysis statistics computation
-* `limits.py` — error tracking and analysis gaps
-* `supply_chain.py` — file classification by dependency tier (1-4)
-* `symbol_resolution.py` — shared cross-file call resolution (NameResolver, SymbolResolver)
+**Terminology:** A *pass* is any analysis component that reads code and produces IR output. An *analyzer* is a Tier 1 pass that extracts symbols and edges for a single language. A *linker* is a Tier 2 pass that creates cross-language or cross-component relationships. The `pass_id` field in `AnalysisRun` uses the generic term.
 
-**Language analyzers (examples):**
-* `analyze/py.py` — Python AST parser
-* `analyze/js_ts.py` — JS/TS/Svelte parser via tree-sitter
-* `analyze/java.py` — Java parser via tree-sitter
+**Tier 1 — Language analyzers (independent producers):**
+Each analyzer is a plain function registered via the `@register_analyzer` decorator and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md), [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md)):
+```python
+from hypergumbo_core.analyze.registry import register_analyzer
 
-**Cross-language linkers (examples):**
-* `linkers/jni.py` — JNI boundary detection (Java↔C)
-* `linkers/ipc.py` — IPC message channel detection
+@register_analyzer("go", priority=50)
+def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+    ...
+```
+Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
 
-**Discovery & catalog:**
-* `catalog.py` — Pass availability checking (used by `catalog` command)
+**Tier 2 — Linkers and enrichment (context-dependent refiners):**
+After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
+1. Deferred symbol reference resolution (cross-file call targets)
+2. Framework pattern enrichment (YAML-driven concept metadata)
+3. Cross-language linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list)
+4. Entrypoint detection
 
-### IR Layer
+Linkers use a decorator-based registry (`linkers/registry.py`) and receive the accumulated analysis state:
+```python
+@register_linker("jni", requires=["c", "java"])
+def link_jni(ctx: LinkerContext) -> LinkerResult:
+    ...
+```
+🟪 Spec example above is outdated; code uses `activation=LinkerActivation(language_pairs=[("java","c"),("java","cpp")])` and `requirements=list[LinkerRequirement]` instead of `requires=list[str]`.
+
+**🟪 Design target — Unified pass interface:**
+For multi-fidelity analysis (e.g., a pyright pass refining AST-extracted edges with type-resolved information), both tiers would converge on a single interface where passes receive the IR and return deltas:
+```python
+class AnalysisPass(Protocol):
+    id: str              # e.g., "python-ast-v1"
+    version: str         # e.g., "hypergumbo-0.1.0"
+    capabilities: list[str]  # e.g., ["python"]
+
+    def run(self, ir: AnalysisIR, files: list[Path], config: Config) -> IRDelta: ...
+```
+This would allow a type-resolution pass to slot in between Tier 1 and Tier 2, reading AST-produced symbols and upgrading their edge confidences. Tier 1 analyzers would receive an empty IR (they remain independent); Tier 2 refiners would receive the accumulated graph. The orchestrator becomes generic — just iterating passes in priority order. See [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md) for the design rationale and migration path.
+
+For the full catalog of language analyzers, cross-language linkers, and framework pattern files, see [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md), and [FRAMEWORKS.md](FRAMEWORKS.md).
+
+## 6) Internal representation
+
 Parsers emit to `AnalysisIR`:
 ```python
 @dataclass
@@ -203,8 +225,8 @@ class Symbol:
     id: str                    # location-based identifier
     stable_id: Optional[str]   # semantic identity hash (signature-based)
     shape_id: Optional[str]    # structural implementation fingerprint
-    canonical_name: str
-    fingerprint: str           # content hash
+    canonical_name: str        # 🟪 code: Optional[str] = None
+    fingerprint: str           # 🟪 code: Optional[str] = None
     kind: str                  # function, class, module, etc.
     name: str
     path: str
@@ -214,15 +236,17 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
+    # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
+    # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
-    quality: QualityScore
+    quality: QualityScore      # 🟪 QualityScore not defined; code: Optional[Dict[str, Any]] = None
 
 @dataclass
 class AnalysisRun:
     execution_id: str          # unique per run (uuid or hash of run_signature + started_at + repo_fingerprint)
     run_signature: str         # deterministic: hash of (pass_id, version, config_fingerprint, toolchain)
     repo_fingerprint: str      # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
-    pass: str                  # e.g., "python-ast-v1"
+    pass_id: str               # e.g., "python-ast-v1" (serialized as "pass" in JSON output)
     version: str               # e.g., "hypergumbo-0.1.0"
     toolchain: Dict            # {"name": "python", "version": "3.11.0"}
     config_fingerprint: str    # sha256 of effective config
@@ -240,29 +264,34 @@ class AnalysisIR:
     references: List[Reference]        # use sites
     relationships: List[Relationship]  # typed edges with quality scores
 ```
+🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
 
-**Identity field semantics**:
+### Identity field semantics
+
 * `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}`
   - Changes when code moves to different file/line
   - Purpose: Reproducible slicing, deterministic diffs
 * `stable_id` (semantic, optional): Interface identity (signature-based), **not implementation identity**
-  - **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`
-    - `normalized_signature`: Canonical type signature (param types, return type, type params)
+  - 🟩 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_module_stable_id})`
+    - `normalized_signature`: Canonical type signature (param types, return type, type params), normalized per-language (strip FQN prefixes, normalize generic type params by position: `T,U` → `$0,$1`). Normalization is language-scoped — cross-language collision is structurally prevented by `containing_module_stable_id`. A cross-language canonical mapping table may be layered on top if a use case emerges (see ADR-0014 §3). Four normalization families: types-first (Java, C#, Dart, Groovy), names-first (Kotlin, Scala, Swift, Rust, TS, Python), PHP-specific, Go-specific.
     - `visibility`: public, private, protected (if language has concept)
+    - `decorators`: Sorted, comma-joined decorator/annotation names
     - `containing_module_stable_id`: Recursive stable_id of parent module/class
     - **Excludes**: Implementation details, docstrings, comments
-  - **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
+    - Implemented for 12 analyzers: Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart
+  - 🟩 **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
     - `arity_flags`: has_defaults, has_varargs, has_kwargs (structural signature info)
     - `decorator_presence`: Sorted list of decorator names (e.g., `["property", "staticmethod"]`)
     - **Excludes**: Source hash, canonical name (survives renames)
   - Purpose: Track symbols across refactors (renames, moves, documentation changes)
   - **Does NOT change** when: Renaming, moving between files, changing implementation, adding comments
   - **DOES change** when: Signature changes (param types, arity), visibility changes, decorators added/removed
-* `shape_id` (optional): Structural implementation fingerprint
+* 🟨 `shape_id` (optional): Structural implementation fingerprint
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
-**Scheme versioning note:** The exact algorithms for `stable_id` and `shape_id` are governed by `stable_id_scheme` and `shape_id_scheme` in the output. Any change that would alter computed values MUST bump the corresponding scheme identifier.
+  - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
+  - ⬜ All other languages: planned via a generic tree-sitter CST walker (single implementation — walk CST, keep node types, strip literal values and identifier names, hash the structure)
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -282,7 +311,17 @@ def authenticate(username: str, password: str) -> User:
 # shape_id changes if control flow changed
 ```
 
-**Provenance field semantics**:
+### Identity and provenance scheme versioning
+
+The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
+* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
+* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
+* `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
+
+Any change that would alter computed values MUST bump the corresponding scheme identifier.
+
+### Provenance field semantics
+
 * `execution_id`: Unique identifier for this specific analysis run
   - Format: `uuid:` prefix for UUID v4, or `sha256:` for deterministic hash
   - Purpose: Track which specific run produced which nodes/edges
@@ -298,41 +337,269 @@ def authenticate(username: str, password: str) -> User:
     - Purpose: ensures repo_fingerprint changes when dirty file contents change, not just when paths change
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
   - Purpose: Cache invalidation, provenance tracking
-Public outputs are **compiled views** from this IR:
-* 🟩 `behavior_map.json` (v0.1 default)
-* 🟩 `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
-* 🟪 Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
 
-**Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
+### Output views
 
-### Pass interface and registry
-Parsers implement a common interface for future multi-pass orchestration:
-```python
-class AnalysisPass(Protocol):
-    """Interface for pluggable analysis passes."""
-    
-    id: str              # e.g., "python-ast-v1"
-    version: str         # e.g., "hypergumbo-0.1.0"
-    capabilities: List[str]  # e.g., ["python"]
-    
-    def run(
-        self, 
-        ir: AnalysisIR, 
-        files: List[Path], 
-        config: Config
-    ) -> IRDelta:
-        """
-        Run analysis pass on given files.
-        
-        Returns:
-            IRDelta: New symbols, references, relationships to add to IR
-        """
-        ...
+Public outputs are **compiled views** from this IR — the IR defines the canonical data model, and each view selects and reshapes fields for its audience. See [§9](#9-behavior-map-json) and [§10](#10-sketch-output) for the available views and their serialization details.
+
+**Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
+
+## 7) Cross-language linkers
+
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section specifies three linkers in detail (JNI, IPC, HTTP client-server); for the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
+
+### JNI Boundary Detection (Java ↔ C)
+
+Detects native method declarations in Java and matches them to C implementations via naming conventions.
+
+**Java side detection:**
+```java
+public class GuacamoleSession {
+    public native void processFrame(byte[] data);
+}
 ```
 
-See §4 "Supported stacks" for the full list of 67 language analyzers, 15 cross-language linkers, and 41 pattern files (4 convention + 37 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+**C side detection (matched by naming convention):**
+```c
+JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
+    JNIEnv *env, jobject obj, jbyteArray data)
+```
 
-## 6) Output: "Repo Behavior Map" JSON (v0.1)
+**Detection rules:**
+1. Find Java methods with `native` modifier
+2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
+3. Emit `native_bridge` edge from Java method → C function
+
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
+* Pattern-matched (naming convention): 0.95
+* 🟪 Annotation-confirmed (`@hypergumbo.jni_impl`): 0.98
+
+**Limitations:**
+* Does not resolve JNI calls through reflection
+* Does not track `JNI_OnLoad` dynamic registration
+* Does not handle inner classes (mangling includes `$`)
+* ⬜ Logs unmatched natives in `limits.unresolved_jni[]` (field not yet implemented; see §7 limits.cross_language)
+
+### IPC/Message Channel Detection
+
+Detects message send/receive patterns across process boundaries using string literal matching on channel/event names.
+
+**Supported patterns:**
+
+| Framework | Send Pattern | Receive Pattern | Evidence Type |
+|-----------|-------------|-----------------|---------------|
+| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
+| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
+| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
+| ⬜ Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
+| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
+
+**Detection algorithm:**
+1. Parse AST for known send/receive function patterns
+2. Extract channel/event name from string literal argument
+3. Build index of all senders and receivers by channel name
+4. Match senders to receivers with same channel name
+5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
+
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
+* String literal channel name match: 0.85
+* 🟪 Variable/computed channel name: 0.50 (code uses flat 0.65 for all non-literal matches; no variable/template distinction)
+* 🟪 Template literal with interpolation: 0.40 (see above)
+* 🟪 Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
+
+**Limitations:**
+* Dynamic channel names require annotation hints
+* Complex message routing (middleware, proxies) not traced
+* Does not validate message schema compatibility
+* ⬜ Logs unmatched patterns in `limits.unresolved_ipc[]` (field not yet implemented; see §7 limits.cross_language)
+
+### HTTP client-server linking
+
+🟩 The HTTP linker (`linkers/http.py`) matches client HTTP calls to server route handlers across languages. Route detection itself is handled by the YAML-driven pattern system (see [§8 Entrypoint detection](#8-entrypoint-detection) and [FRAMEWORKS.md](FRAMEWORKS.md)); this linker creates cross-language edges from client call sites to the detected server routes.
+
+**Supported client patterns:**
+
+| Language | Libraries | Example |
+|----------|-----------|---------|
+| JS/TS | `fetch`, `axios`, AngularJS `$http`, jQuery `$.ajax`/`$.get`/`$.post`, OpenAPI-generated clients | `fetch("/api/users")` |
+| Python | `requests`, `httpx` | `requests.get("/api/users")` |
+| Ruby | `RestClient`, `HTTParty`, `Faraday`, `Net::HTTP` | `RestClient.get("/api/users")` |
+| Java | Spring `RestTemplate`, Retrofit annotations | `restTemplate.getForObject("/api/users", ...)` |
+| Go | `net/http` | `http.Get("http://host/api/users")` |
+
+**Matching algorithm:**
+1. Collect server route symbols detected by the pattern system (see [§8](#8-entrypoint-detection))
+2. Scan client code for HTTP call patterns with URL arguments
+3. Match by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`)
+4. Emit `http_calls` edge from client call site to matching route handler
+
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
+* Literal URL match: 0.90
+* Variable/computed URL: 0.65
+
+### DI resolution linking
+
+🟩 The DI resolution linker (`linkers/di_resolution.py`) creates `di_resolves` edges from interface methods to their DI-bound implementation methods. Unlike `dispatches_to` (which is structural and excluded from forward slices to prevent fan-out explosion), `di_resolves` edges are followed by forward BFS — correct for DI-heavy codebases where the binding narrows to one high-confidence implementation.
+
+**Supported DI frameworks:**
+- Java/Kotlin/Scala: Guice `bind(X.class).to(Y.class)`, `@Provides` methods, `@ImplementedBy` annotations, Spring `@Bean` methods
+- C#: ASP.NET Core `services.AddScoped<I, C>()` / `AddTransient` / `AddSingleton`
+- TypeScript: NestJS/Angular `{ provide: X, useClass: Y }`, InversifyJS `container.bind<I>().to(C)`
+- Python: `binder.bind(I, to=C)` (injector library)
+- Kotlin: Koin `single<I> { Impl() }`
+- Java SPI: `META-INF/services/` files
+
+**Resolution cascade** (highest-confidence wins):
+1. Explicit framework binding (Guice bind/provides/Spring/C#/NestJS/Inversify/Koin/Python injector): 0.90
+2. Guice `@ImplementedBy` annotation: 0.85
+3. Java SPI `META-INF/services/` file: 0.85
+4. Naming convention (`DefaultX` or `XImpl`): 0.75
+5. Single implementation of interface: 0.70
+
+Edges are created at method level (interface method → implementation method with matching short name), not at class level.
+
+### Language-specific notes for cross-language linking
+
+The C analyzer detects JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming) and the Java analyzer detects `native` method declarations, both feeding into the JNI linker above. For full per-language analyzer capabilities, see [LANGUAGES.md](LANGUAGES.md).
+
+### limits.cross_language — tracking unresolved links
+
+🟪 Cross-language linkers log unresolved patterns for debugging (not yet implemented — `limits` dataclass has no `cross_language`, `unresolved_jni`, or `unresolved_ipc` fields):
+
+```json
+{
+  "limits": {
+    "cross_language": {
+      "unresolved_jni": [
+        {
+          "java_method": "com.example.Native.processData",
+          "expected_c_name": "Java_com_example_Native_processData",
+          "reason": "no_matching_c_function"
+        }
+      ],
+      "unresolved_ipc": [
+        {
+          "channel": "user.login",
+          "senders": ["src/client/auth.js:45"],
+          "receivers": [],
+          "reason": "no_receiver_found"
+        }
+      ]
+    }
+  }
+}
+```
+
+## 8) Entrypoint detection
+
+Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
+
+### Architecture
+
+```
+ANALYZERS (pure language, no framework knowledge)
+  → Capture symbols + rich metadata (decorators, base classes, parameters)
+  → Capture UsageContext for call-based patterns (route registrations, etc.)
+
+PATTERN SYSTEM (YAML files: convention + framework)
+  → Match patterns against symbol metadata and usage contexts
+  → Enrich symbols with concept metadata (route, task, model, etc.)
+
+ENTRYPOINTS (semantic detection)
+  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
+  → High confidence (0.95) from semantic match
+```
+
+**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
+
+### meta.concepts Structure
+
+Enriched symbols have a `meta.concepts` list that serves as the **single source of truth** for semantic metadata:
+
+```json
+{
+  "meta": {
+    "concepts": [
+      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
+      {"concept": "test_function", "framework": "test-frameworks"},
+      {"concept": "main_entrypoint", "framework": "main-functions"}
+    ]
+  }
+}
+```
+
+**Fields:**
+- `concept`: Semantic type (route, model, task, test_function, main_entrypoint, etc.)
+- `framework`: Which pattern file matched (fastapi, test-frameworks, main-functions, etc.)
+- Additional fields vary by concept type (e.g., `path`, `method` for routes)
+
+**Path normalization:** Route paths are normalized to always start with `/` for consistent matching (e.g., `users` → `/users`).
+
+Linkers and entrypoint detection query `meta.concepts` exclusively.
+
+### Convention Patterns vs Framework Patterns
+
+The pattern system has two categories:
+
+| Category | When Loaded | Purpose | Examples |
+|----------|-------------|---------|----------|
+| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, naming-conventions, language-conventions, config-conventions, library-exports |
+| **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
+
+**Convention patterns (6 files):**
+- `main-functions.yaml`: main() entrypoints across 10+ languages
+- `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
+- `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
+- `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
+- `library-exports.yaml`: Library entry point detection (JS/TS index exports, Python __init__.py, Go uppercase, Java/Kotlin public, Elixir public, Rust pub)
+- `naming-conventions.yaml`: Heuristic entrypoints by naming pattern (`*Controller`, `*Handler`, `*Service`)
+
+**Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
+
+### Pattern Types
+
+The framework pattern system supports multiple detection strategies:
+
+| Pattern Type | Example Frameworks | Detection Method |
+|--------------|-------------------|------------------|
+| **Decorator-based** | FastAPI, Flask, NestJS, Spring Boot | Match `@app.get`, `@Controller` decorators |
+| **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
+| **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
+| **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
+| **Export-based** | JS/TS libraries | Detect exports from `index.ts/js` as library entrypoints |
+
+**Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
+
+See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
+
+### Entrypoint Confidence Tiers
+
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence scoring](#12-confidence-scoring).
+
+Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
+
+| Tier | Confidence | Detection Method | Examples |
+|------|------------|------------------|----------|
+| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
+| 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
+| 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
+| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
+
+All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
+
+### Scoring for Auto-Slice Entry Selection
+
+When multiple entrypoints exist, scoring selects the most useful ones:
+
+```python
+score = confidence * (1 + log(1 + outgoing_edges))
+```
+
+This prefers well-connected entries, producing richer slices.
+
+## 9) Behavior map JSON
+
+The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
 
 Single file: `hypergumbo.results.json`
 
@@ -341,11 +608,11 @@ Single file: `hypergumbo.results.json`
 {
   "schema_version": "0.2.1",
   "confidence_model": "hypergumbo-evidence-v1",
-  "stable_id_scheme": "hypergumbo-stableid-v1",
+  "stable_id_scheme": "hypergumbo-stableid-v2",
   "shape_id_scheme": "hypergumbo-shapeid-v1",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
   "view": "behavior_map",
-  "generated_at": "2024-01-15T10:30:00Z",
+  "generated_at": "2026-01-15T10:30:00Z",
   "analysis_incomplete": false,
   "analysis_runs": [],
   "profile": {},
@@ -356,10 +623,11 @@ Single file: `hypergumbo.results.json`
   "limits": {}
 }
 ```
+Code also emits `usage_contexts`, `entrypoints` (documented below), and `sketch_precomputed` (internal cache artifact — not part of the public schema; consumers should not depend on its presence).
 
 ### JSON Schema (Auto-Generated)
 
-A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `src/hypergumbo/ir.py` to ensure it stays in sync with the implementation.
+A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `packages/hypergumbo-core/src/hypergumbo_core/ir.py` to ensure it stays in sync with the implementation.
 
 **Regenerate with:** `./scripts/generate-schema`
 
@@ -372,12 +640,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers (new, v0.1.0):**
-- `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
-- `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
-- `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
-
-These fields prevent semantic drift: if an algorithm changes in the future, the scheme string MUST change.
+**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§6 Identity and provenance scheme versioning](#identity-and-provenance-scheme-versioning) for definitions and the versioning mandate.
 
 **analysis_incomplete** (boolean, default: false):
 - Set to `true` if analysis terminated early due to errors, timeouts, or resource limits
@@ -387,67 +650,15 @@ These fields prevent semantic drift: if an algorithm changes in the future, the 
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability:
-
-| Evidence Type | Base Score | Example |
-|---------------|------------|---------|
-| `ast_call_direct` | 0.90 | Direct function call in AST |
-| `ast_call_method` | 0.85 | Method call on object |
-| `import_static` | 0.95 | Static import statement |
-| `pattern_match` | 0.80 | Framework pattern (decorator, annotation) |
-| `cross_lang_link` | 0.75 | Cross-language boundary (JNI, IPC) |
-| `inferred` | 0.60 | Heuristic inference |
-
-The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
 
 ### analysis_runs[] — provenance tracking
-```json
-{
-  "execution_id": "uuid:abc-def-789...",
-  "run_signature": "sha256:xyz789...",  // (deterministic hash of pass+version+config_fingerprint+toolchain)
-  "repo_fingerprint": "sha256:repo123...",  // (deterministic snapshot id)
-  "pass": "python-ast-v1",
-  "version": "hypergumbo-0.1.0",
-  "toolchain": {"name": "python", "version": "3.11.0"},
-  "config_fingerprint": "sha256:abc123...",
-  "files_analyzed": 42,
-  "files_skipped": 1,
-  "skipped_passes": [],  // (for requested-but-unavailable components)
-  "warnings": ["skipped bundle.min.js (2.1MB exceeds limit)"],
-  "started_at": "2024-01-15T10:30:00Z",
-  "duration_ms": 1234
-}
-```
 
-**Field semantics:**
-* `execution_id`: Unique identifier for this specific analysis run
-  - Format: `uuid:` prefix for UUID v4, or `sha256:` for deterministic hash
-  - Used to identify which analysis run produced which nodes/edges
-  - Enables multi-pass merging and provenance tracking
-* `run_signature`: Deterministic fingerprint of analyzer configuration
-  - Hash of (pass_id, version, config_fingerprint, toolchain)
-  - Same pass + version + config + toolchain → same signature
-  - Used for cache keying and grouping results
-* `repo_fingerprint`: Hash identifying the code snapshot analyzed
-  - Git repos: `sha256(git_head + sorted([(path, sha256(content_bytes)) for each dirty file]))`
-    - Includes the content hash of dirty tracked files and included untracked files to avoid false cache hits.
-  - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
-  - Enables cache keying and provenance tracking
-* `toolchain`: Versions of language runtimes/parsers used (empty `{}` for syntax-only passes)
-* `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
+Each entry records provenance for one analyzer pass. Field semantics are defined in [§6 Internal representation](#6-internal-representation); see `docs/schema.json` for the full field list.
 
-**skipped_passes** (array, optional):
-- List of passes that could not run (e.g., missing grammar)
-- Each entry includes pass ID and reason
-- Example:
-```json
-"skipped_passes": [
-  {
-    "pass": "lean-ts-v1",
-    "reason": "tree-sitter-lean grammar not available"
-  }
-]
-```
+**Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
+
+**skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean-ts-v1", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
 
 ### profile — repo characteristics
 
@@ -462,111 +673,29 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§8.6 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints
 
-**Node fields:**
+Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
+
+**Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
+
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
+
 ```json
-{
-  "id": "python:src/auth.py:42-48:login:function",
-  "stable_id": "sha256:abc123...",
-  "shape_id": "sha256:shape456...",
-  "canonical_name": "myapp.auth.login",
-  "fingerprint": "sha256:def456...",
-  "kind": "function",
-  "name": "login",
-  "path": "src/auth.py",
-  "language": "python",
-  "span": {
-    "start_line": 42,
-    "end_line": 48,
-    "start_col": 0,
-    "end_col": 15
-  },
-  "origin": "python-ast-v1",
-  "origin_run_id": "uuid:abc-def-789...",
-  "origin_run_signature": "sha256:xyz789...",
-  "quality": {
-    "score": 0.9,
-    "reason": "AST-based definition, unambiguous scope"
-  },
-  "supply_chain": {
-    "tier": 1,
-    "tier_name": "first_party",
-    "reason": "matches ^src/"
-  }
-}
+"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
 ```
-**Presence rule (v0.1.0):**
-- `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
-- If unavailable, they MUST be set to `null` (not omitted).
-- This supports forward-compatible consumers and Spec B prerequisites without forcing every pass to compute every field.
 
-**supply_chain** (object, required):
-- `tier` (integer, 1-4): Numeric tier for filtering/sorting
-- `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
-- `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
-- See §8.6 for classification algorithm and tier definitions.
-
-**origin_run_id**: References `analysis_runs[].execution_id` (unique per run). When present, indicates exactly which analysis run created this node.
-
-**origin_run_signature** (optional): References `analysis_runs[].run_signature` (for grouping nodes by analyzer configuration).
-
-**Node kinds:**
-* `file` — source file
-* `module` — Python module, JS module
-* `function` — function/method
-* `class` — class definition
-* `endpoint` — HTTP route, IPC handler, CLI entrypoint
+**Node kinds:** `file`, `module`, `function` (function/method), `class`, `endpoint` (HTTP route, IPC handler, CLI entrypoint).
 
 ### edges[] — relationships
 
-**Edge fields:**
-```json
-{
-  "id": "edge:sha256:def456...",
-  "edge_key": "edgekey:sha256:rel_abc123...",
-  "type": "calls",
-  "src": "python:src/auth.py:42-48:login:function",
-  "dst": "python:src/db.py:10-15:query_user:function",
-  "confidence": 0.85,
-  "origin": "python-ast-v1",
-  "origin_run_id": "uuid:abc-def-789...",
-  "origin_run_signature": "sha256:xyz789...",
-  "quality": {
-    "score": 0.85,
-    "reason": "Direct AST call"
-  },
-  "meta": {
-    "evidence_type": "ast_call_direct",
-    "evidence_lang": "python",
-    "evidence_spans": [
-      {
-        "file": "src/auth.py",
-        "span": {"start_line": 45, "end_line": 45, "start_col": 8, "end_col": 24}
-      }
-    ],
-    "evidence": [
-      {
-        "origin": "python-ast-v1",
-        "origin_run_id": "uuid:abc-def-789...",
-        "origin_run_signature": "sha256:xyz789...",
-        "evidence_type": "ast_call_direct",
-        "evidence_lang": "python",
-        "evidence_spans": [
-          {
-            "file": "src/auth.py",
-            "span": {"start_line": 45, "end_line": 45, "start_col": 8, "end_col": 24}
-          }
-        ],
-        "confidence": 0.85
-      }
-    ]
-  }
-}
-```
-**edge_key (new, v0.1.0):**
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+
+**Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
+
+**edge_key:**
 - `edge_key` is a canonical identity used to deduplicate/merge multiple observations of the “same” relationship across passes.
 - Format: `edgekey:sha256:<hash>`
 - Recommended hash inputs (deterministic):
@@ -575,20 +704,11 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
   - `dst` (prefer `stable_id` if both src/dst nodes have it, else use `id`)
 - `id` remains a unique identifier for this edge record instance.
 
-**meta.evidence[] (optional, v0.1.0):**
-- `meta.evidence[]` is an optional array of evidence records. Each record captures one piece of evidence from one analysis run.
-- When present, the top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` MUST reflect the “primary” evidence (typically the highest-confidence record), to preserve compatibility with v0.1 consumers.
-- Mixed-fidelity graphs (future Spec B) SHOULD accumulate evidence in `meta.evidence[]` rather than overwriting provenance.
-
-**New meta fields**:
+**Meta fields**:
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Confidence model (evidence-based):**
-
-Source: `confidence` field, derived from `meta.evidence_type` via deterministic matrix.
-
-**Evidence types** (machine-readable):
+**Evidence types** (machine-readable, see [§12](#12-confidence-scoring) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -602,128 +722,122 @@ Source: `confidence` field, derived from `meta.evidence_type` via deterministic 
 **Edge types:**
 * `calls` — function/method invocation
 * `imports` — module/symbol import
-* `defines` — definition relationship
-* `renders` — template rendering
-* `loads_script` — script tag src
-* `implements` — class implements interface (Java, TypeScript)
+* `defines_target` — definition relationship
+* ✅ `renders` — template rendering (Rails controller → view template)
+* `script_src` — script tag src attribute
+* `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class
 * `native_bridge` — Java native method → C implementation (JNI)
 * `message_send` — sends IPC/protocol message
 * `message_receive` — handles IPC/protocol message
 * `instantiates` — class instantiation (constructor call)
-* `manual` — user-annotated
+* `http_calls` — HTTP client call site to server route handler (see [§7 HTTP client-server linking](#http-client-server-linking))
+* ⬜ `manual` — user-annotated (not implemented)
 
 ### features[] — named slices
 
-**Feature structure:**
+Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
+
+**Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
+
+### entrypoints[] — detected entry points
+
+🟩 Pre-computed, confidence-ranked array of execution entry points (HTTP routes, CLI commands, main functions, lifecycle hooks, etc.). Each entry references a node in the graph.
 
 ```json
 {
-  "id": "sha256:feature_query_hash...",
-  "name": "auth-flow",
-  "entry_nodes": ["python:src/auth.py:42-48:login:function"],
-  "node_ids": ["python:src/auth.py:42-48:login:function", "..."],
-  "edge_ids": ["edge:sha256:def456...", "..."],
-  "query": {
-    "method": "bfs",
-    "entrypoint": "fastapi_route:/api/login",
-    "hops": 3,
-    "max_files": 20,
-    "exclude_tests": true
-  },
-  "limits_hit": ["hop_limit"],
-  "summary": "User authentication flow from FastAPI route to database query"
+  "entrypoints": [
+    {
+      "symbol_id": "python:src/app.py:10-25:get_users:function",
+      "kind": "http_route",
+      "confidence": 0.95,
+      "label": "HTTP GET /users"
+    }
+  ]
 }
 ```
 
-**Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`
+**Fields:**
+- `symbol_id`: Reference to a node (matches `nodes[].id`)
+- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `connectivity_based`, etc.)
+- `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
+- `label`: Human-readable description
 
-**Query reproducibility:** Same query on same code → same feature ID → enables diff across commits.
+**Confidence tiers** (see [§8](#8-entrypoint-detection) and [§12](#12-confidence-scoring)):
+- 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`)
+- 0.95: Framework patterns (decorators, base classes)
+- 0.85: Structural (Python `if __name__ == "__main__"`)
+- 0.80: Language conventions (`main()` function)
+- 0.70: Naming heuristics (`*Controller`, `*Handler`)
+- 0.50: Connectivity-based fallback (top 5 most-connected callables when no patterns match)
+
+Penalties: test files (−50%), vendor/external deps (−70%), utility files (−50%). Connectivity boost: up to +0.25 for entrypoints with many outgoing edges.
+
+**Sorting:** Ranked by confidence (highest first).
+
+**Not redundant with nodes:** While nodes carry `meta.concepts` metadata from framework pattern matching, the `entrypoints` array provides pre-computed confidence (with penalties and boosts), ranking, and labeled kinds. Consumers would otherwise need to iterate all nodes, check concepts, apply scoring logic, and sort. Used by sketch generation, slicing, and compact output.
+
+### usage_contexts[] — framework pattern evidence
+
+🟩 Intermediate representation of how symbols are *used* (as opposed to how they are *defined*). Each entry records a call site, data value, export, or macro invocation that gives semantic meaning to a symbol through its usage context. See [ADR-0003](adr/0003-usage-context-patterns.md) for design rationale.
+
+```json
+{
+  "usage_contexts": [
+    {
+      "id": "uc:...",
+      "kind": "call",
+      "context_name": "app.get",
+      "symbol_ref": "javascript:src/routes.js:10-25:listUsers:function",
+      "position": "args[1]",
+      "metadata": {"http_method": "GET", "route_path": "/users"},
+      "path": "src/app.js",
+      "span": {"start_line": 5, "end_line": 5, "start_col": 0, "end_col": 40}
+    }
+  ]
+}
+```
+
+**Fields:**
+- `id`: Unique identifier
+- `kind`: Context type (`call`, `data_value`, `export`, `macro`)
+- `context_name`: Function/variable/file name where usage occurs
+- `symbol_ref`: ID of the symbol being used (may be null if unresolved)
+- `position`: Where in the context the symbol appears (e.g., `args[1]`, `:get`, `default`)
+- `metadata`: Context-specific data (e.g., `http_method`, `route_path`)
+- `path`: File where usage occurs
+- `span`: Source location
+
+**Role in the pipeline:** Usage contexts feed into framework pattern matching (`enrich_symbols()`), which adds concepts to symbols, which in turn drive entrypoint detection and linker behavior. Most consumers should use the enriched `nodes` and `entrypoints` rather than processing `usage_contexts` directly.
+
+**Stripped from compact/tiered views** to reduce payload size.
 
 ### metrics — optional counts
 
-```json
-{
-  "total_nodes": 523,
-  "total_edges": 1847,
-  "avg_confidence": 0.82,
-  "languages": {
-    "python": {"nodes": 320, "edges": 1200},
-    "javascript": {"nodes": 203, "edges": 647}
-  },
-  "by_supply_chain_tier": {
-    "first_party": {"nodes": 380, "edges": 1200},
-    "internal_dep": {"nodes": 85, "edges": 150},
-    "external_dep": {"nodes": 58, "edges": 497}
-  }
-}
-```
+Aggregate statistics: `total_nodes`, `total_edges`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
 
 ### supply_chain_summary — classification overview
 
-```json
-{
-  "supply_chain_summary": {
-    "first_party": {"files": 42, "symbols": 380},
-    "internal_dep": {"files": 12, "symbols": 85},
-    "external_dep": {"files": 8, "symbols": 58},
-    "derived_skipped": {
-      "files": 3,
-      "paths": ["dist/bundle.js", "build/app.min.js", "out/compiled.js"]
-    }
-  }
-}
-```
-
-**derived_skipped.paths**: Capped at 10 entries. Full list available via `--verbose` flag.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`.
 
 ### limits — explicit gaps
 
-```json
-{
-  "not_captured": [
-    "dynamic imports (importlib, require with variables)",
-    "eval() and exec() calls",
-    "decorators with complex logic"
-  ],
-  "truncated_files": [
-    {
-      "path": "dist/bundle.min.js",
-      "size_bytes": 2100000,
-      "reason": "exceeds --max-file-bytes"
-    }
-  ],
-  "skipped_languages": ["go", "rust"],
-  "failed_files": [
-    {
-      "path": "malformed.py",
-      "reason": "SyntaxError: invalid syntax (line 42)",
-      "analyzer": "python-ast-v1"
-    }
-  ],
-  "partial_results_reason": "",
-  "analyzer_version": "hypergumbo-0.1.0",
-  "analysis_depth": "syntax_only"
-}
-```
+Documents what the analysis *didn't* capture. Key arrays:
+- `not_captured[]`: Categories of constructs not analyzed (e.g., dynamic imports, eval, complex decorators)
+- `truncated_files[]`: Files skipped due to size, with path, size, and reason
+- `skipped_languages[]`: Languages with unavailable grammars
+- `failed_files[]`: Files that caused parse errors, with path, reason, and analyzer ID
 
-**partial_results_reason** (string, optional):
-- Present only when `analysis_incomplete: true`
-- Human-readable explanation of why analysis did not complete
-- Examples:
-  - `"Timeout: Analysis exceeded 300 seconds"`
-  - `"Resource limit: Memory usage exceeded 2GB"`
-  - `"Critical error: catalog.json could not be loaded"`
-  - `"User interrupted: Ctrl-C received"`
+**partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
 
-### sketch — Human/LLM-readable summary
+## 10) Sketch output
 
-Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
+Markdown output to stdout (not a file). This is the default output mode. Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
 
 **Section order (in priority for truncation):**
 
-| # | Section | Purpose |
-|---|---------|---------|
+| Order | Section | Purpose |
+|-------|---------|---------|
 | 1 | 🟩 Header | Title, description |
 | 2 | 🟩 Overview | Language breakdown, file counts, LOC |
 | 3 | 🟩 Structure | Tree built from important files |
@@ -739,6 +853,32 @@ Markdown output to stdout (not a file). Designed for pasting into LLM chat inter
 | 13 | 🟩 Additional File Content | Code for semantic picks (--with-source only) |
 
 **Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections. With `--with-source`, budget shifts from file listings to actual source code.
+
+### Additional Files selection
+
+The Additional Files section uses a README-first hybrid ranking algorithm:
+
+1. **README always first:** The project's README is placed first. If it exceeds the token budget, it's truncated and no other files are included.
+
+2. **Round-robin selection:** Remaining files are selected by cycling through three sources:
+   - README-linked files (internal links extracted from the README)
+   - Similarity-ranked files (semantic similarity to project description)
+   - Centrality-ranked files (symbol mention frequency)
+
+3. **Multi-format link extraction:** Supports Markdown (inline + reference-style), Org-mode, RST, and AsciiDoc link syntaxes. Resolves relative paths, absolute paths, and forge URLs (GitHub/GitLab/Codeberg).
+
+4. **Dynamic truncation:** When budget is limited, files are truncated based on median token count of already-selected files, with a 500-token floor.
+
+**Example round-robin order:**
+```
+1. README.md (always first)
+2. CONTRIBUTING.md (linked from README)
+3. docs/overview.md (similarity-ranked)
+4. config.yaml (centrality-ranked)
+5. INSTALL.md (linked from README)
+6. docs/api.md (similarity-ranked)
+...
+```
 
 **Example:**
 ```markdown
@@ -768,27 +908,15 @@ C++ (82%), Lua (12%), CMake (6%)
 - `Client::Client` (Constructor) — src/client/client.cpp
 ```
 
-## 7) Slicing behavior (MVP)
+For a complete real-world example (install, run, and full JSON output), see [example-output.md](example-output.md).
 
-### Entry sources
+## 11) Slicing behavior
 
-* 🟩 **Detected endpoints** (FastAPI/Flask/Express heuristics):
-  * `@app.route`, `@app.get`, `app.get(`, `app.post(`
-* 🟩 **Electron main/renderer hints**:
-  * File names: `main.js`, `renderer.js`, `preload.js`
-  * IPC patterns: `ipcMain.on`, `ipcRenderer.send`
-* 🟩 **CLI entrypoints**:
-  * Python: `if __name__ == "__main__"`
-  * JavaScript: `process.argv` parsing patterns
+Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the pattern system; see [§8 Entrypoint detection](#8-entrypoint-detection).
 
 ### Slicing algorithm
 
-* 🟩 **Method**: BFS or DFS on relationships
-* 🟩 **Limits**:
-  * Hop limit (default: 3)
-  * File count limit (default: 20)
-  * Configurable via `--max-hops`, `--max-files`
-* 🟩 **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
+🟩 BFS traversal on the call graph from entry nodes, bounded by hop limit and file count limit. See [§3 Analysis options](#analysis-options) for CLI flags (`--max-hops`, `--max-files`). Edges can be filtered by confidence threshold or test exclusion.
 
 ### Slice identity and reproducibility
 
@@ -805,35 +933,38 @@ Query format enables exact reproduction:
   "method": "bfs",
   "entrypoint": "fastapi_route:/api/login",
   "hops": 3,
-  "max_files": 20,
+  "max_files": 50,
   "exclude_tests": true
 }
 ```
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
-## 8) Safety + performance guardrails
+### Tier filtering
 
-### Exclude patterns
+🟩 The `--max-tier` flag (defined in [§3](#3-user-experience-cli); tier definitions in [§14](#14-supply-chain-classification)) adds tier-based traversal boundaries to slicing: BFS traversal skips nodes whose supply chain tier exceeds the specified value. For example, `--max-tier 1` constrains the slice to first-party code only.
 
-* `--exclude` supports gitignore-like globs
-* MVP implementation: `fnmatch` (upgrade to `pathspec` later if needed)
-* Default excludes:
-  * `node_modules/`, `venv/`, `dist/`, `build/`
-  * `*.min.js`, `*.bundle.js`
-  * `.git/`, `__pycache__/`
+### Reverse slice class expansion
 
-### File size limits
+🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
 
-* `--max-file-bytes` default: 2MB
-* Especially important for HTML/minified JS
-* Truncated files logged in `limits.truncated_files[]`
+## 12) Confidence scoring
 
-### Confidence calculation (deterministic algorithm)
+Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories. The scores quantify detection reliability — how certain hypergumbo is that a detected relationship or entrypoint is real, not a false positive. The three categories are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score, and analyzer-produced edges and linker-produced edges use different scoring logic.
 
-**Evidence scoring** (MVP, stable contract)
+### Three confidence categories
 
-Deterministic mapping from structured evidence → confidence score.
+| Category | What it scores | Scoring basis | Score range | Defined in |
+|----------|---------------|---------------|-------------|------------|
+| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | `(language, evidence_type)` matrix + contextual adjustments | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
+| **Linker edge confidence** | Cross-language relationships (JNI, IPC, HTTP) | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-cross-language-linkers), details in [§7](#7-cross-language-linkers) |
+| **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
+
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. Consumers MUST default unknown `evidence_type` values to 0.30 (see [Appendix C](#appendix-c-schema-compatibility-contract)).
+
+### Edge confidence: analyzer evidence
+
+🟪 Deterministic mapping from structured evidence → confidence score. This covers edges produced by language analyzers (Tier 1 passes). Not yet implemented: no `EVIDENCE_CONFIDENCE_MATRIX` lookup, no contextual adjustments (`dynamic_dispatch`, `missing_types`, `has_type_annotation`). Edge default confidence is 0.85 in code (not the 0.30 specified below).
 
 ```python
 # (language, evidence_type) → base_score
@@ -851,8 +982,8 @@ EVIDENCE_CONFIDENCE_MATRIX = {
 }
 
 def calculate_evidence_confidence(
-    lang: str, 
-    evidence_type: str, 
+    lang: str,
+    evidence_type: str,
     context: dict
 ) -> float:
     """
@@ -862,12 +993,12 @@ def calculate_evidence_confidence(
         lang: Language (from edge.meta.evidence_lang or src.language)
         evidence_type: From edge.meta.evidence_type
         context: Additional flags (dynamic_dispatch, has_type_annotation, etc.)
-    
+
     Returns:
         float in [0.0, 1.0]
     """
     base = EVIDENCE_CONFIDENCE_MATRIX.get((lang, evidence_type), 0.30)
-    
+
     adjustments = 0.0
     if context.get("dynamic_dispatch"):
         adjustments -= 0.1
@@ -875,167 +1006,68 @@ def calculate_evidence_confidence(
         adjustments -= 0.05
     if context.get("has_type_annotation"):
         adjustments += 0.05
-    
+
     return min(1.0, max(0.0, base + adjustments))
 ```
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
+### Edge confidence: cross-language linkers
+
+Cross-language linkers (Tier 2 passes) produce their own confidence scores based on match quality. These scores are independent of the analyzer evidence matrix above. See [§7 Cross-language linkers](#7-cross-language-linkers) for detection rules and limitations.
+
+| Linker | Match type | Confidence |
+|--------|-----------|------------|
+| **JNI** | Naming convention (`Java_{Class}_{method}`) | 0.95 |
+| **JNI** | 🟪 Annotation-confirmed | 0.98 |
+| **IPC** | String literal channel name match | 0.85 |
+| **IPC** | 🟪 Variable/computed channel name | 0.50 (code uses flat 0.65) |
+| **IPC** | 🟪 Template literal with interpolation | 0.40 (no variable/template distinction in code) |
+| **IPC** | 🟪 Annotation-provided | 0.95 |
+| **HTTP** | Literal URL match | 0.90 |
+| **HTTP** | Variable/computed URL | 0.65 |
+
+**Pattern:** Across all linkers, literal/static matches score higher than dynamic/computed ones, and annotation-confirmed matches approach 0.95. This reflects the inherent uncertainty of heuristic string matching.
+
+### Entrypoint confidence tiers
+
+Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level.
+
+See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four tiers: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70).
+
+## 13) Output reproducibility
+
+Reproducibility has two dimensions: **caching** ensures that re-running analysis on unchanged code returns the same result quickly, and **deterministic ordering** ensures that output is diffable across runs.
+
 ### Caching
-* Location: `.hypergumbo/cache/`
+* Location: `~/.cache/hypergumbo/` (XDG-compliant; respects `XDG_CACHE_HOME` if set)
+* Cache structure:
+  ```
+  ~/.cache/hypergumbo/
+  └── <repo-fingerprint>/
+      ├── embeddings/
+      │   └── embed_<file-content-hash>.npy
+      └── results/
+          └── <state-hash>/
+              └── hypergumbo.results.json
+  ```
 * Keying strategy:
-  * File-level results: `(content_hash, run_signature)`
-  * Full analysis outputs: `(repo_fingerprint, run_signature)` where `repo_fingerprint` changes when any analyzed file content changes (including dirty git files).
-* File-level cache stores mapping: `file_path → content_hash → cached_result`
-* Cache invalidation: if analyzer version changes or repo_fingerprint changes
-* Cache format: JSON (simple, debuggable)
+  * **Repo fingerprint** (stable identity): hash of remote origin URL + first commit SHA (git repos) or absolute path (non-git). Shared across checkouts of the same repo.
+  * **State hash** (point-in-time snapshot): hash of HEAD SHA + diff of tracked changes + untracked source file metadata. Changes when any file is modified.
+  * **Embedding cache**: keyed by individual file content hash; shared across all repo states since embeddings depend only on file content.
+* Cache invalidation: state hash changes when any analyzed file content changes (including dirty git files)
+* Cache format: JSON for analysis results, NumPy `.npy` for embeddings
+* Management: `hypergumbo cache-status` and `hypergumbo cache-clear [--older-than N] [--dry-run]`
 
 ### Deterministic ordering
-* Stable sort of nodes/edges for reproducible diffs
-* Sort keys:
-  * Nodes: `(language, path, start_line, name)`
-  * Edges: `(src, dst, type)`
-* Enables meaningful `git diff` of output files
 
-## 8.5) Cross-Language Edge Detection (MVP)
+Output ordering is deterministic (same input → same output) and optimized for consumption priority.
 
-Spec A provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
+* 🟩 **Default: centrality-ranked** — Nodes sorted by centrality score (most important first). Edges sorted by source node centrality. This ordering is deterministic given the same input graph and optimizes for LLM context windows and human scanning. Used in JSON output, sketch output, and compact/tiered views.
+* ⬜ **JSON key-level reproducibility** — `json.dumps` should use `sort_keys=True` for reproducible diffs at the key level (currently missing).
+* 🟪 **`--sort-order` option** — Future flag to allow alternative orderings (e.g., `--sort-order alphabetical` with sort keys: nodes by `(language, path, start_line, name)`, edges by `(src, dst, type)`) for users who prefer diffability over importance ranking.
 
-### JNI Boundary Detection (Java ↔ C)
-
-Detects native method declarations in Java and matches them to C implementations via naming conventions.
-
-**Java side detection:**
-```java
-public class GuacamoleSession {
-    public native void processFrame(byte[] data);
-}
-```
-
-**C side detection (matched by naming convention):**
-```c
-JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
-    JNIEnv *env, jobject obj, jbyteArray data)
-```
-
-**Detection rules:**
-1. Find Java methods with `native` modifier
-2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
-3. Emit `native_bridge` edge from Java method → C function
-
-**Confidence scoring:**
-* Pattern-matched (naming convention): 0.80
-* Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
-
-**Limitations:**
-* Does not resolve JNI calls through reflection
-* Does not track `JNI_OnLoad` dynamic registration
-* Does not handle inner classes (mangling includes `$`)
-* Logs unmatched natives in `limits.unresolved_jni[]`
-
-### IPC/Message Channel Detection
-
-Detects message send/receive patterns across process boundaries using string literal matching on channel/event names.
-
-**Supported patterns:**
-
-| Framework | Send Pattern | Receive Pattern | Evidence Type |
-|-----------|-------------|-----------------|---------------|
-| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
-| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
-| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
-| Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
-| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
-
-**Detection algorithm:**
-1. Parse AST for known send/receive function patterns
-2. Extract channel/event name from string literal argument
-3. Build index of all senders and receivers by channel name
-4. Match senders to receivers with same channel name
-5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
-
-**Confidence scoring:**
-* String literal channel name match: 0.85
-* Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
-* Template literal with interpolation: 0.40 (partial match)
-* Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
-
-**Limitations:**
-* Dynamic channel names require annotation hints
-* Complex message routing (middleware, proxies) not traced
-* Does not validate message schema compatibility
-* Logs unmatched patterns in `limits.unresolved_ipc[]`
-
-### HTTP Endpoint Detection (Server-side only)
-
-Detects HTTP route definitions for entrypoint detection. Full client→server linking is deferred to Spec B1.
-
-**Supported frameworks:**
-
-| Framework | Pattern | Example |
-|-----------|---------|---------|
-| FastAPI | `@app.get("/path")` | `@app.get("/users/{id}")` |
-| Flask | `@app.route("/path")` | `@app.route("/login", methods=["POST"])` |
-| Express | `app.get("/path", handler)` | `router.post("/api/users", createUser)` |
-| Java Servlet | `@WebServlet("/path")` | `@WebServlet("/api/session")` |
-| JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
-| Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
-
-**Detection output:**
-* Symbol kind: `route` or `endpoint`
-* Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
-* Used by entrypoint detection for slicing
-
-**Client-side linking (NOT in MVP):**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is deferred to Spec B1 HTTP linker.
-
-### Language-Specific Detection Notes
-
-**C analyzer detects:**
-* Functions, structs, typedefs, enums
-* Function calls (direct calls only, not function pointers)
-* `#include` edges (file → file)
-* JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming)
-* Macro definitions (as symbols, not expanded)
-
-**Java analyzer detects:**
-* Classes, interfaces, enums, annotations
-* Methods, constructors, fields
-* `implements` edges (class → interface)
-* `extends` edges (class → superclass, interface → superinterface)
-* `native` method declarations (for JNI linking)
-* Annotation detection (`@Override`, `@Deprecated`, servlet/JAX-RS annotations)
-* `instantiates` edges (constructor calls)
-
-### limits.cross_language — tracking unresolved links
-
-Cross-language linkers log unresolved patterns for debugging:
-
-```json
-{
-  "limits": {
-    "cross_language": {
-      "unresolved_jni": [
-        {
-          "java_method": "com.example.Native.processData",
-          "expected_c_name": "Java_com_example_Native_processData",
-          "reason": "no_matching_c_function"
-        }
-      ],
-      "unresolved_ipc": [
-        {
-          "channel": "user.login",
-          "senders": ["src/client/auth.js:45"],
-          "receivers": [],
-          "reason": "no_receiver_found"
-        }
-      ]
-    }
-  }
-}
-```
-
-## 8.6) Supply Chain Classification
+## 14) Supply chain classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1162,6 +1194,15 @@ members = ["crates/*"]
 dependencies = ["./packages/core", "./packages/utils"]
 ```
 
+**Example/demo, test, and fuzz/bench patterns:**
+```
+examples/, demos/, samples/, tutorials/     # Example/demo code
+tests/, test/, __tests__/, spec/            # Test directories
+_test.go, .test.js, .spec.ts, _spec.rb     # Test file suffixes
+fuzz/, fuzzing/, fuzz_targets/              # Fuzz targets
+benches/, benchmarks/, benchmark/           # Benchmarks
+```
+
 #### 4. First-party detection (tier 1)
 
 **Explicit first-party patterns:**
@@ -1173,53 +1214,6 @@ packages/*/src/          # JS monorepo source dirs
 ```
 
 **Default rule:** If no other tier matches, classify as tier 1 (first-party). This ensures unknown directories are analyzed rather than skipped.
-
-### CLI Integration
-
-#### Analysis scope flags
-
-🟩 Implemented:
-
-```bash
-# Default: analyze tiers 1-3, skip tier 4 (derived)
-hypergumbo run .
-
-# First-party only (fast, focused)
-hypergumbo run . --first-party-only
-# Equivalent to: --max-tier 1
-
-# Explicit tier control (default is 3)
-hypergumbo run . --max-tier 3
-```
-
-#### Slice tier filtering
-
-🟩 Implemented:
-
-```bash
-# Slice stops at first-party boundary
-hypergumbo slice --entry main --max-tier 1
-
-# Slice includes internal deps but not external
-hypergumbo slice --entry main --max-tier 2
-
-# Default: slice can traverse into external deps
-hypergumbo slice --entry main --max-tier 3
-```
-
-#### Sketch prioritization
-
-🟩 Implemented:
-
-The `--no-first-party-priority` flag disables tier-based weighting for Key Symbols ranking:
-
-```bash
-# Key Symbols prioritizes first-party (default)
-hypergumbo sketch .
-
-# Disable tier weighting (raw centrality)
-hypergumbo sketch . --no-first-party-priority
-```
 
 ### Impact on Analysis
 
@@ -1239,45 +1233,6 @@ def weighted_score(symbol: Symbol, centrality: float) -> float:
 
 This ensures first-party symbols appear first even when third-party utilities have higher raw centrality.
 
-#### Additional Files ranking
-
-The Additional Files section uses a README-first hybrid ranking algorithm:
-
-1. **README always first:** The project's README is placed first. If it exceeds the token budget, it's truncated and no other files are included.
-
-2. **Round-robin selection:** Remaining files are selected by cycling through three sources:
-   - README-linked files (internal links extracted from the README)
-   - Similarity-ranked files (semantic similarity to project description)
-   - Centrality-ranked files (symbol mention frequency)
-
-3. **Multi-format link extraction:** Supports Markdown (inline + reference-style), Org-mode, RST, and AsciiDoc link syntaxes. Resolves relative paths, absolute paths, and forge URLs (GitHub/GitLab/Codeberg).
-
-4. **Dynamic truncation:** When budget is limited, files are truncated based on median token count of already-selected files, with a 500-token floor.
-
-**Example round-robin order:**
-```
-1. README.md (always first)
-2. CONTRIBUTING.md (linked from README)
-3. docs/overview.md (similarity-ranked)
-4. config.yaml (centrality-ranked)
-5. INSTALL.md (linked from README)
-6. docs/api.md (similarity-ranked)
-...
-```
-
-#### Slicing behavior
-
-When `--max-tier N` is specified, BFS traversal stops at tier boundaries:
-
-```python
-def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
-    if target.supply_chain.tier > max_tier:
-        return False  # Don't cross into lower tier
-    return True
-```
-
-**Use case:** "Show me everything my code calls, but don't trace into lodash internals."
-
 ### Limitations
 
 **What supply chain classification does NOT do:**
@@ -1291,6 +1246,7 @@ def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
 4. **Handle unconventional structures**: Projects with unusual layouts (e.g., source in root, deps in `lib/`) may be misclassified.
 
 **Logged in limits:**
+🟪 Dataclasses and serialization exist (`ClassificationFailure`, `AmbiguousPath`, `SupplyChainLimits`), but no production code populates them — `classify_file()` always succeeds and never records failures or ambiguities. Fields are always empty arrays in output.
 ```json
 {
   "limits": {
@@ -1304,9 +1260,9 @@ def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
 }
 ```
 
-### File Role Classification (Proposed)
+## 15) File role classification
 
-Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the full design proposal.
+Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the design rationale.
 
 | Role | Description | Examples |
 |------|-------------|----------|
@@ -1343,111 +1299,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 8.7) Entrypoint Detection
-
-Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
-
-### Architecture
-
-```
-ANALYZERS (pure language, no framework knowledge)
-  → Capture symbols + rich metadata (decorators, base classes, parameters)
-  → Capture UsageContext for call-based patterns (route registrations, etc.)
-
-PATTERN SYSTEM (41 YAML files: 4 convention + 37 framework)
-  → Match patterns against symbol metadata and usage contexts
-  → Enrich symbols with concept metadata (route, task, model, etc.)
-
-ENTRYPOINTS (semantic detection)
-  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
-  → High confidence (0.95) from semantic match
-```
-
-**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
-
-### meta.concepts Structure
-
-Enriched symbols have a `meta.concepts` list that serves as the **single source of truth** for semantic metadata:
-
-```json
-{
-  "meta": {
-    "concepts": [
-      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
-      {"concept": "test_function", "framework": "test-frameworks"},
-      {"concept": "main_entrypoint", "framework": "main-functions"}
-    ]
-  }
-}
-```
-
-**Fields:**
-- `concept`: Semantic type (route, model, task, test_function, main_entrypoint, etc.)
-- `framework`: Which pattern file matched (fastapi, test-frameworks, main-functions, etc.)
-- Additional fields vary by concept type (e.g., `path`, `method` for routes)
-
-**Path normalization:** Route paths are normalized to always start with `/` for consistent matching (e.g., `users` → `/users`).
-
-Linkers and entrypoint detection query `meta.concepts` exclusively.
-
-### Convention Patterns vs Framework Patterns
-
-The pattern system has two categories:
-
-| Category | When Loaded | Purpose | Examples |
-|----------|-------------|---------|----------|
-| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
-| **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
-
-**Convention patterns (5 files):**
-- `main-functions.yaml`: main() entrypoints across 10+ languages
-- `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
-- `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
-- `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
-- `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
-
-**Framework patterns (37 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
-
-### Pattern Types
-
-The framework pattern system supports multiple detection strategies:
-
-| Pattern Type | Example Frameworks | Detection Method |
-|--------------|-------------------|------------------|
-| **Decorator-based** | FastAPI, Flask, NestJS, Spring Boot | Match `@app.get`, `@Controller` decorators |
-| **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
-| **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
-| **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
-| **Export-based** | JS/TS libraries | Detect exports from `index.ts/js` as library entrypoints |
-
-**Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
-
-See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
-
-### Confidence Tiers
-
-Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
-
-| Tier | Confidence | Detection Method | Examples |
-|------|------------|------------------|----------|
-| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
-| 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
-| 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
-| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
-
-All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
-
-### Scoring for Auto-Slice Entry Selection
-
-When multiple entrypoints exist, scoring selects the most useful ones:
-
-```python
-score = confidence * (1 + log(1 + outgoing_edges))
-```
-
-This prefers well-connected entries, producing richer slices.
-
-## 9) Testing & quality bar
+## 16) Testing & quality bar
 
 ### Test fixtures
 
@@ -1471,36 +1323,6 @@ This prefers well-connected entries, producing richer slices.
 - Tests remain valid as analysis improves
 - Catches structural bugs (dangling references, invalid values)
 
-### 🟪 Future: Longitudinal analysis ("slow thinking")
-
-**Problem:** Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
-- Did node count suddenly drop 40%? (regression)
-- Is edge detection improving over time? (progress)
-- How does analysis time scale with repo size? (performance)
-
-**Concept:** "Nonjudgmental fixtures"—run analysis on a real repo without asserting correctness, just observing metrics:
-
-```python
-def test_observatory(capsys):
-    """Emit metrics for longitudinal analysis. No assertions on correctness."""
-    result = analyze(Path("tests/fixtures/medium-repo"))
-    print(json.dumps({
-        "timestamp": datetime.utcnow().isoformat(),
-        "commit": os.environ.get("CI_COMMIT_SHA"),
-        "nodes": len(result.nodes),
-        "edges": len(result.edges),
-        "nodes_by_kind": dict(Counter(n.kind for n in result.nodes)),
-    }))
-    assert validate_schema(result)  # Only hard check: didn't crash, valid schema
-```
-
-**Infrastructure needed (not MVP):**
-- Persistent storage for metrics across CI runs
-- Aggregation/visualization tooling
-- Anomaly detection (alert on significant changes)
-
-This is a fundamentally different paradigm than pytest's immediate feedback. Defer to future work.
-
 ### Unit tests
 * 🟩 Parsing to nodes/edges (per language)
 * 🟩 Stability of IDs across runs (same code → same IDs)
@@ -1513,6 +1335,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 Provenance tracking (correct origin fields, execution_id/run_signature hashing)
 * 🟩 IR → view compilation correctness
 * 🟩 **Catalog loading**: passes discovered correctly, schema validation
+
 ### Schema validation tests
 * 🟩 Output validates against published JSON Schema
 * 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
@@ -1520,17 +1343,19 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 ID format conformance (both `id` and `stable_id` when present)
 * 🟩 Evidence type presence in all edges
 * 🟩 Toolchain capture in analysis_runs
+
 ### Smoke test
 * 🟩 `hypergumbo run` on a fixture repo yields valid JSON schema
 * 🟩 All expected nodes/edges present
 * 🟩 No crashes, warnings logged appropriately
 * 🟩 `hypergumbo catalog` displays available passes
-### Performance benchmarks
-* 🟩 Small repo (<100 files): <5 seconds end-to-end
-* 🟩 Medium repo (~500 files): <30 seconds
-* 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 9.5) Error handling
+### Performance benchmarks
+* Small repo (<100 files): <5 seconds end-to-end
+* Medium repo (~500 files): <30 seconds
+* Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
+
+## 17) Error handling
 
 ### Parse errors
 
@@ -1552,29 +1377,37 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]`:
-  ```json
-  {
-    "pass": "lean-ts-v1",
-    "reason": "tree-sitter-lean grammar not available"
-  }
-  ```
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior map JSON](#9-behavior-map-json) for field format)
 
 ### Analyzer crashes
 
 * 🟩 **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
 * 🟩 **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
 
+### File size limits
+
+* ⬜ **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis (`--max-file-bytes` not implemented; see §3)
+* ⬜ **Output**: Add to `limits.truncated_files[]` with path, size, and reason (`add_truncated_file()` exists but is never called)
+
 ### Partial results guarantee
 
-* 🟩 **All output is valid JSON** even if analysis is incomplete
-* 🟩 `analysis_incomplete: true` flag signals partial results
-* 🟩 `limits.partial_results_reason` documents what went wrong
-* 🟩 Agents can decide whether partial results are sufficient
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete` in §9](#9-behavior-map-json) for field semantics.
 
-## 9.6) Known Analysis Limitations
+## 18) Known limitations
 
-This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `CHANGELOG.md` for per-language implementation status.
+This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
+
+### Summary
+
+| Limitation | Impact | Notes |
+|------------|--------|-------|
+| Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
+| Re-export resolution incomplete | Low | Imports through re-exporting modules may not fully resolve. See [details below](#re-export-resolution). |
+| Import tracking partial | Low | Only Python and Go fully utilize import tracking for cross-file disambiguation. See [details below](#import-tracking-for-disambiguation). |
+| ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
+| Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
+| Schema changes may break consumers | Medium | Semantic versioning from day 1; schema compatibility contract in [Appendix C](#appendix-c-schema-compatibility-contract); migration guides for breaking changes. |
+| stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
 
 ### Re-export Resolution
 
@@ -1608,22 +1441,7 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-> **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md).
-
-## 10) Known limitations and risks
-
-| Limitation | Impact | Notes |
-|------------|--------|-------|
-| Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
-| ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
-| Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
-| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in Appendix E; migration guides for breaking changes. |
-| stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
-| Re-export resolution incomplete | Low | Imports through re-exporting modules (e.g., `from package import x` where x is re-exported) may not fully resolve. See §9.6. |
-
-> **Historical note:** Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md). Spec B work will be pursued when there's clear demand for capabilities beyond what Spec A provides.
-
-## 11) Autonomous Governance (ADR-0008)
+## 19) Autonomous governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1654,179 +1472,40 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 ### Invariant Status
 
-The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants. As of v1.1.0, all invariants (INV-001 through INV-006) are **FIXED**:
+The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-- **INV-002** (`symbol_ref` gate) was fixed via deferred resolution in `resolve_deferred_symbol_refs()`
-- **INV-004** (route-handler edges) was fixed via the `route_handler` linker
+### Structured Tracker (ADR-0013)
 
-See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
+🟩 The markdown-based governance files (invariant ledger, work items) are superseded by a YAML-backed structured tracker ([ADR-0013](adr/0013-structured-tracker.md)). The tracker provides append-only op-logs that are git-merge-safe, causally ordered via Lamport clocks, and support field-level access control. It ships as an independent package (`hypergumbo-tracker`, licensed MPL-2.0) usable in any project — see [the tracker README](../packages/hypergumbo-tracker/README.md) for standalone adoption.
 
-## Appendix A: Example output
+Key capabilities beyond the markdown predecessor:
+- **Three visibility tiers:** canonical (shared), workspace (fork-local), stealth (gitignored)
+- **Actor-based authority:** `os.getuid()` distinguishes agents from humans; locks, stealth, and discussion clearing are human-only
+- **Stop hook integration:** `count-todos`, `hash-todos`, and `guidance` commands replace grep-based TODO scanning
+- **TUI:** Interactive terminal interface for human oversight
+- **Fork workflow:** `fork-setup` scopes the stop hook to workspace items, so upstream canonical items don't block contributor agents
 
-Minimal working example for a tiny FastAPI app:
+## 20) Future work
 
-```json
-{
-  "schema_version": "0.2.1",
-  "confidence_model": "hypergumbo-evidence-v1",
-  "view": "behavior_map",
-  "generated_at": "2024-01-15T10:30:00Z",
-  "analysis_incomplete": false,
-  "analysis_runs": [
-    {
-      "execution_id": "uuid:abc-def-789...",
-      "run_signature": "sha256:run1abc...",
-      "repo_fingerprint": "sha256:repo123...",
-      "pass": "python-ast-v1",
-      "version": "hypergumbo-0.1.0",
-      "toolchain": {"name": "python", "version": "3.11.0"},
-      "config_fingerprint": "sha256:abc123...",
-      "files_analyzed": 3,
-      "files_skipped": 0,
-      "skipped_passes": [],
-      "warnings": [],
-      "started_at": "2024-01-15T10:30:00Z",
-      "duration_ms": 450
-    }
-  ],
-  "profile": {
-    "languages": {"python": {"files": 3, "loc": 120}},
-    "frameworks": ["fastapi"],
-    "repo_kind": "web_api"
-  },
-  "nodes": [
-    {
-      "id": "python:main.py:1-50:main:module",
-      "stable_id": "sha256:main_module_hash...",
-      "canonical_name": "main",
-      "fingerprint": "sha256:abc...",
-      "kind": "module",
-      "name": "main",
-      "path": "main.py",
-      "language": "python",
-      "span": {"start_line": 1, "end_line": 50},
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 1.0, "reason": "module definition"}
-    },
-    {
-      "id": "python:main.py:10-15:get_user:function",
-      "stable_id": "sha256:get_user_sig_hash...",
-      "canonical_name": "main.get_user",
-      "fingerprint": "sha256:def...",
-      "kind": "endpoint",
-      "name": "get_user",
-      "path": "main.py",
-      "language": "python",
-      "span": {"start_line": 10, "end_line": 15},
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 0.95, "reason": "FastAPI route decorator detected"}
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge:sha256:call1...",
-      "type": "calls",
-      "src": "python:main.py:10-15:get_user:function",
-      "dst": "python:db.py:5-10:query_user:function",
-      "confidence": 0.90,
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 0.90, "reason": "Direct AST call"},
-      "meta": {
-        "evidence_type": "ast_call_direct",
-        "evidence_lang": "python",
-        "evidence_spans": [
-          {
-            "file": "main.py",
-            "span": {"start_line": 12, "end_line": 12, "start_col": 8, "end_col": 24}
-          }
-        ]
-      }
-    }
-  ],
-  "features": [
-    {
-      "id": "sha256:feature1...",
-      "name": "get-user-flow",
-      "entry_nodes": ["python:main.py:10-15:get_user:function"],
-      "node_ids": ["python:main.py:10-15:get_user:function", "python:db.py:5-10:query_user:function"],
-      "edge_ids": ["edge:sha256:call1..."],
-      "query": {
-        "method": "bfs",
-        "entrypoint": "fastapi_route:/user/{id}",
-        "hops": 2,
-        "max_files": 10
-      },
-      "limits_hit": []
-    }
-  ],
-  "metrics": {
-    "total_nodes": 2,
-    "total_edges": 1,
-    "avg_confidence": 0.90
-  },
-  "limits": {
-    "not_captured": ["dynamic imports"],
-    "truncated_files": [],
-    "skipped_languages": [],
-    "failed_files": [],
-    "partial_results_reason": "",
-    "analyzer_version": "hypergumbo-0.1.0",
-    "analysis_depth": "syntax_only"
-  }
-}
-```
+This section collects capabilities that are designed but not yet implemented. The architecture supports these enhancements without breaking changes: the IR ([§6](#6-internal-representation)) enables multi-pass merging, and the schema contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions.
 
-## Appendix B: Evolution path to future versions
+For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [Registry & Factory Vision](future/registry-factory-vision.md).
 
-Spec A is designed to enable future enhancements without breaking changes:
+| Item | Horizon | Status |
+|------|---------|--------|
+| AST-based type inference improvements | Near-term | Method-scoped tracking (medium effort), generic handling (high effort). See ADR-0006. |
+| Additional linkers | Near-term | 🟪 Constant propagation for dynamic routes, middleware/proxy detection. |
+| Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
+| Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
+| Multi-fidelity analysis | Medium-term | 🟪 Language server backends (tsserver, pyright, rust-analyzer, gopls, JDT). Mixed-fidelity graphs. |
+| Agent context router | Medium-term | 🟪 Query → slice → context bundle pipeline. Builds on existing slicing. |
+| Incremental analysis | Not on roadmap | 18+ month effort. Current mitigation: caching, partial re-analysis. |
 
-### What's future-proof
+Non-goals for future work are consolidated in [§2 Non-goals](#2-non-goals).
 
-* **Internal IR**: Strong analyzers (tsserver, pyright) can enhance the IR
-* **View system**: New views (`ir_export`, `context_bundle`) can be added
-* **Provenance**: Already tracks which pass created which nodes/edges via execution_id
-* **Versioned schema**: Room for v0.2, v0.3 with migration paths
+## Appendix A: Release lifecycle & support
 
-### What stays the same
-
-* `behavior_map.json` format (backward compatible)
-* Location-based node IDs (stable anchor)
-* Confidence/quality model (extensible via versioning)
-* Slicing primitives (features with query specs)
-
-### What enables future capabilities
-
-**stable_id**:
-- Cross-refactor tracking (incremental analysis)
-- Symbol identity when code moves (impact zones)
-
-**shape_id**:
-- Detect structural changes independent of signature
-- Implementation similarity analysis
-
-**evidence_type + confidence layering**:
-- Mixed-fidelity graphs (AST edges + typed edges in same IR)
-- Analyzer benchmarking (precision by evidence type)
-- Agent filtering (show only high-confidence edges)
-
-**Machine-readable provenance**:
-- Critical for merging edges from multiple analyzers
-- Enables programmatic quality assessment
-- Foundation for context router filtering
-
-**Toolchain capture**:
-- Reproducibility requirements
-- Version tracking for debugging
-
-### What upgrades in future versions
-* Mixed-fidelity graphs (AST edges + typed edges)
-* Cross-language linkers (HTTP, IPC, SQL)
-* Context router (agent-optimized bundles)
-
-## Appendix C: Versioning & Support Policy
+For the technical contract governing output schema stability, see [Appendix C](#appendix-c-schema-compatibility-contract).
 
 ### Semantic versioning
 
@@ -1842,70 +1521,51 @@ Spec A is designed to enable future enhancements without breaking changes:
 
 * **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps** with 6-month migration period
+* **Breaking changes only in MAJOR bumps.** See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
-### Support windows
+## Appendix B: Telemetry & privacy
 
-* **Current version**: Full support (bugs, features, security)
-* **Previous MINOR**: Security fixes only, 12 months after next MINOR release
-* **Previous MAJOR**: Security fixes only, 18 months after next MAJOR release
-* **Unmaintained**: Versions >18 months old receive no updates
+This appendix is the canonical privacy policy for hypergumbo.
 
-### Deprecation process
+### Current policy: zero telemetry
 
-1. **Announce**: 6 months before removal, add deprecation warnings
-2. **Document**: Migration guide published
-3. **Support**: Old version maintained per support windows
-4. **Remove**: After support window expires
-
-### Example timeline
-
-* 2025-12: v0.5.0 ships (initial public release)
-* 2026-01-09: v0.9.1 ships (schema 0.2.0, YAML patterns)
-* Future: v1.1.0+ ships (first v1.x stable release)
-  - v0.x enters "previous major" (18-month clock starts)
-* 18 months after v1.x release: v0.x unsupported
-
-## Appendix D: Telemetry & Privacy
-
-### Default: Zero telemetry
-
-By default, hypergumbo **sends no data** anywhere. All analysis is local-only.
-
-### Opt-in crash reporting
-
-Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` environment variable.
-
-**What is collected** (only if opted in):
-* Crash stack traces (sanitized: no code, no symbol names, no file paths)
-* Performance metrics (file counts, timings, memory usage)
-* Feature usage (which commands run, which flags used)
-* Anonymized session ID (random UUID, not linked to identity)
+Hypergumbo **sends no data** anywhere. All analysis is local-only. There is no telemetry infrastructure, no crash reporting service, and no opt-in toggle. Nothing is collected.
 
 **What is NEVER collected**:
 * Source code
 * Symbol names (function/class/variable names)
 * File paths or directory names
 * API keys or credentials
-* IP addresses (beyond what HTTPS inherently reveals)
+* IP addresses
 
-### Data retention
+### 🟪 Planned: opt-in crash reporting
 
+The following describes a telemetry system that is not yet implemented. If and when it is built, the commitments above will remain the default, and telemetry will require explicit opt-in.
+
+**Planned opt-in mechanism:** `hypergumbo config --telemetry=on` or `HYPERGUMBO_TELEMETRY=1` environment variable.
+
+**What would be collected** (only if opted in):
+* Crash stack traces (sanitized: no code, no symbol names, no file paths)
+* Performance metrics (file counts, timings, memory usage)
+* Feature usage (which commands run, which flags used)
+* Anonymized session ID (random UUID, not linked to identity)
+
+**Planned data retention:**
 * Crash reports: 90 days
 * Aggregated metrics: 2 years
 * No raw session data retained beyond 30 days
 
-### Third-party services
-* If enabled, telemetry sent to Sentry (crash reporting) or similar
+**Third-party services:**
+* If enabled, telemetry would be sent to Sentry (crash reporting) or similar
 * Subject to their privacy policies (links provided in docs)
 
-### Transparency
-* Telemetry code is open source (can audit exactly what's sent)
-* Privacy policy published at https://hypergumbo.iterabloom.com/privacy
-* Opt-in status shown in `hypergumbo config --show`
+**Transparency commitments** (apply now and after telemetry is built):
+* All telemetry code will be open source (auditable)
+* Opt-in status will be shown in `hypergumbo config --show`
 
-## Appendix E: Forward Compatibility Contract
-This contract ensures Spec A outputs remain valid when future capabilities are added, and enhancements degrade gracefully for Spec A consumers.
+## Appendix C: Schema compatibility contract
+
+This appendix defines the **technical contract** for output consumers: which fields are immutable, how consumers must handle unknown fields, and what constitutes a breaking change. For versioning policy, see [Appendix A](#appendix-a-release-lifecycle--support).
 
 ### Immutable Contracts (MUST NOT change without major version bump)
 
@@ -1943,7 +1603,7 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 - Any field marked "optional" can be absent
 - Consumers MUST handle absence gracefully (default value or skip)
 - Examples: `stable_id`, `shape_id`, `origin_run_signature`
-**Key presence vs. value presence (v0.1.0 rule):**
+**Key presence vs. value presence:**
 - Some fields may be semantically optional but SHOULD be present as keys with `null` values to reduce consumer branching.
 - For v0.1.0, producers SHOULD include these keys with `null` when unknown:
   - `nodes[].stable_id`
@@ -1981,357 +1641,8 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 - New `evidence_type` values
 - New `kind` values for nodes
 
-### Testing Requirements
-
-**Spec A test suite MUST:**
-- Include golden file regression tests (fixtures → expected JSON)
-- Validate against JSON Schema (automated validation)
-- Test ID stability (same code → same IDs deterministically)
-- Test deterministic ordering (sort keys defined, reproducible output)
-
-**Future test suite MUST:**
-- Run Spec A golden files (backward compatibility check)
-- Ensure Spec A outputs pass future schema validation (with unknown field tolerance)
-- Test mixed-fidelity graphs (Spec A AST edges + future typed edges coexist)
-- Test view compilation (same IR → multiple views including behavior_map)
-
-### Migration Path (Spec A → Future)
-
-**User upgrades hypergumbo CLI:**
-```bash
-# Was using Spec A v0.1.0
-pip install --upgrade hypergumbo  # Now future version
-
-# Just works - no reinitialization needed
-hypergumbo run  # Output compatible with existing tooling
-```
-
-**User upgrades output consumers (agents, tooling):**
-1. Agents consuming `behavior_map.json` don't need changes
-2. New fields under `meta.*` are optionally used (if agent wants higher fidelity)
-3. Schema validation passes (new fields ignored by old consumers)
-4. Agents can check `confidence_model` version, warn if too new
-
-**Deprecation process (if ever needed):**
-1. Announce 6 months before removal
-2. Add deprecation warnings to CLI output
-3. Maintain old version per support policy (Appendix C)
-4. Provide migration guide
-5. Remove only after support window expires
-
-### Compatibility Testing
-
-**Before releasing future versions:**
-- Run Spec A v0.1 output through future parsers (ensure parsing succeeds)
-- Run future output through Spec A v0.1 consumers (ensure unknown fields ignored)
-- Version compatibility matrix published
-
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
----
+## Appendix D: Capsule system history
 
-# 🟪 Spec B — "Multi-Fidelity Analysis Platform"
-
-## 0) One-sentence summary
-
-A multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
-
-*All of Spec B is future work. Pursue when there's clear demand for capabilities beyond Spec A.*
-
-### Potential Optimizations
-
-* **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
-
-## 1) Objectives
-
-* 🟪 **High-fidelity IR** — Typed call graphs via language servers (tsserver, pyright, gopls, rust-analyzer)
-* 🟪 **Agent context router** — "Give me the smallest set of code + invariants to safely edit X"
-* 🟪 **Local-first privacy** — All analysis runs locally, no data leaves machine
-
-See [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
-
-## 2) Non-goals
-
-* "Prove programs correct" in the formal methods sense
-* Full support for every language; focus on dominant stacks with pluggable packs
-* Real-time collaboration or social features
-* Hosted SaaS offering or marketplace monetization
-* IDE integration (LSP server) or autonomous code editing
-
-## 3) System architecture
-
-### 3.1 Multi-pass analysis engine
-
-#### Frontends (parsers / symbolizers)
-
-* 🟩 **tree-sitter** for universal syntax (Spec A, 67 languages)
-* 🟪 **Language-native engines** (optional, high-fidelity):
-  * **TypeScript**: `tsserver` (type checker + language service)
-  * **Python**: `pyright` or `mypy` (type inference)
-  * **Rust**: `rust-analyzer` (full semantic analysis)
-  * **Go**: `gopls` (language server)
-  * **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
-
-#### Runner types
-
-Different analyzers require different execution environments:
-
-* 🟩 **`python_script`** — Single Python file, minimal deps (Spec A)
-* 🟪 **`toolchain_bundle`** — Ships with language server (100MB+ downloads, high fidelity)
-* 🟪 **`container_image`** — OCI/Docker image for maximum isolation
-* 🟪 **`daemon_process`** — Long-running incremental analysis (research-hard, defer indefinitely)
-
-#### IR builder
-
-* **Typed symbol table** + cross-ref index (extends Spec A IR)
-* **Call graph** with resolution quality scores (0.0–1.0)
-* **Optional layers**:
-  * Control-flow graph (CFG)
-  * Dataflow facts (reaching definitions, taint tracking)
-
-Dataflow/CFG are opt-in with explicit partial-results flags, not core requirements.
-
-#### AST-based type inference improvements (bridge to Spec B)
-
-Spec A implements basic type inference for method call resolution (see ADR-0006):
-- ✅ Constructor tracking: `db = Database()` → `db` has type `Database`
-- ✅ Parameter tracking: `def f(db: Database)` → `db` has type `Database`
-- Supported in: Python, Java, Kotlin, TypeScript, C#, Dart
-
-Future improvements to AST-based type inference (without requiring language servers):
-
-| Feature | Value | Effort | Priority | Status |
-|---------|-------|--------|----------|--------|
-| **Type hierarchy** | High | Medium | 1st | ✅ Done |
-| **Return type tracking** | Medium-High | Medium | 2nd | |
-| **Field type tracking** | High | Medium | 3rd | |
-| **Method-scoped tracking** | Low-Medium | Medium | 4th | |
-| **Generic handling** | High | High | 5th | |
-
-**Type hierarchy:** ✅ Implemented via type hierarchy linker. Creates `dispatches_to` edges from parent/interface methods to overriding implementations in child classes. Currently works with Java (which creates `extends`/`implements` edges); other languages need inheritance edge creation for full benefit.
-
-**Return type tracking:** Track `func() -> ReturnType` annotations; infer type when `var = func()`. Natural extension of two-pass analysis. Applicable to all typed languages.
-
-**Field type tracking:** Track `self.db: Database` declarations and assignments. Enables resolution of `self.db.save()` → `Database.save()`. Critical for OOP patterns where DI injects into fields.
-
-**Method-scoped tracking:** Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare.
-
-**Generic handling:** Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done.
-
-These improvements provide incremental call graph quality gains without the complexity of full language server integration (Spec B).
-
-#### IR vs Views architecture
-
-```
-┌─────────────────────────────────────────┐
-│  Language-specific analyzers            │
-│  (AST parsers, type engines, LSPs)      │
-└──────────────┬──────────────────────────┘
-               │ emit to
-               ▼
-┌─────────────────────────────────────────┐
-│  Core IR (internal, versioned)          │
-│  • typed symbol table                   │
-│  • resolved call graph + quality scores │
-│  • dataflow facts (optional)            │
-│  • cross-language links                 │
-└──────────────┬──────────────────────────┘
-               │ compile to
-               ▼
-┌─────────────────────────────────────────┐
-│  Views (public, stable contracts)       │
-│  • behavior_map.json (Spec A compat)    │
-│  • ir_export.json (full detail)         │
-│  • context_bundle.json (agent-ready)    │
-│  • sarif.json (CI integration)          │
-└─────────────────────────────────────────┘
-```
-
-Mixed-fidelity analysis: AST edges (0.7 confidence) + typed edges (0.95 confidence) in same graph.
-
-#### Cross-language linkers
-
-Already implemented in Spec A:
-* 🟩 **HTTP**: route patterns ↔ client calls ↔ handlers
-* 🟩 **IPC (Electron)**: main ↔ renderer message channels
-* 🟩 **SQL**: query ↔ table/column mapping
-* 🟩 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
-* 🟩 **GraphQL**: schema ↔ resolvers ↔ clients
-* 🟩 **OpenAPI**: schema ↔ route handlers
-* 🟩 **Message Queue**: Kafka, RabbitMQ, SQS, Redis Pub/Sub
-* 🟩 **Event Sourcing**: EventEmitter, Django signals, Spring events
-
-Future linkers (if needed):
-* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
-* 🟪 **Middleware/proxy rewriting** detection
-
-### 3.2 Agent Context Router
-
-Query interface: "I want to change behavior X in Y context"
-
-#### Pipeline
-
-1. **Retrieve** relevant nodes/flows from IR
-   * Entry: symbol name, file path, route pattern
-   * 🟪 Future: natural language queries via embedding similarity
-
-2. **Slice** on:
-   * Call graph (forward/backward) — 🟩 done in Spec A
-   * 🟪 Dataflow (tainted data paths)
-   * 🟪 Schema ties (database columns, API contracts)
-   * Tests referencing the area — 🟩 done in Spec A
-   * 🟪 Configuration/deployment ties
-   * Supply chain tier boundaries — 🟩 done in Spec A
-
-3. **Assemble context bundle**:
-   * Minimal code excerpts (only changed + affected)
-   * Invariants/contracts (types, tests, assertions)
-   * 🟪 "What could break" checklist (requires whole-program analysis)
-
-Token budget optimization: BFS until token limit hit, sorted by (edge confidence, distance from entry).
-
-#### Future enhancements
-
-* 🟪 Learned relevance models
-* 🟪 Agent feedback loop (which code was actually edited?)
-* 🟪 Embedding-based context expansion
-* 🟪 Coverage report parsing for test summary
-* 🟪 Multi-language documentation summarization
-
-#### Complexity acknowledgment
-
-* **Natural language query parsing** requires embedding models + semantic search
-* **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
-* **Impact prediction** requires whole-program analysis with test coverage correlation
-
-Honest about what's hard. If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
-
-## 4) Output contracts
-
-### Views
-
-#### 🟩 behavior_map.json (Spec A compatible)
-* Same schema as Spec A
-* Maintained for backward compatibility
-* Enhanced with higher-fidelity edges when available
-
-#### 🟪 ir_export.json (full detail)
-* Complete symbol table
-* Typed edges with resolution provenance
-* Dataflow facts (optional)
-* Cross-language links
-
-#### 🟪 context_bundle.json (agent-optimized)
-* Minimal code excerpts for a query
-* Invariant checklist
-* "Impact zones" (what could break)
-* Token-budget optimized
-
-#### 🟪 sarif.json (CI integration)
-* SARIF 2.1 compatible
-* Findings from rule packs
-* Integration with GitHub Code Scanning, GitLab SAST
-
-### Flow specs
-
-Named, traceable feature flows:
-* "Signup pipeline": route → handler → validation → database → email notification
-* "Payment settlement flow": API call → queue → worker → payment gateway → webhook
-
-Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
-
-## 5) Privacy & security
-
-* All analysis runs locally
-* No data leaves machine
-* No network calls during analysis
-
-## 6) Scale & performance
-
-### Incremental analysis: Not on roadmap
-
-**Why it's hard** (18+ months minimum):
-- Dependency tracking (which symbols affect which)
-- Invalidation propagation (change X → re-analyze Y, Z)
-- Cross-file type inference updates
-
-TypeScript incremental took ~3 years, rust-analyzer ~2 years.
-
-**Current mitigation**:
-- Cached slices: Pre-compute common features
-- Symbol index: O(1) lookup for "find definition of X"
-- Partial re-analysis: Re-analyze changed files + direct importers only
-- Accept latency: Full analysis on deep queries is OK with progress bars
-
-### Performance targets
-
-* **Small repo** (<100 files): <10 seconds (same as Spec A)
-* **Medium repo** (~500 files): <60 seconds (2× Spec A due to type checking)
-* **Large repo** (2000+ files): <5 minutes full analysis
-* **Context router query**: <2 seconds for typical slice assembly
-
-## Appendix A: Technology choices
-
-### IR storage
-* **Format**: Protocol Buffers (fast, versioned, language-neutral)
-* **Fallback**: JSON (if protobuf adds friction)
-
-### Language servers
-* **TypeScript**: `tsserver` (official)
-* **Python**: `pyright` (Microsoft)
-* **Go**: `gopls` (official)
-* **Rust**: `rust-analyzer` (official)
-* **Java**: Eclipse JDT
-
-## Appendix B: Future Testing Enhancements
-
-### Integration Tests
-
-Add optional integration tests that validate end-to-end behavior:
-
-* Use `@pytest.mark.integration` marker
-* Skip automatically when dependencies are not available
-* Run only on explicit request (`pytest -m integration`)
-* Catch environment-specific issues
-
-## Appendix C: Planned Language/DSL Support
-
-Languages and DSLs identified as gaps from industry analysis.
-
-### High Priority (Build-from-source)
-
-| Language | Use Case | Grammar Source |
-|----------|----------|----------------|
-| **Meson** | Build system (GNOME, QEMU) | tree-sitter-meson |
-| **Assembly** | Performance-critical code | tree-sitter-asm |
-
-### Medium Priority (Specialized ecosystems)
-
-| Language/DSL | Use Case |
-|--------------|----------|
-| **Rego** | OPA/Gatekeeper policy-as-code |
-| **Device Tree (DTS)** | Linux kernel hardware descriptions |
-| **Kconfig** | Linux kernel configuration |
-
-### Not Planned
-
-| Format | Reason |
-|--------|--------|
-| **Markdown/RST** | Intellectual exhaustion |
-| **Plain text specs** | Intellectual exhaustion |
-
-## Appendix D: Capsule System History
-
-The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
-
-In practice, the general-purpose analyzer worked well enough that custom composition wasn't needed. The capsule system was never used:
-- `init` created capsule files, but `run` ignored them
-- The `Pack` concept for bundling passes was deprecated
-- LLM-assisted plan generation was a proof of concept that added complexity without value
-
-**Removed in v1.0.0:**
-- `init` and `export-capsule` commands
-- `plan.py`, `llm_assist.py`, `export.py` modules
-- `Pack` class from catalog (framework-specific behavior handled by linker activation conditions and `--frameworks` flag)
-
-**For historical reference**, see [history/capsule-system-v1.md](history/capsule-system-v1.md).
+The capsule system (custom analyzer composition via `hypergumbo init`) was removed in v1.0.0. See [history/capsule-system-v1.md](history/capsule-system-v1.md) for details. Other archived v1.0 materials: [history/planning-v1.md](history/planning-v1.md), [history/validation-gates-v1.md](history/validation-gates-v1.md).

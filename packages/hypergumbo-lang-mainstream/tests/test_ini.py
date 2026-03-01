@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import ini as ini_module
 from hypergumbo_lang_mainstream.ini import (
-    IniAnalysisResult,
     analyze_ini,
     find_ini_files,
     is_ini_tree_sitter_available,
@@ -16,14 +16,12 @@ from hypergumbo_lang_mainstream.ini import (
     _mask_value,
 )
 
-
 def make_ini_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an INI file in the temp directory."""
     file_path = tmp_path / name
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindIniFiles:
     """Tests for find_ini_files function."""
@@ -47,7 +45,6 @@ class TestFindIniFiles:
     def test_empty_directory(self, tmp_path: Path) -> None:
         files = find_ini_files(tmp_path)
         assert files == []
-
 
 class TestHelperFunctions:
     """Tests for helper functions."""
@@ -91,7 +88,6 @@ class TestHelperFunctions:
         assert _mask_value("") == "***"
         assert _mask_value("a") == "***"
 
-
 class TestIsIniTreeSitterAvailable:
     """Tests for is_ini_tree_sitter_available function."""
 
@@ -100,25 +96,26 @@ class TestIsIniTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(ini_module, "is_ini_tree_sitter_available", return_value=False):
+        with patch.object(ini_module._analyzer, "_check_grammar_available", return_value=False):
             assert ini_module.is_ini_tree_sitter_available() is False
-
 
 class TestAnalyzeIni:
     """Tests for analyze_ini function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")
-        with patch.object(ini_module, "is_ini_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="INI analysis skipped"):
+        with patch.object(ini_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ini analysis skipped"):
                 result = ini_module.analyze_ini(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
+        assert result.run is not None
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_ini(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_section(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", """[database]
@@ -234,7 +231,7 @@ host = localhost
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")
         result = analyze_ini(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "ini.tree_sitter"
+        assert result.run.pass_id == "ini-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -251,7 +248,7 @@ host = localhost
         result = analyze_ini(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "ini.tree_sitter"
+        assert section.origin == "ini-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")
@@ -344,3 +341,19 @@ disable = C0111
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
         assert section.name == "MESSAGES CONTROL"
+
+    def test_non_utf8_encoded_file(self, tmp_path: Path) -> None:
+        """Non-UTF-8 encoded INI files must not crash.
+
+        Windows INI files commonly use CP-1252 or Latin-1 encoding.
+        The analyzer must handle these gracefully.
+        """
+        file_path = tmp_path / "config.ini"
+        # CP-1252 content with é (0xe9) and ü (0xfc)
+        content = b"[g\xe9n\xe9ral]\nnom=caf\xe9\nstadt=M\xfcnchen\n"
+        file_path.write_bytes(content)
+        result = analyze_ini(tmp_path)
+        assert not result.skipped
+        # Should parse without crashing
+        sections = [s for s in result.symbols if s.kind == "section"]
+        assert len(sections) >= 1

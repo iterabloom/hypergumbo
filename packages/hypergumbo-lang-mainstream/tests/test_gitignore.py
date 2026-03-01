@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import gitignore as gitignore_module
 from hypergumbo_lang_mainstream.gitignore import (
-    GitignoreAnalysisResult,
+    _analyzer,
     analyze_gitignore,
     find_gitignore_files,
     is_gitignore_tree_sitter_available,
 )
-
 
 def make_gitignore_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a gitignore file in the temp directory."""
@@ -20,7 +20,6 @@ def make_gitignore_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindGitignoreFiles:
     """Tests for find_gitignore_files function."""
@@ -41,7 +40,6 @@ class TestFindGitignoreFiles:
         files = find_gitignore_files(tmp_path)
         assert files == []
 
-
 class TestIsGitignoreTreeSitterAvailable:
     """Tests for is_gitignore_tree_sitter_available function."""
 
@@ -53,14 +51,13 @@ class TestIsGitignoreTreeSitterAvailable:
         with patch.object(gitignore_module, "is_gitignore_tree_sitter_available", return_value=False):
             assert gitignore_module.is_gitignore_tree_sitter_available() is False
 
-
 class TestAnalyzeGitignore:
     """Tests for analyze_gitignore function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_gitignore_file(tmp_path, ".gitignore", "*.log\n")
-        with patch.object(gitignore_module, "is_gitignore_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Gitignore analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="gitignore analysis skipped"):
                 result = gitignore_module.analyze_gitignore(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -269,13 +266,13 @@ node_modules/
         result = analyze_gitignore(tmp_path)
         pattern = next((s for s in result.symbols if s.kind == "pattern"), None)
         assert pattern is not None
-        assert pattern.origin == "gitignore.tree_sitter"
+        assert pattern.origin == "gitignore-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_gitignore_file(tmp_path, ".gitignore", "*.log\n")
         result = analyze_gitignore(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "gitignore.tree_sitter"
+        assert result.run.pass_id == "gitignore-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -283,7 +280,9 @@ node_modules/
         result = analyze_gitignore(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run, even with no files
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_gitignore_file(tmp_path, ".gitignore", "*.log\n")

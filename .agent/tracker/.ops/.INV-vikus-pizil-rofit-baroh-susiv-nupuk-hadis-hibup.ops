@@ -1,0 +1,33 @@
+- op: create  # ddcb
+  at: '2026-02-15T00:51:38Z'  # ddcb
+  by: agent  # ddcb
+  actor: migration  # ddcb
+  clock: 1  # ddcb
+  nonce: ddcb  # ddcb
+  data:  # ddcb
+    kind: invariant  # ddcb
+    title: "Edge ID Uniqueness"  # ddcb
+    status: done  # ddcb
+    priority: 4  # ddcb
+    parent:  # ddcb
+    tags: []  # ddcb
+    before: []  # ddcb
+    duplicate_of: []  # ddcb
+    not_duplicate_of: []  # ddcb
+    pr_ref:  # ddcb
+    justification:  # ddcb
+    description: ""  # ddcb
+    fields:  # ddcb
+      statement: "Edge IDs must be unique because they serve as primary keys for edge lookup"  # ddcb
+      root_cause: "`ir.py:345` Edge.create() generated ID from `src:dst:edge_type` only, not including line number. Multiple calls from the same function to the same target at different lines got identical IDs. Analysis of postal artifact showed 3584 duplicate IDs out of 5844 edges (61%)."  # ddcb
+      fix: "Changed edge ID hash to include line number: `f\"{src}:{dst}:{edge_type}:{line}\"`. The `edge_key` field remains unchanged (excludes line) for deduplication across passes."  # ddcb
+      regression_tests:  # ddcb
+      - tests/test_ir.py::test_edge_id_unique_per_line  # ddcb
+- op: update  # 386c
+  at: '2026-02-23T07:07:22Z'  # 386c
+  by: agent  # 386c
+  actor: jgstern_agent  # 386c
+  clock: 2  # 386c
+  nonce: 386c  # 386c
+  set:  # 386c
+    status: holding  # 386c

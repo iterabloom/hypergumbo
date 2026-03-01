@@ -9,6 +9,10 @@ Implementation approach:
 - Uses tree-sitter-zig grammar for parsing
 - Handles Zig-specific constructs like comptime, error sets, test blocks, etc.
 
+Uses TreeSitterAnalyzer base class for two-pass orchestration.
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Zig-specific extraction logic.
+
 Zig grammar key patterns:
 - function_declaration: fn name(params) return_type { body }
 - variable_declaration: const/var name = value (used for structs, enums, etc.)
@@ -21,46 +25,28 @@ Zig grammar key patterns:
 - call_expression: func(args) or obj.method(args)
 """
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "zig.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("zig")
 
-
-@dataclass
-class ZigAnalysisResult:
-    """Result of analyzing Zig files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def is_zig_tree_sitter_available() -> bool:
-    """Check if tree-sitter and tree-sitter-zig are available."""
-    ts_spec = importlib.util.find_spec("tree_sitter")
-    if ts_spec is None:
-        return False
-
-    zig_spec = importlib.util.find_spec("tree_sitter_zig")
-    if zig_spec is None:
-        return False
-
-    return True
 
 
 def find_zig_files(root: Path) -> Iterator[Path]:
@@ -70,27 +56,12 @@ def find_zig_files(root: Path) -> Iterator[Path]:
             yield path
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text content from a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find the first child node of a specific type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from a function_declaration node."""
     # Look for identifier child that is the function name
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover - defensive
 
 
@@ -101,20 +72,20 @@ def _get_struct_name_from_variable(
     # Pattern: const Name = struct { ... }
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None
 
 
 def _get_import_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from @import builtin call."""
     # Pattern: @import("module")
-    args_node = _find_child_by_type(node, "arguments")
+    args_node = find_child_by_type(node, "arguments")
     if args_node is None:
         return None  # pragma: no cover - defensive
 
     for child in args_node.children:
         if child.type == "string":
-            text = _node_text(child, source)
+            text = node_text(child, source)
             # Remove quotes
             return text.strip('"')
     return None  # pragma: no cover - defensive
@@ -125,7 +96,7 @@ def _get_call_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     # Can be: identifier(args) or field_expression(args)
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
         elif child.type == "field_expression":
             # obj.method() - get the method name
             for fc in child.children:
@@ -136,16 +107,10 @@ def _get_call_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
             last_id = None
             for fc in child.children:
                 if fc.type == "identifier":
-                    last_id = _node_text(fc, source)
+                    last_id = node_text(fc, source)
             return last_id
     return None  # pragma: no cover - defensive
 
-
-def _make_symbol_id(
-    path: str, start_line: int, end_line: int, name: str, kind: str
-) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"zig:{path}:{start_line}-{end_line}:{name}:{kind}"
 
 
 def _extract_zig_signature(
@@ -160,7 +125,7 @@ def _extract_zig_signature(
     return_type: Optional[str] = None
 
     # Find parameters node
-    params_node = _find_child_by_type(node, "parameters")
+    params_node = find_child_by_type(node, "parameters")
     if params_node:
         for child in params_node.children:
             if child.type == "parameter":
@@ -168,7 +133,7 @@ def _extract_zig_signature(
                 param_type = None
                 for pc in child.children:
                     if pc.type == "identifier":
-                        param_name = _node_text(pc, source)
+                        param_name = node_text(pc, source)
                     elif pc.type in (
                         "primitive_type",
                         "type_identifier",
@@ -179,7 +144,7 @@ def _extract_zig_signature(
                         "array_type",
                         "slice_type",
                     ):
-                        param_type = _node_text(pc, source)
+                        param_type = node_text(pc, source)
                 if param_name and param_type:
                     params.append(f"{param_name}: {param_type}")
                 elif param_name == "self":  # pragma: no cover - self always has type
@@ -202,7 +167,7 @@ def _extract_zig_signature(
             "array_type",
             "slice_type",
         ):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
             break
 
     params_str = ", ".join(params)
@@ -237,12 +202,12 @@ def _extract_symbols_from_tree(
             if name:
                 # Determine if it's a method (has self parameter)
                 is_method = False
-                params_node = _find_child_by_type(node, "parameters")
+                params_node = find_child_by_type(node, "parameters")
                 if params_node:
                     for param in params_node.children:
                         if param.type == "parameter":
-                            param_id = _find_child_by_type(param, "identifier")
-                            if param_id and _node_text(param_id, source) == "self":
+                            param_id = find_child_by_type(param, "identifier")
+                            if param_id and node_text(param_id, source) == "self":
                                 is_method = True
                                 break
 
@@ -252,7 +217,7 @@ def _extract_symbols_from_tree(
                 end_line = node.end_point[0] + 1
 
                 sym = Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, qualified_name, kind),
+                    id=make_symbol_id("zig", rel_path, start_line, end_line, qualified_name, kind),
                     name=qualified_name,
                     kind=kind,
                     language="zig",
@@ -274,10 +239,10 @@ def _extract_symbols_from_tree(
             # Check if this defines a struct, enum, union, or error set
             var_name = _get_struct_name_from_variable(node, source)
             if var_name:
-                struct_node = _find_child_by_type(node, "struct_declaration")
-                enum_node = _find_child_by_type(node, "enum_declaration")
-                union_node = _find_child_by_type(node, "union_declaration")
-                error_node = _find_child_by_type(node, "error_set_declaration")
+                struct_node = find_child_by_type(node, "struct_declaration")
+                enum_node = find_child_by_type(node, "enum_declaration")
+                union_node = find_child_by_type(node, "union_declaration")
+                error_node = find_child_by_type(node, "error_set_declaration")
 
                 kind = None
                 inner_node = None
@@ -298,7 +263,7 @@ def _extract_symbols_from_tree(
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     sym = Symbol(
-                        id=_make_symbol_id(rel_path, start_line, end_line, var_name, kind),
+                        id=make_symbol_id("zig", rel_path, start_line, end_line, var_name, kind),
                         name=var_name,
                         kind=kind,
                         language="zig",
@@ -323,14 +288,14 @@ def _extract_symbols_from_tree(
 
         elif node.type == "test_declaration":
             # Extract test name from string
-            string_node = _find_child_by_type(node, "string")
+            string_node = find_child_by_type(node, "string")
             if string_node:
-                test_name = _node_text(string_node, source).strip('"')
+                test_name = node_text(string_node, source).strip('"')
                 sym_name = f"test \"{test_name}\""
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 sym = Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, sym_name, "test"),
+                    id=make_symbol_id("zig", rel_path, start_line, end_line, sym_name, "test"),
                     name=sym_name,
                     kind="test",
                     language="zig",
@@ -356,7 +321,7 @@ def _extract_edges_from_tree(
     source: bytes,
     rel_path: str,
     edges: list[Edge],
-    resolver: NameResolver,
+    resolver: "NameResolver",
     run: "AnalysisRun",
     import_aliases: Optional[dict[str, str]] = None,
 ) -> dict[str, str]:
@@ -384,12 +349,12 @@ def _extract_edges_from_tree(
             if name:
                 # Check if method
                 is_method = False
-                params_node = _find_child_by_type(node, "parameters")
+                params_node = find_child_by_type(node, "parameters")
                 if params_node:
                     for param in params_node.children:
                         if param.type == "parameter":
-                            param_id = _find_child_by_type(param, "identifier")
-                            if param_id and _node_text(param_id, source) == "self":
+                            param_id = find_child_by_type(param, "identifier")
+                            if param_id and node_text(param_id, source) == "self":
                                 is_method = True
                                 break
 
@@ -405,9 +370,9 @@ def _extract_edges_from_tree(
         elif node.type == "variable_declaration":
             # Check for struct/enum/union to update container context
             var_name = _get_struct_name_from_variable(node, source)
-            struct_node = _find_child_by_type(node, "struct_declaration")
-            enum_node = _find_child_by_type(node, "enum_declaration")
-            union_node = _find_child_by_type(node, "union_declaration")
+            struct_node = find_child_by_type(node, "struct_declaration")
+            enum_node = find_child_by_type(node, "enum_declaration")
+            union_node = find_child_by_type(node, "union_declaration")
 
             if var_name and (struct_node or enum_node or union_node):
                 inner_node = struct_node or enum_node or union_node
@@ -417,10 +382,10 @@ def _extract_edges_from_tree(
                 continue
 
             # Also check for @import in variable declarations
-            builtin_node = _find_child_by_type(node, "builtin_function")
+            builtin_node = find_child_by_type(node, "builtin_function")
             if builtin_node:
-                builtin_id = _find_child_by_type(builtin_node, "builtin_identifier")
-                if builtin_id and _node_text(builtin_id, source) == "@import":
+                builtin_id = find_child_by_type(builtin_node, "builtin_identifier")
+                if builtin_id and node_text(builtin_id, source) == "@import":
                     module_name = _get_import_module(builtin_node, source)
                     if module_name:
                         # Track the import alias (e.g., const std = @import("std"))
@@ -445,8 +410,8 @@ def _extract_edges_from_tree(
 
         elif node.type == "builtin_function":
             # Handle @import at other locations
-            builtin_id = _find_child_by_type(node, "builtin_identifier")
-            if builtin_id and _node_text(builtin_id, source) == "@import":
+            builtin_id = find_child_by_type(node, "builtin_identifier")
+            if builtin_id and node_text(builtin_id, source) == "@import":
                 module_name = _get_import_module(node, source)
                 if module_name:
                     src_id = current_function_sym.id if current_function_sym else f"zig:{rel_path}:0-0:file:file"
@@ -471,12 +436,12 @@ def _extract_edges_from_tree(
                     # Check if this is a field_expression call (e.g., std.debug.print)
                     # to get path_hint from import aliases
                     path_hint: Optional[str] = None
-                    field_node = _find_child_by_type(node, "field_expression")
+                    field_node = find_child_by_type(node, "field_expression")
                     if field_node:
                         # Get the first identifier (receiver)
-                        first_id = _find_child_by_type(field_node, "identifier")
+                        first_id = find_child_by_type(field_node, "identifier")
                         if first_id:
-                            receiver = _node_text(first_id, source)
+                            receiver = node_text(first_id, source)
                             if receiver in import_aliases:
                                 path_hint = import_aliases[receiver]
 
@@ -511,84 +476,75 @@ def _extract_edges_from_tree(
     return import_aliases
 
 
-def analyze_zig(root: Path) -> ZigAnalysisResult:
-    """Analyze Zig files in the given directory.
+class ZigAnalyzer(TreeSitterAnalyzer):
+    """Zig language analyzer using tree-sitter-zig."""
 
-    Args:
-        root: Root directory to analyze
+    lang = "zig"
+    file_patterns: ClassVar[list[str]] = ["*.zig"]
+    grammar_module = "tree_sitter_zig"
 
-    Returns:
-        ZigAnalysisResult with symbols, edges, and analysis run metadata
-    """
-    if not is_zig_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-zig not available. Install with: pip install tree-sitter-zig"
-        )
-        return ZigAnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-zig not available",
-        )
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract function, struct, enum, union, error set, and test symbols."""
+        analysis = FileAnalysis()
+        symbol_table: dict[str, Symbol] = {}
 
-    import tree_sitter
-    import tree_sitter_zig as ts_zig
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    try:
-        language = tree_sitter.Language(ts_zig.language())
-        parser = tree_sitter.Parser(language)
-    except Exception:  # pragma: no cover
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return ZigAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason="Failed to load tree-sitter-zig parser",
-        )
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    symbol_table: dict[str, Symbol] = {}  # name -> Symbol for resolution
-
-    # Pass 1: Extract all symbols
-    for file_path in find_zig_files(root):
-        files_analyzed += 1
-        try:
-            source = file_path.read_bytes()
-        except IOError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        rel_path = str(file_path.relative_to(root))
-
-        # Extract symbols from this file using iterative traversal
         _extract_symbols_from_tree(
-            tree.root_node, source, rel_path, symbols, symbol_table, run
+            tree.root_node, source, rel_path, analysis.symbols, symbol_table, run
         )
 
-    # Pass 2: Extract edges (imports and calls)
-    resolver = NameResolver(symbol_table)
-    for file_path in find_zig_files(root):
-        try:
-            source = file_path.read_bytes()
-        except IOError:  # pragma: no cover
-            continue
+        # Populate symbol_by_name for callable symbols
+        for sym in analysis.symbols:
+            if sym.kind in ("function", "method"):
+                analysis.symbol_by_name[sym.name] = sym
 
-        tree = parser.parse(source)
-        rel_path = str(file_path.relative_to(root))
+        return analysis
 
-        # Extract edges from this file using iterative traversal
-        # Returns import_aliases for this file (not used cross-file currently)
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Zig import aliases (const X = @import("Y"))."""
+        aliases: dict[str, str] = {}
+        from hypergumbo_core.analyze.base import iter_tree as _iter_tree
+
+        for node in _iter_tree(tree.root_node):
+            if node.type == "variable_declaration":
+                var_name = _get_struct_name_from_variable(node, source)
+                builtin_node = find_child_by_type(node, "builtin_function")
+                if builtin_node and var_name:
+                    builtin_id = find_child_by_type(builtin_node, "builtin_identifier")
+                    if builtin_id and node_text(builtin_id, source) == "@import":
+                        module_name = _get_import_module(builtin_node, source)
+                        if module_name:
+                            aliases[var_name] = module_name
+        return aliases
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from a Zig file."""
+        edges: list[Edge] = []
         _extract_edges_from_tree(
-            tree.root_node, source, rel_path, edges, resolver, run
+            tree.root_node, source, rel_path, edges, resolver, run, import_aliases
         )
+        return edges
 
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return ZigAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+_analyzer = ZigAnalyzer()
+
+
+def is_zig_tree_sitter_available() -> bool:
+    """Check if tree-sitter and tree-sitter-zig are available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("zig")
+def analyze_zig(root: Path) -> AnalysisResult:
+    """Analyze Zig files in the given directory."""
+    return _analyzer.analyze(root)

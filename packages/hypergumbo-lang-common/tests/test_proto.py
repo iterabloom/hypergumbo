@@ -281,11 +281,12 @@ class TestProtoAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "user.proto").write_text('syntax = "proto3";')
 
-        with patch.object(proto_module, "is_proto_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Proto analysis skipped"):
+        with patch.object(proto_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="proto analysis skipped"):
                 result = proto_module.analyze_proto(temp_repo)
 
         assert result.skipped is True
+        assert "not available" in result.skip_reason
 
 
 class TestProtoEdges:

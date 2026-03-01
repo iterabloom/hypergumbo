@@ -3,9 +3,12 @@ import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
+    compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
+    BASE_ENTRYPOINT_CAP,
+    MAX_ENTRYPOINT_CAP,
 )
 from hypergumbo_core.paths import is_test_file
 
@@ -128,6 +131,37 @@ class TestIsTestFile:
         # These hit endswith("fakes") and endswith("mocks") specifically
         assert is_test_file("pkg/rtc/transport/transportfakes/handler.go")
         assert is_test_file("internal/servicemocks/client.go")
+
+    def test_t_directory_convention(self) -> None:
+        """Detect t/ as test directory (C/Perl convention).
+
+        Used by git (t/helper/test-reach.c), Perl core (t/op/eval.t),
+        and many C projects. The t/ convention is a well-known test
+        directory pattern in these ecosystems.
+        """
+        assert is_test_file("t/helper/test-reach.c")
+        assert is_test_file("t/t0000-basic.sh")
+        assert is_test_file("t/op/eval.t")
+
+    def test_t_directory_not_confused_with_src(self) -> None:
+        """t/ detection should not match other single-char directories."""
+        # These should NOT be test files
+        assert not is_test_file("s/helper/util.c")
+        assert not is_test_file("a/main.go")
+
+    def test_hyphen_test_prefix_c_files(self) -> None:
+        """Detect test-*.c filename pattern (hyphen-separated).
+
+        Common in C projects: test-reach.c, test-path-utils.c, test-date.c.
+        """
+        assert is_test_file("t/helper/test-reach.c")
+        assert is_test_file("test-date.c")
+        assert is_test_file("src/test-parse.c")
+
+    def test_hyphen_test_prefix_not_confused(self) -> None:
+        """test- prefix detection should require word boundary."""
+        # "testament.c" should NOT be a test file
+        assert not is_test_file("src/testament.c")
 
 
 class TestSemanticEntryDetection:
@@ -1055,6 +1089,54 @@ class TestSemanticEntryDetection:
         lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(lib_eps) == 1
 
+    def test_go_library_export_entrypoint(self) -> None:
+        """Go exported function with library_export concept becomes LIBRARY_EXPORT."""
+        sym = make_symbol(
+            "New",
+            kind="function",
+            path="gin.go",
+            language="go",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert lib_eps[0].confidence == 0.75
+
+    def test_elixir_module_library_export_entrypoint(self) -> None:
+        """Elixir module with library_export concept becomes LIBRARY_EXPORT."""
+        sym = make_symbol(
+            "Phoenix.Router",
+            kind="module",
+            path="lib/phoenix/router.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert lib_eps[0].confidence == 0.75
+
     def test_npm_bin_entrypoint_detection(self) -> None:
         """npm bin entries (package.json "bin") are detected as CLI entrypoints."""
         # npm_bin concept comes from config-conventions.yaml matching kind="bin"
@@ -1258,6 +1340,81 @@ class TestSemanticEntryDetection:
         assert ctrl_eps[0].confidence == 0.70  # Naming heuristic
         assert "Controller (by name)" in ctrl_eps[0].label
 
+    def test_service_by_name_not_treated_as_entrypoint(self) -> None:
+        """Classes ending in 'Service' are tracked but not made entrypoints (covers entrypoints.py:480).
+
+        Services are potential business logic entry points but we explicitly skip them
+        for now to avoid over-detecting entrypoints in codebases with many service classes.
+        """
+        sym = Symbol(
+            id="java:UserService.java:1-50:UserService:class",
+            name="UserService",
+            kind="class",
+            path="src/UserService.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "service_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Service classes should NOT create any entrypoints
+        assert len(entrypoints) == 0
+
+    def test_command_by_name_c_entrypoint(self) -> None:
+        """C functions matching cmd_* are detected as CLI_COMMAND entrypoints.
+
+        This covers the command_by_name naming convention used by git,
+        systemd, busybox, and other C CLI tools where cmd_<name> functions
+        implement subcommands.
+        """
+        sym = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            path="builtin/commit.c",
+            language="c",
+            span=Span(1536, 1666, 0, 0),
+            meta={"concepts": [
+                {"concept": "command_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].confidence == 0.80
+        assert "by name" in cmd_eps[0].label
+        assert "cmd_commit" in cmd_eps[0].label
+
+    def test_command_by_name_skipped_if_cli_command_exists(self) -> None:
+        """command_by_name skipped if CLI_COMMAND already detected via framework."""
+        sym = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            path="builtin/commit.c",
+            language="c",
+            span=Span(1536, 1666, 0, 0),
+            meta={"concepts": [
+                {"concept": "command", "framework": "some-cli"},
+                {"concept": "command_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Framework detection wins — only one CLI_COMMAND entry
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].confidence == 0.95  # Framework confidence, not naming
+
     def test_symbol_with_empty_concepts_skipped(self) -> None:
         """Symbols with meta but empty concepts list are skipped."""
         sym = Symbol(
@@ -1437,6 +1594,81 @@ class TestConnectivityBasedRanking:
         # route_caller (2 outgoing) should rank before route_callee (0 outgoing)
         assert route_eps[0].symbol_id == route_caller.id
         assert route_eps[1].symbol_id == route_callee.id
+
+    def test_transitive_connectivity_boost(self) -> None:
+        """A main() that delegates to a high-connectivity function should outrank
+        a utility main with many direct calls but shallow transitive reach.
+
+        This mirrors the DMD pattern: compiler/src/dmd/main.d:main calls tryMain
+        (178 edges), while msvc-lib.d:main calls 10 small utility functions.
+        The compiler main should rank higher despite fewer direct edges.
+
+        Both may hit the 1.0 confidence cap, so the test checks rank order
+        (sorted position) rather than strict confidence inequality.
+        """
+        # Main function meta for D main() detection
+        main_meta = {"concepts": [{"concept": "main_function", "language": "d"}]}
+
+        # "Compiler main" — calls only tryMain, which calls many helpers
+        compiler_main = make_symbol(
+            "main", path="compiler/src/main.d", language="d",
+            start_line=1, end_line=10, meta=main_meta,
+        )
+        try_main = make_symbol(
+            "tryMain", path="compiler/src/main.d", language="d",
+            start_line=20, end_line=200,
+        )
+
+        # "Utility main" — calls many small helpers directly
+        utility_main = make_symbol(
+            "main", path="vcbuild/msvc-lib.d", language="d",
+            start_line=1, end_line=30, meta=main_meta,
+        )
+
+        # Create 50 helpers (mimics tryMain's high connectivity)
+        helpers = [
+            make_symbol(f"helper_{i}", path="helpers.d", language="d", start_line=i * 10)
+            for i in range(50)
+        ]
+
+        nodes = [compiler_main, try_main, utility_main] + helpers
+
+        edges = [
+            # compiler_main calls tryMain (1 direct edge)
+            Edge.create(src=compiler_main.id, dst=try_main.id, edge_type="calls", line=5),
+            # tryMain calls 50 helpers (high transitive reach)
+            *[
+                Edge.create(src=try_main.id, dst=h.id, edge_type="calls", line=25 + i)
+                for i, h in enumerate(helpers)
+            ],
+            # utility_main calls 10 helpers directly (moderate direct reach)
+            *[
+                Edge.create(src=utility_main.id, dst=helpers[i].id, edge_type="calls", line=5 + i)
+                for i in range(10)
+            ],
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        main_eps = [
+            ep for ep in entrypoints
+            if ep.kind == EntrypointKind.MAIN_FUNCTION
+        ]
+        assert len(main_eps) >= 2
+
+        # Entrypoints are sorted by confidence desc, then by effective
+        # out-degree desc.  The compiler main (1 direct + 0.5 * 50 transitive
+        # = 26 effective) should outrank the utility main (10 effective).
+        compiler_idx = next(
+            i for i, ep in enumerate(main_eps) if ep.symbol_id == compiler_main.id
+        )
+        utility_idx = next(
+            i for i, ep in enumerate(main_eps) if ep.symbol_id == utility_main.id
+        )
+        assert compiler_idx < utility_idx, (
+            f"Compiler main should rank before utility main "
+            f"(compiler at index {compiler_idx}, utility at {utility_idx})"
+        )
 
 
 class TestLifecycleHookConceptDetection:
@@ -1656,8 +1888,53 @@ class TestEntrypointRankingPenalties:
     - The full graph data is preserved
     """
 
+    def test_aggressive_test_demotion_prevents_flooding(self) -> None:
+        """Test entrypoints in test files are filtered out entirely.
+
+        In repos like DMD where 98% of main() functions are in test files,
+        the 90% test penalty (0.80 * 0.1 = 0.08) pushes them below the
+        MIN_ENTRYPOINT_CONFIDENCE threshold (0.10), so they are excluded
+        from results. Only production mains survive.
+        """
+        # 3 production mains
+        prod_mains = [
+            make_symbol(
+                f"main_{i}",
+                path=f"src/app_{i}.py",
+                start_line=i * 100,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(3)
+        ]
+        # 50 test mains (simulating DMD-like flooding)
+        test_mains = [
+            make_symbol(
+                f"test_main_{i}",
+                path=f"tests/test_mod_{i}.py",
+                start_line=i * 100,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(50)
+        ]
+        nodes = prod_mains + test_mains
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Only production mains survive (test mains at 0.08 are filtered)
+        assert len(entrypoints) == 3
+
+        # All surviving entries should be production
+        for ep in entrypoints:
+            assert "src/" in ep.symbol_id
+            assert ep.confidence == pytest.approx(0.80, rel=0.01)
+
     def test_test_file_penalty(self) -> None:
-        """Entrypoints in test files receive a 50% confidence penalty."""
+        """Entrypoints in test files are filtered out by confidence threshold.
+
+        Test file penalty (90% reduction) pushes main_function from 0.80 to
+        0.08, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10). Only the
+        production main survives.
+        """
         # Production main function
         prod_main = make_symbol(
             "main",
@@ -1675,20 +1952,10 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Both should be detected
-        assert len(entrypoints) == 2
-
-        # Production main should have higher confidence
-        prod_ep = next(e for e in entrypoints if "src/app.py" in e.symbol_id)
-        test_ep = next(e for e in entrypoints if "tests/test_app.py" in e.symbol_id)
-
-        # Base confidence is 0.80 for main_function
-        # Test file gets 50% penalty: 0.80 * 0.5 = 0.40
-        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.40, rel=0.01)
-
-        # Production should rank first
+        # Test entry filtered (0.80 * 0.1 = 0.08 < 0.10 threshold)
+        assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_main.id
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
     def test_vendor_tier_penalty(self) -> None:
         """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""
@@ -1729,7 +1996,11 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == first_party.id
 
     def test_test_and_vendor_penalties_stack(self) -> None:
-        """Both penalties apply if entrypoint is in test file AND vendor code."""
+        """Stacked penalties filter out vendor test entries entirely.
+
+        Base 0.80 * 0.1 (test) * 0.3 (vendor) = 0.024 — well below
+        MIN_ENTRYPOINT_CONFIDENCE (0.10). Only production entry survives.
+        """
         # First-party production code
         prod = make_symbol(
             "main",
@@ -1749,15 +2020,17 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        prod_ep = next(e for e in entrypoints if "src/main.py" in e.symbol_id)
-        vendor_test_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
-
-        # Base 0.80 * 0.5 (test penalty) * 0.3 (vendor penalty) = 0.12
-        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_test_ep.confidence == pytest.approx(0.12, rel=0.01)
+        # Vendor test entry filtered (0.024 < 0.10 threshold)
+        assert len(entrypoints) == 1
+        assert entrypoints[0].symbol_id == prod.id
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
     def test_http_route_test_penalty(self) -> None:
-        """HTTP routes in test files also receive test penalty."""
+        """HTTP routes in test files are filtered by confidence threshold.
+
+        Base 0.95 * 0.1 (test penalty) = 0.095 < MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        Only the production route survives.
+        """
         # Production route
         prod_route = make_symbol(
             "get_users",
@@ -1775,16 +2048,10 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        prod_ep = next(e for e in entrypoints if "src/api" in e.symbol_id)
-        test_ep = next(e for e in entrypoints if "tests/" in e.symbol_id)
-
-        # Base confidence is 0.95 for HTTP routes
-        # Test file gets 50% penalty: 0.95 * 0.5 = 0.475
-        assert prod_ep.confidence == pytest.approx(0.95, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.475, rel=0.01)
-
-        # Production route should rank first
+        # Test route filtered (0.095 < 0.10)
+        assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_route.id
+        assert entrypoints[0].confidence == pytest.approx(0.95, rel=0.01)
 
     def test_derived_artifact_penalty(self) -> None:
         """Entrypoints in derived artifacts (tier 4) also receive vendor penalty."""
@@ -1843,15 +2110,18 @@ class TestEntrypointRankingPenalties:
         assert len(entrypoints) == 1
         ep = entrypoints[0]
 
-        # Base 0.80 * 0.5 (test penalty) = 0.40
-        # Plus connectivity boost: log(1 + 10) / 10 ≈ 0.24
-        # Total: 0.40 + 0.24 = 0.64 (capped at 0.25 boost)
-        # Actually: 0.40 + min(0.25, log(11)/10) = 0.40 + 0.24 = 0.64
-        assert ep.confidence > 0.40  # Should be boosted
-        assert ep.confidence < 0.80  # But still penalized
+        # Base 0.80 * 0.1 (test penalty) = 0.08
+        # Plus connectivity boost: min(0.25, log(1 + 10) / 10) ≈ 0.24
+        # Total: 0.08 + 0.24 = 0.32
+        assert ep.confidence > 0.08  # Should be boosted
+        assert ep.confidence < 0.50  # But still well below production
 
     def test_ranking_order_respects_penalties(self) -> None:
-        """Final ranking correctly orders by penalized confidence."""
+        """Final ranking correctly orders by penalized confidence.
+
+        test_main (0.80 * 0.1 = 0.08) is below threshold and filtered out.
+        Remaining entries ordered: prod_route (0.95) > vendor_route (0.285).
+        """
         # High-confidence production route
         prod_route = make_symbol(
             "api_handler",
@@ -1859,7 +2129,7 @@ class TestEntrypointRankingPenalties:
             meta={"concepts": [{"concept": "route", "path": "/api", "method": "GET"}]},
             supply_chain_tier=1,
         )
-        # Low-confidence test main
+        # Low-confidence test main (will be filtered)
         test_main = make_symbol(
             "main",
             path="tests/test_main.py",
@@ -1879,11 +2149,900 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Expected order after penalties:
-        # 1. prod_route: 0.95 (no penalty)
-        # 2. test_main: 0.80 * 0.5 = 0.40
-        # 3. vendor_route: 0.95 * 0.3 = 0.285
-        assert len(entrypoints) == 3
+        # test_main filtered (0.08 < 0.10 threshold)
+        # Expected order: prod_route (0.95) > vendor_route (0.285)
+        assert len(entrypoints) == 2
         assert entrypoints[0].symbol_id == prod_route.id
-        assert entrypoints[1].symbol_id == test_main.id
-        assert entrypoints[2].symbol_id == vendor_route.id
+        assert entrypoints[1].symbol_id == vendor_route.id
+
+
+class TestConnectivityFallback:
+    """Tests for centrality-based entrypoint fallback (DEEP mode).
+
+    When no concept-based entrypoints are found (no routes, no main(), etc.),
+    the system falls back to selecting the most-connected callable symbols.
+    """
+
+    def test_fallback_activates_when_no_concepts(self) -> None:
+        """Connectivity fallback activates when no concept-based entrypoints exist."""
+        # Symbols with no concept metadata
+        func_a = make_symbol("processData", kind="function", path="lib.rs",
+                             language="rust", start_line=1, end_line=10)
+        func_b = make_symbol("helper", kind="function", path="lib.rs",
+                             language="rust", start_line=20, end_line=30)
+        func_c = make_symbol("run", kind="function", path="lib.rs",
+                             language="rust", start_line=40, end_line=50)
+
+        # processData calls helper and run; it's the most connected
+        edges = [
+            Edge.create(src=func_a.id, dst=func_b.id, edge_type="calls", line=1),
+            Edge.create(src=func_a.id, dst=func_c.id, edge_type="calls", line=2),
+            Edge.create(src=func_c.id, dst=func_b.id, edge_type="calls", line=3),
+        ]
+
+        entrypoints = detect_entrypoints([func_a, func_b, func_c], edges)
+
+        assert len(entrypoints) > 0
+        # The most-connected function should be ranked first
+        assert entrypoints[0].symbol_id == func_a.id
+        assert entrypoints[0].kind == EntrypointKind.CONNECTIVITY_BASED
+
+    def test_fallback_does_not_activate_with_concepts(self) -> None:
+        """No fallback when concept-based entrypoints exist."""
+        func_main = make_symbol(
+            "main", kind="function", path="main.py", language="python",
+            meta={"concepts": [{"concept": "main_function", "framework": "main-functions"}]},
+        )
+        func_helper = make_symbol(
+            "helper", kind="function", path="lib.py", language="python",
+            start_line=10, end_line=20,
+        )
+        # helper has more connections but main has concept metadata
+        edges = [
+            Edge.create(src=func_helper.id, dst=func_main.id, edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([func_main, func_helper], edges)
+
+        # Should have main_function, no connectivity_based
+        kinds = {ep.kind for ep in entrypoints}
+        assert EntrypointKind.MAIN_FUNCTION in kinds
+        assert EntrypointKind.CONNECTIVITY_BASED not in kinds
+
+    def test_fallback_confidence_lower_than_concepts(self) -> None:
+        """Connectivity-based entrypoints have lower confidence than concept-based.
+
+        The connectivity boost is intentionally skipped for fallback entrypoints
+        to avoid double-counting (out-degree is already used for selection).
+        Base confidence is 0.50, which stays below any concept-based entrypoint.
+        """
+        func = make_symbol("process", kind="function", path="lib.rs",
+                           language="rust", start_line=1, end_line=10)
+        edges = [
+            Edge.create(src=func.id, dst="other:1", edge_type="calls", line=1),
+            Edge.create(src=func.id, dst="other:2", edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints([func], edges)
+
+        assert len(entrypoints) > 0
+        for ep in entrypoints:
+            if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
+                # Base 0.50, no connectivity boost (double-count prevention)
+                assert ep.confidence == 0.50
+
+    def test_fallback_limits_to_top_n(self) -> None:
+        """Fallback selects at most a bounded number of entrypoints."""
+        # Create many disconnected functions
+        symbols = []
+        edges = []
+        for i in range(20):
+            sym = make_symbol(f"func_{i}", kind="function", path="lib.rs",
+                              language="rust", start_line=i * 10, end_line=i * 10 + 5)
+            symbols.append(sym)
+            # Each function calls the next one
+            if i > 0:
+                edges.append(Edge.create(src=sym.id, dst=symbols[i - 1].id, edge_type="calls", line=i))
+
+        entrypoints = detect_entrypoints(symbols, edges)
+
+        # Should be bounded (not all 20 functions)
+        assert len(entrypoints) <= 10
+
+    def test_fallback_excludes_non_callables(self) -> None:
+        """Fallback only considers callable symbols (functions, methods)."""
+        # A struct with edges but non-callable
+        struct_sym = make_symbol("Config", kind="struct", path="lib.rs",
+                                language="rust", start_line=1, end_line=10)
+        func_sym = make_symbol("init", kind="function", path="lib.rs",
+                               language="rust", start_line=20, end_line=30)
+
+        # Both have outgoing edges
+        edges = [
+            Edge.create(src=struct_sym.id, dst="other:1", edge_type="extends", line=1),
+            Edge.create(src=func_sym.id, dst="other:2", edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([struct_sym, func_sym], edges)
+
+        # Only the function should be an entrypoint
+        assert len(entrypoints) >= 1
+        ep_ids = {ep.symbol_id for ep in entrypoints}
+        assert func_sym.id in ep_ids
+
+    def test_fallback_penalizes_test_files(self) -> None:
+        """Connectivity fallback applies same test-file penalty."""
+        test_func = make_symbol("TestProcess", kind="function",
+                                path="lib_test.go", language="go",
+                                start_line=1, end_line=10)
+        prod_func = make_symbol("Process", kind="function",
+                                path="lib.go", language="go",
+                                start_line=20, end_line=30)
+
+        # Both have equal connectivity
+        edges = [
+            Edge.create(src=test_func.id, dst="other:1", edge_type="calls", line=1),
+            Edge.create(src=prod_func.id, dst="other:2", edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([test_func, prod_func], edges)
+
+        # Production function should rank higher
+        if len(entrypoints) >= 2:
+            prod_ep = next(ep for ep in entrypoints if ep.symbol_id == prod_func.id)
+            test_ep = next(ep for ep in entrypoints if ep.symbol_id == test_func.id)
+            assert prod_ep.confidence > test_ep.confidence
+
+
+class TestTestFunctionConceptDetection:
+    """Tests for test_function concept -> TEST_FUNCTION entrypoint mapping."""
+
+    def test_test_function_concept_creates_entrypoint(self) -> None:
+        """test_function concept produces a TEST_FUNCTION entrypoint.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        The concept mapping is the focus of this test, not the penalty.
+        """
+        sym = make_symbol(
+            "test_user_login", kind="function", path="src/runner.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+        assert test_eps[0].symbol_id == sym.id
+        assert "test" in test_eps[0].label.lower()
+
+    def test_benchmark_function_concept_creates_entrypoint(self) -> None:
+        """benchmark_function concept produces a TEST_FUNCTION entrypoint.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        """
+        sym = make_symbol(
+            "BenchmarkSort", kind="function", path="src/bench.go",
+            meta={"concepts": [{"concept": "benchmark_function", "framework": "go-testing"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+        assert "benchmark" in test_eps[0].label.lower()
+
+    def test_test_function_penalized_in_test_file(self) -> None:
+        """TEST_FUNCTION in test files are filtered by confidence threshold.
+
+        Base 0.80 * 0.1 (test penalty) = 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        """
+        sym = make_symbol(
+            "test_login", kind="function", path="tests/test_auth.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        # Filtered out due to low confidence
+        assert len(entrypoints) == 0
+
+    def test_test_function_does_not_duplicate(self) -> None:
+        """Multiple test concepts on same symbol produce only one TEST_FUNCTION.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        """
+        sym = make_symbol(
+            "test_api", kind="function", path="src/runner.py",
+            meta={"concepts": [
+                {"concept": "test_function", "framework": "pytest"},
+                {"concept": "test_function", "framework": "unittest"},
+            ]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+
+
+class TestRouteKindEntrypointDetection:
+    """Tests for direct kind='route' entrypoint detection.
+
+    Go and other analyzers create symbols with kind='route' and metadata
+    (route_path, http_method) directly, bypassing YAML concept enrichment.
+    These must be promoted to HTTP_ROUTE entrypoints.
+    """
+
+    def test_route_kind_promoted_to_entrypoint(self) -> None:
+        """Symbol with kind='route' and route metadata becomes HTTP_ROUTE."""
+        sym = make_symbol(
+            "ListUsers",
+            path="routers/api/v1/user.go",
+            kind="route",
+            language="go",
+            meta={
+                "route_path": "/api/v1/users",
+                "http_method": "GET",
+                "handler_name": "ListUsers",
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].symbol_id == sym.id
+        assert route_eps[0].confidence == 0.90
+        assert "GET" in route_eps[0].label
+        assert "/api/v1/users" in route_eps[0].label
+
+    def test_route_kind_method_only(self) -> None:
+        """Route with method but no path still gets a label."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={"http_method": "POST"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert "POST" in route_eps[0].label
+
+    def test_route_kind_path_only(self) -> None:
+        """Route with path but no method still gets a label."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={"route_path": "/health"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert "/health" in route_eps[0].label
+
+    def test_route_kind_no_metadata(self) -> None:
+        """Route symbol with no meta still becomes entrypoint."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].label == "HTTP route"
+
+    def test_no_duplicate_with_concept_route(self) -> None:
+        """Route kind + route concept doesn't produce duplicate entrypoints."""
+        sym = make_symbol(
+            "ListUsers",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={
+                "route_path": "/users",
+                "http_method": "GET",
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        # Should be exactly 1, not 2
+        assert len(route_eps) == 1
+
+    def test_multiple_route_symbols(self) -> None:
+        """Multiple route symbols each become entrypoints."""
+        sym1 = make_symbol(
+            "GetUser", path="api.go", kind="route", language="go",
+            meta={"route_path": "/users/:id", "http_method": "GET"},
+            start_line=1, end_line=1,
+        )
+        sym2 = make_symbol(
+            "CreateUser", path="api.go", kind="route", language="go",
+            meta={"route_path": "/users", "http_method": "POST"},
+            start_line=10, end_line=10,
+        )
+        entrypoints = detect_entrypoints([sym1, sym2], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 2
+        ep_ids = {ep.symbol_id for ep in route_eps}
+        assert sym1.id in ep_ids
+        assert sym2.id in ep_ids
+
+
+class TestLanguageDominanceRanking:
+    """Tests for language dominance in entrypoint ranking.
+
+    When multiple languages have entrypoints at similar confidence, the
+    dominant language (by symbol count) should rank higher. This prevents
+    a Python script from outranking a C main() in a 95% C codebase.
+    """
+
+    def test_dominant_language_ranks_first(self) -> None:
+        """C main() should rank above Python main() in C-dominant repo.
+
+        In a repo with 95 C symbols and 5 Python symbols, both languages
+        have a main() function. The Python main has higher connectivity
+        (more outgoing edges), which would normally give it a higher rank.
+        But because C is the dominant language, C main should still rank
+        first.
+
+        This simulates the git repo scenario: 95% C code but Python
+        scripts (git-p4.py) have higher connectivity in a single file,
+        causing them to outrank the C main().
+        """
+        from hypergumbo_core.ir import Edge
+
+        # C main function with modest connectivity (5 edges)
+        c_main = make_symbol(
+            "main", path="src/main.c", language="c",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # 94 additional C symbols to make C dominant
+        c_symbols = [
+            make_symbol(
+                f"c_func_{i}", path=f"src/lib_{i}.c", language="c",
+                start_line=i * 10,
+            )
+            for i in range(94)
+        ]
+
+        # Python main with HIGHER connectivity (50 edges)
+        # Uses a non-utility path to avoid utility penalty
+        py_main = make_symbol(
+            "main", path="contrib/p4/main.py", language="python",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # 4 additional Python symbols (callees get re-called)
+        py_symbols = [
+            make_symbol(
+                f"py_func_{i}", path=f"contrib/p4/util_{i}.py",
+                language="python",
+                start_line=i * 10 + 100,
+            )
+            for i in range(4)
+        ]
+
+        nodes = [c_main] + c_symbols + [py_main] + py_symbols
+
+        # C main calls 5 C functions
+        c_edges = [
+            Edge.create(
+                src=c_main.id, dst=c_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(5)
+        ]
+        # Python main calls 50 functions (much higher connectivity)
+        py_edges = [
+            Edge.create(
+                src=py_main.id, dst=py_symbols[i % len(py_symbols)].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(50)
+        ]
+
+        entrypoints = detect_entrypoints(nodes, c_edges + py_edges)
+
+        c_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == c_main.id), None,
+        )
+        py_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == py_main.id), None,
+        )
+        assert c_ep is not None, "C main should be detected as entrypoint"
+        assert py_ep is not None, "Python main should be detected as entrypoint"
+
+        # C main should rank higher than Python main despite lower
+        # connectivity, because C is the dominant language (95 of 100
+        # symbols).
+        c_rank = entrypoints.index(c_ep)
+        py_rank = entrypoints.index(py_ep)
+        assert c_rank < py_rank, (
+            f"C main (rank {c_rank}, conf {c_ep.confidence:.3f}) should rank "
+            f"above Python main (rank {py_rank}, conf {py_ep.confidence:.3f}) "
+            f"in a C-dominant repo (95% C by symbol count)"
+        )
+
+    def test_equal_languages_no_bias(self) -> None:
+        """In a 50/50 repo, language dominance should not introduce bias.
+
+        When two languages contribute equally, the tiebreaker should fall
+        to connectivity (effective out-degree), not language.
+        """
+        from hypergumbo_core.ir import Edge
+
+        # 50 Go symbols
+        go_main = make_symbol(
+            "main", path="cmd/main.go", language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        go_symbols = [
+            make_symbol(
+                f"go_func_{i}", path=f"pkg/lib_{i}.go", language="go",
+                start_line=i * 10,
+            )
+            for i in range(49)
+        ]
+
+        # 50 Python symbols
+        py_main = make_symbol(
+            "main", path="app/main.py", language="python",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        py_symbols = [
+            make_symbol(
+                f"py_func_{i}", path=f"app/util_{i}.py", language="python",
+                start_line=i * 10 + 100,
+            )
+            for i in range(49)
+        ]
+
+        nodes = [go_main] + go_symbols + [py_main] + py_symbols
+
+        # Both mains have the same connectivity (10 edges each)
+        go_edges = [
+            Edge.create(
+                src=go_main.id, dst=go_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(10)
+        ]
+        py_edges = [
+            Edge.create(
+                src=py_main.id, dst=py_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(10)
+        ]
+
+        entrypoints = detect_entrypoints(nodes, go_edges + py_edges)
+
+        go_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == go_main.id), None,
+        )
+        py_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == py_main.id), None,
+        )
+        assert go_ep is not None
+        assert py_ep is not None
+
+        # Both should have the same confidence (language weights are equal)
+        assert go_ep.confidence == pytest.approx(py_ep.confidence, rel=0.01), (
+            f"Equal-language entrypoints should have same confidence: "
+            f"Go={go_ep.confidence:.3f}, Python={py_ep.confidence:.3f}"
+        )
+
+
+class TestApplicationLibraryExportDemotion:
+    """Tests for library_export demotion in application repos.
+
+    When a repo has real semantic entrypoints (HTTP routes, CLI commands,
+    main functions), library_export entries are noise — they represent
+    API visibility (e.g., Go uppercase symbols), not developer-facing
+    entrypoints. These should be heavily demoted so routes/commands
+    dominate the entrypoint list.
+
+    This is the "forgejo problem": 7,474 library_export entrypoints
+    drowning out 772 meaningful HTTP routes.
+    """
+
+    def test_library_export_demoted_when_routes_exist(self) -> None:
+        """library_export entries are filtered out when HTTP routes exist.
+
+        With routes present, library_export demotion (90%) reduces confidence
+        from 0.80 to 0.08, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        Only routes survive.
+        """
+        route = make_symbol(
+            "ListUsers", path="routers/api/v1/user.go", kind="route",
+            language="go",
+            meta={"route_path": "/api/v1/users", "http_method": "GET"},
+        )
+        export1 = make_symbol(
+            "GetEngine", path="models/engine.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        export2 = make_symbol(
+            "Find", path="models/find.go", kind="function",
+            language="go", start_line=20,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [route, export1, export2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+
+        assert len(route_eps) == 1
+        # Exports filtered out (0.80 * 0.1 = 0.08 < 0.10 threshold)
+        assert len(export_eps) == 0
+
+    def test_library_export_demoted_when_commands_exist(self) -> None:
+        """library_export filtered when CLI commands exist.
+
+        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        """
+        command = make_symbol(
+            "cmd_merge", path="builtin/merge.c", kind="function",
+            language="c", start_line=1,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        export = make_symbol(
+            "Parse", path="lib/parse.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [command, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 0
+
+    def test_library_export_demoted_when_main_exists(self) -> None:
+        """library_export filtered when main() function exists.
+
+        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        """
+        main_fn = make_symbol(
+            "main", path="cmd/server/main.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        export = make_symbol(
+            "NewServer", path="pkg/server.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [main_fn, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 0
+
+    def test_library_export_not_demoted_in_pure_library(self) -> None:
+        """library_export keeps full confidence when no semantic entries exist.
+
+        A pure library (no routes, no commands, no main) should preserve
+        library_export confidence since that IS the right entrypoint type.
+        """
+        export1 = make_symbol(
+            "NewClient", path="client.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        export2 = make_symbol(
+            "Dial", path="transport.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [export1, export2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 2
+        for ep in export_eps:
+            assert ep.confidence >= 0.70, (
+                f"library_export {ep.label} has confidence {ep.confidence:.2f}, "
+                f"expected >= 0.70 in pure library (no demotion)"
+            )
+
+    def test_test_entries_dont_trigger_demotion(self) -> None:
+        """TEST_FUNCTION entrypoints alone should NOT trigger demotion.
+
+        A library with test functions but no routes/commands/main should
+        keep its library_export entries at full confidence.
+        """
+        test_fn = make_symbol(
+            "TestNewClient", path="client_test.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "test_function"}]},
+        )
+        export = make_symbol(
+            "NewClient", path="client.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [test_fn, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 1
+        assert export_eps[0].confidence >= 0.70
+
+    def test_demotion_not_language_specific(self) -> None:
+        """Demotion applies regardless of language.
+
+        A Python app with Flask routes and library_export entries should
+        also see the demotion. Exports at 0.08 are filtered out.
+        """
+        route = make_symbol(
+            "get_users", path="src/api/routes.py", kind="function",
+            language="python", start_line=1,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        export = make_symbol(
+            "UserModel", path="src/models.py", kind="class",
+            language="python", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [route, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 0
+
+    def test_forgejo_scale_scenario(self) -> None:
+        """Simulate forgejo: 772 routes + 7474 library_exports.
+
+        Top 20 entrypoints should be all routes (or main), not exports.
+        This is the primary motivation for this feature.
+        """
+        routes = [
+            make_symbol(
+                f"Route{i}", path=f"routers/api/v1/r{i}.go", kind="route",
+                language="go", start_line=i,
+                meta={"route_path": f"/api/v1/r{i}", "http_method": "GET"},
+            )
+            for i in range(50)  # Subset of 772
+        ]
+        exports = [
+            make_symbol(
+                f"Export{i}", path=f"models/m{i}.go", kind="function",
+                language="go", start_line=i + 100,
+                meta={"concepts": [{"concept": "library_export"}]},
+            )
+            for i in range(200)  # Subset of 7474
+        ]
+        nodes = routes + exports
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Top 20 should all be routes
+        top_20 = entrypoints[:20]
+        for ep in top_20:
+            assert ep.kind == EntrypointKind.HTTP_ROUTE, (
+                f"Top 20 should be routes, but found {ep.kind.value}: {ep.label}"
+            )
+
+
+class TestDeclarationDedup:
+    """Tests for deduplication of declaration vs definition entrypoints."""
+
+    def test_declaration_deduped_when_definition_exists(self) -> None:
+        """When both declaration and definition exist for same name, keep definition."""
+        # Declaration from header (e.g., builtin.h)
+        decl = make_symbol(
+            "cmd_add", path="builtin.h", kind="function",
+            language="c", start_line=5,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        # Manually set modifiers since make_symbol doesn't support it
+        decl.modifiers = ["declaration"]
+
+        # Definition from source (e.g., builtin/add.c)
+        defn = make_symbol(
+            "cmd_add", path="builtin/add.c", kind="function",
+            language="c", start_line=10,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+
+        entrypoints = detect_entrypoints([decl, defn], [])
+
+        # Should only have one entrypoint for cmd_add (the definition)
+        cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
+        assert len(cmd_add_eps) == 1
+        assert cmd_add_eps[0].symbol_id == defn.id
+
+    def test_declaration_kept_when_no_definition(self) -> None:
+        """When only a declaration exists (no definition), keep it."""
+        decl = make_symbol(
+            "cmd_add", path="builtin.h", kind="function",
+            language="c", start_line=5,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        decl.modifiers = ["declaration"]
+
+        entrypoints = detect_entrypoints([decl], [])
+
+        cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
+        assert len(cmd_add_eps) == 1
+
+
+class TestEntrypointConfidenceFiltering:
+    """Tests for minimum confidence threshold and count cap.
+
+    detect_entrypoints() should filter out entries below a minimum confidence
+    threshold (0.10) and cap the total number of returned entries. This
+    addresses the INV-mahap finding: 3100 library_export entries at 0.075
+    confidence flooding --list-entries output.
+    """
+
+    def test_low_confidence_entries_filtered(self) -> None:
+        """Entries below 0.10 confidence are excluded from results.
+
+        library_export entries get 90% demotion when semantic entries exist,
+        dropping from 0.80 to 0.08 — below the 0.10 threshold.
+        """
+        # Create a route (semantic) + many library_exports
+        route = make_symbol(
+            "handle_request", path="src/routes.py",
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        exports = []
+        for i in range(100):
+            exports.append(make_symbol(
+                f"export_{i}", path="src/lib.py",
+                start_line=i + 1,
+                meta={"concepts": [{"concept": "library_export"}]},
+            ))
+
+        entrypoints = detect_entrypoints([route] + exports, [])
+
+        # The route should survive (high confidence)
+        route_eps = [ep for ep in entrypoints
+                     if ep.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+        # Library exports should be filtered out (0.80 * 0.1 = 0.08 < 0.10)
+        export_eps = [ep for ep in entrypoints
+                      if ep.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 0, (
+            f"Expected 0 low-confidence exports, got {len(export_eps)}"
+        )
+
+    def test_count_cap_limits_results(self) -> None:
+        """detect_entrypoints caps results based on repo size.
+
+        For small repos, the cap is BASE_ENTRYPOINT_CAP (50).
+        Even when many entries pass the confidence threshold, the result
+        is capped to prevent output flooding.
+        """
+        # Create more routes than the base cap (small repo)
+        nodes = []
+        for i in range(BASE_ENTRYPOINT_CAP + 20):
+            nodes.append(make_symbol(
+                f"route_{i}", path=f"src/routes_{i}.py",
+                start_line=1,
+                meta={"concepts": [{"concept": "route"}]},
+            ))
+
+        entrypoints = detect_entrypoints(nodes, [])
+        assert len(entrypoints) <= BASE_ENTRYPOINT_CAP
+
+    def test_count_cap_scales_with_large_repo(self) -> None:
+        """detect_entrypoints allows more entries for large repos.
+
+        A repo with 20000 symbols should allow up to 200 entrypoints
+        (node_count // 100), not just 50.
+        """
+        # Create 200 routes + 19800 non-entrypoint symbols = 20000 total
+        nodes = []
+        for i in range(200):
+            nodes.append(make_symbol(
+                f"route_{i}", path=f"src/routes_{i}.py",
+                start_line=1,
+                meta={"concepts": [{"concept": "route"}]},
+            ))
+        for i in range(19800):
+            nodes.append(make_symbol(
+                f"helper_{i}", path=f"src/helpers_{i}.py",
+                start_line=1,
+            ))
+
+        entrypoints = detect_entrypoints(nodes, [])
+        # With 20000 nodes, cap is 200 — all 200 routes should be returned
+        assert len(entrypoints) == 200
+
+    def test_high_confidence_entries_preserved(self) -> None:
+        """Entries above threshold are preserved."""
+        route = make_symbol(
+            "handle_request", path="src/routes.py",
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        main = make_symbol(
+            "main", path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+
+        entrypoints = detect_entrypoints([route, main], [])
+        assert len(entrypoints) == 2
+
+    def test_no_semantic_entries_exports_preserved(self) -> None:
+        """Without semantic entries, library_exports keep full confidence.
+
+        In a pure library (no routes/commands), exports are the only
+        entrypoints and should NOT be filtered by the confidence threshold.
+        """
+        exports = []
+        for i in range(5):
+            exports.append(make_symbol(
+                f"pub_fn_{i}", path="src/lib.rs",
+                start_line=i + 1, language="rust",
+                meta={"concepts": [{"concept": "library_export"}]},
+            ))
+
+        entrypoints = detect_entrypoints(exports, [])
+        # No demotion happens (no semantic entries), so all at 0.80
+        assert len(entrypoints) == 5
+
+
+class TestComputeEntrypointCap:
+    """Tests for compute_entrypoint_cap() scaling function."""
+
+    def test_small_repo_gets_base_cap(self) -> None:
+        """Repos with < 5000 nodes get the base cap of 50."""
+        assert compute_entrypoint_cap(100) == BASE_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(1000) == BASE_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(4999) == BASE_ENTRYPOINT_CAP
+
+    def test_medium_repo_scales_proportionally(self) -> None:
+        """Repos with 5000-50000 nodes scale at 1% of node count."""
+        assert compute_entrypoint_cap(10000) == 100
+        assert compute_entrypoint_cap(20000) == 200
+        assert compute_entrypoint_cap(25000) == 250
+
+    def test_large_repo_capped_at_maximum(self) -> None:
+        """Very large repos are capped at MAX_ENTRYPOINT_CAP (500)."""
+        assert compute_entrypoint_cap(90000) == MAX_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(200000) == MAX_ENTRYPOINT_CAP
+
+    def test_zero_nodes(self) -> None:
+        """Zero nodes returns base cap."""
+        assert compute_entrypoint_cap(0) == BASE_ENTRYPOINT_CAP
+
+    def test_exact_threshold(self) -> None:
+        """At exactly 5000 nodes, cap equals base cap (5000 // 100 = 50)."""
+        assert compute_entrypoint_cap(5000) == BASE_ENTRYPOINT_CAP
+
+    def test_just_above_threshold(self) -> None:
+        """At 5100 nodes, cap scales to 51."""
+        assert compute_entrypoint_cap(5100) == 51

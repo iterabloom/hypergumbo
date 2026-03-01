@@ -26,6 +26,18 @@ from hypergumbo_core.framework_patterns import (
 from hypergumbo_core.ir import Span, Symbol, UsageContext
 
 
+@pytest.fixture(autouse=True)
+def _clean_pattern_cache():
+    """Clear framework pattern cache between tests.
+
+    Tests that patch get_frameworks_dir poison _PATTERN_CACHE with None
+    entries for convention patterns (main-functions, config-conventions, etc.).
+    With xdist load distribution, stale entries leak to other tests in the
+    same worker process. Clearing before each test prevents this.
+    """
+    clear_pattern_cache()
+
+
 class TestPattern:
     """Tests for the Pattern dataclass."""
 
@@ -1389,6 +1401,87 @@ class TestFlaskPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "model"
 
+    def test_flask_template_filter(self) -> None:
+        """Flask @app.template_filter decorator matches template_filter pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:filters.py:5:reverse:function",
+            name="reverse",
+            kind="function",
+            language="python",
+            path="filters.py",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_filter", "args": ["reverse"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_filter"
+        assert results[0]["matched_decorator"] == "app.template_filter"
+
+    def test_flask_template_global(self) -> None:
+        """Flask @app.template_global decorator matches template_global pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:globals.py:10:get_now:function",
+            name="get_now",
+            kind="function",
+            language="python",
+            path="globals.py",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_global", "args": ["now"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_global"
+        assert results[0]["matched_decorator"] == "app.template_global"
+
+    def test_flask_template_test(self) -> None:
+        """Flask @app.template_test decorator matches template_test pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tests.py:5:is_prime:function",
+            name="is_prime",
+            kind="function",
+            language="python",
+            path="tests.py",
+            span=Span(5, 12, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_test", "args": ["prime"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_test"
+        assert results[0]["matched_decorator"] == "app.template_test"
+
     def test_flask_enrich_symbols_integration(self) -> None:
         """Integration test: enrich_symbols adds Flask route concepts."""
         clear_pattern_cache()
@@ -1417,9 +1510,119 @@ class TestFlaskPatterns:
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "flask"
 
+    def test_flask_signal_handler_pattern(self) -> None:
+        """Flask signal handler @request_started.connect matches signal_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:on_request_started:function",
+            name="on_request_started",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "request_started.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "signal_handler"
+        assert results[0]["matched_decorator"] == "request_started.connect"
+
+    def test_flask_template_rendered_signal(self) -> None:
+        """Flask template_rendered signal matches signal_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:log_template:function",
+            name="log_template",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "template_rendered.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "signal_handler"
+
 
 class TestBottlePatterns:
     """Tests for Bottle framework pattern matching."""
+
+    def test_bare_patch_does_not_match_bottle_route(self) -> None:
+        """Bare @patch decorator (e.g., unittest.mock.patch) must not match as route.
+
+        Bottle's bare decorator patterns (^(get|post|put|delete|patch)$)
+        matched @mock.patch() and @patch(), causing 76% false positive
+        routes in Superset. Fixed by removing bare decorator patterns.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tests/test_api.py:50:test_create_user:function",
+            name="test_create_user",
+            kind="function",
+            language="python",
+            path="tests/test_api.py",
+            span=Span(50, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "patch", "args": ["myapp.services.UserService"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r.get("concept") == "route"]
+        assert len(route_results) == 0, (
+            "Bare @patch should not match as a Bottle route"
+        )
+
+    def test_bare_get_does_not_match_bottle_route(self) -> None:
+        """Bare @get decorator should not match as route (too ambiguous)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:utils.py:10:fetch_data:function",
+            name="fetch_data",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "get", "args": ["/data"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r.get("concept") == "route"]
+        assert len(route_results) == 0, (
+            "Bare @get should not match as a Bottle route"
+        )
 
     def test_bottle_get_route_pattern(self) -> None:
         """Bottle @app.get decorator matches route pattern."""
@@ -1961,6 +2164,71 @@ class TestSpringPatterns:
         assert results[0]["concept"] == "route"
         assert results[0]["method"] == "POST"
 
+    def test_spring_get_mapping_array_initializer(self) -> None:
+        """@GetMapping({ "/vets" }) with array initializer should extract path.
+
+        Java's annotation array syntax ``{"/vets"}`` is parsed by the Java
+        analyzer as ``args: [["/vets"]]`` (a list within the args list).
+        The path extractor must unwrap single-element lists.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:VetController.java:69:showResourcesVetList:method",
+            name="showResourcesVetList",
+            kind="method",
+            language="java",
+            path="VetController.java",
+            span=Span(69, 76, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": [["/vets"]], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "GetMapping"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/vets"
+
+    def test_spring_request_mapping_kwargs_array(self) -> None:
+        """@RequestMapping(value = {"/api"}) with kwargs array extracts path.
+
+        Java annotation ``value = {"/api"}`` is parsed as
+        ``kwargs: {"value": ["/api"]}``. The extractor must unwrap.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ApiController.java:10:ApiController:class",
+            name="ApiController",
+            kind="class",
+            language="java",
+            path="ApiController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": [], "kwargs": {"value": ["/api"]}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/api"
+
     def test_spring_rest_controller_pattern(self) -> None:
         """Spring @RestController annotation matches controller pattern."""
         clear_pattern_cache()
@@ -2173,6 +2441,86 @@ class TestSpringPatterns:
         assert route_concept["method"] == "GET"
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "spring-boot"
+
+    def test_spring_request_mapping_positional_path(self) -> None:
+        """@RequestMapping with positional arg extracts path correctly.
+
+        @RequestMapping("/owners/{ownerId}") on a class uses args[0],
+        not kwargs.value. The extract_path must support both.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:PetController.java:46:PetController:class",
+            name="PetController",
+            kind="class",
+            language="java",
+            path="PetController.java",
+            span=Span(46, 140, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": ["/owners/{ownerId}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route_result = next((r for r in results if r["concept"] == "route"), None)
+        assert route_result is not None
+        assert route_result["path"] == "/owners/{ownerId}"
+
+    def test_spring_prefix_from_parent_request_mapping(self) -> None:
+        """Method routes inherit path prefix from class-level @RequestMapping.
+
+        Spring MVC pattern: @RequestMapping on class + @GetMapping on method
+        should combine paths (e.g., /owners/{ownerId} + /pets/new = /owners/{ownerId}/pets/new).
+        """
+        clear_pattern_cache()
+
+        # Class with @Controller and @RequestMapping("/owners/{ownerId}")
+        controller = Symbol(
+            id="test:PetController.java:46-140:PetController:class",
+            name="PetController",
+            kind="class",
+            language="java",
+            path="PetController.java",
+            span=Span(46, 140, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Controller", "args": [], "kwargs": {}},
+                    {"name": "RequestMapping", "args": ["/owners/{ownerId}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @GetMapping("/pets/new")
+        method = Symbol(
+            id="test:PetController.java:98-104:PetController.initCreationForm:method",
+            name="PetController.initCreationForm",
+            kind="method",
+            language="java",
+            path="PetController.java",
+            span=Span(98, 104, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": ["/pets/new"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"spring-boot"})
+
+        # Method should have combined path from class-level @RequestMapping
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/owners/{ownerId}/pets/new"
 
 
 class TestAnnotationMethodExtraction:
@@ -2837,6 +3185,87 @@ class TestDjangoPatterns:
         task = next(s for s in enriched if s.name == "send_email")
         assert "concepts" in task.meta
         assert any(c["concept"] == "task" for c in task.meta["concepts"])
+
+    def test_django_template_tag_simple_tag(self) -> None:
+        """Django @register.simple_tag decorator matches template_tag pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_tags.py:10:current_time:function",
+            name="current_time",
+            kind="function",
+            language="python",
+            path="templatetags/my_tags.py",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.simple_tag", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_tag"
+        assert results[0]["matched_decorator"] == "register.simple_tag"
+
+    def test_django_template_tag_inclusion_tag(self) -> None:
+        """Django @register.inclusion_tag decorator matches template_tag pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_tags.py:20:show_results:function",
+            name="show_results",
+            kind="function",
+            language="python",
+            path="templatetags/my_tags.py",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.inclusion_tag", "args": ["results.html"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_tag"
+        assert results[0]["matched_decorator"] == "register.inclusion_tag"
+
+    def test_django_template_filter(self) -> None:
+        """Django @register.filter decorator matches template_filter pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_filters.py:5:cut:function",
+            name="cut",
+            kind="function",
+            language="python",
+            path="templatetags/my_filters.py",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.filter", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_filter"
+        assert results[0]["matched_decorator"] == "register.filter"
 
 
 class TestExpressPatterns:
@@ -3812,6 +4241,79 @@ class TestRailsPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "route"
 
+    def test_rails_application_scheduled_task_pattern(self) -> None:
+        """Rails ApplicationScheduledTask base class matches scheduled_task."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:check_dns.rb:1:CheckDNSScheduledTask:class",
+            name="CheckDNSScheduledTask",
+            kind="class",
+            language="ruby",
+            path="app/scheduled_tasks/check_dns_scheduled_task.rb",
+            span=Span(1, 15, 0, 0),
+            meta={
+                "base_classes": ["ApplicationScheduledTask"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "scheduled_task"
+        assert results[0]["matched_base_class"] == "ApplicationScheduledTask"
+
+    def test_rails_base_job_pattern(self) -> None:
+        """Rails BaseJob base class matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:process_job.rb:1:ProcessQueuedMessagesJob:class",
+            name="ProcessQueuedMessagesJob",
+            kind="class",
+            language="ruby",
+            path="app/lib/worker/jobs/process_queued_messages_job.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["BaseJob"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_base_class"] == "BaseJob"
+
+    def test_rails_middleware_pattern(self) -> None:
+        """Rack middleware classes ending in Middleware match event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tracking_middleware.rb:1:TrackingMiddleware:class",
+            name="TrackingMiddleware",
+            kind="class",
+            language="ruby",
+            path="lib/tracking_middleware.rb",
+            span=Span(1, 40, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_symbol_name"] == "TrackingMiddleware"
+
 
 class TestPhoenixPatterns:
     """Tests for Phoenix (Elixir) framework pattern matching."""
@@ -4057,6 +4559,37 @@ class TestPhoenixPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "middleware"
         assert results[0]["matched_decorator"] == "use Plug.Builder"
+
+    def test_phoenix_route_symbol_kind_pattern(self) -> None:
+        """Phoenix route symbols (kind=route) match route pattern via symbol_kind.
+
+        The Elixir analyzer creates route symbols with kind="route" directly.
+        This pattern ensures these get the "route" concept for entrypoint detection.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None, "Phoenix patterns YAML should exist"
+
+        # Elixir route symbol created by analyzer
+        symbol = Symbol(
+            id="elixir:router.ex:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="elixir",
+            path="lib/my_app_web/router.ex",
+            span=Span(10, 10, 0, 50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_symbol_kind"] == "route"
 
     def test_phoenix_enrich_symbols_integration(self) -> None:
         """Phoenix patterns enrich symbols with concept metadata."""
@@ -4767,6 +5300,59 @@ class TestGoWebPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "web_service"
         assert results[0]["matched_base_class"] == "restful.WebService"
+
+    def test_xorm_alias_resolves_to_go_web(self) -> None:
+        """XORM framework alias resolves to go-web pattern file."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+        assert pattern_def.id == "go-web"
+
+    def test_xorm_engine_find_matches_repository_pattern(self) -> None:
+        """XORM e.Find(...) matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models/user.go:1:GetUsers:function",
+            name="GetUsers",
+            kind="function",
+            language="go",
+            path="models/user.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "e.Find", "args": ["&users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "repository" for r in results)
+
+    def test_xorm_session_insert_matches_repository_pattern(self) -> None:
+        """XORM sess.Insert(...) matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models/user.go:1:CreateUser:function",
+            name="CreateUser",
+            kind="function",
+            language="go",
+            path="models/user.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "sess.Insert", "args": ["&user"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "repository" for r in results)
 
 
 class TestRustWebPatterns:
@@ -5700,6 +6286,609 @@ class TestAspNetPatterns:
         assert "concepts" in controller.meta
         assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
 
+    def test_aspnet_prefix_from_parent_route(self) -> None:
+        """[HttpGet] inherits path prefix from class-level [Route].
+
+        ASP.NET pattern: [Route("api/users")] on class + [HttpGet("{id}")] on
+        method should combine paths to /api/users/{id}.
+        """
+        clear_pattern_cache()
+
+        # Class with [ApiController] and [Route("api/users")]
+        controller = Symbol(
+            id="test:UsersController.cs:1-50:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "ApiController", "args": [], "kwargs": {}},
+                    {"name": "Route", "args": ["api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with [HttpGet("{id}")]
+        method = Symbol(
+            id="test:UsersController.cs:10-20:UsersController.GetById:method",
+            name="UsersController.GetById",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpGet", "args": ["{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"aspnet"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/api/users/{id}"
+
+
+class TestJaxRsPatterns:
+    """Tests for JAX-RS framework pattern matching."""
+
+    def test_jaxrs_path_annotation(self) -> None:
+        """@Path annotation extracts resource path."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersResource.java:10:UsersResource:class",
+            name="UsersResource",
+            kind="class",
+            language="java",
+            path="UsersResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        resource_path = next(
+            (r for r in results if r["concept"] == "resource_path"), None
+        )
+        assert resource_path is not None
+        assert resource_path["path"] == "/api/users"
+
+    def test_jaxrs_http_method_annotations(self) -> None:
+        """@GET, @POST etc. match route patterns with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersResource.java:20:UsersResource.getAll:method",
+            name="UsersResource.getAll",
+            kind="method",
+            language="java",
+            path="UsersResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["method"] == "GET"
+
+    def test_jaxrs_prefix_from_parent_path(self) -> None:
+        """@GET on method inherits path prefix from class-level @Path.
+
+        JAX-RS pattern: @Path("/api/users") on class + @GET on method
+        should give the route concept the parent's path.
+        """
+        clear_pattern_cache()
+
+        # Class with @Path("/api/users")
+        resource_class = Symbol(
+            id="test:UsersResource.java:10-100:UsersResource:class",
+            name="UsersResource",
+            kind="class",
+            language="java",
+            path="UsersResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @GET (no path of its own)
+        method = Symbol(
+            id="test:UsersResource.java:20-30:UsersResource.getAll:method",
+            name="UsersResource.getAll",
+            kind="method",
+            language="java",
+            path="UsersResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([resource_class, method], {"jax-rs"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/api/users"
+
+
+    def test_jaxrs_resource_interface_not_controller(self) -> None:
+        """Non-JAX-RS classes implementing interfaces named 'Resource' should not
+        be tagged as controllers. Keycloak's ResourceAdapter implements
+        org.keycloak.authorization.model.Resource (an authorization domain model),
+        not a JAX-RS resource. The @Path annotation is the true JAX-RS signal.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ResourceAdapter.java:42:ResourceAdapter:class",
+            name="ResourceAdapter",
+            kind="class",
+            language="java",
+            path="model/infinispan/src/main/java/org/keycloak/models/cache/infinispan/authorization/ResourceAdapter.java",
+            span=Span(42, 291, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        controller_results = [r for r in results if r["concept"] == "controller"]
+        assert controller_results == [], (
+            "Classes implementing a generic 'Resource' interface should not be "
+            "tagged as JAX-RS controllers without @Path annotation"
+        )
+
+
+    def test_jaxrs_subresource_locator_chain(self) -> None:
+        """JAX-RS subresource locator chains produce full URL paths.
+
+        Pattern: @Path("/session") class SessionRESTService has method
+        @Path("/data/{ds}") returning SessionResource, which has @GET method
+        @Path("/users/{id}"). The full URL should be /session/data/{ds}/users/{id}.
+        """
+        clear_pattern_cache()
+
+        # Class with @Path("/session")
+        session_service = Symbol(
+            id="test:SessionRESTService.java:10-100:SessionRESTService:class",
+            name="SessionRESTService",
+            kind="class",
+            language="java",
+            path="SessionRESTService.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/session"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Subresource locator method: @Path("/data/{ds}") returning SessionResource
+        locator_method = Symbol(
+            id="test:SessionRESTService.java:20-30:SessionRESTService.getSession:method",
+            name="SessionRESTService.getSession",
+            kind="method",
+            language="java",
+            path="SessionRESTService.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/data/{ds}"], "kwargs": {}},
+                ],
+                "return_type": "SessionResource",
+            },
+        )
+
+        # Target class: SessionResource with @Path("")
+        session_resource = Symbol(
+            id="test:SessionResource.java:10-100:SessionResource:class",
+            name="SessionResource",
+            kind="class",
+            language="java",
+            path="SessionResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": [""], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Route method on target class: @GET @Path("/users/{id}")
+        get_user = Symbol(
+            id="test:SessionResource.java:20-30:SessionResource.getUser:method",
+            name="SessionResource.getUser",
+            kind="method",
+            language="java",
+            path="SessionResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                    {"name": "Path", "args": ["/users/{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [session_service, locator_method, session_resource, get_user],
+            {"jax-rs"},
+        )
+
+        # The GET method should have the full accumulated path
+        user_method = enriched[3]
+        route_concept = next(
+            (c for c in user_method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None, "Expected route concept on GET method"
+        assert route_concept["path"] == "/session/data/{ds}/users/{id}", (
+            f"Expected full subresource path, got: {route_concept.get('path')}"
+        )
+
+    def test_jaxrs_subresource_no_path_on_target_class(self) -> None:
+        """Subresource locator where target class has no @Path annotation."""
+        clear_pattern_cache()
+
+        parent_class = Symbol(
+            id="test:Parent.java:10-100:Parent:class",
+            name="Parent",
+            kind="class",
+            language="java",
+            path="Parent.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api"], "kwargs": {}},
+                ],
+            },
+        )
+
+        locator = Symbol(
+            id="test:Parent.java:20-30:Parent.getChild:method",
+            name="Parent.getChild",
+            kind="method",
+            language="java",
+            path="Parent.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/child"], "kwargs": {}},
+                ],
+                "return_type": "ChildResource",
+            },
+        )
+
+        child_class = Symbol(
+            id="test:ChildResource.java:10-100:ChildResource:class",
+            name="ChildResource",
+            kind="class",
+            language="java",
+            path="ChildResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={},
+        )
+
+        child_method = Symbol(
+            id="test:ChildResource.java:20-30:ChildResource.doGet:method",
+            name="ChildResource.doGet",
+            kind="method",
+            language="java",
+            path="ChildResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent_class, locator, child_class, child_method],
+            {"jax-rs"},
+        )
+
+        child_m = enriched[3]
+        route_concept = next(
+            (c for c in child_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        # Should have /api/child as prefix
+        assert route_concept["path"] == "/api/child", (
+            f"Expected /api/child, got: {route_concept.get('path')}"
+        )
+
+
+    def test_jaxrs_subresource_three_level_chain(self) -> None:
+        """Three-level subresource locator chain: A -> B -> C."""
+        clear_pattern_cache()
+
+        # Level 1: RootResource @Path("/api")
+        root_class = Symbol(
+            id="test:Root.java:1-100:RootResource:class",
+            name="RootResource", kind="class", language="java",
+            path="Root.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/api"], "kwargs": {}}]},
+        )
+        # Subresource locator: @Path("/v1") returns MiddleResource
+        root_locator = Symbol(
+            id="test:Root.java:10-20:RootResource.getV1:method",
+            name="RootResource.getV1", kind="method", language="java",
+            path="Root.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/v1"], "kwargs": {}}],
+                "return_type": "MiddleResource",
+            },
+        )
+
+        # Level 2: MiddleResource @Path("")
+        mid_class = Symbol(
+            id="test:Middle.java:1-100:MiddleResource:class",
+            name="MiddleResource", kind="class", language="java",
+            path="Middle.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": [""], "kwargs": {}}]},
+        )
+        # Subresource locator: @Path("/users") returns LeafResource
+        mid_locator = Symbol(
+            id="test:Middle.java:10-20:MiddleResource.getUsers:method",
+            name="MiddleResource.getUsers", kind="method", language="java",
+            path="Middle.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/users"], "kwargs": {}}],
+                "return_type": "LeafResource",
+            },
+        )
+
+        # Level 3: LeafResource
+        leaf_class = Symbol(
+            id="test:Leaf.java:1-100:LeafResource:class",
+            name="LeafResource", kind="class", language="java",
+            path="Leaf.java", span=Span(1, 100, 0, 0),
+            meta={},
+        )
+        leaf_method = Symbol(
+            id="test:Leaf.java:10-20:LeafResource.list:method",
+            name="LeafResource.list", kind="method", language="java",
+            path="Leaf.java", span=Span(10, 20, 0, 0),
+            meta={"decorators": [{"name": "GET", "args": [], "kwargs": {}}]},
+        )
+
+        enriched = enrich_symbols(
+            [root_class, root_locator, mid_class, mid_locator, leaf_class, leaf_method],
+            {"jax-rs"},
+        )
+
+        leaf_m = enriched[5]
+        route = next(
+            (c for c in leaf_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None
+        assert route["path"] == "/api/v1/users", (
+            f"Expected /api/v1/users from 3-level chain, got: {route.get('path')}"
+        )
+
+    def test_jaxrs_subresource_with_nonempty_target_path(self) -> None:
+        """Target class has non-empty @Path and Phase 2 already set a combined path."""
+        clear_pattern_cache()
+
+        parent = Symbol(
+            id="test:Parent.java:1-100:Parent:class",
+            name="Parent", kind="class", language="java",
+            path="Parent.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/api"], "kwargs": {}}]},
+        )
+        locator = Symbol(
+            id="test:Parent.java:10-20:Parent.getChild:method",
+            name="Parent.getChild", kind="method", language="java",
+            path="Parent.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/sub"], "kwargs": {}}],
+                "return_type": "ChildResource",
+            },
+        )
+        child_class = Symbol(
+            id="test:Child.java:1-100:ChildResource:class",
+            name="ChildResource", kind="class", language="java",
+            path="Child.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/items"], "kwargs": {}}]},
+        )
+        child_method = Symbol(
+            id="test:Child.java:10-20:ChildResource.getItem:method",
+            name="ChildResource.getItem", kind="method", language="java",
+            path="Child.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                    {"name": "Path", "args": ["/{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent, locator, child_class, child_method],
+            {"jax-rs"},
+        )
+
+        child_m = enriched[3]
+        route = next(
+            (c for c in child_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None
+        # Full path: /api/sub (from locator) + /items (target class) + /{id} (method)
+        assert route["path"] == "/api/sub/items/{id}", (
+            f"Expected /api/sub/items/{{id}}, got: {route.get('path')}"
+        )
+
+
+
+class TestMicronautPatterns:
+    """Tests for Micronaut framework pattern matching."""
+
+    def test_micronaut_controller_annotation(self) -> None:
+        """@Controller annotation matches with path extraction.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("micronaut")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:10:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "Controller",
+                        "args": ["/api"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        controller = next(
+            (r for r in results if r["concept"] == "controller"), None
+        )
+        assert controller is not None
+        assert controller["path"] == "/api"
+
+    def test_micronaut_route_annotations(self) -> None:
+        """@Get, @Post etc. match route patterns.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("micronaut")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:20:UserController.list:method",
+            name="UserController.list",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "Get",
+                        "args": ["/users"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["path"] == "/users"
+        assert route["method"] == "GET"
+
+    def test_micronaut_prefix_from_parent_controller(self) -> None:
+        """@Get on method inherits path prefix from class-level @Controller.
+
+        Micronaut pattern: @Controller("/api") on class + @Get("/users") on
+        method should combine paths to /api/users.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
+        """
+        clear_pattern_cache()
+
+        # Class with @Controller("/api")
+        controller = Symbol(
+            id="test:UserController.java:10-100:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "Controller",
+                        "args": ["/api"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        # Method with @Get("/users")
+        method = Symbol(
+            id="test:UserController.java:20-30:UserController.list:method",
+            name="UserController.list",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "Get",
+                        "args": ["/users"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"micronaut"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["path"] == "/api/users"
+
 
 class TestJavaAnalyzerIntegration:
     """Integration tests: Java analyzer + YAML patterns end-to-end.
@@ -6020,6 +7209,19 @@ class TestExtractUsageValue:
         )
 
         assert extract_usage_value(ctx, "metadata.kwargs.name") == "user-list"
+
+    def test_metadata_direct_key_list_value(self) -> None:
+        """Extract list value from metadata direct key (joins with comma)."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="methods",
+            position="args[0]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"methods": ["GET", "POST"]},
+        )
+
+        assert extract_usage_value(ctx, "metadata.methods") == "GET,POST"
 
     def test_uppercase_transform(self) -> None:
         """Transform value to uppercase."""
@@ -6512,7 +7714,7 @@ class TestEnrichSymbolsWithUsageContexts:
                 Pattern(
                     concept="route",
                     usage=UsagePatternSpec(kind="^call$", name="^path$"),
-                    extract={"path": "metadata.route_path", "method": "literal:GET"},
+                    extract={"path": "metadata.route_path"},
                 ),
             ],
         )
@@ -6534,7 +7736,8 @@ class TestEnrichSymbolsWithUsageContexts:
         assert len(concepts) >= 1
         route = next(c for c in concepts if c["concept"] == "route")
         assert route["path"] == "/users/"
-        assert route["method"] == "GET"
+        # Django path() doesn't specify HTTP method — views handle all methods
+        assert "method" not in route
 
 
 class TestResolveDeferredSymbolRefs:
@@ -7206,16 +8409,16 @@ class TestMainFunctionPatterns:
         assert result["concept"] == "main_function"
 
     def test_main_function_pattern_match_java(self) -> None:
-        """Pattern matches Java main method."""
+        """Pattern matches Java main method (qualified name)."""
         pattern = Pattern(
             concept="main_function",
-            symbol_name="^main$",
+            symbol_name="(^|\\.)main$",
             symbol_kind="^method$",
             language="^java$",
         )
         symbol = Symbol(
-            id="java:Main.java:5-15:main:method",
-            name="main",
+            id="java:Main.java:5-15:Main.main:method",
+            name="Main.main",
             kind="method",
             language="java",
             path="Main.java",
@@ -7248,6 +8451,177 @@ class TestMainFunctionPatterns:
 
         # Use real main-functions patterns (no mock)
         enriched = enrich_symbols([symbol], set())  # No frameworks detected
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_main_function_pattern_match_d(self) -> None:
+        """Pattern matches D main function."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^d$",
+        )
+        symbol = Symbol(
+            id="d:main.d:5-15:main:function",
+            name="main",
+            kind="function",
+            language="d",
+            path="main.d",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "main_function"
+        assert result["matched_symbol_name"] == "main"
+        assert result["matched_symbol_kind"] == "function"
+
+    def test_enrich_symbols_with_d_main_function(self) -> None:
+        """enrich_symbols enriches D main function with main_function concept."""
+        symbol = Symbol(
+            id="d:main.d:5-15:main:function",
+            name="main",
+            kind="function",
+            language="d",
+            path="main.d",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+
+        # Use real main-functions patterns (no mock)
+        enriched = enrich_symbols([symbol], set())  # No frameworks detected
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_nim_main_function(self) -> None:
+        """enrich_symbols enriches Nim main function with main_function concept."""
+        symbol = Symbol(
+            id="nim:main.nim:1-10:main:function",
+            name="main",
+            kind="function",
+            language="nim",
+            path="main.nim",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_zig_main_function(self) -> None:
+        """enrich_symbols enriches Zig main function with main_function concept."""
+        symbol = Symbol(
+            id="zig:main.zig:1-10:main:function",
+            name="main",
+            kind="function",
+            language="zig",
+            path="main.zig",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_v_main_function(self) -> None:
+        """enrich_symbols enriches V main function with main_function concept."""
+        symbol = Symbol(
+            id="v:main.v:1-10:main:function",
+            name="main",
+            kind="function",
+            language="v",
+            path="main.v",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_odin_main_function(self) -> None:
+        """enrich_symbols enriches Odin main function with main_function concept."""
+        symbol = Symbol(
+            id="odin:main.odin:1-10:main:function",
+            name="main",
+            kind="function",
+            language="odin",
+            path="main.odin",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_gleam_main_function(self) -> None:
+        """enrich_symbols enriches Gleam main function with main_function concept."""
+        symbol = Symbol(
+            id="gleam:main.gleam:1-10:main:function",
+            name="main",
+            kind="function",
+            language="gleam",
+            path="main.gleam",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_haxe_main_function(self) -> None:
+        """enrich_symbols enriches Haxe main function with main_function concept."""
+        symbol = Symbol(
+            id="haxe:Main.hx:1-10:main:function",
+            name="main",
+            kind="function",
+            language="haxe",
+            path="Main.hx",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
 
         assert len(enriched) == 1
         assert "concepts" in enriched[0].meta
@@ -7362,12 +8736,63 @@ class TestTestFrameworkPatterns:
         assert result is None
 
     def test_go_test_function_pattern(self) -> None:
-        """Pattern matches Go Test* functions."""
+        """Pattern matches Go Test* functions in _test.go files."""
         pattern = Pattern(
             concept="test_function",
             symbol_name="^Test[A-Z]",
             symbol_kind="^function$",
             language="^go$",
+            symbol_path="_test\\.go$",
+        )
+        symbol = Symbol(
+            id="go:user_test.go:10-30:TestCreateUser:function",
+            name="TestCreateUser",
+            kind="function",
+            language="go",
+            path="user_test.go",
+            span=Span(10, 30, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_go_test_function_not_in_test_file(self) -> None:
+        """Go Test* functions NOT in _test.go files should NOT match.
+
+        TestPullRequest in services/pull/pull.go is a core service function,
+        not a test.  Go test functions MUST be in _test.go files.
+        """
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^Test[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+            symbol_path="_test\\.go$",
+        )
+        symbol = Symbol(
+            id="go:services/pull/pull.go:10-100:TestPullRequest:function",
+            name="TestPullRequest",
+            kind="function",
+            language="go",
+            path="services/pull/pull.go",
+            span=Span(10, 100, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None, (
+            "Test* function in non-_test.go file should NOT be classified "
+            "as a test function"
+        )
+
+    def test_go_test_function_in_test_file(self) -> None:
+        """Go Test* functions in _test.go files should still match."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^Test[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+            symbol_path="_test\\.go$",
         )
         symbol = Symbol(
             id="go:user_test.go:10-30:TestCreateUser:function",
@@ -7383,11 +8808,12 @@ class TestTestFrameworkPatterns:
         assert result["concept"] == "test_function"
 
     def test_go_benchmark_function_pattern(self) -> None:
-        """Pattern matches Go Benchmark* functions."""
+        """Pattern matches Go Benchmark* functions in _test.go files."""
         pattern = Pattern(
             concept="benchmark_function",
             symbol_name="^Benchmark[A-Z]",
             symbol_kind="^function$",
+            symbol_path="_test\\.go$",
             language="^go$",
         )
         symbol = Symbol(
@@ -8433,11 +9859,12 @@ class TestNamingConventionsPatterns:
         assert result is None  # Doesn't end in "Controller"
 
     def test_handler_by_name_pattern_matches(self) -> None:
-        """Pattern matches classes ending in 'Handler'."""
+        """Pattern matches Handler classes in HTTP-context paths."""
         pattern = Pattern(
             concept="handler_by_name",
             symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
             symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
         )
         symbol = Symbol(
             id="java:WebSocketHandler.java:5-30:WebSocketHandler:class",
@@ -8453,19 +9880,85 @@ class TestNamingConventionsPatterns:
         assert result["concept"] == "handler_by_name"
         assert result["matched_symbol_name"] == "WebSocketHandler"
 
+    def test_handler_by_name_matches_various_http_paths(self) -> None:
+        """Pattern matches Handler classes in various HTTP-context directories."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
+        )
+        http_paths = [
+            "routers/api/UserHandler.java",
+            "src/api/v1/AuthHandler.java",
+            "web/RequestHandler.py",
+            "app/controllers/PaymentHandler.rb",
+            "endpoints/HealthHandler.go",
+            "servlets/UploadHandler.java",
+            "resources/ItemHandler.java",
+        ]
+        for path in http_paths:
+            name = path.rsplit("/", 1)[1].split(".")[0]
+            symbol = Symbol(
+                id=f"java:{path}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language="java",
+                path=path,
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {name} in path {path}"
+
+    def test_handler_by_name_rejects_non_http_path(self) -> None:
+        """Handler classes in non-HTTP paths are NOT classified as handlers.
+
+        PartitionStatsHandler in core/src/.../PartitionStatsHandler.java is
+        domain logic, not an HTTP request handler. Same for logging handlers,
+        event handlers in generic utility code, etc.
+        """
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
+        )
+        non_http_paths = [
+            ("PartitionStatsHandler", "core/src/main/java/org/apache/iceberg/PartitionStatsHandler.java"),
+            ("OAuth2RefreshCredentialsHandler", "core/src/main/java/org/apache/iceberg/rest/auth/OAuth2RefreshCredentialsHandler.java"),
+            ("LogHandler", "src/utils/logging/LogHandler.java"),
+            ("EventHandler", "lib/events/EventHandler.py"),
+        ]
+        for name, path in non_http_paths:
+            symbol = Symbol(
+                id=f"java:{path}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language="java",
+                path=path,
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is None, (
+                f"{name} at {path} should NOT be classified as handler_by_name"
+            )
+
     def test_handler_by_name_rejects_non_class(self) -> None:
         """Pattern does not match functions named Handler."""
         pattern = Pattern(
             concept="handler_by_name",
             symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
             symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
         )
         symbol = Symbol(
-            id="python:utils.py:1-5:RequestHandler:function",
+            id="python:handlers/utils.py:1-5:RequestHandler:function",
             name="RequestHandler",
             kind="function",
             language="python",
-            path="utils.py",
+            path="handlers/utils.py",
             span=Span(1, 5, 0, 50),
             meta={},
         )
@@ -8507,6 +10000,67 @@ class TestNamingConventionsPatterns:
             language="python",
             path="utils.py",
             span=Span(1, 5, 0, 50),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_command_by_name_matches_c_cmd_function(self) -> None:
+        """Pattern matches C functions starting with cmd_."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            language="c",
+            path="builtin/commit.c",
+            span=Span(1536, 1666, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "command_by_name"
+
+    def test_command_by_name_rejects_non_c(self) -> None:
+        """Pattern does not match cmd_ functions in other languages."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="go:main.go:1-10:cmd_run:function",
+            name="cmd_run",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(1, 10, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_command_by_name_rejects_non_function(self) -> None:
+        """Pattern does not match cmd_ structs."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="c:cmd.c:1-10:cmd_context:struct",
+            name="cmd_context",
+            kind="struct",
+            language="c",
+            path="cmd.c",
+            span=Span(1, 10, 0, 0),
             meta={},
         )
         result = pattern.matches(symbol)
@@ -13506,3 +15060,2548 @@ class TestScottyPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "error_handler"
+
+
+class TestFlaskRestfulPatterns:
+    """Tests for Flask-RESTful framework pattern matching."""
+
+    def test_flask_restful_resource_class(self) -> None:
+        """Flask-RESTful Resource base class matches api_resource pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        assert pattern_def is not None, "Flask-RESTful patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:resources.py:1:UserResource:class",
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="resources.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "api_resource"
+
+    def test_flask_restful_add_resource_via_usage(self) -> None:
+        """Flask-RESTful api.add_resource matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="api.add_resource",
+            position="args[0]",
+            path="app.py",
+            span=Span(10, 10, 0, 40),
+            symbol_ref="test:resources.py:1:TodoResource:class",
+            metadata={"route_path": "/todos"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_flask_restful_fields_serializer(self) -> None:
+        """Flask-RESTful fields module matches serializer_field pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        symbol = Symbol(
+            id="test:resources.py:5:name_field:other",
+            name="name_field",
+            kind="other",
+            language="python",
+            path="resources.py",
+            span=Span(5, 5, 0, 30),
+            meta={
+                "base_classes": ["fields.String"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer_field"
+
+
+class TestLibraryExportPatterns:
+    """Tests for library-exports.yaml Go/Elixir patterns (DEEP mode)."""
+
+    def test_library_exports_yaml_loads(self) -> None:
+        """library-exports.yaml loads correctly."""
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+        assert pattern_def.id == "library-exports"
+
+    def test_go_exported_function_matches_library_export(self) -> None:
+        """Go exported (uppercase) functions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:gin.go:10-30:New:function",
+            name="New",
+            kind="function",
+            language="go",
+            path="gin.go",
+            span=Span(10, 30, 0, 200),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) >= 1
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_go_unexported_function_no_match(self) -> None:
+        """Go unexported (lowercase) functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:internal.go:5-15:helper:function",
+            name="helper",
+            kind="function",
+            language="go",
+            path="internal.go",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_go_exported_interface_matches(self) -> None:
+        """Go exported interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:handler.go:1-10:Handler:interface",
+            name="Handler",
+            kind="interface",
+            language="go",
+            path="handler.go",
+            span=Span(1, 10, 0, 80),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_go_exported_struct_matches(self) -> None:
+        """Go exported structs match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:engine.go:20-50:Engine:struct",
+            name="Engine",
+            kind="struct",
+            language="go",
+            path="engine.go",
+            span=Span(20, 50, 0, 300),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_elixir_module_matches_library_export(self) -> None:
+        """Elixir modules match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/router.ex:1-100:Phoenix.Router:module",
+            name="Phoenix.Router",
+            kind="module",
+            language="elixir",
+            path="lib/phoenix/router.ex",
+            span=Span(1, 100, 0, 2000),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_function_no_match(self) -> None:
+        """Python functions should NOT match Go/Elixir library_export patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:utils.py:1-10:Helper:function",
+            name="Helper",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 10, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_go_library_export_enrichment_without_framework_detection(self) -> None:
+        """Go library exports should be enriched even without framework detection.
+
+        library-exports is loaded as a convention pattern (like main-functions),
+        not gated on framework detection.
+        """
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="go:gin.go:10-30:Default:function",
+            name="Default",
+            kind="function",
+            language="go",
+            path="gin.go",
+            span=Span(10, 30, 0, 200),
+            meta={},
+        )
+
+        # Empty detected_frameworks — simulates a Go repo with no web framework
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_elixir_public_function_matches_library_export(self) -> None:
+        """Elixir public functions (def) match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/socket.ex:10-30:Phoenix.Socket.handle_in:function",
+            name="Phoenix.Socket.handle_in",
+            kind="function",
+            language="elixir",
+            path="lib/phoenix/socket.ex",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=[],  # Public: no "private" modifier
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_elixir_private_function_no_library_export(self) -> None:
+        """Elixir private functions (defp) do NOT match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/socket.ex:40-50:Phoenix.Socket.do_handle:function",
+            name="Phoenix.Socket.do_handle",
+            kind="function",
+            language="elixir",
+            path="lib/phoenix/socket.ex",
+            span=Span(40, 50, 0, 100),
+            meta={},
+            modifiers=["private"],  # Private: has "private" modifier
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_modifiers_exclude_pattern_matching(self) -> None:
+        """Pattern with modifiers_exclude rejects symbols with matching modifiers."""
+        clear_pattern_cache()
+
+        pattern = Pattern(
+            concept="test_concept",
+            symbol_kind="function",
+            language="elixir",
+            modifiers_exclude="^private$",
+        )
+
+        # Public function (no modifiers) - should match
+        public_sym = Symbol(
+            id="elixir:lib.ex:1-5:public_fn:function",
+            name="public_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(1, 5, 0, 50),
+            modifiers=[],
+        )
+        assert pattern.matches(public_sym) is not None
+
+        # Private function - should NOT match
+        private_sym = Symbol(
+            id="elixir:lib.ex:10-15:private_fn:function",
+            name="private_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(10, 15, 0, 50),
+            modifiers=["private"],
+        )
+        assert pattern.matches(private_sym) is None
+
+        # Function with non-matching modifiers - should match (exercises loop
+        # continuing past non-matching modifier and exiting without rejection)
+        public_annotated_sym = Symbol(
+            id="elixir:lib.ex:20-25:annotated_fn:function",
+            name="annotated_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(20, 25, 0, 50),
+            modifiers=["public"],
+        )
+        assert pattern.matches(public_annotated_sym) is not None
+
+    def test_modifiers_positive_match(self) -> None:
+        """Pattern with modifiers requires at least one modifier to match."""
+        clear_pattern_cache()
+
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^(function|class)$",
+            language="^python$",
+            modifiers="^re_exported$",
+        )
+
+        # Symbol WITH re_exported modifier - should match
+        re_exported_sym = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRouter:class",
+            name="APIRouter",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            modifiers=["re_exported"],
+        )
+        assert pattern.matches(re_exported_sym) is not None
+
+        # Symbol WITHOUT modifier - should NOT match
+        plain_sym = Symbol(
+            id="python:fastapi/routing.py:60-100:_InternalHelper:class",
+            name="_InternalHelper",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(60, 100, 0, 50),
+            modifiers=[],
+        )
+        assert pattern.matches(plain_sym) is None
+
+        # Symbol with wrong modifiers - should NOT match
+        other_mod_sym = Symbol(
+            id="python:fastapi/routing.py:110-150:SomeClass:class",
+            name="SomeClass",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(110, 150, 0, 50),
+            modifiers=["public"],
+        )
+        assert pattern.matches(other_mod_sym) is None
+
+    def test_symbol_path_pattern_matching(self) -> None:
+        """Pattern with symbol_path matches against symbol's file path."""
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^(function|class)$",
+            language="^python$",
+            symbol_path="__init__\\.py$",
+        )
+
+        # Symbol in __init__.py - should match
+        init_sym = Symbol(
+            id="python:fastapi/__init__.py:1-5:FastAPI:class",
+            name="FastAPI",
+            kind="class",
+            language="python",
+            path="fastapi/__init__.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(init_sym) is not None
+
+        # Symbol NOT in __init__.py - should NOT match
+        other_sym = Symbol(
+            id="python:fastapi/routing.py:1-5:APIRoute:class",
+            name="APIRoute",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(other_sym) is None
+
+    def test_symbol_path_ands_with_other_filters(self) -> None:
+        """symbol_path filter AND's with language, symbol_kind, etc."""
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^function$",
+            language="^python$",
+            symbol_path="__init__\\.py$",
+        )
+
+        # Class in __init__.py - doesn't match (wrong kind)
+        cls_sym = Symbol(
+            id="python:pkg/__init__.py:1-5:MyClass:class",
+            name="MyClass",
+            kind="class",
+            language="python",
+            path="pkg/__init__.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(cls_sym) is None
+
+    def test_python_init_function_matches_library_export(self) -> None:
+        """Python functions in __init__.py match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:mylib/__init__.py:1-5:create_app:function",
+            name="create_app",
+            kind="function",
+            language="python",
+            path="mylib/__init__.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_init_class_matches_library_export(self) -> None:
+        """Python classes in __init__.py match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/__init__.py:1-50:FastAPI:class",
+            name="FastAPI",
+            kind="class",
+            language="python",
+            path="fastapi/__init__.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_reexported_matches_library_export(self) -> None:
+        """Python re-exported symbols (with re_exported modifier) match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        # A class defined in routing.py but re-exported from __init__.py
+        # should match via the modifiers-based pattern
+        symbol = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRouter:class",
+            name="APIRouter",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+            modifiers=["re_exported"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_reexported_function_matches_library_export(self) -> None:
+        """Python re-exported functions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/param_functions.py:10-20:Depends:function",
+            name="Depends",
+            kind="function",
+            language="python",
+            path="fastapi/param_functions.py",
+            span=Span(10, 20, 0, 50),
+            meta={},
+            modifiers=["re_exported"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_non_init_not_library_export(self) -> None:
+        """Python symbols NOT in __init__.py should not match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRoute:class",
+            name="APIRoute",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_python_private_not_library_export(self) -> None:
+        """Python private symbols (underscore prefix) in __init__.py should NOT match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:pkg/__init__.py:1-5:_internal_helper:function",
+            name="_internal_helper",
+            kind="function",
+            language="python",
+            path="pkg/__init__.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+
+class TestJavaLibraryExportPatterns:
+    """Tests for Java library export YAML patterns."""
+
+    def test_public_interface_matches_library_export(self) -> None:
+        """Public Java interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:api/Table.java:10-50:Table:interface",
+            name="Table",
+            kind="interface",
+            language="java",
+            path="api/Table.java",
+            span=Span(10, 50, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1, (
+            f"Public Java interface should match library_export, "
+            f"got: {results}"
+        )
+
+    def test_public_class_matches_library_export(self) -> None:
+        """Public Java classes match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:core/BaseTable.java:10-100:BaseTable:class",
+            name="BaseTable",
+            kind="class",
+            language="java",
+            path="core/BaseTable.java",
+            span=Span(10, 100, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_public_enum_matches_library_export(self) -> None:
+        """Public Java enums match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:api/FileFormat.java:5-20:FileFormat:enum",
+            name="FileFormat",
+            kind="enum",
+            language="java",
+            path="api/FileFormat.java",
+            span=Span(5, 20, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_package_private_class_no_match(self) -> None:
+        """Package-private Java classes do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:internal/Helper.java:5-20:Helper:class",
+            name="Helper",
+            kind="class",
+            language="java",
+            path="internal/Helper.java",
+            span=Span(5, 20, 0, 200),
+            meta={},
+            modifiers=[],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_kotlin_public_interface_matches(self) -> None:
+        """Public Kotlin interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="kotlin:api/Repository.kt:5-30:Repository:interface",
+            name="Repository",
+            kind="interface",
+            language="kotlin",
+            path="api/Repository.kt",
+            span=Span(5, 30, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestRustLibraryExportPatterns:
+    """Tests for Rust library export YAML patterns.
+
+    Rust library crates expose their public API through ``pub`` items in
+    ``lib.rs`` (and re-exports).  The ``pub`` modifier is extracted by the
+    Rust analyzer as ``"pub"`` (not ``"public"``).  These patterns detect
+    ``pub`` functions, structs, traits, and enums in Rust code as library
+    exports.
+    """
+
+    def test_pub_function_matches_library_export(self) -> None:
+        """Rust pub function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:10-30:new:function",
+            name="new",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1, (
+            f"Rust pub function should match library_export, got: {results}"
+        )
+
+    def test_pub_struct_matches_library_export(self) -> None:
+        """Rust pub struct matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:1-20:Config:struct",
+            name="Config",
+            kind="struct",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 20, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_pub_trait_matches_library_export(self) -> None:
+        """Rust pub trait matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:5-40:Handler:trait",
+            name="Handler",
+            kind="trait",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 40, 0, 300),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_pub_enum_matches_library_export(self) -> None:
+        """Rust pub enum matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:50-80:ErrorKind:enum",
+            name="ErrorKind",
+            kind="enum",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(50, 80, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_private_function_no_match(self) -> None:
+        """Rust private (no pub modifier) functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:5-15:helper:function",
+            name="helper",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 15, 0, 100),
+            meta={},
+            modifiers=[],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_pub_crate_function_no_match(self) -> None:
+        """Rust pub(crate) items are NOT library exports (crate-internal)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/internal.rs:1-10:internal_helper:function",
+            name="internal_helper",
+            kind="function",
+            language="rust",
+            path="src/internal.rs",
+            span=Span(1, 10, 0, 100),
+            meta={},
+            modifiers=["pub(crate)"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_pub_method_matches_library_export(self) -> None:
+        """Rust pub methods match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:20-35:Config.load:method",
+            name="Config.load",
+            kind="method",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(20, 35, 0, 150),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_rust_enrichment_without_framework_detection(self) -> None:
+        """Rust library exports are enriched even without framework detection.
+
+        library-exports is a convention pattern (loaded unconditionally),
+        so pub Rust items get library_export concepts even when no web
+        framework is detected.
+        """
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:10-30:parse:function",
+            name="parse",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        # Empty detected_frameworks — simulates a Rust lib with no framework
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestOpenRestyPhaseHandlerPatterns:
+    """Tests for OpenResty/nginx phase handler definition-based patterns.
+
+    OpenResty applications (Kong plugins, ingress-nginx, custom apps)
+    define lifecycle handler functions named after nginx request processing
+    phases: init_worker, access, content, header_filter, log, etc.
+
+    These are matched by symbol_name + symbol_kind (definition-based), not
+    by usage context, because the Lua analyzer doesn't emit UsageContext
+    records.
+    """
+
+    def test_qualified_phase_handler_matches(self) -> None:
+        """Kong-style qualified name 'Kong.access' matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:kong/plugins/rate-limiting/handler.lua:1-20:Kong.access:function",
+            name="Kong.access",
+            kind="function",
+            language="lua",
+            path="kong/plugins/rate-limiting/handler.lua",
+            span=Span(1, 20, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 1
+        assert handlers[0]["matched_symbol_name"] == "Kong.access"
+
+    def test_module_export_phase_handler_matches(self) -> None:
+        """Module export style '_M.init_worker' matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:lib/worker.lua:1-15:_M.init_worker:function",
+            name="_M.init_worker",
+            kind="function",
+            language="lua",
+            path="lib/worker.lua",
+            span=Span(1, 15, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 1
+        assert handlers[0]["matched_symbol_name"] == "_M.init_worker"
+
+    def test_all_phase_names_match(self) -> None:
+        """All 10 nginx phase handler names are recognized."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        phase_names = [
+            "init_worker", "ssl_certificate", "rewrite", "access",
+            "content", "balancer", "header_filter", "body_filter",
+            "log", "preread",
+        ]
+
+        for phase in phase_names:
+            symbol = Symbol(
+                id=f"lua:handler.lua:1-10:{phase}:function",
+                name=phase,
+                kind="function",
+                language="lua",
+                path="handler.lua",
+                span=Span(1, 10, 0, 50),
+                meta={},
+            )
+            results = match_patterns(symbol, [pattern_def])
+            handlers = [r for r in results if r["concept"] == "event_handler"]
+            assert len(handlers) >= 1, f"Phase '{phase}' should match event_handler"
+
+    def test_init_excluded_to_avoid_false_positives(self) -> None:
+        """Plain 'init' is excluded — too many false positives (e.g. Lua constructors)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:lib/cache.lua:1-10:init:function",
+            name="init",
+            kind="function",
+            language="lua",
+            path="lib/cache.lua",
+            span=Span(1, 10, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 0
+
+    def test_non_function_kind_does_not_match(self) -> None:
+        """Variables named after phases should NOT match — only functions."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:config.lua:1-5:access:variable",
+            name="access",
+            kind="variable",
+            language="lua",
+            path="config.lua",
+            span=Span(1, 5, 0, 30),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 0
+
+
+class TestKafkaConnectPatterns:
+    """Tests for Kafka Connect framework patterns.
+
+    Kafka Connect SinkTask/SourceTask subclasses are canonical entrypoints
+    for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask,
+    Debezium's PostgresConnector).
+    """
+
+    def test_kafka_connect_yaml_loads(self) -> None:
+        """kafka-connect.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+        assert pattern_def.id == "kafka-connect"
+        assert pattern_def.language == "java"
+        assert len(pattern_def.patterns) == 4
+
+    def test_sink_task_matches(self) -> None:
+        """SinkTask subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:IcebergSinkTask.java:10-100:IcebergSinkTask:class",
+            name="IcebergSinkTask",
+            kind="class",
+            language="java",
+            path="kafka-connect/src/main/java/org/apache/iceberg/connect/IcebergSinkTask.java",
+            span=Span(10, 100, 0, 1000),
+            meta={"base_classes": ["SinkTask"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_source_task_matches(self) -> None:
+        """SourceTask subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PostgresSourceTask.java:5-80:PostgresSourceTask:class",
+            name="PostgresSourceTask",
+            kind="class",
+            language="java",
+            path="src/main/java/io/debezium/connector/postgresql/PostgresSourceTask.java",
+            span=Span(5, 80, 0, 800),
+            meta={"base_classes": ["SourceTask"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_sink_connector_matches(self) -> None:
+        """SinkConnector subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:IcebergSinkConnector.java:5-50:IcebergSinkConnector:class",
+            name="IcebergSinkConnector",
+            kind="class",
+            language="java",
+            path="kafka-connect/src/main/java/org/apache/iceberg/connect/IcebergSinkConnector.java",
+            span=Span(5, 50, 0, 500),
+            meta={"base_classes": ["SinkConnector"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_source_connector_matches(self) -> None:
+        """SourceConnector subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PostgresConnector.java:5-40:PostgresConnector:class",
+            name="PostgresConnector",
+            kind="class",
+            language="java",
+            path="src/main/java/io/debezium/connector/postgresql/PostgresConnector.java",
+            span=Span(5, 40, 0, 400),
+            meta={"base_classes": ["SourceConnector"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_unrelated_class_no_match(self) -> None:
+        """Classes not extending Kafka Connect base classes don't match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PartitionStatsHandler.java:10-50:PartitionStatsHandler:class",
+            name="PartitionStatsHandler",
+            kind="class",
+            language="java",
+            path="core/src/main/java/org/apache/iceberg/PartitionStatsHandler.java",
+            span=Span(10, 50, 0, 500),
+            meta={"base_classes": ["Object"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0
+
+
+class TestLoggingConventionsPatterns:
+    """Tests for logging-conventions.yaml patterns (INV-mosag).
+
+    These patterns detect logging infrastructure symbols — logger classes,
+    factory methods, log bridges — to enable concept-based centrality
+    dampening in ranking.py.
+    """
+
+    def test_logging_conventions_yaml_loads(self) -> None:
+        """logging-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "logging-conventions"
+        assert pattern_def.language == "multi"
+        assert len(pattern_def.patterns) >= 5
+
+    def test_logger_class_by_inheritance(self) -> None:
+        """Class extending Logger matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:app_logger.py:1-20:AppLogger:class",
+            name="AppLogger",
+            kind="class",
+            language="python",
+            path="src/app_logger.py",
+            span=Span(1, 20, 0, 0),
+            meta={"base_classes": ["Logger"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_logger_class_by_name(self) -> None:
+        """Class with Logger suffix matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:custom_logger.go:1-30:CustomLogger:struct",
+            name="CustomLogger",
+            kind="struct",
+            language="go",
+            path="pkg/custom_logger.go",
+            span=Span(1, 30, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_get_logger_factory(self) -> None:
+        """getLogger factory function matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:logging_setup.py:5-10:getLogger:function",
+            name="getLogger",
+            kind="function",
+            language="python",
+            path="src/logging_setup.py",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_log_bridge_class(self) -> None:
+        """Log bridge class (e.g. XORMLogBridge) matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:xorm_log.go:10-50:XORMLogBridge:struct",
+            name="XORMLogBridge",
+            kind="struct",
+            language="go",
+            path="modules/log/xorm_log.go",
+            span=Span(10, 50, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_domain_class_not_matched(self) -> None:
+        """Domain classes (Router, UserService) do NOT match logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:router.go:1-100:Router:struct",
+            name="Router",
+            kind="struct",
+            language="go",
+            path="pkg/router.go",
+            span=Span(1, 100, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert not any(r["concept"] == "logging" for r in results)
+
+    def test_enrich_symbols_with_logging_concept(self) -> None:
+        """enrich_symbols enriches Logger subclass with logging concept."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="java:AppLogger.java:1-30:AppLogger:class",
+            name="AppLogger",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/AppLogger.java",
+            span=Span(1, 30, 0, 0),
+            meta={"base_classes": ["AbstractLogger"]},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        logging_concepts = [c for c in concepts if c.get("concept") == "logging"]
+        assert len(logging_concepts) >= 1
+        assert logging_concepts[0]["framework"] == "logging-conventions"
+
+
+class TestGuicePatterns:
+    """Tests for Google Guice DI and Guava EventBus framework pattern matching."""
+
+    def test_guice_inject_pattern(self) -> None:
+        """Guice @Inject annotation matches dependency pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None, "Guice patterns YAML should exist"
+
+        symbol = Symbol(
+            id="java:PaymentService.java:1-50:PaymentService:class",
+            name="PaymentService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/PaymentService.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Inject", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "dependency"
+
+    def test_guice_provides_pattern(self) -> None:
+        """Guice @Provides annotation matches bean pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:AppModule.java:10-20:provideDataSource:method",
+            name="provideDataSource",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/AppModule.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Provides", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "bean"
+
+    def test_guice_singleton_pattern(self) -> None:
+        """Guice @Singleton annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:CacheService.java:1-80:CacheService:class",
+            name="CacheService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/CacheService.java",
+            span=Span(1, 80, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Singleton", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_guice_abstract_module_pattern(self) -> None:
+        """Guice AbstractModule base class matches configuration pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PaymentModule.java:1-40:PaymentModule:class",
+            name="PaymentModule",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/PaymentModule.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["AbstractModule"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "configuration"
+        assert results[0]["matched_base_class"] == "AbstractModule"
+
+    def test_guice_named_qualifier_pattern(self) -> None:
+        """Guice @Named annotation matches qualifier pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Config.java:5-10:getDbUrl:method",
+            name="getDbUrl",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/Config.java",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Named", "args": ["db.url"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "qualifier"
+
+    def test_guava_subscribe_event_handler(self) -> None:
+        """Guava EventBus @Subscribe annotation matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:InvoiceHandler.java:20-35:onInvoiceCreated:method",
+            name="onInvoiceCreated",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/InvoiceHandler.java",
+            span=Span(20, 35, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Subscribe", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_guice_enrich_symbols_integration(self) -> None:
+        """enrich_symbols enriches Guice-annotated symbols correctly."""
+        clear_pattern_cache()
+
+        service = Symbol(
+            id="java:BillingService.java:1-100:BillingService:class",
+            name="BillingService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/billing/BillingService.java",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Singleton", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        handler = Symbol(
+            id="java:EventListener.java:10-30:onPayment:method",
+            name="onPayment",
+            kind="method",
+            language="java",
+            path="src/main/java/com/billing/EventListener.java",
+            span=Span(10, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Subscribe", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([service, handler], {"guice"})
+        svc = enriched[0]
+        hdl = enriched[1]
+
+        svc_concepts = [c["concept"] for c in svc.meta.get("concepts", [])]
+        assert "service" in svc_concepts
+
+        hdl_concepts = [c["concept"] for c in hdl.meta.get("concepts", [])]
+        assert "event_handler" in hdl_concepts
+
+    def test_guice_linkers_include_event_sourcing(self) -> None:
+        """Guice framework activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers
+
+
+class TestJakartaCDIPatterns:
+    """Tests for Jakarta CDI framework pattern matching."""
+
+    def test_cdi_application_scoped_pattern(self) -> None:
+        """CDI @ApplicationScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None, "Jakarta CDI patterns YAML should exist"
+
+        symbol = Symbol(
+            id="java:AuthService.java:1-60:AuthService:class",
+            name="AuthService",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/AuthService.java",
+            span=Span(1, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ApplicationScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_request_scoped_pattern(self) -> None:
+        """CDI @RequestScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:RequestCtx.java:1-30:RequestCtx:class",
+            name="RequestCtx",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/RequestCtx.java",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_session_scoped_pattern(self) -> None:
+        """CDI @SessionScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:UserSession.java:1-40:UserSession:class",
+            name="UserSession",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/UserSession.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "SessionScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_dependent_pattern(self) -> None:
+        """CDI @Dependent annotation matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Helper.java:1-20:Helper:class",
+            name="Helper",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/Helper.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Dependent", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
+
+    def test_cdi_produces_pattern(self) -> None:
+        """CDI @Produces annotation matches bean pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Producers.java:10-20:createEntityManager:method",
+            name="createEntityManager",
+            kind="method",
+            language="java",
+            path="src/main/java/org/app/Producers.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Produces", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "bean"
+
+    def test_cdi_interceptor_pattern(self) -> None:
+        """CDI @Interceptor annotation matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:LoggingInterceptor.java:1-40:LoggingInterceptor:class",
+            name="LoggingInterceptor",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/LoggingInterceptor.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Interceptor", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_cdi_fqn_application_scoped(self) -> None:
+        """CDI jakarta.enterprise.context.ApplicationScoped FQN matches."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:RealmProvider.java:1-80:RealmProvider:class",
+            name="RealmProvider",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/RealmProvider.java",
+            span=Span(1, 80, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "jakarta.enterprise.context.ApplicationScoped",
+                     "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_alternative_pattern(self) -> None:
+        """CDI @Alternative annotation matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:MockAuth.java:1-20:MockAuth:class",
+            name="MockAuth",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/MockAuth.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Alternative", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
+
+    def test_cdi_enrich_symbols_integration(self) -> None:
+        """enrich_symbols enriches CDI-annotated symbols correctly."""
+        clear_pattern_cache()
+
+        service = Symbol(
+            id="java:KeycloakSession.java:1-200:KeycloakSession:class",
+            name="KeycloakSession",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/KeycloakSession.java",
+            span=Span(1, 200, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ApplicationScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([service], {"jakarta-cdi"})
+        concepts = [c["concept"] for c in enriched[0].meta.get("concepts", [])]
+        assert "service" in concepts
+
+    def test_cdi_linkers_include_event_sourcing(self) -> None:
+        """Jakarta CDI framework activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers
+
+
+class TestRailsCallbackPatterns:
+    """Tests for Rails callback and event patterns."""
+
+    def test_rails_after_commit_callback(self) -> None:
+        """Rails after_commit callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_commit",
+            position="args[0]",
+            path="app/models/user.rb",
+            span=Span(5, 5, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_before_action_callback(self) -> None:
+        """Rails before_action callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="before_action",
+            position="args[0]",
+            path="app/controllers/base_controller.rb",
+            span=Span(3, 3, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_after_save_callback(self) -> None:
+        """Rails after_save callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_save",
+            position="args[0]",
+            path="app/models/order.rb",
+            span=Span(8, 8, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_after_create_commit_callback(self) -> None:
+        """Rails after_create_commit callback matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_create_commit",
+            position="args[0]",
+            path="app/models/message.rb",
+            span=Span(5, 5, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_around_action_callback(self) -> None:
+        """Rails around_action callback matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="around_action",
+            position="args[0]",
+            path="app/controllers/base_controller.rb",
+            span=Span(2, 2, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_non_callback_not_matched(self) -> None:
+        """Non-callback Rails call does not match event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="validates",
+            position="args[0]",
+            path="app/models/user.rb",
+            span=Span(3, 3, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        event_results = [r for r in results if r["concept"] == "event_handler"]
+        assert len(event_results) == 0
+
+    def test_rails_wisper_publisher_pattern(self) -> None:
+        """Rails Wisper::Publisher base class matches event_publisher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="ruby:notification_service.rb:1-30:NotificationService:class",
+            name="NotificationService",
+            kind="class",
+            language="ruby",
+            path="app/services/notification_service.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Wisper::Publisher"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        publisher_results = [r for r in results if r["concept"] == "event_publisher"]
+        assert len(publisher_results) == 1
+        assert publisher_results[0]["matched_base_class"] == "Wisper::Publisher"
+
+    def test_rails_linkers_include_event_sourcing(self) -> None:
+        """Rails framework now activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers
+
+
+class TestGrapePatterns:
+    """Tests for Grape API framework pattern matching."""
+
+    def test_grape_api_base_class(self) -> None:
+        """Grape::API base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+        assert pattern_def is not None, "Grape patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users_api.rb:1:UsersAPI:class",
+            name="UsersAPI",
+            kind="class",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(1, 50, 0, 0),
+            meta={"base_classes": ["Grape::API"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "Grape::API"
+
+    def test_grape_api_instance_base_class(self) -> None:
+        """Grape::API::Instance base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:1:Base:class",
+            name="Base",
+            kind="class",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(1, 30, 0, 0),
+            meta={"base_classes": ["Grape::API::Instance"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_grape_entity_base_class(self) -> None:
+        """Grape::Entity base class matches serializer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:user_entity.rb:1:UserEntity:class",
+            name="UserEntity",
+            kind="class",
+            language="ruby",
+            path="lib/api/entities/user.rb",
+            span=Span(1, 20, 0, 0),
+            meta={"base_classes": ["Grape::Entity"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer"
+
+    def test_grape_get_route_via_usage(self) -> None:
+        """Grape get route matches via usage context (args[last])."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[last]",
+            path="lib/api/users.rb",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:users.rb:10:list_users:other",
+            metadata={"url": "/users"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_grape_post_route_via_usage(self) -> None:
+        """Grape post route matches via usage context."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="post",
+            position="args[last]",
+            path="lib/api/users.rb",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:users.rb:20:create_user:other",
+            metadata={"url": "/users"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_grape_delete_route_decorator(self) -> None:
+        """Grape delete route matches via decorator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:30:destroy:method",
+            name="destroy",
+            kind="method",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(30, 35, 0, 0),
+            meta={"decorators": ["delete"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_resource_decorator(self) -> None:
+        """Grape resource grouping matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:5:users_resource:other",
+            name="users_resource",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(5, 50, 0, 0),
+            meta={"decorators": ["resource"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_namespace_decorator(self) -> None:
+        """Grape namespace grouping matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:admin.rb:1:admin_ns:other",
+            name="admin_ns",
+            kind="other",
+            language="ruby",
+            path="lib/api/admin.rb",
+            span=Span(1, 40, 0, 0),
+            meta={"decorators": ["namespace"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_helpers_decorator(self) -> None:
+        """Grape helpers matches helper pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:10:auth_helpers:other",
+            name="auth_helpers",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(10, 20, 0, 0),
+            meta={"decorators": ["helpers"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "helper"
+
+    def test_grape_before_filter(self) -> None:
+        """Grape before filter matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:5:auth_filter:other",
+            name="auth_filter",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(5, 10, 0, 0),
+            meta={"decorators": ["before"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_after_validation_filter(self) -> None:
+        """Grape after_validation filter matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:12:validate_filter:other",
+            name="validate_filter",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(12, 18, 0, 0),
+            meta={"decorators": ["after_validation"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_rescue_from(self) -> None:
+        """Grape rescue_from matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:20:error_handler:other",
+            name="error_handler",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(20, 25, 0, 0),
+            meta={"decorators": ["rescue_from"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_grape_params_validation(self) -> None:
+        """Grape params matches validation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:15:user_params:other",
+            name="user_params",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(15, 20, 0, 0),
+            meta={"decorators": ["params"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "validation"
+
+    def test_grape_desc_documentation(self) -> None:
+        """Grape desc matches documentation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:9:endpoint_desc:other",
+            name="endpoint_desc",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(9, 9, 0, 0),
+            meta={"decorators": ["desc"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "documentation"
+
+    def test_grape_format_middleware(self) -> None:
+        """Grape format matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:3:json_format:other",
+            name="json_format",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(3, 3, 0, 0),
+            meta={"decorators": ["format"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_http_auth(self) -> None:
+        """Grape http_basic matches auth pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:7:basic_auth:other",
+            name="basic_auth",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(7, 10, 0, 0),
+            meta={"decorators": ["http_basic"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth"
+
+    def test_grape_enrich_symbols_integration(self) -> None:
+        """Enrich symbols applies Grape patterns to matching symbols."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:api.rb:1:UsersAPI:class",
+                name="UsersAPI",
+                kind="class",
+                language="ruby",
+                path="lib/api/users.rb",
+                span=Span(1, 50, 0, 0),
+                meta={"base_classes": ["Grape::API"]},
+            ),
+            Symbol(
+                id="test:entity.rb:1:UserEntity:class",
+                name="UserEntity",
+                kind="class",
+                language="ruby",
+                path="lib/api/entities/user.rb",
+                span=Span(1, 20, 0, 0),
+                meta={"base_classes": ["Grape::Entity"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, ["grape"])
+        api_sym = next(s for s in enriched if s.name == "UsersAPI")
+        entity_sym = next(s for s in enriched if s.name == "UserEntity")
+
+        api_concepts = api_sym.meta.get("concepts", [])
+        assert any(c["concept"] == "controller" for c in api_concepts)
+        entity_concepts = entity_sym.meta.get("concepts", [])
+        assert any(c["concept"] == "serializer" for c in entity_concepts)
+
+    def test_grape_linkers_include_http(self) -> None:
+        """Grape framework activates http linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+        assert pattern_def is not None
+        assert "http" in pattern_def.linkers
+
+
+class TestClojureTestPrefixGuard:
+    """Tests for Clojure test-* prefix path guard (WI-vutum).
+
+    In Clojure, ``test-`` is a naming convention for "verify/probe this
+    thing" (e.g., ``test-ldap-connection``, ``test-database-connection``).
+    These are production functions, not tests.  The actual test framework
+    (``clojure.test``) uses the ``deftest`` macro.  The ``test-*`` pattern
+    should only match in test directories.
+    """
+
+    def test_clojure_test_prefix_in_src_not_classified(self) -> None:
+        """test-* function in src/ should NOT be classified as test_function.
+
+        ``test-ldap-connection`` in ``src/metabase/sso/ldap.clj`` is a
+        production function that validates LDAP connectivity.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="clojure:src/metabase/sso/ldap.clj:82-100:test-ldap-connection:function",
+                name="test-ldap-connection",
+                kind="function",
+                language="clojure",
+                path="src/metabase/sso/ldap.clj",
+                span=Span(82, 100, 0, 50),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        test_concepts = [c for c in concepts if c["concept"] == "test_function"]
+        assert len(test_concepts) == 0, (
+            f"test-ldap-connection in src/ should NOT be classified as "
+            f"test_function — it's a production connectivity check. "
+            f"Got concepts: {concepts}"
+        )
+
+    def test_clojure_test_prefix_in_test_dir_classified(self) -> None:
+        """test-* function in test/ directory IS classified as test_function."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="clojure:test/metabase/sso/ldap_test.clj:10-20:test-ldap-settings:function",
+                name="test-ldap-settings",
+                kind="function",
+                language="clojure",
+                path="test/metabase/sso/ldap_test.clj",
+                span=Span(10, 20, 0, 50),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        test_concepts = [c for c in concepts if c["concept"] == "test_function"]
+        assert len(test_concepts) >= 1, (
+            "test-* function in test/ dir should be classified as test_function"
+        )
+
+
+class TestJavaQualifiedMainDetection:
+    """Tests for Java/C# main() detection with qualified method names (INV-lumiz).
+
+    Java and C# analyzers produce qualified method names like
+    ``ClassName.main`` instead of bare ``main``.  The main-functions.yaml
+    pattern must match these qualified names.
+    """
+
+    def test_java_qualified_main_detected(self) -> None:
+        """Java ClassName.main should be classified as main_function.
+
+        The Java analyzer produces qualified method names (e.g.,
+        ``PageViewUntypedDemo.main``).  The main-functions.yaml pattern
+        must match via the real YAML, not a hand-constructed Pattern.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:examples/PageViewUntypedDemo.java:5-15:PageViewUntypedDemo.main:method",
+                name="PageViewUntypedDemo.main",
+                kind="method",
+                language="java",
+                path="examples/PageViewUntypedDemo.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Java qualified method ClassName.main should be detected as main_function"
+        )
+
+    def test_java_bare_main_still_detected(self) -> None:
+        """Bare 'main' name should still match after the regex change."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:Main.java:5-15:main:method",
+                name="main",
+                kind="method",
+                language="java",
+                path="Main.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Java bare 'main' method should still be detected as main_function"
+        )
+
+    def test_csharp_qualified_main_detected(self) -> None:
+        """C# ClassName.Main should be classified as main_function."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="csharp:Program.cs:5-15:Program.Main:method",
+                name="Program.Main",
+                kind="method",
+                language="csharp",
+                path="Program.cs",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "C# qualified method Program.Main should be detected as main_function"
+        )
+
+    def test_java_non_main_method_not_matched(self) -> None:
+        """Methods ending with 'main' but with a different name should not match."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:Utils.java:5-15:Utils.containsmain:method",
+                name="Utils.containsmain",
+                kind="method",
+                language="java",
+                path="Utils.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) == 0, (
+            "Method 'containsmain' should NOT be classified as main_function"
+        )
+
+    def test_scala_qualified_main_detected(self) -> None:
+        """Scala Object.main should be classified as main_function.
+
+        Scala analyzer produces qualified method names (e.g., ``Kafka.main``).
+        Kafka has 7 Scala main methods that were previously undetected.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="scala:core/src/main/scala/kafka/Kafka.scala:72-100:Kafka.main:method",
+                name="Kafka.main",
+                kind="method",
+                language="scala",
+                path="core/src/main/scala/kafka/Kafka.scala",
+                span=Span(72, 100, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Scala qualified method Object.main should be detected as main_function"
+        )
+
+
+class TestStaplerPatterns:
+    """Tests for Kohsuke Stapler (Jenkins URL dispatch) pattern matching."""
+
+    def test_webmethod_annotation(self) -> None:
+        """@WebMethod with name kwarg extracts route path."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:10:MyAction.doSubmit:method",
+            name="MyAction.doSubmit",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "WebMethod", "args": [], "kwargs": {"name": "submit"}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["path"] == "submit"
+
+    def test_require_post_annotation(self) -> None:
+        """@RequirePOST marks method as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:15:MyAction.doDelete:method",
+            name="MyAction.doDelete",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequirePOST", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+
+    def test_stapler_request_parameter(self) -> None:
+        """Method with StaplerRequest parameter is a handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:20:MyAction.doAction:method",
+            name="MyAction.doAction",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "parameters": [
+                    {"name": "req", "type": "StaplerRequest"},
+                    {"name": "rsp", "type": "StaplerResponse"},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        handler = next((r for r in results if r["concept"] == "handler"), None)
+        assert handler is not None
+
+    def test_root_action_base_class(self) -> None:
+        """Class extending RootAction is detected as controller."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyRootAction.java:5:MyRootAction:class",
+            name="MyRootAction",
+            kind="class",
+            language="java",
+            path="src/main/java/MyRootAction.java",
+            span=Span(5, 50, 0, 0),
+            meta={
+                "base_classes": ["RootAction"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ctrl = next((r for r in results if r["concept"] == "controller"), None)
+        assert ctrl is not None
+
+    def test_do_method_in_action_subclass(self) -> None:
+        """doXxx method in an Action subclass is detected as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:30:MyAction.doSubmitForm:method",
+            name="MyAction.doSubmitForm",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "parent_base_classes": ["Action"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["matched_method_name"] == "doSubmitForm"
+
+    def test_get_method_in_action_subclass_is_facet(self) -> None:
+        """getXxx method in an Action subclass is a URL facet."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:35:MyAction.getApi:method",
+            name="MyAction.getApi",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(35, 45, 0, 0),
+            meta={
+                "parent_base_classes": ["RootAction"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        facet = next((r for r in results if r["concept"] == "url_facet"), None)
+        assert facet is not None
+
+    def test_descriptor_base_class(self) -> None:
+        """Class extending Descriptor is detected as configuration."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyDescriptor.java:5:MyDescriptor:class",
+            name="MyDescriptor",
+            kind="class",
+            language="java",
+            path="src/main/java/MyDescriptor.java",
+            span=Span(5, 80, 0, 0),
+            meta={
+                "base_classes": ["Descriptor"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        config = next((r for r in results if r["concept"] == "configuration"), None)
+        assert config is not None
+
+    def test_management_link_base_class(self) -> None:
+        """Class extending ManagementLink is a controller."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyLink.java:5:MyLink:class",
+            name="MyLink",
+            kind="class",
+            language="java",
+            path="src/main/java/MyLink.java",
+            span=Span(5, 80, 0, 0),
+            meta={
+                "base_classes": ["ManagementLink"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ctrl = next((r for r in results if r["concept"] == "controller"), None)
+        assert ctrl is not None
+
+    def test_non_do_method_not_matched(self) -> None:
+        """Regular method in Action subclass is NOT matched as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:40:MyAction.helperMethod:method",
+            name="MyAction.helperMethod",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "parent_base_classes": ["Action"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is None
+
+    def test_jenkins_alias(self) -> None:
+        """'jenkins' framework ID resolves to stapler patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jenkins")
+        assert pattern_def is not None
+        assert pattern_def.id == "stapler"

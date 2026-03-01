@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_common import erlang as erlang_module
-from hypergumbo_lang_common.erlang import analyze_erlang
+from hypergumbo_lang_common.erlang import analyze_erlang, is_erlang_tree_sitter_available
 
 
 def make_erl_file(tmp: Path, name: str, content: str) -> Path:
@@ -325,15 +325,15 @@ fib(N) -> fib(N-1) + fib(N-2).
         make_erl_file(tmp_path, "test.erl", "-module(test).")
 
         with patch.object(
-            erlang_module,
-            "is_erlang_tree_sitter_available",
+            erlang_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Erlang analysis skipped"):
+            with pytest.warns(UserWarning, match="erlang analysis skipped"):
                 result = erlang_module.analyze_erlang(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestErlangSignatureExtraction:
@@ -454,3 +454,214 @@ run(X) ->
 
         edge_pairs = [(e.src, e.dst) for e in call_edges]
         assert (run_sym.id, process_sym.id) in edge_pairs
+
+
+class TestIsErlangTreeSitterAvailable:
+    """Tests for is_erlang_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_erlang_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            erlang_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_erlang_tree_sitter_available() is False
+
+
+class TestErlangBehaviourCallbacks:
+    """Tests for OTP behaviour callback edge creation.
+
+    When a module declares -behaviour(gen_server), the OTP framework invokes
+    callback functions like init/1, handle_call/3, etc. The analyzer creates
+    invokes_callback edges from the module to each implemented callback,
+    making the OTP contract visible in the graph.
+    """
+
+    def test_gen_server_callbacks_detected(self, tmp_path: Path) -> None:
+        """gen_server callbacks get invokes_callback edges."""
+        make_erl_file(
+            tmp_path,
+            "my_server.erl",
+            """
+-module(my_server).
+-behaviour(gen_server).
+
+-export([init/1, handle_call/3, handle_cast/2]).
+
+init([]) ->
+    {ok, #{}}.
+
+handle_call(Request, _From, State) ->
+    {reply, ok, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        assert not result.skipped
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 3
+
+        callback_dsts = {e.dst for e in callback_edges}
+        func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
+        callback_names = {func_syms[dst].name for dst in callback_dsts if dst in func_syms}
+        assert "init/1" in callback_names
+        assert "handle_call/3" in callback_names
+        assert "handle_cast/2" in callback_names
+
+        # All edges should come from the module symbol
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        for e in callback_edges:
+            assert e.src == module_sym.id
+            assert e.confidence == 0.90
+
+    def test_supervisor_init_callback(self, tmp_path: Path) -> None:
+        """supervisor behaviour creates callback edge for init/1."""
+        make_erl_file(
+            tmp_path,
+            "my_sup.erl",
+            """
+-module(my_sup).
+-behaviour(supervisor).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, {{one_for_one, 5, 10}, []}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 1
+        func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
+        assert func_syms[callback_edges[0].dst].name == "init/1"
+
+    def test_unimplemented_callbacks_skipped(self, tmp_path: Path) -> None:
+        """Only implemented callbacks get edges; missing ones are skipped."""
+        make_erl_file(
+            tmp_path,
+            "partial_server.erl",
+            """
+-module(partial_server).
+-behaviour(gen_server).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, #{}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        # Only init/1 is implemented, others are not
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 1
+
+    def test_unknown_behaviour_no_callbacks(self, tmp_path: Path) -> None:
+        """Unknown behaviour names don't produce callback edges."""
+        make_erl_file(
+            tmp_path,
+            "custom.erl",
+            """
+-module(custom).
+-behaviour(my_custom_behaviour).
+
+-export([init/1]).
+
+init([]) ->
+    ok.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_imports_edge_still_created(self, tmp_path: Path) -> None:
+        """Behaviour import edge coexists with callback edges."""
+        make_erl_file(
+            tmp_path,
+            "both.erl",
+            """
+-module(both).
+-behaviour(gen_server).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, #{}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+
+        # Both import and callback edges should exist
+        assert any("gen_server" in e.dst for e in import_edges)
+        assert len(callback_edges) == 1
+
+
+class TestErlangDocstrings:
+    """Tests for Erlang comment extraction via populate_docstrings_from_tree."""
+
+    def test_percent_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts %% comment preceding a function."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "-module(myapp).\n"
+            "-export([start/0]).\n"
+            "%% Starts the application.\n"
+            "start() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        func = next(
+            (s for s in result.symbols if "start" in s.name and s.kind == "function"),
+            None,
+        )
+        assert func is not None
+        assert func.docstring == "Starts the application."
+
+    def test_percent_comment_on_module(self, tmp_path: Path) -> None:
+        """Extracts %% comment preceding the module attribute."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "%% Main application module.\n"
+            "-module(myapp).\n"
+            "-export([run/0]).\n"
+            "run() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        mod = next(
+            (s for s in result.symbols if s.kind == "module"),
+            None,
+        )
+        assert mod is not None
+        assert mod.docstring == "Main application module."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "-module(myapp).\n"
+            "-export([run/0]).\n"
+            "run() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        func = next(
+            (s for s in result.symbols if "run" in s.name and s.kind == "function"),
+            None,
+        )
+        assert func is not None
+        assert func.docstring is None

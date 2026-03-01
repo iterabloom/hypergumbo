@@ -3,15 +3,31 @@ name: CI
 on:
   push:
     branches: [ "main", "dev" ]
+    paths-ignore:
+      - '.agent/tracker/.ops/**'
+      - '.agent/tracker-workspace/.ops/**'
   pull_request:
     branches: [ "main", "dev" ]
+    paths-ignore:
+      - '.agent/tracker/.ops/**'
+      - '.agent/tracker-workspace/.ops/**'
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   # Detect what files changed to skip expensive jobs for docs-only PRs
+  # Skip entirely for tracker-sync PRs and tracker-only pushes
+  # (handled by tracker-ci.yml — no need to run lint, pytest, etc.)
   changes:
+    if: >-
+      !startsWith(github.head_ref || '', 'tracker-sync/')
+      && !startsWith(github.event.head_commit.message || '', 'tracker:')
     runs-on: codeberg-small-lazy
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      tracker_data: ${{ steps.filter.outputs.tracker_data }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,15 +45,50 @@ jobs:
             head="${{ github.sha }}"
           fi
 
+          # Handle initial push or empty/invalid base
+          # github.event.before can be:
+          # - All zeros: first push to branch
+          # - Empty: some merge scenarios
+          # - Invalid: ref no longer exists
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Initial push or empty base - assuming code changes"
+            exit 0
+          fi
+
+          # Verify base commit exists (handles invalid/missing refs)
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Base commit $base not found - assuming code changes"
+            exit 0
+          fi
+
           # Check if any non-doc files changed
           # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
-          CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          # Note: YAML files in .agent/tracker(-workspace)/ are tracker data,
+          # not code — they should not trigger expensive test jobs.
+          CODE_PATTERNS='\.py$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          YAML_PATTERN='\.ya?ml$'
+          TRACKER_DATA='^\.agent/tracker(-workspace)?/'
 
-          if git diff --name-only "$base" "$head" | grep -qE "$CODE_PATTERNS"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          CHANGED=$(git diff --name-only "$base" "$head")
+          has_code=false
+          echo "$CHANGED" | grep -qE "$CODE_PATTERNS" && has_code=true
+          # YAML files count as code UNLESS they're tracker data
+          echo "$CHANGED" | grep -E "$YAML_PATTERN" | grep -vqE "$TRACKER_DATA" 2>/dev/null && has_code=true
+          echo "code=$has_code" >> "$GITHUB_OUTPUT"
+
+          # Detect tracker data changes (for lightweight validation job)
+          if echo "$CHANGED" | grep -qE '^\.agent/tracker(-workspace)?/|^packages/hypergumbo-tracker/'; then
+            echo "tracker_data=true" >> "$GITHUB_OUTPUT"
+            echo "Tracker data changes detected"
+          else
+            echo "tracker_data=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$has_code" = "true" ]; then
             echo "Code changes detected"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
             echo "Docs-only changes, skipping expensive jobs"
           fi
 
@@ -48,19 +99,66 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Check full-suite status
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          # Get the most recent full-suite workflow run on dev
-          WORKFLOW_RUNS=$(gh api repos/${{ github.repository }}/actions/workflows/full-suite.yml/runs?per_page=1 2>/dev/null || echo '{"workflow_runs":[]}')
+          # Use commit status API (works unauthenticated for public repos)
+          # This is more reliable than the workflow runs API on Forgejo
+          API_BASE="https://codeberg.org/api/v1/repos/${{ github.repository }}"
 
-          # Extract conclusion from latest run
-          CONCLUSION=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].conclusion // "unknown"')
-          RUN_ID=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].id // "unknown"')
+          # Get the base branch HEAD SHA (the branch we're merging into)
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          echo "Checking commit status for base branch HEAD: $BASE_SHA"
 
-          echo "Latest full-suite run: $RUN_ID (conclusion: $CONCLUSION)"
+          # Fetch commit status (no auth needed for public repos)
+          STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status" 2>/dev/null || echo '{"state":"unknown","statuses":[]}')
 
-          if [[ "$CONCLUSION" == "failure" ]]; then
+          # Parse the response — check only the aggregate job, which is the
+          # authoritative verdict. Individual jobs like test-core may fail due to
+          # Codeberg runner timeouts while their retries (on self-hosted) succeed.
+          # The aggregate job accounts for retries, so it's the single source of truth.
+          RESULT=$(echo "$STATUS_JSON" | python3 -c '
+          import json, sys, re
+          try:
+              d = json.load(sys.stdin)
+              statuses = d.get("statuses", [])
+
+              # Find the aggregate job status specifically — it is the authoritative
+              # verdict that accounts for retries (test-core-retry, etc.)
+              aggregate = [s for s in statuses if "Full Test Suite / aggregate" in s.get("context", "")]
+
+              if not aggregate:
+                  # No aggregate job found — check if any Full Test Suite statuses exist at all
+                  full_suite = [s for s in statuses if "Full Test Suite" in s.get("context", "")]
+                  if not full_suite:
+                      print("none|unknown")
+                  else:
+                      # Full suite is still running (aggregate has not reported yet)
+                      print("none|pending")
+                  sys.exit(0)
+
+              agg = aggregate[0]
+              agg_status = agg.get("status", "unknown")
+
+              if agg_status == "failure":
+                  # Extract run ID from target_url (e.g., /iterabloom/hypergumbo/actions/runs/1702/jobs/2)
+                  url = agg.get("target_url", "")
+                  match = re.search(r"/runs/(\d+)/", url)
+                  run_id = match.group(1) if match else "unknown"
+                  print(f"{run_id}|failure")
+              elif agg_status == "success":
+                  print("ok|success")
+              else:
+                  # pending or other — treat as no result yet
+                  print("none|pending")
+          except Exception as e:
+              print(f"error|{e}")
+          ' 2>/dev/null || echo "error|parse_failed")
+
+          RUN_ID=$(echo "$RESULT" | cut -d'|' -f1)
+          STATUS=$(echo "$RESULT" | cut -d'|' -f2)
+
+          echo "Full Test Suite status: $STATUS (run: $RUN_ID)"
+
+          if [[ "$STATUS" == "failure" ]]; then
             PR_TITLE="${{ github.event.pull_request.title }}"
             REQUIRED_PREFIX="fix(job-$RUN_ID):"
 
@@ -79,8 +177,9 @@ jobs:
               echo "Current PR title: $PR_TITLE"
               exit 1
             fi
-          elif [[ "$CONCLUSION" == "unknown" ]]; then
-            echo "⚠️ No full-suite runs found - allowing PR (first run scenario)"
+          elif [[ "$STATUS" == "none" ]] || [[ "$STATUS" == "unknown" ]] || [[ "$STATUS" == "pending" ]]; then
+            echo "⚠️ No Full Test Suite aggregate result found - allowing PR"
+            echo "   (first run, still running, or aggregate not yet reported)"
           else
             echo "✅ Full suite is passing - PR allowed"
           fi
@@ -89,13 +188,17 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+          # No cache: 'pip' — setup-python@v5 bundles @actions/cache npm v4
+          # which speaks Twirp v2 protocol. Forgejo's cache proxy only implements
+          # v1 REST, so the v4 client hangs with ETIMEDOUT (~3 min per job).
       - name: Install linting tools
         run: |
           pip install --upgrade pip
@@ -132,16 +235,17 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Install pip-audit
         run: |
-          pip install --upgrade pip
+          pip install --upgrade pip wheel setuptools
           pip install pip-audit
       - name: Run pip-audit (dependency vulnerabilities)
         run: pip-audit --skip-editable
@@ -150,21 +254,22 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           # Install from packages if available, otherwise legacy
           if [ -d "packages/hypergumbo-core" ]; then
-            # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
+            # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
           else
             pip install -e .[dev]
           fi
@@ -173,11 +278,40 @@ jobs:
       - name: Verify ARCHITECTURE.md is up-to-date
         run: ./scripts/generate-architecture --check
 
-  pytest:
+  # Build grammars once, cache wheels for pytest job (saves ~1 minute)
+  build-grammars:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache grammar wheels
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Build grammar wheels
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip setuptools wheel
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Verify wheels exist
+        run: ls -la /tmp/grammar-wheels/*.whl || echo "No wheels (cache hit expected)"
+
+  pytest:
+    needs: [changes, stop-the-line, build-grammars]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure' && needs.build-grammars.result != 'failure'
+    runs-on: codeberg-small-lazy
     timeout-minutes: 30
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,20 +320,42 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
-      - name: Install dependencies
+          # Don't use pip cache - we cache the entire venv instead
+      - name: Cache venv
+        id: cache-venv
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          # Key on all pyproject.toml files - any change invalidates the cache
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}
+      - name: Create venv and install dependencies
+        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
           pip install --upgrade pip
           # Install from packages if available, otherwise legacy
           if [ -d "packages/hypergumbo-core" ]; then
-            # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
+            # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
           else
             pip install -e .[dev]
           fi
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Add venv to PATH
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+      - name: Fix pytest wrapper
+        run: |
+          # pip install pytest overwrites .venv/bin/pytest with its entry point.
+          # This repairs it to use smart-test, avoiding re-exec overhead in conftest.py
+          ./scripts/install-hooks --repair-shims
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
           # Don't try to install - just check if it's already available.
@@ -237,27 +393,6 @@ jobs:
               fi
             done
 
-            if [ "$CORE_CHANGED" = "true" ]; then
-              echo "❌ Core infrastructure changed - manifest must include comprehensive tests"
-              echo ""
-              echo "When changing core files (sketch.py, slice.py, etc.), smart-test"
-              echo "should generate a full-suite manifest. Run locally:"
-              echo "  ./scripts/smart-test --manifest"
-              echo ""
-              echo "If smart-test falls back to full suite, that's expected for core changes."
-              # For bootstrap: allow if manifest exists and has full suite marker
-              if [ -f ".ci/affected-tests.txt" ] && grep -q "^# Full test suite required" ".ci/affected-tests.txt"; then
-                echo "✓ Found full-suite manifest (bootstrap mode)"
-                echo "skip_tests=true" >> "$GITHUB_OUTPUT"
-                echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              echo ""
-              echo "During bootstrap (before stable hypergumbo has --files):"
-              echo "PRs touching core files require manual merge."
-              exit 1
-            fi
-
             # Check if manifest exists (contributor ran scripts/smart-test --manifest locally)
             if [ ! -f "$MANIFEST" ]; then
               echo "❌ No manifest committed"
@@ -272,59 +407,62 @@ jobs:
             fi
 
             echo "=== Validating committed manifest ==="
-            head -10 "$MANIFEST"
+            # Show header only (not the test list, which is long and confusing when truncated)
+            grep "^#" "$MANIFEST" | head -10
+            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            echo "# (manifest lists $TEST_COUNT test files)"
 
-            # Check if manifest indicates full suite is required (bootstrap case)
-            # This happens when smart-test couldn't run proper slice (no stable hypergumbo with --files)
-            if grep -q "^# Full test suite required" "$MANIFEST"; then
-              echo "⚠️ Bootstrap mode: stable hypergumbo lacks --files flag"
-              echo ""
-              echo "Smart-test fell back to full suite because:"
-              echo "  - Stable hypergumbo on PyPI doesn't have 'slice --files' yet"
-              echo "  - This is expected during the bootstrap period"
-              echo ""
-              echo "Options:"
-              echo "  1. Manually merge this PR (tests will run in full-suite.yml after merge)"
-              echo "  2. Wait for hypergumbo with --files to be published to PyPI"
-              echo ""
-              echo "Skipping CI tests - full-suite.yml will validate after merge."
-              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
-              echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # If core infrastructure changed, manifest should indicate full suite
+            if [ "$CORE_CHANGED" = "true" ]; then
+              if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+                echo "✓ Core changed, manifest indicates full suite - good"
+              else
+                echo "⚠️ Core infrastructure changed but manifest doesn't indicate full suite"
+                echo "   smart-test should have generated a full-suite manifest"
+                echo "   Regenerate with: ./scripts/smart-test --manifest"
+              fi
             fi
 
-            # Cheap sanity check: verify manifest has reasonable coverage for changed modules
+            # Sanity check: verify manifest has at least some tests for changed modules
             # This prevents gaming (e.g., committing empty manifest to skip tests)
-            CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep "^packages/" | cut -d/ -f2 | sort -u || true)
+            # We use a low minimum (1 test file) because:
+            # - Deleting files legitimately reduces test count
+            # - smart-test is trusted to generate correct manifests
+            # - Coverage check will catch missing coverage anyway
+            # NOTE: Only check modules with changed SOURCE files (*.py in src/), not all changed files
+            # Config files (pyproject.toml, etc.) don't require tests
+            CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep -E "^packages/.*/src/.*\.py$" | cut -d/ -f2 | sort -u || true)
 
             SANITY_OK=true
             for mod in $CHANGED_MODULES; do
               case $mod in
-                hypergumbo-core)
-                  MIN_TESTS=20 ;;
-                hypergumbo-lang-*)
-                  MIN_TESTS=10 ;;
                 hypergumbo)
                   # Meta-package has no tests of its own
                   MIN_TESTS=0 ;;
                 *)
-                  MIN_TESTS=5 ;;
+                  # At least 1 test file for any changed module
+                  MIN_TESTS=1 ;;
               esac
 
-              # Count tests that mention this module (very cheap heuristic)
-              # Matches paths like packages/hypergumbo-core/tests/test_*.py
-              ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || echo 0)
+              # Count tests that mention this module
+              # Note: grep -c exits 1 when no matches (even though it outputs "0")
+              # Using || true prevents the fallback from appending another "0"
+              ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || true)
+              ACTUAL=${ACTUAL:-0}
 
               if [ "$ACTUAL" -lt "$MIN_TESTS" ]; then
                 echo "⚠️ Manifest has $ACTUAL tests for $mod, expected ≥$MIN_TESTS"
                 SANITY_OK=false
               else
-                echo "✓ $mod: $ACTUAL tests (≥$MIN_TESTS required)"
+                echo "✓ $mod: $ACTUAL tests"
               fi
             done
 
             if [ "$SANITY_OK" = "false" ]; then
-              echo "⚠️ Manifest sanity check failed - falling back to full suite"
+              echo "⚠️ Manifest sanity check failed"
+              echo "   This usually means smart-test wasn't run after changes."
+              echo "   Run: pytest  (regenerates manifest)"
+              echo "   Then: git add .ci/affected-tests.txt && git commit --amend"
               echo "use_manifest=false" >> "$GITHUB_OUTPUT"
             else
               TOTAL_TESTS=$(grep -c "^packages/" "$MANIFEST" 2>/dev/null || echo 0)
@@ -339,22 +477,21 @@ jobs:
       - name: Run tests with coverage
         if: steps.manifest.outputs.skip_tests != 'true'
         run: |
-          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
-
-          echo "=== Python version ==="
-          python --version
-
-          echo "=== Installed packages ==="
-          pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
-
           MANIFEST=".ci/affected-tests.txt"
-          if [ -f "$MANIFEST" ] && [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ]; then
-            echo "=== Running affected tests only (smart test selection) ==="
-            # Filter out comment lines (starting with #) from manifest
-            AFFECTED_TESTS=$(grep -v '^#' "$MANIFEST" | grep -v '^$' | tr '\n' ' ')
-            echo "Running: pytest $AFFECTED_TESTS"
-            pytest -n 2 --tb=short $COV_PATHS --cov-report=term $AFFECTED_TESTS 2>&1 | tee coverage-output.txt
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
           else
+            WORKERS=$(nproc)
+          fi
+
+          if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
             echo "❌ No valid manifest - cannot run tests"
             echo ""
             echo "Fast-CI requires a manifest with targeted tests."
@@ -362,28 +499,408 @@ jobs:
             exit 1
           fi
 
-      - name: Bootstrap mode notice
-        if: steps.manifest.outputs.bootstrap_mode == 'true'
-        run: |
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║  BOOTSTRAP MODE - Tests skipped in fast-CI                 ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
+          # Read mode from manifest (targeted or full-suite)
+          MANIFEST_MODE=$(grep '^# Mode:' "$MANIFEST" | cut -d: -f2 | tr -d ' ' || echo "unknown")
+          echo "Manifest mode: $MANIFEST_MODE"
+
+          # Reject full-suite manifests - CI has 5-minute limit, can't run all tests
+          # Full suite validation happens in full-suite.yml after merge
+          if [ "$MANIFEST_MODE" = "full-suite" ]; then
+            REASON=$(grep '^# Reason:' "$MANIFEST" | cut -d: -f2- | sed 's/^ *//' || echo "unknown")
+            echo ""
+            echo "❌ Fast-CI cannot run full-suite manifests"
+            echo "   Manifest mode: full-suite"
+            echo "   Reason: $REASON"
+            echo ""
+            echo "CI has a 5-minute time limit. Full test suite runs after merge via full-suite.yml."
+            echo ""
+            echo "To fix, regenerate the manifest with targeted tests:"
+            echo "  pytest              # runs affected tests, updates targeted manifest"
+            echo "  git add .ci/affected-tests.txt"
+            echo "  git commit --amend"
+            echo ""
+            echo "Note: 'pytest --full' runs all tests locally but still writes a targeted manifest."
+            exit 1
+          fi
+
+          # Read changed source files from manifest (between markers)
+          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
+
+          # Sanity check: verify manifest's changed source files match actual PR diff
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+          MANIFEST_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | sort || echo "")
+
+          echo "=== Sanity check: changed source files ==="
+          echo "From manifest: $(echo "$MANIFEST_SOURCE_FILES" | wc -w) files"
+          echo "From PR diff:  $(echo "$ACTUAL_SOURCE_FILES" | wc -w) files"
+
+          # If no Python source files changed, skip tests entirely
+          # This handles PRs that only change shell scripts, YAML, docs, etc.
+          # Full suite runs in full-suite.yml after merge to catch any issues
+          if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$MANIFEST_SOURCE_FILES" ]; then
+            echo ""
+            echo "✅ No Python source files changed - skipping pytest"
+            echo "   Changes are to infrastructure/config files only."
+            echo "   Full suite will run via full-suite.yml after merge."
+            exit 0
+          fi
+
+          # Check that manifest includes all files from PR diff
+          # (manifest may include more if baseline differs, but should not miss any)
+          MISSING=""
+          for f in $ACTUAL_SOURCE_FILES; do
+            if ! echo "$MANIFEST_SOURCE_FILES" | grep -qF "$f"; then
+              MISSING="$MISSING $f"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "⚠️ Manifest missing source files from PR diff:$MISSING"
+            echo ""
+            echo "This typically happens when pytest was run before staging changes."
+            echo "The manifest was generated without seeing the staged files."
+            echo ""
+            echo "To fix: stage changes first, then run pytest"
+            echo "  git add <files>"
+            echo "  pytest  # regenerates manifest with correct file list"
+            echo "  git commit"
+            echo ""
+            echo "Continuing with PR diff files for coverage check..."
+            CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
+          else
+            echo "✓ Manifest includes all changed source files"
+          fi
+
+          # Build coverage paths for affected packages only
+          if [ -n "$CHANGED_SOURCE_FILES" ]; then
+            PKG_DIRS=$(echo "$CHANGED_SOURCE_FILES" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u)
+            COV_PATHS=""
+            for pkg in $PKG_DIRS; do
+              COV_PATHS="$COV_PATHS --cov=$pkg"
+            done
+            # Suppress terminal report - we'll show targeted coverage below
+            COV_PATHS="$COV_PATHS --cov-report="
+            # Use no-embeddings config since sentence-transformers isn't installed in CI
+            COV_PATHS="$COV_PATHS --cov-config=.coveragerc.no-embeddings"
+          else
+            # No source files changed - skip coverage
+            COV_PATHS=""
+          fi
+
+          # Filter out embedding files from coverage check (they require sentence-transformers)
+          # These are excluded by .coveragerc.no-embeddings but we also skip the explicit check
+          EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
+          COVERABLE_SOURCE_FILES=""
+          for f in $CHANGED_SOURCE_FILES; do
+            IS_EMBEDDING=false
+            for ef in $EMBEDDING_FILES; do
+              if echo "$f" | grep -qE "/$ef$"; then
+                IS_EMBEDDING=true
+                echo "  (skipping embedding file from coverage check: $f)"
+                break
+              fi
+            done
+            if [ "$IS_EMBEDDING" = "false" ]; then
+              COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
+            fi
+          done
+          COVERABLE_SOURCE_FILES=$(echo "$COVERABLE_SOURCE_FILES" | xargs)  # trim whitespace
+
           echo ""
-          echo "This PR can be manually merged. After merge, full-suite.yml"
-          echo "will run comprehensive validation."
+          echo "=== Python version ==="
+          python --version
+
+          echo "=== Installed packages ==="
+          pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
+
           echo ""
-          echo "To enable smart test selection, publish hypergumbo with"
-          echo "'slice --files' to PyPI, then contributors can generate"
-          echo "targeted manifests."
+          # Read selected tests from manifest (after SELECTED_TESTS marker)
+          SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+          TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
+
+          if [ "$MANIFEST_MODE" = "full-suite" ]; then
+            REASON=$(grep '^# Reason:' "$MANIFEST" | cut -d: -f2- | sed 's/^ *//' || echo "unknown")
+            echo "=== Running full test suite ($REASON) ==="
+          else
+            echo "=== Running $TEST_COUNT selected tests (smart test selection) ==="
+          fi
+
+          echo "Running: pytest ($TEST_COUNT test files)"
+          # SMART_TEST_ACTIVE=1 bypasses smart-test wrapper to use real pytest
+          # (CI already computed test selection via manifest - don't re-compute)
+          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          TEST_EXIT=$?
+
+          # Check 100% coverage for changed source files only
+          # (COVERABLE_SOURCE_FILES excludes embedding files that require sentence-transformers)
+          if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then
+            echo ""
+            echo "=== Checking 100% coverage for changed source files ==="
+
+            # Filter out deleted files (they won't exist and can't have coverage)
+            EXISTING_FILES=""
+            for f in $COVERABLE_SOURCE_FILES; do
+              if [ -f "$f" ]; then
+                EXISTING_FILES="$EXISTING_FILES $f"
+              else
+                echo "  (skipping deleted file: $f)"
+              fi
+            done
+            EXISTING_FILES=$(echo "$EXISTING_FILES" | xargs)  # trim whitespace
+
+            if [ -z "$EXISTING_FILES" ]; then
+              echo "✅ All changed files were deleted - no coverage check needed"
+            else
+              INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
+
+              # Use no-embeddings rcfile so exclude_also patterns are respected
+              COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
+              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+                echo ""
+                echo "❌ Changed source files are not at 100% coverage:"
+                coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
+                exit 1
+              else
+                echo "✅ All changed source files are at 100% coverage"
+              fi
+            fi
+          fi
+
+          exit $TEST_EXIT
+
       # Coverage badge is updated by full-suite.yml, not here
       # (ci.yml skips pytest on push events)
+
+  # Retry job for pytest when Codeberg's hard 5-minute cap kills the primary.
+  # Runs on self-hosted runner (no time limit). Analogous to full-suite.yml retries.
+  # always() ensures the if-condition is evaluated even when pytest is cancelled
+  # (without it, Forgejo skips the dependent entirely).
+  pytest-retry:
+    needs: [changes, stop-the-line, build-grammars, pytest]
+    if: >-
+      always() &&
+      needs.changes.outputs.code == 'true' &&
+      needs.stop-the-line.result != 'failure' &&
+      needs.build-grammars.result != 'failure' &&
+      (needs.pytest.result == 'failure' || needs.pytest.result == 'cancelled')
+    runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache venv
+        id: cache-venv
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}
+      - name: Create venv and install dependencies
+        if: steps.cache-venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+          else
+            pip install -e .[dev]
+          fi
+      - name: Add venv to PATH
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+      - name: Fix pytest wrapper
+        run: ./scripts/install-hooks --repair-shims
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Validate test manifest (smart test selection)
+        id: manifest
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+
+            if [ ! -f "$MANIFEST" ]; then
+              echo "❌ No manifest committed"
+              exit 1
+            fi
+
+            echo "=== Validating committed manifest (retry) ==="
+            grep "^#" "$MANIFEST" | head -10
+            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            echo "# (manifest lists $TEST_COUNT test files)"
+
+            if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+              echo "❌ Fast-CI cannot run full-suite manifests"
+              exit 1
+            fi
+
+            echo "✅ Manifest validated"
+            echo "use_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Push event - skipping pytest"
+            echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run tests with coverage
+        if: steps.manifest.outputs.skip_tests != 'true'
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
+            echo "❌ No valid manifest - cannot run tests"
+            exit 1
+          fi
+
+          MANIFEST_MODE=$(grep '^# Mode:' "$MANIFEST" | cut -d: -f2 | tr -d ' ' || echo "unknown")
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+
+          if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
+            echo "✅ No Python source files changed - skipping pytest"
+            exit 0
+          fi
+
+          # Use actual PR diff files for coverage if manifest is missing any
+          MISSING=""
+          MANIFEST_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | sort || echo "")
+          for f in $ACTUAL_SOURCE_FILES; do
+            if ! echo "$MANIFEST_SOURCE_FILES" | grep -qF "$f"; then
+              MISSING="$MISSING $f"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
+          fi
+
+          if [ -n "$CHANGED_SOURCE_FILES" ]; then
+            PKG_DIRS=$(echo "$CHANGED_SOURCE_FILES" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u)
+            COV_PATHS=""
+            for pkg in $PKG_DIRS; do
+              COV_PATHS="$COV_PATHS --cov=$pkg"
+            done
+            COV_PATHS="$COV_PATHS --cov-report= --cov-config=.coveragerc.no-embeddings"
+          else
+            COV_PATHS=""
+          fi
+
+          EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
+          COVERABLE_SOURCE_FILES=""
+          for f in $CHANGED_SOURCE_FILES; do
+            IS_EMBEDDING=false
+            for ef in $EMBEDDING_FILES; do
+              if echo "$f" | grep -qE "/$ef$"; then
+                IS_EMBEDDING=true
+                break
+              fi
+            done
+            if [ "$IS_EMBEDDING" = "false" ]; then
+              COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
+            fi
+          done
+          COVERABLE_SOURCE_FILES=$(echo "$COVERABLE_SOURCE_FILES" | xargs)
+
+          SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+          TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
+
+          echo "=== Running $TEST_COUNT selected tests (retry on self-hosted) ==="
+          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          TEST_EXIT=$?
+
+          if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then
+            echo ""
+            echo "=== Checking 100% coverage for changed source files ==="
+            EXISTING_FILES=""
+            for f in $COVERABLE_SOURCE_FILES; do
+              if [ -f "$f" ]; then
+                EXISTING_FILES="$EXISTING_FILES $f"
+              fi
+            done
+            EXISTING_FILES=$(echo "$EXISTING_FILES" | xargs)
+
+            if [ -z "$EXISTING_FILES" ]; then
+              echo "✅ All changed files were deleted - no coverage check needed"
+            else
+              INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
+              # Use no-embeddings rcfile so exclude_also patterns are respected
+              COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
+              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
+                echo ""
+                echo "❌ Changed source files are not at 100% coverage:"
+                coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
+                exit 1
+              else
+                echo "✅ All changed source files are at 100% coverage"
+              fi
+            fi
+          fi
+
+          exit $TEST_EXIT
+
+  tracker-validate:
+    needs: [changes, stop-the-line]
+    if: >-
+      always() &&
+      needs.changes.outputs.tracker_data == 'true' &&
+      needs.stop-the-line.result != 'failure'
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tracker
+        run: |
+          pip install --upgrade pip
+          pip install -e packages/hypergumbo-tracker
+      - name: Validate tracker data
+        run: scripts/tracker validate
 
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, audit, verify-generated, pytest, dco]
+    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
     if: always()
     runs-on: codeberg-small-lazy
+    timeout-minutes: 5
     steps:
       - name: Check job results
         run: |
@@ -393,8 +910,18 @@ jobs:
           echo "  lint: ${{ needs.lint.result }}"
           echo "  audit: ${{ needs.audit.result }}"
           echo "  verify-generated: ${{ needs.verify-generated.result }}"
+          echo "  build-grammars: ${{ needs.build-grammars.result }}"
           echo "  pytest: ${{ needs.pytest.result }}"
+          echo "  pytest-retry: ${{ needs.pytest-retry.result }}"
           echo "  dco: ${{ needs.dco.result }}"
+          echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
+
+          # pytest passes if primary OR retry succeeded
+          pytest_ok=false
+          [[ "${{ needs.pytest.result }}" == "success" ]] && pytest_ok=true
+          [[ "${{ needs.pytest-retry.result }}" == "success" ]] && pytest_ok=true
+          # If pytest was skipped (no code changes), that's OK too
+          [[ "${{ needs.pytest.result }}" == "skipped" ]] && pytest_ok=true
 
           # Fail if any required job failed (skipped is OK)
           if [[ "${{ needs.changes.result }}" == "failure" ]] || \
@@ -402,8 +929,9 @@ jobs:
              [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.audit.result }}" == "failure" ]] || \
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
-             [[ "${{ needs.pytest.result }}" == "failure" ]] || \
-             [[ "${{ needs.dco.result }}" == "failure" ]]; then
+             [[ "$pytest_ok" != "true" ]] || \
+             [[ "${{ needs.dco.result }}" == "failure" ]] || \
+             [[ "${{ needs.tracker-validate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1
           fi

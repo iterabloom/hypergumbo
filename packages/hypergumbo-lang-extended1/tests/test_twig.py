@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import twig as twig_module
 from hypergumbo_lang_extended1.twig import (
-    TwigAnalysisResult,
     analyze_twig,
     find_twig_files,
     is_twig_tree_sitter_available,
@@ -52,7 +52,7 @@ class TestIsTwigTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(twig_module, "is_twig_tree_sitter_available", return_value=False):
+        with patch.object(twig_module._analyzer, "_check_grammar_available", return_value=False):
             assert twig_module.is_twig_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeTwig:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "Hello")
-        with patch.object(twig_module, "is_twig_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Twig analysis skipped"):
+        with patch.object(twig_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="twig analysis skipped"):
                 result = twig_module.analyze_twig(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -70,7 +70,8 @@ class TestAnalyzeTwig:
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_twig(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_extends(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "page.twig", '{% extends "base.html.twig" %}')
@@ -171,7 +172,7 @@ Hello, {{ user.name }}!
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")
         result = analyze_twig(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "twig.tree_sitter"
+        assert result.run.pass_id == "twig-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -188,7 +189,7 @@ Hello, {{ user.name }}!
         result = analyze_twig(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.origin == "twig.tree_sitter"
+        assert block.origin == "twig-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")

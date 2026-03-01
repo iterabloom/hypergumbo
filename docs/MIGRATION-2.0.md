@@ -120,8 +120,8 @@ The CLI is unchanged. All commands work as before:
 ```bash
 hypergumbo run .                    # Generate behavior map
 hypergumbo sketch .                 # Generate token-budgeted overview
-hypergumbo slice --symbol foo       # Forward slice from symbol
-hypergumbo slice --reverse --symbol foo  # Reverse slice to symbol
+hypergumbo slice --entry foo         # Forward slice from entry point
+hypergumbo slice --entry foo --reverse   # Reverse slice to entry point
 ```
 
 ## API Compatibility

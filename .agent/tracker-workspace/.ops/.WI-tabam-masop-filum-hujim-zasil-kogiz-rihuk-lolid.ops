@@ -1,0 +1,49 @@
+- op: create  # 9a19
+  at: '2026-02-26T21:17:20Z'  # 9a19
+  by: agent  # 9a19
+  actor: jgstern_agent  # 9a19
+  clock: 1  # 9a19
+  nonce: 9a19  # 9a19
+  data:  # 9a19
+    kind: work_item  # 9a19
+    title: "Bakeoff state.json: hypergumbo_code_hash is empty string"  # 9a19
+    status: todo_soft  # 9a19
+    priority: 3  # 9a19
+    parent:  # 9a19
+    tags: []  # 9a19
+    before: []  # 9a19
+    duplicate_of: []  # 9a19
+    not_duplicate_of: []  # 9a19
+    pr_ref:  # 9a19
+    description: "Both the main 23-repo session and the validation session have empty hypergumbo_code_hash in state.json. This prevents A/B comparisons from verifying which code version produced which results. The code_hash should capture the git SHA or a content hash of the hypergumbo source at analysis time. Fix: populate code_hash in bakeoff-features init or run."  # 9a19
+    fields: {}  # 9a19
+- op: update  # b8a4
+  at: '2026-02-26T21:52:09Z'  # b8a4
+  by: agent  # b8a4
+  actor: jgstern_agent  # b8a4
+  clock: 2  # b8a4
+  nonce: b8a4  # b8a4
+  set:  # b8a4
+    status: done  # b8a4
+- op: discuss  # fe52
+  at: '2026-02-26T21:52:09Z'  # fe52
+  by: agent  # fe52
+  actor: jgstern_agent  # fe52
+  clock: 3  # fe52
+  nonce: fe52  # fe52
+  message: "Fixed in PR #1521. load_state() was missing hypergumbo_code_hash from constructor."  # fe52
+- op: update  # 3719
+  at: '2026-02-26T21:39:15Z'  # 3719
+  by: agent  # 3719
+  actor: jgstern_agent  # 3719
+  clock: 2  # 3719
+  nonce: '3719'  # 3719
+  set:  # 3719
+    status: done  # 3719
+- op: discuss  # 6f9f
+  at: '2026-02-26T21:39:15Z'  # 6f9f
+  by: agent  # 6f9f
+  actor: jgstern_agent  # 6f9f
+  clock: 3  # 6f9f
+  nonce: 6f9f  # 6f9f
+  message: "Fixed in PR #1521. Root cause: load_state() constructor was missing hypergumbo_code_hash field, so it defaulted to empty string every time state was loaded from disk. save_state() correctly persisted it via asdict()."  # 6f9f

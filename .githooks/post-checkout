@@ -1,0 +1,22 @@
+#!/bin/bash
+# Post-checkout hook: Repair pytest wrapper and .agent/ permissions
+#
+# After branch switches or file checkouts:
+# 1. Repair pytest shims (ADR-0010)
+# 2. Repair .agent/ group permissions for two-user setup (WI-bujaz)
+
+# Run in repo root
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+# Silently repair shims if install-hooks exists
+if [[ -x "./scripts/install-hooks" ]]; then
+    ./scripts/install-hooks --repair-shims >/dev/null 2>&1 || true
+fi
+
+# Repair .agent/ permissions for two-user sharing
+HOOKS_DIR="$(dirname "$0")"
+if [[ -f "$HOOKS_DIR/repair-agent-perms.sh" ]]; then
+    # shellcheck source=repair-agent-perms.sh
+    source "$HOOKS_DIR/repair-agent-perms.sh"
+    repair_agent_perms "$(pwd)"
+fi

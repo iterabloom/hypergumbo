@@ -1,0 +1,66 @@
+# Shiny framework patterns (ADR-0003 v1.1.x)
+#
+# Shiny is R's most popular web framework for interactive dashboards.
+# Apps consist of UI and server components, with reactive expressions.
+# Used extensively in data science for building interactive visualizations.
+
+id: shiny
+language: r
+
+patterns:
+  # shinyApp - main application entry point
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^shinyApp$"
+
+  # runApp - run the application
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^runApp$"
+
+  # UI functions - fluidPage, navbarPage, etc.
+  - concept: ui_component
+    usage:
+      kind: "^call$"
+      name: "^(fluidPage|navbarPage|dashboardPage|fixedPage|fillPage|bootstrapPage)$"
+
+  # Input widgets
+  - concept: input
+    usage:
+      kind: "^call$"
+      name: "^(textInput|numericInput|selectInput|sliderInput|checkboxInput|radioButtons|dateInput|fileInput|actionButton)$"
+
+  # Output renderers
+  - concept: output
+    usage:
+      kind: "^call$"
+      name: "^(renderPlot|renderTable|renderText|renderPrint|renderUI|renderDataTable|renderImage)$"
+
+  # Output placeholders
+  - concept: output
+    usage:
+      kind: "^call$"
+      name: "^(plotOutput|tableOutput|textOutput|verbatimTextOutput|uiOutput|dataTableOutput|imageOutput)$"
+
+  # Reactive expressions
+  - concept: reactive
+    usage:
+      kind: "^call$"
+      name: "^(reactive|reactiveVal|reactiveValues|observe|observeEvent|eventReactive)$"
+
+  # Modules (Shiny modules pattern)
+  - concept: module
+    usage:
+      kind: "^call$"
+      name: "^(moduleServer|NS|callModule)$"
+
+  # Bookmarking
+  - concept: bookmark
+    usage:
+      kind: "^call$"
+      name: "^(enableBookmarking|bookmarkButton|onBookmark|onRestore)$"
+
+linkers:
+  - http

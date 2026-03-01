@@ -368,15 +368,15 @@ class TestCommonLispAnalyzer:
         make_lisp_file(tmp_path, "core.lisp", "(defpackage :app)")
 
         with patch.object(
-            commonlisp_module,
-            "is_commonlisp_tree_sitter_available",
+            commonlisp_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Common Lisp analysis skipped"):
+            with pytest.warns(UserWarning, match="commonlisp analysis skipped"):
                 result = commonlisp_module.analyze_commonlisp(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-commonlisp" in result.skip_reason
+        assert "not available" in result.skip_reason
 
     def test_multiple_file_extensions(self, tmp_path: Path) -> None:
         """Handle multiple Common Lisp file extensions."""
@@ -454,6 +454,17 @@ class TestCommonLispAnalyzer:
         helper_sym = next(s for s in result.symbols if s.name == "helper")
         edge_pairs = [(e.src, e.dst) for e in call_edges]
         assert (main_sym.id, helper_sym.id) in edge_pairs
+
+
+class TestCommonLispTreeSitterAvailability:
+    """Tests for tree-sitter-commonlisp availability checking."""
+
+    def test_is_commonlisp_tree_sitter_available(self) -> None:
+        """Returns True when grammar is available."""
+        from hypergumbo_lang_common.commonlisp import is_commonlisp_tree_sitter_available
+
+        # In a properly configured dev environment, this should be True
+        assert is_commonlisp_tree_sitter_available() is True
 
 
 class TestCommonLispSignatureExtraction:

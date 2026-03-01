@@ -1,0 +1,101 @@
+- op: create  # ad44
+  at: '2026-02-20T15:51:15Z'  # ad44
+  by: agent  # ad44
+  actor: jgstern_agent  # ad44
+  clock: 1  # ad44
+  nonce: ad44  # ad44
+  data:  # ad44
+    kind: invariant  # ad44
+    title: "AMB-METHOD: Method calls with 3+ ambiguous receiver types must not produce resolved edges"  # ad44
+    status: todo_hard  # ad44
+    priority: 2  # ad44
+    parent:  # ad44
+    tags: []  # ad44
+    before: []  # ad44
+    duplicate_of: []  # ad44
+    not_duplicate_of: []  # ad44
+    pr_ref:  # ad44
+    justification:  # ad44
+    description: "Cross-language invariant. Go fixed in PR #1261. Same pattern exists in PHP, Java, Ruby, C#, Kotlin, Groovy, Dart. Next step: factor ambiguity guard into ListNameResolver (symbol_resolution.py) to protect all languages."  # ad44
+    fields:  # ad44
+      statement: "Method/member-function calls with ambiguous receiver types (3+ candidates) must not produce resolved call edges."  # ad44
+      root_cause: "Fallback resolution (ListNameResolver or local_symbols) picks an arbitrary candidate when receiver type cannot be inferred, producing false-positive edges for common method names like Get, Set, String, Close."  # ad44
+- op: update  # 8031
+  at: '2026-02-20T15:51:23Z'  # 8031
+  by: agent  # 8031
+  actor: jgstern_agent  # 8031
+  clock: 2  # 8031
+  nonce: '8031'  # 8031
+  set:  # 8031
+    fields:  # 8031
+      statement: "Method/member-function calls with ambiguous receiver types (3+ candidates) must not produce resolved call edges."  # 8031
+      root_cause: "Fallback resolution (ListNameResolver or local_symbols) picks an arbitrary candidate when receiver type cannot be inferred, producing false-positive edges for common method names like Get, Set, String, Close."  # 8031
+- op: update  # b22e
+  at: '2026-02-20T17:20:54Z'  # b22e
+  by: agent  # b22e
+  actor: jgstern_agent  # b22e
+  clock: 3  # b22e
+  nonce: b22e  # b22e
+  set:  # b22e
+    status: done  # b22e
+    pr_ref: 'PR #1261 (Go guard), PR #1270 (ListNameResolver threshold)'  # b22e
+    description: "Cross-language invariant. Go fixed in PR #1261 with analyzer-level guard. ListNameResolver ambiguity_threshold added in PR #1270 — any language using ListNameResolver can opt in. Per-language adoption tracked separately: Ruby (P3), Java (P3), PHP (P3), C# (P4), Kotlin (P4), Groovy (P4), Dart (P4)."  # b22e
+- op: update  # 3efb
+  at: '2026-02-23T07:07:24Z'  # 3efb
+  by: agent  # 3efb
+  actor: jgstern_agent  # 3efb
+  clock: 4  # 3efb
+  nonce: 3efb  # 3efb
+  set:  # 3efb
+    status: holding  # 3efb
+- op: discuss  # 37e5
+  at: '2026-02-23T08:59:26Z'  # 37e5
+  by: agent  # 37e5
+  actor: jgstern_agent  # 37e5
+  clock: 5  # 37e5
+  nonce: '37e5'  # 37e5
+  message: "Holding audit (2026-02-23): Core mechanism confirmed (ListNameResolver ambiguity_threshold). Adopted by: Go, PHP, JS/TS, Kotlin, C#, Groovy. NOT adopted by: Python, Ruby, Java, Rust, Dart. Invariant holds for adopted languages; remaining languages can still produce false-positive edges for common method names with 3+ candidates."  # 37e5
+- op: discuss  # 23cb
+  at: '2026-02-23T09:01:49Z'  # 23cb
+  by: agent  # 23cb
+  actor: jgstern_agent  # 23cb
+  clock: 6  # 23cb
+  nonce: 23cb  # 23cb
+  message: ""  # 23cb
+- op: update  # 74d2
+  at: '2026-02-27T02:09:08Z'  # 74d2
+  by: human  # 74d2
+  actor: jgstern  # 74d2
+  clock: 7  # 74d2
+  nonce: 74d2  # 74d2
+  set:  # 74d2
+    status: violated  # 74d2
+- op: discuss  # 1c4e
+  at: '2026-02-27T02:09:11Z'  # 1c4e
+  by: human  # 1c4e
+  actor: jgstern  # 1c4e
+  clock: 8  # 1c4e
+  nonce: 1c4e  # 1c4e
+  message: "let's make the invariant hold for the remaining languages"  # 1c4e
+- op: update  # 2c29
+  at: '2026-02-27T02:58:03Z'  # 2c29
+  by: agent  # 2c29
+  actor: jgstern_agent  # 2c29
+  clock: 9  # 2c29
+  nonce: 2c29  # 2c29
+  set:  # 2c29
+    status: holding  # 2c29
+- op: discuss  # b998
+  at: '2026-02-27T02:58:03Z'  # b998
+  by: agent  # b998
+  actor: jgstern_agent  # b998
+  clock: 10  # b998
+  nonce: b998  # b998
+  message: "All languages now comply. Adoption: Go, PHP, JS/TS, Kotlin, C#, Groovy, Dart (prior). Ruby, Java, Rust (this PR). Python exempt — SymbolResolver uses (module, name) tuple keys, inherently module-qualified."  # b998
+- op: discuss  # 44c6
+  at: '2026-02-27T02:58:09Z'  # 44c6
+  by: agent  # 44c6
+  actor: jgstern_agent  # 44c6
+  clock: 11  # 44c6
+  nonce: 44c6  # 44c6
+  message: "Done. Ruby: added ListNameResolver for receiver-call fallback path. Rust: replaced ad-hoc 3/N penalty with ListNameResolver(ambiguity_threshold=3). Java: added method registry infrastructure (invariant already held by construction — qualified lookups). Python: exempt — SymbolResolver uses (module, symbol) tuple keys, no bare method name fallback exists. Dart: was already adopted."  # 44c6

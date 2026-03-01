@@ -1,0 +1,74 @@
+- op: create  # 2d1b
+  at: '2026-02-22T06:33:13Z'  # 2d1b
+  by: agent  # 2d1b
+  actor: jgstern_agent  # 2d1b
+  clock: 1  # 2d1b
+  nonce: 2d1b  # 2d1b
+  data:  # 2d1b
+    kind: work_item  # 2d1b
+    title: "Exclude tracker ops from auto-pr PRs, defer to tracker sync mechanism"  # 2d1b
+    status: todo_soft  # 2d1b
+    priority: 3  # 2d1b
+    parent:  # 2d1b
+    tags: []  # 2d1b
+    before: []  # 2d1b
+    duplicate_of: []  # 2d1b
+    not_duplicate_of: []  # 2d1b
+    pr_ref:  # 2d1b
+    justification:  # 2d1b
+    description: "auto-pr should not include .agent/tracker*/.ops/ paths in its PRs. Tracker data should flow exclusively through the tracker sync mechanism to avoid mixing tracker ops with code changes in the same PR."  # 2d1b
+    fields: {}  # 2d1b
+- op: update  # bb36
+  at: '2026-02-23T13:10:31Z'  # bb36
+  by: agent  # bb36
+  actor: jgstern_agent  # bb36
+  clock: 2  # bb36
+  nonce: bb36  # bb36
+  set:  # bb36
+    status: needs_human_review  # bb36
+    justification: "auto-pr is a governance file; changes require human approval per AGENTS.md"  # bb36
+- op: update  # a4fd
+  at: '2026-02-24T06:13:22Z'  # a4fd
+  by: human  # a4fd
+  actor: jgstern  # a4fd
+  clock: 3  # a4fd
+  nonce: a4fd  # a4fd
+  set:  # a4fd
+    status: todo_soft  # a4fd
+- op: discuss  # 148d
+  at: '2026-02-25T08:42:41Z'  # 148d
+  by: agent  # 148d
+  actor: jgstern_agent  # 148d
+  clock: 4  # 148d
+  nonce: 148d  # 148d
+  message: "[migrated from justification field] auto-pr is a governance file; changes require human approval per AGENTS.md"  # 148d
+- op: discuss  # 15e3
+  at: '2026-02-25T21:17:40Z'  # 15e3
+  by: human  # 15e3
+  actor: jgstern  # 15e3
+  clock: 5  # 15e3
+  nonce: '15e3'  # 15e3
+  message: "I approve"  # 15e3
+- op: discuss  # 7070
+  at: '2026-02-25T21:53:18Z'  # 7070
+  by: agent  # 7070
+  actor: jgstern_agent  # 7070
+  clock: 6  # 7070
+  nonce: '7070'  # 7070
+  message: "Implemented in PR (pending merge). auto-pr now strips .agent/tracker*/.ops/ files from commits before pushing, in both do_pr and flush_queue paths."  # 7070
+- op: discuss  # 6156
+  at: '2026-02-25T21:53:22Z'  # 6156
+  by: agent  # 6156
+  actor: jgstern_agent  # 6156
+  clock: 7  # 6156
+  nonce: '6156'  # 6156
+  message: "Thank you for the approval. Change implemented: auto-pr now detects and excludes .agent/tracker*/.ops/ files from PR commits (both do_pr and flush_queue paths). Files existing on base are restored; new ops files are removed from the index."  # 6156
+- op: update  # f866
+  at: '2026-02-25T22:00:17Z'  # f866
+  by: agent  # f866
+  actor: jgstern_agent  # f866
+  clock: 8  # f866
+  nonce: f866  # f866
+  set:  # f866
+    status: done  # f866
+    pr_ref: '1470'  # f866

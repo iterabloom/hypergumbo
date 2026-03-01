@@ -50,7 +50,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hypergumbo_core.ir import Symbol
+    from hypergumbo_core.ir import Edge, Symbol
 
 
 def group_symbols_by_language(
@@ -220,3 +220,93 @@ def select_proportionally(
     selected.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
 
     return selected[:max_symbols]
+
+
+def find_underrepresented_language_seeds(
+    symbols: list[Symbol],
+    edges: list[Edge],
+    current_seeds: set[str],
+    edge_share_threshold: float = 0.10,
+) -> set[str]:
+    """Find seed node IDs for languages unreachable from the BFS frontier.
+
+    When entrypoints for a dominant language have no outgoing edges (e.g.,
+    C main() dispatching via function pointer tables invisible to tree-sitter),
+    the BFS frontier built from current_seeds has zero nodes in that language.
+    The greedy selection loop in select_by_connectivity then fills the budget
+    entirely with languages that DO have frontier access.
+
+    This function identifies languages with significant edge mass but no
+    frontier representation, and returns the highest-degree node from each
+    as an additional seed.  Once injected into the seed set, BFS can expand
+    into that language's subgraph.
+
+    Args:
+        symbols: Eligible symbols (already filtered for test/example exclusion).
+        edges: All edges.
+        current_seeds: Current seed node IDs (entrypoint IDs).
+        edge_share_threshold: Minimum fraction of total edges for a language
+            to be considered significant.  Default 0.10 (10%).
+
+    Returns:
+        Set of additional seed IDs to inject.  Empty if all significant
+        languages are already reachable from current seeds.
+    """
+    eligible_ids = {s.id for s in symbols}
+    symbol_lang = {s.id: s.language for s in symbols}
+
+    # Build adjacency (only edges touching eligible symbols)
+    adj_out: dict[str, set[str]] = {}
+    adj_in: dict[str, set[str]] = {}
+    for e in edges:
+        if e.src in eligible_ids and e.dst in eligible_ids and e.src != e.dst:
+            adj_out.setdefault(e.src, set()).add(e.dst)
+            adj_in.setdefault(e.dst, set()).add(e.src)
+
+    # Count edges per language (edge counts toward a language if at least one
+    # endpoint is in that language)
+    lang_edge_count: dict[str, int] = {}
+    for e in edges:
+        src_lang = symbol_lang.get(e.src)
+        dst_lang = symbol_lang.get(e.dst)
+        if src_lang:
+            lang_edge_count[src_lang] = lang_edge_count.get(src_lang, 0) + 1
+        if dst_lang and dst_lang != src_lang:
+            lang_edge_count[dst_lang] = lang_edge_count.get(dst_lang, 0) + 1
+    total_edge_mentions = sum(lang_edge_count.values()) or 1
+
+    # Determine which languages are reachable from current seeds' frontier
+    frontier_langs: set[str] = set()
+    for sid in current_seeds:
+        for dst in adj_out.get(sid, set()):
+            if dst not in current_seeds:
+                lang = symbol_lang.get(dst)
+                if lang:
+                    frontier_langs.add(lang)
+        for src in adj_in.get(sid, set()):
+            if src not in current_seeds:
+                lang = symbol_lang.get(src)
+                if lang:
+                    frontier_langs.add(lang)
+
+    # For each underrepresented language, pick the highest-degree node
+    extra_seeds: set[str] = set()
+    for lang, count in lang_edge_count.items():
+        share = count / total_edge_mentions
+        if share >= edge_share_threshold and lang not in frontier_langs:
+            # Find the node in this language with highest total degree
+            candidates = [
+                s for s in symbols
+                if s.language == lang and s.id not in current_seeds
+            ]
+            if candidates:
+                best = max(
+                    candidates,
+                    key=lambda s: (
+                        len(adj_out.get(s.id, set()))
+                        + len(adj_in.get(s.id, set()))
+                    ),
+                )
+                extra_seeds.add(best.id)
+
+    return extra_seeds

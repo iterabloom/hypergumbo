@@ -321,16 +321,14 @@ class TestZigGracefulDegradation:
 
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
-        with patch(
-            "hypergumbo_lang_extended1.zig.is_zig_tree_sitter_available",
-            return_value=False,
-        ):
+        from hypergumbo_lang_extended1 import zig as zig_module
+        with patch.object(zig_module._analyzer, "_check_grammar_available", return_value=False):
             import warnings
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 result = analyze_zig(Path("/nonexistent"))
                 assert result.skipped
-                assert "tree-sitter-zig" in result.skip_reason
+                assert "zig" in result.skip_reason
                 assert len(w) == 1
 
 

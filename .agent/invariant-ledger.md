@@ -1,5 +1,10 @@
 # Invariant Ledger
 
+> **DEPRECATED (ADR-0013 PR 7):** This file is no longer read by the stop
+> hook. Invariants and work items are now managed via the structured tracker
+> (`scripts/tracker`). This file is retained as a historical reference.
+> See `scripts/tracker list` for current items.
+
 This ledger tracks discovered invariants, their status, and regression tests.
 See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for governance context.
 
@@ -15,6 +20,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `test_js_ts.py::TestCallbackCallAttribution`
   - `test_kotlin.py::TestKotlinLambdaCallAttribution` (4 tests)
   - Manual verification for Scala (2026-01-25)
+- **Pending Generalizations:** None
 
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
@@ -40,6 +46,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `test_framework_patterns.py::TestResolveDeferredSymbolRefs` (17 tests covering
     exact match, suffix match, path hint, ambiguous, multiple metadata keys)
   - `test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name`
+- **Pending Generalizations:** None
 
 ## INV-003: Python Nested Decorated Function Extraction
 - **Statement:** Decorated nested functions must be extracted for framework pattern matching
@@ -66,6 +73,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - Issue was Python-specific due to the `col_offset` heuristic
 - **Regression tests:**
   - `test_python_ast_analysis.py::TestNestedFunctionExtraction` (4 tests)
+- **Pending Generalizations:** None
 
 ## INV-004: Route-to-Handler Edge Completeness
 - **Statement:** Routes should have edges to their handler functions when handler info is available
@@ -87,6 +95,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 - **Regression tests:**
   - `tests/test_route_handler_linker.py::TestRouteHandlerLinker` (13 tests)
   - `tests/test_route_handler_linker.py::TestLinkerEntryPoint` (2 tests)
+- **Pending Generalizations:** None
 
 ## INV-005: Edge ID Uniqueness
 - **Statement:** Edge IDs must be unique because they serve as primary keys for edge lookup
@@ -98,6 +107,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   The `edge_key` field remains unchanged (excludes line) for deduplication across passes.
 - **Regression tests:**
   - `tests/test_ir.py::test_edge_id_unique_per_line`
+- **Pending Generalizations:** None
 
 ## INV-006: Rails Resource Route Handler Resolution
 - **Statement:** Rails resource routes should have handler metadata for route-handler linking
@@ -116,6 +126,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular`
+- **Pending Generalizations:** None
 
 ---
 
@@ -134,8 +145,8 @@ high-level, their status is expressed as a percentage indicating confidence they
 
 - **Status:** 100%
 - **Notes:**
-  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex
-  - All 13 languages with class inheritance now extract `base_classes` metadata
+  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex, Go (interface assertions)
+  - All 14 languages with class inheritance / interface satisfaction now extract `base_classes` metadata
   - The centralized inheritance linker (`linkers/inheritance.py`) creates extends/implements edges for all languages
 
 **Unified by:**
@@ -144,10 +155,13 @@ high-level, their status is expressed as a percentage indicating confidence they
 - INV-006 (resources macro → route symbols with controller_action)
 - INV-008 (base_classes → extends/implements edges for Python/JS/TS)
 - INV-009 (base_classes → extends/implements edges for Ruby/Kotlin)
+- INV-010 (Django view_name → routes_to edges)
 
 **Implication:** When an analyzer stores relationship information in metadata (view_name,
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
 converts that metadata into edges or concepts. Metadata alone is not traversable.
+
+- **Pending Generalizations:** None
 
 ### META-002: Extraction Completeness
 > "Symbols that exist in source code must be extracted for analysis."
@@ -172,6 +186,8 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
 **Implication:** Special cases (nested functions, lambdas, callbacks) should not silently
 skip symbol extraction. If code can be called, it must be extractable.
 
+- **Pending Generalizations:** None
+
 ### META-003: Data Integrity
 > "Graph elements must have valid, unique identifiers for reliable lookup."
 
@@ -184,6 +200,8 @@ skip symbol extraction. If code can be called, it must be extractable.
 
 **Implication:** ID generation must include all disambiguating information (source, target,
 type, AND location).
+
+- **Pending Generalizations:** None
 
 ---
 
@@ -200,6 +218,7 @@ type, AND location).
   3. Sort candidates deterministically (by path) when falling back to ambiguous resolution
 - **Regression tests:**
   - `tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path`
+- **Pending Generalizations:** None
 
 ## INV-008: Base Classes Metadata to Extends Edges
 - **Statement:** Class symbols with `base_classes` metadata must create `extends` or `implements`
@@ -216,6 +235,7 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_python_ast_analysis.py::TestPythonInheritanceEdges` (4 tests)
   - `tests/test_js_ts.py::TestJsTsInheritanceEdges` (4 tests)
+- **Pending Generalizations:** None
 
 ## INV-009: Ruby/Kotlin Base Classes Metadata to Extends Edges
 - **Statement:** Ruby and Kotlin class symbols with inheritance must create `extends` or `implements`
@@ -232,6 +252,211 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_ruby.py::TestRubyInheritanceEdges` (5 tests)
   - `tests/test_kotlin.py::TestKotlinInheritanceEdges` (6 tests)
+- **Pending Generalizations:** None
+
+## INV-010: Django Route-Handler Linking
+- **Statement:** Django routes with view_name metadata must create `routes_to` edges to their handler functions
+- **Status:** ✅ FIXED
+- **Root cause:** Route-handler linker (`linkers/route_handler.py`) only supported Rails, Laravel, Phoenix, and Express
+  frameworks. Django routes with `view_name` metadata were not linked to their handlers.
+- **Fix:** Added `_resolve_django_handler()` function that resolves view_name to handler symbols:
+  - Simple names: `view_name="list_users"` → function
+  - CBV: `view_name="UserListView"` → class
+  - Module-qualified: `view_name="accounts.views.list_accounts"` → last segment
+- **Impact:** Feature bakeoff showed 884 orphan routes in Django. These can now be linked.
+- **Regression tests:**
+  - `tests/test_route_handler_linker.py::TestDjangoViewNameLinking` (4 tests)
+- **Pending Generalizations:** None
+
+## INV-011: Branch Coverage
+- **Statement:** Branch coverage should be tracked to catch untested code paths.
+- **Status:** ⬛ WON'T DO
+- **Resolution (2026-02-07):** Removed `--cov-branch` from `scripts/smart-test`.
+  Branch coverage was never enforced in CI (ci.yml, full-suite.yml, release.yml all
+  run pytest without `--cov-branch`). It was only added to smart-test locally, which
+  created ~1400 BRANCHES_*.py test files chasing the metric. Manual investigation of
+  js_ts.py branch partials showed that ~70% of uncovered branches were unreachable
+  defensive code (internal call-site contracts, for-loop exhaustion, type narrowing)
+  where tests required mock nodes the real code never produces. The ~30% that were
+  genuinely useful tested real input diversity (malformed configs, edge-case syntax)
+  — but those are better discovered via bakeoff/integration testing than by auditing
+  branch partials bottom-up.
+  The existing BRANCHES_*.py files remain (some contain useful tests), but no new
+  ones should be created to chase branch coverage. Line coverage at 100% is the
+  enforced standard. Quality gaps are better found via bakeoff on real repos.
+- **Pending Generalizations:** None
+
+---
+
+## META-004: Testing Discipline
+> "Tests must exercise all code paths to verify correctness and prevent regressions."
+
+- **Status:** ✅ FIXED (line coverage at 100%, enforced in CI)
+- **Notes:**
+  - Line coverage: 100% ✅ (enforced in CI via `--cov-fail-under=100`)
+  - Branch coverage: deliberately not enforced (see INV-011 resolution)
+  - 115+ BRANCHES test files exist from the branch coverage effort; they remain
+    in the codebase (some contain genuinely useful edge-case tests) but no new
+    ones should be created solely to chase branch partial metrics.
+
+**Implication:** Quality gaps in analysis correctness are better found via bakeoff
+on real repos than by auditing branch partials. Line coverage at 100% ensures all
+statements are reached; input diversity testing ensures they produce correct results.
+
+- **Pending Generalizations:** None
+
+---
+
+## INV-012: Decorator Edge Detection (All Languages with Decorator Metadata)
+- **Statement:** Decorator/annotation applications should create "decorated_by" edges in the call graph
+- **Status:** ✅ FIXED (Python, TypeScript, Java, C#, Rust)
+- **Root cause:** Analyzers extracted decorator information as metadata (`meta.decorators` or `meta.annotations`)
+  but did not create edges between the decorator and the decorated function.
+  This meant `@app.get("/users")` resulted in:
+  - ✅ Metadata on the function: `decorators: [{name: "app.get", args: ["/users"]}]`
+  - ❌ No edge from `app` or `app.get` to the decorated function
+  - Result: FastAPI's HTTP method decorators showed 0 in-degree in symbols.txt
+- **Discovery:** bakeoff-features-reflect assessment on FastAPI (2026-02-06)
+  - "FastAPI.get/post/put etc. not in high-connectivity symbols (0 in-degree)"
+  - Decorator registration pattern not visible in call graph
+- **Fix (Python):** Added `_resolve_decorator_target()` and `_process_decorators()` functions in
+  `py.py:_extract_edges()` that:
+  1. Process `decorator_list` on functions/classes during AST walk
+  2. Resolve decorator callees (Name, Attribute, Call forms)
+  3. Create "decorated_by" edges from decorated symbol to decorator
+  4. Handle unresolved decorators with unresolved edges (0.5 confidence)
+  Supported patterns:
+  - Simple: `@decorator` → resolved to local or imported function
+  - With args: `@decorator(args)` → extracts function from Call
+  - Method: `@ClassName.method` → resolved via local_symbols short name lookup
+  - Stacked: Multiple decorators create multiple edges
+- **Fix (TypeScript):** Added `_extract_decorator_edges()` function in `js_ts.py` that:
+  1. Iterates symbols with `decorators` metadata
+  2. Resolves decorator names to global symbols
+  3. Creates "decorated_by" edges (or unresolved edges for unknown decorators)
+  Enables visibility of NestJS patterns like @Controller, @Injectable, @Get, etc.
+- **Fix (Java):** Added `_extract_annotation_edges()` function in `java.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves annotation names to global symbols (tries both short and qualified names)
+  3. Creates "decorated_by" edges (or unresolved edges for unknown annotations)
+  Enables visibility of Spring patterns like @Service, @Controller, @GetMapping, etc.
+- **Fix (C#):** Added `_extract_attribute_edges()` function in `csharp.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves attribute names to global symbols (handles Attribute suffix convention)
+  3. Creates "decorated_by" edges (or unresolved edges for unknown attributes)
+  Enables visibility of ASP.NET patterns like [HttpGet], [Route], [Authorize], etc.
+- **Fix (Rust):** Added `_extract_attribute_edges()` function in `rust.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves attribute names to global symbols (handles qualified paths like actix_web::get)
+  3. Creates "decorated_by" edges for all symbol kinds (functions, structs, enums, traits)
+  Enables visibility of Actix/Axum patterns like #[get("/path")], #[derive(Debug)], etc.
+- **Regression tests:**
+  - `test_decorator_edges.py::TestDecoratorEdges` (6 tests - Python)
+  - `test_ts_decorator_edges.py::TestTypeScriptDecoratorEdges` (3 tests - TypeScript)
+  - `test_java_annotation_edges.py::TestJavaAnnotationEdges` (3 tests - Java)
+  - `test_csharp_attribute_edges.py::TestCSharpAttributeEdges` (3 tests - C#)
+  - `test_rust_attribute_edges.py::TestRustAttributeEdges` (7 tests - Rust)
+- **Trade-offs:**
+  - Pros: Decorators become visible in call graph, better centrality ranking
+  - Cons: May create noisy edges for common decorators like `@staticmethod`, `@property`
+  - Option: Filter by decorator type or add confidence weighting
+- **Related:**
+  - INV-003 (nested decorated function extraction) - prerequisite, already FIXED
+  - ADR-0003 (rich metadata) - decorators already extracted, just need edges
+- **Pending Generalizations:** None
+
+---
+
+## INV-013: TypeScript Constructor Injection Resolution
+- **Statement:** Method calls on constructor-injected properties (`this.property.method()`) must resolve to the injected type's methods
+- **Status:** ✅ FIXED
+- **Root cause:** JS/TS analyzer handled `this.method()` (direct class methods) but not `this.property.method()`
+  where property is a constructor parameter like `constructor(private catsService: CatsService)`.
+  The analyzer checked `obj_node.type == "this"` but when calling `this.catsService.create()`,
+  obj_node is `this.catsService` (member_expression), not `this`.
+- **Fix:** Added Case 1b in `_extract_edges()` to handle nested member_expression patterns:
+  1. Detect if obj_node is `this.propertyName` (member_expression with `this` and property_identifier)
+  2. Look up propertyName in var_types (populated from constructor parameter type annotations)
+  3. Resolve `TypeName.methodName` using the type from var_types
+  4. Create edge with evidence_type "ast_method_this_property" and 0.90 confidence
+- **Discovery:** Feature bakeoff reflection on NestJS repo (2026-02-06):
+  - Forward slice from CatsController.create had 0 useful nodes
+  - Assessment noted: "misses the actual business logic call to catsService.create()"
+- **Impact:** Forward slices from NestJS/Angular controllers now include service layer calls
+- **Limitation:** JS files without type annotations (e.g., `constructor(catsService)` in babel example)
+  cannot be type-inferred, so `this.catsService.create()` falls through to Case 4 (method name match)
+  which produces low-confidence edges to all matching methods. This is inherent to untyped JavaScript.
+- **Fix 2 (PR #977):** `_get_enclosing_function` used `global_symbols[full_name]` which only stores
+  one symbol per name. In monorepos with 11 files defining `CatsController.create`, only the
+  last-processed file's symbol could be found; the other 10 returned `None` → no call edges.
+  Fixed by using `symbol_by_position` (keyed by file+line+col) which uniquely identifies every symbol.
+  Result: 1/9 → 9/9 controllers produce call edges on NestJS repo.
+- **Regression tests:**
+  - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
+  - `test_js_ts.py::TestVariableTypeInference::test_this_property_disambiguates_via_named_import`
+  - `test_js_ts.py::TestVariableTypeInference::test_variable_method_disambiguates_via_named_import`
+  - `test_js_ts.py::TestVariableTypeInference::test_import_alias_tracked_in_named_imports`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_non_relative_import_falls_through`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_single_candidate_returns_none`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_no_match_returns_none`
+  - `test_js_ts.py::TestVariableTypeInference::test_enclosing_function_found_for_all_duplicate_named_methods`
+- **Pending Generalizations:** None
+
+## INV-014: Chained Member Access Call Resolution
+- **Statement:** Method calls on object properties (e.g., `this.field.method()`, `self.field.method()`, `obj.field.method()`) must resolve to the correct target method
+- **Status:** ✅ FIXED (Java, Kotlin, C#, Scala, JS/TS, Go, Python)
+- **Root cause:** Analyzers only checked for simple `identifier` receivers in method invocation/call_expression nodes. Nested member access (navigation_expression, member_access_expression, field_expression, selector_expression, ast.Attribute) was not handled, causing zero call edges for the most common method call pattern in OO languages.
+- **Discovery:** Forward slice from `OwnerController.showOwner` in spring-petclinic returned 0 edges despite the method calling `this.owners.findById(ownerId)`.
+- **Fix:**
+  - **Java** (PR #972): Replaced identifier scanning with `child_by_field_name("name"/"object")`, added field_access handling and class field type tracking
+  - **Kotlin** (PR #973): Added constructor parameter type tracking (`class_parameter` → `var_types`), added nested `navigation_expression` handling for `this.property.method()` pattern
+  - **C#** (PR #973): Added field declaration type tracking (`field_declaration` → `var_types`, handles both simple and generic types), added nested `member_access_expression` handling for `this._field.Method()` pattern
+  - **Scala** (PR #973): Fixed method name extraction from `field_expression` — was taking first identifier (receiver name) instead of last (method name)
+  - **Python** (this PR): Added class field type pre-collection from `__init__` (tracks `self.field = param` with type annotations and `self.field = Class()` constructors), added Case 2f in `_process_call` for `self.field.method()` pattern using nested `ast.Attribute`
+  - **JS/TS** (INV-013, pre-existing): Already handled nested `member_expression` with `this` for NestJS constructor injection
+  - **Go**: Already works — method name extracted from outermost `field_identifier`, resolver matches by name
+- **Regression tests:**
+  - `test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_resolved`
+  - `test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_generic_type`
+  - `test_csharp.py::TestCSharpTypeInference::test_field_type_inference`
+  - `test_csharp.py::TestCSharpTypeInference::test_this_field_method_call`
+  - `test_scala.py::TestScalaFunctionCalls::test_detects_method_call_on_object`
+  - `test_java.py::TestJavaAnalysis::test_extracts_field_access_method_calls` (PR #972)
+  - `test_python_ast_analysis.py::TestVariableMethodCalls::test_self_field_method_call_with_param_type`
+  - `test_python_ast_analysis.py::TestVariableMethodCalls::test_self_field_method_call_with_constructor`
+- **Pending Generalizations:** None
+
+---
+
+## INV-015: Extends Edge Name Collision Resolution
+- **Statement:** When multiple classes share the same name across files, `extends` edges must resolve to the imported/correct base class, not an arbitrary one
+- **Status:** FIXED (Python, JS/TS, Ruby, Kotlin, Java all use multi-value lookups with import-aware disambiguation)
+- **Root cause:** `_extract_inheritance_edges()` used a single-value `class_symbols: dict[str, Symbol]` with last-writer-wins semantics. In Django, 238 classes named `Model` caused ALL 2376 extends edges to point to a single test stub in `test_relative_fields.py` instead of `django.db.models.base.Model`.
+- **Fix:** All five language analyzers now use multi-value `class_by_name: dict[str, list[Symbol]]` and per-language `_resolve_base_class_*()` with 3-level disambiguation:
+  - (1) Same-file match (base class in same file as child)
+  - (2) Import-path match (Python: `from X import Y`; JS/TS: `import { Y } from './X'` via `_disambiguate_by_import`; Ruby: `require_relative 'path'` via require_hints; Kotlin/Java: `import com.example.Model` via FQN-to-path matching)
+  - (3) Deterministic fallback (sorted by symbol ID for stability)
+- **Regression tests:**
+  - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_prefers_required_class_over_name_collision`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_java.py::TestJavaInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_import_matches_full_fqn_path`
+- **Pending Generalizations:** None
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
@@ -240,6 +465,11 @@ type, AND location).
 - **Fix:** [What was done]
 - **Limitation:** [What's still broken]
 - **Regression tests:** [Test names]
+- **Pending Generalizations:** None, or entries with markers:
+  - `**TODO!**` — invariant/defect work, or anything potentially structural (blocks stopping; when in doubt, use this)
+  - `**TODO**` — clearly non-defect backlog (blocks stopping, but agent may defer freely)
+  - `**DONE**` with PR reference
+  - `**DEFERRED**` with justification
 
 ## META-00X: Template for New Meta-Invariants
 > "[Broad principle statement]"
@@ -252,3 +482,8 @@ type, AND location).
 
 **Implication:** [What this means for development practices]
 - **Regression tests:** [Test names]
+- **Pending Generalizations:** None, or entries with markers:
+  - `**TODO!**` — invariant/defect work, or anything potentially structural (blocks stopping; when in doubt, use this)
+  - `**TODO**` — clearly non-defect backlog (blocks stopping, but agent may defer freely)
+  - `**DONE**` with PR reference
+  - `**DEFERRED**` with justification

@@ -6,9 +6,13 @@ from textwrap import dedent
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
     _extract_path_from_url,
+    _find_source_files,
     _match_route_pattern,
+    _scan_go_file,
+    _scan_java_file,
     _scan_javascript_file,
     _scan_python_file,
+    _scan_ruby_file,
     link_http,
 )
 
@@ -274,6 +278,177 @@ class TestScanJavaScriptFile:
         assert len(calls) == 1
         assert calls[0].method == "DELETE"
         assert calls[0].url == "/api/v1/users/"
+
+    def test_angularjs_http_get(self):
+        """Detects AngularJS $http.get('/api/users')."""
+        code = dedent('''
+            $http.get('/api/users')
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_angularjs_http_post(self):
+        """Detects AngularJS $http.post('/api/users', data)."""
+        code = dedent('''
+            $http.post('/api/users', userData)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_patch(self):
+        """Detects AngularJS $http.patch('/api/permissions', patch)."""
+        code = dedent('''
+            $http.patch('api/session/data/' + dataSource + '/permissions', permissionPatch)
+        ''')
+        calls = _scan_javascript_file(Path("permissionService.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+        # Only captures the first string fragment before concatenation
+        assert calls[0].url == "api/session/data/"
+        assert calls[0].url_type == "literal"
+
+    def test_angularjs_http_delete(self):
+        """Detects AngularJS $http.delete('/api/users/1')."""
+        code = dedent('''
+            $http.delete('/api/users/' + userId)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+
+    def test_angularjs_http_put(self):
+        """Detects AngularJS $http.put('/api/users/1', data)."""
+        code = dedent('''
+            $http.put('/api/users/1', userData)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/users/1"
+
+    def test_angularjs_http_with_variable_url(self):
+        """Detects AngularJS $http.get(apiUrl) with variable URL."""
+        code = dedent('''
+            $http.get(apiUrl)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "apiUrl"
+        assert calls[0].url_type == "variable"
+
+    def test_angularjs_http_config_object(self):
+        """Detects AngularJS $http({method: 'GET', url: '/api/users'})."""
+        code = dedent('''
+            $http({
+                method: 'GET',
+                url: '/api/users'
+            })
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_config_url_first(self):
+        """Detects AngularJS $http({url: '/api/users', method: 'POST'})."""
+        code = dedent('''
+            $http({
+                url: '/api/users',
+                method: 'POST',
+                data: userData
+            })
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_no_false_positive_on_variable(self):
+        """Does not false-positive on $http as a variable name in non-HTTP contexts."""
+        code = dedent('''
+            var $httpProvider = injector.get('$httpProvider');
+            $httpProvider.interceptors.push('authInterceptor');
+        ''')
+        calls = _scan_javascript_file(Path("config.js"), code)
+        assert len(calls) == 0
+
+    def test_angularjs_multiple_calls(self):
+        """Detects multiple AngularJS $http calls in one file."""
+        code = dedent('''
+            $http.get('/api/users')
+            $http.post('/api/users', data)
+            $http.delete('/api/users/1')
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 3
+
+    def test_jquery_ajax_get(self):
+        """Detects jQuery $.ajax({url: '/api/users', type: 'GET'})."""
+        code = dedent('''
+            $.ajax({
+                url: '/api/users',
+                type: 'GET',
+                success: function(data) {}
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_get_shorthand(self):
+        """Detects jQuery $.get('/api/users')."""
+        code = dedent('''
+            $.get('/api/users', function(data) {})
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_post_shorthand(self):
+        """Detects jQuery $.post('/api/users', data)."""
+        code = dedent('''
+            $.post('/api/users', userData, function(result) {})
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_ajax_method_variant(self):
+        """Detects jQuery $.ajax with 'method' instead of 'type'."""
+        code = dedent('''
+            $.ajax({
+                url: '/api/items',
+                method: 'PUT',
+                data: payload
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/items"
+
+    def test_jquery_ajax_type_before_url(self):
+        """Detects jQuery $.ajax with type/method before url."""
+        code = dedent('''
+            $.ajax({
+                type: 'DELETE',
+                url: '/api/users/1',
+                success: callback
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
 
 
 class TestLinkHttp:
@@ -870,3 +1045,740 @@ class TestConceptMetadataSupport:
         path, method = _get_route_info_from_concept(symbol)
         assert path == "/api/users"
         assert method == "POST"
+
+
+class TestHttpLinkerEntryPoint:
+    """Tests for HTTP linker registry integration."""
+
+    def test_count_route_symbols(self, tmp_path):
+        """_count_route_symbols counts routes for requirement check."""
+        from hypergumbo_core.linkers.http import _count_route_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        route = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path="server.py",
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+        )
+
+        non_route = Symbol(
+            id="utils.py::helper",
+            name="helper",
+            kind="function",
+            path="utils.py",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="python",
+        )
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[route, non_route])
+        assert _count_route_symbols(ctx) == 1
+
+    def test_http_linker_entry_point(self, tmp_path):
+        """http_linker entry point works via LinkerContext."""
+        from hypergumbo_core.linkers.http import http_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users")')
+
+        route = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
+        result = http_linker(ctx)
+
+        assert len(result.edges) == 1
+        assert result.run is not None
+
+
+class TestScanGoFile:
+    """Tests for Go HTTP client call detection."""
+
+    def test_http_get(self):
+        """Detects http.Get("url")."""
+        code = dedent('''
+            package main
+            import "net/http"
+            func main() {
+                resp, _ := http.Get("/api/users")
+            }
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].language == "go"
+
+    def test_http_post(self):
+        """Detects http.Post("url", contentType, body)."""
+        code = dedent('''
+            resp, _ := http.Post("/api/users", "application/json", body)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_http_head(self):
+        """Detects http.Head("url")."""
+        code = dedent('''
+            resp, _ := http.Head("/api/health")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "HEAD"
+        assert calls[0].url == "/api/health"
+
+    def test_http_new_request(self):
+        """Detects http.NewRequest("METHOD", "url", body)."""
+        code = dedent('''
+            req, _ := http.NewRequest("DELETE", "/api/users/1", nil)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_new_request_put(self):
+        """Detects http.NewRequest with PUT method."""
+        code = dedent('''
+            req, _ := http.NewRequest("PUT", "/api/users/1", bytes.NewReader(data))
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+
+    def test_http_new_request_with_context(self):
+        """Detects http.NewRequestWithContext(ctx, "METHOD", "url", body)."""
+        code = dedent('''
+            req, _ := http.NewRequestWithContext(ctx, "PATCH", "/api/users/1", body)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_get_with_variable(self):
+        """Detects http.Get(apiURL) with variable URL."""
+        code = dedent('''
+            apiURL := "/api/users"
+            resp, _ := http.Get(apiURL)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "apiURL"
+        assert calls[0].url_type == "variable"
+
+    def test_http_get_with_literal(self):
+        """Verifies literal URLs have url_type='literal'."""
+        code = dedent('''
+            resp, _ := http.Get("/api/users")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url_type == "literal"
+
+    def test_multiple_calls(self):
+        """Detects multiple Go HTTP calls in one file."""
+        code = dedent('''
+            resp1, _ := http.Get("/api/users")
+            resp2, _ := http.Post("/api/users", "application/json", body)
+            req, _ := http.NewRequest("DELETE", "/api/users/1", nil)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 3
+
+    def test_no_http_calls(self):
+        """Go file without HTTP calls returns empty list."""
+        code = dedent('''
+            package main
+            func add(a, b int) int { return a + b }
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 0
+
+    def test_full_url(self):
+        """Detects http.Get with full URL."""
+        code = dedent('''
+            resp, _ := http.Get("http://localhost:8080/api/users")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "http://localhost:8080/api/users"
+
+
+class TestGoHttpLinking:
+    """Integration tests for Go HTTP client linking to routes."""
+
+    def test_links_go_http_get_to_route(self, tmp_path):
+        """Go http.Get calls link to route symbols."""
+        client_file = tmp_path / "client.go"
+        client_file.write_text('package main\nresp, _ := http.Get("/api/users")')
+
+        route_symbol = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].dst == route_symbol.id
+        assert result.edges[0].meta["cross_language"] is True
+
+
+class TestScanRubyFile:
+    """Tests for Ruby HTTP client call detection."""
+
+    def test_rest_client_get(self):
+        """Detects RestClient.get("/api/users")."""
+        code = dedent('''
+            require 'rest-client'
+            response = RestClient.get("/api/users")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].language == "ruby"
+        assert calls[0].url_type == "literal"
+
+    def test_rest_client_post(self):
+        """Detects RestClient.post("/api/users", payload)."""
+        code = dedent('''
+            RestClient.post("/api/users", {name: "Alice"}.to_json)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_rest_client_put(self):
+        """Detects RestClient.put("/api/users/1", payload)."""
+        code = dedent('''
+            RestClient.put("/api/users/1", data)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+
+    def test_rest_client_delete(self):
+        """Detects RestClient.delete("/api/users/1")."""
+        code = dedent('''
+            RestClient.delete("/api/users/1")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+
+    def test_rest_client_patch(self):
+        """Detects RestClient.patch("/api/users/1", payload)."""
+        code = dedent('''
+            RestClient.patch("/api/users/1", data)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+
+    def test_httparty_get(self):
+        """Detects HTTParty.get("/api/users")."""
+        code = dedent('''
+            require 'httparty'
+            response = HTTParty.get("/api/users")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_httparty_post(self):
+        """Detects HTTParty.post("/api/users", body: data)."""
+        code = dedent('''
+            HTTParty.post("/api/users", body: data.to_json)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+
+    def test_faraday_get(self):
+        """Detects Faraday.get("/api/users")."""
+        code = dedent('''
+            require 'faraday'
+            response = Faraday.get("/api/users")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_faraday_post(self):
+        """Detects Faraday.post("/api/users", body)."""
+        code = dedent('''
+            Faraday.post("/api/users", body)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+
+    def test_net_http_get_uri(self):
+        """Detects Net::HTTP.get(URI("/api/users"))."""
+        code = dedent('''
+            require 'net/http'
+            response = Net::HTTP.get(URI("/api/users"))
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_net_http_post_form_uri(self):
+        """Detects Net::HTTP.post_form(URI("/api/users"), data)."""
+        code = dedent('''
+            Net::HTTP.post_form(URI("/api/users"), data)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_net_http_get_response_uri(self):
+        """Detects Net::HTTP.get_response(URI("/api/users"))."""
+        code = dedent('''
+            Net::HTTP.get_response(URI("/api/users"))
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_net_http_uri_parse(self):
+        """Detects Net::HTTP.get(URI.parse("/api/users"))."""
+        code = dedent('''
+            Net::HTTP.get(URI.parse("/api/users"))
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_rest_client_with_variable(self):
+        """Detects RestClient.get(api_url) with variable URL."""
+        code = dedent('''
+            api_url = "/api/users"
+            RestClient.get(api_url)
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "api_url"
+        assert calls[0].url_type == "variable"
+
+    def test_multiple_calls(self):
+        """Detects multiple Ruby HTTP calls in one file."""
+        code = dedent('''
+            RestClient.get("/api/users")
+            HTTParty.post("/api/items")
+            Faraday.delete("/api/items/1")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 3
+
+    def test_no_http_calls(self):
+        """Ruby file without HTTP calls returns empty list."""
+        code = dedent('''
+            class User
+              def name
+                @name
+              end
+            end
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 0
+
+    def test_full_url(self):
+        """Detects RestClient.get with full URL."""
+        code = dedent('''
+            RestClient.get("http://localhost:3000/api/users")
+        ''')
+        calls = _scan_ruby_file(Path("client.rb"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "http://localhost:3000/api/users"
+
+
+class TestScanJavaFile:
+    """Tests for Java HTTP client call detection."""
+
+    def test_rest_template_get_for_object(self):
+        """Detects restTemplate.getForObject("/api/users", ...)."""
+        code = dedent('''
+            String result = restTemplate.getForObject("/api/users", String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].language == "java"
+        assert calls[0].url_type == "literal"
+
+    def test_rest_template_get_for_entity(self):
+        """Detects restTemplate.getForEntity("/api/users", ...)."""
+        code = dedent('''
+            ResponseEntity<String> resp = restTemplate.getForEntity("/api/users", String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+
+    def test_rest_template_post_for_object(self):
+        """Detects restTemplate.postForObject("/api/users", ...)."""
+        code = dedent('''
+            User user = restTemplate.postForObject("/api/users", request, User.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_rest_template_post_for_entity(self):
+        """Detects restTemplate.postForEntity("/api/users", ...)."""
+        code = dedent('''
+            restTemplate.postForEntity("/api/users", entity, String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+
+    def test_rest_template_delete_not_detected(self):
+        """restTemplate.delete() is NOT detected — too ambiguous with generic .delete().
+
+        Use exchange(url, HttpMethod.DELETE, ...) instead.
+        """
+        code = dedent('''
+            restTemplate.delete("/api/users/1");
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 0
+
+    def test_rest_template_put_not_detected(self):
+        """restTemplate.put() is NOT detected — too ambiguous with HashMap.put().
+
+        Use exchange(url, HttpMethod.PUT, ...) instead.
+        """
+        code = dedent('''
+            restTemplate.put("/api/users/1", entity);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 0
+
+    def test_hashmap_put_not_http_client(self):
+        """HashMap.put() must not be detected as an HTTP client call."""
+        code = dedent('''
+            states.put(InstallState.CONFIGURE_INSTANCE, InstallState.INITIAL_SETUP_COMPLETED);
+            errors.put("username", Messages.HudsonPrivateSecurityRealm_CreateAccount_UserNameRequired());
+            map.put("key", value);
+        ''')
+        calls = _scan_java_file(Path("InstallUtil.java"), code)
+        assert len(calls) == 0
+
+    def test_rest_template_exchange(self):
+        """Detects restTemplate.exchange("/api/users", HttpMethod.GET, ...)."""
+        code = dedent('''
+            restTemplate.exchange("/api/users", HttpMethod.GET, entity, String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_rest_template_exchange_post(self):
+        """Detects restTemplate.exchange with POST method."""
+        code = dedent('''
+            restTemplate.exchange("/api/items", HttpMethod.POST, entity, Item.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+
+    def test_rest_template_patch_for_object(self):
+        """Detects restTemplate.patchForObject("/api/users/1", ...)."""
+        code = dedent('''
+            restTemplate.patchForObject("/api/users/1", patch, User.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+
+    def test_retrofit_get_annotation(self):
+        """Detects @GET("/api/users") annotation."""
+        code = dedent('''
+            @GET("/api/users")
+            Call<List<User>> getUsers();
+        ''')
+        calls = _scan_java_file(Path("ApiService.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_retrofit_post_annotation(self):
+        """Detects @POST("/api/users") annotation."""
+        code = dedent('''
+            @POST("/api/users")
+            Call<User> createUser(@Body User user);
+        ''')
+        calls = _scan_java_file(Path("ApiService.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+
+    def test_retrofit_put_annotation(self):
+        """Detects @PUT("/api/users/{id}") annotation."""
+        code = dedent('''
+            @PUT("/api/users/{id}")
+            Call<User> updateUser(@Path("id") long id, @Body User user);
+        ''')
+        calls = _scan_java_file(Path("ApiService.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/users/{id}"
+
+    def test_retrofit_delete_annotation(self):
+        """Detects @DELETE("/api/users/{id}") annotation."""
+        code = dedent('''
+            @DELETE("/api/users/{id}")
+            Call<Void> deleteUser(@Path("id") long id);
+        ''')
+        calls = _scan_java_file(Path("ApiService.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+
+    def test_retrofit_patch_annotation(self):
+        """Detects @PATCH("/api/users/{id}") annotation."""
+        code = dedent('''
+            @PATCH("/api/users/{id}")
+            Call<User> patchUser(@Path("id") long id, @Body Map<String, Object> fields);
+        ''')
+        calls = _scan_java_file(Path("ApiService.java"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+
+    def test_rest_template_with_variable(self):
+        """Detects restTemplate.getForObject(apiUrl, ...) with variable URL."""
+        code = dedent('''
+            String apiUrl = "/api/users";
+            restTemplate.getForObject(apiUrl, String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "apiUrl"
+        assert calls[0].url_type == "variable"
+
+    def test_multiple_calls(self):
+        """Detects multiple Java HTTP calls in one file."""
+        code = dedent('''
+            restTemplate.getForObject("/api/users", String.class);
+            restTemplate.postForObject("/api/items", body, Item.class);
+
+            @GET("/api/health")
+            Call<String> healthCheck();
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 3
+
+    def test_no_http_calls(self):
+        """Java file without HTTP calls returns empty list."""
+        code = dedent('''
+            public class User {
+                private String name;
+                public String getName() { return name; }
+            }
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 0
+
+    def test_full_url(self):
+        """Detects RestTemplate with full URL."""
+        code = dedent('''
+            restTemplate.getForObject("http://localhost:8080/api/users", String.class);
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "http://localhost:8080/api/users"
+
+
+class TestRubyHttpLinking:
+    """Integration tests for Ruby HTTP client linking to routes."""
+
+    def test_links_ruby_rest_client_to_route(self, tmp_path):
+        """Ruby RestClient.get calls link to route symbols."""
+        client_file = tmp_path / "client.rb"
+        client_file.write_text('RestClient.get("/api/users")')
+
+        route_symbol = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].dst == route_symbol.id
+        assert result.edges[0].meta["cross_language"] is True
+
+    def test_links_ruby_httparty_to_js_route(self, tmp_path):
+        """Ruby HTTParty calls link to JS route symbols (cross-language)."""
+        client_file = tmp_path / "service.rb"
+        client_file.write_text('HTTParty.post("/api/items")')
+
+        route_symbol = Symbol(
+            id="routes.ts::createItem",
+            name="createItem",
+            kind="function",
+            path=str(tmp_path / "routes.ts"),
+            span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+            language="javascript",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/items", "method": "POST"}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["cross_language"] is True
+        assert result.edges[0].confidence == 0.8
+
+
+class TestJavaHttpLinking:
+    """Integration tests for Java HTTP client linking to routes."""
+
+    def test_links_java_rest_template_to_route(self, tmp_path):
+        """Java RestTemplate calls link to route symbols."""
+        client_file = tmp_path / "Client.java"
+        client_file.write_text(
+            'restTemplate.getForObject("/api/users", String.class);'
+        )
+
+        route_symbol = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].dst == route_symbol.id
+        assert result.edges[0].meta["cross_language"] is True
+
+    def test_links_java_retrofit_to_route(self, tmp_path):
+        """Java Retrofit annotation calls link to route symbols."""
+        client_file = tmp_path / "ApiService.java"
+        client_file.write_text(dedent('''
+            @GET("/api/users")
+            Call<List<User>> getUsers();
+        '''))
+
+        route_symbol = Symbol(
+            id="routes.rb::GET /api/users::route",
+            name="GET /api/users",
+            kind="route",
+            path=str(tmp_path / "routes.rb"),
+            span=Span(start_line=5, start_col=0, end_line=5, end_col=30),
+            language="ruby",
+            meta={
+                "http_method": "GET",
+                "route_path": "/api/users",
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["cross_language"] is True
+
+
+class TestFindSourceFiles:
+    """Tests for _find_source_files minified file filtering."""
+
+    def test_skips_minified_js(self, tmp_path: Path):
+        """Minified .min.js files are excluded from HTTP scanning."""
+        normal = tmp_path / "api.js"
+        normal.write_text("fetch('/api/users');")
+        minified = tmp_path / "jquery.min.js"
+        minified.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "api.js" in found
+        assert "jquery.min.js" not in found
+
+    def test_skips_minified_ts(self, tmp_path: Path):
+        """Minified .min.ts files are excluded from HTTP scanning."""
+        normal = tmp_path / "client.ts"
+        normal.write_text("fetch('/api/users');")
+        minified = tmp_path / "bundle.min.ts"
+        minified.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "client.ts" in found
+        assert "bundle.min.ts" not in found
+
+    def test_keeps_non_minified(self, tmp_path: Path):
+        """Non-minified files with 'min' in name are kept."""
+        admin = tmp_path / "admin.js"
+        admin.write_text("fetch('/api/users');")
+        mining = tmp_path / "mining.ts"
+        mining.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "admin.js" in found
+        assert "mining.ts" in found
+
+    def test_non_js_ts_unaffected(self, tmp_path: Path):
+        """Python, Go, Ruby, Java files are unaffected by minified filter."""
+        (tmp_path / "app.py").write_text("requests.get('/api')")
+        (tmp_path / "main.go").write_text("http.Get('/api')")
+        (tmp_path / "client.rb").write_text("RestClient.get('/api')")
+        (tmp_path / "Api.java").write_text("restTemplate.getForObject('/api')")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "app.py" in found
+        assert "main.go" in found
+        assert "client.rb" in found
+        assert "Api.java" in found

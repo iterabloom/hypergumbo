@@ -249,8 +249,8 @@ class TestCapnpAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "user.capnp").write_text("struct User {}")
 
-        with patch.object(capnp_module, "is_capnp_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Cap'n Proto analysis skipped"):
+        with patch.object(capnp_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="capnp analysis skipped"):
                 result = capnp_module.analyze_capnp(temp_repo)
 
         assert result.skipped is True

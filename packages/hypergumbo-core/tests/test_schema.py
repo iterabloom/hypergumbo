@@ -21,6 +21,16 @@ import pytest
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
+
+def _has_hypergumbo_meta() -> bool:
+    """Check if hypergumbo meta-package is installed."""
+    try:
+        import hypergumbo
+        del hypergumbo
+        return True
+    except ImportError:
+        return False
+
 # Find repo root by walking up until we find .git
 def _find_repo_root() -> Path:
     current = Path(__file__).parent
@@ -75,6 +85,10 @@ class TestSchemaValidation:
         # Should not raise
         jsonschema.validate(behavior_map, schema)
 
+    @pytest.mark.skipif(
+        not _has_hypergumbo_meta(),
+        reason="requires hypergumbo meta-package"
+    )
     def test_real_analysis_output_validates(self, tmp_path: Path):
         """Real analysis output validates against the schema."""
         # Create a simple Python file to analyze

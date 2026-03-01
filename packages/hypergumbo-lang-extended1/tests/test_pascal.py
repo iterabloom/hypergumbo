@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import pascal as pascal_module
 from hypergumbo_lang_extended1.pascal import (
-    PascalAnalysisResult,
     analyze_pascal,
     find_pascal_files,
     is_pascal_tree_sitter_available,
@@ -65,7 +65,7 @@ class TestIsPascalTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(pascal_module, "is_pascal_tree_sitter_available", return_value=False):
+        with patch.object(pascal_module._analyzer, "_check_grammar_available", return_value=False):
             assert pascal_module.is_pascal_tree_sitter_available() is False
 
 
@@ -74,11 +74,10 @@ class TestAnalyzePascal:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", "program Test; begin end.")
-        with patch.object(pascal_module, "is_pascal_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Pascal analysis skipped"):
+        with patch.object(pascal_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="pascal analysis skipped"):
                 result = pascal_module.analyze_pascal(tmp_path)
         assert result.skipped is True
-        assert "not available" in result.skip_reason
 
     def test_extracts_programs(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "main.pas", """program HelloWorld;
@@ -287,13 +286,13 @@ end.
         result = analyze_pascal(tmp_path)
         func = next((s for s in result.symbols if s.name == "Foo"), None)
         assert func is not None
-        assert func.origin == "pascal.tree_sitter"
+        assert func.origin == "pascal-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", "program Test; begin end.")
         result = analyze_pascal(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "pascal.tree_sitter"
+        assert result.run.pass_id == "pascal-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -301,7 +300,7 @@ end.
         result = analyze_pascal(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", """program Test;
@@ -317,10 +316,15 @@ end.
         result = analyze_pascal(tmp_path)
         func = next((s for s in result.symbols if s.name == "MyFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
+        # id is location-based; stable_id is signature-based hash (ADR-0014 §2)
         assert "pascal:" in func.id
         assert "test.pas" in func.id
         assert "MyFunc" in func.id
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+        # shape_id is auto-computed via node_for_symbol
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", """program Test;

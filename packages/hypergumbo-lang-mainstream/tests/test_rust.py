@@ -58,15 +58,17 @@ class TestAnalyzeRustFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-rust unavailable."""
+        from hypergumbo_lang_mainstream import rust as rust_module
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=False):
-            result = analyze_rust(tmp_path)
+        with patch.object(rust_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="rust analysis skipped"):
+                result = analyze_rust(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-rust" in result.skip_reason
+        assert "rust" in result.skip_reason
 
 
 class TestRustFunctionExtraction:
@@ -117,6 +119,52 @@ fn private_helper() {}
         func_names = [s.name for s in funcs]
         assert "public_api" in func_names
         assert "private_helper" in func_names
+
+
+class TestRustLinesOfCode:
+    """Tests for lines_of_code on Rust symbols."""
+
+    def test_function_lines_of_code(self, tmp_path: Path) -> None:
+        """Function symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""\
+fn small() {
+    println!("one liner body");
+}
+
+fn medium(x: i32) -> i32 {
+    let y = x + 1;
+    let z = y * 2;
+    z
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        small = next(s for s in result.symbols if s.name == "small")
+        medium = next(s for s in result.symbols if s.name == "medium")
+
+        assert small.lines_of_code == 3  # lines 1-3
+        assert medium.lines_of_code == 5  # lines 5-9
+
+    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
+        """Struct symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "models.rs"
+        rs_file.write_text("""\
+struct Point {
+    x: f64,
+    y: f64,
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        point = next(s for s in result.symbols if s.name == "Point")
+        assert point.lines_of_code == 4  # lines 1-4
 
 
 class TestRustStructExtraction:
@@ -412,21 +460,19 @@ class TestRustEdgeCases:
     """Tests for edge cases and error handling."""
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
-        """Returns skipped with run when parser loading fails."""
+        """Raises error when parser loading fails (base class does not catch)."""
+        from hypergumbo_lang_mainstream import rust as rust_module
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_rust": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_rust"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
-                result = analyze_rust(tmp_path)
-
-        assert result.skipped is True
-        assert "Failed to load Rust parser" in result.skip_reason
-        assert result.run is not None
+        with patch.object(rust_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(
+                rust_module._analyzer, "_create_parser",
+                side_effect=RuntimeError("Parser load failed"),
+            ):
+                with pytest.raises(RuntimeError, match="Parser load failed"):
+                    analyze_rust(tmp_path)
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
@@ -437,9 +483,9 @@ class TestRustEdgeCases:
 
         result = analyze_rust(tmp_path)
 
-
         assert result.run is not None
-        assert result.run.files_skipped >= 1
+        # Base class counts file as analyzed even with no symbols
+        assert result.run.files_analyzed >= 1
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
@@ -502,7 +548,8 @@ fn bar() {}
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -512,42 +559,46 @@ fn bar() {}
 
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
 
         # Create a function with a method call
         rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
+        source_text = """
 fn caller() {
     foo.bar();
 }
-""")
+"""
+        rs_file.write_text(source_text)
+        source = source_text.encode("utf-8")
+        tree = parser.parse(source)
 
         caller_symbol = Symbol(
             id="test:caller",
             name="caller",
             kind="function",
             language="rust",
-            path=str(rs_file),
+            path="test.rs",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
             origin="test",
-            origin_run_id=run.execution_id,
+            origin_run_id="test-run",
         )
 
         # Mock _find_child_by_field to return None for "field" lookups
-        original_func = None
-
         def mock_find_child_by_field(node, field_name):
             if field_name == "field":
                 return None  # Trigger the defensive branch
             return node.child_by_field_name(field_name)
 
         local_symbols = {"caller": caller_symbol}
+        resolver = NameResolver({})
 
         import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
-            result = _extract_edges_from_file(rs_file, parser, local_symbols, {}, run)
+            result = _extract_edges_from_file(
+                tree, source, "test.rs", local_symbols, {},
+                "test-run", resolver, {},
+            )
         finally:
             rust_module._find_child_by_field = original_func
 
@@ -560,7 +611,8 @@ fn caller() {
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -570,25 +622,27 @@ fn caller() {
 
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
 
         # Create code with scoped identifier call
         rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
+        source_text = """
 fn caller() {
     Foo::bar();
 }
-""")
+"""
+        rs_file.write_text(source_text)
+        source = source_text.encode("utf-8")
+        tree = parser.parse(source)
 
         caller_symbol = Symbol(
             id="test:caller",
             name="caller",
             kind="function",
             language="rust",
-            path=str(rs_file),
+            path="test.rs",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
             origin="test",
-            origin_run_id=run.execution_id,
+            origin_run_id="test-run",
         )
 
         # Mock _find_child_by_field to return None for "name" on scoped_identifier
@@ -599,12 +653,16 @@ fn caller() {
             return node.child_by_field_name(field_name)
 
         local_symbols = {"caller": caller_symbol}
+        resolver = NameResolver({})
 
         import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
-            result = _extract_edges_from_file(rs_file, parser, local_symbols, {}, run)
+            result = _extract_edges_from_file(
+                tree, source, "test.rs", local_symbols, {},
+                "test-run", resolver, {},
+            )
         finally:
             rust_module._find_child_by_field = original_func
 
@@ -641,59 +699,110 @@ fn main() {
 
 
 class TestRustFileReadErrors:
-    """Tests for file read error handling."""
+    """Tests for file read error handling.
 
-    def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.rust import (
-            _extract_symbols_from_file,
-            is_rust_tree_sitter_available,
+    The base TreeSitterAnalyzer.analyze() method handles file read errors
+    during Pass 1 by incrementing files_skipped. Internal functions now
+    receive pre-parsed trees.
+    """
+
+    def test_analyzer_handles_read_error_in_pass1(self, tmp_path: Path) -> None:
+        """Analyzer skips files with read errors during Pass 1."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # Create a valid file plus a file that will fail to read
+        (tmp_path / "good.rs").write_text("fn good() {}")
+        bad_file = tmp_path / "bad.rs"
+        bad_file.write_text("fn bad() {}")
+
+        original_read_bytes = Path.read_bytes
+
+        def patched_read_bytes(self: Path) -> bytes:
+            if self.name == "bad.rs":
+                raise OSError("Read failed")
+            return original_read_bytes(self)
+
+        with patch.object(Path, "read_bytes", patched_read_bytes):
+            result = analyze_rust(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_skipped >= 1
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "good" in func_names
+
+
+class TestRustAttributeEdges:
+    """Tests for Rust attribute/annotation edges (decorated_by)."""
+
+    def test_resolved_attribute_edge(self, tmp_path: Path) -> None:
+        """Creates decorated_by edge when attribute resolves to a symbol."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn my_handler() -> String {
+    "hello".to_string()
+}
+
+#[my_handler]
+fn decorated() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Check if decorated_by edges are created
+        decorated_edges = [e for e in result.edges if e.edge_type == "decorated_by"]
+        # The attribute #[my_handler] should create a decorated_by edge
+        # whether resolved or unresolved
+        assert len(decorated_edges) >= 1
+
+    def test_unresolved_attribute_skips_empty_annotations(self, tmp_path: Path) -> None:
+        """Symbols without annotations meta skip attribute edge extraction."""
+        from hypergumbo_lang_mainstream.rust import _extract_attribute_edges
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:func",
+            name="func",
+            kind="function",
+            language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=1),
+            origin="test",
+            meta={"annotations": []},
         )
-        from hypergumbo_core.ir import AnalysisRun
+        edges = _extract_attribute_edges([sym], {}, "test-run")
+        assert edges == []
 
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
+    def test_builtin_attributes_produce_no_edges(self, tmp_path: Path) -> None:
+        """Built-in attributes like derive, test, cfg produce zero edges.
 
-        import tree_sitter_rust
-        import tree_sitter
+        Previously builtins produced unresolved edges
+        (e.g. ``rust:unresolved:0-0:derive:unresolved`` with 175 in-edges).
+        """
+        from hypergumbo_lang_mainstream.rust import _extract_attribute_edges
+        from hypergumbo_core.ir import Symbol, Span
 
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("fn test() {}")
-
-        with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(rs_file, parser, run)
-
-        assert result.symbols == []
-
-    def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Edge extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.rust import (
-            _extract_edges_from_file,
-            is_rust_tree_sitter_available,
+        sym = Symbol(
+            id="test:my_struct",
+            name="MyStruct",
+            kind="struct",
+            language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test",
+            meta={"annotations": [
+                {"name": "derive", "args": ["Debug", "Clone"]},
+                {"name": "test"},
+                {"name": "cfg", "args": ["test"]},
+                {"name": "allow", "args": ["dead_code"]},
+            ]},
         )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("fn test() {}")
-
-        with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(rs_file, parser, {}, {}, run)
-
-        assert result == []
+        edges = _extract_attribute_edges([sym], {}, "test-run")
+        assert edges == [], (
+            f"Built-in attributes should produce no edges, got: "
+            f"{[(e.dst, e.edge_type) for e in edges]}"
+        )
 
 
 class TestReexportResolution:
@@ -1148,6 +1257,152 @@ fn routes() {
                 break
 
 
+class TestImplTargetExtraction:
+    """Tests for impl target type name extraction.
+
+    When extracting method names from impl blocks, we need to extract just
+    the base type identifier, not the full type text which may include
+    references (&), lifetimes ('a), or generic parameters (<T>).
+
+    For example:
+    - impl<'a, M: Matcher> Deref for &'a M  -> type field is `&'a M`, base is `M`
+    - impl<'a, M, W> PreludeWriter<'a, M, W> -> type field is `PreludeWriter<'a, M, W>`, base is `PreludeWriter`
+    - impl User -> type field is `User`, base is `User`
+    """
+
+    def test_impl_for_reference_type_extracts_base_name(self, tmp_path: Path) -> None:
+        """impl for reference types like &'a M should use base type M, not &'a M."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+trait Matcher {
+    fn line_terminator(&self) -> u8;
+}
+
+impl<'a, M: Matcher> Matcher for &'a M {
+    fn line_terminator(&self) -> u8 {
+        (*self).line_terminator()
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Find the method in the impl block
+        methods = [s for s in result.symbols if s.kind == "method"]
+        # Method name should be "M::line_terminator", not "&'a M::line_terminator"
+        method_names = [s.name for s in methods]
+        assert any("M::line_terminator" in name for name in method_names), \
+            f"Expected method name with 'M::line_terminator', got {method_names}"
+        # Should NOT have the malformed name with & or '
+        assert not any(name.startswith("&") or "'" in name.split("::")[0] for name in method_names), \
+            f"Method name should not start with & or contain lifetime: {method_names}"
+
+    def test_impl_for_generic_type_extracts_base_name(self, tmp_path: Path) -> None:
+        """impl for generic types like Foo<'a, T> should use base type Foo, not full type."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Writer<'a, M, W> {
+    matcher: &'a M,
+    writer: W,
+}
+
+impl<'a, M, W> Writer<'a, M, W> {
+    fn write_output(&self) {
+        // implementation
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should be "Writer::write_output", not "Writer<'a, M, W>::write_output"
+        assert any("Writer::write_output" in name for name in method_names), \
+            f"Expected 'Writer::write_output', got {method_names}"
+        # Should NOT have generic params in method name
+        assert not any("<" in name for name in method_names), \
+            f"Method name should not contain generic params: {method_names}"
+
+    def test_impl_for_simple_type_unchanged(self, tmp_path: Path) -> None:
+        """impl for simple types like User should remain unchanged."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct User {
+    name: String,
+}
+
+impl User {
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should be "User::get_name"
+        assert any("User::get_name" in name for name in method_names), \
+            f"Expected 'User::get_name', got {method_names}"
+
+    def test_impl_for_scoped_type(self, tmp_path: Path) -> None:
+        """impl for scoped types like crate::Foo should keep full path."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+mod inner {
+    pub struct Nested;
+}
+
+impl crate::inner::Nested {
+    fn method(&self) {}
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should preserve the scoped type path
+        assert len(method_names) >= 1, f"Expected at least one method, got {method_names}"
+        # The name should include "Nested" or the scoped path
+        assert any("Nested" in name or "inner" in name for name in method_names), \
+            f"Expected scoped type in method name, got {method_names}"
+
+    def test_impl_for_array_type(self, tmp_path: Path) -> None:
+        """impl for unusual types like array types should not crash."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # Test the fallback case for "other type nodes"
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+trait MyTrait {
+    fn len(&self) -> usize;
+}
+
+impl MyTrait for [u8; 4] {
+    fn len(&self) -> usize {
+        4
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Should not crash, method should be extractable
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) >= 1, "Should extract at least one method from array impl"
+
+
 class TestRustClosureCallAttribution:
     """Tests for call edge attribution inside Rust closures.
 
@@ -1249,3 +1504,778 @@ fn caller() {
         )
         assert call_edge is not None, "Call inside map closure should be attributed to caller"
 
+
+class TestRustVisibilityModifiers:
+    """Tests for Rust visibility modifier extraction."""
+
+    def test_pub_function(self, tmp_path: Path) -> None:
+        """pub functions get 'pub' modifier."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""
+pub fn public_fn() {}
+fn private_fn() {}
+pub(crate) fn crate_fn() {}
+""")
+        result = analyze_rust(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "public_fn")
+        assert "pub" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "private_fn")
+        assert len(priv.modifiers) == 0
+
+        crate = next(s for s in result.symbols if s.name == "crate_fn")
+        assert any("pub" in m for m in crate.modifiers)
+
+    def test_pub_struct(self, tmp_path: Path) -> None:
+        """pub structs get 'pub' modifier."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "types.rs").write_text("""
+pub struct PubStruct {}
+struct PrivStruct {}
+""")
+        result = analyze_rust(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubStruct")
+        assert "pub" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "PrivStruct")
+        assert len(priv.modifiers) == 0
+
+
+class TestNormalizeRustSignature:
+    """Tests for Rust signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature("(x: i32, y: String) -> bool") == "(i32,String)bool"
+
+    def test_self_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature("(&self, x: i32) -> bool") == "(i32)bool"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature(None) is None
+
+
+class TestRustMethodCallAmbiguity:
+    """Tests for method call ambiguity penalty (WI-zojis).
+
+    Rust method calls like foo.clone() resolve by name only, which causes
+    massive false-positive fan-in when common names (.clone, .get, .build)
+    match dozens or hundreds of symbols. The fix applies a confidence
+    penalty proportional to the number of ambiguous candidates for method
+    calls (field_expression), not regular function calls (identifier).
+    """
+
+    def test_method_call_many_candidates_no_edge(self, tmp_path: Path) -> None:
+        """Method call with 20 ambiguous candidates produces no edge.
+
+        When bar() matches 20 symbols and the method_resolver has
+        ambiguity_threshold=3, the guard fires and no edge is created.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    foo.bar();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with many symbols named "bar" under different types
+        registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
+        for i in range(20):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}.bar:method",
+                name=f"Type{i}.bar", kind="method", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}.bar"] = sym
+            method_reg.setdefault("bar", []).append(sym)
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # With 20 candidates and ambiguity_threshold=3, no edge should be created
+        assert len(call_edges) == 0
+
+    def test_function_call_not_penalized(self, tmp_path: Path) -> None:
+        """Regular function calls (not method calls) keep normal confidence.
+
+        Only field_expression calls (foo.bar()) get the ambiguity penalty,
+        not plain identifier calls (bar()).
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    bar();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with multiple "bar" symbols (ambiguous)
+        registry: dict[str, Symbol] = {}
+        for i in range(5):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Mod{i}.bar:function",
+                name=f"Mod{i}.bar", kind="function", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Mod{i}.bar"] = sym
+
+        resolver = NameResolver(registry)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Regular function calls use standard confidence: 0.80 * 0.70 = 0.56
+        assert call_edges[0].confidence >= 0.50
+
+    def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
+        """Method call with 2 candidates keeps moderate confidence.
+
+        Below the ambiguity_threshold=3, so the method_resolver returns
+        a result with scaled confidence.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    foo.process();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Only 2 candidates — below ambiguity threshold
+        registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
+        for i in range(2):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}.process:method",
+                name=f"Type{i}.process", kind="method", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}.process"] = sym
+            method_reg.setdefault("process", []).append(sym)
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # With only 2 candidates, confidence = 0.80 * 1/sqrt(2) ≈ 0.57
+        assert call_edges[0].confidence >= 0.30
+
+
+class TestRustScopedIdentifierResolution:
+    """Tests for Rust scoped identifier (Foo::bar) call resolution.
+
+    When code calls Foo::bar(), the analyzer should use the full qualified
+    name "Foo::bar" for resolution instead of just "bar". This prevents
+    false edges when multiple types share a method name (e.g., Diff::compute
+    vs Parser::compute).
+    """
+
+    def _parse_and_extract(
+        self, source_text: bytes,
+        local_symbols: dict, global_symbols: dict,
+        use_aliases: dict | None = None,
+    ) -> list:
+        """Helper: parse Rust source and extract edges."""
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source_text)
+
+        resolver = NameResolver(global_symbols)
+
+        return _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, global_symbols,
+            "run", resolver, use_aliases or {},
+        )
+
+    def _make_rust_symbol(self, name: str, kind: str = "method"):
+        """Helper: create a Rust symbol for testing."""
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"rust:lib.rs:1-10:{name}:{kind}",
+            name=name, kind=kind, language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+    def test_scoped_call_exact_match(self, tmp_path: Path) -> None:
+        """Foo::bar() resolves to Foo::bar symbol via full qualified name."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = self._make_rust_symbol("Diff::compute")
+
+        source = b"fn main() {\n    Diff::compute();\n}\n"
+        global_symbols = {"Diff::compute": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+        # Full qualified match → high confidence
+        assert call_edges[0].confidence >= 0.70
+
+    def test_scoped_call_with_multiple_types(self, tmp_path: Path) -> None:
+        """Diff::compute() resolves to Diff::compute, not Parser::compute.
+
+        This is the core fix: when multiple types share a method name,
+        the scoped call Diff::compute() should find the correct one.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        diff_compute = self._make_rust_symbol("Diff::compute")
+        parser_compute = Symbol(
+            id="rust:lib.rs:20-30:Parser::compute:method",
+            name="Parser::compute", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Diff::compute();\n}\n"
+        global_symbols = {
+            "Diff::compute": diff_compute,
+            "Parser::compute": parser_compute,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Must resolve to Diff::compute, not Parser::compute
+        assert call_edges[0].dst == diff_compute.id
+        # With qualified lookup, should get exact match confidence (0.80),
+        # not ambiguous suffix confidence (0.80 * 0.70 = 0.56)
+        assert call_edges[0].confidence >= 0.70
+
+    def test_unscoped_method_still_works(self, tmp_path: Path) -> None:
+        """Regular foo.bar() method calls still resolve via suffix matching."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = self._make_rust_symbol("MyType::bar")
+
+        source = b"fn main() {\n    foo.bar();\n}\n"
+        global_symbols = {"MyType::bar": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should find bar via suffix matching (MyType::bar → "bar" suffix)
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_scoped_call_not_in_registry(self, tmp_path: Path) -> None:
+        """Unknown::method() doesn't crash, no edge produced."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Unknown::method();\n}\n"
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # No symbols registered, so no edges should be produced
+        assert len(call_edges) == 0
+
+    def test_scoped_call_falls_back_to_short_name(self, tmp_path: Path) -> None:
+        """When full scoped name not found, falls back to short name lookup.
+
+        If registry has "bar" but not "Foo::bar", we should still find "bar"
+        via the short name fallback.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:lib.rs:1-10:bar:function",
+            name="bar", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Foo::bar();\n}\n"
+        # Registry only has "bar", not "Foo::bar"
+        global_symbols = {"bar": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+
+class TestRustEnclosingFunctionQualified:
+    """Tests for correct enclosing function detection in impl blocks.
+
+    When two impl blocks define methods with the same short name,
+    _get_enclosing_function must return the correct qualified symbol
+    (e.g., Diff::compute, not Parser::compute) for call attribution.
+    This is critical for forward slices — if call edges have the wrong
+    src, the slice from the right function won't find its callees.
+    """
+
+    def test_call_attributed_to_correct_impl_method(self, tmp_path: Path) -> None:
+        """Calls inside Diff::compute are attributed to Diff::compute, not Parser::compute.
+
+        The bug: symbol_by_name["compute"] is overwritten by whichever impl
+        is processed last. _get_enclosing_function uses only the short name,
+        so calls inside Diff::compute get attributed to Parser::compute.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn helper() {}
+
+struct Diff;
+struct Parser;
+
+impl Diff {
+    fn compute(&self) {
+        helper();
+    }
+}
+
+impl Parser {
+    fn compute(&self) {
+        // Parser's compute does nothing
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        diff_compute = next(
+            (s for s in result.symbols if s.name == "Diff::compute"), None,
+        )
+        parser_compute = next(
+            (s for s in result.symbols if s.name == "Parser::compute"), None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper"), None,
+        )
+
+        assert diff_compute is not None, "Should find Diff::compute"
+        assert parser_compute is not None, "Should find Parser::compute"
+        assert helper_func is not None, "Should find helper"
+
+        # The call to helper() in Diff::compute must have src = Diff::compute
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Should have call edge to helper()"
+        assert call_edge.src == diff_compute.id, (
+            f"Call to helper() should be from Diff::compute ({diff_compute.id}), "
+            f"not Parser::compute ({parser_compute.id}). Got: {call_edge.src}"
+        )
+
+    def test_calls_in_multiple_same_named_methods(self, tmp_path: Path) -> None:
+        """Each same-named method's calls are correctly attributed.
+
+        Both Foo::run and Bar::run call different functions. Each call
+        must be attributed to the correct enclosing method.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn alpha() {}
+fn beta() {}
+
+struct Foo;
+struct Bar;
+
+impl Foo {
+    fn run(&self) {
+        alpha();
+    }
+}
+
+impl Bar {
+    fn run(&self) {
+        beta();
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        foo_run = next(
+            (s for s in result.symbols if s.name == "Foo::run"), None,
+        )
+        bar_run = next(
+            (s for s in result.symbols if s.name == "Bar::run"), None,
+        )
+        alpha = next(
+            (s for s in result.symbols if s.name == "alpha"), None,
+        )
+        beta = next(
+            (s for s in result.symbols if s.name == "beta"), None,
+        )
+
+        assert foo_run is not None
+        assert bar_run is not None
+        assert alpha is not None
+        assert beta is not None
+
+        # alpha() call should come from Foo::run
+        alpha_edge = next(
+            (e for e in result.edges if e.dst == alpha.id and e.edge_type == "calls"),
+            None,
+        )
+        assert alpha_edge is not None
+        assert alpha_edge.src == foo_run.id, (
+            f"alpha() should be called from Foo::run, got src={alpha_edge.src}"
+        )
+
+        # beta() call should come from Bar::run
+        beta_edge = next(
+            (e for e in result.edges if e.dst == beta.id and e.edge_type == "calls"),
+            None,
+        )
+        assert beta_edge is not None
+        assert beta_edge.src == bar_run.id, (
+            f"beta() should be called from Bar::run, got src={beta_edge.src}"
+        )
+
+    def test_free_function_still_works(self, tmp_path: Path) -> None:
+        """Functions outside impl blocks still have correct call attribution."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn helper() {}
+
+fn caller() {
+    helper();
+}
+
+struct Foo;
+
+impl Foo {
+    fn caller(&self) {
+        helper();
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        free_caller = next(
+            (s for s in result.symbols if s.name == "caller"), None,
+        )
+        foo_caller = next(
+            (s for s in result.symbols if s.name == "Foo::caller"), None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper"), None,
+        )
+
+        assert free_caller is not None
+        assert foo_caller is not None
+        assert helper_func is not None
+
+        # Both should have call edges to helper
+        call_edges = [
+            e for e in result.edges
+            if e.dst == helper_func.id and e.edge_type == "calls"
+        ]
+        src_ids = {e.src for e in call_edges}
+        assert free_caller.id in src_ids, "Free function caller should call helper"
+        assert foo_caller.id in src_ids, "Foo::caller should call helper"
+
+
+class TestRustScopedFallbackAmbiguity:
+    """Tests for ambiguity guard on scoped identifier fallback to short name.
+
+    When ``Type::new()`` cannot resolve the full scoped name ``Type::new``,
+    the fallback to the bare method name ``new`` must use the
+    ``method_resolver`` with its ambiguity threshold.  Without this guard,
+    ``SomeType::new()`` silently resolves to an arbitrary ``new`` symbol
+    producing massive false in-edges on common associated function names
+    (``new``, ``default``, ``from``).
+    """
+
+    def test_scoped_fallback_many_candidates_no_edge(self, tmp_path: Path) -> None:
+        """Type::new() with 20 'new' candidates produces no call edge.
+
+        When the full scoped name ``UnknownType::new`` is not in the registry
+        and the short name ``new`` has 20 candidates, the method_resolver
+        (ambiguity_threshold=3) should suppress the edge.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    MyType::new();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with many symbols named "new" under different types
+        registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
+        for i in range(20):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}::new:function",
+                name=f"Type{i}::new", kind="function", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}::new"] = sym
+            method_reg.setdefault("new", []).append(sym)
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # The ambiguity guard should suppress the edge — no false resolution
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges but got {len(call_edges)}: "
+            f"{[e.dst for e in call_edges]}"
+        )
+
+    def test_scoped_fallback_single_candidate_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """Type::method() with 1 candidate for short name resolves correctly.
+
+        When ``UnknownType::compute`` isn't found but ``compute`` has exactly
+        1 candidate, the fallback should produce a call edge.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    Foo::compute();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:lib.rs:1-10:compute:function",
+            name="compute", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"compute": target}
+        method_reg: dict[str, list[Symbol]] = {"compute": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id

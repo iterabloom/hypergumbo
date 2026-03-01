@@ -4,6 +4,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import sys
 
+from hypergumbo_lang_mainstream import js_ts as js_ts_module
+
 
 class TestFindJsTsFiles:
     """Tests for JS/TS file discovery."""
@@ -65,31 +67,17 @@ class TestTreeSitterAvailability:
 
     def test_is_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter is available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_tree_sitter_available() is True
+        result = js_ts_module.is_tree_sitter_available()
+        assert result is True
 
     def test_is_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
+        """Returns False when grammar is not available."""
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=False):
+            assert js_ts_module.is_tree_sitter_available() is False
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_tree_sitter_available() is False
-
-    def test_is_tree_sitter_available_no_js_grammar(self) -> None:
-        """Returns False when tree-sitter-javascript is not available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_javascript is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_tree_sitter_available() is False
+    def test_is_tree_sitter_available_via_analyzer(self) -> None:
+        """Availability check delegates to TreeSitterAnalyzer._check_grammar_available."""
+        assert js_ts_module.is_tree_sitter_available() == js_ts_module._jsts_analyzer._check_grammar_available()
 
 
 class TestAnalyzeJavascriptFallback:
@@ -101,14 +89,14 @@ class TestAnalyzeJavascriptFallback:
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=False):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=False):
             result = analyze_javascript(tmp_path)
 
         assert result.symbols == []
         assert result.edges == []
         assert result.run is not None
         assert result.skipped is True
-        assert "tree-sitter" in result.skip_reason.lower()
+        assert "not available" in result.skip_reason
 
 
 class TestAnalyzeJavascriptWithTreeSitter:
@@ -404,7 +392,8 @@ const x = require(name);
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         """Analysis run has correct metadata."""
-        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID, PASS_VERSION
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID
+        from hypergumbo_core.ir import PASS_VERSION
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
@@ -871,7 +860,7 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = mock_tree
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
@@ -1332,7 +1321,7 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = tree
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
@@ -1686,7 +1675,7 @@ class TestParserUnavailableEdgeCases:
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=None):
                 result = analyze_javascript(tmp_path)
 
@@ -1702,7 +1691,7 @@ class TestParserUnavailableEdgeCases:
 function test() {}
 </script>''')
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", return_value=None):
                 result = analyze_javascript(tmp_path)
 
@@ -1828,6 +1817,53 @@ function main(logger) {
         assert len(inferred_calls) == 1
         assert "writeMessage" in inferred_calls[0].dst
         assert inferred_calls[0].confidence == 0.60
+
+    def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
+        """Bare name fallback emits at most one edge, not N edges for N candidates.
+
+        When multiple classes define the same method name and a call site can't
+        be resolved via type info, Case 4 should emit a single best-guess edge
+        rather than fanning out to all candidates. This prevents false positives
+        in reverse slicing (e.g., asking "who calls CatsController.create?"
+        should not return every other 'create' method in the codebase).
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+class CatsService {
+    create(dto) {
+        return dto;
+    }
+}
+
+class UsersService {
+    create(dto) {
+        return dto;
+    }
+}
+
+class OrdersService {
+    create(dto) {
+        return dto;
+    }
+}
+
+function handler(unknown) {
+    unknown.create({name: "test"});
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_calls = [
+            e for e in call_edges if e.evidence_type == "ast_method_inferred"
+        ]
+        # Should emit at most 1 edge, NOT 3 (one per candidate)
+        assert len(inferred_calls) <= 1
+        if inferred_calls:
+            assert "create" in inferred_calls[0].dst
 
     def test_new_class_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
@@ -2232,7 +2268,8 @@ class TestExpressRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_express_get_route_detected(self, tmp_path: Path) -> None:
-        """Express app.get() route handler sets stable_id to 'get'."""
+        """Express app.get() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
@@ -2247,19 +2284,20 @@ app.get('/users', function getUsers(req, res) {
 
         result = analyze_javascript(tmp_path)
 
-        # Find the route handler function
+        # Find the route handler function by meta
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method")]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
         assert handler.name == "getUsers"
-        assert handler.stable_id == "GET"
+        assert handler.stable_id == make_route_stable_id("GET", "/users")
         assert handler.meta is not None
         assert handler.meta.get("route_path") == "/users"
 
     def test_express_post_route_detected(self, tmp_path: Path) -> None:
-        """Express app.post() route handler sets stable_id to 'post'."""
+        """Express app.post() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
@@ -2275,13 +2313,15 @@ app.post('/users', function createUser(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
+        assert route_handlers[0].stable_id == make_route_stable_id("POST", "/users")
         assert route_handlers[0].meta.get("route_path") == "/users"
 
     def test_express_router_route_detected(self, tmp_path: Path) -> None:
-        """Express router.get() also sets stable_id to HTTP method."""
+        """Express router routes have unique sha256-based stable_ids (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
@@ -2301,15 +2341,17 @@ router.delete('/items/:id', function deleteItem(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("GET", "DELETE")]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method")]
 
         assert len(route_handlers) == 2
 
-        get_handler = next(f for f in route_handlers if f.stable_id == "GET")
-        delete_handler = next(f for f in route_handlers if f.stable_id == "DELETE")
+        get_handler = next(f for f in route_handlers if f.meta.get("http_method") == "GET")
+        delete_handler = next(f for f in route_handlers if f.meta.get("http_method") == "DELETE")
 
-        assert get_handler.meta.get("route_path") == "/items/:id"
-        assert delete_handler.meta.get("route_path") == "/items/:id"
+        assert get_handler.stable_id == make_route_stable_id("GET", "/items/:id")
+        assert delete_handler.stable_id == make_route_stable_id("DELETE", "/items/:id")
+        # Different methods on same path must have different stable_ids
+        assert get_handler.stable_id != delete_handler.stable_id
 
     def test_express_arrow_function_route(self, tmp_path: Path) -> None:
         """Express route with arrow function handler."""
@@ -2329,7 +2371,7 @@ app.get('/health', (req, res) => {
 
         # Arrow functions in route calls should get route info
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         # Even anonymous arrow functions should be detected as routes
         assert len(route_handlers) >= 0  # May or may not create symbol for anonymous
@@ -2352,13 +2394,20 @@ app.delete('/delete', function doDelete(req, res) { res.send('delete'); });
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = {f.stable_id: f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE")}
+        route_handlers = {
+            f.meta["http_method"]: f
+            for f in functions
+            if f.meta and f.meta.get("http_method")
+        }
 
         assert "GET" in route_handlers
         assert "POST" in route_handlers
         assert "PUT" in route_handlers
         assert "PATCH" in route_handlers
         assert "DELETE" in route_handlers
+        # All five routes must have distinct stable_ids
+        stable_ids = [f.stable_id for f in route_handlers.values()]
+        assert len(set(stable_ids)) == 5
 
     def test_non_route_function_keeps_original_stable_id(self, tmp_path: Path) -> None:
         """Functions not in route calls keep their original stable_id."""
@@ -2396,7 +2445,7 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2429,9 +2478,12 @@ router.delete('/users/:id', userController.deleteUser);
         assert "userController.getUsers" in route_names
         assert "userController.deleteUser" in route_names
 
-        # Verify HTTP methods
-        methods = {r.stable_id for r in routes}
+        # Verify HTTP methods via meta
+        methods = {r.meta["http_method"] for r in routes}
         assert methods == {"POST", "GET", "DELETE"}
+        # All routes must have unique stable_ids (no collisions)
+        stable_ids = [r.stable_id for r in routes]
+        assert len(set(stable_ids)) == 3
 
         # Verify route paths
         for route in routes:
@@ -2463,7 +2515,9 @@ router.get('/users', handleUsers);
 
         assert len(routes) == 1
         assert routes[0].name == "handleUsers"
-        assert routes[0].stable_id == "GET"
+        assert routes[0].meta.get("http_method") == "GET"
+        assert routes[0].stable_id is not None
+        assert len(routes[0].stable_id) == 64  # sha256 hex digest
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
@@ -2497,13 +2551,17 @@ router
         # Verify routes have correct paths from chained .route() call
         root_routes = [r for r in routes if r.meta.get("route_path") == "/"]
         assert len(root_routes) == 2
-        root_methods = {r.stable_id for r in root_routes}
+        root_methods = {r.meta["http_method"] for r in root_routes}
         assert root_methods == {"POST", "GET"}
+        # Root routes must have distinct stable_ids
+        assert len({r.stable_id for r in root_routes}) == 2
 
         param_routes = [r for r in routes if r.meta.get("route_path") == "/:userId"]
         assert len(param_routes) == 3
-        param_methods = {r.stable_id for r in param_routes}
+        param_methods = {r.meta["http_method"] for r in param_routes}
         assert param_methods == {"GET", "PATCH", "DELETE"}
+        # Param routes must have distinct stable_ids
+        assert len({r.stable_id for r in param_routes}) == 3
 
     def test_express_inline_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
         """UsageContext for inline Express handlers should reference the Symbol.
@@ -2687,7 +2745,7 @@ class TestNestJSRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_nestjs_get_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Get() decorator should set stable_id to 'get'."""
+        """NestJS @Get() decorator should set sha256-based stable_id (ADR-0014 §4)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -2706,13 +2764,13 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.findAll"
 
     def test_nestjs_post_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Post() decorator should set stable_id to 'post'."""
+        """NestJS @Post() decorator should set sha256-based stable_id (ADR-0014 §4)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -2731,7 +2789,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "POST"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.create"
@@ -2763,7 +2821,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2806,13 +2864,11 @@ export class ResourceController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        stable_ids = {m.stable_id for m in methods}
-
-        assert "GET" in stable_ids
-        assert "POST" in stable_ids
-        assert "PUT" in stable_ids
-        assert "PATCH" in stable_ids
-        assert "DELETE" in stable_ids
+        # All 5 methods should have sha256-based stable_ids, and all should be unique
+        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        assert len(route_methods) == 5
+        stable_ids = {m.stable_id for m in route_methods}
+        assert len(stable_ids) == 5, "NestJS route stable_ids must be unique per method"
 
     def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
         """NestJS @Controller() with no path + @Get('users/:id') gives just method path."""
@@ -2837,7 +2893,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2870,7 +2926,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2903,7 +2959,7 @@ export class ApiController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2933,7 +2989,7 @@ class UsersService {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2964,7 +3020,7 @@ class InternalController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3014,7 +3070,7 @@ module.exports = router;
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3039,7 +3095,7 @@ router.post('/users', function createUser(ctx) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -3061,7 +3117,7 @@ router.delete('/users/:id', async (ctx) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "DELETE"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "DELETE"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -3103,7 +3159,7 @@ fastify.get('/users', function getUsers(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3127,7 +3183,7 @@ fastify.post('/users', function createUser(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -3148,7 +3204,7 @@ fastify.put('/users/:id', async (request, reply) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "PUT"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "PUT"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -3173,15 +3229,22 @@ fastify.options('/g', function handleOptions(r, p) {});
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        stable_ids = {f.stable_id for f in functions}
+        http_methods = {
+            f.meta["http_method"]: f
+            for f in functions
+            if f.meta and f.meta.get("http_method")
+        }
 
-        assert "GET" in stable_ids
-        assert "POST" in stable_ids
-        assert "PUT" in stable_ids
-        assert "PATCH" in stable_ids
-        assert "DELETE" in stable_ids
-        assert "HEAD" in stable_ids
-        assert "OPTIONS" in stable_ids
+        assert "GET" in http_methods
+        assert "POST" in http_methods
+        assert "PUT" in http_methods
+        assert "PATCH" in http_methods
+        assert "DELETE" in http_methods
+        assert "HEAD" in http_methods
+        assert "OPTIONS" in http_methods
+        # All routes must have unique stable_ids
+        stable_ids = [f.stable_id for f in http_methods.values()]
+        assert len(set(stable_ids)) == 7
 
 
 class TestReexportResolution:
@@ -3542,6 +3605,187 @@ function run() {
             "Namespace import path_hint should disambiguate when same function exists in multiple modules."
         )
 
+    def test_named_import_disambiguates_same_name_functions(self, tmp_path: Path) -> None:
+        """Named imports (import { X } from) disambiguate same-name functions.
+
+        When two files define the same function name, a named import should
+        resolve calls to the correct module via import path disambiguation.
+        Previously, direct calls like ``process()`` after
+        ``import { process } from './dir_a/utils'`` would resolve to whichever
+        file was processed last (global_symbols last-one-wins), ignoring the
+        import statement entirely.
+
+        Uses two consumers (one importing from each dir) so the test is
+        order-independent: regardless of which symbol wins global_symbols,
+        one consumer MUST break without the fix.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        dir_a = tmp_path / "dir_a"
+        dir_a.mkdir()
+        (dir_a / "utils.js").write_text(
+            "export function process() {\n    return 'A';\n}\n"
+        )
+
+        dir_b = tmp_path / "dir_b"
+        dir_b.mkdir()
+        (dir_b / "utils.js").write_text(
+            "export function process() {\n    return 'B';\n}\n"
+        )
+
+        # Two consumers, each importing process() from a different module
+        (tmp_path / "consumer_a.js").write_text(
+            "import { process } from './dir_a/utils';\n"
+            "\n"
+            "function useA() {\n"
+            "    process();\n"
+            "}\n"
+        )
+        (tmp_path / "consumer_b.js").write_text(
+            "import { process } from './dir_b/utils';\n"
+            "\n"
+            "function useB() {\n"
+            "    process();\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Find edge from useA -> process
+        edge_a = next(
+            (e for e in call_edges if "useA" in e.src and "process" in e.dst), None,
+        )
+        assert edge_a is not None, "Expected call edge from useA to process"
+        assert "dir_a" in edge_a.dst, (
+            f"useA imports from dir_a but edge resolves to {edge_a.dst}. "
+            "Named import should disambiguate direct calls."
+        )
+
+        # Find edge from useB -> process
+        edge_b = next(
+            (e for e in call_edges if "useB" in e.src and "process" in e.dst), None,
+        )
+        assert edge_b is not None, "Expected call edge from useB to process"
+        assert "dir_b" in edge_b.dst, (
+            f"useB imports from dir_b but edge resolves to {edge_b.dst}. "
+            "Named import should disambiguate direct calls."
+        )
+
+    def test_same_package_preference_no_import(self, tmp_path: Path) -> None:
+        """Direct calls without imports prefer symbols from the same package.
+
+        When ``error()`` is called without any import in two different packages,
+        each should resolve to their own package's ``error()`` function.
+        Previously, ``global_symbols`` used last-one-wins, so one of the two
+        callers would incorrectly resolve to the other package's function.
+
+        Uses two packages (each with its own package.json) and two callers
+        to make the test filesystem-order-independent.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Package A: server
+        server = tmp_path / "server" / "src"
+        server.mkdir(parents=True)
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (server / "errors.js").write_text(
+            "export function error(msg) {\n    console.log(msg);\n}\n"
+        )
+        (server / "handler.js").write_text(
+            "// No import of error — it's a same-package helper.\n"
+            "function handleRequest() {\n"
+            "    error('something went wrong');\n"
+            "}\n"
+        )
+
+        # Package B: client (different package)
+        client = tmp_path / "client" / "js"
+        client.mkdir(parents=True)
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (client / "actions.js").write_text(
+            "export function error(msg) {\n    alert(msg);\n}\n"
+        )
+        (client / "app.js").write_text(
+            "// No import — uses same-package error helper.\n"
+            "function showError() {\n"
+            "    error('user-facing message');\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Server handler should resolve to server's error
+        handler_error = next(
+            (e for e in call_edges if "handleRequest" in e.src and "error" in e.dst),
+            None,
+        )
+        assert handler_error is not None, "Expected call edge from handleRequest to error"
+        assert "server" in handler_error.dst, (
+            f"handleRequest is in server/ but call resolves to {handler_error.dst}. "
+            "Same-package preference should pick the same-package symbol."
+        )
+
+        # Client app should resolve to client's error
+        client_error = next(
+            (e for e in call_edges if "showError" in e.src and "error" in e.dst),
+            None,
+        )
+        assert client_error is not None, "Expected call edge from showError to error"
+        assert "client" in client_error.dst, (
+            f"showError is in client/ but call resolves to {client_error.dst}. "
+            "Same-package preference should pick the same-package symbol."
+        )
+
+    def test_same_package_candidate_no_package_json(self, tmp_path: Path) -> None:
+        """_same_package_candidate returns None when no package.json exists."""
+        from hypergumbo_lang_mainstream.js_ts import _same_package_candidate
+
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym_a = Symbol(
+            id="js:a.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "a.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        sym_b = Symbol(
+            id="js:b.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "b.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        # No package.json anywhere — should return None
+        result = _same_package_candidate(
+            tmp_path / "a.js", "helper", {"helper": [sym_a, sym_b]},
+        )
+        assert result is None
+
+    def test_same_package_candidate_no_match(self, tmp_path: Path) -> None:
+        """_same_package_candidate returns None when no candidate matches package root."""
+        from hypergumbo_lang_mainstream.js_ts import _same_package_candidate
+
+        from hypergumbo_core.ir import Symbol, Span
+
+        # Caller is in pkg_a/, but both candidates are in other_pkg/
+        (tmp_path / "pkg_a").mkdir()
+        (tmp_path / "pkg_a" / "package.json").write_text('{"name": "a"}')
+        sym_x = Symbol(
+            id="js:other/x.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "other_pkg" / "x.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        sym_y = Symbol(
+            id="js:other/y.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "other_pkg" / "y.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        result = _same_package_candidate(
+            tmp_path / "pkg_a" / "handler.js", "helper", {"helper": [sym_x, sym_y]},
+        )
+        assert result is None
+
     def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
         """When same class name exists in multiple modules, namespace import disambiguates.
 
@@ -3604,6 +3848,40 @@ function run() {
         )
 
 
+class TestJsTsReturnTypeExtraction:
+    """Unit tests for _extract_jsts_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(x: number): MyClass") == "MyClass"
+
+    def test_no_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(x: number)") is None
+
+    def test_generic_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(): Promise<Client>") is None
+
+    def test_none_signature(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name(None) is None
+
+    def test_empty_signature(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("") is None
+
+    def test_no_paren(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("no parens") is None
+
+
 class TestVariableTypeInference:
     """Tests for variable type inference from constructor calls."""
 
@@ -3645,8 +3923,49 @@ function run() {
         # Verify it resolved to ServiceClient.send
         assert "ServiceClient.send" in method_edge.dst or "send" in method_edge.dst
 
-    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
-        """Type inference should NOT track types from function returns."""
+    def test_type_inference_from_return_type_annotation(self, tmp_path: Path) -> None:
+        """TypeScript return type annotations enable type inference."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+class ServiceClient {
+    send(): string {
+        return 'sent';
+    }
+}
+
+function getClient(): ServiceClient {
+    return new ServiceClient();
+}
+
+function run() {
+    const client = getClient();
+    client.send();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        get_client_edge = next(
+            (e for e in call_edges if "run" in e.src and "getClient" in e.dst),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for getClient"
+
+        # client.send() should resolve via return type annotation
+        type_inferred_edges = [
+            e for e in call_edges
+            if e.evidence_type == "ast_method_type_inferred"
+            and "send" in e.dst
+        ]
+        assert len(type_inferred_edges) == 1, (
+            "Expected type-inferred edge for client.send() via return type"
+        )
+
+    def test_type_inference_no_annotation_no_resolution(self, tmp_path: Path) -> None:
+        """JS functions without return type annotations don't enable type inference."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
@@ -3662,29 +3981,20 @@ function getClient() {
 }
 
 function run() {
-    const client = getClient();  // NOT tracked - function return
-    client.send();  // Should NOT be high-confidence resolved
+    const client = getClient();
+    client.send();
 }
 """)
 
         result = analyze_javascript(tmp_path)
 
-        # Should have call edge for getClient()
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        get_client_edge = next(
-            (e for e in call_edges if "run" in e.src and "getClient" in e.dst),
-            None
-        )
-        assert get_client_edge is not None, "Expected call edge for getClient"
-
-        # client.send() should NOT be resolved with high confidence
-        # (may have low-confidence inferred edge, but not type_inferred evidence)
         type_inferred_edges = [
             e for e in call_edges
-            if e.meta and e.meta.get("evidence_type") == "ast_method_type_inferred"
+            if e.evidence_type == "ast_method_type_inferred"
         ]
         assert len(type_inferred_edges) == 0, (
-            "Should NOT have type-inferred edge for function return"
+            "Should NOT have type-inferred edge without annotation"
         )
 
     def test_namespace_class_instantiation(self, tmp_path: Path) -> None:
@@ -3790,6 +4100,350 @@ function process(db: Database, data: string): void {
         # Both should use type inference evidence
         assert save_edge.evidence_type == "ast_method_type_inferred"
         assert commit_edge.evidence_type == "ast_method_type_inferred"
+
+    def test_this_property_method_call_nestjs_pattern(self, tmp_path: Path) -> None:
+        """this.property.method() calls via constructor injection should resolve.
+
+        This tests the NestJS/Angular pattern where services are injected via constructor:
+            constructor(private readonly catsService: CatsService) {}
+
+        And then called via:
+            this.catsService.create(data)
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Service class with methods
+        service_file = tmp_path / "cats.service.ts"
+        service_file.write_text("""
+class CatsService {
+    create(data: any) {
+        return data;
+    }
+
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        # Controller with constructor injection
+        controller_file = tmp_path / "cats.controller.ts"
+        controller_file.write_text("""
+class CatsController {
+    constructor(private readonly catsService: CatsService) {}
+
+    async create(data: any) {
+        return this.catsService.create(data);
+    }
+
+    async findAll() {
+        return this.catsService.findAll();
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        ctrl_create = next(
+            (s for s in result.symbols if s.name == "CatsController.create"), None
+        )
+        ctrl_find_all = next(
+            (s for s in result.symbols if s.name == "CatsController.findAll"), None
+        )
+        svc_create = next(
+            (s for s in result.symbols if s.name == "CatsService.create"), None
+        )
+        svc_find_all = next(
+            (s for s in result.symbols if s.name == "CatsService.findAll"), None
+        )
+
+        assert ctrl_create is not None, "Expected CatsController.create symbol"
+        assert ctrl_find_all is not None, "Expected CatsController.findAll symbol"
+        assert svc_create is not None, "Expected CatsService.create symbol"
+        assert svc_find_all is not None, "Expected CatsService.findAll symbol"
+
+        # Should have edges from controller methods to service methods
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        create_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == ctrl_create.id
+                and e.dst == svc_create.id
+            ),
+            None,
+        )
+        find_all_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == ctrl_find_all.id
+                and e.dst == svc_find_all.id
+            ),
+            None,
+        )
+
+        assert create_edge is not None, (
+            "Expected call edge for this.catsService.create() via constructor injection. "
+            f"Edges from ctrl_create: {[e.dst for e in call_edges if e.src == ctrl_create.id]}"
+        )
+        assert find_all_edge is not None, (
+            "Expected call edge for this.catsService.findAll() via constructor injection. "
+            f"Edges from ctrl_find_all: {[e.dst for e in call_edges if e.src == ctrl_find_all.id]}"
+        )
+
+        # Both should use this_property evidence type
+        assert create_edge.evidence_type == "ast_method_this_property"
+        assert find_all_edge.evidence_type == "ast_method_this_property"
+        # Confidence should be 0.90 * resolver confidence (typically 1.0)
+        assert create_edge.confidence == 0.90
+        assert find_all_edge.confidence == 0.90
+
+    def test_this_property_disambiguates_via_named_import(self, tmp_path: Path) -> None:
+        """this.property.method() should resolve to the correct class via named import.
+
+        When multiple files define the same class name, the import path should
+        disambiguate which one to use. This is essential for monorepos (e.g., NestJS
+        with multiple sample apps each defining CatsService).
+
+        The controller is in dir_b (alphabetically later) and imports from its own
+        directory, while dir_a has a decoy CatsService. Without import-aware
+        disambiguation, the resolver would pick dir_a (alphabetically first).
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # dir_a has a decoy CatsService (alphabetically first = default pick)
+        (tmp_path / "dir_a").mkdir()
+        # dir_b has the correct CatsService (alphabetically later)
+        (tmp_path / "dir_b").mkdir()
+
+        decoy_service = tmp_path / "dir_a" / "cats.service.ts"
+        decoy_service.write_text("""
+export class CatsService {
+    create(data: any) { return data; }
+}
+""")
+
+        correct_service = tmp_path / "dir_b" / "cats.service.ts"
+        correct_service.write_text("""
+export class CatsService {
+    create(data: any) { return data; }
+}
+""")
+
+        # Controller in dir_b imports CatsService from its own directory
+        controller = tmp_path / "dir_b" / "cats.controller.ts"
+        controller.write_text("""
+import { CatsService } from './cats.service';
+
+class CatsController {
+    constructor(private readonly catsService: CatsService) {}
+
+    async create(data: any) {
+        return this.catsService.create(data);
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        ctrl_create = next(
+            (s for s in result.symbols if s.name == "CatsController.create"), None
+        )
+        assert ctrl_create is not None, "Expected CatsController.create symbol"
+
+        # Find both CatsService.create symbols
+        svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
+        assert len(svc_creates) == 2, f"Expected 2 CatsService.create symbols, got {len(svc_creates)}"
+
+        svc_create_correct = next(
+            (s for s in svc_creates if "dir_b" in s.path), None
+        )
+        svc_create_decoy = next(
+            (s for s in svc_creates if "dir_a" in s.path), None
+        )
+        assert svc_create_correct is not None
+        assert svc_create_decoy is not None
+
+        # Should have an edge to dir_b's CatsService.create (same directory import)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        correct_edge = next(
+            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_correct.id),
+            None,
+        )
+        assert correct_edge is not None, (
+            "Expected call edge to dir_b/CatsService.create (via named import), "
+            f"got edges: {[(e.dst, e.evidence_type) for e in call_edges if e.src == ctrl_create.id]}"
+        )
+
+        # Should NOT have an edge to dir_a's CatsService.create
+        wrong_edge = next(
+            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_decoy.id),
+            None,
+        )
+        assert wrong_edge is None, (
+            "Should NOT have edge to dir_a/CatsService.create — wrong disambiguation"
+        )
+
+    def test_variable_method_disambiguates_via_named_import(self, tmp_path: Path) -> None:
+        """variable.method() (Case 3) should also use import-path disambiguation."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "dir_a").mkdir()
+        (tmp_path / "dir_b").mkdir()
+
+        # Decoy in dir_a (alphabetically first)
+        (tmp_path / "dir_a" / "cats.service.ts").write_text(
+            "export class CatsService {\n    create() { return 1; }\n}\n"
+        )
+        # Correct in dir_b
+        (tmp_path / "dir_b" / "cats.service.ts").write_text(
+            "export class CatsService {\n    create() { return 2; }\n}\n"
+        )
+        # Consumer in dir_b uses local variable (Case 3: svc.create())
+        (tmp_path / "dir_b" / "app.ts").write_text(
+            "import { CatsService } from './cats.service';\n"
+            "function run() {\n"
+            "    const svc = new CatsService();\n"
+            "    svc.create();\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        run_fn = next((s for s in result.symbols if s.name == "run"), None)
+        assert run_fn is not None
+        svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
+        assert len(svc_creates) == 2
+        correct = next((s for s in svc_creates if "dir_b" in s.path), None)
+        assert correct is not None
+
+        type_edges = [
+            e for e in result.edges
+            if e.src == run_fn.id and e.evidence_type == "ast_method_type_inferred"
+        ]
+        assert any(e.dst == correct.id for e in type_edges), (
+            f"Expected Case 3 edge to dir_b/CatsService.create, got: "
+            f"{[(e.dst, e.evidence_type) for e in type_edges]}"
+        )
+
+    def test_import_alias_tracked_in_named_imports(self, tmp_path: Path) -> None:
+        """import { Foo as Bar } from './module' should track alias 'Bar'."""
+        from hypergumbo_lang_mainstream.js_ts import _extract_named_imports, _get_parser_for_lang
+
+        parser = _get_parser_for_lang(is_typescript=True)
+        assert parser is not None
+        source = b"import { CatsService as CS } from './cats.service';"
+        tree = parser.parse(source)
+        imports = _extract_named_imports(tree, source)
+        # Alias should be the key, not the original name
+        assert "CS" in imports
+        assert imports["CS"] == "./cats.service"
+
+    def test_disambiguate_non_relative_import_falls_through(self, tmp_path: Path) -> None:
+        """Non-relative imports (e.g., @nestjs/common) skip disambiguation."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:1", name="Foo.bar", kind="method",
+            path="/repo/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        result = _disambiguate_by_import(
+            "@nestjs/common", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym, sym]},
+        )
+        assert result is None
+
+    def test_disambiguate_single_candidate_returns_none(self, tmp_path: Path) -> None:
+        """Disambiguation with a single candidate returns None (no ambiguity)."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:1", name="Foo.bar", kind="method",
+            path="/repo/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        result = _disambiguate_by_import(
+            "./foo", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym]},
+        )
+        assert result is None
+
+    def test_disambiguate_no_match_returns_none(self, tmp_path: Path) -> None:
+        """Disambiguation returns None when import path doesn't match any candidate."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym_a = Symbol(
+            id="test:a", name="Foo.bar", kind="method",
+            path="/repo/dir_a/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        sym_b = Symbol(
+            id="test:b", name="Foo.bar", kind="method",
+            path="/repo/dir_b/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        # Import points to dir_c which doesn't match either candidate
+        result = _disambiguate_by_import(
+            "./dir_c/foo", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym_a, sym_b]},
+        )
+        assert result is None
+
+    def test_enclosing_function_found_for_all_duplicate_named_methods(self, tmp_path: Path) -> None:
+        """All instances of a duplicate-named method must produce call edges.
+
+        In monorepos where multiple files define the same class/method name
+        (e.g., NestJS with CatsController.create in 11 sample apps), each
+        controller's method must produce its own call edges. Previously,
+        _get_enclosing_function used global_symbols which keeps only one
+        symbol per name, so only the last-processed file produced edges.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Create 3 directories each with identical CatsController + CatsService
+        for d in ["app_a", "app_b", "app_c"]:
+            (tmp_path / d).mkdir()
+            (tmp_path / d / "cats.service.ts").write_text(
+                "export class CatsService {\n"
+                "    create(data: any) { return data; }\n"
+                "}\n"
+            )
+            (tmp_path / d / "cats.controller.ts").write_text(
+                "import { CatsService } from './cats.service';\n"
+                "\n"
+                "export class CatsController {\n"
+                "    constructor(private readonly catsService: CatsService) {}\n"
+                "\n"
+                "    async create(data: any) {\n"
+                "        return this.catsService.create(data);\n"
+                "    }\n"
+                "}\n"
+            )
+
+        result = analyze_javascript(tmp_path)
+
+        # All 3 controllers should produce call edges
+        ctrl_creates = [s for s in result.symbols if s.name == "CatsController.create"]
+        assert len(ctrl_creates) == 3, (
+            f"Expected 3 CatsController.create, got {len(ctrl_creates)}"
+        )
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        controllers_with_edges = set()
+        for ctrl in ctrl_creates:
+            ctrl_edges = [e for e in call_edges if e.src == ctrl.id]
+            if ctrl_edges:
+                controllers_with_edges.add(ctrl.path)
+
+        # The bug: only 1 of 3 controllers produces edges because
+        # _get_enclosing_function uses global_symbols (one per name)
+        assert len(controllers_with_edges) == 3, (
+            f"Expected ALL 3 controllers to have call edges, "
+            f"but only {len(controllers_with_edges)} do: "
+            f"{[p.split(str(tmp_path))[-1] for p in controllers_with_edges]}"
+        )
 
 
 # ============================================================================
@@ -4442,6 +5096,84 @@ server.route({
         assert ctx.metadata.get("handler_name") is None
 
 
+class TestControllerRoutePattern:
+    """Tests for Express Controller.route() config-object pattern (WI-bajod).
+
+    Unleash-style Express apps use a base Controller class with
+    ``this.route({method, path, handler})`` for route registration.
+    This is structurally identical to Hapi's config-object pattern
+    but uses ``this`` as the receiver instead of a named variable.
+    """
+
+    def test_this_route_config_object(self, tmp_path: Path) -> None:
+        """Detects this.route({method, path, handler}) in a class constructor."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "controller.ts").write_text("""
+class StrategyController extends Controller {
+    constructor(config) {
+        super(config);
+        this.route({
+            method: 'get',
+            path: '',
+            handler: this.getAllStrategies,
+            permission: 'NONE',
+        });
+        this.route({
+            method: 'delete',
+            path: '/:name',
+            handler: this.removeStrategy,
+            permission: 'DELETE_STRATEGY',
+        });
+    }
+
+    async getAllStrategies(req, res) {
+        return res.json([]);
+    }
+
+    async removeStrategy(req, res) {
+        return res.json({ ok: true });
+    }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [
+            c for c in result.usage_contexts
+            if "route" in c.context_name and c.metadata.get("config_based")
+        ]
+        assert len(route_contexts) >= 2
+        methods = {c.metadata["http_method"] for c in route_contexts}
+        assert "GET" in methods
+        assert "DELETE" in methods
+        # Handler should be extracted from this.methodName
+        handler_names = {c.metadata.get("handler_name") for c in route_contexts}
+        assert "getAllStrategies" in handler_names or "this.getAllStrategies" in handler_names
+
+    def test_this_route_member_expression_handler(self, tmp_path: Path) -> None:
+        """Handler value this.methodName is extracted from member_expression."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "tag.ts").write_text("""
+class TagController extends Controller {
+    constructor(config) {
+        super(config);
+        this.route({ method: 'get', path: '', handler: this.getTags, permission: 'NONE' });
+        this.route({ method: 'post', path: '', handler: this.createTag, permission: 'NONE' });
+    }
+    async getTags(req, res) { return []; }
+    async createTag(req, res) { return {}; }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [
+            c for c in result.usage_contexts
+            if "route" in c.context_name and c.metadata.get("config_based")
+        ]
+        assert len(route_contexts) >= 2
+        paths = {c.metadata["route_path"] for c in route_contexts}
+        assert "/" in paths  # empty path normalizes to /
+
+
 class TestNextJsUsageContext:
     """Tests for Next.js file-based routing detection."""
 
@@ -4874,3 +5606,1345 @@ class MyComponent extends React.Component {
         # But no extends edge since React.Component is external
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
         assert len(extends_edges) == 0
+
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
+        class 'Model'; child file imports from specific path and extends 'Model'.
+        Edge should resolve to the imported Model, not the other one.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Real Model class
+        (tmp_path / "db").mkdir()
+        (tmp_path / "db" / "model.ts").write_text(
+            "export class Model {\n"
+            "    save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "helpers.ts").write_text(
+            "export class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports from ./db/model and extends Model
+        (tmp_path / "app.ts").write_text(
+            "import { Model } from './db/model';\n"
+            "\n"
+            "class Article extends Model {\n"
+            "    publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to db/model.ts::Model, NOT tests/helpers.ts::Model
+        edge = article_extends[0]
+        assert "db/model.ts" in edge.dst or "db\\model.ts" in edge.dst, (
+            f"Article extends edge should point to db/model.ts::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Base defined in file A
+        (tmp_path / "a.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "b.ts").write_text(
+            "class Base {\n    run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    go() {}\n}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to b.ts::Base (same file), not a.ts::Base
+        edge = child_extends[0]
+        assert "b.ts" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (b.ts), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "mod_a.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+        (tmp_path / "mod_b.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "child.ts").write_text(
+            "class Child extends Base {\n    go() {}\n}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
+    def test_implements_prefers_imported_interface_over_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface disambiguation: implements resolves to imported interface."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Real Validator interface
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "validator.ts").write_text(
+            "export interface Validator {\n"
+            "    validate(): boolean;\n"
+            "}\n"
+        )
+
+        # Stub Validator interface (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "mock.ts").write_text(
+            "export interface Validator {\n"
+            "    /* mock */\n"
+            "}\n"
+        )
+
+        # A file that imports from ./core/validator and implements Validator
+        (tmp_path / "form.ts").write_text(
+            "import { Validator } from './core/validator';\n"
+            "\n"
+            "class FormValidator implements Validator {\n"
+            "    validate(): boolean { return true; }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        form_impl = [e for e in impl_edges if "FormValidator" in e.src]
+        assert len(form_impl) == 1, (
+            f"Expected 1 implements edge from FormValidator, got {len(form_impl)}"
+        )
+
+        # Edge should point to core/validator.ts::Validator
+        edge = form_impl[0]
+        assert "core/validator.ts" in edge.dst or "core\\validator.ts" in edge.dst, (
+            f"FormValidator implements edge should point to core/validator.ts::Validator, "
+            f"but points to: {edge.dst}"
+        )
+
+
+class TestJsTsAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in JavaScript/TypeScript.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.close() with 3 classes defining close() → no resolved edge.
+
+        When Server, Client, and Worker all define close(), and obj's type
+        cannot be inferred, the call should NOT produce a resolved edge
+        pointing to any specific class's close() method.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "multi.ts"
+        ts_file.write_text("""
+class Server {
+    close() { return true; }
+}
+
+class Client {
+    close() { return true; }
+}
+
+class Worker {
+    close() { return true; }
+}
+
+function cleanup(obj: any) {
+    obj.close();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            if "close" in edge.dst.lower():
+                assert "Server.close" not in edge.dst, (
+                    f"Should not resolve to Server.close, got {edge.dst}"
+                )
+                assert "Client.close" not in edge.dst, (
+                    f"Should not resolve to Client.close, got {edge.dst}"
+                )
+                assert "Worker.close" not in edge.dst, (
+                    f"Should not resolve to Worker.close, got {edge.dst}"
+                )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "two.ts"
+        ts_file.write_text("""
+class Server {
+    run() { return true; }
+}
+
+class Client {
+    run() { return true; }
+}
+
+function execute(obj: any) {
+    obj.run();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, (
+            "2 candidates should still resolve"
+        )
+
+
+class TestObjectLiteralFunctionReferences:
+    """Tests for function references in object literal fields.
+
+    Object literals like {onClick: handleClick, onSubmit: processForm}
+    contain function references that should produce edges. This is
+    common in React, Express config, event emitter patterns, etc.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_object_literal_function_ref_same_file(self, tmp_path: Path) -> None:
+        """Object property with bare identifier creates a references edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleClick() {
+    return true;
+}
+
+function setup() {
+    const config = {
+        onClick: handleClick,
+    };
+    return config;
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "handleClick" in ref_edges[0].dst
+        assert "setup" in ref_edges[0].src
+        assert ref_edges[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_object_literal_func_ref_cross_file(self, tmp_path: Path) -> None:
+        """Object property function reference resolves across files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.js").write_text("""
+function processForm(data) {
+    return data;
+}
+""")
+        (tmp_path / "config.js").write_text("""
+function createConfig() {
+    return {
+        onSubmit: processForm,
+    };
+}
+""")
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "processForm" in ref_edges[0].dst
+
+    def test_object_literal_non_function_not_matched(self, tmp_path: Path) -> None:
+        """Object property with non-function identifier creates no edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+const STATUS_ACTIVE = "active";
+
+function setup() {
+    return {
+        status: STATUS_ACTIVE,
+    };
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 0
+
+    def test_shorthand_property_function_ref(self, tmp_path: Path) -> None:
+        """Shorthand property {handleClick} creates a references edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleClick() {
+    return true;
+}
+
+function setup() {
+    return { handleClick };
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "handleClick" in ref_edges[0].dst
+
+    def test_multiple_function_refs_in_object(self, tmp_path: Path) -> None:
+        """Multiple function references in one object produce multiple edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onStart() {}
+function onStop() {}
+
+function createEvents() {
+    return {
+        start: onStart,
+        stop: onStop,
+    };
+}
+"""
+        (tmp_path / "events.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 2
+
+
+class TestCallbackArgumentFunctionReferences:
+    """Tests for function references passed as arguments to calls.
+
+    When code passes a function reference as an argument (e.g.
+    ``app.get("/path", handleUsers)``), the analyzer should create
+    a ``references`` edge from the enclosing function to the handler,
+    with evidence_type ``callback_argument_reference``.
+    """
+
+    def test_express_route_handler_reference(self, tmp_path: Path) -> None:
+        """app.get('/path', handler) creates a references edge to handler."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleUsers(req, res) {
+    res.json([]);
+}
+
+function setupRoutes(app) {
+    app.get("/api/users", handleUsers);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "handleUsers" in ref_edges[0].dst
+        assert "setupRoutes" in ref_edges[0].src
+        assert ref_edges[0].confidence == pytest.approx(0.75, rel=0.01)
+
+    def test_callback_arg_cross_file(self, tmp_path: Path) -> None:
+        """Function reference as argument resolves across files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.js").write_text("""
+function processData(data) {
+    return data;
+}
+""")
+        (tmp_path / "app.js").write_text("""
+function main() {
+    items.forEach(processData);
+}
+""")
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "processData" in ref_edges[0].dst
+        assert "main" in ref_edges[0].src
+
+    def test_non_function_arg_not_matched(self, tmp_path: Path) -> None:
+        """Passing a non-function identifier as argument creates no edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+const TIMEOUT = 5000;
+
+function setup() {
+    setTimeout(callback, TIMEOUT);
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 0
+
+    def test_multiple_callback_args(self, tmp_path: Path) -> None:
+        """Multiple function arguments produce multiple reference edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onSuccess(data) { return data; }
+function onError(err) { throw err; }
+
+function fetchData() {
+    promise.then(onSuccess, onError);
+}
+"""
+        (tmp_path / "fetch.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 2
+        dst_names = {e.dst for e in ref_edges}
+        assert any("onSuccess" in d for d in dst_names)
+        assert any("onError" in d for d in dst_names)
+
+    def test_typescript_callback_arg(self, tmp_path: Path) -> None:
+        """TypeScript: function reference as argument works."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function validate(input: string): boolean {
+    return input.length > 0;
+}
+
+function processForm(app: Express): void {
+    app.post("/submit", validate);
+}
+"""
+        (tmp_path / "form.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "validate" in ref_edges[0].dst
+
+
+class TestJsBuiltinNameGuard:
+    """Tests for JavaScript built-in name collision guard.
+
+    Calls to JS built-ins (Number, String, Boolean, etc.) should not
+    resolve to user-defined functions with the same name.  Without this
+    guard, ``Number(x)`` in server code resolves to a React component
+    named ``Number`` in client code.
+    """
+
+    def test_number_call_not_resolved_to_user_component(
+        self, tmp_path: Path
+    ) -> None:
+        """Number(x) should not create an edge to a user-defined Number."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "component.js").write_text(
+            "function Number({ value }) { return value; }\n"
+        )
+        (tmp_path / "server.js").write_text("""
+function convert(x) {
+    return Number(x);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "convert" in e.src and "Number" in e.dst]
+        assert len(calls) == 0, (
+            f"Number(x) should not resolve to user component, got: {calls}"
+        )
+
+    def test_parseint_not_resolved_to_user_function(
+        self, tmp_path: Path
+    ) -> None:
+        """parseInt(str) should not resolve to user-defined parseInt."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function parseInt(str) { return str | 0; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function getAge(input) {
+    return parseInt(input);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "getAge" in e.src and "parseInt" in e.dst]
+        assert len(calls) == 0
+
+    def test_builtin_as_callback_arg_not_resolved(
+        self, tmp_path: Path
+    ) -> None:
+        """Built-in name passed as callback arg creates no reference edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "comp.js").write_text(
+            "function Number(v) { return v; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function process() {
+    items.map(Number);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "Number" in e.dst
+        ]
+        assert len(ref_edges) == 0
+
+    def test_non_builtin_still_resolves(self, tmp_path: Path) -> None:
+        """User-defined functions with non-builtin names still resolve."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function processData(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function main() {
+    processData(42);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "main" in e.src and "processData" in e.dst]
+        assert len(calls) == 1
+
+
+class TestCallbackArgCrossPackageGuard:
+    """Tests for callback argument reference cross-package guard.
+
+    Callback arguments like ``app.get("/path", error)`` should not create
+    ``references`` edges to functions in different npm packages.  The
+    same-package preference and import-path disambiguation used for
+    direct calls must also apply to callback argument references.
+    """
+
+    def test_callback_arg_prefers_same_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Callback arg ref should prefer same-package function."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Two packages: server/ and client/
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "handler.js").write_text(
+            "function error(msg) { console.log(msg); }\n"
+        )
+        (tmp_path / "server" / "app.js").write_text("""
+function setup() {
+    items.forEach(error);
+}
+""")
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "error" in e.dst
+        ]
+        # Should resolve to server/handler.js error, NOT client/actions.js error
+        for edge in ref_edges:
+            assert "client" not in edge.dst, (
+                f"Callback ref should prefer same-package, got cross-package: {edge.dst}"
+            )
+
+    def test_callback_arg_no_cross_package_when_only_other_pkg(
+        self, tmp_path: Path
+    ) -> None:
+        """No callback ref edge when function only exists in another package."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # error() defined only in client/, called from server/
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text("""
+function setup() {
+    items.forEach(error);
+}
+""")
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Callback ref should not cross package boundary, got: {ref_edges}"
+        )
+
+    def test_callback_arg_param_shadowing(
+        self, tmp_path: Path
+    ) -> None:
+        """Callback arg that matches a param of enclosing fn is skipped."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        items.forEach(resolve);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "resolve" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"resolve passed as callback arg should be local param, got: {ref_edges}"
+        )
+
+    def test_callback_arg_import_disambiguation(
+        self, tmp_path: Path
+    ) -> None:
+        """Named import should guide callback arg resolution."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "package.json").write_text('{"name": "pkg"}')
+        (pkg / "local.js").write_text(
+            "function myHandler(x) { return x; }\n"
+            "module.exports = { myHandler };\n"
+        )
+        (pkg / "other.js").write_text(
+            "function myHandler(x) { return x * 2; }\n"
+            "module.exports = { myHandler };\n"
+        )
+        (pkg / "app.js").write_text(
+            "import { myHandler } from './local';\n"
+            "function setup() {\n"
+            "    items.map(myHandler);\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "myHandler" in e.dst
+        ]
+        # Should resolve to local.js (imported), not other.js
+        for edge in ref_edges:
+            assert "local" in edge.dst, (
+                f"Should resolve to imported module, got: {edge.dst}"
+            )
+
+    def test_cross_package_no_package_json_allows_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """When target has no package.json, cross-package guard allows resolution."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Only source has package.json, target does not
+        (tmp_path / "src" / "package.json").parent.mkdir()
+        (tmp_path / "src" / "package.json").write_text('{"name": "app"}')
+        (tmp_path / "src" / "app.js").write_text("""
+function setup() {
+    items.forEach(helper);
+}
+""")
+        (tmp_path / "lib" / "utils.js").parent.mkdir()
+        (tmp_path / "lib" / "utils.js").write_text(
+            "function helper(x) { return x; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "helper" in e.dst
+        ]
+        # Should still resolve since we can't determine package boundary
+        assert len(ref_edges) == 1
+
+
+class TestParameterShadowing:
+    """Tests for function parameter shadowing of global names.
+
+    When a function parameter shadows a global function name (e.g.,
+    ``resolve`` and ``reject`` in ``new Promise((resolve, reject) => {...})``),
+    calls to that name inside the function body should NOT resolve to the
+    global function.  This prevents false cross-package edges.
+    """
+
+    def test_promise_resolve_not_resolved_to_global(
+        self, tmp_path: Path
+    ) -> None:
+        """resolve() inside Promise callback should not resolve to global."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        resolve(42);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() inside Promise should not resolve to global, got: {false_edges}"
+        )
+
+    def test_promise_reject_not_resolved_to_global(
+        self, tmp_path: Path
+    ) -> None:
+        """reject() inside Promise callback should not resolve to global."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function reject(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        reject("error");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "reject" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"reject() inside Promise should not resolve to global, got: {false_edges}"
+        )
+
+    def test_typescript_promise_function_expression(
+        self, tmp_path: Path
+    ) -> None:
+        """TS function expression params (required_parameter) shadow globals."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.ts").write_text("""
+function getEmail(s: string) {
+    return new Promise(function(resolve, reject) {
+        resolve(s);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "getEmail" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() in TS function expression should not resolve to global, got: {false_edges}"
+        )
+
+    def test_nested_callback_inherits_outer_param(
+        self, tmp_path: Path
+    ) -> None:
+        """resolve() in nested callback inherits param from outer closure."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.ts").write_text("""
+function saveData(zid: number) {
+    return new Promise(function(
+        resolve: (arg0: number) => void,
+        reject: (arg0: any) => void
+    ) {
+        doAsync(zid, function(err: any) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(0);
+            }
+        });
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "saveData" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() in nested callback should not resolve to global, got: {false_edges}"
+        )
+
+    def test_callback_param_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """General case: callback param name shadows a same-named global fn."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function handler(x) { return x * 2; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function setup() {
+    events.on("data", (handler) => {
+        handler("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "setup" in e.src and "handler" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"handler() should be local param, not global, got: {false_edges}"
+        )
+
+    def test_non_shadowed_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Calls to names NOT shadowed by params still resolve correctly."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function helper(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        helper(42);
+        resolve(true);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        # helper() should still resolve (not shadowed by params)
+        helper_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "helper" in e.dst
+        ]
+        assert len(helper_edges) == 1, (
+            f"helper() should still resolve, got: {helper_edges}"
+        )
+        # resolve() should NOT resolve to global
+        resolve_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "resolve" in e.dst
+        ]
+        assert len(resolve_edges) == 0
+
+    def test_regular_function_param_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """Regular function params (not arrow) also shadow globals."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function callback(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    items.forEach(function(callback) {
+        callback("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "callback" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"callback() should be local param, not global, got: {false_edges}"
+        )
+
+    def test_single_param_arrow_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """Single-param arrow function (no parens) shadows global name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function cb(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    items.forEach(cb => {
+        cb("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "cb" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"cb() should be local arrow param, not global, got: {false_edges}"
+        )
+
+
+class TestMiddlewareChainEdges:
+    """Tests for Express-style middleware chain edge creation.
+
+    When Express routes register multiple middleware functions as arguments,
+    e.g. ``app.post('/path', auth, validate, handler)``, the analyzer should
+    create ``references`` edges between consecutive middleware/handler functions
+    with evidence_type ``middleware_chain``.  This makes the execution pipeline
+    visible in forward/reverse slices.
+    """
+
+    def test_middleware_chain_creates_edges_between_consecutive_handlers(
+        self, tmp_path: Path
+    ) -> None:
+        """app.post('/path', mw1, mw2, handler) creates chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function authMiddleware(req, res, next) { next(); }
+function validateInput(req, res, next) { next(); }
+function handleCreate(req, res) { res.json({}); }
+
+function setupRoutes(app) {
+    app.post("/api/items", authMiddleware, validateInput, handleCreate);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        # Should have 2 chain edges: auth→validate, validate→handle
+        assert len(chain_edges) == 2
+        # First edge: authMiddleware → validateInput
+        assert any(
+            "authMiddleware" in e.src and "validateInput" in e.dst
+            for e in chain_edges
+        ), f"Expected auth→validate edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+        # Second edge: validateInput → handleCreate
+        assert any(
+            "validateInput" in e.src and "handleCreate" in e.dst
+            for e in chain_edges
+        ), f"Expected validate→handle edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+
+    def test_middleware_chain_with_factory_calls(self, tmp_path: Path) -> None:
+        """Middleware factories like need('txt') create chain edges to the
+        factory function, not the returned middleware."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function auth(req, res, next) { next(); }
+function need(param) { return function(req, res, next) { next(); }; }
+function handler(req, res) { res.json({}); }
+
+function setupRoutes(app) {
+    app.post("/api/comments", auth, need("txt"), handler);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        # auth → need, need → handler
+        assert len(chain_edges) == 2
+        assert any(
+            "auth" in e.src and "need" in e.dst
+            for e in chain_edges
+        ), f"Expected auth→need edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+        assert any(
+            "need" in e.src and "handler" in e.dst
+            for e in chain_edges
+        ), f"Expected need→handler edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+
+    def test_no_middleware_chain_for_single_handler(self, tmp_path: Path) -> None:
+        """app.get('/path', handler) with a single handler creates no chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function getUsers(req, res) { res.json([]); }
+
+function setup(app) {
+    app.get("/users", getUsers);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        assert len(chain_edges) == 0
+
+    def test_no_middleware_chain_for_non_route_calls(self, tmp_path: Path) -> None:
+        """Regular calls with multiple args don't create chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onSuccess(data) { return data; }
+function onError(err) { throw err; }
+
+function fetch() {
+    promise.then(onSuccess, onError);
+}
+"""
+        (tmp_path / "fetch.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        assert len(chain_edges) == 0
+
+
+class TestCrossPackageGuardAllPaths:
+    """Tests for cross-package guard on namespace calls, method inference,
+    object field references, and direct call fallback.
+
+    These edge creation paths previously lacked the cross-package guard
+    that was applied to ``callback_argument_reference`` and direct calls
+    with import-path disambiguation.  Common names like ``error``,
+    ``request``, ``f``, ``apply`` resolved across npm package boundaries.
+    """
+
+    def test_namespace_call_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Namespace alias.error() must not resolve to another package.
+
+        When ``utils`` is imported via ``import * as utils`` and
+        ``utils.error()`` is called, the resolver may find ``error``
+        in a different npm package. The cross-package guard must block it.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "import * as utils from './utils';\n"
+            "function handler() {\n"
+            "    utils.error('oops');\n"
+            "}\n"
+        )
+        (tmp_path / "server" / "utils.js").write_text(
+            "export function log(msg) { console.log(msg); }\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ns_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_namespace"
+            and "error" in e.dst
+            and "client" in e.dst
+        ]
+        assert len(ns_edges) == 0, (
+            f"Namespace call should not cross package boundary: {ns_edges}"
+        )
+
+    def test_namespace_call_same_package_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Namespace alias.doWork() should resolve within same package."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "pkg" / "package.json").parent.mkdir()
+        (tmp_path / "pkg" / "package.json").write_text('{"name": "pkg"}')
+        (tmp_path / "pkg" / "app.js").write_text(
+            "import * as helpers from './helpers';\n"
+            "function handler() {\n"
+            "    helpers.doWork('data');\n"
+            "}\n"
+        )
+        (tmp_path / "pkg" / "helpers.js").write_text(
+            "export function doWork(x) { return x; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ns_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_namespace"
+            and "doWork" in e.dst
+        ]
+        assert len(ns_edges) >= 1, (
+            "Namespace call within same package should resolve"
+        )
+
+    def test_method_inferred_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Fallback method inference should not cross package boundary."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "function handler() {\n"
+            "    const obj = getObj();\n"
+            "    obj.apply('data');\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "plugin.js").write_text(
+            "class Plugin {\n"
+            "    apply(compiler) { return compiler; }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_method_inferred"
+            and "apply" in e.dst
+        ]
+        for edge in method_edges:
+            assert "client" not in edge.dst, (
+                f"Method inference should not cross package boundary: {edge.dst}"
+            )
+
+    def test_object_field_ref_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Object literal {handler: myFunc} should not cross packages."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "config.js").write_text(
+            "function setup() {\n"
+            "    const routes = {onError: error};\n"
+            "    return routes;\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "object_field_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Object field ref should not cross package boundary: {ref_edges}"
+        )
+
+    def test_shorthand_property_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Shorthand property {error} should not cross packages."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "config.js").write_text(
+            "function setup() {\n"
+            "    const handlers = {error};\n"
+            "    return handlers;\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "object_field_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Shorthand prop ref should not cross package boundary: {ref_edges}"
+        )
+
+    def test_middleware_chain_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Middleware chain should not include cross-package symbols.
+
+        ``app.get('/path', timeout(15000), moveToBody, handler)`` should
+        only chain symbols from the same npm package. If ``timeout``
+        resolves to a function in a different package, it must be skipped.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "middleware.js").write_text(
+            "function moveToBody(req, res, next) { next(); }\n"
+            "function handler(req, res) { res.send('ok'); }\n"
+        )
+        (tmp_path / "server" / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/api/data', timeout(15000), moveToBody, handler);\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "utils.js").write_text(
+            "function timeout(ms) { return setTimeout(() => {}, ms); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        for edge in chain_edges:
+            assert "client" not in edge.src, (
+                f"Middleware chain should not use cross-package symbol: {edge.src}"
+            )
+            assert "client" not in edge.dst, (
+                f"Middleware chain should not use cross-package symbol: {edge.dst}"
+            )
+
+    def test_direct_call_fallback_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Direct call fallback (no import, no same-package) must not cross."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "function handler() {\n"
+            "    formatDate('2024-01-01');\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "utils.js").write_text(
+            "function formatDate(d) { return d.toString(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_direct"
+            and "formatDate" in e.dst
+        ]
+        assert len(call_edges) == 0, (
+            f"Direct call fallback should not cross package boundary: {call_edges}"
+        )
+
+
+class TestNormalizeJstsSignature:
+    """Tests for JS/TS signature normalization (ADR-0014 §3)."""
+
+    def test_typescript_typed(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature("(name: string, age: number): boolean") == "(string,number)boolean"
+
+    def test_javascript_untyped(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature("(name, age)") == "(name,age)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature(None) is None

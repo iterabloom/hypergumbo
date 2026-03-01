@@ -20,11 +20,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "swift-objc-linker-v1"
-PASS_VERSION = "1.0.0"
+PASS_ID = make_pass_id("swift-objc-linker")
 
 
 @dataclass

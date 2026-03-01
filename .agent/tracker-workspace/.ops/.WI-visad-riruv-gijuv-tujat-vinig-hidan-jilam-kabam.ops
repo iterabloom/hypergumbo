@@ -1,0 +1,48 @@
+- op: create  # cacb
+  at: '2026-02-26T21:14:56Z'  # cacb
+  by: agent  # cacb
+  actor: jgstern_agent  # cacb
+  clock: 1  # cacb
+  nonce: cacb  # cacb
+  data:  # cacb
+    kind: work_item  # cacb
+    title: "C/Java repos get bash script entrypoints instead of production code entry points"  # cacb
+    status: todo_hard  # cacb
+    priority: 2  # cacb
+    parent:  # cacb
+    tags: []  # cacb
+    before: []  # cacb
+    duplicate_of: []  # cacb
+    not_duplicate_of: []  # cacb
+    pr_ref:  # cacb
+    description: "In the Java/C bakeoff cohort (guacamole-client, guacamole-server-main, tmux), all entrypoints selected are bash scripts (generate-licenses.sh, entrypoint.sh, guacget, guacctl, regress/format-strings.sh). No C main() or Java servlet/controller entrypoints appear. This causes: (1) zero forward slices because bash scripts have no outgoing call edges, (2) reverse-slice seeds are bash utilities instead of production C/Java symbols, (3) the entire bakeoff assessment for these repos is uninformative. Root cause likely in entrypoint detection: bash scripts may rank higher than C main() or Java framework entrypoints."  # cacb
+    fields: {}  # cacb
+- op: update  # 2182
+  at: '2026-02-26T21:19:35Z'  # 2182
+  by: agent  # 2182
+  actor: jgstern_agent  # 2182
+  clock: 2  # 2182
+  nonce: '2182'  # 2182
+  set: {}  # 2182
+- op: discuss  # 4eb9
+  at: '2026-02-26T21:19:35Z'  # 4eb9
+  by: agent  # 4eb9
+  actor: jgstern_agent  # 4eb9
+  clock: 3  # 4eb9
+  nonce: 4eb9  # 4eb9
+  message: "Root cause found: _TEST_PATH_RE in bakeoff-features matched /spec as a substring of /special_repos/ (the pool directory path). Every entrypoint was filtered out, producing zero forward slices for ALL repos. Fix: require trailing / for directory-name patterns. PR pending."  # 4eb9
+- op: update  # 13fd
+  at: '2026-02-26T21:24:48Z'  # 13fd
+  by: agent  # 13fd
+  actor: jgstern_agent  # 13fd
+  clock: 4  # 13fd
+  nonce: 13fd  # 13fd
+  set:  # 13fd
+    status: done  # 13fd
+- op: discuss  # 1726
+  at: '2026-02-26T21:24:48Z'  # 1726
+  by: agent  # 1726
+  actor: jgstern_agent  # 1726
+  clock: 5  # 1726
+  nonce: '1726'  # 1726
+  message: "Fixed in PR #1519. Root cause: /spec in /special_repos/ matched the test path regex. Fix: require trailing / for all directory patterns."  # 1726

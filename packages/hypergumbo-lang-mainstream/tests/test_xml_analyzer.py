@@ -5,20 +5,18 @@ Tests verify that the analyzer correctly extracts:
 - Android Manifest: activities, services, permissions, intent-filters
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream.xml_config import (
     PASS_ID,
-    PASS_VERSION,
-    XMLAnalysisResult,
     analyze_xml_files,
     find_xml_files,
 )
 
-
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "xml-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_maven_pom(tmp_path):
     """Test parsing Maven pom.xml with dependencies."""
@@ -71,7 +69,6 @@ def test_analyze_maven_pom(tmp_path):
     assert spring_dep is not None
     assert spring_dep.meta.get("groupId") == "org.springframework"
 
-
 def test_analyze_maven_pom_without_group(tmp_path):
     """Test Maven pom.xml without groupId (inherits from parent)."""
     pom_file = tmp_path / "pom.xml"
@@ -86,7 +83,6 @@ def test_analyze_maven_pom_without_group(tmp_path):
     modules = [s for s in result.symbols if s.kind == "module"]
     assert len(modules) >= 1
     assert modules[0].name == "child-module"
-
 
 def test_analyze_maven_dependency_edges(tmp_path):
     """Test that dependency edges are created."""
@@ -111,7 +107,6 @@ def test_analyze_maven_dependency_edges(tmp_path):
     # Should have depends_on edge from project to dependency
     edges = [e for e in result.edges if e.edge_type == "depends_on"]
     assert len(edges) >= 1
-
 
 def test_analyze_android_manifest_activities(tmp_path):
     """Test parsing Android manifest with activities."""
@@ -158,7 +153,6 @@ def test_analyze_android_manifest_activities(tmp_path):
     assert settings_activity is not None
     assert settings_activity.meta.get("exported") is False
 
-
 def test_analyze_android_manifest_services(tmp_path):
     """Test parsing Android manifest with services."""
     manifest = tmp_path / "AndroidManifest.xml"
@@ -178,7 +172,6 @@ def test_analyze_android_manifest_services(tmp_path):
     services = [s for s in result.symbols if s.kind == "service"]
     assert len(services) >= 1
     assert services[0].name == "BackgroundService"
-
 
 def test_analyze_android_manifest_permissions(tmp_path):
     """Test parsing Android manifest with permissions."""
@@ -203,7 +196,6 @@ def test_analyze_android_manifest_permissions(tmp_path):
     internet_perm = next((p for p in permissions if p.name == "INTERNET"), None)
     assert internet_perm is not None
     assert internet_perm.meta.get("full_name") == "android.permission.INTERNET"
-
 
 def test_analyze_android_receivers_and_providers(tmp_path):
     """Test parsing Android manifest with receivers and content providers."""
@@ -236,7 +228,6 @@ def test_analyze_android_receivers_and_providers(tmp_path):
     assert len(providers) >= 1
     assert providers[0].name == "MyContentProvider"
 
-
 def test_analyze_android_fully_qualified_name(tmp_path):
     """Test Android component with fully qualified class name."""
     manifest = tmp_path / "AndroidManifest.xml"
@@ -256,7 +247,6 @@ def test_analyze_android_fully_qualified_name(tmp_path):
     # Should use the full name as-is (not prefixed with package)
     assert activities[0].meta.get("full_name") == "com.other.library.LibraryActivity"
 
-
 def test_find_xml_files(tmp_path):
     """Test that XML files are discovered correctly."""
     (tmp_path / "pom.xml").write_text("<project />")
@@ -269,7 +259,6 @@ def test_find_xml_files(tmp_path):
     # Should find only .xml files
     assert len(files) == 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no XML files."""
     result = analyze_xml_files(tmp_path)
@@ -277,7 +266,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -291,7 +279,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.version == PASS_VERSION
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
-
 
 def test_generic_xml_not_extracted(tmp_path):
     """Test that generic XML files don't produce symbols."""
@@ -308,7 +295,6 @@ def test_generic_xml_not_extracted(tmp_path):
     assert result.run.files_analyzed >= 1
     assert len(result.symbols) == 0
 
-
 def test_maven_namespace_detection(tmp_path):
     """Test Maven detection by namespace (not filename)."""
     # File not named pom.xml but has Maven namespace
@@ -323,7 +309,6 @@ def test_maven_namespace_detection(tmp_path):
     modules = [s for s in result.symbols if s.kind == "module"]
     assert len(modules) >= 1
     assert modules[0].name == "parent-project"
-
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -340,7 +325,6 @@ def test_span_information(tmp_path):
     assert modules[0].span is not None
     assert modules[0].span.start_line >= 1
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     xml_file = tmp_path / "broken.xml"
@@ -350,4 +334,25 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_xml_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, XMLAnalysisResult)
+    assert isinstance(result, AnalysisResult)
+
+
+def test_is_xml_tree_sitter_available():
+    """Check that XML tree-sitter availability returns True."""
+    from hypergumbo_lang_mainstream.xml_config import is_xml_tree_sitter_available
+
+    assert is_xml_tree_sitter_available() is True
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter-xml grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.xml_config as xml_module
+
+    with patch.object(xml_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="xml analysis skipped"):
+            result = xml_module.analyze_xml_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

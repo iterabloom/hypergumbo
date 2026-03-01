@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import hypergumbo_lang_mainstream.csharp as csharp_module
 from hypergumbo_lang_mainstream.csharp import (
     analyze_csharp,
     find_csharp_files,
@@ -541,6 +542,302 @@ public class Service {
 
         assert send_edge is not None, "Expected call edge for client.Send() via constructor type inference"
 
+    def test_field_type_inference(self, tmp_path: Path) -> None:
+        """Field declaration types enable method call resolution.
+
+        In C# dependency injection, fields are commonly declared with a type
+        and calls like _svc.Process() resolve via the declared field type.
+        """
+        (tmp_path / "App.cs").write_text("""
+public class Repo {
+    public void Save() { }
+}
+
+public class Controller {
+    private readonly Repo _repo;
+
+    public void DoWork() {
+        _repo.Save();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.DoWork"), None
+        )
+        repo_save = next(
+            (s for s in result.symbols if s.name == "Repo.Save"), None
+        )
+
+        assert do_work is not None
+        assert repo_save is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == repo_save.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge for _repo.Save() via field type inference. "
+            f"Edges from DoWork: {[e for e in result.edges if e.src == do_work.id]}"
+        )
+
+    def test_this_field_method_call(self, tmp_path: Path) -> None:
+        """this.field.method() calls resolve via field type inference.
+
+        The pattern this._repo.Save() has a nested member_access_expression
+        structure that requires special handling. Also tests generic type
+        stripping (Repository<string> -> Repository).
+        """
+        (tmp_path / "App.cs").write_text("""
+public class Repo {
+    public void Save() { }
+}
+
+public class Controller {
+    private Repo<string> _repo;
+
+    public void DoWork() {
+        this._repo.Save();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.DoWork"), None
+        )
+        repo_save = next(
+            (s for s in result.symbols if s.name == "Repo.Save"), None
+        )
+
+        assert do_work is not None
+        assert repo_save is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == repo_save.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge for this._repo.Save() via field type inference. "
+            f"Edges from DoWork: {[e for e in result.edges if e.src == do_work.id]}"
+        )
+
+
+class TestCSharpReturnTypeInference:
+    """Tests for return type tracking from method return type annotations."""
+
+    def test_return_type_inference(self, tmp_path: Path) -> None:
+        """Methods with return type annotations enable variable type inference."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public class Factory {
+    public ServiceClient GetClient() {
+        return new ServiceClient();
+    }
+}
+
+public class App {
+    public void Run() {
+        var factory = new Factory();
+        var client = factory.GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Should have edge from App.Run to ServiceClient.Fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.Fetch() via return type inference. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+    def test_return_type_inference_void_no_resolution(self, tmp_path: Path) -> None:
+        """Methods with void return type don't enable type inference."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public class Factory {
+    public void GetClient() { }
+}
+
+public class App {
+    public void Run() {
+        var factory = new Factory();
+        var client = factory.GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Without return type tracking, client.Fetch() should NOT resolve via
+        # type inference (void return means no var_types entry for client).
+        # The fallback may still resolve it, but with "method_call" evidence,
+        # not "method_call_type_inferred".
+        type_inferred_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert type_inferred_edge is None
+
+    def test_simple_call_return_type_inference(self, tmp_path: Path) -> None:
+        """Simple function calls (not member access) also track return types."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public static class Helpers {
+    public static ServiceClient GetClient() {
+        return new ServiceClient();
+    }
+}
+
+public class App {
+    public void Run() {
+        var client = GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Should have edge from App.Run to ServiceClient.Fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.Fetch() via simple call return type inference. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+
+class TestCSharpReturnTypeExtraction:
+    """Unit tests for _extract_csharp_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        """Extracts simple return type from C# signature."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() ServiceClient") == "ServiceClient"
+
+    def test_with_params(self) -> None:
+        """Extracts return type with parameters."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("(string name, int age) User") == "User"
+
+    def test_no_return_type(self) -> None:
+        """Returns None when no return type (void is omitted)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("()") is None
+
+    def test_none_signature(self) -> None:
+        """Returns None for None signature."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name(None) is None
+
+    def test_lowercase_return_type(self) -> None:
+        """Returns None for lowercase return types (primitives like int, string)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() string") is None
+
+    def test_generic_return_type(self) -> None:
+        """Returns None for generic return types (not simple identifier)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() List<string>") is None
+
 
 class TestCSharpCrossFileResolution:
     """Tests for cross-file symbol resolution."""
@@ -588,8 +885,8 @@ class TestCSharpGracefulDegradation:
 
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
-        with patch(
-            "hypergumbo_lang_mainstream.csharp.is_csharp_tree_sitter_available",
+        with patch.object(
+            csharp_module._analyzer, "_check_grammar_available",
             return_value=False,
         ):
             import warnings
@@ -597,26 +894,23 @@ class TestCSharpGracefulDegradation:
                 warnings.simplefilter("always")
                 result = analyze_csharp(Path("/nonexistent"))
                 assert result.skipped
-                assert "tree-sitter-c-sharp" in result.skip_reason
+                assert "not available" in result.skip_reason
                 assert len(w) == 1
 
 
 class TestCSharpTreeSitterAvailability:
     """Tests for tree-sitter availability detection."""
 
-    def test_detects_missing_tree_sitter(self) -> None:
-        """Should detect when tree-sitter is not installed."""
-        with patch("importlib.util.find_spec", return_value=None):
-            assert not is_csharp_tree_sitter_available()
+    def test_detects_available(self) -> None:
+        """Should detect when tree-sitter-c-sharp is installed."""
+        assert is_csharp_tree_sitter_available() is True
 
-    def test_detects_missing_csharp_grammar(self) -> None:
-        """Should detect when tree-sitter-c-sharp is not installed."""
-        def find_spec_mock(name: str):
-            if name == "tree_sitter":
-                return True
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=find_spec_mock):
+    def test_detects_missing_grammar(self) -> None:
+        """Should detect when grammar is not available."""
+        with patch.object(
+            csharp_module._analyzer, "_check_grammar_available",
+            return_value=False,
+        ):
             assert not is_csharp_tree_sitter_available()
 
 
@@ -1328,3 +1622,344 @@ public class Example {
 
         assert filter_call is not None, "Filter call in LINQ chain should be attributed to Process"
         assert transform_call is not None, "Transform call in LINQ chain should be attributed to Process"
+
+
+class TestCSharpAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in C#.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.Close() with 3 classes defining Close() → no resolved edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "multi.cs"
+        cs_file.write_text("""
+class ServiceA {
+    public void Close() { }
+}
+
+class ServiceB {
+    public void Close() { }
+}
+
+class ServiceC {
+    public void Close() { }
+}
+
+class Consumer {
+    public void DoWork() {
+        Close();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        dowork_calls = [e for e in call_edges if "DoWork" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's Close()
+        for edge in dowork_calls:
+            assert "ServiceA" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceA, got {edge.dst}"
+            )
+            assert "ServiceB" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceB, got {edge.dst}"
+            )
+            assert "ServiceC" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceC, got {edge.dst}"
+            )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.Run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "two.cs"
+        cs_file.write_text("""
+class ServiceA {
+    public void Run() { }
+}
+
+class ServiceB {
+    public void Run() { }
+}
+
+class Consumer {
+    public void DoWork() {
+        Run();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        dowork_calls = [e for e in call_edges if "DoWork" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in dowork_calls if "Run" in e.dst]
+        assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestCSharpVisibilityModifiers:
+    """Tests for visibility modifier extraction into Symbol.modifiers."""
+
+    def test_method_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Methods with public/private/protected/internal get correct modifiers."""
+        (tmp_path / "Vis.cs").write_text("""
+public class Vis {
+    public void PubMethod() { }
+    private void PrivMethod() { }
+    protected void ProtMethod() { }
+    internal void IntMethod() { }
+    public static void StaticPub() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.PubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.PrivMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.ProtMethod")
+        assert "protected" in prot.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "Vis.IntMethod")
+        assert "internal" in internal.modifiers
+
+        static_pub = next(s for s in result.symbols if s.name == "Vis.StaticPub")
+        assert "public" in static_pub.modifiers
+        assert "static" in static_pub.modifiers
+
+    def test_class_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Classes with visibility modifiers get them extracted."""
+        (tmp_path / "Classes.cs").write_text("""
+public class PubClass { }
+internal class IntClass { }
+public static class StaticClass { }
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubClass")
+        assert "public" in pub.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "IntClass")
+        assert "internal" in internal.modifiers
+
+        static_cls = next(s for s in result.symbols if s.name == "StaticClass")
+        assert "public" in static_cls.modifiers
+        assert "static" in static_cls.modifiers
+
+    def test_constructor_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Constructors with visibility modifiers get them extracted."""
+        (tmp_path / "Ctor.cs").write_text("""
+public class Foo {
+    public Foo() { }
+    private Foo(int x) { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        ctors = [s for s in result.symbols if s.kind == "constructor"]
+        pub_ctor = next(s for s in ctors if "public" in s.modifiers)
+        assert pub_ctor is not None
+
+        priv_ctor = next(s for s in ctors if "private" in s.modifiers)
+        assert priv_ctor is not None
+
+    def test_no_modifiers_empty_list(self, tmp_path: Path) -> None:
+        """Symbols without explicit modifiers have empty modifiers list."""
+        (tmp_path / "NoMod.cs").write_text("""
+class DefaultClass {
+    void DefaultMethod() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        cls = next(s for s in result.symbols if s.name == "DefaultClass")
+        # No visibility modifier specified — modifiers list should not contain visibility
+        assert "public" not in cls.modifiers
+        assert "private" not in cls.modifiers
+
+    def test_interface_and_struct_modifiers(self, tmp_path: Path) -> None:
+        """Interfaces and structs also get visibility modifiers."""
+        (tmp_path / "Types.cs").write_text("""
+public interface IService { }
+internal struct DataPoint { }
+public enum Status { Active, Inactive }
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        iface = next(s for s in result.symbols if s.name == "IService")
+        assert "public" in iface.modifiers
+
+        struct = next(s for s in result.symbols if s.name == "DataPoint")
+        assert "internal" in struct.modifiers
+
+        enum = next(s for s in result.symbols if s.name == "Status")
+        assert "public" in enum.modifiers
+
+    def test_property_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Properties get visibility modifiers extracted."""
+        (tmp_path / "Props.cs").write_text("""
+public class Config {
+    public string Name { get; set; }
+    private int Count { get; set; }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        name_prop = next(s for s in result.symbols if s.name == "Config.Name")
+        assert "public" in name_prop.modifiers
+
+        count_prop = next(s for s in result.symbols if s.name == "Config.Count")
+        assert "private" in count_prop.modifiers
+
+
+class TestNormalizeCSharpSignature:
+    """Tests for C# signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        assert normalize_csharp_signature("(int x, int y) int") == "(int,int)int"
+
+    def test_generic(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        result = normalize_csharp_signature("(List<T> items) T", ["T"])
+        assert result == "(List<$0>)$0"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        assert normalize_csharp_signature(None) is None
+
+
+class TestCSharpMethodGroupReferences:
+    """Tests for C# method group references (INV-dinur).
+
+    Method groups (e.g., ``items.ForEach(Process)``) are function references
+    passed as arguments or assigned to delegates without calling them.
+    """
+
+    def test_method_group_as_argument(self, tmp_path: Path) -> None:
+        """Method group passed as argument creates references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Process(int x) { }\n"
+            "    static void Run() {\n"
+            "        var items = new List<int>();\n"
+            "        items.ForEach(Process);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "method_group"
+
+    def test_method_group_assignment(self, tmp_path: Path) -> None:
+        """Method group assigned to variable creates references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "using System;\n"
+            "class App {\n"
+            "    static void Handle(string s) { }\n"
+            "    static void Run() {\n"
+            "        Action<string> handler = Handle;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Handle" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "method_group"
+
+    def test_method_group_argument_cross_file(self, tmp_path: Path) -> None:
+        """Method group in argument resolves cross-file via resolver."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Processor.cs").write_text(
+            "class Processor {\n"
+            "    static void Transform(int x) { }\n"
+            "}\n"
+        )
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Run() {\n"
+            "        var items = new List<int>();\n"
+            "        items.ForEach(Transform);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Transform" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_method_group_assignment_cross_file(self, tmp_path: Path) -> None:
+        """Method group assignment resolves cross-file via resolver."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Handlers.cs").write_text(
+            "class Handlers {\n"
+            "    static void OnClick(object sender) { }\n"
+            "}\n"
+        )
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Setup() {\n"
+            "        Action<object> handler = OnClick;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Setup" in e.src and "OnClick" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_no_reference_for_non_method_identifier(self, tmp_path: Path) -> None:
+        """Variable name in argument should not create references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Run() {\n"
+            "        var x = 42;\n"
+            "        Console.WriteLine(x);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0

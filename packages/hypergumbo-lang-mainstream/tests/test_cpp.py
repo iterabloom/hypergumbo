@@ -140,6 +140,72 @@ class TestCppFileDiscovery:
         assert "main.cpp" in files
 
 
+class TestCppHeaderDedup:
+    """Tests for .h file dedup between C and C++ analyzers.
+
+    When a repo has .c files but NO C++ source files (.cpp/.cc/.cxx),
+    .h files should NOT be claimed by the C++ analyzer — they belong
+    to the C analyzer. This prevents phantom C++ symbols from header
+    files in pure C repos (e.g., git, Linux kernel).
+    """
+
+    def test_skips_h_files_in_pure_c_repo(self, tmp_path: Path) -> None:
+        """find_cpp_files should not include .h files when no .cpp/.cc/.cxx exist."""
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper(void);")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) == 0, (
+            f".h files should not be included in pure C repo, found: {h_files}"
+        )
+
+    def test_includes_h_files_when_cpp_exists(self, tmp_path: Path) -> None:
+        """find_cpp_files should include .h files when .cpp files exist."""
+        (tmp_path / "main.cpp").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) >= 1, (
+            f".h files should be included when .cpp exists, found files: {files}"
+        )
+
+    def test_includes_h_files_when_cc_exists(self, tmp_path: Path) -> None:
+        """find_cpp_files should include .h files when .cc files exist."""
+        (tmp_path / "main.cc").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) >= 1
+
+    def test_always_includes_hpp_files(self, tmp_path: Path) -> None:
+        """.hpp files are always included (unambiguously C++)."""
+        (tmp_path / "utils.hpp").write_text("void helper();")
+        # No .cpp files
+
+        files = list(find_cpp_files(tmp_path))
+        hpp_files = [f for f in files if f.suffix == ".hpp"]
+        assert len(hpp_files) >= 1
+
+    def test_no_phantom_symbols_in_pure_c_repo(self, tmp_path: Path) -> None:
+        """C++ analyzer should produce no symbols from .h files in a pure C repo."""
+        (tmp_path / "main.c").write_text("""
+int main() { return helper(); }
+""")
+        (tmp_path / "helper.h").write_text("""
+int helper(void);
+""")
+
+        result = analyze_cpp(tmp_path)
+        # Should have no symbols since only .h and .c files exist
+        assert len(result.symbols) == 0, (
+            f"C++ analyzer should not produce symbols from .h files in pure C repo, "
+            f"found: {[s.name for s in result.symbols]}"
+        )
+
+
 class TestCppSymbolExtraction:
     """Tests for symbol extraction from C++ files."""
 
@@ -276,8 +342,10 @@ class TestCppGracefulDegradation:
 
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
-        with patch(
-            "hypergumbo_lang_mainstream.cpp.is_cpp_tree_sitter_available",
+        import hypergumbo_lang_mainstream.cpp as cpp_module
+
+        with patch.object(
+            cpp_module._analyzer, "_check_grammar_available",
             return_value=False,
         ):
             import warnings
@@ -285,7 +353,7 @@ class TestCppGracefulDegradation:
                 warnings.simplefilter("always")
                 result = analyze_cpp(Path("/nonexistent"))
                 assert result.skipped
-                assert "tree-sitter-cpp" in result.skip_reason
+                assert "not available" in result.skip_reason
                 assert len(w) == 1
 
 
@@ -759,4 +827,788 @@ class Standalone {
         # Either no meta or no base_classes key
         if standalone.meta:
             assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
+
+
+class TestCppTemplateFunctionCalls:
+    """Tests for C++ template function call detection.
+
+    Template function calls like process<int>(42) produce a
+    call_expression with a template_function child, which the
+    current get_callee_name() doesn't handle.
+    """
+
+    def test_simple_template_call(self, tmp_path: Path) -> None:
+        """process<int>(42) should create a call edge to process."""
+        (tmp_path / "tmpl.cpp").write_text("""
+template<typename T>
+T process(T value) { return value; }
+
+void caller() {
+    int result = process<int>(42);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert "process" in call_edges[0].dst
+        assert call_edges[0].confidence >= 0.80
+
+    def test_template_method_on_object(self, tmp_path: Path) -> None:
+        """c.get<int>() should create a call edge to get.
+
+        field_expression contains template_method which contains
+        field_identifier. get_callee_name must look through template_method.
+        """
+        (tmp_path / "tmpl_method.cpp").write_text("""
+class Container {
+public:
+    int get() { return 0; }
+};
+
+void caller() {
+    Container c;
+    int val = c.get<int>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        dst_names = [e.dst for e in call_edges]
+        assert any("get" in d for d in dst_names)
+
+    def test_qualified_template_call(self, tmp_path: Path) -> None:
+        """NS::create<Widget>() should resolve via qualified_identifier."""
+        (tmp_path / "ns_tmpl.cpp").write_text("""
+namespace Factory {
+    template<typename T>
+    T create() { return T(); }
+}
+
+class Widget {};
+
+void caller() {
+    Widget w = Factory::create<Widget>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        assert any("create" in e.dst for e in call_edges)
+
+    def test_pointer_return_template_call(self, tmp_path: Path) -> None:
+        """Template function returning pointer (T*) should be extracted and resolved.
+
+        Pointer return types wrap function_declarator inside pointer_declarator,
+        which requires descending through the wrapper to find the name.
+        """
+        (tmp_path / "ptr.cpp").write_text("""
+template<typename T>
+T* make() { return new T(); }
+
+class Obj {};
+
+void caller() {
+    Obj* o = make<Obj>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        func_names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "make" in func_names, f"make not found in symbols: {func_names}"
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any("make" in e.dst for e in call_edges)
+
+    def test_reference_return_function(self, tmp_path: Path) -> None:
+        """Functions returning references (T&) should be extracted as symbols."""
+        (tmp_path / "ref.cpp").write_text("""
+class Config {};
+Config global_config;
+
+Config& get_config() { return global_config; }
+
+void caller() {
+    Config& c = get_config();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        func_names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "get_config" in func_names
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any("get_config" in e.dst for e in call_edges)
+
+    def test_template_call_cross_file(self, tmp_path: Path) -> None:
+        """Template calls should resolve across files."""
+        (tmp_path / "util.cpp").write_text("""
+template<typename T>
+T clamp(T val, T lo, T hi) {
+    if (val < lo) return lo;
+    if (val > hi) return hi;
+    return val;
+}
+""")
+        (tmp_path / "main.cpp").write_text("""
+template<typename T>
+T clamp(T val, T lo, T hi);
+
+void process() {
+    int x = clamp<int>(50, 0, 100);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # Should resolve to util.cpp definition, not main.cpp declaration
+        assert any("clamp" in e.dst for e in call_edges)
+
+
+class TestCppStackConstruction:
+    """Tests for stack object construction detection.
+
+    In C++, stack-allocated objects like ``Widget w;`` or ``Widget w(42);``
+    invoke constructors but don't produce ``call_expression`` or
+    ``new_expression`` nodes. Only explicit ``new`` was previously detected.
+    """
+
+    def test_default_construction(self, tmp_path: Path) -> None:
+        """``Widget w;`` should create an instantiates edge to Widget."""
+        (tmp_path / "stack.cpp").write_text("""
+class Widget {};
+
+void caller() {
+    Widget w;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Widget" in inst_edges[0].dst
+        assert inst_edges[0].evidence_type == "stack_construction"
+
+    def test_direct_construction_with_args(self, tmp_path: Path) -> None:
+        """``Config c(1, 2);`` should create an instantiates edge."""
+        (tmp_path / "direct.cpp").write_text("""
+class Config {
+public:
+    Config(int a, int b) {}
+};
+
+void caller() {
+    Config c(1, 2);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Config" in inst_edges[0].dst
+        assert inst_edges[0].evidence_type == "stack_construction"
+
+    def test_brace_initialization(self, tmp_path: Path) -> None:
+        """``Widget w{};`` should create an instantiates edge."""
+        (tmp_path / "brace.cpp").write_text("""
+class Widget {};
+
+void caller() {
+    Widget w{};
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Widget" in inst_edges[0].dst
+
+    def test_compound_literal(self, tmp_path: Path) -> None:
+        """``Widget{42}`` as an expression should create an instantiates edge."""
+        (tmp_path / "compound.cpp").write_text("""
+class Widget {};
+
+void process(Widget w) {}
+
+void caller() {
+    process(Widget{42});
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert any("Widget" in e.dst for e in inst_edges)
+
+    def test_no_false_positive_primitive(self, tmp_path: Path) -> None:
+        """``int x;`` should NOT create an instantiates edge."""
+        (tmp_path / "prim.cpp").write_text("""
+void caller() {
+    int x = 0;
+    double y = 1.0;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 0
+
+    def test_cross_file_construction(self, tmp_path: Path) -> None:
+        """Stack construction should resolve to class in another file."""
+        (tmp_path / "service.cpp").write_text("""
+class Service {
+public:
+    void run() {}
+};
+""")
+        (tmp_path / "main.cpp").write_text("""
+class Service;
+
+void start() {
+    Service svc;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+        assert any("Service" in e.dst for e in inst_edges)
+
+    def test_qualified_type_construction(self, tmp_path: Path) -> None:
+        """``ui::Button btn;`` should create an instantiates edge.
+
+        Namespace-qualified types in declarations use ``qualified_identifier``
+        instead of ``type_identifier``. The handler must extract the
+        inner type_identifier from the qualified node.
+        """
+        (tmp_path / "widgets.cpp").write_text("""
+namespace ui {
+class Button {
+public:
+    void click() {}
+};
+}
+""")
+        (tmp_path / "main.cpp").write_text("""
+namespace ui { class Button; }
+
+void test() {
+    ui::Button btn;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+        assert any("Button" in e.dst for e in inst_edges)
+
+
+class TestCppStructEnumDefinitionOnly:
+    """Tests that only struct/enum definitions (with bodies) produce symbols.
+
+    Same fix as C: references like ``struct stat sb;`` and forward
+    declarations ``struct Foo;`` should not create struct symbols.
+    """
+
+    def test_struct_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """struct Point { ... } → creates struct symbol."""
+        (tmp_path / "types.cpp").write_text("""
+struct Point {
+    int x;
+    int y;
+};
+""")
+        result = analyze_cpp(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 1
+        assert structs[0].name == "Point"
+
+    def test_struct_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """struct stat sb; → does NOT create struct symbol."""
+        (tmp_path / "main.cpp").write_text("""
+void process() {
+    struct stat sb;
+}
+""")
+        result = analyze_cpp(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 0, (
+            f"Struct references should not create symbols, "
+            f"found: {[s.name for s in structs]}"
+        )
+
+    def test_enum_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """enum Color { RED, GREEN } → creates enum symbol."""
+        (tmp_path / "types.cpp").write_text("""
+enum Color { RED, GREEN, BLUE };
+""")
+        result = analyze_cpp(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 1
+        assert enums[0].name == "Color"
+
+    def test_enum_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """enum Color c; → does NOT create enum symbol."""
+        (tmp_path / "main.cpp").write_text("""
+void process() {
+    enum Color c;
+}
+""")
+        result = analyze_cpp(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 0, (
+            f"Enum references should not create symbols, "
+            f"found: {[s.name for s in enums]}"
+        )
+
+
+class TestCppDispatchTableEdges:
+    """Tests for function pointer dispatch table detection in C++.
+
+    C++ codebases use the same dispatch table patterns as C:
+    static struct Foo table[] = { { "name", func_ptr }, ... };
+    These function pointer references create dispatches_to edges.
+    """
+
+    def test_dispatch_table_creates_edges(self, tmp_path: Path) -> None:
+        """Function pointers in static array initializers create edges."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_commit(int argc, char **argv) { return 0; }
+int cmd_status(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "commit", cmd_commit },
+    { "status", cmd_status },
+};
+
+int run_builtin(struct cmd_struct *p) {
+    return p->fn(0, 0);
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "cmd_add" in func_names
+        assert "cmd_commit" in func_names
+        assert "cmd_status" in func_names
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        ref_dsts = {e.dst for e in ref_edges}
+        cmd_add_id = next(s.id for s in result.symbols if s.name == "cmd_add")
+        cmd_commit_id = next(s.id for s in result.symbols if s.name == "cmd_commit")
+        cmd_status_id = next(s.id for s in result.symbols if s.name == "cmd_status")
+
+        assert cmd_add_id in ref_dsts
+        assert cmd_commit_id in ref_dsts
+        assert cmd_status_id in ref_dsts
+
+        # Verify evidence type and confidence
+        for e in ref_edges:
+            assert e.evidence_type == "dispatch_table_initializer"
+            assert 0.6 <= e.confidence <= 0.85
+
+    def test_dispatch_table_cross_file(self, tmp_path: Path) -> None:
+        """Dispatch table references functions defined in other files."""
+        (tmp_path / "cmds.cpp").write_text("""
+int cmd_help(int argc, char **argv) { return 0; }
+""")
+        (tmp_path / "main.cpp").write_text("""
+int cmd_help(int, char **);
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "help", cmd_help },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) >= 1
+        cmd_help_sym = next(
+            (s for s in result.symbols if s.name == "cmd_help" and s.kind == "function"),
+            None,
+        )
+        assert cmd_help_sym is not None
+        assert any(e.dst == cmd_help_sym.id for e in ref_edges)
+
+    def test_non_function_identifiers_not_linked(self, tmp_path: Path) -> None:
+        """Constants and macros in initializers don't create false edges."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_run(int argc, char **argv) { return 0; }
+
+#define FLAG_SETUP 1
+
+struct entry {
+    const char *name;
+    int (*fn)(int, char **);
+    int flags;
+};
+
+static struct entry table[] = {
+    { "run", cmd_run, FLAG_SETUP },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        ref_dsts = {e.dst for e in ref_edges}
+        cmd_run_id = next(s.id for s in result.symbols if s.name == "cmd_run")
+        assert cmd_run_id in ref_dsts
+        # FLAG_SETUP should not create an edge (it's a macro, not a function)
+        assert len(ref_edges) == 1
+
+    def test_duplicate_function_refs_deduplicated(self, tmp_path: Path) -> None:
+        """Same function appearing multiple times in table gets one edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int handler(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "first", handler },
+    { "second", handler },
+    { "third", handler },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) == 1
+
+    def test_non_function_symbol_not_linked(self, tmp_path: Path) -> None:
+        """Struct names in initializers don't create dispatch edges.
+
+        When a known symbol (e.g. a struct) appears in an initializer list,
+        it must not produce a dispatches_to edge since it isn't a function.
+        """
+        (tmp_path / "dispatch.cpp").write_text("""
+int real_func(int argc, char **argv) { return 0; }
+
+struct Config {
+    int value;
+};
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "real", real_func },
+};
+
+/* Config is a known symbol but not a function — should not be linked.
+   We put Config's name in a second table to test the non-function filter. */
+struct meta_entry { const char *name; const char *tag; };
+
+static struct meta_entry meta[] = {
+    { "cfg", "Config" },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        # Only real_func should be linked (Config is a struct, not a function)
+        assert len(ref_edges) == 1
+        real_func_id = next(s.id for s in result.symbols if s.name == "real_func")
+        assert ref_edges[0].dst == real_func_id
+
+
+class TestCppDispatchTableVariableReferences:
+    """Tests for uses_dispatch_table edges in C++.
+
+    When a function references a dispatch table variable in its body,
+    a uses_dispatch_table edge connects the function to the table.
+    """
+
+    def test_function_referencing_dispatch_table(self, tmp_path: Path) -> None:
+        """A function that references a dispatch table variable gets an edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_rm(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "rm", cmd_rm },
+};
+
+int run_command(const char *name) {
+    for (int i = 0; commands[i].name; i++) {
+        if (strcmp(commands[i].name, name) == 0)
+            return commands[i].fn(0, 0);
+    }
+    return -1;
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        assert len(table_edges) >= 1
+        run_cmd_sym = next(
+            (s for s in result.symbols if s.name == "run_command"),
+            None,
+        )
+        assert run_cmd_sym is not None
+        assert any(e.src == run_cmd_sym.id for e in table_edges)
+
+        for e in table_edges:
+            assert e.evidence_type == "dispatch_table_reference"
+            assert e.confidence == 0.85
+
+    def test_multiple_functions_reference_same_table(self, tmp_path: Path) -> None:
+        """Multiple functions referencing the same table each get an edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int handler_a(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "a", handler_a },
+};
+
+int lookup(const char *n) {
+    return table[0].fn(0, 0);
+}
+
+void print_table() {
+    for (int i = 0; table[i].name; i++) {}
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        srcs = {e.src for e in table_edges}
+        lookup_sym = next(s for s in result.symbols if s.name == "lookup")
+        print_sym = next(s for s in result.symbols if s.name == "print_table")
+        assert lookup_sym.id in srcs
+        assert print_sym.id in srcs
+
+    def test_no_false_refs_from_unrelated_functions(self, tmp_path: Path) -> None:
+        """Functions that don't reference the table get no edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_x(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "x", cmd_x },
+};
+
+int unrelated() {
+    return 42;
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        unrelated_sym = next(s for s in result.symbols if s.name == "unrelated")
+        assert not any(e.src == unrelated_sym.id for e in table_edges)
+
+
+class TestCppDocstrings:
+    """Tests for Doxygen comment extraction via populate_docstrings_from_tree."""
+
+    def test_doxygen_block_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen block comment preceding a function."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/** Computes the factorial. */\n"
+            "int factorial(int n) {\n"
+            "    return n <= 1 ? 1 : n * factorial(n - 1);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "factorial"), None)
+        assert func is not None
+        assert func.docstring == "Computes the factorial."
+
+    def test_doxygen_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen /// line comment preceding a function."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/// Adds two integers.\n"
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "add"), None)
+        assert func is not None
+        assert func.docstring == "Adds two integers."
+
+    def test_doxygen_on_class(self, tmp_path: Path) -> None:
+        """Extracts Doxygen comment preceding a class."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/** Represents a widget. */\n"
+            "class Widget {\n"
+            "public:\n"
+            "    void draw();\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Widget"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents a widget."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "int main() { return 0; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "main"), None)
+        assert func is not None
+        assert func.docstring is None
+
+
+class TestCppFunctionPointerReferences:
+    """Tests for &function pointer references in C++ (INV-dinur)."""
+
+    def test_address_of_function(self, tmp_path: Path) -> None:
+        """&process should create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    auto fp = &process;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "function_pointer"
+
+    def test_qualified_function_pointer(self, tmp_path: Path) -> None:
+        """&Class::method should create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "class App {\n"
+            "public:\n"
+            "    static void handler(int x) {}\n"
+            "};\n"
+            "\n"
+            "void run() {\n"
+            "    auto fp = &App::handler;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "handler" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_cross_file_function_pointer(self, tmp_path: Path) -> None:
+        """&func referencing a function in another file."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "utils.cpp").write_text(
+            "void helper() {}\n"
+        )
+        (tmp_path / "main.cpp").write_text(
+            "void helper();\n"
+            "void run() {\n"
+            "    auto fp = &helper;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "helper" in e.dst
+        ]
+        assert len(ref_edges) >= 1
+
+    def test_no_reference_for_unknown_function(self, tmp_path: Path) -> None:
+        """&unknown should not create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void run() {\n"
+            "    auto fp = &unknown_func;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src
+        ]
+        assert len(ref_edges) == 0
+
+
+class TestCallbackArgDetection:
+    """Function pointer arguments in C++ calls (std::thread, etc.)."""
+
+    def test_pthread_create_callback(self, tmp_path: Path) -> None:
+        """pthread_create(tid, attr, worker, arg) → edge to worker."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void* worker(void* arg) { return nullptr; }\n"
+            "\n"
+            "void run() {\n"
+            "    pthread_t tid;\n"
+            "    pthread_create(&tid, nullptr, worker, nullptr);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "run" in e.src and "worker" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+
+    def test_no_false_positive_for_variables(self, tmp_path: Path) -> None:
+        """Variable args should NOT create callback edges."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    int count = 5;\n"
+            "    process(count);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 0
 

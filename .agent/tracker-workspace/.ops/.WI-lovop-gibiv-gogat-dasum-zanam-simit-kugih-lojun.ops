@@ -1,0 +1,43 @@
+- op: create  # a7f2
+  at: '2026-02-17T08:21:41Z'  # a7f2
+  by: agent  # a7f2
+  actor: jgstern_agent  # a7f2
+  clock: 1  # a7f2
+  nonce: a7f2  # a7f2
+  data:  # a7f2
+    kind: work_item  # a7f2
+    title: "Smoke test item"  # a7f2
+    status: todo_hard  # a7f2
+    priority: 2  # a7f2
+    parent:  # a7f2
+    tags: []  # a7f2
+    before: []  # a7f2
+    duplicate_of: []  # a7f2
+    not_duplicate_of: []  # a7f2
+    pr_ref:  # a7f2
+    justification:  # a7f2
+    description: ""  # a7f2
+    fields: {}  # a7f2
+- op: update  # b79b
+  at: '2026-02-17T08:23:33Z'  # b79b
+  by: agent  # b79b
+  actor: jgstern_agent  # b79b
+  clock: 2  # b79b
+  nonce: b79b  # b79b
+  set:  # b79b
+    status: in_progress  # b79b
+- op: discuss  # 3776
+  at: '2026-02-17T08:24:42Z'  # 3776
+  by: agent  # 3776
+  actor: jgstern_agent  # 3776
+  clock: 3  # 3776
+  nonce: '3776'  # 3776
+  message: "Confirmed: tracker is working"  # 3776
+- op: update  # 22eb
+  at: '2026-02-17T08:25:39Z'  # 22eb
+  by: agent  # 22eb
+  actor: jgstern_agent  # 22eb
+  clock: 4  # 22eb
+  nonce: 22eb  # 22eb
+  set:  # 22eb
+    status: done  # 22eb

@@ -1,0 +1,63 @@
+- op: create  # 417e
+  at: '2026-02-15T00:51:38Z'  # 417e
+  by: agent  # 417e
+  actor: migration  # 417e
+  clock: 1  # 417e
+  nonce: 417e  # 417e
+  data:  # 417e
+    kind: invariant  # 417e
+    title: "Branch Coverage"  # 417e
+    status: wont_do  # 417e
+    priority: 4  # 417e
+    parent:  # 417e
+    tags: []  # 417e
+    before: []  # 417e
+    duplicate_of: []  # 417e
+    not_duplicate_of: []  # 417e
+    pr_ref:  # 417e
+    justification:  # 417e
+    description: "Resolution (2026-02-07): Removed `--cov-branch` from `scripts/smart-test`.\n\nBranch coverage was never enforced in CI (ci.yml, full-suite.yml, release.yml all\n\nrun pytest without `--cov-branch`). It was only added to smart-test locally, which\n\ncreated ~1400 BRANCHES_*.py test files chasing the metric. Manual investigation of\n\njs_ts.py branch partials showed that ~70% of uncovered branches were unreachable\n\ndefensive code (internal call-site contracts, for-loop exhaustion, type narrowing)\n\nwhere tests required mock nodes the real code never produces. The ~30% that were\n\ngenuinely useful tested real input diversity (malformed configs, edge-case syntax)\n\n— but those are better discovered via bakeoff/integration testing than by auditing\n\nbranch partials bottom-up.\n\nThe existing BRANCHES_*.py files remain (some contain useful tests), but no new\n\nones should be created to chase branch coverage. Line coverage at 100% is the\n\nenforced standard. Quality gaps are better found via bakeoff on real repos."  # 417e
+    fields:  # 417e
+      statement: "Branch coverage should be tracked to catch untested code paths."  # 417e
+      root_cause: "Branch coverage was never enforced in CI; smart-test added it locally."  # 417e
+- op: update  # 94b5
+  at: '2026-02-15T02:22:44Z'  # 94b5
+  by: agent  # 94b5
+  actor: jgstern_agent  # 94b5
+  clock: 2  # 94b5
+  nonce: 94b5  # 94b5
+  set:  # 94b5
+    fields:  # 94b5
+      root_cause: "Branch coverage was never enforced in CI; smart-test added it locally creating ~1400 test files chasing unreachable branches."  # 94b5
+- op: update  # a2ce
+  at: '2026-02-23T07:07:38Z'  # a2ce
+  by: agent  # a2ce
+  actor: jgstern_agent  # a2ce
+  clock: 3  # a2ce
+  nonce: a2ce  # a2ce
+  set:  # a2ce
+    status: holding  # a2ce
+- op: update  # 8521
+  at: '2026-02-23T08:59:09Z'  # 8521
+  by: agent  # 8521
+  actor: jgstern_agent  # 8521
+  clock: 4  # 8521
+  nonce: '8521'  # 8521
+  set:  # 8521
+    status: needs_human_review  # 8521
+    justification: "Holding audit: branch coverage was intentionally removed (2026-02-07 resolution). This invariant is no longer maintained. Recommend deletion."  # 8521
+- op: update  # 3dcc
+  at: '2026-02-23T10:12:35Z'  # 3dcc
+  by: human  # 3dcc
+  actor: jgstern  # 3dcc
+  clock: 5  # 3dcc
+  nonce: 3dcc  # 3dcc
+  set:  # 3dcc
+    status: deleted  # 3dcc
+- op: discuss  # adb9
+  at: '2026-02-25T08:42:41Z'  # adb9
+  by: agent  # adb9
+  actor: jgstern_agent  # adb9
+  clock: 6  # adb9
+  nonce: adb9  # adb9
+  message: "[migrated from justification field] Holding audit: branch coverage was intentionally removed (2026-02-07 resolution). This invariant is no longer maintained. Recommend deletion."  # adb9

@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import robot as robot_module
-from hypergumbo_lang_common.robot import (
-    RobotAnalysisResult,
-    analyze_robot,
-    find_robot_files,
-    is_robot_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.robot import analyze_robot, find_robot_files, is_robot_tree_sitter_available
 
 def make_robot_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Robot Framework file in the temp directory."""
@@ -20,7 +15,6 @@ def make_robot_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindRobotFiles:
     """Tests for find_robot_files function."""
@@ -37,7 +31,6 @@ class TestFindRobotFiles:
         files = find_robot_files(tmp_path)
         assert files == []
 
-
 class TestIsRobotTreeSitterAvailable:
     """Tests for is_robot_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsRobotTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(robot_module, "is_robot_tree_sitter_available", return_value=False):
+        with patch.object(robot_module._analyzer, "_check_grammar_available", return_value=False):
             assert robot_module.is_robot_tree_sitter_available() is False
-
 
 class TestAnalyzeRobot:
     """Tests for analyze_robot function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", "*** Test Cases ***\nTest 1\n    Log    Hello")
-        with patch.object(robot_module, "is_robot_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Robot Framework analysis skipped"):
+        with patch.object(robot_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="robot analysis skipped"):
                 result = robot_module.analyze_robot(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -240,13 +232,13 @@ Test Keyword
         result = analyze_robot(tmp_path)
         keyword = next((s for s in result.symbols if s.kind == "keyword"), None)
         assert keyword is not None
-        assert keyword.origin == "robot.tree_sitter"
+        assert keyword.origin == "robot-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", "*** Test Cases ***\nTest 1\n    Log    Hello")
         result = analyze_robot(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "robot.tree_sitter"
+        assert result.run.pass_id == "robot-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

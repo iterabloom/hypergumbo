@@ -31,23 +31,30 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    make_typed_stable_id,
+    node_text,
+    visibility_from_modifiers,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "php-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("php")
 
 # Laravel HTTP route methods - used by _extract_laravel_routes
 LARAVEL_HTTP_METHODS = {
@@ -66,35 +73,9 @@ def find_php_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.php"])
 
 
-def is_php_tree_sitter_available() -> bool:
-    """Check if tree-sitter and PHP grammar are available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_php") is None:
-        return False
-    return True
-
-
-@dataclass
-class PhpAnalysisResult:
-    """Result of analyzing PHP files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"php:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+def _is_php_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 def _extract_use_aliases(
@@ -130,10 +111,10 @@ def _extract_use_aliases(
                         has_as = True
                     elif sub.type == "name" and has_as:
                         # This is the alias after 'as'
-                        alias_name = _node_text(sub, source)
+                        alias_name = node_text(sub, source)
 
                 if path_node:
-                    full_path = _node_text(path_node, source)
+                    full_path = node_text(path_node, source)
                     if alias_name:
                         aliases[alias_name] = full_path
                     else:
@@ -149,7 +130,7 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     """Find identifier name in node's children."""
     for child in node.children:
         if child.type == "name":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None
 
 
@@ -175,17 +156,17 @@ def _extract_base_classes_php(node: "tree_sitter.Node", source: bytes) -> list[s
         if child.type == "base_clause":
             for sub in child.children:
                 if sub.type == "name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
                 elif sub.type == "qualified_name":
                     # Fully qualified: extends \Namespace\Class
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
         # implements clause: class Foo implements IBar, IBaz
         elif child.type == "class_interface_clause":
             for sub in child.children:
                 if sub.type == "name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
                 elif sub.type == "qualified_name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
 
     return base_classes
 
@@ -265,9 +246,9 @@ def _extract_php_signature(
                     for pc in subchild.children:
                         if pc.type in ("primitive_type", "named_type", "nullable_type",
                                         "optional_type", "union_type"):
-                            param_type = _node_text(pc, source)
+                            param_type = node_text(pc, source)
                         elif pc.type == "variable_name":
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                     if param_name:
                         if param_type:
                             params.append(f"{param_type} {param_name}")
@@ -276,7 +257,7 @@ def _extract_php_signature(
         # Return type comes after formal_parameters
         elif found_params and child.type in ("primitive_type", "named_type", "nullable_type",
                                               "optional_type", "union_type"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -285,6 +266,15 @@ def _extract_php_signature(
         signature += f": {return_type}"
 
     return signature
+
+
+def normalize_php_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a PHP signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_php
+    return normalize_signature_php(signature, type_params)
 
 
 def _extract_controller_action(
@@ -323,19 +313,19 @@ def _extract_controller_action(
                                     # Controller::class - first name child is the class
                                     for cc in elem.children:
                                         if cc.type == "name":
-                                            controller = _node_text(cc, source)
+                                            controller = node_text(cc, source)
                                             break
                                 elif elem.type == "encapsed_string":
                                     # "action" with double-quoted encapsed_string
                                     for str_child in elem.children:  # pragma: no cover
                                         if str_child.type == "string_content":
-                                            action = _node_text(str_child, source)
+                                            action = node_text(str_child, source)
                                             break
                                 elif elem.type == "string":
                                     # 'action' with single-quoted string
                                     for str_child in elem.children:
                                         if str_child.type == "string_content":
-                                            action = _node_text(str_child, source)
+                                            action = node_text(str_child, source)
                                             break
                     if controller and action:
                         return f"{controller}@{action}"
@@ -344,7 +334,7 @@ def _extract_controller_action(
                 elif arg_child.type in ("string", "encapsed_string"):
                     for str_child in arg_child.children:
                         if str_child.type == "string_content":
-                            text = _node_text(str_child, source)
+                            text = node_text(str_child, source)
                             if "@" in text:
                                 return text
             break
@@ -386,11 +376,11 @@ def _extract_laravel_routes(
             continue
 
         # Check if this is Route::method()
-        scope_text = _node_text(scope_node, source)
+        scope_text = node_text(scope_node, source)
         if scope_text != "Route":
             continue
 
-        method_name = _node_text(name_node, source).lower()
+        method_name = node_text(name_node, source).lower()
 
         # HTTP method routes
         if method_name in LARAVEL_HTTP_METHODS:
@@ -415,10 +405,10 @@ def _extract_laravel_routes(
                         if arg_child.type == "string":
                             for str_child in arg_child.children:
                                 if str_child.type == "string_content":
-                                    route_path = _node_text(str_child, source)
+                                    route_path = node_text(str_child, source)
                                     break
                             if route_path is None:  # pragma: no cover
-                                raw = _node_text(arg_child, source)
+                                raw = node_text(arg_child, source)
                                 route_path = raw.strip("'\"")
                             break
                     break
@@ -475,7 +465,7 @@ def _extract_laravel_routes(
                                 # Controller::class - first name child is the controller
                                 for cc in arg_child.children:
                                     if cc.type == "name":
-                                        controller = _node_text(cc, source)
+                                        controller = node_text(cc, source)
                                         break
                         break
                     arg_index += 1
@@ -492,7 +482,7 @@ def _extract_laravel_routes(
                 ]
                 for http_meth, route_pth, action in restful_routes:
                     route_name = f"{http_meth} {route_pth}"
-                    route_id = _make_symbol_id(
+                    route_id = make_symbol_id("php",
                         path=str(file_path),
                         start_line=span.start_line,
                         end_line=span.end_line,
@@ -518,7 +508,7 @@ def _extract_laravel_routes(
         else:
             # Single HTTP method route
             route_name = f"{http_method} {normalized_path}"
-            route_id = _make_symbol_id(
+            route_id = make_symbol_id("php",
                 path=str(file_path),
                 start_line=span.start_line,
                 end_line=span.end_line,
@@ -571,6 +561,30 @@ class _ParsedFile:
     use_aliases: dict[str, str] = field(default_factory=dict)
 
 
+def _extract_modifiers_php(node: "tree_sitter.Node") -> list[str]:
+    """Extract visibility and other modifiers from a PHP declaration node.
+
+    PHP tree-sitter uses ``visibility_modifier`` and ``static_modifier`` as
+    direct children of method/property declarations.  Classes may have
+    ``abstract`` or ``final`` modifier nodes.
+
+    Returns e.g. ``["public", "static"]`` or ``["private"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "visibility_modifier":
+            for kw in child.children:
+                if kw.type in ("public", "private", "protected"):
+                    modifiers.append(kw.type)
+        elif child.type == "static_modifier":
+            modifiers.append("static")
+        elif child.type in ("abstract_modifier", "final_modifier", "readonly_modifier"):
+            # e.g. abstract_modifier wraps "abstract" keyword
+            keyword = child.type.removesuffix("_modifier")
+            modifiers.append(keyword)
+    return modifiers
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -592,8 +606,16 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_php_signature(node, source)
+                modifiers = _extract_modifiers_php(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_php_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
                     kind="function",
                     language="php",
@@ -601,7 +623,9 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -621,7 +645,7 @@ def _extract_symbols(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "class"),
                     name=name,
                     kind="class",
                     language="php",
@@ -630,6 +654,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_php(node),
                 )
                 symbols.append(symbol)
 
@@ -646,8 +671,16 @@ def _extract_symbols(
                 enclosing_class = _get_enclosing_class(node, source)
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
+                modifiers = _extract_modifiers_php(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_php_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="php",
@@ -655,7 +688,9 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -685,7 +720,7 @@ def _extract_edges(
     if symbol_resolver is None:  # pragma: no cover - defensive
         symbol_resolver = NameResolver(global_symbols)
     if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     if use_aliases is None:  # pragma: no cover - defensive default
@@ -697,7 +732,7 @@ def _extract_edges(
         if node.type == "function_call_expression":
             func_node = node.child_by_field_name("function")
             if func_node and func_node.type == "name":
-                callee_name = _node_text(func_node, source)
+                callee_name = node_text(func_node, source)
                 current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
                 if current_function:
                     # Use use_aliases for disambiguation
@@ -724,10 +759,10 @@ def _extract_edges(
                 name_node = node.child_by_field_name("name")
                 obj_node = node.child_by_field_name("object")
                 if name_node:
-                    method_name = _node_text(name_node, source)
+                    method_name = node_text(name_node, source)
 
                     # Check if it's $this->method()
-                    is_this_call = obj_node and obj_node.type == "variable_name" and _node_text(obj_node, source) == "$this"
+                    is_this_call = obj_node and obj_node.type == "variable_name" and node_text(obj_node, source) == "$this"
 
                     current_class_name = _get_enclosing_class(node, source)
                     if is_this_call and current_class_name:
@@ -747,22 +782,22 @@ def _extract_edges(
                             )
                             edges.append(edge)
                     else:
-                        # Try to resolve to any method with this name
+                        # Try to resolve to any method with this name.
+                        # Emit only one edge to the best candidate (not all
+                        # candidates) to avoid name-collision fanout.
                         lookup_result = method_resolver.lookup(method_name)
-                        if lookup_result.found and lookup_result.candidates:
-                            # Use lower confidence since we can't be sure of the type
-                            for target_sym in lookup_result.candidates:
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=target_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    confidence=0.60 * lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_inferred",
-                                )
-                                edges.append(edge)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.60 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_inferred",
+                            )
+                            edges.append(edge)
 
         # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":
@@ -771,8 +806,8 @@ def _extract_edges(
                 scope_node = node.child_by_field_name("scope")
                 name_node = node.child_by_field_name("name")
                 if scope_node and name_node:
-                    class_name = _node_text(scope_node, source)
-                    method_name = _node_text(name_node, source)
+                    class_name = node_text(scope_node, source)
+                    method_name = node_text(name_node, source)
 
                     # Handle self:: and static::
                     current_class_name = _get_enclosing_class(node, source)
@@ -804,7 +839,7 @@ def _extract_edges(
                 # Get the class name
                 for child in node.children:
                     if child.type == "name":
-                        class_name = _node_text(child, source)
+                        class_name = node_text(child, source)
                         # Use use_aliases for disambiguation
                         path_hint = use_aliases.get(class_name)
                         lookup_result = class_resolver.lookup(class_name, path_hint=path_hint)
@@ -869,107 +904,129 @@ def _analyze_php_file(
     return symbols, edges, True
 
 
-def analyze_php(repo_root: Path) -> PhpAnalysisResult:
-    """Analyze all PHP files in a repository.
+class PHPAnalyzer(TreeSitterAnalyzer):
+    """PHP analyzer using tree-sitter-php.
 
-    Uses a two-pass approach:
-    1. Parse all files and extract symbols into global registry
-    2. Detect calls and resolve against global symbol registry
-
-    Returns a PhpAnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-php is not available, returns empty result (silently skipped).
+    Overrides ``analyze()`` because PHP uses a custom ``_get_php_parser()``
+    helper (which selects the ``language_php`` sub-grammar), a three-pass
+    structure (symbols, edges, usage contexts), and per-file use-alias
+    extraction.
     """
-    start_time = time.time()
 
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    lang = "php"
+    file_patterns: ClassVar[list[str]] = ["*.php"]
+    grammar_module = "tree_sitter_php"
 
-    # Check for tree-sitter-php availability
-    if not is_php_tree_sitter_available():
-        skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
-        warnings.warn(skip_reason, stacklevel=2)
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run PHP analysis with three-pass symbol/edge/route extraction."""
+        start_time = time.time()
+
+        # Create analysis run for provenance
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        # Check for tree-sitter-php availability
+        if not self._check_grammar_available():
+            skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
+            warnings.warn(skip_reason, stacklevel=2)
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=skip_reason,
+            )
+
+        parser = _get_php_parser()
+        if parser is None:
+            skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
+            warnings.warn(skip_reason, stacklevel=2)
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=skip_reason,
+            )
+
+        # Pass 1: Parse all files and extract symbols
+        parsed_files: list[_ParsedFile] = []
+        all_symbols: list[Symbol] = []
+        files_analyzed = 0
+        files_skipped = 0
+
+        for file_path in find_php_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+                tree = parser.parse(source)
+                use_aliases = _extract_use_aliases(tree, source)
+                parsed_files.append(_ParsedFile(
+                    path=file_path, tree=tree, source=source, use_aliases=use_aliases
+                ))
+                symbols = _extract_symbols(tree, source, file_path, run)
+                all_symbols.extend(symbols)
+                files_analyzed += 1
+            except (OSError, IOError):
+                files_skipped += 1
+
+        # Build global symbol registries
+        global_symbols: dict[str, Symbol] = {}
+        global_methods: dict[str, list[Symbol]] = {}
+        global_classes: dict[str, Symbol] = {}
+
+        for sym in all_symbols:
+            global_symbols[sym.name] = sym
+            if sym.kind == "method":
+                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                if method_name not in global_methods:
+                    global_methods[method_name] = []
+                global_methods[method_name].append(sym)
+            elif sym.kind == "class":
+                global_classes[sym.name] = sym
+
+        # Pass 2: Extract edges using global symbol registry
+        symbol_resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+        class_resolver = NameResolver(global_classes)
+        all_edges: list[Edge] = []
+        for pf in parsed_files:
+            edges = _extract_edges(
+                pf.tree, pf.source, pf.path, run,
+                global_symbols, global_methods, global_classes,
+                symbol_resolver, method_resolver, class_resolver,
+                use_aliases=pf.use_aliases,
+            )
+            all_edges.extend(edges)
+
+        # Pass 3: Extract UsageContexts and route symbols for framework pattern matching
+        all_usage_contexts: list[UsageContext] = []
+        for pf in parsed_files:
+            contexts, route_symbols = _extract_laravel_routes(pf.tree, pf.source, pf.path, run)
+            all_usage_contexts.extend(contexts)
+            all_symbols.extend(route_symbols)
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return PhpAnalysisResult(
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            usage_contexts=all_usage_contexts,
             run=run,
-            skipped=True,
-            skip_reason=skip_reason,
         )
 
-    parser = _get_php_parser()
-    if parser is None:
-        skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
-        warnings.warn(skip_reason, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return PhpAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
 
-    # Pass 1: Parse all files and extract symbols
-    parsed_files: list[_ParsedFile] = []
-    all_symbols: list[Symbol] = []
-    files_analyzed = 0
-    files_skipped = 0
+_analyzer = PHPAnalyzer()
 
-    for file_path in find_php_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-            use_aliases = _extract_use_aliases(tree, source)
-            parsed_files.append(_ParsedFile(
-                path=file_path, tree=tree, source=source, use_aliases=use_aliases
-            ))
-            symbols = _extract_symbols(tree, source, file_path, run)
-            all_symbols.extend(symbols)
-            files_analyzed += 1
-        except (OSError, IOError):
-            files_skipped += 1
 
-    # Build global symbol registries
-    global_symbols: dict[str, Symbol] = {}
-    global_methods: dict[str, list[Symbol]] = {}
-    global_classes: dict[str, Symbol] = {}
+def is_php_tree_sitter_available() -> bool:
+    """Check if tree-sitter with PHP grammar is available."""
+    return _analyzer._check_grammar_available()
 
-    for sym in all_symbols:
-        global_symbols[sym.name] = sym
-        if sym.kind == "method":
-            # Extract just the method name (after the dot)
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            if method_name not in global_methods:
-                global_methods[method_name] = []
-            global_methods[method_name].append(sym)
-        elif sym.kind == "class":
-            global_classes[sym.name] = sym
 
-    # Pass 2: Extract edges using global symbol registry
-    symbol_resolver = NameResolver(global_symbols)
-    method_resolver = ListNameResolver(global_methods)
-    class_resolver = NameResolver(global_classes)
-    all_edges: list[Edge] = []
-    for pf in parsed_files:
-        edges = _extract_edges(
-            pf.tree, pf.source, pf.path, run,
-            global_symbols, global_methods, global_classes,
-            symbol_resolver, method_resolver, class_resolver,
-            use_aliases=pf.use_aliases,
-        )
-        all_edges.extend(edges)
-
-    # Pass 3: Extract UsageContexts and route symbols for framework pattern matching
-    all_usage_contexts: list[UsageContext] = []
-    for pf in parsed_files:
-        contexts, route_symbols = _extract_laravel_routes(pf.tree, pf.source, pf.path, run)
-        all_usage_contexts.extend(contexts)
-        all_symbols.extend(route_symbols)
-
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return PhpAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        usage_contexts=all_usage_contexts,
-        run=run,
-    )
+@register_analyzer("php")
+def analyze_php(repo_root: Path) -> AnalysisResult:
+    """Analyze all PHP files in a repository."""
+    return _analyzer.analyze(repo_root)

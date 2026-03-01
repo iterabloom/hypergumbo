@@ -21,11 +21,23 @@ Forward vs Reverse Slicing
 --------------------------
 Forward slicing (reverse=False, default) answers "what does this function call?"
 by following edges from caller to callee. Useful for understanding dependencies
-and downstream effects.
+and downstream effects. Structural edges (extends, implements, contains) are
+excluded from forward BFS to prevent explosion through shared ancestors and
+containment hierarchies (e.g., reaching a class via forward BFS would otherwise
+fan out to ALL its member methods via "contains" edges).
 
 Reverse slicing (reverse=True) answers "what calls this function?" by following
 edges from callee to caller. Useful for impact analysis - understanding what
 code might be affected by changes to a function.
+
+Class-Level Slice Expansion
+----------------------------
+When slicing from a class/interface entry point (either forward or reverse),
+the slicer automatically expands the starting set to include all member methods
+(discovered via "contains" edges). For reverse slices, this finds callers of
+``findById``, ``search``, etc. For forward slices, this is necessary because
+"contains" edges are excluded from BFS traversal, so without expansion a class
+entry would not reach its own methods.
 
 The result is a "feature" - a subgraph with a stable ID derived from
 the query parameters (sha256 of JSON-serialized query). Same query
@@ -59,8 +71,25 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
-from .paths import normalize_path, path_ends_with, is_test_file
+from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
+
+# Structural edges excluded from forward slice BFS traversal.
+# These cause BFS explosion through shared ancestors, containment, or
+# polymorphic dispatch:
+# - extends/implements: forward-slicing from VoiceController would follow
+#   "extends" to ApplicationController, then fan out to ALL other controllers.
+# - contains: reaching a class via forward BFS would fan out to ALL member
+#   methods, even siblings unrelated to the slice entry point.
+# - dispatches_to: reaching an interface method would fan out to ALL
+#   implementations (e.g., OutputFile.create → S3FileIO, GCSFileIO, ADLS…).
+# Reverse slices still follow these (useful for "who inherits from this?",
+# "who contains this?", and "which interface does this implement?").
+# When the entry point IS a container type, forward slice class expansion
+# seeds the BFS with member methods so they are still reachable.
+_STRUCTURAL_EDGE_TYPES = frozenset({
+    "extends", "implements", "contains", "dispatches_to",
+})
 
 
 class AmbiguousEntryError(Exception):
@@ -99,26 +128,38 @@ class SliceQuery:
     Attributes:
         entrypoint: Symbol name, file path, or node ID to start from.
         max_hops: Maximum traversal depth (default: 3).
-        max_files: Maximum number of files to include (default: 20).
+        max_files: Maximum number of files to include (default: 100).
         min_confidence: Minimum edge confidence to follow (default: 0.0).
         exclude_tests: Whether to exclude test files (default: False).
+        exclude_utility: Whether to exclude utility files (docs, examples, scripts).
         method: Traversal method, currently only "bfs" supported.
         reverse: If True, find callers of the entry point (backward traversal).
                  If False (default), find callees (forward traversal).
         max_tier: Maximum supply chain tier to include (1-4). None means no
                   tier filtering. Lower tiers are higher priority.
         language: Filter entry point matches to this language (e.g., "python").
+        hub_threshold: Maximum out-degree (forward) or in-degree (reverse) a
+                       node may have before it is pruned: included in the slice
+                       but NOT traversed through. Default 50 prunes only the
+                       top ~1% of nodes by degree. None disables pruning.
+        exclude_imports: If True, exclude import edges from both traversal and
+                        output. This produces a call-graph-only slice, removing
+                        file-level package dependencies that can constitute 60%+
+                        of edges in large codebases. Default False.
     """
 
     entrypoint: str
     max_hops: int = 3
-    max_files: int = 20
+    max_files: int = 100
     min_confidence: float = 0.0
     exclude_tests: bool = False
+    exclude_utility: bool = False
     method: str = "bfs"
     reverse: bool = False
     max_tier: int | None = None
     language: str | None = None
+    hub_threshold: int | None = 50
+    exclude_imports: bool = False
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -128,12 +169,17 @@ class SliceQuery:
             "hops": self.max_hops,
             "max_files": self.max_files,
             "exclude_tests": self.exclude_tests,
+            "exclude_utility": self.exclude_utility,
             "reverse": self.reverse,
         }
         if self.max_tier is not None:
             result["max_tier"] = self.max_tier
         if self.language is not None:
             result["language"] = self.language
+        if self.hub_threshold is not None:
+            result["hub_threshold"] = self.hub_threshold
+        if self.exclude_imports:
+            result["exclude_imports"] = True
         return result
 
 
@@ -154,6 +200,7 @@ class SliceResult:
     edge_ids: Set[str]
     query: SliceQuery
     limits_hit: List[str] = field(default_factory=list)
+    node_depths: Dict[str, int] = field(default_factory=dict)
 
     @property
     def feature_id(self) -> str:
@@ -164,7 +211,7 @@ class SliceResult:
 
     def to_dict(self) -> dict:
         """Serialize to spec-compliant feature structure."""
-        return {
+        result = {
             "id": self.feature_id,
             "name": self.query.entrypoint,
             "entry_nodes": self.entry_nodes,
@@ -173,6 +220,9 @@ class SliceResult:
             "query": self.query.to_dict(),
             "limits_hit": self.limits_hit,
         }
+        if self.node_depths:
+            result["node_depths"] = dict(sorted(self.node_depths.items()))
+        return result
 
 
 def find_entry_nodes(
@@ -306,6 +356,8 @@ def slice_graph(
     files_seen: Set[str] = set()
     files_with_imports_added: Set[str] = set()  # Track files whose imports we've added
     limits_hit: List[str] = []
+    entry_node_ids: Set[str] = {n.id for n in entry_nodes}
+    node_depths: Dict[str, int] = {}
 
     def add_file_imports(file_path: str) -> None:
         """Add import edges from the file node(s) for the given path."""
@@ -326,16 +378,53 @@ def slice_graph(
     # BFS state: (node_id, current_hop)
     queue: deque[tuple[str, int]] = deque()
 
+    # Container kinds that should be expanded to member methods for reverse slicing.
+    # When reverse-slicing from a class/interface, we also want to find callers of
+    # its methods, not just edges pointing directly to the class node.
+    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum"}
+
     # Initialize with entry nodes
     for entry in entry_nodes:
-        if query.exclude_tests and is_test_file(entry.path):
+        if query.exclude_tests and is_test_node(entry.path, entry.meta):
+            continue
+        if query.exclude_utility and is_utility_file(entry.path):
             continue
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
+        node_depths[entry.id] = 0
         files_seen.add(entry.path)
-        # Add import edges from this file (forward only)
-        if not query.reverse:
+        # Add import edges from this file (forward only, unless imports excluded)
+        if not query.reverse and not query.exclude_imports:
             add_file_imports(entry.path)
+
+    # Class expansion: when entry nodes include container types (class,
+    # interface, etc.), auto-expand to include member methods as additional
+    # starting points. For reverse slices, this finds callers of member
+    # methods (e.g., --reverse --entry OwnerRepository finds callers of
+    # findById, search, etc.). For forward slices, this is needed because
+    # 'contains' edges are excluded from forward BFS traversal, so without
+    # expansion the class entry would not reach its own methods.
+    for entry in entry_nodes:
+        if entry.kind not in _CONTAINER_KINDS:
+            continue
+        # Follow 'contains' edges FROM this class to find member methods
+        for edge in edges_from.get(entry.id, []):
+            if edge.edge_type != "contains":
+                continue
+            member = node_by_id.get(edge.dst)
+            if member is None:  # pragma: no cover - edge dst always in node_by_id
+                continue
+            if query.exclude_tests and is_test_node(member.path, member.meta):
+                continue
+            if query.exclude_utility and is_utility_file(member.path):
+                continue
+            if member.id not in visited_nodes:
+                visited_nodes.add(member.id)
+                node_depths[member.id] = 0
+                files_seen.add(member.path)
+                queue.append((member.id, 0))
+                if not query.reverse and not query.exclude_imports:
+                    add_file_imports(member.path)
 
     # BFS traversal
     while queue:
@@ -355,9 +444,35 @@ def slice_graph(
             # Forward: follow edges FROM this node (find callees)
             relevant_edges = edges_from.get(current_id, [])
 
+        # Hub node pruning: skip traversal for high-degree nodes.
+        # Entry nodes and their immediate neighbors (depth ≤ 1) are exempt.
+        # This prevents the common "main → run()" pattern from producing
+        # nearly-empty slices when run() is a large orchestrator function.
+        if (
+            query.hub_threshold is not None
+            and len(relevant_edges) > query.hub_threshold
+            and current_id not in entry_node_ids
+            and hop >= 2
+        ):
+            if "hub_pruned" not in limits_hit:
+                limits_hit.append("hub_pruned")
+            continue
+
         for edge in relevant_edges:
             # Filter by confidence
             if edge.confidence < query.min_confidence:
+                continue
+
+            # Skip structural IS-A edges in forward slices to prevent
+            # BFS explosion through shared ancestors (e.g., all controllers
+            # sharing ApplicationController as a base class).
+            if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+                continue
+
+            # Skip import edges when exclude_imports is set.
+            # Import edges are file-level package dependencies, not
+            # function-level call relationships.
+            if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
                 continue
 
             # Get the node at the other end of the edge
@@ -371,8 +486,12 @@ def slice_graph(
             if next_node is None:
                 continue
 
-            # Filter test files
-            if query.exclude_tests and is_test_file(next_node.path):
+            # Filter test nodes (by path or annotation, e.g. Rust #[test])
+            if query.exclude_tests and is_test_node(next_node.path, next_node.meta):
+                continue
+
+            # Filter utility files (docs, examples, scripts)
+            if query.exclude_utility and is_utility_file(next_node.path):
                 continue
 
             # Check tier limit
@@ -396,9 +515,11 @@ def slice_graph(
 
             if next_node.id not in visited_nodes:
                 visited_nodes.add(next_node.id)
+                node_depths[next_node.id] = hop + 1
                 queue.append((next_node.id, hop + 1))
-                # Add import edges from the visited file (forward only)
-                if not query.reverse:
+                # Add import edges from the visited file (forward only,
+                # unless imports excluded)
+                if not query.reverse and not query.exclude_imports:
                     add_file_imports(next_node.path)
 
     return SliceResult(
@@ -407,6 +528,7 @@ def slice_graph(
         edge_ids=visited_edges,
         query=query,
         limits_hit=limits_hit,
+        node_depths=node_depths,
     )
 
 

@@ -13,17 +13,19 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-haskell is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract functions, data types, type classes, instances with signatures
+2. Pass 2: Extract call edges and import edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Haskell-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-haskell package for grammar
+- Uses tree-sitter-haskell package for grammar (grammar_module)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
 
@@ -37,85 +39,34 @@ Haskell-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "haskell-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("haskell")
 
 
 def find_haskell_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Haskell files in the repository."""
     yield from find_files(repo_root, ["*.hs"])
 
-
-def is_haskell_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Haskell grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_haskell") is None:
-        return False  # pragma: no cover - tree-sitter-haskell not installed
-    return True
-
-
-@dataclass
-class HaskellAnalysisResult:
-    """Result of analyzing Haskell files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    import_aliases: dict[str, str] = field(default_factory=dict)
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"haskell:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Haskell file node (used as import edge source)."""
-    return f"haskell:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> str:
@@ -126,15 +77,15 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> str:
     # First child that's a 'variable' is typically the function name
     for child in node.children:
         if child.type == "variable":
-            return _node_text(child, source)
+            return node_text(child, source)
     return ""  # pragma: no cover - fallback for unparseable
 
 
 def _get_module_name(import_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract module name from import node."""
-    module_node = _find_child_by_type(import_node, "module")
+    module_node = find_child_by_type(import_node, "module")
     if module_node:
-        return _node_text(module_node, source)
+        return node_text(module_node, source)
     return ""  # pragma: no cover
 
 
@@ -163,7 +114,7 @@ def _extract_haskell_signature(
             type_parts.append("::")
         elif found_colons:
             # Collect the type expression
-            type_text = _node_text(child, source).strip()
+            type_text = node_text(child, source).strip()
             if type_text:
                 type_parts.append(type_text)
 
@@ -195,9 +146,9 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "signature":
             # Get function name from variable child
-            var_node = _find_child_by_type(node, "variable")
+            var_node = find_child_by_type(node, "variable")
             if var_node:
-                name = _node_text(var_node, source)
+                name = node_text(var_node, source)
                 sig = _extract_haskell_signature(node, source)
                 if sig:
                     type_signatures[name] = sig
@@ -221,7 +172,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("haskell", file_path, start_line, end_line, name, kind)
         symbols.append(Symbol(
             id=sym_id,
             name=name,
@@ -253,30 +204,30 @@ def _extract_symbols_from_file(
 
         elif node.type == "data_type":
             # Data type definition
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 add_symbol(node, name, "data")
 
         elif node.type == "class":
             # Type class definition
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 add_symbol(node, name, "class")
 
         elif node.type == "instance":
             # Instance declaration
-            name_node = _find_child_by_type(node, "name")
-            type_patterns = _find_child_by_type(node, "type_patterns")
+            name_node = find_child_by_type(node, "name")
+            type_patterns = find_child_by_type(node, "type_patterns")
             if name_node:
-                class_name = _node_text(name_node, source)
+                class_name = node_text(name_node, source)
                 type_name = ""
                 if type_patterns:
                     # Get the type being instantiated
-                    inner_name = _find_child_by_type(type_patterns, "name")
+                    inner_name = find_child_by_type(type_patterns, "name")
                     if inner_name:
-                        type_name = _node_text(inner_name, source)
+                        type_name = node_text(inner_name, source)
                 instance_name = f"{class_name} {type_name}".strip()
                 add_symbol(node, instance_name, "instance")
 
@@ -324,12 +275,12 @@ def _extract_import_aliases(
         for child in node.children:
             if child.type == "module" and not has_as:
                 # This is the main module being imported
-                module_name = _node_text(child, source)
+                module_name = node_text(child, source)
             elif child.type == "as":
                 has_as = True
             elif child.type == "module" and has_as:
                 # This is the alias
-                alias_name = _node_text(child, source)
+                alias_name = node_text(child, source)
 
         if module_name and alias_name:
             aliases[alias_name] = module_name
@@ -358,7 +309,7 @@ def _extract_edges_from_file(
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("haskell", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -390,25 +341,25 @@ def _extract_edges_from_file(
                 path_hint: Optional[str] = None
 
                 if first_child.type == "variable":
-                    callee_name = _node_text(first_child, source)
+                    callee_name = node_text(first_child, source)
                 elif first_child.type == "qualified":
                     # Qualified call: M.lookup
-                    module_node = _find_child_by_type(first_child, "module")
-                    var_node = _find_child_by_type(first_child, "variable")
+                    module_node = find_child_by_type(first_child, "module")
+                    var_node = find_child_by_type(first_child, "variable")
                     if module_node and var_node:
                         # Get module alias (M) from module_id
-                        module_id_node = _find_child_by_type(module_node, "module_id")
+                        module_id_node = find_child_by_type(module_node, "module_id")
                         if module_id_node:
-                            alias = _node_text(module_id_node, source)
+                            alias = node_text(module_id_node, source)
                             path_hint = import_aliases.get(alias)
-                        callee_name = _node_text(var_node, source)
+                        callee_name = node_text(var_node, source)
                 elif first_child.type == "apply":  # pragma: no cover - curried application
                     # Curried application - get innermost function
                     innermost = first_child  # pragma: no cover
                     while innermost.children and innermost.children[0].type == "apply":  # pragma: no cover
                         innermost = innermost.children[0]  # pragma: no cover
                     if innermost.children and innermost.children[0].type == "variable":  # pragma: no cover
-                        callee_name = _node_text(innermost.children[0], source)  # pragma: no cover
+                        callee_name = node_text(innermost.children[0], source)  # pragma: no cover
 
                 if callee_name and callee_name not in ("print", "putStrLn", "return"):
                     # Find the caller (enclosing function)
@@ -450,108 +401,78 @@ def _extract_edges_from_file(
     return edges
 
 
-def analyze_haskell(repo_root: Path) -> HaskellAnalysisResult:
-    """Analyze Haskell files in a repository.
+class HaskellAnalyzer(TreeSitterAnalyzer):
+    """Haskell language analyzer using tree-sitter-haskell.
 
-    Returns a HaskellAnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-haskell is not available, returns a skipped result.
+    Extracts functions, data types, type classes, instances, imports,
+    and function call relationships from Haskell source files.
     """
-    start_time = time.time()
 
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    lang = "haskell"
+    file_patterns: ClassVar[list[str]] = ["*.hs"]
+    grammar_module = "tree_sitter_haskell"
+    create_file_symbols = True
 
-    if not is_haskell_tree_sitter_available():
-        skip_reason = (
-            "Haskell analysis skipped: requires tree-sitter-haskell "
-            "(pip install tree-sitter-haskell)"
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract functions, data types, classes, instances from a Haskell file."""
+        analysis = FileAnalysis()
+
+        file_symbols = _extract_symbols_from_file(
+            tree, source, rel_path, run.execution_id,
         )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return HaskellAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
+        analysis.symbols.extend(file_symbols)
 
-    import tree_sitter
-    import tree_sitter_haskell
-
-    HASKELL_LANGUAGE = tree_sitter.Language(tree_sitter_haskell.language())
-    parser = tree_sitter.Parser(HASKELL_LANGUAGE)
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for hs_file in find_haskell_files(repo_root):
-        try:
-            source = hs_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(hs_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=_make_file_id(rel_path),
-            name="file",
-            kind="file",
-            language="haskell",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Extract import aliases for disambiguation
-        import_aliases = _extract_import_aliases(tree, source)
-
-        # Register symbols globally (for cross-file resolution)
+        # Build symbol_by_name for edge resolution
         for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
+            analysis.symbol_by_name[sym.name] = sym
 
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
+        return analysis
+
+    def get_import_aliases(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+    ) -> dict[str, str]:
+        """Extract Haskell import aliases (import qualified ... as ...)."""
+        return _extract_import_aliases(tree, source)
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract call and import edges from a Haskell file."""
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path, file_symbols,
+            resolver, run.execution_id,
             import_aliases=import_aliases,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-            import_aliases=fa.import_aliases,
         )
-        all_edges.extend(edges)
 
-    run.files_analyzed = files_analyzed
 
-    return HaskellAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+_analyzer = HaskellAnalyzer()
+
+
+def is_haskell_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Haskell grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("haskell")
+def analyze_haskell(repo_root: Path) -> AnalysisResult:
+    """Analyze Haskell files in a repository."""
+    return _analyzer.analyze(repo_root)

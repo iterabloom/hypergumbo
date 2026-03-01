@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,50 @@ if TYPE_CHECKING:
 
 # Model name constant
 _EMBEDDING_MODEL = "microsoft/unixcoder-base"
+
+# Regex pattern for IPv6 CIDR (contains :: and /prefix, e.g., fd00:200::/40)
+_IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
+
+
+def _sanitize_no_proxy_for_httpx() -> tuple[str | None, str | None]:
+    """Temporarily remove IPv6 CIDR entries from NO_PROXY for httpx compatibility.
+
+    httpx has a bug where IPv6 CIDR notation (e.g., fd00:200::/40) in NO_PROXY
+    causes InvalidURL errors during Client initialization. This function removes
+    such entries temporarily and returns the original values for restoration.
+
+    Returns:
+        Tuple of (original NO_PROXY, original no_proxy) for restoration.
+    """
+    old_values: tuple[str | None, str | None] = (
+        os.environ.get("NO_PROXY"),
+        os.environ.get("no_proxy"),
+    )
+
+    for var in ("NO_PROXY", "no_proxy"):
+        value = os.environ.get(var)
+        if value:
+            # Filter out IPv6 CIDR entries
+            entries = [e.strip() for e in value.split(",")]
+            filtered = [e for e in entries if not _IPV6_CIDR_PATTERN.match(e)]
+            if len(filtered) < len(entries):
+                os.environ[var] = ",".join(filtered)
+
+    return old_values
+
+
+def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
+    """Restore NO_PROXY environment variables to their original values."""
+    old_no_proxy, old_no_proxy_lower = old_values
+    if old_no_proxy is not None:
+        os.environ["NO_PROXY"] = old_no_proxy
+    elif "NO_PROXY" in os.environ:
+        del os.environ["NO_PROXY"]
+
+    if old_no_proxy_lower is not None:
+        os.environ["no_proxy"] = old_no_proxy_lower
+    elif "no_proxy" in os.environ:
+        del os.environ["no_proxy"]
 
 
 def _load_embedding_model():
@@ -36,6 +81,10 @@ def _load_embedding_model():
 
     The warning is suppressed by setting log level BEFORE importing/loading,
     and by capturing any stdout output during initialization.
+
+    Note:
+        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
+        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -45,6 +94,9 @@ def _load_embedding_model():
     import sys
     import io
 
+    # Work around httpx bug with IPv6 CIDR in NO_PROXY
+    old_no_proxy = _sanitize_no_proxy_for_httpx()
+
     # Capture any stdout during model loading (library prints to stdout)
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
@@ -52,6 +104,7 @@ def _load_embedding_model():
         model = SentenceTransformer(_EMBEDDING_MODEL)
     finally:
         sys.stdout = old_stdout
+        _restore_no_proxy(old_no_proxy)
     return model
 
 # Probe patterns for embedding-based config extraction
@@ -294,6 +347,27 @@ BIG_PICTURE_QUESTIONS = [
     "How are database migrations handled?",
 ]
 
+# Negative probe patterns: chunks matching these are penalized.
+# These represent content that shares vocabulary with config probes
+# but is NOT actual project configuration (docs, schemas, tests, etc.).
+#
+# WARNING: If you modify NEGATIVE_PATTERNS, you MUST regenerate precomputed
+# embeddings: python scripts/compute_probe_embeddings.py
+NEGATIVE_PATTERNS = [
+    "JSON schema type definition with required properties",
+    "API documentation example showing request and response",
+    "output format specification describing data structure",
+    "test fixture data for unit testing",
+    "error message string for exception handling",
+    "legal license text boilerplate copyright notice",
+    "changelog release notes version history",
+    "code comment explaining implementation details",
+    "markdown documentation section heading",
+    "function signature with parameters and return type",
+    "class definition with methods and properties",
+    "HTML template markup with tags and attributes",
+]
+
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""
@@ -511,6 +585,55 @@ def _is_readme_line_filterable(line: str) -> bool:
         return True
 
     return False
+
+
+def _dedupe_repeated_prefix(text: str, max_phrase_len: int = 10) -> str:
+    """Remove repeated word sequences at the start of text.
+
+    When README headers get merged with content, we can end up with:
+    "hypergumbo hypergumbo is a local-first CLI..."
+
+    This function detects and removes such repetitions for phrase lengths
+    1 through max_phrase_len.
+
+    Examples:
+        "foo foo foo bar" → "foo bar"
+        "foo bar foo bar baz" → "foo bar baz"
+        "a b c a b c d" → "a b c d"
+
+    Args:
+        text: The text to deduplicate.
+        max_phrase_len: Maximum phrase length to check (1 to this value).
+
+    Returns:
+        Text with repeated prefixes collapsed to single occurrence.
+    """
+    if not text:
+        return text
+
+    words = text.split()
+    if len(words) < 2:
+        return text
+
+    # Check for repeated prefixes of length 1, 2, ..., max_phrase_len
+    for phrase_len in range(1, min(max_phrase_len + 1, len(words) // 2 + 1)):
+        phrase = words[:phrase_len]
+        # Count how many times this phrase repeats consecutively at the start
+        repeat_count = 1
+        pos = phrase_len
+        while pos + phrase_len <= len(words):
+            if words[pos:pos + phrase_len] == phrase:
+                repeat_count += 1
+                pos += phrase_len
+            else:
+                break
+
+        if repeat_count > 1:
+            # Found repetition - remove all but one occurrence
+            remaining = words[pos:]
+            return " ".join(phrase + remaining)
+
+    return text
 
 
 class ReadmeExtractionDebug:
@@ -822,6 +945,10 @@ def extract_readme_description_embedding(
         header_match = re.match(r"^(#+\s+\S+\s*#+\s*|#+\s+)", description)
         if header_match:
             description = description[header_match.end():].lstrip()
+
+    # Deduplicate repeated word sequences at the start (e.g., "foo foo bar" → "foo bar")
+    # This handles cases where the header title gets duplicated with the opening text
+    description = _dedupe_repeated_prefix(description)
 
     final_description = description if description else None
 
@@ -1377,6 +1504,10 @@ def _load_modernbert_model():
 
     Returns:
         SentenceTransformer model configured for 256-dim output.
+
+    Note:
+        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
+        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -1385,6 +1516,9 @@ def _load_modernbert_model():
     from sentence_transformers import SentenceTransformer
     import sys
     import io
+
+    # Work around httpx bug with IPv6 CIDR in NO_PROXY
+    old_no_proxy = _sanitize_no_proxy_for_httpx()
 
     # Capture any stdout during model loading (library prints to stdout)
     old_stdout = sys.stdout
@@ -1396,6 +1530,7 @@ def _load_modernbert_model():
         )
     finally:
         sys.stdout = old_stdout
+        _restore_no_proxy(old_no_proxy)
     return model
 
 

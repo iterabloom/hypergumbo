@@ -14,15 +14,29 @@ from unittest.mock import MagicMock
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    extract_doc_comment,
     find_child_by_field,
     find_child_by_type,
     is_grammar_available,
     iter_tree,
     iter_tree_with_context,
+    make_entry_stable_id,
     make_file_id,
+    make_route_stable_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    normalize_generic_params,
+    normalize_signature_go,
+    normalize_signature_names_first,
+    normalize_signature_php,
+    normalize_signature_types_first,
+    populate_docstrings_from_tree,
+    split_params_top_level,
+    strip_fqn_prefix,
+    visibility_from_modifiers,
 )
+from hypergumbo_core.ir import Span, Symbol
 
 if TYPE_CHECKING:
     pass
@@ -233,6 +247,465 @@ class TestMakeFileId:
         assert result == "python:src/main.py:1-1:file:file"
 
 
+class TestMakeRouteStableId:
+    """Tests for make_route_stable_id — ADR-0014 §4 route identity."""
+
+    def test_different_paths_produce_different_ids(self) -> None:
+        """GET /users and GET /posts must NOT collide."""
+        id1 = make_route_stable_id("GET", "/users")
+        id2 = make_route_stable_id("GET", "/posts")
+        assert id1 != id2
+
+    def test_different_methods_produce_different_ids(self) -> None:
+        """GET /users and POST /users must NOT collide."""
+        id1 = make_route_stable_id("GET", "/users")
+        id2 = make_route_stable_id("POST", "/users")
+        assert id1 != id2
+
+    def test_case_insensitive_method(self) -> None:
+        """Method is normalized to uppercase internally."""
+        id1 = make_route_stable_id("get", "/users")
+        id2 = make_route_stable_id("GET", "/users")
+        assert id1 == id2
+
+    def test_returns_hex_digest(self) -> None:
+        """Result is a hex string (sha256 digest)."""
+        result = make_route_stable_id("GET", "/users")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_route_stable_id("POST", "/api/v1/items")
+        id2 = make_route_stable_id("POST", "/api/v1/items")
+        assert id1 == id2
+
+
+class TestMakeEntryStableId:
+    """Tests for make_entry_stable_id — ADR-0014 §4 entry-point identity."""
+
+    def test_different_names_produce_different_ids(self) -> None:
+        """Two @vertex functions with different names must NOT collide."""
+        id1 = make_entry_stable_id("vertex", "main_vs")
+        id2 = make_entry_stable_id("vertex", "shadow_vs")
+        assert id1 != id2
+
+    def test_different_types_produce_different_ids(self) -> None:
+        """@vertex main and @fragment main must NOT collide."""
+        id1 = make_entry_stable_id("vertex", "main")
+        id2 = make_entry_stable_id("fragment", "main")
+        assert id1 != id2
+
+    def test_returns_hex_digest(self) -> None:
+        """Result is a hex string (sha256 digest)."""
+        result = make_entry_stable_id("compute", "dispatch")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_entry_stable_id("fragment", "main_fs")
+        id2 = make_entry_stable_id("fragment", "main_fs")
+        assert id1 == id2
+
+
+class TestMakeTypedStableId:
+    """Tests for make_typed_stable_id — ADR-0014 §3 typed-tier identity."""
+
+    def test_returns_sha256_format(self) -> None:
+        """Result uses sha256:{16-hex} format."""
+        result = make_typed_stable_id("method", "(String,int)User")
+        assert result.startswith("sha256:")
+        assert len(result) == len("sha256:") + 16
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_typed_stable_id("method", "(String,int)User", "public")
+        id2 = make_typed_stable_id("method", "(String,int)User", "public")
+        assert id1 == id2
+
+    def test_different_signatures_produce_different_ids(self) -> None:
+        """Different normalized signatures produce different hashes."""
+        id1 = make_typed_stable_id("method", "(String)void")
+        id2 = make_typed_stable_id("method", "(int)void")
+        assert id1 != id2
+
+    def test_different_visibility_produces_different_ids(self) -> None:
+        """Same signature with different visibility produces different hashes."""
+        id1 = make_typed_stable_id("method", "(String)void", "public")
+        id2 = make_typed_stable_id("method", "(String)void", "private")
+        assert id1 != id2
+
+    def test_different_containing_produces_different_ids(self) -> None:
+        """Same signature in different containers produces different hashes."""
+        id1 = make_typed_stable_id("method", "(int)bool", "", "sha256:aaa")
+        id2 = make_typed_stable_id("method", "(int)bool", "", "sha256:bbb")
+        assert id1 != id2
+
+    def test_empty_visibility_accepted(self) -> None:
+        """Empty visibility (Python, Go) produces a valid hash."""
+        result = make_typed_stable_id("function", "(int)bool", "")
+        assert result.startswith("sha256:")
+
+    def test_different_decorators_produce_different_ids(self) -> None:
+        """Same signature with different decorators produces different hashes."""
+        id1 = make_typed_stable_id("function", "()", decorators="lru_cache")
+        id2 = make_typed_stable_id("function", "()", decorators="")
+        assert id1 != id2
+
+    def test_decorator_order_matters(self) -> None:
+        """Decorator string is included verbatim; callers sort before passing."""
+        id1 = make_typed_stable_id("method", "(int)void", decorators="A,B")
+        id2 = make_typed_stable_id("method", "(int)void", decorators="B,A")
+        assert id1 != id2
+
+    def test_differs_from_untyped(self) -> None:
+        """Typed tier hash differs from what untyped would produce."""
+        # Typed uses normalized_signature, untyped uses param_count + arity_flags.
+        # These should never collide since the sig components are different.
+        typed = make_typed_stable_id("method", "(String,int)User", "public")
+        # An untyped-tier hash would look like "method:2:False,False,False:..."
+        # Verify they don't accidentally match (sanity check)
+        assert "method:2:" not in typed
+
+
+class TestVisibilityFromModifiers:
+    """Tests for visibility_from_modifiers utility."""
+
+    def test_public(self) -> None:
+        assert visibility_from_modifiers(["public", "static"]) == "public"
+
+    def test_private(self) -> None:
+        assert visibility_from_modifiers(["private"]) == "private"
+
+    def test_protected(self) -> None:
+        assert visibility_from_modifiers(["protected", "abstract"]) == "protected"
+
+    def test_internal(self) -> None:
+        assert visibility_from_modifiers(["internal"]) == "internal"
+
+    def test_no_visibility(self) -> None:
+        assert visibility_from_modifiers(["static", "final"]) == ""
+
+    def test_empty_list(self) -> None:
+        assert visibility_from_modifiers([]) == ""
+
+    def test_none_input(self) -> None:
+        assert visibility_from_modifiers(None) == ""
+
+
+class TestStripFqnPrefix:
+    """Tests for strip_fqn_prefix utility."""
+
+    def test_simple_name_unchanged(self) -> None:
+        assert strip_fqn_prefix("String") == "String"
+
+    def test_dotted_path_strips_prefix(self) -> None:
+        assert strip_fqn_prefix("java.lang.String") == "String"
+
+    def test_two_segment_path(self) -> None:
+        assert strip_fqn_prefix("http.Request") == "Request"
+
+    def test_preserves_generic_params(self) -> None:
+        assert strip_fqn_prefix("java.util.List<String>") == "List<String>"
+
+    def test_nested_fqn_in_generics(self) -> None:
+        assert strip_fqn_prefix("java.util.Map<java.lang.String, Integer>") == (
+            "Map<java.lang.String, Integer>"
+        )
+
+    def test_square_bracket_generics(self) -> None:
+        assert strip_fqn_prefix("scala.collection.List[Int]") == "List[Int]"
+
+    def test_empty_string(self) -> None:
+        assert strip_fqn_prefix("") == ""
+
+
+class TestNormalizeGenericParams:
+    """Tests for normalize_generic_params utility."""
+
+    def test_replaces_type_params(self) -> None:
+        assert normalize_generic_params("List<T>", ["T"]) == "List<$0>"
+
+    def test_multiple_params(self) -> None:
+        result = normalize_generic_params("Map<K, V>", ["K", "V"])
+        assert result == "Map<$0, $1>"
+
+    def test_preserves_concrete_types(self) -> None:
+        result = normalize_generic_params("Map<String, T>", ["T"])
+        assert result == "Map<String, $0>"
+
+    def test_empty_type_params(self) -> None:
+        assert normalize_generic_params("List<String>", []) == "List<String>"
+
+    def test_type_param_in_multiple_positions(self) -> None:
+        result = normalize_generic_params("(T, T) -> T", ["T"])
+        assert result == "($0, $0) -> $0"
+
+    def test_does_not_replace_substrings(self) -> None:
+        # "T" should not match inside "String" or "Int"
+        result = normalize_generic_params("Map<String, Int>", ["T"])
+        assert result == "Map<String, Int>"
+
+
+class TestSplitParamsTopLevel:
+    """Tests for split_params_top_level utility."""
+
+    def test_simple_params(self) -> None:
+        assert split_params_top_level("int x, String y") == ["int x", "String y"]
+
+    def test_generic_nesting(self) -> None:
+        result = split_params_top_level("Map<String, Integer>, int x")
+        assert result == ["Map<String, Integer>", "int x"]
+
+    def test_empty_string(self) -> None:
+        assert split_params_top_level("") == []
+
+    def test_single_param(self) -> None:
+        assert split_params_top_level("int x") == ["int x"]
+
+    def test_nested_generics(self) -> None:
+        result = split_params_top_level("Map<String, List<Integer>>, boolean flag")
+        assert result == ["Map<String, List<Integer>>", "boolean flag"]
+
+
+class TestNormalizeSignatureTypesFirst:
+    """Tests for normalize_signature_types_first (Java, C#, Dart, Groovy)."""
+
+    def test_java_basic(self) -> None:
+        result = normalize_signature_types_first("(String name, int age) User")
+        assert result == "(String,int)User"
+
+    def test_java_void(self) -> None:
+        result = normalize_signature_types_first("(String msg)")
+        assert result == "(String)"
+
+    def test_java_generics(self) -> None:
+        result = normalize_signature_types_first(
+            "(List<T> items) Map<K, V>", type_params=["T", "K", "V"]
+        )
+        assert result == "(List<$0>)Map<$1, $2>"
+
+    def test_java_fqn(self) -> None:
+        result = normalize_signature_types_first("(java.lang.String name) java.util.List")
+        assert result == "(String)List"
+
+    def test_java_varargs(self) -> None:
+        result = normalize_signature_types_first("(String... args)")
+        assert result == "(String)"
+
+    def test_none_input(self) -> None:
+        assert normalize_signature_types_first(None) is None
+
+    def test_empty_input(self) -> None:
+        assert normalize_signature_types_first("") is None
+
+    def test_no_params(self) -> None:
+        result = normalize_signature_types_first("() int")
+        assert result == "()int"
+
+    def test_constructor_no_return(self) -> None:
+        result = normalize_signature_types_first("(String name, int age)")
+        assert result == "(String,int)"
+
+    def test_malformed_no_paren(self) -> None:
+        assert normalize_signature_types_first("no parens here") is None
+
+    def test_single_token_param(self) -> None:
+        # Single token without space — treated as type
+        result = normalize_signature_types_first("(int)")
+        assert result == "(int)"
+
+    def test_return_sep_colon(self) -> None:
+        result = normalize_signature_types_first(
+            "(String name): int", return_sep=":"
+        )
+        assert result == "(String)int"
+
+    def test_void_return_not_skipped(self) -> None:
+        result = normalize_signature_types_first(
+            "(int x) void", skip_void_return=False
+        )
+        assert result == "(int)void"
+
+    def test_empty_param_segment_skipped(self) -> None:
+        """Empty param segments from consecutive commas are skipped."""
+        result = normalize_signature_types_first("(int x,,String y) Result")
+        assert result == "(int,String)Result"
+
+    def test_unmatched_paren(self) -> None:
+        """Unmatched opening paren returns None."""
+        assert normalize_signature_types_first("(int x") is None
+
+
+class TestNormalizeSignatureNamesFirst:
+    """Tests for normalize_signature_names_first (Kotlin, Scala, Swift, Rust, TS, Python)."""
+
+    def test_kotlin_basic(self) -> None:
+        result = normalize_signature_names_first(
+            "(name: String, age: Int): User", return_sep=":"
+        )
+        assert result == "(String,Int)User"
+
+    def test_kotlin_no_return(self) -> None:
+        result = normalize_signature_names_first("(msg: String)", return_sep=":")
+        assert result == "(String)"
+
+    def test_swift_arrow_return(self) -> None:
+        result = normalize_signature_names_first(
+            "(x: Int, y: Int) -> Int", return_sep="->"
+        )
+        assert result == "(Int,Int)Int"
+
+    def test_rust_self_skip(self) -> None:
+        result = normalize_signature_names_first(
+            "(&self, x: i32) -> bool", return_sep="->", skip_self=True
+        )
+        assert result == "(i32)bool"
+
+    def test_python_self_skip(self) -> None:
+        result = normalize_signature_names_first(
+            "(self, name: str, age: int) -> bool", return_sep="->", skip_self=True
+        )
+        assert result == "(str,int)bool"
+
+    def test_python_no_annotations(self) -> None:
+        result = normalize_signature_names_first(
+            "(name, age)", return_sep="->"
+        )
+        assert result == "(name,age)"
+
+    def test_typescript_generics(self) -> None:
+        result = normalize_signature_names_first(
+            "(items: Array<T>, mapper: (item: T) => U): Array<U>",
+            type_params=["T", "U"],
+            return_sep=":",
+        )
+        assert result == "(Array<$0>,(item: $0) => $1)Array<$1>"
+
+    def test_none_input(self) -> None:
+        assert normalize_signature_names_first(None) is None
+
+    def test_empty_input(self) -> None:
+        assert normalize_signature_names_first("") is None
+
+    def test_scala_generics(self) -> None:
+        result = normalize_signature_names_first(
+            "(x: List[A], y: Map[A, B]): Option[B]",
+            type_params=["A", "B"],
+            return_sep=":",
+        )
+        assert result == "(List[$0],Map[$0, $1])Option[$1]"
+
+    def test_malformed_no_paren(self) -> None:
+        """Malformed signature without parens returns None."""
+        assert normalize_signature_names_first("no parens here") is None
+
+    def test_arrow_fallback_with_colon_sep(self) -> None:
+        """When return_sep is ':', but rest starts with '->', use arrow fallback."""
+        result = normalize_signature_names_first(
+            "(x: Int) -> Bool", return_sep=":"
+        )
+        assert result == "(Int)Bool"
+
+    def test_rest_without_separator(self) -> None:
+        """Rest text that doesn't start with any separator is used as return."""
+        result = normalize_signature_names_first(
+            "(x: Int) Bool", return_sep=":"
+        )
+        assert result == "(Int)Bool"
+
+    def test_empty_param_segment_skipped(self) -> None:
+        """Empty param segments from consecutive commas are skipped."""
+        result = normalize_signature_names_first(
+            "(x: Int,,y: Bool): Bool", return_sep=":"
+        )
+        assert result == "(Int,Bool)Bool"
+
+
+class TestNormalizeSignaturePhp:
+    """Tests for normalize_signature_php."""
+
+    def test_basic_typed(self) -> None:
+        result = normalize_signature_php("(int $x, int $y): int")
+        assert result == "(int,int)int"
+
+    def test_void_return(self) -> None:
+        result = normalize_signature_php("(string $msg): void")
+        assert result == "(string)"
+
+    def test_untyped_params(self) -> None:
+        result = normalize_signature_php("($x, $y)")
+        assert result == "($x,$y)"
+
+    def test_none_input(self) -> None:
+        assert normalize_signature_php(None) is None
+
+    def test_nullable_type(self) -> None:
+        result = normalize_signature_php("(?string $name): ?int")
+        assert result == "(?string)?int"
+
+    def test_malformed_no_paren(self) -> None:
+        """Malformed signature without parens returns None."""
+        assert normalize_signature_php("no parens") is None
+
+    def test_empty_param_segment_skipped(self) -> None:
+        """Empty param segments from consecutive commas are skipped."""
+        result = normalize_signature_php("(int $x,,string $y): string")
+        assert result == "(int,string)string"
+
+
+class TestNormalizeSignatureGo:
+    """Tests for normalize_signature_go."""
+
+    def test_basic(self) -> None:
+        result = normalize_signature_go("(name string, age int) error")
+        assert result == "(string,int)error"
+
+    def test_pointer_stripped(self) -> None:
+        result = normalize_signature_go("(r *http.Request) error")
+        assert result == "(Request)error"
+
+    def test_tuple_return(self) -> None:
+        result = normalize_signature_go("(x int) (int, error)")
+        assert result == "(int)(int,error)"
+
+    def test_no_return(self) -> None:
+        result = normalize_signature_go("(msg string)")
+        assert result == "(string)"
+
+    def test_none_input(self) -> None:
+        assert normalize_signature_go(None) is None
+
+    def test_fqn_package_prefix(self) -> None:
+        result = normalize_signature_go("(ctx context.Context) http.Response")
+        assert result == "(Context)Response"
+
+    def test_malformed_no_paren(self) -> None:
+        """Malformed signature without parens returns None."""
+        assert normalize_signature_go("no parens here") is None
+
+    def test_empty_param_segment_skipped(self) -> None:
+        """Empty param segments from consecutive commas are skipped."""
+        result = normalize_signature_go("(x int,,y string) error")
+        assert result == "(int,string)error"
+
+    def test_single_token_param(self) -> None:
+        """Single-token param (type without name) in Go."""
+        result = normalize_signature_go("(error)")
+        assert result == "(error)"
+
+    def test_single_token_pointer_param(self) -> None:
+        """Single-token pointer param has * stripped."""
+        result = normalize_signature_go("(*Request)")
+        assert result == "(Request)"
+
+    def test_pointer_return(self) -> None:
+        """Pointer return type has * stripped."""
+        result = normalize_signature_go("(x int) *Response")
+        assert result == "(int)Response"
+
+
 class TestIsGrammarAvailable:
     """Tests for is_grammar_available function."""
 
@@ -246,6 +719,22 @@ class TestIsGrammarAvailable:
     def test_returns_false_when_missing(self) -> None:
         """Should return False when grammar is not installed."""
         result = is_grammar_available("tree_sitter_nonexistent_language")
+
+        assert result is False
+
+    def test_returns_false_when_tree_sitter_unavailable(self) -> None:
+        """Should return False when tree_sitter itself is not installed (covers base.py:186)."""
+        from unittest.mock import patch
+
+        original_find_spec = __import__("importlib.util").util.find_spec
+
+        def mock_find_spec(name: str) -> object | None:
+            if name == "tree_sitter":
+                return None
+            return original_find_spec(name)
+
+        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
+            result = is_grammar_available("tree_sitter_go")
 
         assert result is False
 
@@ -273,3 +762,297 @@ class TestFileAnalysis:
 
         assert analysis.symbols == []
         assert analysis.symbol_by_name == {}
+
+
+def _make_comment_node(
+    text: str,
+    node_type: str = "comment",
+    start_line: int = 0,
+    end_line: int | None = None,
+    start_byte: int = 0,
+    prev_named_sibling: object = None,
+) -> MagicMock:
+    """Create a mock tree-sitter comment node."""
+    if end_line is None:
+        end_line = start_line
+    end_byte = start_byte + len(text.encode("utf-8"))
+    node = MagicMock()
+    node.type = node_type
+    node.start_point = (start_line, 0)
+    node.end_point = (end_line, 0)
+    node.start_byte = start_byte
+    node.end_byte = end_byte
+    node.prev_named_sibling = prev_named_sibling
+    return node
+
+
+class TestExtractDocComment:
+    """Tests for extract_doc_comment helper."""
+
+    def test_no_comment(self) -> None:
+        """Returns None when no comment precedes the node."""
+        decl = MagicMock()
+        decl.prev_named_sibling = None
+        assert extract_doc_comment(decl, b"") is None
+
+    def test_non_comment_sibling(self) -> None:
+        """Returns None when preceding sibling is not a comment."""
+        sibling = MagicMock()
+        sibling.type = "function_declaration"
+        decl = MagicMock()
+        decl.prev_named_sibling = sibling
+        assert extract_doc_comment(decl, b"") is None
+
+    def test_block_comment_javadoc(self) -> None:
+        """Extracts from /** Javadoc */ style block comment."""
+        comment_text = b"/** Handles user authentication. */"
+        cnode = _make_comment_node(
+            comment_text.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, comment_text)
+        assert result == "Handles user authentication."
+
+    def test_line_comment_rust_triple_slash(self) -> None:
+        """Extracts from /// rustdoc style line comments."""
+        source = b"/// Computes the hash value."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="line_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Computes the hash value."
+
+    def test_go_double_slash(self) -> None:
+        """Extracts from // Go doc comments."""
+        source = b"// NewServer creates a new server."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "NewServer creates a new server."
+
+    def test_ruby_hash_comment(self) -> None:
+        """Extracts from # Ruby doc comments."""
+        source = b"# Validates the input data."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Validates the input data."
+
+    def test_skips_tag_lines(self) -> None:
+        """Skips @param, @returns etc and returns first content line."""
+        source = b"/** @param x the value\n * Process data.\n */"
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Process data."
+
+    def test_truncates_long_lines(self) -> None:
+        """Truncates lines longer than max_len."""
+        long_text = "A" * 100
+        source = f"// {long_text}".encode()
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source, max_len=80)
+        assert result is not None
+        assert len(result) == 80
+        assert result.endswith("\u2026")
+
+    def test_blank_line_gap_stops_collection(self) -> None:
+        """Stops collecting when there is a blank line gap between comments."""
+        # First comment on line 0, second on line 3 (gap > 1)
+        source = b"// Unrelated comment.\n\n\n// Actual doc."
+        # The "actual doc" node is closer to the declaration
+        actual = _make_comment_node(
+            "// Actual doc.",
+            start_line=3,
+            start_byte=len(b"// Unrelated comment.\n\n\n"),
+        )
+        actual.end_byte = len(source)
+        unrelated = _make_comment_node(
+            "// Unrelated comment.",
+            start_line=0,
+            start_byte=0,
+        )
+        unrelated.end_byte = len(b"// Unrelated comment.")
+        # Link: decl -> actual -> unrelated
+        actual.prev_named_sibling = unrelated
+        unrelated.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = actual
+        result = extract_doc_comment(decl, source)
+        # Should get "Actual doc." not "Unrelated comment."
+        assert result == "Actual doc."
+
+    def test_comment_all_tags(self) -> None:
+        """Returns None when comment contains only tag lines."""
+        source = b"/** @param x val\n * @returns nothing\n */"
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result is None
+
+    def test_no_prev_named_sibling_attr(self) -> None:
+        """Handles nodes without prev_named_sibling attribute (MockNode)."""
+        decl = MagicMock(spec=[])  # No attributes
+        result = extract_doc_comment(decl, b"")
+        assert result is None
+
+
+class TestPopulateDocstringsFromTree:
+    """Tests for populate_docstrings_from_tree position-based docstring lookup."""
+
+    @staticmethod
+    def _make_sym(
+        start_line: int,
+        start_col: int,
+        docstring: str | None = None,
+        span: Span | None = ...,  # type: ignore[assignment]
+    ) -> Symbol:
+        """Create a minimal Symbol for testing."""
+        if span is ...:
+            span = Span(start_line=start_line, start_col=start_col,
+                        end_line=start_line, end_col=start_col + 10)
+        return Symbol(
+            id=f"test:file:{start_line}-{start_line}:func:function",
+            name="func",
+            kind="function",
+            language="test",
+            path="file.py",
+            span=span,
+            origin="test-pass",
+            origin_run_id="run-1",
+            docstring=docstring,
+        )
+
+    def test_basic_extraction(self) -> None:
+        """Populates docstring when a comment precedes the declaration node."""
+        source = b"// Computes the hash.\ndef func() {}"
+        # Comment on line 0, function on line 1 col 0
+        comment_node = _make_comment_node(
+            "// Computes the hash.",
+            node_type="comment",
+            start_byte=0,
+        )
+        comment_node.end_byte = 21
+        comment_node.prev_named_sibling = None
+
+        func_node = MagicMock()
+        func_node.prev_named_sibling = comment_node
+        func_node.start_point = (1, 0)
+        func_node.end_point = (1, 13)
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = func_node
+
+        sym = self._make_sym(start_line=2, start_col=0)
+        populate_docstrings_from_tree(root, source, [sym])
+        assert sym.docstring == "Computes the hash."
+
+    def test_skips_existing_docstring(self) -> None:
+        """Does not overwrite a symbol that already has a docstring."""
+        root = MagicMock()
+        sym = self._make_sym(start_line=2, start_col=0, docstring="Existing.")
+        populate_docstrings_from_tree(root, b"", [sym])
+        assert sym.docstring == "Existing."
+        root.named_descendant_for_point_range.assert_not_called()
+
+    def test_skips_none_span(self) -> None:
+        """Gracefully skips symbols with span=None."""
+        root = MagicMock()
+        sym = self._make_sym(start_line=1, start_col=0, span=None)
+        populate_docstrings_from_tree(root, b"", [sym])
+        assert sym.docstring is None
+        root.named_descendant_for_point_range.assert_not_called()
+
+    def test_no_comment_returns_none(self) -> None:
+        """Symbol without preceding comment gets no docstring."""
+        func_node = MagicMock()
+        func_node.prev_named_sibling = None
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = func_node
+
+        sym = self._make_sym(start_line=1, start_col=0)
+        populate_docstrings_from_tree(root, b"def func(): pass", [sym])
+        assert sym.docstring is None
+
+    def test_multiple_symbols(self) -> None:
+        """Multiple symbols: only those with doc comments get docstrings."""
+        source = b"// Documented.\ndef a() {}\ndef b() {}"
+        comment_node = _make_comment_node(
+            "// Documented.",
+            node_type="comment",
+            start_byte=0,
+        )
+        comment_node.end_byte = 14
+        comment_node.prev_named_sibling = None
+
+        node_a = MagicMock()
+        node_a.prev_named_sibling = comment_node
+        node_a.start_point = (1, 0)
+        node_a.end_point = (1, 10)
+
+        node_b = MagicMock()
+        node_b.prev_named_sibling = None
+        node_b.start_point = (2, 0)
+        node_b.end_point = (2, 10)
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.side_effect = (
+            lambda s, e: node_a if s == (0, 0) else node_b
+        )
+
+        sym_a = self._make_sym(start_line=1, start_col=0)
+        sym_b = self._make_sym(start_line=2, start_col=0)
+        sym_b.id = "test:file:2-2:b:function"
+        populate_docstrings_from_tree(root, source, [sym_a, sym_b])
+        assert sym_a.docstring == "Documented."
+        assert sym_b.docstring is None
+
+    def test_node_not_found(self) -> None:
+        """When named_descendant_for_point_range returns None, skips gracefully."""
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = None
+
+        sym = self._make_sym(start_line=1, start_col=0)
+        populate_docstrings_from_tree(root, b"some code", [sym])
+        assert sym.docstring is None

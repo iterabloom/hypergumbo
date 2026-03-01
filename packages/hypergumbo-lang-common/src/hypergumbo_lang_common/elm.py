@@ -14,15 +14,17 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-language-pack (elm) is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract modules, functions, types, ports
+2. Pass 2: Detect calls and import statements using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Elm-specific
+extraction logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for grammar (elm)
 - Two-pass allows cross-file call resolution
@@ -39,91 +41,34 @@ Elm-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "elm-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("elm")
 
 
 def find_elm_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Elm files in the repository."""
     yield from find_files(repo_root, ["*.elm"])
-
-
-def is_elm_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Elm grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("elm")
-        return True
-    except Exception:  # pragma: no cover - elm not supported
-        return False
-
-
-@dataclass
-class ElmAnalysisResult:
-    """Result of analyzing Elm files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    module_name: str  # Elm module name from module declaration
-    import_aliases: dict[str, str] = field(default_factory=dict)
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"elm:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Elm file node (used as import edge source)."""
-    return f"elm:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
 
 
 def _extract_elm_signature(
@@ -144,13 +89,13 @@ def _extract_elm_signature(
                 found_name = True
                 continue
             # Additional lower_case_identifiers are parameters
-            params.append(_node_text(child, source))  # pragma: no cover - params are lower_pattern
+            params.append(node_text(child, source))  # pragma: no cover - params are lower_pattern
         elif child.type == "pattern":  # pragma: no cover - complex patterns
             # Pattern matching in parameters
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
         elif child.type == "lower_pattern":
             # Simple parameter pattern
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
 
     return f"({', '.join(params)})"
 
@@ -178,9 +123,9 @@ def _extract_symbols_from_file(
     for node in tree.root_node.children:
         # Module declaration
         if node.type == "module_declaration":
-            qid = _find_child_by_type(node, "upper_case_qid")
+            qid = find_child_by_type(node, "upper_case_qid")
             if qid:
-                module_name = _node_text(qid, source)
+                module_name = node_text(qid, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -189,7 +134,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, module_name, "module")
+                sym_id = make_symbol_id("elm", file_path, start_line, end_line, module_name, "module")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=module_name,
@@ -203,11 +148,11 @@ def _extract_symbols_from_file(
 
         # Value/function declaration
         elif node.type == "value_declaration":
-            decl_left = _find_child_by_type(node, "function_declaration_left")
+            decl_left = find_child_by_type(node, "function_declaration_left")
             if decl_left:
-                name_node = _find_child_by_type(decl_left, "lower_case_identifier")
+                name_node = find_child_by_type(decl_left, "lower_case_identifier")
                 if name_node:
-                    func_name = _node_text(name_node, source)
+                    func_name = node_text(name_node, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     span = Span(
@@ -216,7 +161,7 @@ def _extract_symbols_from_file(
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     )
-                    sym_id = _make_symbol_id(file_path, start_line, end_line, func_name, "function")
+                    sym_id = make_symbol_id("elm", file_path, start_line, end_line, func_name, "function")
                     symbols.append(Symbol(
                         id=sym_id,
                         name=func_name,
@@ -231,9 +176,9 @@ def _extract_symbols_from_file(
 
         # Type alias
         elif node.type == "type_alias_declaration":
-            name_node = _find_child_by_type(node, "upper_case_identifier")
+            name_node = find_child_by_type(node, "upper_case_identifier")
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -242,7 +187,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, type_name, "type")
+                sym_id = make_symbol_id("elm", file_path, start_line, end_line, type_name, "type")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=type_name,
@@ -256,9 +201,9 @@ def _extract_symbols_from_file(
 
         # Custom type (union type)
         elif node.type == "type_declaration":
-            name_node = _find_child_by_type(node, "upper_case_identifier")
+            name_node = find_child_by_type(node, "upper_case_identifier")
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -267,7 +212,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, type_name, "type")
+                sym_id = make_symbol_id("elm", file_path, start_line, end_line, type_name, "type")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=type_name,
@@ -281,9 +226,9 @@ def _extract_symbols_from_file(
 
         # Port declaration
         elif node.type == "port_annotation":
-            name_node = _find_child_by_type(node, "lower_case_identifier")
+            name_node = find_child_by_type(node, "lower_case_identifier")
             if name_node:
-                port_name = _node_text(name_node, source)
+                port_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -292,7 +237,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, port_name, "port")
+                sym_id = make_symbol_id("elm", file_path, start_line, end_line, port_name, "port")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=port_name,
@@ -316,11 +261,11 @@ def _get_enclosing_function(
     current = node.parent
     while current is not None:
         if current.type == "value_declaration":
-            decl_left = _find_child_by_type(current, "function_declaration_left")
+            decl_left = find_child_by_type(current, "function_declaration_left")
             if decl_left:
-                name_node = _find_child_by_type(decl_left, "lower_case_identifier")
+                name_node = find_child_by_type(decl_left, "lower_case_identifier")
                 if name_node:
-                    func_name = _node_text(name_node, source)
+                    func_name = node_text(name_node, source)
                     sym = local_symbols.get(func_name)
                     if sym:
                         return sym
@@ -346,19 +291,19 @@ def _extract_import_aliases(
             continue
 
         # Get the module name from upper_case_qid
-        qid = _find_child_by_type(node, "upper_case_qid")
+        qid = find_child_by_type(node, "upper_case_qid")
         if not qid:  # pragma: no cover - defensive
             continue
 
-        module_name = _node_text(qid, source)
+        module_name = node_text(qid, source)
 
         # Check for as_clause (import Dict as D)
-        as_clause = _find_child_by_type(node, "as_clause")
+        as_clause = find_child_by_type(node, "as_clause")
         if as_clause:
             # Get alias name from upper_case_identifier in as_clause
-            alias_node = _find_child_by_type(as_clause, "upper_case_identifier")
+            alias_node = find_child_by_type(as_clause, "upper_case_identifier")
             if alias_node:
-                alias_name = _node_text(alias_node, source)
+                alias_name = node_text(alias_node, source)
                 aliases[alias_name] = module_name
 
     return aliases
@@ -369,7 +314,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    resolver: NameResolver,
+    resolver: "NameResolver",
     run_id: str,
     import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
@@ -385,7 +330,7 @@ def _extract_edges_from_file(
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("elm", file_path)
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -393,9 +338,9 @@ def _extract_edges_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "import_clause":
             # import Module [exposing (...)]
-            qid = _find_child_by_type(node, "upper_case_qid")
+            qid = find_child_by_type(node, "upper_case_qid")
             if qid:
-                module_name = _node_text(qid, source)
+                module_name = node_text(qid, source)
                 module_id = f"elm:{module_name}:0-0:module:module"
                 edge = Edge.create(
                     src=file_id,
@@ -414,19 +359,19 @@ def _extract_edges_from_file(
             caller = _get_enclosing_function(node, source, local_symbols)
             if caller:
                 # First child of function_call_expr is the function being called
-                value_expr = _find_child_by_type(node, "value_expr")
+                value_expr = find_child_by_type(node, "value_expr")
                 if value_expr:
-                    value_qid = _find_child_by_type(value_expr, "value_qid")
+                    value_qid = find_child_by_type(value_expr, "value_qid")
                     if value_qid:
-                        callee_name_node = _find_child_by_type(value_qid, "lower_case_identifier")
+                        callee_name_node = find_child_by_type(value_qid, "lower_case_identifier")
                         if callee_name_node:
-                            callee_name = _node_text(callee_name_node, source)
+                            callee_name = node_text(callee_name_node, source)
                             path_hint: Optional[str] = None
 
                             # Check for qualified call (D.empty -> upper_case_identifier D)
-                            qualifier_node = _find_child_by_type(value_qid, "upper_case_identifier")
+                            qualifier_node = find_child_by_type(value_qid, "upper_case_identifier")
                             if qualifier_node:
-                                qualifier = _node_text(qualifier_node, source)
+                                qualifier = node_text(qualifier_node, source)
                                 path_hint = import_aliases.get(qualifier)
 
                             lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
@@ -448,108 +393,61 @@ def _extract_edges_from_file(
     return edges
 
 
-def analyze_elm(repo_root: Path) -> ElmAnalysisResult:
+class ElmAnalyzer(TreeSitterAnalyzer):
+    """Elm language analyzer using tree-sitter-language-pack."""
+
+    lang = "elm"
+    file_patterns: ClassVar[list[str]] = ["*.elm"]
+    language_pack_name = "elm"
+    create_file_symbols = True
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from an Elm file."""
+        analysis = FileAnalysis()
+        symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract import aliases for disambiguation."""
+        return _extract_import_aliases(tree, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from an Elm file."""
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path,
+            file_symbols, resolver,
+            run.execution_id, import_aliases=import_aliases,
+        )
+
+
+_analyzer = ElmAnalyzer()
+
+
+def is_elm_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Elm grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("elm")
+def analyze_elm(repo_root: Path) -> AnalysisResult:
     """Analyze Elm files in a repository.
 
-    Returns an ElmAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-language-pack is not available, returns a skipped result.
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_elm_tree_sitter_available():  # pragma: no cover - tested via mock
-        skip_reason = (
-            "Elm analysis skipped: requires tree-sitter-language-pack "
-            "(pip install tree-sitter-language-pack)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return ElmAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("elm")
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for elm_file in find_elm_files(repo_root):
-        try:
-            source = elm_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(elm_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=_make_file_id(rel_path),
-            name="file",
-            kind="file",
-            language="elm",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Extract import aliases for disambiguation
-        import_aliases = _extract_import_aliases(tree, source)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-            module_name=module_name,
-            import_aliases=import_aliases,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-            import_aliases=fa.import_aliases,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return ElmAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

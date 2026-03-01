@@ -12,21 +12,22 @@ The CLI uses argparse with subcommands for different operations:
 - **slice**: Extract subgraph from an entry point
 - **catalog**: List available analysis passes
 - **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
+- **install-gitleaks**: Install gitleaks for secret scanning
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
 
 The `run` command orchestrates all language analyzers and cross-language
 linkers, collecting their results into a unified behavior map. Analyzers
-run in sequence: Python, HTML, JS/TS, PHP, C, Java. Linkers (JNI, IPC)
-run after all analyzers complete to create cross-language edges.
+run independently across 100+ languages. Linkers run after all analyzers
+complete to create cross-language edges.
 
 Why This Design
 ---------------
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_behavior_map() is separate from cmd_run() for testability
-- Helper functions (_node_from_dict, _edge_from_dict) enable slice
+- Helper functions (Symbol.from_dict, _edge_from_dict) enable slice
   to work with previously-generated JSON files
 """
 import argparse
@@ -35,6 +36,7 @@ import json
 import math
 import os
 import resource
+import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -47,7 +49,10 @@ from .analyze.all_analyzers import run_all_analyzers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
+import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
 import hypergumbo_core.linkers.database_query as _database_query_linker  # noqa: F401
+import hypergumbo_core.linkers.di_resolution as _di_resolution_linker  # noqa: F401
 import hypergumbo_core.linkers.dependency as _dependency_linker  # noqa: F401
 import hypergumbo_core.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
 import hypergumbo_core.linkers.graphql as _graphql_linker  # noqa: F401
@@ -56,22 +61,33 @@ import hypergumbo_core.linkers.grpc as _grpc_linker  # noqa: F401
 import hypergumbo_core.linkers.http as _http_linker  # noqa: F401
 import hypergumbo_core.linkers.ipc as _ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.jni as _jni_linker  # noqa: F401
+import hypergumbo_core.linkers.lua_ffi as _lua_ffi_linker  # noqa: F401
 import hypergumbo_core.linkers.message_queue as _message_queue_linker  # noqa: F401
+import hypergumbo_core.linkers.napi as _napi_linker  # noqa: F401
 import hypergumbo_core.linkers.openapi as _openapi_linker  # noqa: F401
+import hypergumbo_core.linkers.otp as _otp_linker  # noqa: F401
 import hypergumbo_core.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.route_handler as _route_handler_linker  # noqa: F401
 import hypergumbo_core.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
 import hypergumbo_core.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo_core.linkers.websocket as _websocket_linker  # noqa: F401
 import hypergumbo_core.linkers.inheritance as _inheritance_linker  # noqa: F401
+import hypergumbo_core.linkers.js_module as _js_module_linker  # noqa: F401
+import hypergumbo_core.linkers.orm as _orm_linker  # noqa: F401
+import hypergumbo_core.linkers.pyffi as _pyffi_linker  # noqa: F401
+import hypergumbo_core.linkers.ruby_ffi as _ruby_ffi_linker  # noqa: F401
 import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
+import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F401
+import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
+import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
-from .ir import Symbol, Edge, Span
+from .ir import Symbol, Edge, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
+from .selection.filters import EXCLUDED_KINDS
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -86,11 +102,169 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
+from .gitleaks import (
+    is_gitleaks_available,
+    install_gitleaks,
+    uninstall_gitleaks,
+    scan_content,
+    format_secret_warning,
+    get_install_nag,
+)
 from .framework_patterns import (
     enrich_symbols,
     get_frameworks_dir,
     resolve_deferred_symbol_refs,
 )
+from .partial_install_warnings import check_partial_install_warnings
+
+
+# =============================================================================
+# Custom Help Formatter for Grouped Subcommands
+# =============================================================================
+
+
+class GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Help formatter that groups subcommands with visual separators.
+
+    Subcommands can be assigned to groups by setting a 'group' attribute on the
+    subparser's _ChoicesPseudoAction. Groups are displayed in order by their
+    'group_order' attribute, with a visual separator between groups.
+
+    Example:
+        sub = parser.add_subparsers()
+        p = sub.add_parser('sketch', help='...')
+        _set_subparser_group(sub, 'sketch', 'core', 0)
+    """
+
+    def _format_action(self, action: argparse.Action) -> str:
+        """Format an action, with special handling for subparsers."""
+        # Only customize subparser actions
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+
+        # Get all subactions (the individual subcommands)
+        subactions = list(action._get_subactions())
+
+        # Group subactions by their 'group' attribute
+        groups: Dict[str, Dict[str, Any]] = {}
+        for subaction in subactions:
+            group_name = getattr(subaction, "group", "default")
+            group_order = getattr(subaction, "group_order", 999)
+            suborder = getattr(subaction, "suborder", 0)
+            if group_name not in groups:
+                groups[group_name] = {"order": group_order, "actions": []}
+            groups[group_name]["actions"].append((suborder, subaction))
+
+        # Sort actions within each group by suborder
+        for info in groups.values():
+            info["actions"].sort(key=lambda x: x[0])
+            info["actions"] = [action for _, action in info["actions"]]
+
+        # Sort groups by (order, name)
+        sorted_groups = sorted(groups.items(), key=lambda x: (x[1]["order"], x[0]))
+
+        # Build the formatted output
+        parts = []
+
+        # Calculate max width for alignment
+        max_length = 0
+        for _, info in sorted_groups:
+            for subaction in info["actions"]:
+                invocation = self._format_action_invocation(subaction)
+                max_length = max(max_length, len(invocation))
+
+        # Add some padding
+        action_width = max_length + 2
+
+        for idx, (_, info) in enumerate(sorted_groups):
+            # Add separator between groups (not before first group)
+            if idx > 0:
+                separator = " " * self._current_indent
+                separator += "-" * action_width
+                separator += "  "
+                separator += "-" * 26
+                parts.append(separator + "\n")
+
+            # Format each subaction in this group
+            for subaction in info["actions"]:
+                parts.append(self._format_subaction(subaction, action_width))
+
+        return "".join(parts)
+
+    def _format_subaction(self, action: argparse.Action, action_width: int) -> str:
+        """Format a single subcommand action."""
+        # Get the command name
+        invocation = self._format_action_invocation(action)
+
+        # Get help text
+        help_text = action.help or ""
+
+        # Build the line with proper indentation and alignment
+        indent = " " * self._current_indent
+        # Pad invocation to action_width for alignment
+        padded_invocation = invocation.ljust(action_width)
+
+        return f"{indent}{padded_invocation}{help_text}\n"
+
+
+def _set_subparser_group(
+    subparsers: argparse._SubParsersAction,
+    name: str,
+    group: str,
+    group_order: int,
+    suborder: int = 0,
+) -> None:
+    """Set the group for a subparser by name.
+
+    Args:
+        subparsers: The _SubParsersAction from add_subparsers()
+        name: The name of the subparser (e.g., 'sketch')
+        group: The group name (e.g., 'core', 'extras')
+        group_order: Sort order for the group (lower = earlier)
+        suborder: Sort order within the group (lower = earlier, default 0)
+    """
+    # Find the _ChoicesPseudoAction for this subparser
+    for choice_action in subparsers._choices_actions:
+        if choice_action.dest == name:
+            choice_action.group = group
+            choice_action.group_order = group_order
+            choice_action.suborder = suborder
+            return
+    # If we get here, the subparser wasn't found (shouldn't happen)
+    raise ValueError(f"Subparser '{name}' not found")  # pragma: no cover
+
+
+def _get_subparsers_by_group(
+    subparsers_action: argparse._SubParsersAction,
+) -> List[tuple]:
+    """Get subparser names ordered by group.
+
+    Returns:
+        List of (name, subparser, group, is_new_group) tuples ordered by
+        (group_order, suborder) within each group.
+    """
+    # Build list with group info
+    items = []
+    for choice_action in subparsers_action._choices_actions:
+        name = choice_action.dest
+        group = getattr(choice_action, "group", "default")
+        order = getattr(choice_action, "group_order", 999)
+        suborder = getattr(choice_action, "suborder", 0)
+        subparser = subparsers_action.choices.get(name)
+        if subparser:
+            items.append((order, group, suborder, name, subparser))
+
+    # Sort by (group_order, group, suborder)
+    items.sort(key=lambda x: (x[0], x[1], x[2]))
+
+    # Return just (name, subparser) pairs with group info for separators
+    result = []
+    prev_group = None
+    for _order, group, _suborder, name, subparser in items:
+        result.append((name, subparser, group, group != prev_group))
+        prev_group = group
+
+    return result
 
 
 def _log_memory(label: str) -> None:  # pragma: no cover
@@ -451,6 +625,23 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         with_source=with_source,
         stats_out=stats,
     )
+
+    # Secret scanning (opt-out with --no-secret-scan)
+    no_secret_scan = getattr(args, "no_secret_scan", False)
+    if not no_secret_scan:
+        if is_gitleaks_available():
+            findings = scan_content(sketch)
+            if findings:
+                print(format_secret_warning(findings), file=sys.stderr)
+            else:
+                # Always remind that this is best-effort
+                print(
+                    "\u2139\ufe0f  Secret scan complete (best-effort, not exhaustive).",
+                    file=sys.stderr,
+                )
+        else:
+            print(get_install_nag(), file=sys.stderr)
+
     print(sketch)
 
     # Generate 4x and 16x budget sketches for comparison table
@@ -600,6 +791,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
+    include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
 
     generated_files = run_behavior_map(
@@ -613,6 +805,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         budgets=budgets,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
+        include_docs=include_docs,
         progress=show_progress,
     )
 
@@ -621,30 +814,6 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     return 0
 
-
-def _node_from_dict(d: Dict[str, Any]) -> Symbol:
-    """Reconstruct a Symbol from its dict representation."""
-    span_data = d.get("span", {})
-    span = Span(
-        start_line=span_data.get("start_line", 0),
-        end_line=span_data.get("end_line", 0),
-        start_col=span_data.get("start_col", 0),
-        end_col=span_data.get("end_col", 0),
-    )
-    return Symbol(
-        id=d["id"],
-        name=d["name"],
-        kind=d["kind"],
-        language=d["language"],
-        path=d["path"],
-        span=span,
-        origin=d.get("origin", ""),
-        origin_run_id=d.get("origin_run_id", ""),
-        stable_id=d.get("stable_id"),
-        shape_id=d.get("shape_id"),
-        meta=d.get("meta"),  # Preserve metadata for entrypoint detection
-        supply_chain_tier=d.get("supply_chain_tier", 1),  # Default tier 1 (first-party)
-    )
 
 
 def _edge_from_dict(d: Dict[str, Any]) -> Edge:
@@ -839,8 +1008,8 @@ def _handle_files_mode(
         while current_level and hop_count < max_hops:
             next_level: Set[str] = set()
             for node_id in current_level:
-                if node_id in visited:
-                    continue
+                if node_id in visited:  # pragma: no cover
+                    continue  # Defensive: set deduplication prevents this
                 visited.add(node_id)
 
                 # Add this node's file to dependents
@@ -904,7 +1073,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     behavior_map = json.loads(input_path.read_text())
 
     # Reconstruct Symbol and Edge objects from the behavior map
-    nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
+    nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
     edges = [_edge_from_dict(e) for e in behavior_map.get("edges", [])]
 
     # Handle --files mode: find all files that depend on changed files
@@ -962,6 +1131,24 @@ def cmd_slice(args: argparse.Namespace) -> int:
     entry = args.entry
     if entry == "auto":
         entrypoints = detect_entrypoints(nodes, edges)
+
+        # Apply --exclude-tests and --max-tier filters to entry candidates
+        exclude_tests = getattr(args, "exclude_tests", False)
+        max_tier = getattr(args, "max_tier", None)
+        if exclude_tests or max_tier is not None:
+            symbol_lookup = {node.id: node for node in nodes}
+            filtered = []
+            for ep in entrypoints:
+                sym = symbol_lookup.get(ep.symbol_id)
+                if sym is None:
+                    continue  # pragma: no cover
+                if exclude_tests and sym.path and _is_test_path(sym.path):
+                    continue
+                if max_tier is not None and sym.supply_chain_tier > max_tier:
+                    continue
+                filtered.append(ep)
+            entrypoints = filtered
+
         if not entrypoints:
             print("Error: No entrypoints detected. Use --entry to specify manually.",
                   file=sys.stderr)
@@ -1004,15 +1191,22 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
+    exclude_utility = getattr(args, "exclude_utility", False)
+    hub_threshold_raw = getattr(args, "hub_threshold", 50)
+    hub_threshold = hub_threshold_raw if hub_threshold_raw else None
+    exclude_imports = getattr(args, "exclude_imports", False)
     query = SliceQuery(
         entrypoint=entry,
         max_hops=args.max_hops,
         max_files=args.max_files,
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
+        exclude_utility=exclude_utility,
         reverse=args.reverse,
         max_tier=max_tier,
         language=args.language,
+        hub_threshold=hub_threshold,
+        exclude_imports=exclude_imports,
     )
 
     # Perform slice
@@ -1022,8 +1216,13 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Rank slice nodes by importance (centrality + tier weighting)
-    ranked_node_ids = rank_slice_nodes(result, nodes, edges, first_party_priority=True)
+    # Rank slice nodes by importance (centrality + tier weighting).
+    # For reverse slices, downweight test file callers so production callers
+    # rank higher — matches the 90% entrypoint penalty (0.1 multiplier).
+    test_weight = 0.1 if query.reverse else None
+    ranked_node_ids = rank_slice_nodes(
+        result, nodes, edges, first_party_priority=True, test_weight=test_weight,
+    )
 
     # Build output with ranked node ordering
     feature_dict = result.to_dict()
@@ -1179,15 +1378,16 @@ def cmd_routes(args: argparse.Namespace) -> int:
     behavior_map = json.loads(input_path.read_text())
     nodes = behavior_map.get("nodes", [])
 
-    # Find route handlers - symbols with HTTP method markers in stable_id
-    # or route concepts in meta.concepts
+    from .paths import is_test_file
+
+    # Find route handlers - symbols with route concepts in meta.concepts
+    # OR symbols with kind="route" (Go analyzer creates route symbols directly).
+    exclude_tests = getattr(args, "exclude_tests", False)
     routes: list[dict] = []
     for node in nodes:
         is_route = False
 
-        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
-        # Routes are ONLY detected via concepts - no fallback to legacy fields.
-        # If routes aren't showing up, check that YAML patterns are being applied.
+        # Check 1: concept enrichment (YAML patterns)
         meta = node.get("meta") or {}
         concepts = meta.get("concepts", [])
         for concept in concepts:
@@ -1195,9 +1395,18 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 is_route = True
                 break
 
+        # Check 2: symbol kind (analyzers create kind="route" symbols directly)
+        if not is_route and node.get("kind") == "route":
+            is_route = True
+
         if is_route:
             # Apply language filter
             if args.language and node.get("language") != args.language:
+                continue
+            # Exclude routes from test files when -x/--exclude-tests is set.
+            # Django bakeoff showed 73% of route source files were from test
+            # directories — use this flag to filter them out.
+            if exclude_tests and is_test_file(node.get("path", "")):
                 continue
             routes.append(node)
 
@@ -1232,16 +1441,28 @@ def cmd_routes(args: argparse.Namespace) -> int:
             meta = route.get("meta", {}) or {}
 
             # Extract route info from concept metadata (YAML pattern enrichment)
-            # No fallback to legacy fields - if enrichment fails, routes should
-            # appear with missing info to make the failure visible.
+            # or from direct meta fields (kind="route" symbols from analyzers)
             route_path = None
             method = None
+            controller_action = None
             concepts = meta.get("concepts", [])
             for concept in concepts:
                 if isinstance(concept, dict) and concept.get("concept") == "route":
                     route_path = concept.get("path")
                     method = concept.get("method")
+                    controller_action = concept.get("controller_action")
                     break
+
+            # Fallback: kind="route" symbols store route info in meta directly
+            if route_path is None and route.get("kind") == "route":
+                route_path = meta.get("route_path")
+                method = method or meta.get("http_method")
+            # controller_action may also be in top-level meta (Rails routes)
+            if controller_action is None:
+                controller_action = meta.get("controller_action")
+
+            # Display label: prefer controller_action, fall back to symbol name
+            display_target = controller_action or name
 
             method = method.upper() if method else ""
             if route_path:
@@ -1249,7 +1470,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 # (defense-in-depth; framework_patterns already normalizes)
                 if route_path and not route_path.startswith("/"):  # pragma: no cover
                     route_path = "/" + route_path
-                print(f"  [{method}] {route_path} -> {name} (line {line})")
+                print(f"  [{method}] {route_path} -> {display_target} (line {line})")
             else:
                 print(f"  [{method}] {name} (line {line})")
         print()
@@ -1681,7 +1902,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         # Detect repo profile using existing language detection
         # Use max_file_size to skip large files - catalog is just for quick hints,
         # not accurate analysis
-        profile = detect_profile(cwd, max_file_size=100 * 1024)
+        profile = detect_profile(cwd)
         detected_languages = set(profile.languages.keys())
 
     # Show suggested passes based on detected languages
@@ -1755,11 +1976,418 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_install_gitleaks(args: argparse.Namespace) -> int:
+    """Install gitleaks for secret scanning."""
+    if args.check:
+        # Just check availability
+        available = is_gitleaks_available()
+        symbol = "\u2713" if available else "\u2717"
+        print(f"gitleaks: {symbol} {'installed' if available else 'not installed'}")
+
+        if not available:
+            print("\nRun 'hypergumbo install-gitleaks' to install.")
+            return 1
+        return 0
+
+    # Install gitleaks
+    success = install_gitleaks(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
+    """Uninstall gitleaks secret scanner."""
+    success = uninstall_gitleaks(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def _get_cache_base() -> Path:
+    """Get the hypergumbo cache base directory.
+
+    Uses the same XDG-compliant path as sketch_embeddings.
+    """
+    from .sketch_embeddings import _get_xdg_cache_base
+
+    return _get_xdg_cache_base()
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format bytes into human-readable size."""
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"  # pragma: no cover - TB-scale caches extremely rare
+
+
+def _get_dir_size(path: Path) -> int:
+    """Get total size of a directory in bytes."""
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                try:
+                    total += entry.stat().st_size
+                except (OSError, PermissionError):  # pragma: no cover
+                    pass  # pragma: no cover
+    except (OSError, PermissionError):  # pragma: no cover
+        pass  # pragma: no cover
+    return total
+
+
+def cmd_cache_status(args: argparse.Namespace) -> int:
+    """Show cache status and statistics.
+
+    Reports:
+    - Number of cached repo entries
+    - Total cache size
+    - Cache location
+    """
+    import time
+
+    cache_dir = _get_cache_base()
+
+    if args.quiet:
+        return 0
+
+    if not cache_dir.exists():
+        print(f"Cache directory: {cache_dir}")
+        print("Status: empty (directory does not exist)")
+        print("0 entries, 0 B")
+        return 0
+
+    # Count entries and compute size
+    entries = [d for d in cache_dir.iterdir() if d.is_dir()]
+    entry_count = len(entries)
+    total_size = _get_dir_size(cache_dir)
+
+    # Find oldest and newest entries
+    if entries:
+        mtimes = [(d, d.stat().st_mtime) for d in entries]
+        oldest = min(mtimes, key=lambda x: x[1])
+        newest = max(mtimes, key=lambda x: x[1])
+        now = time.time()
+        oldest_age = int((now - oldest[1]) / 86400)  # days
+        newest_age = int((now - newest[1]) / 86400)
+    else:
+        oldest_age = newest_age = 0
+
+    print(f"Cache directory: {cache_dir}")
+    print(f"Entries: {entry_count}")
+    print(f"Total size: {_format_size(total_size)}")
+    if entries:
+        print(f"Age range: {newest_age}-{oldest_age} days")
+
+    return 0
+
+
+def cmd_cache_clear(args: argparse.Namespace) -> int:
+    """Clear the hypergumbo cache.
+
+    Options:
+    - --older-than N: Only remove entries older than N days
+    - --dry-run: Show what would be deleted without deleting
+    """
+    import shutil
+    import time
+
+    cache_dir = _get_cache_base()
+
+    if not cache_dir.exists():
+        if not args.quiet:
+            print(f"Cache directory does not exist: {cache_dir}")
+        return 0
+
+    entries = [d for d in cache_dir.iterdir() if d.is_dir()]
+    if not entries:
+        if not args.quiet:
+            print("Cache is already empty.")
+        return 0
+
+    # Filter by age if --older-than is specified
+    if args.older_than is not None:
+        cutoff = time.time() - (args.older_than * 24 * 60 * 60)
+        entries = [d for d in entries if d.stat().st_mtime < cutoff]
+
+    if not entries:
+        if not args.quiet:
+            print(f"No entries older than {args.older_than} days found.")
+        return 0
+
+    total_size = sum(_get_dir_size(e) for e in entries)
+
+    if args.dry_run:
+        if not args.quiet:
+            print(f"Would delete {len(entries)} entries ({_format_size(total_size)})")
+            for entry in entries:
+                print(f"  {entry.name}")
+        return 0
+
+    # Delete entries
+    deleted_count = 0
+    for entry in entries:
+        try:
+            shutil.rmtree(entry)
+            deleted_count += 1
+        except (OSError, PermissionError) as e:  # pragma: no cover
+            if not args.quiet:  # pragma: no cover
+                print(f"Warning: Could not delete {entry}: {e}")  # pragma: no cover
+
+    if not args.quiet:
+        print(f"Deleted {deleted_count} entries ({_format_size(total_size)})")
+
+    return 0
+
+
+def _is_embeddings_available() -> bool:
+    """Check if sentence-transformers is available."""
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return True  # pragma: no cover
+    except ImportError:  # pragma: no cover
+        return False  # pragma: no cover
+
+
+def _get_embeddings_version() -> str:
+    """Get the installed sentence-transformers version."""
+    try:
+        import sentence_transformers
+
+        return sentence_transformers.__version__  # pragma: no cover
+    except (ImportError, AttributeError):  # pragma: no cover
+        return "unknown"  # pragma: no cover
+
+
+def cmd_install_embeddings(args: argparse.Namespace) -> int:
+    """Install embedding dependencies (sentence-transformers).
+
+    This enables:
+    - Semantic code ranking
+    - Elevator pitch generation
+    - Config extraction with semantic filtering
+
+    Note: This pulls in PyTorch (~2GB download).
+    """
+    if args.check:
+        available = _is_embeddings_available()
+        symbol = "\u2713" if available else "\u2717"
+        status = "installed" if available else "not installed"
+        print(f"embeddings: {symbol} {status}")
+        if available:
+            print(f"  sentence-transformers {_get_embeddings_version()}")
+        else:
+            print("\nRun 'hypergumbo install-embeddings' to install.")
+            return 1
+        return 0
+
+    if _is_embeddings_available():
+        if not args.quiet:
+            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()})")
+        return 0
+
+    if not args.quiet:
+        print("Installing embedding dependencies...")
+        print("Note: This pulls in PyTorch (~2GB download)")
+        print()
+
+    # Install via pip subprocess
+    try:
+        cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+        if args.quiet:
+            cmd.append("-q")
+        result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+        if result.returncode != 0:
+            print("Error: pip install failed", file=sys.stderr)
+            return 1
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not args.quiet:
+        print()
+        print("Embedding features are now available:")
+        print("  - hypergumbo sketch --elevator-pitch")
+        print("  - Semantic code ranking")
+        print("  - Config extraction with semantic filtering")
+
+    return 0
+
+
+def cmd_uninstall_embeddings(args: argparse.Namespace) -> int:
+    """Uninstall embedding dependencies (sentence-transformers)."""
+    if not _is_embeddings_available():
+        if not args.quiet:
+            print("Embeddings not installed. Nothing to do.")
+        return 0
+
+    if not args.quiet:
+        print("Uninstalling sentence-transformers...")
+
+    try:
+        cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
+        if args.quiet:
+            cmd.append("-q")
+        result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+        if result.returncode != 0:
+            print("Error: pip uninstall failed", file=sys.stderr)
+            return 1
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.all:
+        if not args.quiet:
+            print("Removing PyTorch...")
+        for pkg in ["torch", "torchvision", "torchaudio"]:
+            try:
+                subprocess.run(  # noqa: S603 # nosec B603
+                    [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    check=False,
+                )
+            except (subprocess.SubprocessError, OSError):
+                pass  # Ignore errors for packages that may not be installed
+
+    if not args.quiet:
+        print()
+        print("Embeddings uninstalled.")
+        print("hypergumbo will continue to work without embedding features.")
+
+    return 0
+
+
+def cmd_add_extras(args: argparse.Namespace) -> int:
+    """Install all optional extras (grammars, gitleaks, embeddings).
+
+    Skips components that are already installed, showing a message for each.
+    """
+    exit_code = 0
+
+    # 1. Build grammars
+    if not args.quiet:
+        print("=== Grammars ===")
+    status = check_grammar_availability()
+    all_grammars_available = all(status.values())
+
+    if all_grammars_available:
+        if not args.quiet:
+            print("All grammars already built. Skipping.")
+    else:
+        results = build_all_grammars(quiet=args.quiet)
+        if not all(results.values()):
+            failed = [name for name, ok in results.items() if not ok]
+            print(f"Warning: Failed to build grammars: {', '.join(failed)}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 2. Install gitleaks
+    if not args.quiet:
+        print("=== Gitleaks ===")
+    if is_gitleaks_available():
+        if not args.quiet:
+            print("gitleaks already installed. Skipping.")
+    else:
+        success = install_gitleaks(quiet=args.quiet)
+        if not success:
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 3. Install embeddings
+    if not args.quiet:
+        print("=== Embeddings ===")
+    if _is_embeddings_available():
+        if not args.quiet:
+            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()}). Skipping.")
+    else:
+        if not args.quiet:
+            print("Installing embeddings...")
+            print("Note: This pulls in PyTorch (~2GB download)")
+            print()
+        try:
+            cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+            if args.quiet:
+                cmd.append("-q")
+            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+            if result.returncode != 0:
+                print("Warning: Failed to install embeddings", file=sys.stderr)
+                exit_code = 1
+        except (subprocess.SubprocessError, OSError) as e:
+            print(f"Warning: Failed to install embeddings: {e}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+        print("=== Summary ===")
+        print("All extras installed. Run 'hypergumbo remove-extras' to uninstall.")
+
+    return exit_code
+
+
+def cmd_remove_extras(args: argparse.Namespace) -> int:
+    """Uninstall optional extras (gitleaks, embeddings).
+
+    Note: Grammars are not removed as they're just shared libraries.
+    """
+    exit_code = 0
+
+    # 1. Uninstall gitleaks
+    if not args.quiet:
+        print("=== Gitleaks ===")
+    success = uninstall_gitleaks(quiet=args.quiet)
+    if not success:
+        exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 2. Uninstall embeddings
+    if not args.quiet:
+        print("=== Embeddings ===")
+    if not _is_embeddings_available():
+        if not args.quiet:
+            print("Embeddings not installed. Skipping.")
+    else:
+        if not args.quiet:
+            print("Uninstalling sentence-transformers...")
+        try:
+            cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
+            if args.quiet:
+                cmd.append("-q")
+            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+            if result.returncode != 0:
+                print("Warning: Failed to uninstall embeddings", file=sys.stderr)
+                exit_code = 1
+        except (subprocess.SubprocessError, OSError) as e:
+            print(f"Warning: Failed to uninstall embeddings: {e}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+        print("=== Summary ===")
+        print("Extras removed. hypergumbo will continue to work with core features.")
+        print("Run 'hypergumbo add-extras' to reinstall.")
+
+    return exit_code
+
+
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
-    Shows a table of symbols sorted by file connectivity (total degree of
-    symbols in each file), then by filename, then by individual symbol degree.
+    Shows a table of symbols sorted by bidirectional centrality with sink
+    dampening.  Connectors (symbols with both incoming and outgoing edges)
+    rank above pure sinks (high in-degree but low out-degree, like error
+    sentinels and no-op stubs).
+
+    Base formula: ``in_degree * (1 + ln(1 + out_degree))``, same as
+    ``ranking.compute_centrality()``.  Additionally, symbols with very low
+    out/in ratio get their effective in-degree reduced by a sink dampening
+    factor (0.3 for pure sinks, rising to 1.0 at out/in >= 0.33).  This
+    prevents trivial stubs with 100+ in-degree from dominating rankings
+    over genuine architectural hubs.
 
     Uses Rich for auto-adjusting column widths and proper text wrapping.
     """
@@ -1778,7 +2406,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
     nodes = behavior_map.get("nodes", [])
-    edges = behavior_map.get("edges", [])
+    edges_raw = behavior_map.get("edges", [])
 
     # Build node ID set and ID->path mapping for filtering
     node_ids = {n["id"] for n in nodes}
@@ -1787,21 +2415,45 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Check exclude_tests flag before computing degrees
     exclude_tests = getattr(args, "exclude_tests", False)
 
-    # Compute in-degree and out-degree for each node
-    # When exclude_tests is set, skip edges where src or dst is a test path
+    # Convert to IR objects for rank_symbols()
+    ir_symbols = [Symbol.from_dict(n) for n in nodes]
+    ir_edges = [Edge.from_dict(e) for e in edges_raw]
+
+    # Get canonical ranking from rank_symbols()
+    ranked = rank_symbols(ir_symbols, ir_edges)
+    rank_by_id: dict[str, int] = {rs.symbol.id: rs.rank for rs in ranked}
+
+    # Minimum edge confidence for degree *display* counts.
+    # Low-confidence inferred edges (ast_method_inferred, <0.5) inflate
+    # in-degree for common method names like .Lock(), .get(), .setValue().
+    _MIN_EDGE_CONFIDENCE = 0.5
+
+    # Compute in-degree and out-degree for display (In/Out/Deg columns).
+    # This filtering is for display counts only — sort order comes from
+    # rank_symbols() above.
     in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
     out_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
 
-    for edge in edges:
+    for edge in edges_raw:
         src = edge.get("src", "")
         dst = edge.get("dst", "")
 
-        # If excluding tests, skip edges involving test files
+        # Filter low-confidence edges to prevent method name collision
+        # artifacts (DirLocker.Lock 255 false in-degree, etc.)
+        if edge.get("confidence", 1.0) < _MIN_EDGE_CONFIDENCE:
+            continue
+
+        # If excluding tests, skip edges involving test files.
+        # Structural edges (extends, implements) are always preserved
+        # because they reflect architectural importance of the target
+        # (base class / interface), regardless of where the source lives.
         if exclude_tests:
-            src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
-            dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
-            if _is_test_path(src_path) or _is_test_path(dst_path):
-                continue
+            edge_type = edge.get("type", "")
+            if edge_type not in ("extends", "implements"):
+                src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
+                dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
+                if _is_test_path(src_path) or _is_test_path(dst_path):
+                    continue
 
         if src in node_ids:
             out_degree[src] = out_degree.get(src, 0) + 1
@@ -1809,8 +2461,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             in_degree[dst] = in_degree.get(dst, 0) + 1
 
     # Build list of symbols with their degrees
-    # Tuple: (name, kind, in_degree, out_degree, total_degree, path)
-    symbol_rows: list[tuple[str, str, int, int, int, str]] = []
+    # Tuple: (name, kind, in_degree, out_degree, total_degree, path, node_id)
+    symbol_rows: list[tuple[str, str, int, int, int, str, str]] = []
 
     for node in nodes:
         node_id = node["id"]
@@ -1823,6 +2475,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         degree = ind + outd
 
         # Apply filters
+        if kind in EXCLUDED_KINDS:
+            continue
         if args.kind and kind != args.kind:
             continue
         if args.language and lang != args.language:
@@ -1830,21 +2484,16 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         if exclude_tests and _is_test_path(path):
             continue
 
-        symbol_rows.append((name, kind, ind, outd, degree, path))
+        symbol_rows.append((name, kind, ind, outd, degree, path, node_id))
 
-    # Compute total degree per file (invisible column for sorting)
-    file_total_degree: dict[str, int] = {}
-    for _name, _kind, ind, outd, _degree, path in symbol_rows:
-        file_total_degree[path] = file_total_degree.get(path, 0) + ind + outd
-
-    # Sort by: total file degree (descending), filename, individual degree (descending)
-    symbol_rows.sort(key=lambda r: (-file_total_degree.get(r[5], 0), r[5], -r[4]))
+    # Sort by canonical rank_symbols() position (lower rank = more important)
+    symbol_rows.sort(key=lambda r: (rank_by_id.get(r[6], len(nodes)), r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)
     if max_per_file is not None:
         file_counts: dict[str, int] = {}
-        filtered_rows: list[tuple[str, str, int, int, int, str]] = []
+        filtered_rows: list[tuple[str, str, int, int, int, str, str]] = []
         for row in symbol_rows:
             path = row[5]
             count = file_counts.get(path, 0)
@@ -1886,7 +2535,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     table.add_column("File", style="dim", no_wrap=False)
 
     # Add rows
-    for name, kind, ind, outd, degree, path in display_rows:
+    for name, kind, ind, outd, degree, path, _nid in display_rows:
         table.add_row(name, kind, str(ind), str(outd), str(degree), path)
 
     console.print(table)
@@ -2215,7 +2864,7 @@ For help on ALL commands:   hypergumbo --help --all"""
         prog="hypergumbo",
         description=main_description,
         epilog=main_epilog,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=GroupedSubcommandHelpFormatter,
     )
     p.add_argument(
         "--version",
@@ -2363,6 +3012,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         dest="with_source",
         help="Omit source file contents from sketch output",
     )
+    p_sketch.add_argument(
+        "--no-secret-scan",
+        action="store_true",
+        dest="no_secret_scan",
+        help="Skip secret scanning (not recommended)",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo run
@@ -2407,7 +3062,7 @@ Cache location:
         default=None,
         dest="max_tier",
         help="Filter output by supply chain tier (1=first-party, 2=+internal, "
-             "3=+external, 4=all). Default: no filtering.",
+             "3=+external, 4=+derived). Default: 3 (excludes derived/minified).",
     )
     p_run.add_argument(
         "--first-party-only",
@@ -2415,6 +3070,15 @@ Cache location:
         const=1,
         dest="max_tier",
         help="Only include first-party code (shortcut for --max-tier 1)",
+    )
+    p_run.add_argument(
+        "--include-docs",
+        action="store_true",
+        default=False,
+        dest="include_docs",
+        help="Include documentation/config/CSS/metadata nodes (markdown sections, "
+             "TOML tables, CSS selectors, .gitignore patterns, npm scripts, pip "
+             "requirements) in output. By default these are excluded to reduce noise.",
     )
     p_run.add_argument(
         "--max-files",
@@ -2551,8 +3215,8 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_slice.add_argument(
         "--max-files",
         type=int,
-        default=20,
-        help="Maximum number of files to include (default: 20)",
+        default=100,
+        help="Maximum number of files to include (default: 100)",
     )
     p_slice.add_argument(
         "--min-confidence",
@@ -2564,6 +3228,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--exclude-tests",
         action="store_true",
         help="Exclude test files from the slice",
+    )
+    p_slice.add_argument(
+        "--exclude-utility",
+        action="store_true",
+        help="Exclude utility files (docs, examples, scripts) from the slice",
     )
     p_slice.add_argument(
         "--reverse",
@@ -2578,6 +3247,24 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         dest="max_tier",
         help="Stop at supply chain tier boundary (1=first-party only, "
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
+    )
+    p_slice.add_argument(
+        "--hub-threshold",
+        type=int,
+        default=50,
+        dest="hub_threshold",
+        help="Prune hub nodes: nodes with more outgoing (forward) or incoming "
+             "(reverse) edges than this threshold are included but not traversed. "
+             "Prevents slice explosion through high-degree utility functions "
+             "(default: 50). Use --hub-threshold 0 to disable.",
+    )
+    p_slice.add_argument(
+        "--exclude-imports",
+        action="store_true",
+        dest="exclude_imports",
+        help="Exclude import/module edges from both traversal and output. "
+             "Produces a call-graph-only slice, removing file-level package "
+             "dependencies that can constitute 60%%+ of edges in large codebases.",
     )
     p_slice.add_argument(
         "--language",
@@ -2693,6 +3380,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         default=None,
         help="Filter by language (e.g., python, javascript)",
     )
+    p_routes.add_argument(
+        "-x",
+        "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        help="Exclude routes from test files",
+    )
     p_routes.set_defaults(func=cmd_routes)
 
     # hypergumbo explain
@@ -2788,6 +3482,139 @@ The output begins with passes suggested for your current directory."""
         help="Suppress output",
     )
     p_build.set_defaults(func=cmd_build_grammars)
+
+    # hypergumbo install-gitleaks
+    p_gitleaks = sub.add_parser(
+        "install-gitleaks",
+        help="Install gitleaks for secret scanning",
+    )
+    p_gitleaks.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if gitleaks is installed without installing",
+    )
+    p_gitleaks.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_gitleaks.set_defaults(func=cmd_install_gitleaks)
+
+    # hypergumbo uninstall-gitleaks
+    p_uninstall_gitleaks = sub.add_parser(
+        "uninstall-gitleaks",
+        help="Uninstall gitleaks secret scanner",
+    )
+    p_uninstall_gitleaks.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_gitleaks.set_defaults(func=cmd_uninstall_gitleaks)
+
+    # hypergumbo cache-status
+    p_cache_status = sub.add_parser(
+        "cache-status",
+        help="Show cache status and statistics",
+    )
+    p_cache_status.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_cache_status.set_defaults(func=cmd_cache_status)
+
+    # hypergumbo cache-clear
+    cache_clear_epilog = """\
+Examples:
+  hypergumbo cache-clear                  # Clear entire cache
+  hypergumbo cache-clear --older-than 7   # Clear entries older than 7 days
+  hypergumbo cache-clear --dry-run        # Preview what would be deleted
+
+The cache stores analysis results and embeddings for each repository.
+Clearing it forces re-analysis on next run (slower but ensures fresh results)."""
+
+    p_cache_clear = sub.add_parser(
+        "cache-clear",
+        help="Clear the hypergumbo cache",
+        epilog=cache_clear_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cache_clear.add_argument(
+        "--older-than",
+        type=int,
+        metavar="DAYS",
+        help="Only remove entries older than N days",
+    )
+    p_cache_clear.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without deleting",
+    )
+    p_cache_clear.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_cache_clear.set_defaults(func=cmd_cache_clear)
+
+    # hypergumbo install-embeddings
+    p_install_embeddings = sub.add_parser(
+        "install-embeddings",
+        help="Install embedding dependencies (sentence-transformers)",
+    )
+    p_install_embeddings.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if embeddings are installed without installing",
+    )
+    p_install_embeddings.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_embeddings.set_defaults(func=cmd_install_embeddings)
+
+    # hypergumbo uninstall-embeddings
+    p_uninstall_embeddings = sub.add_parser(
+        "uninstall-embeddings",
+        help="Uninstall embedding dependencies",
+    )
+    p_uninstall_embeddings.add_argument(
+        "--all",
+        action="store_true",
+        help="Also remove PyTorch (~2GB)",
+    )
+    p_uninstall_embeddings.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_embeddings.set_defaults(func=cmd_uninstall_embeddings)
+
+    # hypergumbo add-extras
+    p_add_extras = sub.add_parser(
+        "add-extras",
+        help="Install all optional extras (grammars, gitleaks, embeddings)",
+    )
+    p_add_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_add_extras.set_defaults(func=cmd_add_extras)
+
+    # hypergumbo remove-extras
+    p_remove_extras = sub.add_parser(
+        "remove-extras",
+        help="Uninstall optional extras (gitleaks, embeddings)",
+    )
+    p_remove_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_remove_extras.set_defaults(func=cmd_remove_extras)
 
     # hypergumbo test-coverage
     test_coverage_epilog = """\
@@ -2978,6 +3805,28 @@ without re-running the full analysis."""
     )
     p_compact.set_defaults(func=cmd_compact)
 
+    # Assign subcommands to groups for help formatting
+    # Core analysis commands (group_order=0) - ordered by suborder
+    core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
+                 "catalog", "test-coverage", "symbols", "compact"]
+    for i, cmd in enumerate(core_cmds):
+        _set_subparser_group(sub, cmd, "core", 0, suborder=i)
+
+    # Extras/installation commands (group_order=1) - ordered by suborder
+    extras_cmds = ["add-extras", "remove-extras", "build-grammars",
+                   "install-gitleaks", "uninstall-gitleaks",
+                   "install-embeddings", "uninstall-embeddings"]
+    for i, cmd in enumerate(extras_cmds):
+        _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
+
+    # Set custom metavar to control the order in usage line
+    sub.metavar = (
+        "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
+        "symbols,compact,add-extras,remove-extras,build-grammars,"
+        "install-gitleaks,uninstall-gitleaks,install-embeddings,"
+        "uninstall-embeddings}"
+    )
+
     return p
 
 
@@ -2987,9 +3836,13 @@ def _classify_symbols(
     """Apply supply chain classification to symbols in-place.
 
     Classifies each symbol's file path and updates supply_chain_tier
-    and supply_chain_reason fields.
+    and supply_chain_reason fields.  Symbols that already have a tier
+    set by a linker (e.g. npm_package with tier=3) are not reclassified
+    — the linker's tier takes precedence.
     """
     for symbol in symbols:
+        if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+            continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)
         symbol.supply_chain_tier = classification.tier.value
@@ -3041,6 +3894,7 @@ def run_behavior_map(
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
+    include_docs: bool = False,
     include_sketch_precomputed: bool = True,
     progress: bool = True,
 ) -> list[Path]:
@@ -3073,6 +3927,11 @@ def run_behavior_map(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+        include_docs: If True, include non-code node kinds in output. Default
+            False excludes documentation (section, heading, paragraph, etc.),
+            config (setting, config, table), and CSS structural nodes
+            (class_selector, id_selector, rule_set, property, media, keyframes,
+            font_face) to reduce degree-0 noise.
         include_sketch_precomputed: If True (default), pre-extract config_info,
             vocabulary, and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
@@ -3121,6 +3980,8 @@ def run_behavior_map(
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
+    # LOC is set to 0 here (avoids reading every file).
+    # generate_sketch backfills LOC from _analyze_test_files when it runs.
     show_progress("Detecting profile", 5)
     profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
     behavior_map["profile"] = profile.to_dict()
@@ -3186,34 +4047,58 @@ def run_behavior_map(
             analysis_runs.append(linker_result.run.to_dict())
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
+
+    # Check for partial installation issues (ADR-0010 Item 8)
+    # Emit warnings for: unanalyzed files, partial linker requirements
+    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+
     del linker_ctx, captured_symbols  # Free linker data structures
 
-    # Deduplicate edges by ID (linkers may create duplicate edges)
-    seen_edge_ids: set[str] = set()
-    unique_edges: list[Edge] = []
-    for edge in all_edges:
-        if edge.id not in seen_edge_ids:
-            seen_edge_ids.add(edge.id)
-            unique_edges.append(edge)
-    all_edges = unique_edges
-    del seen_edge_ids, unique_edges
+    # Deduplicate edges by edge_key (src + dst + type, ignoring line) and
+    # remove self-loops (src == dst) which inflate centrality without adding
+    # useful connectivity. Common sources: visitor patterns, name collisions.
+    # Using edge_key instead of edge.id catches duplicate relationships at
+    # different call sites (e.g., 24 calls from InitialSchema#up to
+    # Provisioner#create_table in postal).
+    all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     _log_memory("after linkers")
 
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)
 
-    # Apply max_tier filtering if specified
-    if max_tier is not None:
+    # Promote route-bearing symbols from derived (tier 4) to internal (tier 2).
+    # Routes represent the API surface and are valuable regardless of whether
+    # the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    for s in all_symbols:
+        if s.supply_chain_tier == 4:
+            is_route = s.kind == "route"
+            if not is_route:
+                for concept in (s.meta or {}).get("concepts", []):
+                    if isinstance(concept, dict) and concept.get("concept") == "route":
+                        is_route = True
+                        break
+            if is_route:
+                s.supply_chain_tier = 2
+                s.supply_chain_reason = "route promoted from derived"
+
+    # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
+    # DERIVED files are minified/bundled/generated artifacts whose symbols distort
+    # centrality rankings and inflate edge counts via false-positive name collisions.
+    effective_tier = max_tier if max_tier is not None else 3
+    if effective_tier < 4:
         # Filter symbols by tier
         filtered_symbols = [
-            s for s in all_symbols if s.supply_chain_tier <= max_tier
+            s for s in all_symbols if s.supply_chain_tier <= effective_tier
         ]
         filtered_symbol_ids = {s.id for s in filtered_symbols}
 
-        # Filter edges: src must be in filtered symbols OR be a file-level reference
-        # File-level import edges have src like "python:path/to/file.py:1-1:file:file"
-        # We check for ":file" suffix OR common file extensions in the src path
+        # Filter edges: src must be in filtered symbols (or file-level ref),
+        # AND dst must not reference a node that was explicitly removed by
+        # tier filtering. Edges whose dst is an unresolved external reference
+        # (never in the node set) are kept — they represent real dependencies.
+        removed_symbol_ids = {s.id for s in all_symbols} - filtered_symbol_ids
+
         def _is_valid_edge_src(src: str) -> bool:
             if src in filtered_symbol_ids:
                 return True
@@ -3226,15 +4111,50 @@ def run_behavior_map(
                     return True
             return False  # pragma: no cover
 
-        filtered_edges = [e for e in all_edges if _is_valid_edge_src(e.src)]
+        filtered_edges = [
+            e
+            for e in all_edges
+            if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
+        ]
 
         all_symbols = filtered_symbols
         all_edges = filtered_edges
-        limits.max_tier_applied = max_tier
+        limits.max_tier_applied = effective_tier
+
+    # Exclude non-code node kinds by default.  Documentation/config nodes
+    # (markdown sections, TOML tables, INI settings), CSS structural nodes
+    # (selectors, properties, media queries), and config-metadata nodes
+    # (.gitignore patterns, npm scripts) are typically degree-0 and add
+    # noise without architectural insight.
+    if not include_docs:
+        _NOISE_KINDS = frozenset({
+            # Documentation / config
+            "section", "table", "table_array", "code_block",
+            "link", "paragraph", "label", "heading",
+            "setting", "config",
+            # CSS structural (degree-0 in behavior maps)
+            "class_selector", "id_selector", "rule_set",
+            "property", "media", "keyframes", "font_face",
+            "variable",     # CSS custom properties / SCSS variables (zero edges)
+            # Config metadata (degree-0 across all tested repos)
+            "pattern",      # .gitignore entries
+            "script",       # npm scripts / pyproject.toml entry points
+            "requirement",  # pip requirements.txt entries
+        })
+        noise_ids = {s.id for s in all_symbols if s.kind in _NOISE_KINDS}
+        all_symbols = [s for s in all_symbols if s.kind not in _NOISE_KINDS]
+        all_edges = [
+            e for e in all_edges
+            if e.src not in noise_ids and e.dst not in noise_ids
+        ]
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     show_progress("Ranking symbols", 65)
-    ranked = rank_symbols(all_symbols, all_edges, first_party_priority=True)
+    ranked = rank_symbols(
+        all_symbols, all_edges,
+        first_party_priority=True,
+        min_edge_confidence=0.5,
+    )
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
 
@@ -3447,8 +4367,23 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     if subparsers_action is None:
         return  # pragma: no cover
 
-    # Print help for each subcommand
-    for name, subparser in sorted(subparsers_action.choices.items()):
+    # Group labels for display
+    group_labels = {
+        "core": "CORE ANALYSIS COMMANDS",
+        "extras": "INSTALLATION & MAINTENANCE COMMANDS",
+    }
+
+    # Print help for each subcommand, ordered by group
+    for name, subparser, group, is_new_group in _get_subparsers_by_group(
+        subparsers_action
+    ):
+        # Print group header when entering a new group
+        if is_new_group:
+            label = group_labels.get(group, group.upper())
+            print(f"\n{'=' * 78}")
+            print(f"  {label}")
+            print("=" * 78)
+
         print(f"\n{'─' * 78}")
         print(f"  hypergumbo {name}")
         print("─" * 78)
@@ -3469,7 +4404,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "test-coverage", "symbols", "compact"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

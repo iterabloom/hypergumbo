@@ -11,15 +11,20 @@ language: csharp
 
 patterns:
   # HTTP route attributes - [HttpGet], [HttpPost], etc.
+  # Method routes inherit path prefix from class-level [Route] (prefix_from_parent)
   - concept: route
     annotation: "^Http(Get|Post|Put|Delete|Patch|Head|Options)$"
     extract_path: "args[0]"
     extract_method: "annotation_prefix"
+    prefix_from_parent: "route"
 
   # Generic route attribute - [Route]
+  # On classes: defines base path for all method routes
+  # On methods: defines path segment (combined with class [Route] via prefix_from_parent)
   - concept: route
     annotation: "^Route$"
     extract_path: "args[0]"
+    prefix_from_parent: "route"
 
   # API controller - [ApiController]
   - concept: controller

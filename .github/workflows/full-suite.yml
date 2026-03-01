@@ -5,14 +5,14 @@ name: Full Test Suite
 # When any job fails, the stop-the-line protocol blocks PRs until fixed.
 
 on:
-  # Triggered after PR merges to dev
-  push:
-    branches: [ "dev" ]
   # Manual trigger for debugging
   workflow_dispatch:
-  # Nightly validation
+  # Periodic validation (every 4 hours)
+  # Post-merge push trigger removed: with 20+ merges/day and singleton
+  # concurrency, the queue never clears. Periodic runs catch regressions
+  # within hours while saving CI resources.
   schedule:
-    - cron: '0 4 * * *'  # 4 AM UTC daily
+    - cron: '0 */4 * * *'  # Every 4 hours
 
 # Singleton concurrency - only one full suite runs at a time
 # This prevents resource contention and ensures clear pass/fail state
@@ -21,8 +21,103 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Build grammars once, cache wheels for test jobs
-  build-grammars:
+  # Detect what files changed to skip expensive jobs for docs-only pushes
+  changes:
+    runs-on: codeberg-small-lazy
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if SHA already tested
+        id: sha-check
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "FORGEJO_TOKEN not set, skipping SHA check"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          STATUSES=$(curl -sf -H "Authorization: token $FORGEJO_TOKEN" "$API" 2>/dev/null) || {
+            echo "API request failed, skipping SHA check"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          if echo "$STATUSES" | jq -e '.[] | select(.context == "full-suite/aggregate" and .status == "success")' > /dev/null 2>&1; then
+            echo "SHA $SHA already tested successfully — skipping full suite"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No successful full-suite/aggregate status for $SHA"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect code changes
+        id: filter
+        run: |
+          # Skip if SHA already tested
+          if [ "${{ steps.sha-check.outputs.skip }}" = "true" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "SHA already tested — skipping"
+            exit 0
+          fi
+
+          # Compare against previous commit
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+
+          # Handle initial push (no previous commit) or empty/invalid base
+          # github.event.before can be:
+          # - All zeros: first push to branch
+          # - Empty: some merge scenarios
+          # - Invalid: ref no longer exists
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Initial push or empty base - running full suite"
+            exit 0
+          fi
+
+          # Verify base commit exists (handles invalid/missing refs)
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Base commit $base not found - running full suite"
+            exit 0
+          fi
+
+          # Check if any non-doc files changed
+          # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
+          # Note: YAML files in .agent/tracker(-workspace)/ are tracker data,
+          # not code — they should not trigger expensive test jobs.
+          CODE_PATTERNS='\.py$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          YAML_PATTERN='\.ya?ml$'
+          TRACKER_DATA='^\.agent/tracker(-workspace)?/'
+
+          CHANGED=$(git diff --name-only "$base" "$head")
+          has_code=false
+          echo "$CHANGED" | grep -qE "$CODE_PATTERNS" && has_code=true
+          # YAML files count as code UNLESS they're tracker data
+          echo "$CHANGED" | grep -E "$YAML_PATTERN" | grep -vqE "$TRACKER_DATA" 2>/dev/null && has_code=true
+          echo "code=$has_code" >> "$GITHUB_OUTPUT"
+
+          if [ "$has_code" = "true" ]; then
+            echo "Code changes detected - running full suite"
+          else
+            echo "Docs-only changes - skipping expensive jobs"
+          fi
+
+  # Prep job: build grammars AND install pip deps, cache both
+  # This saves ~60s per test job by doing expensive installs once
+  prep:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -30,23 +125,45 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      # Cache grammar wheels
       - name: Cache grammar wheels
-        id: cache
+        id: grammar-cache
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Build grammar wheels
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: steps.grammar-cache.outputs.cache-hit != 'true'
         run: |
           pip install --upgrade pip setuptools wheel
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Verify wheels exist
-        run: ls -la /tmp/grammar-wheels/*.whl
+        run: ls -la /tmp/grammar-wheels/*.whl || echo "No wheels (will build in test jobs)"
 
-  # Run each package's tests in parallel (after grammars are built)
+      # Cache pip packages (site-packages) keyed by pyproject.toml files
+      - name: Cache pip packages
+        id: pip-cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install pip dependencies
+        if: steps.pip-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+
+  # Run each package's tests in parallel (after prep is done)
   test-core:
-    needs: build-grammars
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -56,36 +173,70 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+
+      # Restore grammar wheels
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+
+      # Restore pip packages
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+
+      # Quick install (mostly no-ops if cache hit, handles editable installs)
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
-          pytest packages/hypergumbo-core/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-core/src --cov-report=term | tee coverage-output.txt
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-mainstream:
-    needs: build-grammars
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -95,36 +246,207 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
-          pytest packages/hypergumbo-lang-mainstream/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-mainstream/src --cov-report=term | tee coverage-output.txt
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  # Retry jobs for heavy packages that may hit Codeberg's 5-min deadline.
+  # These run when the primary job fails OR is cancelled (Codeberg's infra
+  # reports timed-out jobs as 'cancelled', not 'failure'). Retries run on
+  # the local runner (via the 'self-hosted' label), which has no time limit.
+  # always() ensures the if-condition is evaluated even when a needed job
+  # is cancelled (without it, Forgejo may skip the dependent entirely).
+  test-core-retry:
+    needs: [changes, prep, test-core]
+    if: >-
+      always() &&
+      needs.changes.outputs.code == 'true' &&
+      needs.prep.result == 'success' &&
+      (needs.test-core.result == 'failure' || needs.test-core.result == 'cancelled')
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  test-mainstream-retry:
+    needs: [changes, prep, test-mainstream]
+    if: >-
+      always() &&
+      needs.changes.outputs.code == 'true' &&
+      needs.prep.result == 'success' &&
+      (needs.test-mainstream.result == 'failure' || needs.test-mainstream.result == 'cancelled')
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-common:
-    needs: build-grammars
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -134,36 +456,63 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
-          pytest packages/hypergumbo-lang-common/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-common/src --cov-report=term | tee coverage-output.txt
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-common/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-common/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-extended:
-    needs: build-grammars
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -173,56 +522,225 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
-          pytest packages/hypergumbo-lang-extended1/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-extended1/src --cov-report=term | tee coverage-output.txt
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-extended1/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-extended1/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  test-tracker:
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist
+          pip install -e "packages/hypergumbo-tracker[dev,tui]"
+      - name: Check for embedding dependencies
+        run: |
+          if python -c "import onnxruntime; import tokenizers" 2>/dev/null; then
+            echo "ONNX dedup dependencies available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "ONNX dedup dependencies not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  test-tracker-retry:
+    needs: [changes, prep, test-tracker]
+    if: >-
+      always() &&
+      needs.changes.outputs.code == 'true' &&
+      needs.prep.result == 'success' &&
+      (needs.test-tracker.result == 'failure' || needs.test-tracker.result == 'cancelled')
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist
+          pip install -e "packages/hypergumbo-tracker[dev,tui]"
+      - name: Check for embedding dependencies
+        run: |
+          if python -c "import onnxruntime; import tokenizers" 2>/dev/null; then
+            echo "ONNX dedup dependencies available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "ONNX dedup dependencies not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   # Aggregate results after all test jobs complete
   aggregate:
-    needs: [test-core, test-mainstream, test-common, test-extended]
+    needs: [changes, test-core, test-core-retry, test-mainstream, test-mainstream-retry,
+            test-common, test-extended, test-tracker, test-tracker-retry]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
 
+      - name: Handle docs-only push
+        if: needs.changes.outputs.code != 'true'
+        run: |
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║  DOCS-ONLY PUSH - Test suite skipped                       ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "No code changes detected. Only documentation files were modified."
+          echo "Full test suite was skipped to save CI resources."
+
       - name: Check job results
+        if: needs.changes.outputs.code == 'true'
         id: results
         run: |
           echo "Job results:"
           echo "  test-core: ${{ needs.test-core.result }} (coverage: ${{ needs.test-core.outputs.coverage }}%)"
+          echo "  test-core-retry: ${{ needs.test-core-retry.result }} (coverage: ${{ needs.test-core-retry.outputs.coverage }}%)"
           echo "  test-mainstream: ${{ needs.test-mainstream.result }} (coverage: ${{ needs.test-mainstream.outputs.coverage }}%)"
+          echo "  test-mainstream-retry: ${{ needs.test-mainstream-retry.result }} (coverage: ${{ needs.test-mainstream-retry.outputs.coverage }}%)"
           echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
+          echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
+          echo "  test-tracker-retry: ${{ needs.test-tracker-retry.result }} (coverage: ${{ needs.test-tracker-retry.outputs.coverage }}%)"
 
-          # Determine overall result
-          if [[ "${{ needs.test-core.result }}" == "success" ]] && \
-             [[ "${{ needs.test-mainstream.result }}" == "success" ]] && \
+          # Heavy jobs pass if primary OR retry succeeded
+          core_ok=false
+          [[ "${{ needs.test-core.result }}" == "success" ]] && core_ok=true
+          [[ "${{ needs.test-core-retry.result }}" == "success" ]] && core_ok=true
+
+          mainstream_ok=false
+          [[ "${{ needs.test-mainstream.result }}" == "success" ]] && mainstream_ok=true
+          [[ "${{ needs.test-mainstream-retry.result }}" == "success" ]] && mainstream_ok=true
+
+          tracker_ok=false
+          [[ "${{ needs.test-tracker.result }}" == "success" ]] && tracker_ok=true
+          [[ "${{ needs.test-tracker-retry.result }}" == "success" ]] && tracker_ok=true
+
+          if [[ "$core_ok" == "true" ]] && \
+             [[ "$mainstream_ok" == "true" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
-             [[ "${{ needs.test-extended.result }}" == "success" ]]; then
+             [[ "${{ needs.test-extended.result }}" == "success" ]] && \
+             [[ "$tracker_ok" == "true" ]]; then
             echo "conclusion=success" >> "$GITHUB_OUTPUT"
             echo "✅ All test jobs passed"
           else
@@ -230,24 +748,41 @@ jobs:
             echo "❌ One or more test jobs failed"
           fi
 
-          # Calculate average coverage (simple average of 4 packages)
+          # Use retry coverage when retry was the one that succeeded
           COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          if [[ -z "$COV_CORE" || "$COV_CORE" == "0" ]] && \
+             [[ "${{ needs.test-core-retry.result }}" == "success" ]]; then
+            COV_CORE="${{ needs.test-core-retry.outputs.coverage }}"
+          fi
+
           COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          if [[ -z "$COV_MAINSTREAM" || "$COV_MAINSTREAM" == "0" ]] && \
+             [[ "${{ needs.test-mainstream-retry.result }}" == "success" ]]; then
+            COV_MAINSTREAM="${{ needs.test-mainstream-retry.outputs.coverage }}"
+          fi
+
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
+          if [[ -z "$COV_TRACKER" || "$COV_TRACKER" == "0" ]] && \
+             [[ "${{ needs.test-tracker-retry.result }}" == "success" ]]; then
+            COV_TRACKER="${{ needs.test-tracker-retry.outputs.coverage }}"
+          fi
 
           # Default to 0 if empty
           COV_CORE="${COV_CORE:-0}"
           COV_MAINSTREAM="${COV_MAINSTREAM:-0}"
           COV_COMMON="${COV_COMMON:-0}"
           COV_EXTENDED="${COV_EXTENDED:-0}"
+          COV_TRACKER="${COV_TRACKER:-0}"
 
           # Calculate average (integer math)
-          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED) / 4 ))
+          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED + COV_TRACKER) / 5 ))
           echo "coverage=$AVG" >> "$GITHUB_OUTPUT"
           echo "Average coverage: $AVG%"
 
       - name: Record run result
+        if: needs.changes.outputs.code == 'true'
         run: |
           # Log run metadata
           echo "{
@@ -259,16 +794,41 @@ jobs:
             \"triggered_by\": \"${{ github.event_name }}\",
             \"jobs\": {
               \"core\": \"${{ needs.test-core.result }}\",
+              \"core-retry\": \"${{ needs.test-core-retry.result }}\",
               \"mainstream\": \"${{ needs.test-mainstream.result }}\",
+              \"mainstream-retry\": \"${{ needs.test-mainstream-retry.result }}\",
               \"common\": \"${{ needs.test-common.result }}\",
-              \"extended\": \"${{ needs.test-extended.result }}\"
+              \"extended\": \"${{ needs.test-extended.result }}\",
+              \"tracker\": \"${{ needs.test-tracker.result }}\",
+              \"tracker-retry\": \"${{ needs.test-tracker-retry.result }}\"
             }
           }"
 
-      - name: Update coverage badge
-        if: steps.results.outputs.conclusion == 'success'
+      - name: Update coverage badge and marker
+        if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion == 'success'
         run: |
           COV="${{ steps.results.outputs.coverage }}"
+
+          # Use retry coverage when retry was the one that succeeded
+          COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          if [ -z "$COV_CORE" ] || [ "$COV_CORE" = "0" ]; then
+            RETRY_COV="${{ needs.test-core-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_CORE="$RETRY_COV"
+          fi
+
+          COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          if [ -z "$COV_MAINSTREAM" ] || [ "$COV_MAINSTREAM" = "0" ]; then
+            RETRY_COV="${{ needs.test-mainstream-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_MAINSTREAM="$RETRY_COV"
+          fi
+
+          COV_COMMON="${{ needs.test-common.outputs.coverage }}"
+          COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
+          if [ -z "$COV_TRACKER" ] || [ "$COV_TRACKER" = "0" ]; then
+            RETRY_COV="${{ needs.test-tracker-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_TRACKER="$RETRY_COV"
+          fi
 
           # Determine badge color based on coverage
           if [ "$COV" -ge 90 ]; then
@@ -281,6 +841,18 @@ jobs:
 
           echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
 
+          # Check if all packages have 100% coverage
+          ALL_100="false"
+          if [ "$COV_CORE" = "100" ] && [ "$COV_MAINSTREAM" = "100" ] && \
+             [ "$COV_COMMON" = "100" ] && [ "$COV_EXTENDED" = "100" ] && \
+             [ "$COV_TRACKER" = "100" ]; then
+            ALL_100="true"
+            echo "All packages at 100% coverage - updating last-green-sha marker"
+            echo "${{ github.sha }}" > /tmp/last-green-sha.txt
+          else
+            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED, tracker=$COV_TRACKER"
+          fi
+
           git config user.name "CI Bot"
           git config user.email "ci@iterabloom.com"
 
@@ -289,13 +861,45 @@ jobs:
 
           git rm -rf . 2>/dev/null || true
           cp /tmp/coverage.json coverage.json
+          if [ "$ALL_100" = "true" ]; then
+            cp /tmp/last-green-sha.txt last-green-sha.txt
+          fi
 
           git add coverage.json
+          if [ "$ALL_100" = "true" ]; then
+            git add last-green-sha.txt
+          fi
           git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
           git push origin badges --force || echo "Push failed - may need write permissions"
 
+      - name: Set commit status on success
+        if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion == 'success'
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "::warning::FORGEJO_TOKEN not set, skipping commit status update"
+            exit 0
+          fi
+
+          curl -sf -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"success\",
+              \"context\": \"full-suite/aggregate\",
+              \"description\": \"Full test suite passed\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API" > /dev/null && echo "Set full-suite/aggregate status: success" \
+            || echo "::warning::Failed to set commit status (non-fatal)"
+
       - name: Fail if any job failed
-        if: steps.results.outputs.conclusion != 'success'
+        if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion != 'success'
         run: |
           echo "❌ Full suite FAILED"
           echo ""

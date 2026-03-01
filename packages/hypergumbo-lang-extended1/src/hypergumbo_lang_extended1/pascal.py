@@ -7,11 +7,15 @@ Pascal is a classic imperative and procedural programming language designed for
 teaching structured programming. It's still widely used through Delphi, Free Pascal,
 and Lazarus IDE. Modern Object Pascal supports object-oriented programming.
 
-Implementation approach:
-- Uses tree-sitter-language-pack for Pascal grammar
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
-- Handles both program and unit structures
-- Extracts procedures, functions, and their call relationships
+How It Works
+------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Collect all symbols (programs, units, procedures, functions)
+2. Pass 2: Extract call edges from exprCall and identifier-statement patterns
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Pascal-specific extraction
+logic.
 
 Key constructs extracted:
 - program ... - main program definition
@@ -20,42 +24,32 @@ Key constructs extracted:
 - procedure name(args) - procedure definitions
 - name(args) - procedure/function calls
 """
+from __future__ import annotations
 
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    make_symbol_id,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "pascal.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class PascalAnalysisResult:
-    """Result of analyzing Pascal files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
+PASS_ID = make_pass_id("pascal")
 
 
 def is_pascal_tree_sitter_available() -> bool:
     """Check if tree-sitter-language-pack with Pascal support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("pascal")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
+    return _analyzer._check_grammar_available()
 
 
 def find_pascal_files(root: Path) -> Iterator[Path]:
@@ -67,15 +61,9 @@ def find_pascal_files(root: Path) -> Iterator[Path]:
                 yield path
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Pascal symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"pascal:{rel_path}:{name}:{kind}"
-
-
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8")
+    return node.text.decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
@@ -88,7 +76,6 @@ def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
 
 def _get_proc_name(node: "tree_sitter.Node") -> Optional[str]:
     """Get the name of a procedure/function from a defProc node."""
-    # defProc contains declProc which has the identifier
     for child in node.children:
         if child.type == "declProc":
             return _get_identifier(child)
@@ -116,7 +103,6 @@ def _get_proc_params(node: "tree_sitter.Node") -> list[str]:
                 if subchild.type == "declArgs":
                     for arg in subchild.children:
                         if arg.type == "declArg":
-                            # Get identifiers from declArg (can be multiple: A, B: Integer)
                             for arg_child in arg.children:
                                 if arg_child.type == "identifier":
                                     params.append(_get_node_text(arg_child))
@@ -127,7 +113,6 @@ def _get_return_type(node: "tree_sitter.Node") -> Optional[str]:
     """Get the return type of a function from a defProc node."""
     for child in node.children:
         if child.type == "declProc":
-            # Find typeref after the colon (for function return type)
             found_colon = False
             for subchild in child.children:
                 if subchild.type == ":":
@@ -145,96 +130,97 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class PascalAnalyzer:
-    """Analyzer for Pascal source files."""
+def _find_enclosing_function(
+    node: "tree_sitter.Node", rel_path: str,
+) -> Optional[str]:
+    """Find the enclosing function/procedure for a node.
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
+    Returns the symbol ID (make_symbol_id format) of the nearest defProc
+    ancestor, or None if the node is at module level.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "defProc":
+            name = _get_proc_name(current)
+            if name:
+                return make_symbol_id(
+                    "pascal", rel_path,
+                    current.start_point[0] + 1,
+                    current.end_point[0] + 1,
+                    name, "function",
+                )
+        current = current.parent
+    return None  # pragma: no cover
 
-    def analyze(self) -> PascalAnalysisResult:
-        """Analyze all Pascal files in the repository."""
-        if not is_pascal_tree_sitter_available():
-            warnings.warn(
-                "Pascal analysis skipped: tree-sitter-language-pack not available",
-                UserWarning,
-                stacklevel=2,
-            )
-            return PascalAnalysisResult(
-                skipped=True,
-                skip_reason="tree-sitter-language-pack not available",
-            )
 
-        import uuid as uuid_module
-        from tree_sitter_language_pack import get_parser
+# Pascal builtins to skip during edge extraction
+_PASCAL_BUILTINS = {
+    # I/O
+    "write", "writeln", "read", "readln", "readkey",
+    # Memory
+    "new", "dispose", "getmem", "freemem", "setlength",
+    # String
+    "length", "copy", "delete", "insert", "pos", "concat",
+    "uppercase", "lowercase", "trim", "stringreplace",
+    # Math
+    "inc", "dec", "abs", "sqr", "sqrt", "sin", "cos", "tan",
+    "exp", "ln", "log", "power", "round", "trunc", "frac",
+    "random", "randomize",
+    # Conversion
+    "ord", "chr", "inttostr", "strtoint", "floattostr",
+    "strtofloat", "formatfloat", "format",
+    # System
+    "halt", "exit", "break", "continue", "sleep",
+    "assigned", "sizeof", "typeof", "high", "low",
+    # File
+    "assign", "reset", "rewrite", "append", "close",
+    "eof", "eoln", "fileexists",
+    # Array
+    "fillchar", "move",
+}
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
 
-        parser = get_parser("pascal")
-        pascal_files = list(find_pascal_files(self.repo_root))
+# ---------------------------------------------------------------------------
+# PascalAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
 
-        if not pascal_files:
-            return PascalAnalysisResult()
 
-        # Pass 1: Collect all symbols
-        for path in pascal_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+class PascalAnalyzer(TreeSitterAnalyzer):
+    """Pascal language analyzer using tree-sitter-language-pack."""
 
-        # Build symbol registry (lowercase for case-insensitive matching)
-        for sym in self.symbols:
-            self._symbol_registry[sym.name.lower()] = sym.id
+    lang = "pascal"
+    file_patterns: ClassVar[list[str]] = ["*.pas", "*.pp", "*.dpr", "*.lpr"]
+    language_pack_name = "pascal"
 
-        # Pass 2: Extract edges
-        for path in pascal_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract program, unit, function, and procedure symbols from Pascal."""
+        analysis = FileAnalysis()
+        self._extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        return analysis
 
-        elapsed = time.time() - start_time
-
-        run = AnalysisRun(
-            execution_id=self._run_id,
-            run_signature="",
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            toolchain={"name": "pascal", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
-        )
-
-        return PascalAnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
-        )
-
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
+    def _extract_symbols_recursive(
+        self, node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    ) -> None:
+        """Recursively extract symbols, stopping descent into defProc bodies."""
         if node.type == "program":
-            # Program definition
             name = _get_identifier(node)
             if name is None:
-                # Try moduleName
                 for child in node.children:
                     if child.type == "moduleName":
                         name = _get_node_text(child)
                         break
             if name:
-                rel_path = str(path.relative_to(self.repo_root))
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "program",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "program"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "program"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="program"),
                     name=name,
                     kind="program",
                     language="pascal",
@@ -247,10 +233,10 @@ class PascalAnalyzer:
                     ),
                     origin=PASS_ID,
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "unit":
-            # Unit definition
             name = None
             for child in node.children:
                 if child.type == "moduleName":
@@ -259,10 +245,14 @@ class PascalAnalyzer:
                         name = _get_node_text(child)
                     break
             if name:
-                rel_path = str(path.relative_to(self.repo_root))
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "module",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "unit"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "unit"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="module"),
                     name=name,
                     kind="module",
                     language="pascal",
@@ -275,26 +265,29 @@ class PascalAnalyzer:
                     ),
                     origin=PASS_ID,
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "defProc":
-            # Function or procedure definition
             name = _get_proc_name(node)
             if name:
                 kind = _get_proc_kind(node)
                 params = _get_proc_params(node)
                 return_type = _get_return_type(node)
-                rel_path = str(path.relative_to(self.repo_root))
 
-                # Build signature
                 if kind == "function":
                     signature = f"function {name}({', '.join(params)}): {return_type or 'unknown'}"
                 else:
                     signature = f"procedure {name}({', '.join(params)})"
 
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "function",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "fn"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="function"),
                     name=name,
                     kind="function",
                     language="pascal",
@@ -309,63 +302,60 @@ class PascalAnalyzer:
                     signature=signature,
                     meta={"param_count": len(params), "proc_kind": kind},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[name] = sym
+                analysis.node_for_symbol[sym.id] = node
             return  # Don't recurse into function bodies for symbol extraction
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols(child, path)
+            self._extract_symbols_recursive(child, rel_path, analysis)
 
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbols with lowercase names for case-insensitive matching."""
+        global_symbols[symbol.name.lower()] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from Pascal exprCall and statement nodes."""
+        edges: list[Edge] = []
+        self._extract_edges_recursive(
+            tree.root_node, rel_path, run.execution_id, global_symbols, edges,
+        )
+        return edges
+
+    def _extract_edges_recursive(
+        self, node: "tree_sitter.Node", rel_path: str, run_id: str,
+        global_symbols: dict, edges: list[Edge],
+    ) -> None:
+        """Recursively extract call edges."""
         call_name = None
         call_node = node
 
         if node.type == "exprCall":
-            # Function/procedure call with arguments
             call_name = _get_call_name(node)
         elif node.type == "statement":
-            # Procedure call without arguments (just identifier)
-            # Check if this is a simple identifier statement (not an assignment or exprCall)
             children = [c for c in node.children if c.type not in (";",)]
             if len(children) == 1 and children[0].type == "identifier":
                 call_name = _get_node_text(children[0])
                 call_node = children[0]
 
         if call_name:
-            # Skip built-in procedures
-            builtins = {
-                # I/O
-                "write", "writeln", "read", "readln", "readkey",
-                # Memory
-                "new", "dispose", "getmem", "freemem", "setlength",
-                # String
-                "length", "copy", "delete", "insert", "pos", "concat",
-                "uppercase", "lowercase", "trim", "stringreplace",
-                # Math
-                "inc", "dec", "abs", "sqr", "sqrt", "sin", "cos", "tan",
-                "exp", "ln", "log", "power", "round", "trunc", "frac",
-                "random", "randomize",
-                # Conversion
-                "ord", "chr", "inttostr", "strtoint", "floattostr",
-                "strtofloat", "formatfloat", "format",
-                # System
-                "halt", "exit", "break", "continue", "sleep",
-                "assigned", "sizeof", "typeof", "high", "low",
-                # File
-                "assign", "reset", "rewrite", "append", "close",
-                "eof", "eoln", "fileexists",
-                # Array
-                "fillchar", "move",
-            }
-
-            if call_name.lower() not in builtins:
-                caller_id = self._find_enclosing_function(node, path)
+            if call_name.lower() not in _PASCAL_BUILTINS:
+                caller_id = _find_enclosing_function(node, rel_path)
                 if caller_id:
-                    callee_id = self._symbol_registry.get(call_name.lower())
-                    confidence = 1.0 if callee_id else 0.6
-                    if callee_id is None:
+                    callee_sym = global_symbols.get(call_name.lower())
+                    if isinstance(callee_sym, Symbol):
+                        callee_id = callee_sym.id
+                        confidence = 1.0
+                    else:
                         callee_id = f"pascal:unresolved:{call_name}"
+                        confidence = 0.6
 
                     line = call_node.start_point[0] + 1
                     edge = Edge.create(
@@ -374,39 +364,22 @@ class PascalAnalyzer:
                         edge_type="calls",
                         line=line,
                         origin=PASS_ID,
-                        origin_run_id=self._run_id,
+                        origin_run_id=run_id,
                         evidence_type="ast_call_direct",
                         confidence=confidence,
                         evidence_lang="pascal",
                     )
-                    self.edges.append(edge)
+                    edges.append(edge)
 
         # Recursively process children
         for child in node.children:
-            self._extract_edges(child, path)
-
-    def _find_enclosing_function(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
-        """Find the enclosing function/procedure for a node."""
-        current = node.parent
-        while current is not None:
-            if current.type == "defProc":
-                name = _get_proc_name(current)
-                if name:
-                    return _make_stable_id(path, self.repo_root, name, "fn")
-            current = current.parent
-        return None  # pragma: no cover
+            self._extract_edges_recursive(child, rel_path, run_id, global_symbols, edges)
 
 
-def analyze_pascal(repo_root: Path) -> PascalAnalysisResult:
-    """Analyze Pascal source files in a repository.
+_analyzer = PascalAnalyzer()
 
-    Args:
-        repo_root: Root directory of the repository to analyze
 
-    Returns:
-        PascalAnalysisResult containing symbols, edges, and analysis metadata
-    """
-    analyzer = PascalAnalyzer(repo_root)
-    return analyzer.analyze()
+@register_analyzer("pascal")
+def analyze_pascal(repo_root: Path) -> AnalysisResult:
+    """Analyze Pascal source files in a repository."""
+    return _analyzer.analyze(repo_root)

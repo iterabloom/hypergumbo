@@ -1,0 +1,85 @@
+- op: create  # 5065
+  at: '2026-02-15T00:51:38Z'  # 5065
+  by: agent  # 5065
+  actor: migration  # 5065
+  clock: 1  # 5065
+  nonce: '5065'  # 5065
+  data:  # 5065
+    kind: invariant  # 5065
+    title: "Extends Edge Name Collision Resolution"  # 5065
+    status: todo_hard  # 5065
+    priority: 0  # 5065
+    parent:  # 5065
+    tags: []  # 5065
+    before: []  # 5065
+    duplicate_of: []  # 5065
+    not_duplicate_of: []  # 5065
+    pr_ref:  # 5065
+    justification:  # 5065
+    description: "Limitation: [What's still broken]\n\nNotes: [Assessment details, known gaps, research needed]\n\n**Unified by:**\n\n[List of specific INV-xxx that this meta-invariant unifies]\n\n**Implication:** [What this means for development practices]"  # 5065
+    fields:  # 5065
+      statement: "[What must always be true]"  # 5065
+      root_cause: "[File:line or description]"  # 5065
+      fix: "[What was done]"  # 5065
+      regression_tests:  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_prefers_required_class_over_name_collision  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_import_matches_full_fqn_path  # 5065
+- op: update  # 95e1
+  at: '2026-02-18T02:13:28Z'  # 95e1
+  by: human  # 95e1
+  actor: jgstern  # 95e1
+  clock: 2  # 95e1
+  nonce: '95e1'  # 95e1
+  set:  # 95e1
+    status: wont_do  # 95e1
+    description: "NOTE this seems to be a template that got erroneously treated as a real item. Limitation: [What's still broken]\n\nNotes: [Assessment details, known gaps, research needed]\n\n**Unified by:**\n\n[List of specific INV-xxx that this meta-invariant unifies]\n\n**Implication:** [What this means for development practices]"  # 95e1
+- op: update  # 66f8
+  at: '2026-02-23T07:07:33Z'  # 66f8
+  by: agent  # 66f8
+  actor: jgstern_agent  # 66f8
+  clock: 3  # 66f8
+  nonce: 66f8  # 66f8
+  set:  # 66f8
+    status: holding  # 66f8
+- op: update  # a727
+  at: '2026-02-23T07:07:37Z'  # a727
+  by: agent  # a727
+  actor: jgstern_agent  # a727
+  clock: 4  # a727
+  nonce: a727  # a727
+  set:  # a727
+    status: holding  # a727
+- op: update  # 99fa
+  at: '2026-02-23T08:59:04Z'  # 99fa
+  by: agent  # 99fa
+  actor: jgstern_agent  # 99fa
+  clock: 5  # 99fa
+  nonce: 99fa  # 99fa
+  set:  # 99fa
+    fields:  # 99fa
+      statement: "Extends edges must resolve to the correct target when multiple classes share the same name. Same-file definitions take priority over cross-file matches."  # 99fa
+- op: update  # 99cf
+  at: '2026-02-23T10:23:46Z'  # 99cf
+  by: human  # 99cf
+  actor: jgstern  # 99cf
+  clock: 6  # 99cf
+  nonce: 99cf  # 99cf
+  set:  # 99cf
+    status: deleted  # 99cf

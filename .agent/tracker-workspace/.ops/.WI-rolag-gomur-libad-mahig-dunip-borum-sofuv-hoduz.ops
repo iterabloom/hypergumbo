@@ -1,0 +1,45 @@
+- op: create  # b136
+  at: '2026-02-22T04:50:59Z'  # b136
+  by: agent  # b136
+  actor: jgstern_agent  # b136
+  clock: 1  # b136
+  nonce: b136  # b136
+  data:  # b136
+    kind: work_item  # b136
+    title: "Tracker CLI: --parent should resolve short prefix to full proquint ID"  # b136
+    status: todo_soft  # b136
+    priority: 2  # b136
+    parent:  # b136
+    tags: []  # b136
+    before: []  # b136
+    duplicate_of: []  # b136
+    not_duplicate_of: []  # b136
+    pr_ref:  # b136
+    justification:  # b136
+    description: "tracker update --parent accepts short prefixes (e.g., INV-lohap) but stores them literally instead of resolving to full proquint IDs (INV-lohap-jubir-...). This passes at write time but fails tracker validate with 'dangling parent reference'. Other commands (show, update by item_id) correctly resolve short prefixes. Fix: resolve the --parent value through the same prefix-matching logic before storing."  # b136
+    fields: {}  # b136
+- op: update  # 41ce
+  at: '2026-02-22T04:52:18Z'  # 41ce
+  by: agent  # 41ce
+  actor: jgstern_agent  # 41ce
+  clock: 2  # 41ce
+  nonce: 41ce  # 41ce
+  set:  # 41ce
+    priority: 0  # 41ce
+- op: update  # 3c89
+  at: '2026-02-22T05:27:21Z'  # 3c89
+  by: agent  # 3c89
+  actor: jgstern_agent  # 3c89
+  clock: 3  # 3c89
+  nonce: 3c89  # 3c89
+  set:  # 3c89
+    status: done  # 3c89
+    pr_ref: '#1334'  # 3c89
+    justification: "Fixed: _resolve_ref() resolves short prefixes at CLI write time; validate_all() in preflight_check() catches dangling refs before sync push"  # 3c89
+- op: discuss  # 485a
+  at: '2026-02-25T08:40:28Z'  # 485a
+  by: agent  # 485a
+  actor: jgstern_agent  # 485a
+  clock: 4  # 485a
+  nonce: 485a  # 485a
+  message: "[migrated from justification field] Fixed: _resolve_ref() resolves short prefixes at CLI write time; validate_all() in preflight_check() catches dangling refs before sync push"  # 485a

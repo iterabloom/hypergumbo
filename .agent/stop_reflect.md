@@ -1,78 +1,133 @@
 # Stop Reflection Protocol
 
-Before stopping, complete this checklist:
+Before stopping, work through each section. Do not skip sections.
 
 ## 1. Current State
-- [ ] What CRITICAL/HIGH signals remain from last bakeoff run?
-- [ ] What was the last change made?
+State what CRITICAL/HIGH signals remain from the last bakeoff run.
+State what the last change was and why it was made.
 
 ## 2. Invariant Check
-For each remaining signal (for the last change made), state the violated invariant:
+For each remaining signal, state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
-Also check the file:
-```bash
-cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
-```
-This catches:
-- Regular invariants: UNFIXED, PARTIALLY ADDRESSED, TBD
-- Meta-invariants: Any percentage below 100%
 
-If items show, read the full ledger for context and Notes fields.
+Check the structured tracker for blocking items:
+```bash
+scripts/tracker count-todos --hard   # todo_hard: investigate deeply, assume structural
+scripts/tracker count-todos --soft   # todo_soft: backlog, address or defer freely
+scripts/tracker ready | head -10     # actionable items sorted by priority
+```
+
+If items show, read details with `scripts/tracker show <ID>`.
+
+Both `todo_hard` and `todo_soft` items block stopping (subject to circuit breaker).
 
 ## 3. Structural vs Workaround
 For the last change made:
-- [ ] Does it bypass a problematic code path, or fix/remove that path?
-- [ ] If bypass: what is the root cause, and when will it be fixed?
+- Does it bypass a problematic code path, or fix/remove that path?
+- If bypass: what is the root cause, and when will it be fixed?
 
 ## 4. Scope Expansion
-- [ ] Same language, different construct?
-- [ ] Different language, same pattern?
-- [ ] Different pipeline stage?
+Check for structural analogues of the last fix:
+- Same language, different construct?
+- Different language, same pattern?
+- Different pipeline stage?
+
+If analogues exist, create tracker items immediately:
+```bash
+# Invariant violations, defects, anything potentially structural:
+scripts/tracker add invariant --title "..." --status todo_hard --priority N
+
+# Clearly non-defect backlog (CI config, nice-to-haves):
+scripts/tracker add work_item --title "..." --status todo_soft --priority N
+
+# Governance proposals, architectural questions, needs human judgment:
+scripts/tracker add work_item --title "..." --status needs_human_review --priority N
+```
+**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things too seriously. Use `needs_human_review` for items that genuinely require human decision-making rather than just human review of agent work.
 
 ## 5. Decision
-- [ ] If root cause unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
-- [ ] If root cause fixed or truly isolated: document in invariant ledger (`.agent/invariant-ledger.md`), then take a step back and think about the best thing to do from a big-picture software quality perspective. Strongly consider activating or reactivating the bakeoff loop using `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py` (as detailed in Parts 2 & 3 of `docs/governance-case-critiques.md`).
+- If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
+- If root cause is fixed or truly isolated: update the tracker item to `done`, then decide your next action.
 
-## 6. Artifact Analysis
-- [ ] **IMPORTANT:** Prefer mining existing artifacts over running new bakeoffs — large repos take significant time and there are likely enough artifacts already
-- [ ] Run qualitative reflection first:
-  ```bash
-  ./scripts/bakeoff-reflect /tmp/bakeoff_session/out/cohort-001/iter-001 --cycle N
-  ```
-  - This generates "needs work" vs "doing something special" insights
-  - Run it REPEATEDLY with different cohorts — value is in the variation
-  - It surfaces concerns (NO_CALL_EDGES, LOW_RESOLUTION, LOW_CROSS_FILE)
-  - It highlights strengths (STRONG_CROSS_FILE, RICH_EDGE_TYPES, HIGH_RESOLUTION)
-  - It asks open-ended questions that change each run to explore the problem space
-- [ ] For deeper quantitative analysis, use:
-  - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
-  - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
-  - `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
-    - `01_quality_overview.py` — edge density, call coverage, concepts
-    - `02_edge_resolution.py` — cross-file vs same-file vs stdlib
-    - `03_language_comparison.py` — compare analyzers across languages
-    - `04_entrypoint_analysis.py` — entrypoint quality
-    - `05_potential_issues.py` — detect common problems
-    - `06_signature_quality.py` — function signature completeness
-    - `07_complexity_metrics.py` — cyclomatic complexity distribution
-- [ ] Add new analysis scripts to `analysis_lib/` as needed (follow naming: `NN_short_name.py`)
-- [ ] Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage
-- [ ] If analysis reveals concerns, investigate the root cause before stopping
+**Next action selection (in priority order):**
+1. **Implementation-ready insights:** Check the lab notebook (`ls -t ~/hypergumbo_lab_notebook/*.md | head -10`) for recent entries that identify concrete code changes. If found, add them to the tracker. Include a reminder to use red-green-refactor/TDD.
+2. **DEEP/BROAD priority queue:** Check `AGENTS.md` for the next item in the current mode's priority queue.
+3. **Bakeoff or artifact analysis:** Only if 1-2 yielded nothing actionable.
+
+**When you write `notes` in Section 8:** Be specific and implementation-oriented. Not "investigate brake feel" but "add **service-access point patterns** to the maintenance checklist (the shop's checklist file) — **adjusters/grease fittings/test ports on non-sealed, externally accessible assemblies** should be automatically recognized as **ROUTINE_SERVICE entry points**." The notes field is injected into the cooldown prompt, so future-you will act on exactly what you write.
+
+## 6. Artifact Analysis (If Needed)
+Use analysis when you need data to inform an implementation decision, not as a destination in itself. Every analysis session should end with a concrete "what to implement" conclusion written into either the lab notebook or `last_stop_check.json` notes.
+
+Analysis toolkit (see `~/hypergumbo_lab_notebook/analysis_lib/README.md` for additional inventory):
+- `./scripts/bakeoff-reflect` — BROAD mode: structured LLM-driven parse correctness assessment
+- `./scripts/bakeoff-features-reflect` — DEEP mode: LLM-driven feature usefulness assessment
+- `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
+- `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
+- `~/hypergumbo_lab_notebook/analysis_lib/` — 18+ reusable analysis scripts (run `ls ~/hypergumbo_lab_notebook/analysis_lib/[0-9]*.py` for current list)
+
+If analysis reveals concerns, check the tracker for any preexisting relevant entries to amend, or add a new item to the tracker. Reference the lab notebook as the authoritative analysis, but try to make the tracker entry complete.
 
 ## 7. Design Quality Meta-Reflection
 Consider the last few changes made:
 
-- [ ] **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config?
-  - Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`, not hardcoded in analyzers
-  - Language conventions (main functions, entrypoints) should be declarative where possible
-  - If you added a new pattern check, could it be expressed as YAML instead?
+- **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config? Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`. Language conventions should be declarative where possible. If you added a new pattern check, could it be expressed as YAML instead?
 
-- [ ] **Invariant Consolidation:** Are there any invariants in the ledger that should be combined into a single, more principled/general invariant?
-  - Look for invariants that share a common root cause
-  - Look for invariants that could be expressed as a single more abstract principle
-  - Example: Multiple "missing edge" invariants might generalize to "every metadata reference must become a traversable edge"
+- **Invariant Consolidation:** Are there any invariants in the tracker that should be combined into a single, more principled/general invariant? Look for invariants that share a root cause or could be expressed as a single more abstract principle. Use `scripts/tracker list --kind invariant` to review.
 
-## 8. Commit Check
-- [ ] Run `git status` — are there uncommitted changes?
-- [ ] If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
-- [ ] If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
+## 8. Commit and Timestamp
+- Run `git status` — are there uncommitted changes?
+- If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
+- If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
+- Record reflection completion with recovery state:
+  ```bash
+  python3 -c "
+import json, subprocess, datetime, pathlib
+
+branch = subprocess.check_output(['git', 'branch', '--show-current'], text=True).strip()
+
+# Determine last PR state
+pr_pending = pathlib.Path('.git/PR_PENDING')
+if pr_pending.exists():
+    last_pr = int(pr_pending.read_text().strip().split()[-1]) if pr_pending.read_text().strip() else 0
+    last_pr_state = 'pending'
+else:
+    last_pr = 0       # Agent fills in the PR number that just merged, or 0
+    last_pr_state = 'none'
+
+# Count pending work items from structured tracker
+def tracker_count(flag):
+    try:
+        return int(subprocess.check_output(
+            ['scripts/tracker', 'count-todos', flag], text=True
+        ).strip())
+    except Exception:
+        return 0
+
+pending_hard_todos = tracker_count('--hard')
+pending_soft_todos = tracker_count('--soft')
+
+# Preserve guidance_file from previous stop hook run if present
+existing_state = {}
+state_path = pathlib.Path('.agent/last_stop_check.json')
+if state_path.exists():
+    try:
+        existing_state = json.loads(state_path.read_text())
+    except Exception:
+        pass
+
+state = {
+    'last_completed_utc': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'branch': branch,
+    'last_pr': last_pr,
+    'last_pr_state': last_pr_state,
+    'pending_hard_todos': pending_hard_todos,
+    'pending_soft_todos': pending_soft_todos,
+    'notes': '',  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: 'add X pattern to Y file' not 'investigate X'
+}
+if 'guidance_file' in existing_state:
+    state['guidance_file'] = existing_state['guidance_file']
+pathlib.Path('.agent/last_stop_check.json').write_text(json.dumps(state, indent=2) + '\n')
+  "
+  ```
+  **Important:** Before running, update `last_pr` and `notes` in the script with actual values. The `notes` field is critical — it gets injected into the cooldown prompt so the next cycle knows what to implement. Write specific, actionable implementation tasks, not vague observations.

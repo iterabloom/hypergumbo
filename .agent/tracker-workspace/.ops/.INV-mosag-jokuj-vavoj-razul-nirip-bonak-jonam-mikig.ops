@@ -1,0 +1,64 @@
+- op: create  # 220a
+  at: '2026-02-24T04:31:31Z'  # 220a
+  by: agent  # 220a
+  actor: jgstern_agent  # 220a
+  clock: 1  # 220a
+  nonce: 220a  # 220a
+  data:  # 220a
+    kind: invariant  # 220a
+    title: "Logging function centrality dampening"  # 220a
+    status: needs_human_review  # 220a
+    priority: 2  # 220a
+    parent:  # 220a
+    tags:  # 220a
+    - analysis-quality  # 220a
+    - bakeoff  # 220a
+    before: []  # 220a
+    duplicate_of: []  # 220a
+    not_duplicate_of: []  # 220a
+    pr_ref:  # 220a
+    justification:  # 220a
+    description: "SOURCE: Process health synthesis 3.2, recommendation 8. Logging functions are the single most persistent ranking failure across all tested repos despite multiple improvement commits during the Feb 18-23 bakeoff. They have high in-degree because every module calls them, but they carry zero architectural signal. Options: (a) Name-based detection with caller-file-span threshold. (b) Behavioral detection via high in-degree + low semantic diversity. (c) Framework-aware tagging (logrus, zap, slog, log4j, winston, structlog) with infrastructure:logging category dampening. Fix should interact correctly with existing trivial-sink and utility-file dampening."  # 220a
+    fields:  # 220a
+      statement: "Logging functions (log, warn, error, debug, info, trace, fatal, errorf) with callers spanning many files must receive centrality dampening proportional to their ubiquity, not rank alongside architectural symbols."  # 220a
+      root_cause: "Current dampening heuristics (trivial sink: out_degree<=1 AND LoC<=5, utility file detection) miss logging functions because they have moderate out-degree (calling into underlying loggers) and live in production code paths, not utility directories. XORMLogBridge.Errorf (forgejo rank 2, 389 degree), log (kong rank 2, 136 degree), Base#log (postal rank 7) all escape both heuristics."  # 220a
+- op: update  # 59a8
+  at: '2026-02-24T04:37:42Z'  # 59a8
+  by: agent  # 59a8
+  actor: jgstern_agent  # 59a8
+  clock: 2  # 59a8
+  nonce: 59a8  # 59a8
+  set: {}  # 59a8
+  add:  # 59a8
+    before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # 59a8
+- op: discuss  # 0bfb
+  at: '2026-02-25T08:13:51Z'  # 0bfb
+  by: human  # 0bfb
+  actor: jgstern  # 0bfb
+  clock: 3  # 0bfb
+  nonce: 0bfb  # 0bfb
+  message: "- (a) Name-based + caller-file-span threshold — quickest, catches the obvious cases (log, warn, error, debug, info, trace, fatal). Fragile against custom logger wrappers.\n  - (b) Behavioral detection — most principled (high in-degree + low semantic diversity). But risks false positives on legitimate hub functions.\n  - (c) Framework-aware tagging — most robust (logrus, zap, slog, log4j, winston, structlog as YAML patterns with infrastructure:logging category). Requires maintaining YAML entries per logging library but fits the existing framework pattern\n  system.\n\nLet's go with (a)+(c) as it is the pragmatic combination — name-based catches universal patterns, framework YAML catches library-specific ones."  # 0bfb
+- op: update  # caa8
+  at: '2026-02-25T08:14:58Z'  # caa8
+  by: human  # caa8
+  actor: jgstern  # caa8
+  clock: 4  # caa8
+  nonce: caa8  # caa8
+  set:  # caa8
+    status: violated  # caa8
+    priority: 3  # caa8
+- op: discuss  # d597
+  at: '2026-02-25T09:47:11Z'  # d597
+  by: agent  # d597
+  actor: jgstern_agent  # d597
+  clock: 5  # d597
+  nonce: d597  # d597
+  message: "Acknowledged. Implementing (a)+(c): name-based detection for universal patterns (log, warn, error, debug, info, trace, fatal) plus framework YAML entries for library-specific loggers (logrus, zap, slog, log4j, winston, structlog) with infrastructure:logging category dampening."  # d597
+- op: update  # 77e2
+  at: '2026-02-25T10:58:01Z'  # 77e2
+  by: agent  # 77e2
+  actor: jgstern_agent  # 77e2
+  clock: 6  # 77e2
+  nonce: '77e2'  # 77e2
+  set:  # 77e2
+    status: holding  # 77e2

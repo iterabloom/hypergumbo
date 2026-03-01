@@ -2,12 +2,136 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.0.2
+- Released **tool** is at: v2.1.0
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [2.1.0] - 2026-03-01
+
+### Added
+
+#### Linkers
+
+- **DI resolution linker**: Creates `di_resolves` edges from interface methods to DI-bound implementations. Supports Guice, Spring `@Bean`, ASP.NET Core DI, NestJS/Angular, InversifyJS, Python injector, Kotlin Koin, and Java SPI with heuristic fallbacks. Edges are followed by forward BFS — correct for DI-heavy codebases.
+- **HTTP linker: Ruby, Java, AngularJS, jQuery clients**: Detects HTTP client calls in Ruby (RestClient, HTTParty, Faraday, Net::HTTP), Java (RestTemplate, Retrofit), AngularJS `$http`, and jQuery `$.ajax`/`$.get`/`$.post`. Creates cross-language `http_calls` edges to server route handlers.
+- **JS/TS module resolution**: Resolves imports via relative paths (extension/index probing), `tsconfig`/`jsconfig`/`vite.config` path aliases, and monorepo tsconfig discovery.
+- **Vue linkers**: Template-method linker connects event handlers to `<script>` symbols; component linker resolves import paths to `.vue` files.
+- **FFI (5 languages)**: Cross-language call linking to C/C++ from Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), Node.js (N-API), and Lua (LuaJIT ffi).
+- **ORM query, containment, Rails view template linkers**: Django/SQLAlchemy call-to-model linking; `contains` edges across 15 languages; convention-based controller-to-view linking (ERB, Haml, Slim, Jbuilder).
+
+#### Frameworks
+
+- **JAX-RS subresource locator path chaining**: Propagates `@Path` prefixes through locator chains with cycle detection.
+- **Stapler (Jenkins)**: `@WebMethod`, `@RequirePOST`, `doXxx()`/`getXxx()` conventions. Auto-detected from `org.kohsuke.stapler`.
+- **Google Guice + Jakarta CDI**: Guice DI annotations, `AbstractModule`, EventBus `@Subscribe`. Jakarta CDI scoping, `@Produces`, `@Interceptor`, `@Alternative`.
+- **Rails**: Lifecycle/controller callbacks, Wisper pub/sub, scheduled tasks/Rack middleware entrypoints, namespace-aware route extraction.
+- **Django & Flask**: Template tags/filters, signal receivers, Jinja2/Blinker/Flask-RESTful patterns.
+- **Kafka Connect, XORM, FastAPI named routers, Express Controller.route()**: Streaming connector entrypoints, Go ORM detection, named `APIRouter` matching, config-object route registration.
+- **Framework detection for 16 languages** (Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy). **Test framework patterns for 16 languages** (Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy). Main function detection for 7 more (D, Nim, Zig, V, Odin, Gleam, Haxe).
+- **Test/utility file classification**: Test dirs as tier 2 with 90% penalty; `t/`, `test-*.c`, root-only `spec/` patterns. `dev/`, `contrib/`, `hack/`, `devel*` as utility. Removed `public/` from DEFAULT_EXCLUDES.
+
+#### Analyzers
+
+- **Clojure UsageContext**: Enables YAML-driven Ring/Compojure route detection.
+- **JS/TS callback + middleware edges**: Function-as-argument `references` edges, Express `middleware_chain` edges, object literal and Ruby hash literal function references.
+- **Assembly language**: Tree-sitter analyzer for `.s`/`.asm`/`.S` with cross-file call resolution.
+
+#### Analysis core — Centrality & ranking
+
+- **Bidirectional centrality**: `in_degree * (1 + ln(1 + out_degree))` rewards connectors over sinks. Hub in-degree saturation above 100.
+- **Four dampening mechanisms**: Trivial sinks (≤1 out, ≤5 LOC), common method names (10+ symbols), utility symbols (Logger, `*Exception`, etc.), and pure sinks — all get 70–90% reduction in both `rank_symbols()` and `symbols` output.
+- **Edge confidence filtering**: Edges <0.5 confidence excluded from centrality and degree computation. Import edges excluded by default. Documentation kinds and migration paths excluded/de-weighted.
+
+#### Analysis core — Slices
+
+- **Hub pruning depth-1 exemption**: Fixes "main → run()" patterns where orchestrators were hub-pruned.
+- **`--exclude-imports` flag**: Call-graph-only slices (up to 64% noise reduction). **`--hub-threshold N`** (default 50). **Node depth tracking** in `SliceResult.node_depths`. Forward slices skip structural edges; reverse slices downweight test callers; class/interface entries auto-expand.
+
+#### Analysis core — Entrypoints
+
+- **Scaled cap** (base 50, max 500) with confidence threshold (0.10) and count cap (50).
+- **library_export demotion**: 90% penalty when semantic entrypoints exist. Language dominance ranking for polyglot repos.
+- **New detectors**: C `cmd_*` functions, Java/Kotlin/Rust library exports, C forward declaration dedup.
+- **Tier classification**: Fuzz/benchmark dirs as tier 2; generated route symbols promoted to tier 2.
+
+#### Analysis core — Call resolution
+
+- **Go**: Module path resolution via `go.mod`, chained-call ambiguity guard, stdlib method guard (50+ methods), route handler unwrapping, route path validation, var alias extraction, struct embedding + interface assertion detection, Chi `Del()` and Go-swagger route detection.
+- **Rust**: Suffix index splits on `::`, scoped calls prefer full qualified names, span-based enclosing function disambiguation.
+- **C/C++**: Function pointer callback edges, dispatch table `dispatches_to`/`uses_dispatch_table` edges, declaration/definition deduplication with edge remapping.
+- **Cross-language**: Unified suffix index for all separators (`.`, `::`, `#`, `\`, `:`) across 10+ languages. Ambiguous method scaling (`1/sqrt(N)`); ListNameResolver returns unresolved at threshold.
+
+#### Analysis core — Other
+
+- **Docstring extraction** (103/105 analyzers): First-line doc summaries in `Symbol.docstring`.
+- **Typed stable_id (ADR-0014 Phase 3)**: Per-language signature normalization and typed hashing for 12 analyzers.
+- **Decorator/annotation edges** (Python, TS, Java, C#, Rust), **return type tracking** (6 languages), **Go route mount detection**, **inheritance linker struct support**. Edge deduplication fixed for `None`-keyed edges.
+
+#### Sketch, Supply chain, CLI
+
+- **Sketch**: Exclude 9 lock files from config section. **Supply chain**: Maven multi-module workspace detection.
+- **CLI**: Secret scanning via gitleaks, extras/cache management subcommands, redesigned bakeoff tooling (numeric scores, trajectory, orphan recovery, idea ingestion, artifact compression, domain-scored seed selection).
+
+#### Documentation & Testing
+
+- Scoped smart-test coverage, per-package checks, CI auto-retry, `ci-debug logs`.
+
+### Changed
+
+#### Language analyzers
+
+- **Elixir/OTP**: GenServer dispatch, 11 behaviour callbacks, `live` routes, multi-clause edges, cross-file resolution.
+- **C/C++**: Enclosing-function fix for duplicate names, definition-only struct/enum extraction. C++ adds template calls, pointer/reference returns, stack construction.
+- **Go**: Function-scoped type tracking, unified ambiguity guard (all selector types), unexported method guard, builtin filter, receiver disambiguation, self-call resolution, route linking (Gin/Echo/Fiber/Chi/Gorilla), Group prefix composition, HTTP client detection, `lines_of_code`.
+- **Ruby**: Class methods, `.new`→`#initialize`, namespaced receivers, job enqueue/callback/delegate/association edges, ambiguity guard, ListNameResolver.
+- **Rust**: ListNameResolver with ambiguity threshold; 3+ candidates → no edge. `lines_of_code` populated.
+- **JS/TS, PHP, Java, Lua, D**: Method ambiguity guards, inherited method fallback, require-alias resolution, import disambiguation improvements.
+
+#### Algorithms & output
+
+- **Slices**: Skip structural edges forward, downweight test callers reverse, `--exclude-tests` preserves inheritance. **Entrypoints**: Transitive scoring, connectivity fallback, test demotion, `--entry auto` filter support. **Default exclusions**: Doc/config nodes, CSS variables, npm/TS types, SCSS.
+- **Output**: Tiered view overhaul (budget enforcement, connectivity-aware selection). Route improvements (`-x`, `kind=route`, Django/Rails format fixes). Symbols sorted by per-symbol degree. Derived/minified excluded by default; `--max-files` raised to 50.
+- **Deps**: Embeddings optional. All deps pinned `~=X.Y.Z`.
+
+#### CI, agent governance, internal
+
+- smart-test improvements, infra-only PR skip, shared Forgejo API lib, parallel coverage, retry-aware `merge-pr`.
+- Three-way stop hook, post-compaction recovery, pre-push hook, fail-closed tracker, fork workflow hardening.
+- Standardized pass IDs via `make_pass_id()`. Generalized symbol identity (ADR-0014): location `id`, signature `stable_id`, CST `shape_id`. Tracker `update --note` and unread message warning.
+
+### Fixed
+
+#### JS/TS
+
+- **Cross-package false positives**: Comprehensive guard on all edge paths (direct/namespace/method/callback/object-field/shorthand) using import disambiguation, same-package preference, and npm boundary checks. Built-in name guard (`Number`, `String`, `parseInt`, etc.). Parameter shadowing respects lexical scoping in Promises/closures. `npm_package` symbols correctly tier 3.
+
+#### Go
+
+- Vendored SDKs classified as tier 3. Method ambiguity threshold lowered to 2. Route handler from last non-string arg. Test functions require `_test.go` suffix. Same-package method resolution fixed.
+
+#### Java/Kotlin/Scala
+
+- `main()` patterns match qualified names. Import-aware class name disambiguation. Field access receiver extraction. Integration test path detection.
+
+#### Other languages
+
+- **Rust**: Built-in attribute guard (45 names); impl method name extraction. **Clojure**: `test-*` requires `test/` dir. **D**: `.d` file disambiguation vs GCC deps. **Rails**: Route-to-controller reverse suffix matching. **Kotlin/C#/Scala/Python**: Chained member access resolution.
+
+#### Framework detection
+
+- False positive guards for GraphQL (requires server packages), Dropwizard (requires `-core`/`-jersey`), handler naming (requires HTTP-context dir). Route path prefix inheritance (Spring Boot, JAX-RS, Micronaut, ASP.NET). Pattern `base_class` no longer falls through to kind-only matching. Word-boundary regex. Micronaut field fix.
+
+#### Graph & output quality
+
+- Tiered view budget compliance (was 177× over) with connectivity-preserving shrink. Dangling edges after tier filtering. WebSocket N×M explosion. Event symbol ID format. Supply chain tier deserialization. Route-handler linking (Rails suffix, Django view_name, Phoenix concept, Ruby hash rockets). Vue/C/C++ analyzer deduplication. Name-collision fan-out → single best match. Cross-language containment filtering. Language-proportional sketch seeding. Route symbol entrypoint promotion. Spurious TS warning. Minified file skip. smart-test scoped mode. ListNameResolver full-path disambiguation.
+
+### Removed
+
+- **Bootstrap mode in CI**: Stable hypergumbo includes `slice --files`, so smart-test always generates proper manifests.
+
 
 ## [2.0.2] - 2026-02-01
 
@@ -33,61 +157,30 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
-- **Modular package structure (ADR-0010)**: Restructured hypergumbo from a single monolithic package into 5 modular packages:
-  - `hypergumbo-core`: Core infrastructure (CLI, IR, slice, sketch, linkers)
-  - `hypergumbo-lang-mainstream`: Popular languages (Python, JS/TS, Java, Go, Rust, etc.)
-  - `hypergumbo-lang-common`: Domain-specific languages (Haskell, Elixir, GraphQL, etc.)
-  - `hypergumbo-lang-extended1`: Specialized languages (Zig, Agda, Solidity, etc.)
-  - `hypergumbo`: Meta-package that installs all of the above
-
-  **Breaking change:** Import paths changed from `hypergumbo.*` to `hypergumbo_core.*` for core modules and `hypergumbo_lang_*.*` for language analyzers. See `docs/MIGRATION-2.0.md` for migration guide. CLI usage is unchanged.
+- **Modular package structure (ADR-0010)**: Restructured from a single package into 5 modular packages: `hypergumbo-core` (CLI, IR, slice, sketch, linkers), `hypergumbo-lang-mainstream` (Python, JS/TS, Java, Go, Rust, etc.), `hypergumbo-lang-common` (Haskell, Elixir, GraphQL, etc.), `hypergumbo-lang-extended1` (Zig, Agda, Solidity, etc.), and `hypergumbo` (meta-package). **Breaking change:** import paths changed from `hypergumbo.*` to `hypergumbo_core.*` / `hypergumbo_lang_*.*`. CLI usage is unchanged. See `docs/MIGRATION-2.0.md`.
 
 ### Added
 
-- **Smart test selection (ADR-0010)**: Implemented manifest-driven test selection for CI. The `scripts/smart-test` script uses hypergumbo's reverse-slice to identify affected tests from changed files, generating `.ci/affected-tests.txt` for CI validation. CI now runs only affected tests when manifest is valid, with sanity checks and fallback to full suite. Includes stop-the-line protocol to block PRs when full suite is broken (bypass with `fix(job-XXXXX):` title prefix).
-- **Two-tier CI system**: Added `full-suite.yml` workflow with singleton concurrency for nightly validation. Fast CI uses manifest-based test selection, full suite runs as lazy singleton after dev merges.
-- **Falcon framework support**: Added patterns for the Falcon bare-metal Python API framework. Detects responder methods (`on_get`, `on_post`, `on_put`, `on_delete`, `on_patch`), WebSocket handlers (`on_websocket`), hooks (`@falcon.before`, `@falcon.after`), and Resource base classes. Unlike decorator-based frameworks, Falcon uses method naming conventions for route handlers.
-- **Quart framework support**: Added patterns for the Quart async Python web framework (Flask's async reimplementation). Detects route decorators (`@app.get`, `@app.post`, `@app.route`), WebSocket handlers (`@app.websocket`), middleware (`@app.before_request`, `@app.after_request`), error handlers (`@app.errorhandler`), and async lifecycle hooks (`@app.before_serving`, `@app.after_serving`). Enables route and handler detection for async Flask-compatible applications.
-- **Sanic framework support**: Added patterns for the Sanic async Python web framework. Detects route decorators (`@app.get`, `@app.post`, `@app.route`), WebSocket handlers (`@app.websocket`), middleware (`@app.on_request`, `@app.on_response`), error handlers (`@app.exception`), lifecycle hooks (`@app.before_server_start`, `@app.after_server_stop`), and signal handlers (`@app.signal`). Enables route and handler detection for async Python APIs built with Sanic.
-- **Nex framework support**: Added patterns for the Nex minimalist Elixir web framework. Detects `use Nex` page/API handlers, lifecycle hooks (`mount`, `render`), and HTTP method handlers (`get`, `post`, `put`, `delete`, `patch`). Enables handler detection for Nex-based applications using file-based routing.
-- **Pyramid framework support**: Added patterns for the Pyramid Python web framework. Detects `@view_config` route decorators, `@view_defaults` class decorators, error handlers (`@notfound_view_config`, `@forbidden_view_config`, `@exception_view_config`), event subscribers (`@subscriber`), and SQLAlchemy model base classes. Enables route detection for Pyramid-based applications.
-- **Bottle framework support**: Added patterns for the Bottle Python micro-framework. Detects route decorators (`@app.get`, `@app.route`, `@route`), hooks (`@app.hook`), and error handlers (`@app.error`).
-- **JAX-RS implementation aliases**: Dropwizard, Jersey, and RESTEasy frameworks now use JAX-RS patterns automatically. This enables route detection for Java REST APIs using these frameworks.
-- **Flask-Appbuilder framework support**: Added patterns for Flask-Appbuilder (used by Apache Superset). Detects `@expose` route decorators, auth decorators (`@has_access`, `@protect`), and base classes (`BaseView`, `ModelRestApi`, `ModelView`). Enables route detection for enterprise Flask applications built on Flask-Appbuilder.
-- **Litestar framework support**: Added patterns for the Litestar (formerly Starlite) async Python ASGI framework. Detects standalone route decorators (`@get`, `@post`, `@put`, `@delete`, `@patch`), WebSocket handlers (`@websocket`, `@websocket_listener`), middleware (`@before_request`, `@after_request`), exception handlers (`@exception_handler`), and Controller base classes. Enables route detection for high-performance async Python APIs built with Litestar.
-- **Symfony framework support**: Added patterns for the Symfony PHP framework. Detects controllers (extends `AbstractController`), forms (extends `AbstractType`), console commands (extends `Command`), event subscribers (`EventSubscriberInterface`), Doctrine repositories (`ServiceEntityRepository`, `EntityRepository`), validators (`Constraint`, `ConstraintValidator`), security voters (`Voter`), Twig extensions, fixtures, message handlers, and more. Enables component detection for enterprise PHP applications built with Symfony.
-- **Quarkus framework support**: Added patterns for the Quarkus cloud-native Java framework. Detects Panache entities/repositories, scheduled tasks (`@Scheduled`), reactive markers (`@Blocking`, `@NonBlocking`), MicroProfile health checks (`@Liveness`, `@Readiness`), REST clients (`@RegisterRestClient`), config mappings (`@ConfigMapping`), reactive messaging (`@Incoming`, `@Outgoing`), and native build annotations. Complements existing JAX-RS patterns for REST endpoints.
-- **Nuxt framework support**: Added patterns for the Nuxt Vue.js meta-framework. Detects page metadata (`definePageMeta`), server handlers (`defineEventHandler`), middleware (`defineNuxtRouteMiddleware`), plugins (`defineNuxtPlugin`), data fetching composables (`useAsyncData`, `useFetch`), state management (`useState`), routing (`useRouter`, `navigateTo`), SEO helpers (`useHead`, `useSeoMeta`), and error handling. Enables component and route detection for Vue applications built with Nuxt.
-- **Remix framework support**: Added patterns for the Remix React meta-framework. Detects data loading (`loader`, `clientLoader`), mutations (`action`, `clientAction`), metadata (`meta`), stylesheets (`links`), headers, route config (`handle`, `shouldRevalidate`), error boundaries (`ErrorBoundary`), and hooks (`useLoaderData`, `useActionData`, `useFetcher`, `useSubmit`). Enables route and data flow detection for React applications built with Remix.
-- **SvelteKit framework support**: Added patterns for the SvelteKit Svelte meta-framework. Detects data loading (`load`), form actions (`actions`), server hooks (`handle`, `handleFetch`), error handling (`handleError`, `error`), navigation (`goto`, `invalidate`, `redirect`), stores (`page`, `navigating`), and form utilities (`enhance`, `applyAction`). Enables route and data flow detection for Svelte applications built with SvelteKit.
-- **Hanami framework support**: Added patterns for the Hanami Ruby framework. Detects actions (`Hanami::Action`), repositories (`Hanami::Repository`), entities (`Hanami::Entity`), interactors (`Hanami::Interactor`), views (`Hanami::View`), validations (`Dry::Validation::Contract`), and configuration (`Hanami::Application`). Enables clean architecture detection for Ruby applications built with Hanami.
-- **Feathers.js framework support**: Added patterns for the Feathers real-time microservices framework. Detects services (`Service`, adapter classes), hooks (`authenticate`, `authorize`, `validateSchema`), channels (`channels`, `publish`), authentication (`AuthenticationService`, JWT/Local/OAuth strategies), error handling (`FeathersError` classes), and transport providers (`express`, `socketio`). Enables service and real-time detection for Node.js microservices.
-- **Masonite framework support**: Added patterns for the Python Masonite framework. Detects controllers (extends `Controller`), models (extends `Model`), commands (extends `Command`), providers (extends `Provider`), validators (extends `Validator`), and route calls (`Route.get`, `Route.post`, `Route.resource`, `Route.api`). Enables route and component detection for Laravel-inspired Python applications.
-- **AdonisJS framework support**: Added patterns for the Node.js AdonisJS framework. Detects controllers by naming convention (`*Controller` classes), route decorators (`@Get`, `@Post`, `@Put`, `@Delete`), middleware (`@Middleware`), dependency injection (`@bind`, `@inject`), models (extends `BaseModel`), commands (extends `BaseCommand`), and route calls (`Route.get`, `Route.post`). Enables route detection for Laravel-inspired Node.js applications.
-- **Roda framework support**: Added patterns for the Ruby Roda web framework. Detects application class (extends `Roda`), route definitions (`route` block), HTTP method handlers (`r.get`, `r.post`, `r.put`, `r.delete`), path matching (`r.on`, `r.is`, `r.root`), plugins (`plugin` calls), and response helpers. Enables routing tree detection for Ruby applications using Roda's unique path-matching DSL.
-- **Javalin framework support**: Added patterns for the lightweight Java/Kotlin Javalin web framework. Detects route handlers (`app.get`, `app.post`, `app.put`, `app.delete`, `app.patch`), WebSocket handlers (`app.ws`), middleware (`app.before`, `app.after`), exception handlers (`app.exception`), error handlers (`app.error`), SSE handlers (`app.sse`), CRUD handlers (`app.crud`), and route groups. Enables route detection for lightweight Java/Kotlin APIs built with Javalin.
-- **Scalatra framework support**: Added patterns for the Sinatra-like Scala web framework Scalatra. Detects servlets (extends `ScalatraServlet`, `ScalatraFilter`), route handlers (`get`, `post`, `put`, `delete`, `patch`), middleware (`before`, `after`), error handlers (`error`, `notFound`), and JSON support traits (`JacksonJsonSupport`). Enables route detection for Scala web applications built with Scalatra.
-- **Http4k framework support**: Added patterns for the functional Kotlin Http4k HTTP toolkit. Detects route bindings (`bind` calls), handlers (extends `HttpHandler`), routers (`RoutingHttpHandler`, `routes` calls), middleware (extends `Filter`, `ServerFilter`, `ClientFilter`), WebSocket handlers (`websockets`), server setup (`asServer`), and lenses for type-safe parameter extraction. Enables route detection for functional Kotlin HTTP applications.
-- **http4s framework support**: Added patterns for the purely functional Scala http4s HTTP library. Detects `HttpRoutes` and `HttpRoutes.of` for route definitions, `BlazeServerBuilder`/`EmberServerBuilder` for server setup, middleware (`Logger`, `AuthMiddleware`, `CORS`, `GZip`), `EntityDecoder`/`EntityEncoder` for body parsing, `WebSocketBuilder` for WebSockets, and `IOApp` application trait. Enables route detection for functional Scala HTTP applications.
-- **Vert.x framework support**: Added patterns for the reactive JVM Vert.x toolkit. Detects `Router` creation, route definitions (`router.get`, `router.post`, etc.), handlers (`.handler`, `.blockingHandler`), `AbstractVerticle` base class, EventBus messaging (`consumer`, `send`, `publish`), WebSocket/SockJS handlers, middleware (BodyHandler, SessionHandler, CorsHandler, AuthHandler), and server creation. Enables route and verticle detection for reactive Java/Kotlin applications.
-- **Restify framework support**: Added patterns for the Node.js Restify REST API framework. Detects server creation (`restify.createServer`), route handlers (`server.get`, `server.post`, `server.put`, `server.del`, `server.patch`), middleware (`server.pre`, `server.use`), plugins (bodyParser, queryParser, CORS, throttle, requestLogger), error handlers, and HTTP clients (JSON/String clients). Enables route detection for Node.js REST APIs built with Restify.
-- **CodeIgniter framework support**: Added patterns for the lightweight PHP CodeIgniter MVC framework. Detects controllers (extends `BaseController`, `CI_Controller`), models (extends `Model`, `CI_Model`), routes (`$routes->get`, `$routes->post`, `$routes->resource`), filters (implements `FilterInterface`), migrations, seeders, commands, and view loading. Supports both CI4 and CI3 legacy patterns.
-- **Lumen framework support**: Added patterns for the Laravel Lumen micro-framework. Detects controllers (extends `Controller`), routes via `$router->get/post/put/delete` and `$app->get/post`, route groups, middleware registration, service providers, models (Eloquent), event listeners, jobs, commands, and exception handlers. Enables route detection for PHP microservices and APIs built with Lumen.
-- **Padrino framework support**: Added patterns for the Ruby Padrino web framework (built on Sinatra). Detects application class (extends `Padrino::Application`), controllers, routes (`get`, `post`, `put`, `delete`, `patch`), before/after filters, helpers, mailers, models (ActiveRecord, Sequel, DataMapper, Mongoid), admin interface, and error handlers. Enables route detection for Ruby applications built with Padrino.
-- **CakePHP framework support**: Added patterns for the PHP CakePHP RAD framework. Detects controllers (extends `Controller`, `AppController`), Table models (database layer), Entity classes (data objects), routes (`$routes->connect`), route groups (`scope`, `prefix`), middleware (implements `MiddlewareInterface`), components, behaviors, helpers, commands (Shell and Command), migrations, seeders, cells, forms, plugins, event listeners, mailers, fixtures, and test cases. Enables component detection for PHP applications built with CakePHP.
-- **Yii framework support**: Added patterns for the high-performance PHP Yii framework. Detects controllers, ActiveRecord models, widgets, modules, standalone actions, behaviors, validators, migrations, console commands, asset bundles, action filters, access control, authentication (IdentityInterface, User), cache components, queue jobs, REST controllers (ActiveController), URL rules, and test fixtures. Enables component detection for PHP applications built with Yii.
-- **Laminas framework support**: Added patterns for the PHP Laminas (formerly Zend) enterprise component library. Detects MVC controllers (`AbstractActionController`, `AbstractRestfulController`), forms, fieldsets, input filters, validators, filters, PSR-15 middleware and request handlers, table gateways (data layer), hydrators, modules, event listeners, service factories, view helpers, controller plugins, authentication/authorization (ACL, RBAC), cache adapters, session containers, mail, logging, routing, and view models. Enables component detection for PHP enterprise applications built with Laminas.
-- **FuelPHP framework support**: Added patterns for the PHP FuelPHP HMVC framework. Detects controllers (`Controller`, `Controller_Rest`, `Controller_Template`, `Controller_Hybrid`), models (`Model`, `Model_Crud`, `Orm\Model` variants), tasks (CLI commands), viewmodels (presenter pattern), migrations, validation, fieldsets, auth drivers, cache handlers, database connections, packages, modules, observers, email drivers, and parsers. Enables component detection for PHP applications built with FuelPHP.
-- **Ring/Compojure framework support**: Added patterns for the Clojure Ring HTTP abstraction and Compojure routing library. Detects `defroutes` and `routes` combinators, HTTP method macros (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, `ANY`), `context` for route groups, Ring `wrap-*` middleware pattern, `not-found` error handlers, response helpers, and Component/Mount lifecycle hooks. Enables route detection for Clojure web applications.
-- **Pedestal framework support**: Added patterns for the Clojure Pedestal web framework. Detects route definitions (`defroutes`, `table-routes`, `expand-routes`), interceptors (`definterceptor`, `interceptor`, `on-request`, `on-response`), body parsers (`body-params`, `json-body`, `transit-body`, `edn-body`), content negotiation, server lifecycle (`create-server`, `start`, `stop`), SSE (Server-Sent Events), and WebSocket handlers. Enables interceptor-based middleware detection for Clojure applications.
-- **Servant framework support**: Added patterns for the Haskell Servant type-safe API library. Detects server functions (`serve`, `run`, `runSettings`), `Handler` type for handlers, `hoistServer` for natural transformations, documentation helpers (`serveWithDocs`, swagger/openapi), error responses (`err404`, `throwError`, `catchError`), WAI Application/Middleware types, and authentication helpers. Enables handler detection for type-safe Haskell APIs built with Servant.
-- **Scotty framework support**: Added patterns for the Haskell Scotty micro-framework (Sinatra-inspired). Detects `scotty`/`scottyT`/`scottyOpts` application starters, route handlers (`get`, `post`, `put`, `delete`, `patch`, `options`), `middleware` function, response helpers (`text`, `html`, `json`, `file`), parameter extraction (`param`, `formParam`, `queryParam`), error handling (`raise`, `rescue`, `defaultHandler`), and control flow (`redirect`, `next`, `finish`). Enables route detection for simple Haskell web applications.
-- **Utility file entrypoint penalty**: Entrypoints in utility directories (docs, examples, scripts, tools, benchmarks) now receive a 50% confidence penalty. Reduces noise from documentation and example code in entrypoint detection.
-- **Test file weighting for slice ranking**: Added `test_weight` parameter to `rank_slice_nodes()` for downweighting test file nodes in slice rankings. Production code now ranks higher than test code when analyzing reverse slices.
+- **Smart test selection (ADR-0010)**: `smart-test` uses hypergumbo's reverse-slice to run only affected tests from changed files, generating `.ci/affected-tests.txt` for CI. Includes stop-the-line protocol (bypass with `fix(job-XXXXX):` title prefix).
+- **Two-tier CI system**: Fast CI uses manifest-based test selection; `full-suite.yml` runs as lazy singleton after dev merges.
+- **Framework pattern detection for 30+ frameworks** across 10 ecosystems. Each framework gets route, handler, middleware, and component detection via YAML patterns. See `docs/FRAMEWORKS.md` for per-framework details.
+  - **Python (8):** Falcon, Quart, Sanic, Pyramid, Bottle, Litestar, Masonite, Flask-Appbuilder
+  - **PHP (7):** Symfony, CodeIgniter, Lumen, CakePHP, Yii, Laminas, FuelPHP
+  - **Java/JVM (3):** Quarkus, Javalin, Vert.x; plus JAX-RS aliases for Dropwizard, Jersey, RESTEasy
+  - **Kotlin (1):** Http4k
+  - **Scala (2):** Scalatra, http4s
+  - **Node.js (5):** Nuxt, Remix, SvelteKit, Feathers.js, AdonisJS, Restify
+  - **Ruby (3):** Hanami, Roda, Padrino
+  - **Clojure (2):** Ring/Compojure, Pedestal
+  - **Haskell (2):** Servant, Scotty
+  - **Elixir (1):** Nex
+- **Utility file entrypoint penalty**: Entrypoints in utility directories (docs, examples, scripts, tools, benchmarks) receive a 50% confidence penalty.
+- **Test file weighting for slice ranking**: `rank_slice_nodes()` now downweights test file nodes so production code ranks higher in reverse slices.
 
 ### Fixed
 
-- **Linker duplicate edge elimination**: Added edge deduplication after linkers run. The event-sourcing linker could create duplicate edges when matching publisher-subscriber pairs. Example: killbill repo went from 25494 edges (472 duplicates) to 25022 unique edges.
+- **TypeScript constructor injection resolution (INV-013)**: `this.property.method()` calls now resolve when the property is a constructor-injected dependency (e.g., NestJS `constructor(private catsService: CatsService)`). Forward slices from controllers now include service layer calls.
+- **Linker duplicate edge elimination**: Edge deduplication after linkers run prevents duplicates from the event-sourcing linker (e.g., killbill: 25494 → 25022 edges).
 
 ## [1.3.1] - 2026-01-29
 

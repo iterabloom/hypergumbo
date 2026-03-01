@@ -65,24 +65,27 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    is_grammar_available,
+    TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
+    make_typed_stable_id,
     node_text as _node_text,
+    visibility_from_modifiers,
 )
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "java-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("java")
 
 # Backwards compatibility alias
 JavaAnalysisResult = AnalysisResult
@@ -93,9 +96,31 @@ def find_java_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.java"])
 
 
+class JavaTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for Java files.
+
+    Overrides ``analyze()`` entirely because Java analysis uses a complex
+    two-pass approach with annotations, JNI detection, class resolution,
+    position-based symbol lookup, and per-symbol file imports disambiguation.
+    The base class provides grammar availability checking via
+    ``_check_grammar_available()``.
+    """
+
+    lang = "java"
+    file_patterns: ClassVar[list[str]] = ["*.java"]
+    grammar_module = "tree_sitter_java"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the Java analysis using the existing analyze_java logic."""
+        return _analyze_java_impl(repo_root)
+
+
+_java_analyzer = JavaTreeSitterAnalyzer()
+
+
 def is_java_tree_sitter_available() -> bool:
     """Check if tree-sitter and Java grammar are available."""
-    return is_grammar_available("tree_sitter_java")
+    return _java_analyzer._check_grammar_available()
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -206,6 +231,43 @@ def _extract_java_signature(
     return signature
 
 
+def normalize_java_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Java signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_types_first
+    return normalize_signature_types_first(signature, type_params)
+
+
+def _extract_java_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a Java method signature.
+
+    Parses signatures like "(int a, int b) Client" and returns "Client".
+    Only handles simple (non-generic, non-array, non-primitive) return types.
+    Returns None for void methods (no return type in signature),
+    primitive types, array types, and generic types.
+
+    Args:
+        signature: Method signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature:
+        return None
+    # Java signatures: "(params) ReturnType" or "(params)" for void
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0 or paren_idx == len(signature) - 1:
+        return None
+    ret_part = signature[paren_idx + 1:].strip()
+    # Only handle simple class names (identifiers starting with uppercase)
+    # Excludes: int, boolean, byte[], List<T>, int[]
+    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+        return ret_part
+    return None
+
+
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
@@ -290,12 +352,13 @@ JAVA_METHOD_MODIFIERS = {
 
 
 def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """Extract all modifiers from a method/constructor declaration.
+    """Extract all modifiers from a declaration (class, interface, enum, method).
 
-    Returns a list of modifier strings like ["public", "static", "native"].
+    Returns a list of modifier strings like ["public", "static", "abstract"].
 
     Tree-sitter-java uses modifier keywords as node types directly (e.g., "public",
-    "static", "native"), so we can match against the node type.
+    "static", "native"), so we can match against the node type.  Works for class,
+    interface, enum, method, and constructor declarations.
     """
     del source  # unused - modifiers are captured via node types
     modifiers: list[str] = []
@@ -327,10 +390,12 @@ def _get_java_parser() -> Optional["tree_sitter.Parser"]:
 class _ParsedFile:
     """Holds parsed file data for two-pass analysis.
 
-    Note on type inference: Variable method calls (e.g., stub.method()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (stub = new Client()) but NOT from factory methods (stub = Client.create()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference sources for variable method call resolution (e.g., stub.method()):
+    1. Direct constructor calls: stub = new Client() → var_types['stub'] = 'Client'
+    2. Return type annotations: stub = factory.createClient() where createClient returns
+       Client → var_types['stub'] = 'Client'
+    3. Parameter type annotations: void process(Client client) → var_types['client'] = 'Client'
+    4. Field declarations: private Repository repo → var_types['repo'] = 'Repository'
     """
 
     path: Path
@@ -610,6 +675,7 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "class"),
                     name=full_name,
@@ -620,6 +686,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -647,6 +714,7 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "interface"),
                     name=full_name,
@@ -657,6 +725,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -672,6 +741,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "enum"),
                     name=full_name,
@@ -681,6 +751,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -728,6 +799,19 @@ def _extract_symbols(
                 # Extract signature
                 signature = _extract_java_signature(node, source, is_constructor=False)
 
+                # Add return type for subresource locator detection (JAX-RS)
+                ret_type_name = _extract_java_return_type_name(signature)
+                if ret_type_name:
+                    if meta is None:
+                        meta = {}
+                    meta["return_type"] = ret_type_name
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_java_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -738,6 +822,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
                 )
@@ -761,6 +846,12 @@ def _extract_symbols(
                 # Extract modifiers for constructors too
                 modifiers = _extract_modifiers(node, source)
 
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_java_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "constructor", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "constructor"),
                     name=full_name,
@@ -770,6 +861,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
                 )
@@ -782,14 +874,28 @@ def _get_enclosing_method(
     node: "tree_sitter.Node",
     source: bytes,
     global_symbols: dict[str, Symbol],
+    file_path: Path | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing method/constructor.
 
     Returns the Symbol for the enclosing method, or None if not inside a method.
+
+    Uses symbol_by_position (keyed by file path + start position) when available,
+    which correctly handles monorepos where multiple files define methods with
+    the same name. Falls back to global_symbols when symbol_by_position is unavailable.
     """
+    file_path_str = str(file_path) if file_path else None
     current = node.parent
     while current is not None:
         if current.type in ("method_declaration", "constructor_declaration"):
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position and file_path_str:
+                pos_key = (file_path_str, current.start_point[0] + 1, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _get_method_name(current, source)
             if name:
                 # Get class context
@@ -803,6 +909,116 @@ def _get_enclosing_method(
     return None
 
 
+def _is_import_class_mismatch(
+    type_name: str,
+    resolved_sym: "Symbol",
+    imports: dict[str, str],
+) -> bool:
+    """Check if a resolved class symbol conflicts with the file's imports.
+
+    When NameResolver suffix-matches ``Logger`` to ``Config.Logger`` but the
+    file actually imports ``org.slf4j.Logger``, the resolved symbol is wrong —
+    the developer intended the external library class. This prevents false
+    edges that inflate centrality of inner/nested classes (INV-finak).
+
+    Returns True when the edge should be **skipped** (import points elsewhere).
+
+    The check: if the file has an import for ``type_name`` whose FQN path
+    segments do NOT match the resolved symbol's file path, the import refers
+    to a different class.
+    """
+    if type_name not in imports:
+        return False  # No import → can't disprove; allow the edge
+
+    import_fqn = imports[type_name]
+    # Convert FQN to path segments: "org.slf4j.Logger" → "org/slf4j/Logger"
+    fqn_as_path = import_fqn.replace(".", "/")
+    resolved_path = resolved_sym.path or ""
+    resolved_no_ext = resolved_path.rsplit(".java", 1)[0]
+
+    # If resolved class path ends with the import FQN path, they match
+    if resolved_no_ext.endswith(fqn_as_path):
+        return False  # Import matches resolved symbol → allow the edge
+
+    # Try shorter match: last 2 segments (package + class)
+    fqn_parts = import_fqn.split(".")
+    if len(fqn_parts) >= 2:
+        short_path = "/".join(fqn_parts[-2:])
+        if resolved_no_ext.endswith(short_path):
+            return False  # Short match → allow the edge
+
+    # Import FQN doesn't match resolved symbol → skip the edge
+    return True
+
+
+def _resolve_base_class_java(
+    base_name: str,
+    child_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes share the same name (e.g., test stubs named 'Model'),
+    uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file has ``import com.example.models.Model`` and a
+       candidate's fully qualified name or file path matches
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        class_by_name: Multi-value lookup: name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (simple name -> fully qualified name)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = class_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in imports:
+        fqn = imports[base_name]
+        # Convert FQN to path segments for matching against file paths
+        # e.g., "com.example.models.Model" -> "com/example/models/Model"
+        fqn_as_path = fqn.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            cand_no_ext = cand_path.rsplit(".java", 1)[0]
+            if cand_no_ext.endswith(fqn_as_path):
+                return cand
+        # Try matching just the last package segment + class name
+        # e.g., "com.example.models.Model" -> "models/Model"
+        fqn_parts = fqn.split(".")
+        if len(fqn_parts) >= 2:
+            short_path = "/".join(fqn_parts[-2:])
+            for cand in candidates:
+                cand_path = cand.path or ""
+                cand_no_ext = cand_path.rsplit(".java", 1)[0]
+                if cand_no_ext.endswith(short_path):
+                    return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -813,6 +1029,10 @@ def _extract_edges(
     imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
     class_resolver: NameResolver | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    class_by_name: dict[str, list[Symbol]] | None = None,
+    sym_file_imports: dict[str, dict[str, str]] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -857,8 +1077,16 @@ def _extract_edges(
                                 parent_name = _node_text(subchild, source)
                                 if current_class in class_symbols:
                                     src_sym = class_symbols[current_class]
-                                    if parent_name in class_symbols:
+                                    # Use multi-value resolver when available
+                                    dst_sym = None
+                                    if class_by_name is not None and sym_file_imports is not None:
+                                        dst_sym = _resolve_base_class_java(
+                                            parent_name, src_sym,
+                                            class_by_name, sym_file_imports,
+                                        )
+                                    elif parent_name in class_symbols:
                                         dst_sym = class_symbols[parent_name]
+                                    if dst_sym is not None and dst_sym.id != src_sym.id:
                                         edge = Edge.create(
                                             src=src_sym.id,
                                             dst=dst_sym.id,
@@ -881,8 +1109,16 @@ def _extract_edges(
                                         iface_name = _node_text(type_node, source)
                                         if current_class in class_symbols:
                                             src_sym = class_symbols[current_class]
-                                            if iface_name in class_symbols:
+                                            # Use multi-value resolver when available
+                                            dst_sym = None
+                                            if class_by_name is not None and sym_file_imports is not None:
+                                                dst_sym = _resolve_base_class_java(
+                                                    iface_name, src_sym,
+                                                    class_by_name, sym_file_imports,
+                                                )
+                                            elif iface_name in class_symbols:
                                                 dst_sym = class_symbols[iface_name]
+                                            if dst_sym is not None and dst_sym.id != src_sym.id:
                                                 edge = Edge.create(
                                                     src=src_sym.id,
                                                     dst=dst_sym.id,
@@ -904,33 +1140,60 @@ def _extract_edges(
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
 
-        # Method invocations
-        elif node.type == "method_invocation":
-            current_method = _get_enclosing_method(node, source, global_symbols)
-            if current_method:
-                # Get the method name being called
-                method_name = None
-                receiver_name = None
-                for child in node.children:
-                    if child.type == "identifier":
-                        # First identifier is receiver, second is method name
-                        if receiver_name is None and method_name is None:
-                            # This could be either receiver.method() or just method()
-                            receiver_name = _node_text(child, source)
-                        else:
-                            # This is the method name in receiver.method()
-                            method_name = _node_text(child, source)
+        # Class field declarations — track field types for method call resolution
+        # Java: private Repository repo; → var_types["repo"] = "Repository"
+        elif node.type == "field_declaration":
+            type_node = None
+            for child in node.children:
+                if child.type == "type_identifier":
+                    type_node = child
+                elif child.type == "variable_declarator" and type_node is not None:
+                    for vc in child.children:
+                        if vc.type == "identifier":
+                            var_types[_node_text(vc, source)] = _node_text(
+                                type_node, source
+                            )
+                            break
 
-                # If only one identifier found, it's the method name (no receiver)
-                if method_name is None and receiver_name is not None:
-                    method_name = receiver_name
-                    receiver_name = None
+        # Method invocations — use tree-sitter field names for reliable extraction
+        elif node.type == "method_invocation":
+            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+            if current_method:
+                # Use tree-sitter named fields: "name" is the method, "object"
+                # is the receiver.  This correctly handles field_access receivers
+                # like `this.svc.process()` where the object child is a
+                # field_access node rather than a simple identifier.
+                name_node = node.child_by_field_name("name")
+                object_node = node.child_by_field_name("object")
+
+                method_name = _node_text(name_node, source) if name_node else None
+                receiver_name = None
+
+                if object_node is not None:
+                    if object_node.type == "identifier":
+                        receiver_name = _node_text(object_node, source)
+                    elif object_node.type == "field_access":
+                        # e.g. this.svc → extract "svc" (rightmost identifier)
+                        # and use it for type-inference lookup
+                        fa_field = object_node.child_by_field_name("field")
+                        fa_obj = object_node.child_by_field_name("object")
+                        if fa_field:
+                            receiver_name = _node_text(fa_field, source)
+                        # If the object is "this", treat the field as the
+                        # receiver for type inference (this.repo → "repo")
+                        if (
+                            fa_obj
+                            and fa_obj.type == "this"
+                            and fa_field
+                        ):
+                            receiver_name = _node_text(fa_field, source)
 
                 if method_name:
                     # Get class context
                     ancestors = _get_class_ancestors(node, source)
                     current_class = ".".join(ancestors) if ancestors else None
                     edge_added = False
+                    resolved_sym: Symbol | None = None
 
                     # Case 1: this.method() or method() - resolve in current class
                     if receiver_name is None or receiver_name == "this":
@@ -952,6 +1215,7 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+                                resolved_sym = lookup_result.symbol
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
@@ -971,13 +1235,16 @@ def _extract_edges(
                             )
                             edges.append(edge)
                             edge_added = True
+                            resolved_sym = lookup_result.symbol
 
                     # Case 3: variable.method() - use type inference
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate)
-                        if lookup_result.found:
+                        if lookup_result.found and not _is_import_class_mismatch(
+                            type_class_name, lookup_result.symbol, imports
+                        ):
                             edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
@@ -991,6 +1258,41 @@ def _extract_edges(
                             )
                             edges.append(edge)
                             edge_added = True
+                            resolved_sym = lookup_result.symbol
+                        else:
+                            # Fallback: method not found on type (likely
+                            # inherited from a framework base class, e.g.
+                            # JpaRepository.save). Link to the type's
+                            # class/interface symbol instead.
+                            type_sym = class_symbols.get(type_class_name)
+                            if type_sym is not None:
+                                edge = Edge.create(
+                                    src=current_method.id,
+                                    dst=type_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.70,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_call_inherited_method",
+                                )
+                                edges.append(edge)
+                                edge_added = True
+
+                    # Return type inference: if the resolved method has
+                    # a return type and the call is in a variable assignment,
+                    # track the variable's type from that return type.
+                    if resolved_sym and resolved_sym.kind == "method":
+                        ret_name = _extract_java_return_type_name(
+                            resolved_sym.signature
+                        )
+                        if ret_name and ret_name in class_symbols:
+                            parent_node = node.parent
+                            if parent_node and parent_node.type == "variable_declarator":
+                                for pc in parent_node.children:
+                                    if pc.type == "identifier":
+                                        var_types[_node_text(pc, source)] = ret_name
+                                        break
 
                     # Case 4: Fallback - try imported class or just the receiver name
                     # This handles edge cases where the receiver isn't recognized as a
@@ -1021,7 +1323,7 @@ def _extract_edges(
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
-            current_method = _get_enclosing_method(node, source, global_symbols)
+            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
             type_name = None
 
             # Find the type being instantiated
@@ -1031,17 +1333,22 @@ def _extract_edges(
                     if current_method:
                         lookup_result = class_resolver.lookup(type_name)
                         if lookup_result.found and lookup_result.symbol is not None:
-                            edge = Edge.create(
-                                src=current_method.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="instantiates",
-                                line=node.start_point[0] + 1,
-                                confidence=0.95 * lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_new",
-                            )
-                            edges.append(edge)
+                            # INV-finak: skip edge if file imports an external
+                            # class with the same simple name (e.g., Logger)
+                            if _is_import_class_mismatch(type_name, lookup_result.symbol, imports):
+                                pass  # Import points elsewhere; skip false edge
+                            else:
+                                edge = Edge.create(
+                                    src=current_method.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="instantiates",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.95 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_new",
+                                )
+                                edges.append(edge)
                     break
 
             # Track variable type for type inference
@@ -1056,6 +1363,148 @@ def _extract_edges(
                             var_name = _node_text(pc, source)
                             var_types[var_name] = type_name
                             break
+
+        # Method references: App::transform, this::process, Class::new
+        # Creates a "references" edge from the enclosing method to the
+        # referenced method.  Constructor references (::new) create
+        # "instantiates" edges instead.
+        elif node.type == "method_reference":
+            current_method = _get_enclosing_method(
+                node, source, global_symbols, file_path, symbol_by_position,
+            )
+            if current_method:
+                children = [c for c in node.children if c.is_named]
+                if len(children) >= 2:
+                    class_node = children[0]
+                    method_node = children[1]
+                    class_name = _node_text(class_node, source)
+                    method_name = _node_text(method_node, source)
+                elif len(children) == 1:
+                    # Only class part, method is anonymous (::new)
+                    class_name = _node_text(children[0], source)
+                    method_name = "new"
+                else:  # pragma: no cover
+                    class_name = None
+                    method_name = None
+
+                if class_name and method_name == "new":
+                    # Constructor reference: try to resolve the class
+                    lookup_result = class_resolver.lookup(class_name)
+                    if (
+                        lookup_result.found
+                        and lookup_result.symbol is not None
+                        # INV-finak: skip if import points elsewhere
+                        and not _is_import_class_mismatch(class_name, lookup_result.symbol, imports)
+                    ):
+                        edge = Edge.create(
+                            src=current_method.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="instantiates",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="constructor_reference",
+                        )
+                        edges.append(edge)
+
+                elif class_name and method_name:
+                    # Method reference: resolve ClassName.methodName
+                    # Try this::method → look up method in current class
+                    target_name = None
+                    if class_name == "this":
+                        # Resolve in current class scope
+                        target_name = method_name
+                    else:
+                        target_name = f"{class_name}.{method_name}"
+
+                    lookup_result = resolver.lookup(target_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edge = Edge.create(
+                            src=current_method.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="method_reference",
+                        )
+                        edges.append(edge)
+
+    return edges
+
+
+def _extract_annotation_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from annotation metadata.
+
+    For each symbol (class, interface, method) with decorators metadata,
+    creates decorated_by edges to annotation types that exist in the
+    analyzed codebase. This enables visibility of annotation patterns
+    like Spring's @Service, @Controller, @GetMapping, etc.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for annotation lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for annotation relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
+
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the annotation to a symbol
+            annotation_sym = global_symbols.get(dec_name)
+
+            line = sym.span.start_line if sym.span else 0
+
+            if annotation_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=annotation_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation",
+                )
+                edges.append(edge)
+            else:
+                # Emit unresolved edge for annotations we can't resolve
+                # This helps track framework annotations like @Service
+                dst_id = f"java:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation_unresolved",
+                )
+                edges.append(edge)
 
     return edges
 
@@ -1079,6 +1528,7 @@ def _analyze_java_file(
         return [], [], False
 
     symbols = _extract_symbols(tree, source, file_path, run)
+    populate_docstrings_from_tree(tree.root_node, source, symbols)
 
     # Build symbol registries for edge extraction
     global_symbols: dict[str, Symbol] = {}
@@ -1093,6 +1543,7 @@ def _analyze_java_file(
     return symbols, edges, True
 
 
+@register_analyzer("java", capture_symbols_as="java")
 def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     """Analyze all Java files in a repository.
 
@@ -1103,31 +1554,42 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     Returns a JavaAnalysisResult with symbols, edges, and provenance.
     If tree-sitter-java is not available, returns empty result (silently skipped).
     """
+    return _java_analyzer.analyze(repo_root)
+
+
+def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
+    """Internal implementation of Java analysis.
+
+    Called by JavaTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
     start_time = time.time()
 
     # Create analysis run for provenance
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Check for tree-sitter-java availability
-    if not is_java_tree_sitter_available():
-        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
-        warnings.warn(skip_reason, stacklevel=2)
+    if not _java_analyzer._check_grammar_available():
+        skip_reason = "java analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="java tree-sitter grammar not available",
         )
 
     parser = _get_java_parser()
     if parser is None:
-        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
-        warnings.warn(skip_reason, stacklevel=2)
+        skip_reason = "java analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="java tree-sitter grammar not available",
         )
 
     # Pass 1: Parse all files and extract symbols
@@ -1145,6 +1607,7 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
                 path=file_path, tree=tree, source=source, imports=file_imports
             ))
             symbols = _extract_symbols(tree, source, file_path, run)
+            populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
         except (OSError, IOError):
@@ -1153,20 +1616,55 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
     class_symbols: dict[str, Symbol] = {}
+    # Multi-value lookup for extends/implements disambiguation (INV-015)
+    class_by_name: dict[str, list[Symbol]] = {}
+    # Multi-value method lookup for AMB-METHOD ambiguity guard
+    global_methods: dict[str, list[Symbol]] = {}
+
+    # Position-based lookup for enclosing method resolution in monorepos
+    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in ("class", "interface", "enum"):
             class_symbols[sym.name] = sym
+            if sym.name not in class_by_name:
+                class_by_name[sym.name] = []
+            class_by_name[sym.name].append(sym)
+        elif sym.kind == "method":
+            short = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            global_methods.setdefault(short, []).append(sym)
+
+    # Build per-symbol file imports for extends/implements disambiguation
+    # Maps symbol ID -> file-level imports (simple_name -> fqn)
+    sym_file_imports: dict[str, dict[str, str]] = {}
+    for pf in parsed_files:
+        file_imports = pf.imports or {}
+        if file_imports:
+            for sym in all_symbols:
+                if sym.path == str(pf.path):
+                    sym_file_imports[sym.id] = file_imports
 
     # Pass 2: Extract edges using global symbol registry
+    method_resolver = ListNameResolver(
+        global_methods, ambiguity_threshold=3,
+    )
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
-            global_symbols, class_symbols, pf.imports or {}
+            global_symbols, class_symbols, pf.imports or {},
+            symbol_by_position=symbol_by_position,
+            class_by_name=class_by_name,
+            sym_file_imports=sym_file_imports,
+            method_resolver=method_resolver,
         )
         all_edges.extend(edges)
+
+    # Extract annotation edges (INV-012: decorators metadata -> decorated_by edges)
+    annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
+    all_edges.extend(annotation_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

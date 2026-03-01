@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import properties as properties_module
-from hypergumbo_lang_mainstream.properties import (
-    PropertiesAnalysisResult,
-    analyze_properties,
-    find_properties_files,
-    is_properties_tree_sitter_available,
-)
-
+from hypergumbo_lang_mainstream.properties import analyze_properties, find_properties_files, is_properties_tree_sitter_available
 
 def make_properties_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a properties file in the temp directory."""
@@ -20,7 +15,6 @@ def make_properties_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPropertiesFiles:
     """Tests for find_properties_files function."""
@@ -37,7 +31,6 @@ class TestFindPropertiesFiles:
         files = find_properties_files(tmp_path)
         assert files == []
 
-
 class TestIsPropertiesTreeSitterAvailable:
     """Tests for is_properties_tree_sitter_available function."""
 
@@ -49,14 +42,13 @@ class TestIsPropertiesTreeSitterAvailable:
         with patch.object(properties_module, "is_properties_tree_sitter_available", return_value=False):
             assert properties_module.is_properties_tree_sitter_available() is False
 
-
 class TestAnalyzeProperties:
     """Tests for analyze_properties function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")
-        with patch.object(properties_module, "is_properties_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Properties analysis skipped"):
+        with patch.object(properties_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="properties analysis skipped"):
                 result = properties_module.analyze_properties(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -195,13 +187,13 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
-        assert prop.origin == "properties.tree_sitter"
+        assert prop.origin == "properties-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")
         result = analyze_properties(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "properties.tree_sitter"
+        assert result.run.pass_id == "properties-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -209,7 +201,7 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None  # Base class always creates a run
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")
@@ -338,3 +330,25 @@ app.version=1.0
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
         assert prop.meta.get("category") == "persistence"
+
+    def test_non_utf8_encoded_file(self, tmp_path: Path) -> None:
+        """Non-UTF-8 encoded .properties files (Latin-1/ISO-8859-1) must not crash.
+
+        Java .properties files commonly use Latin-1 encoding. Keycloak uses
+        0xe9 (é) and Jenkins uses 0xe5 (å). The analyzer must handle these
+        gracefully instead of raising UnicodeDecodeError.
+        """
+        file_path = tmp_path / "messages.properties"
+        # Latin-1 content: "greeting=Bienvenue à l'application"
+        # The 'à' is 0xe0, 'é' would be 0xe9 in Latin-1
+        content = b"greeting=Bienvenue \xe0 l'application\nname=caf\xe9\n"
+        file_path.write_bytes(content)
+        result = analyze_properties(tmp_path)
+        assert not result.skipped
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert len(props) == 2
+        # Values should contain replacement characters for non-UTF-8 bytes
+        greeting = next(p for p in props if p.name == "greeting")
+        assert greeting.meta.get("value") is not None
+        name_prop = next(p for p in props if p.name == "name")
+        assert name_prop.meta.get("value") is not None

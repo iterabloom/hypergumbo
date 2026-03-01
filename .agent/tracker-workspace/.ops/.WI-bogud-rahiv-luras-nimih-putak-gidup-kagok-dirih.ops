@@ -1,0 +1,49 @@
+- op: create  # 8313
+  at: '2026-02-26T21:18:13Z'  # 8313
+  by: agent  # 8313
+  actor: jgstern_agent  # 8313
+  clock: 1  # 8313
+  nonce: '8313'  # 8313
+  data:  # 8313
+    kind: work_item  # 8313
+    title: "Run LLM assessment (bakeoff-features-reflect) for the full 23-repo DEEP session"  # 8313
+    status: todo_soft  # 8313
+    priority: 4  # 8313
+    parent:  # 8313
+    tags: []  # 8313
+    before: []  # 8313
+    duplicate_of: []  # 8313
+    not_duplicate_of: []  # 8313
+    pr_ref:  # 8313
+    description: "The main DEEP session deep-20260226-114957 completed all 6 cohorts (23 repos) with quantitative diagnostics but no qualitative LLM assessment (bakeoff-features-reflect was never run). Only the 4-repo validation session got LLM-scored. Running reflect on the main session would provide baseline quality scores for all 23 repos across diverse languages (Rust, Go, Java, C, TypeScript, Python)."  # 8313
+    fields: {}  # 8313
+- op: update  # 851d
+  at: '2026-02-26T21:54:10Z'  # 851d
+  by: agent  # 851d
+  actor: jgstern_agent  # 851d
+  clock: 2  # 851d
+  nonce: 851d  # 851d
+  set:  # 851d
+    status: done  # 851d
+- op: discuss  # b59c
+  at: '2026-02-26T21:54:10Z'  # b59c
+  by: agent  # b59c
+  actor: jgstern_agent  # b59c
+  clock: 3  # b59c
+  nonce: b59c  # b59c
+  message: "LLM assessment already existed for all 6 cohorts in deep-20260226-114957/reflect/. Overall: 0 USEFUL, 21 PARTIALLY_USEFUL, 2 NOT_USEFUL."  # b59c
+- op: update  # eec5
+  at: '2026-02-26T21:42:49Z'  # eec5
+  by: agent  # eec5
+  actor: jgstern_agent  # eec5
+  clock: 2  # eec5
+  nonce: eec5  # eec5
+  set:  # eec5
+    status: done  # eec5
+- op: discuss  # de77
+  at: '2026-02-26T21:42:49Z'  # de77
+  by: agent  # de77
+  actor: jgstern_agent  # de77
+  clock: 3  # de77
+  nonce: de77  # de77
+  message: "LLM assessment already existed for all 6 cohorts (23 repos) in deep-20260226-114957/reflect/. Overall summary shows 0 USEFUL, 21 PARTIALLY_USEFUL, 2 NOT_USEFUL. The item was created based on incomplete inspection during a prior context window. Assessments use pre-META-donon ternary format."  # de77

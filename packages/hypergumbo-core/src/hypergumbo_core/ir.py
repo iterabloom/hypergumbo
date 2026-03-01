@@ -27,6 +27,27 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
+from . import __version__
+
+PASS_VERSION: str = __version__
+"""Canonical pass version derived from the package version.
+
+All analyzers and linkers use this as their version string, ensuring
+cache signatures correctly invalidate on release.  Single source of truth.
+"""
+
+
+def make_pass_id(name: str) -> str:
+    """Return the canonical pass ID for an analyzer or linker.
+
+    Analyzers: ``make_pass_id("go")`` → ``"go-v1"``
+    Linkers:   ``make_pass_id("containment-linker")`` → ``"containment-linker-v1"``
+
+    The ``-v1`` suffix is backend-neutral and provides an escape hatch
+    for future versioning if an analyzer's output format changes.
+    """
+    return f"{name}-v1"
+
 
 @dataclass
 class Span:
@@ -182,13 +203,14 @@ class Symbol:
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
-            3=external_dep, 4=derived). See §8.6 of spec.
+            3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
         lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
+        docstring: First-line summary of doc comment (truncated to 80 chars).
         modifiers: List of semantic modifiers (e.g., ["native", "public", "static"]).
             Used by linkers for cross-language matching (e.g., JNI needs 'native').
     """
@@ -213,6 +235,7 @@ class Symbol:
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
     signature: Optional[str] = None
+    docstring: Optional[str] = None
     modifiers: List[str] = field(default_factory=list)
 
     # Keep line/end_line for backwards compatibility during transition
@@ -250,6 +273,7 @@ class Symbol:
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
             "signature": self.signature,
+            "docstring": self.docstring,
             "modifiers": self.modifiers,
         }
 
@@ -279,6 +303,7 @@ class Symbol:
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
             lines_of_code=d.get("lines_of_code"),
             signature=d.get("signature"),
+            docstring=d.get("docstring"),
             modifiers=d.get("modifiers", []),
         )
 
@@ -410,6 +435,43 @@ class Edge:
             quality=d.get("quality"),
             meta=meta,
         )
+
+
+def deduplicate_edges(
+    edges: list[Edge],
+    *,
+    remove_self_loops: bool = False,
+) -> list[Edge]:
+    """Deduplicate edges by edge_key (src + dst + edge_type, ignoring line).
+
+    Multiple call sites from the same function to the same target produce
+    edges with distinct ``id`` values (line-sensitive) but identical
+    ``edge_key`` values (line-insensitive).  For a call graph, one edge
+    per (src, dst, type) relationship is the correct model.
+
+    When *remove_self_loops* is True, also drops edges where src == dst.
+    Self-loops inflate centrality without adding useful connectivity;
+    common sources include visitor patterns and name collisions.
+
+    Preserves encounter order: the first edge for each key is kept.
+    """
+    seen: set[str] = set()
+    result: list[Edge] = []
+    for edge in edges:
+        key = edge.edge_key
+        # Compute edge_key on-the-fly when missing (None).  Many analyzers
+        # and linkers use the Edge() constructor directly instead of
+        # Edge.create(), leaving edge_key unset.  Without this fallback
+        # all None-keyed edges collapse to one — silently dropping edges.
+        if key is None:
+            key = _compute_edge_key(edge.src, edge.dst, edge.edge_type)
+        if key in seen:
+            continue
+        if remove_self_loops and edge.src == edge.dst:
+            continue
+        seen.add(key)
+        result.append(edge)
+    return result
 
 
 def _compute_usage_context_id(

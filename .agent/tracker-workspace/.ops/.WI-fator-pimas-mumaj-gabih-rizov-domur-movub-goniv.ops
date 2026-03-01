@@ -1,0 +1,89 @@
+- op: create  # 1e30
+  at: '2026-02-15T00:51:38Z'  # 1e30
+  by: agent  # 1e30
+  actor: migration  # 1e30
+  clock: 1  # 1e30
+  nonce: '1e30'  # 1e30
+  data:  # 1e30
+    kind: work_item  # 1e30
+    title: "`.m` file MATLAB/Wolfram overlap: Both analyzers claim `.m` files."  # 1e30
+    status: todo_soft  # 1e30
+    priority: 4  # 1e30
+    parent:  # 1e30
+    tags:  # 1e30
+    - analysis_quality  # 1e30
+    before: []  # 1e30
+    duplicate_of: []  # 1e30
+    not_duplicate_of: []  # 1e30
+    pr_ref:  # 1e30
+    justification: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
+    description: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
+    fields: {}  # 1e30
+- op: update  # d173
+  at: '2026-02-17T20:42:55Z'  # d173
+  by: agent  # d173
+  actor: jgstern_agent  # d173
+  clock: 2  # d173
+  nonce: d173  # d173
+  set:  # d173
+    status: todo_soft  # d173
+- op: update  # 1e75
+  at: '2026-02-18T09:09:21Z'  # 1e75
+  by: human  # 1e75
+  actor: jgstern  # 1e75
+  clock: 4  # 1e75
+  nonce: '1e75'  # 1e75
+  set:  # 1e75
+    priority: 1  # 1e75
+- op: discuss  # a1aa
+  at: '2026-02-18T13:44:21Z'  # a1aa
+  by: agent  # a1aa
+  actor: jgstern_agent  # a1aa
+  clock: 5  # a1aa
+  nonce: a1aa  # a1aa
+  message: "Approach: Use file-level heuristics (shebang, imports like import matlab.engine) to disambiguate .m files. The Wolfram analyzer should check for Mathematica-style patterns (e.g. SetDelayed, Module) while MATLAB checks for function/classdef keywords."  # a1aa
+- op: discuss  # 76f8
+  at: '2026-02-18T14:01:12Z'  # 76f8
+  by: agent  # 76f8
+  actor: jgstern_agent  # 76f8
+  clock: 6  # 76f8
+  nonce: 76f8  # 76f8
+  message: "Alternative approach: Instead of file-level heuristics, check the project for a MATLAB project file (*.prj) or Mathematica package file (*.wl, *.nb). If neither exists, fall back to content-based detection using AST patterns."  # 76f8
+- op: discuss  # a93c
+  at: '2026-02-18T14:41:44Z'  # a93c
+  by: agent  # a93c
+  actor: jgstern_agent  # a93c
+  clock: 7  # a93c
+  nonce: a93c  # a93c
+  message: "Third thought: We could also use tree-sitter parse results as a tiebreaker. If the MATLAB grammar parses cleanly but Wolfram does not, the file is likely MATLAB. This avoids heuristics entirely."  # a93c
+- op: discuss  # 197a
+  at: '2026-02-18T14:55:13Z'  # 197a
+  by: agent  # 197a
+  actor: jgstern_agent  # 197a
+  clock: 8  # 197a
+  nonce: 197a  # 197a
+  message: "Fourth consideration: GNU Octave also uses .m files and is syntactically compatible with MATLAB. We should treat Octave and MATLAB as the same language for analysis purposes since the AST structure is identical."  # 197a
+- op: discuss  # c33f
+  at: '2026-02-18T16:25:47Z'  # c33f
+  by: agent  # c33f
+  actor: jgstern_agent  # c33f
+  clock: 9  # c33f
+  nonce: c33f  # c33f
+  message: "Auto-sync test 4: branch protection now uses *CI* pattern, testing if Tracker CI status satisfies it."  # c33f
+- op: update  # 6f70
+  at: '2026-02-18T17:10:46Z'  # 6f70
+  by: agent  # 6f70
+  actor: jgstern_agent  # 6f70
+  clock: 10  # 6f70
+  nonce: 6f70  # 6f70
+  set:  # 6f70
+    status: done  # 6f70
+    pr_ref: '1177'  # 6f70
+    justification: "Added classify_dot_m_file() content-based heuristic in discovery.py. All three analyzers now filter .m files correctly."  # 6f70
+- op: discuss  # 31eb
+  at: '2026-02-25T08:41:24Z'  # 31eb
+  by: agent  # 31eb
+  actor: jgstern_agent  # 31eb
+  clock: 11  # 31eb
+  nonce: 31eb  # 31eb
+  message: "[migrated from justification field] Added classify_dot_m_file() content-based heuristic in discovery.py. All three analyzers now filter .m files correctly."  # 31eb

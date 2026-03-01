@@ -40,11 +40,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
-PASS_ID = "graphql-resolver-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("graphql-resolver-linker")
 
 
 @dataclass
@@ -149,9 +148,21 @@ def _detect_language(file_path: Path) -> str:
     return "unknown"  # pragma: no cover
 
 
+_GRAPHQL_CONTEXT_RE = re.compile(
+    r"(?:graphql|apollo|@apollo|gql`|typeDefs|makeExecutableSchema|"
+    r"graphql-yoga|type Query|type Mutation|resolvers\s*[=:])",
+    re.IGNORECASE,
+)
+
+
 def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPattern]:
     """Scan JavaScript/TypeScript file for resolver patterns."""
     patterns: list[ResolverPattern] = []
+
+    # Skip files without any GraphQL context to avoid false positives
+    # from generic PascalCase object literals (e.g. ERROR: { ... } in UI code).
+    if not _GRAPHQL_CONTEXT_RE.search(content):
+        return patterns
 
     # Find type objects (Query: {, User: {, etc.)
     lines = content.split("\n")

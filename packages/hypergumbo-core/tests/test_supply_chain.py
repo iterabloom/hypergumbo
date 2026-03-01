@@ -113,6 +113,66 @@ class TestExternalDepDetection:
             assert result.package_name == expected_pkg
 
 
+class TestVendoredSdkDetection:
+    """Test tier 3 detection for vendored SDKs nested deep in path (INV-mogud).
+
+    Go monorepos often embed cloud provider SDKs in subdirectories rather
+    than the repo root. These are not in a standard ``vendor/`` directory
+    so the root-anchored EXTERNAL_DEP_PATTERNS miss them. The deep
+    patterns use ``re.search`` to match SDK directory names anywhere.
+    """
+
+    @pytest.mark.parametrize("path", [
+        # Go cloud SDKs: *-sdk-go pattern
+        "cloudprovider/ionoscloud/ionos-cloud-sdk-go/api_.go",
+        "cloudprovider/tencentcloud/tencentcloud-sdk-go/common/http/request.go",
+        "cloudprovider/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic.go",
+        "cloudprovider/alibaba/alibaba-cloud-sdk-go/services/ecs/client.go",
+        "cloudprovider/baidu/baiducloud-sdk-go/bce/core.go",
+        "cloudprovider/civo/civo-cloud-sdk-go/client.go",
+        # Go cloud SDKs: *-go-sdk pattern
+        "cloudprovider/volcengine/volcengine-go-sdk/service/ecs/api.go",
+        # Go cloud SDKs: *-sdk-golang pattern
+        "cloudprovider/volcengine/volc-sdk-golang/base/client.go",
+        # vendor-internal pattern
+        "cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/core.go",
+    ])
+    def test_vendored_sdk_classified_as_external(self, path, tmp_path):
+        """Vendored SDK files nested in subdirectories are tier 3."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package main")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP, got {result.tier.name}: {result.reason}"
+        )
+
+    def test_regular_sdk_file_not_misclassified(self, tmp_path):
+        """Files with 'sdk' in name but not in SDK directory stay tier 1."""
+        path = "pkg/provider/aws_sdk_provider.go"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package provider")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier != Tier.EXTERNAL_DEP, (
+            f"{path} should NOT be EXTERNAL_DEP (it's a regular file)"
+        )
+
+    def test_root_level_sdk_go_directory(self, tmp_path):
+        """SDK directory at repo root is also detected."""
+        path = "my-sdk-go/client.go"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package sdk")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP"
+        )
+
+
 class TestFirstPartyDetection:
     """Test tier 1 (first_party) detection."""
 
@@ -214,6 +274,92 @@ members = ["crates/*"]
         assert result.tier == Tier.FIRST_PARTY
         assert "source" in result.reason
 
+    def test_maven_workspaces(self, tmp_path):
+        """Detect internal modules from Maven parent pom.xml."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <packaging>pom</packaging>
+  <modules>
+    <module>guacamole-common</module>
+    <module>guacamole-ext</module>
+    <module>guacamole</module>
+  </modules>
+</project>
+''')
+
+        # Create module directories with src/main/java structure
+        for mod in ["guacamole-common", "guacamole-ext", "guacamole"]:
+            mod_dir = tmp_path / mod / "src" / "main" / "java" / "org"
+            mod_dir.mkdir(parents=True)
+            (mod_dir / "App.java").write_text("class App {}")
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "guacamole-common" in roots
+        assert tmp_path / "guacamole-ext" in roots
+        assert tmp_path / "guacamole" in roots
+
+        # Files in module src/ are tier 1 (source code)
+        result = classify_file(
+            tmp_path / "guacamole-common" / "src" / "main" / "java" / "org" / "App.java",
+            tmp_path, roots,
+        )
+        assert result.tier == Tier.FIRST_PARTY
+        assert "source" in result.reason
+
+    def test_maven_workspaces_nonexistent_module(self, tmp_path):
+        """Maven modules that don't exist on disk are ignored."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <modules>
+    <module>exists</module>
+    <module>does-not-exist</module>
+  </modules>
+</project>
+''')
+
+        (tmp_path / "exists").mkdir()
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "exists" in roots
+        assert tmp_path / "does-not-exist" not in roots
+
+    def test_maven_pom_without_modules(self, tmp_path):
+        """pom.xml without modules section doesn't add package roots."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <groupId>com.example</groupId>
+  <artifactId>single-module</artifactId>
+</project>
+''')
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
+    def test_maven_workspaces_with_namespace(self, tmp_path):
+        """Maven pom.xml with xmlns namespace is parsed correctly."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modules>
+    <module>core</module>
+    <module>api</module>
+  </modules>
+</project>
+''')
+        for mod in ["core", "api"]:
+            (tmp_path / mod).mkdir()
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "core" in roots
+        assert tmp_path / "api" in roots
+
+    def test_malformed_pom_xml(self, tmp_path):
+        """Malformed pom.xml doesn't crash."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text("<project><modules><module>")
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
     def test_workspace_source_is_first_party(self, tmp_path):
         """Files in workspace src/lib/app are tier 1 (library monorepos)."""
         pkg_json = tmp_path / "package.json"
@@ -305,6 +451,257 @@ members = ["crates/*"]
 
         # Tier 1 < Tier 2, so workspace source has higher priority
         assert lib_result.tier < example_result.tier
+
+
+class TestTestFileClassification:
+    """Test that test directories and files are classified as tier 2 (internal_dep).
+
+    Test code is not production code — it should not be tier 1 (first_party).
+    Common conventions across languages:
+    - Directory-based: tests/, test/, __tests__/, spec/, src/test/
+    - File suffix-based: _test.go, .test.js, .spec.ts, _spec.rb
+    """
+
+    def test_tests_dir_is_internal_dep(self, tmp_path):
+        """Top-level tests/ directory is tier 2."""
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_main.py").write_text("def test_main(): pass")
+
+        result = classify_file(tests_dir / "test_main.py", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "test" in result.reason.lower()
+
+    def test_test_dir_singular_is_internal_dep(self, tmp_path):
+        """Top-level test/ directory is tier 2."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "test_app.rb").write_text("require 'test'")
+
+        result = classify_file(test_dir / "test_app.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_jest_tests_dir_is_internal_dep(self, tmp_path):
+        """Jest __tests__/ directory is tier 2."""
+        tests_dir = tmp_path / "src" / "__tests__"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "app.test.js").write_text("test('ok', () => {})")
+
+        result = classify_file(tests_dir / "app.test.js", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_spec_dir_is_internal_dep(self, tmp_path):
+        """Ruby spec/ directory is tier 2."""
+        spec_dir = tmp_path / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "user_spec.rb").write_text("describe User do; end")
+
+        result = classify_file(spec_dir / "user_spec.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_java_src_test_is_internal_dep(self, tmp_path):
+        """Maven/Gradle src/test/ directory is tier 2."""
+        test_dir = tmp_path / "src" / "test" / "java" / "com" / "example"
+        test_dir.mkdir(parents=True)
+        (test_dir / "AppTest.java").write_text("class AppTest {}")
+
+        result = classify_file(test_dir / "AppTest.java", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_go_test_file_suffix_is_internal_dep(self, tmp_path):
+        """Go _test.go files are tier 2 even in src/."""
+        src_dir = tmp_path / "pkg" / "handler"
+        src_dir.mkdir(parents=True)
+        (src_dir / "handler_test.go").write_text("package handler")
+
+        result = classify_file(src_dir / "handler_test.go", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_js_test_file_suffix_is_internal_dep(self, tmp_path):
+        """JavaScript .test.js files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.test.js").write_text("test('ok', () => {})")
+
+        result = classify_file(src_dir / "app.test.js", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_ts_spec_file_suffix_is_internal_dep(self, tmp_path):
+        """TypeScript .spec.ts files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "service.spec.ts").write_text("describe('Service', () => {})")
+
+        result = classify_file(src_dir / "service.spec.ts", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_ruby_spec_file_suffix_is_internal_dep(self, tmp_path):
+        """Ruby _spec.rb files are tier 2."""
+        src_dir = tmp_path / "lib"
+        src_dir.mkdir()
+        (src_dir / "user_spec.rb").write_text("RSpec.describe User do; end")
+
+        result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_unit_tests_dir_is_internal_dep(self, tmp_path):
+        """C++ unit_tests/ directory is tier 2."""
+        test_dir = tmp_path / "unit_tests" / "engine"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_utils.cpp").write_text("TEST(Utils, Parse) {}")
+
+        result = classify_file(test_dir / "test_utils.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_nested_unit_tests_dir_is_internal_dep(self, tmp_path):
+        """Nested unit_tests/ directory (e.g., src/unit_tests/) is tier 2."""
+        test_dir = tmp_path / "src" / "unit_tests"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_main.cpp").write_text("TEST(Main, Run) {}")
+
+        result = classify_file(test_dir / "test_main.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_test_prefix_is_internal_dep(self, tmp_path):
+        """C++ test_*.cpp files are tier 2 (GTest convention)."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "test_parser.cpp").write_text("TEST(Parser, Basic) {}")
+
+        result = classify_file(src_dir / "test_parser.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_test_prefix_cc_is_internal_dep(self, tmp_path):
+        """C++ test_*.cc files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "test_server.cc").write_text("TEST(Server, Start) {}")
+
+        result = classify_file(src_dir / "test_server.cc", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_production_code_stays_tier1(self, tmp_path):
+        """C++ production code with 'test' in the name stays tier 1."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "attestation.cpp").write_text("void attest() {}")
+
+        result = classify_file(src_dir / "attestation.cpp", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_production_code_in_src_stays_tier1(self, tmp_path):
+        """Production files next to test files stay tier 1."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.ts").write_text("export class App {}")
+
+        result = classify_file(src_dir / "app.ts", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_test_dir_lower_priority_than_derived(self, tmp_path):
+        """Derived artifacts take priority over test classification."""
+        # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
+        dist_tests = tmp_path / "dist" / "tests"
+        dist_tests.mkdir(parents=True)
+        (dist_tests / "test_main.js").write_text("// compiled test")
+
+        result = classify_file(dist_tests / "test_main.js", tmp_path, set())
+        assert result.tier == Tier.DERIVED
+
+
+class TestFuzzBenchClassification:
+    """Test that fuzz and benchmark directories are classified as tier 2.
+
+    Fuzz targets and benchmarks are non-production code — they exercise the
+    library but are not part of its API surface.  Common across Rust, Go, C/C++.
+
+    - Rust: fuzz/, fuzz_targets/, benches/, criterion/
+    - Go: fuzz (in _test.go), benchmarks/ (less common)
+    - C/C++: fuzz/, fuzzing/, benchmarks/, benchmark/
+    """
+
+    def test_fuzz_dir_is_internal_dep(self, tmp_path):
+        """Top-level fuzz/ directory is tier 2."""
+        fuzz_dir = tmp_path / "fuzz" / "fuzz_targets"
+        fuzz_dir.mkdir(parents=True)
+        (fuzz_dir / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
+
+        result = classify_file(fuzz_dir / "fuzz_diff.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "fuzz" in result.reason.lower()
+
+    def test_fuzz_dir_with_cargo_toml(self, tmp_path):
+        """Fuzz Cargo.toml in fuzz/ is tier 2."""
+        fuzz_dir = tmp_path / "fuzz"
+        fuzz_dir.mkdir()
+        (fuzz_dir / "Cargo.toml").write_text('[package]\nname = "fuzz"')
+
+        result = classify_file(fuzz_dir / "Cargo.toml", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_nested_fuzz_dir_is_internal_dep(self, tmp_path):
+        """Nested fuzz/ in a crate workspace is tier 2."""
+        fuzz_dir = tmp_path / "crates" / "core" / "fuzz"
+        fuzz_dir.mkdir(parents=True)
+        (fuzz_dir / "fuzz_parse.rs").write_text("fuzz_target!(|data| {})")
+
+        result = classify_file(fuzz_dir / "fuzz_parse.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_benches_dir_is_internal_dep(self, tmp_path):
+        """Rust benches/ directory is tier 2."""
+        bench_dir = tmp_path / "benches"
+        bench_dir.mkdir()
+        (bench_dir / "pipeline.rs").write_text("fn bench_pipeline() {}")
+
+        result = classify_file(bench_dir / "pipeline.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "bench" in result.reason.lower()
+
+    def test_benchmarks_dir_is_internal_dep(self, tmp_path):
+        """benchmarks/ directory is tier 2."""
+        bench_dir = tmp_path / "benchmarks"
+        bench_dir.mkdir()
+        (bench_dir / "bench_main.cpp").write_text("BENCHMARK(main)")
+
+        result = classify_file(bench_dir / "bench_main.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_benchmark_singular_dir_is_internal_dep(self, tmp_path):
+        """benchmark/ (singular) directory is tier 2."""
+        bench_dir = tmp_path / "benchmark"
+        bench_dir.mkdir()
+        (bench_dir / "bench.go").write_text("func BenchmarkParse(b *testing.B)")
+
+        result = classify_file(bench_dir / "bench.go", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_fuzzing_dir_is_internal_dep(self, tmp_path):
+        """fuzzing/ directory is tier 2 (OSS-Fuzz convention)."""
+        fuzz_dir = tmp_path / "fuzzing"
+        fuzz_dir.mkdir()
+        (fuzz_dir / "fuzz_harness.c").write_text("int LLVMFuzzerTestOneInput()")
+
+        result = classify_file(fuzz_dir / "fuzz_harness.c", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_production_code_unaffected(self, tmp_path):
+        """Production code in src/ is not affected by fuzz/bench patterns."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "lib.rs").write_text("pub fn compute() {}")
+
+        result = classify_file(src_dir / "lib.rs", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_fuzz_lower_priority_than_derived(self, tmp_path):
+        """Derived artifacts take priority over fuzz classification."""
+        dist_fuzz = tmp_path / "dist" / "fuzz"
+        dist_fuzz.mkdir(parents=True)
+        (dist_fuzz / "fuzz.js").write_text("// compiled fuzz")
+
+        result = classify_file(dist_fuzz / "fuzz.js", tmp_path, set())
+        assert result.tier == Tier.DERIVED
 
 
 class TestMinificationDetection:
@@ -779,3 +1176,67 @@ class TestSupplyChainLimits:
         result = merged.to_dict()
         assert len(result["supply_chain"]["classification_failures"]) == 1
         assert len(result["supply_chain"]["ambiguous_paths"]) == 1
+
+
+class TestClassifySymbolsPreservesTier:
+    """_classify_symbols skips symbols that already have a linker-set tier."""
+
+    def test_preset_tier_preserved(self, tmp_path: Path) -> None:
+        """Symbols with tier != 1 or supply_chain_reason are not reclassified."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1\n")
+
+        # Symbol with pre-set tier 3 (like npm_package from linker)
+        preset = Symbol(
+            id="npm:lodash",
+            name="lodash",
+            kind="npm_package",
+            language="javascript",
+            path="",
+            span=Span(0, 0, 0, 0),
+            supply_chain_tier=3,
+            supply_chain_reason="npm_package (third-party dependency)",
+        )
+        # Normal symbol (tier 1, no reason) should be classified
+        normal = Symbol(
+            id="py:app:x",
+            name="x",
+            kind="variable",
+            language="python",
+            path="src/app.py",
+            span=Span(1, 1, 0, 5),
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([preset, normal], tmp_path, package_roots)
+
+        # Pre-set tier preserved
+        assert preset.supply_chain_tier == 3
+        assert preset.supply_chain_reason == "npm_package (third-party dependency)"
+        # Normal symbol got classified
+        assert normal.supply_chain_reason is not None
+        assert normal.supply_chain_reason != ""
+
+    def test_preset_reason_only_preserved(self, tmp_path: Path) -> None:
+        """Symbol with tier=1 but non-empty reason is not reclassified."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:sym",
+            name="sym",
+            kind="function",
+            language="python",
+            path="",
+            span=Span(0, 0, 0, 0),
+            supply_chain_tier=1,
+            supply_chain_reason="manually classified",
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([sym], tmp_path, package_roots)
+
+        assert sym.supply_chain_reason == "manually classified"

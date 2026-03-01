@@ -1,0 +1,88 @@
+- op: create  # 9abc
+  at: '2026-02-15T00:51:38Z'  # 9abc
+  by: agent  # 9abc
+  actor: migration  # 9abc
+  clock: 1  # 9abc
+  nonce: 9abc  # 9abc
+  data:  # 9abc
+    kind: work_item  # 9abc
+    title: "Chatwoot tier1 anomaly: 99.4% tier1 despite 753 Ruby spec files + 338 JS test files."  # 9abc
+    status: todo_soft  # 9abc
+    priority: 4  # 9abc
+    parent:  # 9abc
+    tags:  # 9abc
+    - analysis_quality  # 9abc
+    before: []  # 9abc
+    duplicate_of: []  # 9abc
+    not_duplicate_of: []  # 9abc
+    pr_ref:  # 9abc
+    justification: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
+    description: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
+    fields: {}  # 9abc
+- op: update  # af41
+  at: '2026-02-17T20:42:56Z'  # af41
+  by: agent  # af41
+  actor: jgstern_agent  # af41
+  clock: 2  # af41
+  nonce: af41  # af41
+  set:  # af41
+    status: todo_soft  # af41
+- op: update  # 75e1
+  at: '2026-02-18T09:09:30Z'  # 75e1
+  by: human  # 75e1
+  actor: jgstern  # 75e1
+  clock: 4  # 75e1
+  nonce: '75e1'  # 75e1
+  set:  # 75e1
+    priority: 1  # 75e1
+- op: discuss  # 5631
+  at: '2026-02-18T13:44:21Z'  # 5631
+  by: agent  # 5631
+  actor: jgstern_agent  # 5631
+  clock: 5  # 5631
+  nonce: '5631'  # 5631
+  message: "Investigation plan: Need to check if Chatwoot spec files are being counted as tier1 instead of test tier. The 99.4 percent tier1 ratio suggests the tier classification is not properly detecting spec/test directories in Ruby projects that use rspec conventions."  # 5631
+- op: discuss  # d6fb
+  at: '2026-02-18T14:01:12Z'  # d6fb
+  by: agent  # d6fb
+  actor: jgstern_agent  # d6fb
+  clock: 6  # d6fb
+  nonce: d6fb  # d6fb
+  message: "Root cause hypothesis: The tier classifier uses directory name matching (test, spec, tests, specs) but Chatwoot places spec files in app/javascript/spec/ which may not match the expected top-level test directory pattern."  # d6fb
+- op: discuss  # c04a
+  at: '2026-02-18T14:41:44Z'  # c04a
+  by: agent  # c04a
+  actor: jgstern_agent  # c04a
+  clock: 7  # c04a
+  nonce: c04a  # c04a
+  message: "Follow-up: Should also check app/javascript/dashboard/spec/ and app/javascript/shared/spec/ directories. These are Chatwoot-specific paths that contain Vue component specs using vitest."  # c04a
+- op: discuss  # a30b
+  at: '2026-02-18T14:55:14Z'  # a30b
+  by: agent  # a30b
+  actor: jgstern_agent  # a30b
+  clock: 8  # a30b
+  nonce: a30b  # a30b
+  message: "Additional data point: Chatwoot uses a monorepo structure with Rails backend and Vue.js frontend. The tier classifier should recognize app/javascript/ as application code, not third-party, even though it is nested deeply."  # a30b
+- op: discuss  # 207d
+  at: '2026-02-18T16:25:47Z'  # 207d
+  by: agent  # 207d
+  actor: jgstern_agent  # 207d
+  clock: 9  # 207d
+  nonce: 207d  # 207d
+  message: "Auto-sync test 4: all prior CI settled to green, clean test environment."  # 207d
+- op: update  # 736d
+  at: '2026-02-18T16:47:04Z'  # 736d
+  by: agent  # 736d
+  actor: jgstern_agent  # 736d
+  clock: 10  # 736d
+  nonce: 736d  # 736d
+  set:  # 736d
+    status: done  # 736d
+    justification: "Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # 736d
+- op: discuss  # a6fa
+  at: '2026-02-25T08:41:25Z'  # a6fa
+  by: agent  # a6fa
+  actor: jgstern_agent  # a6fa
+  clock: 11  # a6fa
+  nonce: a6fa  # a6fa
+  message: "[migrated from justification field] Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # a6fa

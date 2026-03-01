@@ -58,6 +58,7 @@ component.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -412,45 +413,80 @@ class NameResolver:
         *,
         allow_suffix: bool = True,
         path_hint: str | None = None,
+        path_hints: list[str] | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with optional suffix matching.
 
         Tries strategies in order:
-        1. Exact match on name
-        2. Suffix matching (if allow_suffix=True)
+        1. Exact match on name (skipped if path_hints provided and no match)
+        2. Suffix matching with path hint disambiguation (if allow_suffix=True)
 
         Args:
             name: The symbol name to look up.
             allow_suffix: Whether to try suffix matching as fallback.
             path_hint: Optional path substring to prefer among candidates.
+            path_hints: Optional list of path substrings from import
+                declarations.  When provided, exact matches are only returned
+                if their path matches at least one hint; otherwise we fall
+                through to suffix matching where ALL candidates (including
+                the exact-match symbol) are checked against the hints.  This
+                lets callers with import scope (e.g., D ``import errors;``)
+                disambiguate identically-named symbols across files.
 
         Returns:
             LookupResult with the found symbol and match metadata.
         """
         # Strategy 1: Exact match (O(1))
         if name in self.registry:
-            return LookupResult(
-                symbol=self.registry[name],
-                confidence=self.CONFIDENCE_EXACT,
-            )
+            exact_sym = self.registry[name]
+            # If caller provided import-scope hints, verify the exact match
+            # is in an imported module.  If not, fall through to suffix
+            # matching so that ALL candidates are checked.
+            if path_hints:
+                if any(h in exact_sym.path for h in path_hints):
+                    return LookupResult(
+                        symbol=exact_sym,
+                        confidence=self.CONFIDENCE_EXACT,
+                    )
+                # else: fall through — exact match is NOT in an imported module
+            else:
+                return LookupResult(
+                    symbol=exact_sym,
+                    confidence=self.CONFIDENCE_EXACT,
+                )
 
         # Strategy 2: Suffix matching
         if allow_suffix:
-            result = self._lookup_suffix(name, path_hint)
+            # Merge single path_hint into hints list for unified handling
+            effective_hints = path_hints
+            if path_hint and not effective_hints:
+                effective_hints = [path_hint]
+            result = self._lookup_suffix(
+                name, path_hint=None, path_hints=effective_hints,
+            )
             if result.found or result.candidates:
                 return result
 
         return LookupResult(symbol=None)
 
-    def _lookup_suffix(self, name: str, path_hint: str | None) -> LookupResult:
+    def _lookup_suffix(
+        self,
+        name: str,
+        path_hint: str | None,
+        path_hints: list[str] | None = None,
+    ) -> LookupResult:
         """Look up symbol using suffix matching.
 
-        Finds any key that ends with '.{name}' or equals '{name}'.
-        For example, looking for 'doWork' matches 'MyClass.doWork'.
+        Finds any key whose suffix (after separator splits) matches
+        ``name``.  Separators: ``.``, ``::``, ``#``, ``\\``, ``:``.
+        For example, ``'doWork'`` matches ``'MyClass.doWork'``, and
+        ``'compute'`` matches ``'Diff::compute'``.
 
         Args:
             name: The symbol name suffix to match.
-            path_hint: Optional path substring to prefer among candidates.
+            path_hint: Optional single path substring to prefer among candidates.
+            path_hints: Optional list of path substrings (e.g., from imports)
+                to prefer among candidates.  Takes precedence over path_hint.
 
         Returns:
             LookupResult with suffix match or None.
@@ -464,10 +500,11 @@ class NameResolver:
 
         candidates = [self.registry[key] for key in candidates_keys]
 
-        # Try path hint disambiguation if multiple candidates
-        if path_hint and len(candidates) > 1:
+        # Try path hints disambiguation (from imports or single hint)
+        all_hints = path_hints or ([path_hint] if path_hint else None)
+        if all_hints and len(candidates) > 1:
             for candidate in candidates:
-                if path_hint in candidate.path:
+                if any(h in candidate.path for h in all_hints):
                     return LookupResult(
                         symbol=candidate,
                         confidence=self.CONFIDENCE_PATH_HINT,
@@ -491,26 +528,64 @@ class NameResolver:
             candidates=candidates,
         )
 
+    # Regex that splits qualified names on any language separator.
+    # ``::`` must precede ``:`` so the longer match wins.
+    # Covers: ``.`` (Java/JS/C#/Scala/Swift/Groovy), ``::`` (Rust/C++/Perl),
+    # ``#`` (Ruby), ``\\`` (Hack/PHP), ``:`` (Luau/Lua).
+    _SEPARATOR_RE = re.compile(r"::|[.#\\:]")
+
     def _ensure_suffix_index(self) -> None:
         """Build suffix index lazily on first use.
 
         The suffix index maps each possible name suffix to all keys that
-        have that suffix. For key "pkg.ClassName.method", we index:
-        - "method" -> ["pkg.ClassName.method"]
-        - "ClassName.method" -> ["pkg.ClassName.method"]
-        - "pkg.ClassName.method" -> ["pkg.ClassName.method"]
+        have that suffix. Splits on ``.``, ``::``, ``#``, ``\\``, and
+        ``:`` to support all language-specific qualified name separators.
+
+        For key ``crate::Diff::compute``, we index:
+        - ``"compute"`` → [``"crate::Diff::compute"``]
+        - ``"Diff::compute"`` → [``"crate::Diff::compute"``]
+        - ``"crate::Diff::compute"`` → [``"crate::Diff::compute"``]
+
+        Suffixes use the **original separator** from the key string, so
+        ``"Diff::compute"`` (not ``"Diff.compute"``) is indexed.
         """
         if self._suffix_index is not None:
             return
 
         self._suffix_index = {}
         for key in self.registry.keys():
-            parts = key.split(".")
-            for i in range(len(parts)):
-                suffix = ".".join(parts[i:])
-                if suffix not in self._suffix_index:
-                    self._suffix_index[suffix] = []
-                self._suffix_index[suffix].append(key)
+            self._index_key_suffixes(key)
+
+    def _index_key_suffixes(self, key: str) -> None:
+        """Index a key by all its name suffixes.
+
+        Walks the key backwards from the rightmost part, extracting each
+        suffix as a substring of the original key. This preserves the
+        original separator characters.
+
+        Keys with no separators are also indexed (the full key is its own
+        suffix). This is needed when path hints cause the exact-match path
+        to be skipped — suffix matching must still find the bare key.
+        """
+        parts = self._SEPARATOR_RE.split(key)
+        # Walk backwards through the key to find suffix start positions.
+        # For "crate::Diff::compute" with parts ["crate","Diff","compute"]:
+        #   i=2 → pos points to "compute"
+        #   i=1 → pos points to "Diff::compute"
+        #   i=0 → pos points to "crate::Diff::compute"
+        assert self._suffix_index is not None
+        pos = len(key)
+        for i in range(len(parts) - 1, -1, -1):
+            part_len = len(parts[i])
+            pos -= part_len
+            suffix = key[pos:]
+            if suffix not in self._suffix_index:
+                self._suffix_index[suffix] = []
+            self._suffix_index[suffix].append(key)
+            # Skip the separator before this part
+            if pos > 0:
+                sep_len = 2 if key[pos - 2:pos] == "::" else 1
+                pos -= sep_len
 
     def clear_indexes(self) -> None:
         """Clear cached indexes."""
@@ -545,15 +620,26 @@ class ListNameResolver:
     # Confidence multipliers for different match types
     CONFIDENCE_EXACT = 1.0
     CONFIDENCE_PATH_HINT = 0.90
+    # Legacy constant; ambiguous confidence now scales as 1/sqrt(N)
     CONFIDENCE_AMBIGUOUS = 0.70
 
-    def __init__(self, registry: dict[str, list[Symbol]]) -> None:
+    def __init__(
+        self,
+        registry: dict[str, list[Symbol]],
+        ambiguity_threshold: int | None = None,
+    ) -> None:
         """Initialize resolver with a list-valued symbol registry.
 
         Args:
             registry: Dict mapping symbol_name -> list of Symbol objects.
+            ambiguity_threshold: When set, if the candidate count for a name
+                meets or exceeds this value and no path_hint disambiguates,
+                return an unresolved result instead of picking an arbitrary
+                candidate. Set to 3 to guard against common method name
+                false positives (Get, Set, Close, String).
         """
         self.registry = registry
+        self.ambiguity_threshold = ambiguity_threshold
 
     def lookup(
         self,
@@ -562,6 +648,12 @@ class ListNameResolver:
         path_hint: str | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with disambiguation.
+
+        Ambiguous confidence scales as ``1/sqrt(N)`` where *N* is the number
+        of candidates.  This means common interface methods like ``Close()``,
+        ``String()``, or ``Name()`` that are defined on dozens of types get
+        proportionally lower confidence (e.g. 50 candidates → 0.14) than a
+        two-way ambiguity (0.71).
 
         Args:
             name: The symbol name to look up.
@@ -576,13 +668,33 @@ class ListNameResolver:
             return LookupResult(symbol=None)
 
         if len(candidates) == 1:
+            # When a path_hint is provided, the caller has evidence that the
+            # call targets a specific import package.  If the sole candidate
+            # doesn't match the hint, the candidate is a different symbol
+            # that happens to share the name (e.g. local MarshalEncoder.Encode
+            # vs encoding/json Encode).  Return not-found so the caller can
+            # create an unresolved edge.
+            if path_hint:
+                path_parts = path_hint.rstrip("/").split("/")
+                matched = False
+                for i in range(len(path_parts) - 1, -1, -1):
+                    suffix = "/".join(path_parts[i:])
+                    if suffix in candidates[0].path:
+                        matched = True
+                        break
+                if not matched:
+                    return LookupResult(symbol=None)
             return LookupResult(
                 symbol=candidates[0],
                 confidence=self.CONFIDENCE_EXACT,
                 candidates=candidates,
             )
 
-        # Multiple candidates - try to disambiguate with path hint
+        # Multiple candidates - try to disambiguate with path hint.
+        # Track the best (smallest) narrowed candidate set: even if no
+        # suffix yields a unique match, narrowing from 10 → 2 candidates
+        # is useful — it means only 2 symbols are in the matching package.
+        narrowed = candidates
         if path_hint:
             # Try progressively shorter suffixes of the path hint to find unique match
             # e.g., for "github.com/example/src/zzz_correct/genproto", try:
@@ -591,9 +703,9 @@ class ListNameResolver:
             #   3. "genproto" (shortest)
             path_parts = path_hint.rstrip("/").split("/")
 
-            # Start from second-to-last segment (skip domain parts like github.com)
-            # and try progressively shorter suffixes
-            for i in range(len(path_parts) - 1, 0, -1):
+            # Try progressively longer suffixes of the path hint.
+            # Start with just the last segment, extend toward the full path.
+            for i in range(len(path_parts) - 1, -1, -1):
                 suffix = "/".join(path_parts[i:])
                 matching = [c for c in candidates if suffix in c.path]
                 if len(matching) == 1:
@@ -603,23 +715,32 @@ class ListNameResolver:
                         match_type="path_hint",
                         candidates=candidates,
                     )
+                if 1 < len(matching) < len(narrowed):
+                    narrowed = matching
 
-            # Fallback: try just the last segment
-            dir_hint = path_parts[-1]
-            matching = [c for c in candidates if dir_hint in c.path]
-            if len(matching) == 1:
-                return LookupResult(
-                    symbol=matching[0],
-                    confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
-                    candidates=candidates,
-                )
+        # Ambiguity guard: when the NARROWED candidate count meets or
+        # exceeds the threshold, return unresolved instead of picking an
+        # arbitrary candidate.  Using narrowed (not original candidates)
+        # means that suffix matching that filtered e.g. 10 → 2 candidates
+        # avoids the threshold.
+        if (
+            self.ambiguity_threshold is not None
+            and len(narrowed) >= self.ambiguity_threshold
+        ):
+            return LookupResult(
+                symbol=None,
+                match_type="ambiguous",
+                candidates=candidates,
+            )
 
-        # Ambiguous - sort for deterministic ordering, return first with low confidence
-        sorted_candidates = sorted(candidates, key=lambda s: s.path)
+        # Ambiguous — scale confidence by 1/sqrt(N) so that common interface
+        # methods (Close, String, Name) with dozens of implementations get
+        # proportionally lower confidence than a two-way ambiguity.
+        sorted_narrowed = sorted(narrowed, key=lambda s: s.path)
+        scaled_confidence = 1.0 / (len(narrowed) ** 0.5)
         return LookupResult(
-            symbol=sorted_candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            symbol=sorted_narrowed[0],
+            confidence=scaled_confidence,
             match_type="ambiguous",
             candidates=candidates,
         )

@@ -1,0 +1,44 @@
+- op: create  # 9cbf
+  at: '2026-02-20T16:12:13Z'  # 9cbf
+  by: agent  # 9cbf
+  actor: jgstern_agent  # 9cbf
+  clock: 1  # 9cbf
+  nonce: 9cbf  # 9cbf
+  data:  # 9cbf
+    kind: work_item  # 9cbf
+    title: "Kotlin: ambiguity guard for extension functions"  # 9cbf
+    status: todo_soft  # 9cbf
+    priority: 4  # 9cbf
+    parent:  # 9cbf
+    tags: []  # 9cbf
+    before: []  # 9cbf
+    duplicate_of: []  # 9cbf
+    not_duplicate_of: []  # 9cbf
+    pr_ref:  # 9cbf
+    justification:  # 9cbf
+    description: "Kotlin extension functions similar to Java. Apply guard for 3+ candidates."  # 9cbf
+    fields: {}  # 9cbf
+- op: update  # ad32
+  at: '2026-02-20T18:42:37Z'  # ad32
+  by: agent  # ad32
+  actor: jgstern_agent  # ad32
+  clock: 2  # ad32
+  nonce: ad32  # ad32
+  set:  # ad32
+    priority: 2  # ad32
+- op: update  # 033c
+  at: '2026-02-20T20:11:04Z'  # 033c
+  by: agent  # 033c
+  actor: jgstern_agent  # 033c
+  clock: 3  # 033c
+  nonce: 033c  # 033c
+  set:  # 033c
+    status: done  # 033c
+- op: update  # 02d0
+  at: '2026-02-22T04:47:43Z'  # 02d0
+  by: agent  # 02d0
+  actor: jgstern_agent  # 02d0
+  clock: 4  # 02d0
+  nonce: 02d0  # 02d0
+  set:  # 02d0
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 02d0

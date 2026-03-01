@@ -51,6 +51,7 @@ Why This Design
 - Results are used by sketch generation for the language breakdown
 """
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -155,7 +156,10 @@ JS_FRAMEWORKS = {
     "hono": ["hono"],
     "elysia": ["elysia"],
     # GraphQL
-    "graphql": ["graphql", "@apollo/server", "graphql-yoga", "mercurius"],
+    # WI-rofiz: removed bare "graphql" npm package — it's often installed
+    # for type definitions or code generation without implementing a GraphQL
+    # server, causing false-positive graphql_resolver nodes.
+    "graphql": ["@apollo/server", "graphql-yoga", "mercurius", "type-graphql", "@nestjs/graphql"],
     "apollo": ["@apollo/client", "@apollo/server", "apollo-server"],
     # Mobile
     "react-native": ["react-native"],
@@ -251,6 +255,8 @@ GO_FRAMEWORKS = {
     "iris": ["github.com/kataras/iris"],
     # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
     "prometheus-common": ["github.com/prometheus/common"],
+    # ORM
+    "xorm": ["xorm.io/xorm"],
     # CLI
     "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
 }
@@ -271,7 +277,7 @@ JAVA_FRAMEWORKS = {
     "spring-boot": ["spring-boot", "org.springframework.boot"],
     "micronaut": ["micronaut", "io.micronaut"],
     "quarkus": ["quarkus", "io.quarkus"],
-    "dropwizard": ["dropwizard", "io.dropwizard"],
+    "dropwizard": ["dropwizard-core", "dropwizard-jersey"],
     "vert.x": ["vertx", "io.vertx"],
     "javalin": ["javalin", "io.javalin"],
     "helidon": ["helidon", "io.helidon"],
@@ -297,6 +303,20 @@ JAVA_FRAMEWORKS = {
         "android.app.activity",
     ],
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
+    # Kafka Connect
+    "kafka-connect": ["org.apache.kafka:connect-api", "kafka-connect", "connect-api"],
+    # Google Guice DI
+    "guice": ["com.google.inject", "google/inject", "guice"],
+    # Kohsuke Stapler (Jenkins URL dispatch)
+    "stapler": ["org.kohsuke.stapler", "stapler-core", "stapler-jelly"],
+    # Jakarta CDI (standalone or via WildFly/GlassFish)
+    "jakarta-cdi": [
+        "jakarta.enterprise.context",
+        "javax.enterprise.context",
+        "jakarta.enterprise.inject",
+        "javax.enterprise.inject",
+        "weld",
+    ],
 }
 
 # Swift Package.swift detection patterns
@@ -355,6 +375,121 @@ SOLIDITY_FRAMEWORKS = {
     "hardhat": ["hardhat.config.js", "hardhat.config.ts"],
 }
 
+# Haskell framework detection patterns (from *.cabal, stack.yaml, package.yaml)
+HASKELL_FRAMEWORKS = {
+    "servant": ["servant", "servant-server"],
+    "scotty": ["scotty"],
+}
+
+# Clojure framework detection patterns (from deps.edn, project.clj)
+CLOJURE_FRAMEWORKS = {
+    "ring-compojure": ["ring", "compojure", "ring/ring-core"],
+    "pedestal": ["pedestal", "io.pedestal"],
+}
+
+# R framework detection patterns (from DESCRIPTION file)
+R_FRAMEWORKS = {
+    "shiny": ["shiny"],
+    "plumber": ["plumber"],
+}
+
+# Lua framework detection patterns (from *.rockspec or special files)
+LUA_FRAMEWORKS = {
+    "openresty": ["openresty", "resty", "ngx"],
+    "lapis": ["lapis"],
+    "love2d": ["love"],
+}
+
+# C++ framework detection patterns (from CMakeLists.txt, *.pro, vcpkg.json)
+CPP_FRAMEWORKS = {
+    "qt": ["qt5", "qt6", "qtcore", "qtwidgets", "qtgui", "qmake", "qt +=", "qt+="],
+}
+
+# Erlang framework detection patterns (from rebar.config)
+ERLANG_FRAMEWORKS = {
+    "cowboy": ["cowboy"],
+}
+
+# F# framework detection patterns (from *.fsproj)
+FSHARP_FRAMEWORKS = {
+    "giraffe": ["giraffe"],
+    "saturn": ["saturn"],
+    "suave": ["suave"],
+}
+
+# Kotlin framework detection patterns (from build.gradle.kts)
+# Separate from JAVA_FRAMEWORKS because Ktor is Kotlin-specific
+KOTLIN_FRAMEWORKS = {
+    "ktor": ["ktor-server", "io.ktor"],
+    "exposed": ["exposed-core", "org.jetbrains.exposed"],
+    "koin": ["koin-core", "io.insert-koin"],
+    "kodein": ["kodein-di", "org.kodein.di"],
+}
+
+# C# framework detection patterns (from *.csproj)
+CSHARP_FRAMEWORKS = {
+    "aspnetcore": ["microsoft.aspnetcore", "asp.net core"],
+    "blazor": ["microsoft.aspnetcore.components", "blazor"],
+    "minimal-apis": ["microsoft.aspnetcore.openapi"],
+    "entityframework": ["microsoft.entityframeworkcore", "entityframework"],
+    "signalr": ["microsoft.aspnetcore.signalr"],
+}
+
+# Dart web framework detection patterns (from pubspec.yaml)
+# Flutter is detected separately via SDK check
+DART_FRAMEWORKS = {
+    "shelf": ["shelf:"],
+    "aqueduct": ["aqueduct:"],
+    "angel": ["angel_framework:"],
+    "dart_frog": ["dart_frog:"],
+    "serverpod": ["serverpod:"],
+}
+
+# Julia framework detection patterns (from Project.toml)
+JULIA_FRAMEWORKS = {
+    "genie": ["genie"],
+    "oxygen": ["oxygen"],
+    "http": ["http"],
+    "mux": ["mux"],
+}
+
+# OCaml framework detection patterns (from dune-project, *.opam)
+OCAML_FRAMEWORKS = {
+    "dream": ["dream"],
+    "opium": ["opium"],
+    "cohttp": ["cohttp"],
+    "eliom": ["eliom"],
+}
+
+# Nim framework detection patterns (from *.nimble)
+NIM_FRAMEWORKS = {
+    "jester": ["jester"],
+    "prologue": ["prologue"],
+    "karax": ["karax"],
+    "mummy": ["mummy"],
+}
+
+# Zig framework detection patterns (from build.zig.zon, build.zig)
+ZIG_FRAMEWORKS = {
+    "zap": ["zap"],
+    "http.zig": ["httpz", "http.zig"],
+    "zig-network": ["network"],
+}
+
+# D framework detection patterns (from dub.json, dub.sdl)
+D_FRAMEWORKS = {
+    "vibe-d": ["vibe-d", "vibe.d"],
+    "hunt": ["hunt-framework", "hunt"],
+    "diamondmvc": ["diamond"],
+}
+
+# Groovy framework detection patterns (from build.gradle)
+GROOVY_FRAMEWORKS = {
+    "grails": ["grails-core", "org.grails"],
+    "ratpack": ["ratpack-core", "io.ratpack"],
+    "micronaut-groovy": ["micronaut-runtime-groovy"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -364,12 +499,27 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "go": GO_FRAMEWORKS,
     "php": PHP_FRAMEWORKS,
     "java": JAVA_FRAMEWORKS,
-    "kotlin": JAVA_FRAMEWORKS,  # Kotlin uses same frameworks as Java
+    "kotlin": KOTLIN_FRAMEWORKS,
     "swift": SWIFT_FRAMEWORKS,
     "scala": SCALA_FRAMEWORKS,
     "solidity": SOLIDITY_FRAMEWORKS,
     "ruby": RUBY_FRAMEWORKS,
     "elixir": ELIXIR_FRAMEWORKS,
+    "haskell": HASKELL_FRAMEWORKS,
+    "clojure": CLOJURE_FRAMEWORKS,
+    "r": R_FRAMEWORKS,
+    "lua": LUA_FRAMEWORKS,
+    "cpp": CPP_FRAMEWORKS,
+    "erlang": ERLANG_FRAMEWORKS,
+    "fsharp": FSHARP_FRAMEWORKS,
+    "csharp": CSHARP_FRAMEWORKS,
+    "dart": DART_FRAMEWORKS,
+    "julia": JULIA_FRAMEWORKS,
+    "ocaml": OCAML_FRAMEWORKS,
+    "nim": NIM_FRAMEWORKS,
+    "zig": ZIG_FRAMEWORKS,
+    "d": D_FRAMEWORKS,
+    "groovy": GROOVY_FRAMEWORKS,
 }
 
 
@@ -524,22 +674,23 @@ def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
             return 0
         content = file_path.read_text(errors="ignore")
         return sum(1 for line in content.splitlines() if line.strip())
-    except (OSError, IOError):
+    except (OSError, IOError):  # pragma: no cover - defensive
         return 0
 
 
 def _detect_languages(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
-    max_file_size: int | None = None,
 ) -> dict[str, LanguageStats]:
     """Detect languages by scanning file extensions.
+
+    Returns file counts per language.  LOC is set to zero here and
+    populated lazily later (by ``_analyze_test_files`` in sketch.py)
+    to avoid reading every source file during profile detection.
 
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
-        max_file_size: If set, skip files larger than this when counting LOC.
-            Used by catalog command for quick heuristic scanning.
     """
     languages: dict[str, LanguageStats] = {}
 
@@ -553,10 +704,7 @@ def _detect_languages(
         # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
         files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
-            stats = LanguageStats(files=len(files))
-            for f in files:
-                stats.loc += _count_loc(f, max_file_size=max_file_size)
-            languages[lang] = stats
+            languages[lang] = LanguageStats(files=len(files), loc=0)
 
     return languages
 
@@ -621,6 +769,33 @@ def _read_all_manifest_files(repo_root: Path, filename: str, max_depth: int = 3)
     return "\n".join(content_parts)
 
 
+def _manifest_has_package(content: str, package: str) -> bool:
+    """Check if a package name appears as a distinct token in manifest content.
+
+    Uses conditional word boundaries to avoid false positives from substring
+    collisions. For example, 'bottle' should NOT match in 'bottleneck',
+    but SHOULD match in 'bottle==0.12' or '"bottle"'.
+
+    Word boundaries are only added at positions where the pattern starts/ends
+    with a word character (alphanumeric or underscore). Patterns ending with
+    non-word characters like ':' or '{' (e.g., 'shelf:', 'android {') don't
+    get a trailing boundary, since the non-word character itself provides
+    sufficient delimitation.
+
+    Args:
+        content: Lowercased concatenated manifest file content.
+        package: Package/library name to search for (case-insensitive).
+
+    Returns:
+        True if the package name appears as a distinct token in the content.
+    """
+    escaped = re.escape(package.lower())
+    # Add word boundary only where pattern starts/ends with a word character
+    prefix = r"\b" if re.match(r"\w", package) else ""
+    suffix = r"\b" if re.search(r"\w$", package) else ""
+    return bool(re.search(prefix + escaped + suffix, content))
+
+
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
     """Detect Python frameworks from dependency files.
 
@@ -638,7 +813,7 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -689,7 +864,7 @@ def _detect_rust_frameworks(repo_root: Path) -> list[str]:
     for framework, patterns in RUST_FRAMEWORKS.items():
         for pattern in patterns:
             # Check for crate in dependencies section
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -708,7 +883,7 @@ def _detect_go_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in GO_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -757,7 +932,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     content = _read_all_manifest_files(repo_root, "pom.xml")
     for framework, patterns in JAVA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 if framework not in detected_set:
                     detected.append(framework)
                     detected_set.add(framework)
@@ -769,7 +944,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
         for framework, patterns in JAVA_FRAMEWORKS.items():
             if framework not in detected_set:
                 for pattern in patterns:
-                    if pattern.lower() in content:
+                    if _manifest_has_package(content, pattern):
                         detected.append(framework)
                         detected_set.add(framework)
                         break
@@ -797,7 +972,7 @@ def _detect_swift_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in SWIFT_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -816,7 +991,7 @@ def _detect_scala_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in SCALA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -878,7 +1053,7 @@ def _detect_ruby_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in RUBY_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -905,6 +1080,419 @@ def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
             # Pattern matches :nex, {:nex, or "nex" but not "next"
             regex = rf'[:"\']{re.escape(pattern)}["\',\s\}}]'
             if re.search(regex, content, re.IGNORECASE):
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_haskell_frameworks(repo_root: Path) -> list[str]:
+    """Detect Haskell frameworks from *.cabal, stack.yaml, or package.yaml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Checks:
+    - *.cabal files for build-depends
+    - stack.yaml for extra-deps
+    - package.yaml (hpack) for dependencies
+    """
+    detected = []
+
+    # Read all cabal files
+    cabal_content = ""
+    for depth in range(4):  # 0, 1, 2, 3 levels deep
+        pattern = "/".join(["*"] * depth) + "/*.cabal" if depth > 0 else "*.cabal"
+        for cabal_file in repo_root.glob(pattern):
+            try:
+                cabal_content += cabal_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Read stack.yaml and package.yaml files
+    yaml_content = ""
+    for filename in ("stack.yaml", "package.yaml"):
+        yaml_content += _read_all_manifest_files(repo_root, filename)
+
+    combined_content = cabal_content + yaml_content
+
+    for framework, patterns in HASKELL_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_clojure_frameworks(repo_root: Path) -> list[str]:
+    """Detect Clojure frameworks from deps.edn or project.clj.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Checks:
+    - deps.edn for dependencies (tools.deps/CLI)
+    - project.clj for dependencies (Leiningen)
+    """
+    detected = []
+
+    # Read deps.edn and project.clj files
+    deps_content = _read_all_manifest_files(repo_root, "deps.edn")
+    project_content = _read_all_manifest_files(repo_root, "project.clj")
+    combined_content = deps_content + project_content
+
+    for framework, patterns in CLOJURE_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_r_frameworks(repo_root: Path) -> list[str]:
+    """Detect R frameworks from DESCRIPTION file.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    The DESCRIPTION file contains Imports and Depends fields listing packages.
+    """
+    detected = []
+
+    # Read all DESCRIPTION files (R package manifest)
+    content = _read_all_manifest_files(repo_root, "DESCRIPTION")
+
+    for framework, patterns in R_FRAMEWORKS.items():
+        for pattern in patterns:
+            if _manifest_has_package(content, pattern):
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_lua_frameworks(repo_root: Path) -> list[str]:
+    """Detect Lua frameworks from *.rockspec files or special markers.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Also checks for OpenResty-specific files (nginx.conf with lua directives).
+    """
+    detected = []
+
+    # Read all rockspec files
+    rockspec_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.rockspec" if depth > 0 else "*.rockspec"
+        for rockspec_file in repo_root.glob(pattern):
+            try:
+                rockspec_content += rockspec_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Also check for OpenResty markers in nginx.conf
+    nginx_content = _read_all_manifest_files(repo_root, "nginx.conf")
+
+    combined_content = rockspec_content + nginx_content
+
+    for framework, patterns in LUA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_cpp_frameworks(repo_root: Path) -> list[str]:
+    """Detect C++ frameworks from CMakeLists.txt, *.pro, or vcpkg.json.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Qt is detected via find_package(Qt*), QT += modules, or vcpkg dependencies.
+    """
+    detected = []
+
+    # Read CMakeLists.txt files
+    cmake_content = _read_all_manifest_files(repo_root, "CMakeLists.txt")
+
+    # Read .pro files (qmake)
+    pro_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
+        for pro_file in repo_root.glob(pattern):
+            try:
+                pro_content += pro_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Read vcpkg.json
+    vcpkg_content = _read_all_manifest_files(repo_root, "vcpkg.json")
+
+    combined_content = cmake_content + pro_content + vcpkg_content
+
+    for framework, patterns in CPP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_erlang_frameworks(repo_root: Path) -> list[str]:
+    """Detect Erlang frameworks from rebar.config or erlang.mk.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Read rebar.config files
+    rebar_content = _read_all_manifest_files(repo_root, "rebar.config")
+
+    # Read erlang.mk files
+    erlangmk_content = _read_all_manifest_files(repo_root, "erlang.mk")
+
+    combined_content = rebar_content + erlangmk_content
+
+    for framework, patterns in ERLANG_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_fsharp_frameworks(repo_root: Path) -> list[str]:
+    """Detect F# frameworks from *.fsproj files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    F# projects use .fsproj (MSBuild) with PackageReference elements.
+    """
+    detected = []
+
+    # Read all .fsproj files
+    fsproj_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.fsproj" if depth > 0 else "*.fsproj"
+        for fsproj_file in repo_root.glob(pattern):
+            try:
+                fsproj_content += fsproj_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in FSHARP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in fsproj_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_kotlin_frameworks(repo_root: Path) -> list[str]:
+    """Detect Kotlin-specific frameworks from build.gradle.kts or build.gradle.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Note: Java frameworks (Spring, etc.) are detected by _detect_java_frameworks.
+    This function detects Kotlin-specific frameworks like Ktor.
+    """
+    detected = []
+
+    # Read build.gradle.kts and build.gradle files
+    content = ""
+    for gradle_file in ["build.gradle.kts", "build.gradle"]:
+        content += _read_all_manifest_files(repo_root, gradle_file)
+
+    for framework, patterns in KOTLIN_FRAMEWORKS.items():
+        for pattern in patterns:
+            if _manifest_has_package(content, pattern):
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_csharp_frameworks(repo_root: Path) -> list[str]:
+    """Detect C# frameworks from *.csproj files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    C# projects use .csproj (MSBuild) with PackageReference elements.
+    """
+    detected = []
+
+    # Read all .csproj files
+    csproj_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.csproj" if depth > 0 else "*.csproj"
+        for csproj_file in repo_root.glob(pattern):
+            try:
+                csproj_content += csproj_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in CSHARP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in csproj_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_dart_web_frameworks(repo_root: Path) -> list[str]:
+    """Detect Dart web frameworks (non-Flutter) from pubspec.yaml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Note: Flutter is detected separately in _detect_dart_frameworks.
+    This function detects server-side Dart frameworks like Shelf.
+    """
+    detected = []
+
+    # Read all pubspec.yaml files
+    content = _read_all_manifest_files(repo_root, "pubspec.yaml")
+
+    for framework, patterns in DART_FRAMEWORKS.items():
+        for pattern in patterns:
+            if _manifest_has_package(content, pattern):
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_julia_frameworks(repo_root: Path) -> list[str]:
+    """Detect Julia frameworks from Project.toml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Julia projects use Project.toml for dependencies.
+    """
+    detected = []
+
+    # Read Project.toml files
+    content = _read_all_manifest_files(repo_root, "Project.toml")
+
+    for framework, patterns in JULIA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if _manifest_has_package(content, pattern):
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_ocaml_frameworks(repo_root: Path) -> list[str]:
+    """Detect OCaml frameworks from dune-project or *.opam files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    OCaml projects use dune-project (dune build system) or .opam files.
+    """
+    detected = []
+
+    # Read dune-project files
+    dune_content = _read_all_manifest_files(repo_root, "dune-project")
+
+    # Read all .opam files
+    opam_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.opam" if depth > 0 else "*.opam"
+        for opam_file in repo_root.glob(pattern):
+            try:
+                opam_content += opam_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    combined_content = dune_content + opam_content
+
+    for framework, patterns in OCAML_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_nim_frameworks(repo_root: Path) -> list[str]:
+    """Detect Nim frameworks from *.nimble files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Nim projects use .nimble files for package management.
+    """
+    detected = []
+
+    # Read all .nimble files
+    nimble_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.nimble" if depth > 0 else "*.nimble"
+        for nimble_file in repo_root.glob(pattern):
+            try:
+                nimble_content += nimble_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in NIM_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in nimble_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_zig_frameworks(repo_root: Path) -> list[str]:
+    """Detect Zig frameworks from build.zig.zon or build.zig.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Zig projects use build.zig.zon (package manifest) or build.zig (build script).
+    """
+    detected = []
+
+    # Read build.zig.zon and build.zig files
+    zon_content = _read_all_manifest_files(repo_root, "build.zig.zon")
+    build_content = _read_all_manifest_files(repo_root, "build.zig")
+    combined_content = zon_content + build_content
+
+    for framework, patterns in ZIG_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_d_frameworks(repo_root: Path) -> list[str]:
+    """Detect D frameworks from dub.json or dub.sdl.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    D projects use dub.json or dub.sdl for package management.
+    """
+    detected = []
+
+    # Read dub.json and dub.sdl files
+    dub_json_content = _read_all_manifest_files(repo_root, "dub.json")
+    dub_sdl_content = _read_all_manifest_files(repo_root, "dub.sdl")
+    combined_content = dub_json_content + dub_sdl_content
+
+    for framework, patterns in D_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
+    """Detect Groovy frameworks from build.gradle.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Groovy frameworks like Grails and Ratpack use Gradle for builds.
+    """
+    detected = []
+
+    # Read build.gradle files
+    content = _read_all_manifest_files(repo_root, "build.gradle")
+
+    for framework, patterns in GROOVY_FRAMEWORKS.items():
+        for pattern in patterns:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -956,6 +1544,22 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_solidity_frameworks(repo_root))
     frameworks.extend(_detect_ruby_frameworks(repo_root))
     frameworks.extend(_detect_elixir_frameworks(repo_root))
+    frameworks.extend(_detect_haskell_frameworks(repo_root))
+    frameworks.extend(_detect_clojure_frameworks(repo_root))
+    frameworks.extend(_detect_r_frameworks(repo_root))
+    frameworks.extend(_detect_lua_frameworks(repo_root))
+    frameworks.extend(_detect_cpp_frameworks(repo_root))
+    frameworks.extend(_detect_erlang_frameworks(repo_root))
+    frameworks.extend(_detect_fsharp_frameworks(repo_root))
+    frameworks.extend(_detect_kotlin_frameworks(repo_root))
+    frameworks.extend(_detect_csharp_frameworks(repo_root))
+    frameworks.extend(_detect_dart_web_frameworks(repo_root))
+    frameworks.extend(_detect_julia_frameworks(repo_root))
+    frameworks.extend(_detect_ocaml_frameworks(repo_root))
+    frameworks.extend(_detect_nim_frameworks(repo_root))
+    frameworks.extend(_detect_zig_frameworks(repo_root))
+    frameworks.extend(_detect_d_frameworks(repo_root))
+    frameworks.extend(_detect_groovy_frameworks(repo_root))
     return frameworks
 
 
@@ -963,7 +1567,6 @@ def detect_profile(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
-    max_file_size: int | None = None,
 ) -> RepoProfile:
     """Detect the profile of a repository.
 
@@ -975,13 +1578,11 @@ def detect_profile(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
-        max_file_size: If set, skip files larger than this when counting LOC.
-            Used by catalog command for quick heuristic scanning.
 
     Returns a RepoProfile with detected languages and frameworks.
     """
     languages = _detect_languages(
-        repo_root, extra_excludes=extra_excludes, max_file_size=max_file_size
+        repo_root, extra_excludes=extra_excludes,
     )
     detected_languages = set(languages.keys())
 

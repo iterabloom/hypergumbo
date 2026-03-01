@@ -1,0 +1,73 @@
+- op: create  # 8c05
+  at: '2026-02-15T00:51:38Z'  # 8c05
+  by: agent  # 8c05
+  actor: migration  # 8c05
+  clock: 1  # 8c05
+  nonce: 8c05  # 8c05
+  data:  # 8c05
+    kind: work_item  # 8c05
+    title: "Add Rego analyzer."  # 8c05
+    status: todo_soft  # 8c05
+    priority: 4  # 8c05
+    parent:  # 8c05
+    tags:  # 8c05
+    - language_additions  # 8c05
+    before: []  # 8c05
+    duplicate_of: []  # 8c05
+    not_duplicate_of: []  # 8c05
+    pr_ref:  # 8c05
+    justification: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
+    description: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
+    fields: {}  # 8c05
+- op: update  # 96bd
+  at: '2026-02-17T20:42:56Z'  # 96bd
+  by: agent  # 96bd
+  actor: jgstern_agent  # 96bd
+  clock: 2  # 96bd
+  nonce: 96bd  # 96bd
+  set:  # 96bd
+    status: todo_soft  # 96bd
+- op: discuss  # 41e6
+  at: '2026-02-18T13:44:38Z'  # 41e6
+  by: agent  # 41e6
+  actor: jgstern_agent  # 41e6
+  clock: 3  # 41e6
+  nonce: '41e6'  # 41e6
+  message: "Rego analyzer: OPA Rego files use a unique rule-based syntax. tree-sitter-rego exists but may need building from source. Key constructs: package declarations, import statements, rule definitions (allow, deny patterns), and built-in function calls."  # 41e6
+- op: discuss  # 4871
+  at: '2026-02-18T14:41:46Z'  # 4871
+  by: agent  # 4871
+  actor: jgstern_agent  # 4871
+  clock: 4  # 4871
+  nonce: '4871'  # 4871
+  message: "OPA Rego has interesting control flow: rules are evaluated as logical assertions and the order of rule definitions affects short-circuit behavior. The analyzer should represent rules as symbols with data-flow edges."  # 4871
+- op: discuss  # 8b18
+  at: '2026-02-18T16:25:55Z'  # 8b18
+  by: agent  # 8b18
+  actor: jgstern_agent  # 8b18
+  clock: 5  # 8b18
+  nonce: 8b18  # 8b18
+  message: "Auto-sync test 4: final message to trigger threshold. Rego analyzer remains P4."  # 8b18
+- op: update  # 4646
+  at: '2026-02-18T21:44:54Z'  # 4646
+  by: agent  # 4646
+  actor: jgstern_agent  # 4646
+  clock: 6  # 4646
+  nonce: '4646'  # 4646
+  set:  # 4646
+    justification: "Deferred: P4 niche language. No bakeoff signal showing Rego analysis gaps. Higher-priority items addressed first."  # 4646
+- op: update  # e26f
+  at: '2026-02-20T20:30:13Z'  # e26f
+  by: agent  # e26f
+  actor: jgstern_agent  # e26f
+  clock: 7  # e26f
+  nonce: e26f  # e26f
+  set:  # e26f
+    status: needs_human_review  # e26f
+- op: discuss  # cc34
+  at: '2026-02-25T08:43:42Z'  # cc34
+  by: agent  # cc34
+  actor: jgstern_agent  # cc34
+  clock: 8  # cc34
+  nonce: cc34  # cc34
+  message: "[migrated from justification field] Deferred: P4 niche language. No bakeoff signal showing Rego analysis gaps. Higher-priority items addressed first."  # cc34

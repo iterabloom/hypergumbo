@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import scss as scss_module
-from hypergumbo_lang_common.scss import (
-    ScssAnalysisResult,
-    analyze_scss,
-    find_scss_files,
-    is_scss_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.scss import analyze_scss, find_scss_files, is_scss_tree_sitter_available
 
 def make_scss_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an SCSS file in the temp directory."""
@@ -20,7 +15,6 @@ def make_scss_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindScssFiles:
     """Tests for find_scss_files function."""
@@ -43,7 +37,6 @@ class TestFindScssFiles:
         files = find_scss_files(tmp_path)
         assert files == []
 
-
 class TestIsScssTreeSitterAvailable:
     """Tests for is_scss_tree_sitter_available function."""
 
@@ -52,17 +45,16 @@ class TestIsScssTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(scss_module, "is_scss_tree_sitter_available", return_value=False):
+        with patch.object(scss_module._analyzer, "_check_grammar_available", return_value=False):
             assert scss_module.is_scss_tree_sitter_available() is False
-
 
 class TestAnalyzeScss:
     """Tests for analyze_scss function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")
-        with patch.object(scss_module, "is_scss_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="SCSS analysis skipped"):
+        with patch.object(scss_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="scss analysis skipped"):
                 result = scss_module.analyze_scss(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -322,7 +314,7 @@ $spacing: 16px;
         make_scss_file(tmp_path, "styles.scss", "$color: red;")
         result = analyze_scss(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "scss.tree_sitter"
+        assert result.run.pass_id == "scss-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -339,7 +331,7 @@ $spacing: 16px;
         result = analyze_scss(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.origin == "scss.tree_sitter"
+        assert var.origin == "scss-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")

@@ -79,6 +79,24 @@ class TestFindMatlabFiles:
         files = list(find_matlab_files(tmp_path))
         assert files == []
 
+    def test_excludes_objc_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include Objective-C .m files."""
+        (tmp_path / "func.m").write_text("function y = func(x)\n    y = x * 2;\nend\n")
+        (tmp_path / "AppDelegate.m").write_text(
+            '#import "AppDelegate.h"\n@implementation AppDelegate\n@end\n'
+        )
+        files = list(find_matlab_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].name == "func.m"
+
+    def test_excludes_wolfram_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include Wolfram .m files."""
+        (tmp_path / "func.m").write_text("function y = func(x)\n    y = x * 2;\nend\n")
+        (tmp_path / "math.m").write_text("f[x_] := x^2\n")
+        files = list(find_matlab_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].name == "func.m"
+
 
 class TestIsMatlabTreeSitterAvailable:
     """Tests for tree-sitter availability check."""
@@ -90,7 +108,7 @@ class TestIsMatlabTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_common.matlab as matlab_module
-        with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
+        with patch.object(matlab_module._analyzer, "_check_grammar_available", return_value=False):
             assert matlab_module.is_matlab_tree_sitter_available() is False
 
 
@@ -101,7 +119,7 @@ class TestAnalyzeMatlab:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_common.matlab as matlab_module
 
-        with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
+        with patch.object(matlab_module._analyzer, "_check_grammar_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
                 result = matlab_module.analyze_matlab(matlab_repo)
 

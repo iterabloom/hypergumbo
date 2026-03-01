@@ -33,6 +33,27 @@ if ! command -v bandit &> /dev/null; then
     exit 1
 fi
 
+# Run tracker validation (full cross-file: catches cycles, dangling refs, etc.)
+echo -n "  Tracker (schema)... "
+if [ -d ".agent/tracker" ] && command -v scripts/tracker &> /dev/null; then
+    STAGED_TRACKER=$(git diff --cached --name-only -- '.agent/tracker/.ops/*.ops' '.agent/tracker-workspace/.ops/*.ops' '.agent/tracker-workspace/stealth/*.ops' 2>/dev/null || true)
+    if [ -n "$STAGED_TRACKER" ]; then
+        if scripts/tracker validate 2>/dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+            echo ""
+            scripts/tracker validate 2>&1 | grep -i "error\|cycle\|dangling" || true
+            echo -e "${RED}Tracker validation failed. Fix issues before committing.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}skipped (no tracker files staged)${NC}"
+    fi
+else
+    echo -e "${YELLOW}skipped (no tracker)${NC}"
+fi
+
 # Run ruff - check packages/ if available, otherwise src/
 echo -n "  Ruff (linting)... "
 if [ -d "packages/hypergumbo-core" ]; then
@@ -40,13 +61,13 @@ if [ -d "packages/hypergumbo-core" ]; then
 else
     RUFF_PATHS="src/ tests/"
 fi
-if ruff check $RUFF_PATHS --quiet 2>/dev/null; then
+if ruff check --no-cache $RUFF_PATHS --quiet 2>/dev/null; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
     echo ""
     echo -e "${RED}Ruff found issues:${NC}"
-    ruff check $RUFF_PATHS
+    ruff check --no-cache $RUFF_PATHS
     exit 1
 fi
 
@@ -116,6 +137,30 @@ if [ -f "packages/hypergumbo/README.md" ] && [ -f "README.md" ]; then
     fi
 else
     echo -e "${YELLOW}skipped (files not found)${NC}"
+fi
+
+# Check affected-tests.txt manifest mode (must not be full-suite for CI)
+echo -n "  Test manifest... "
+MANIFEST=".ci/affected-tests.txt"
+if [ -f "$MANIFEST" ]; then
+    # Check if manifest is being staged for commit
+    if git diff --cached --name-only | grep -q "^\.ci/affected-tests\.txt$"; then
+        # Check if it's full-suite mode (CI has 5-minute timeout, can't handle full-suite)
+        if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+            echo -e "${RED}✗${NC}"
+            echo ""
+            echo -e "${RED}Manifest is full-suite mode, which will fail CI (5-minute timeout).${NC}"
+            echo -e "${RED}Re-run tests without --full flag to generate a targeted manifest:${NC}"
+            echo "  pytest  # without --full"
+            exit 1
+        else
+            echo -e "${GREEN}✓${NC}"
+        fi
+    else
+        echo -e "${YELLOW}skipped (not staged)${NC}"
+    fi
+else
+    echo -e "${YELLOW}skipped (no manifest)${NC}"
 fi
 
 echo -e "${GREEN}✅ Pre-commit checks passed${NC}"

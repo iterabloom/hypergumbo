@@ -10,12 +10,16 @@ from hypergumbo_core.ranking import (
     compute_centrality,
     apply_tier_weights,
     apply_test_weights,
+    apply_utility_symbol_weights,
+    apply_common_method_name_weights,
     group_symbols_by_file,
     compute_file_scores,
+    filter_edges_for_ranking,
     rank_symbols,
     rank_files,
     get_importance_threshold,
     _is_test_path,
+    is_utility_symbol,
     TIER_WEIGHTS,
     RankedSymbol,
     RankedFile,
@@ -24,7 +28,9 @@ from hypergumbo_core.ranking import (
     compute_symbol_importance_density,
     compute_symbol_mention_centrality,
     compute_symbol_mention_centrality_batch,
+    compute_truncation_elbow,
     _compute_centrality_with_python,
+    _has_logging_concept,
 )
 
 
@@ -49,7 +55,12 @@ def make_symbol(
     return sym
 
 
-def make_edge(src_id: str, dst_id: str, edge_type: str = "calls") -> Edge:
+def make_edge(
+    src_id: str,
+    dst_id: str,
+    edge_type: str = "calls",
+    confidence: float = 0.9,
+) -> Edge:
     """Helper to create test edges."""
     return Edge(
         id=f"edge:{src_id}->{dst_id}",
@@ -57,7 +68,7 @@ def make_edge(src_id: str, dst_id: str, edge_type: str = "calls") -> Edge:
         dst=dst_id,
         edge_type=edge_type,
         line=1,
-        confidence=0.9,
+        confidence=confidence,
     )
 
 
@@ -110,12 +121,12 @@ class TestComputeCentrality:
         assert result[caller3.id] == 0.0
 
     def test_normalization(self):
-        """Centrality scores are normalized to 0-1 range."""
+        """Centrality scores are normalized to 0-1 range with correct ordering."""
         a = make_symbol("a")
         b = make_symbol("b")
         c = make_symbol("c")
 
-        # b gets 2 incoming, c gets 1 incoming
+        # b gets 2 incoming (out=0), c gets 1 incoming (out=1 via c→b), a has 0 incoming (out=2)
         edges = [
             make_edge(a.id, b.id),
             make_edge(c.id, b.id),
@@ -124,9 +135,14 @@ class TestComputeCentrality:
 
         result = compute_centrality([a, b, c], edges)
 
-        assert result[b.id] == 1.0  # max (2/2)
-        assert result[c.id] == 0.5  # 1/2
-        assert result[a.id] == 0.0  # 0/2
+        # b has highest raw score (in=2), still max
+        assert result[b.id] == pytest.approx(1.0)
+        # c has lower in-degree (1) but gets out-degree boost from c→b
+        assert 0 < result[c.id] < 1.0
+        # b still outranks c (2 in-degree > 1 in-degree, even with c's out-degree boost)
+        assert result[b.id] > result[c.id]
+        # a has zero in-degree → zero centrality
+        assert result[a.id] == 0.0
 
     def test_edge_to_unknown_symbol_ignored(self):
         """Edges pointing to non-existent symbols are ignored."""
@@ -136,6 +152,88 @@ class TestComputeCentrality:
         result = compute_centrality([foo], [edge])
 
         assert result[foo.id] == 0.0
+
+
+class TestBidirectionalCentrality:
+    """Tests for bidirectional centrality boost.
+
+    Nodes with both high in-degree and high out-degree (connectors) should
+    rank above pure sinks (high in-degree, near-zero out-degree) like
+    exception classes and utility decorators.
+    """
+
+    def test_connector_outranks_sink(self):
+        """Node with both in and out edges outranks pure sink with higher in-degree.
+
+        Simulates: cached_property (in=10, out=0) vs QuerySet (in=6, out=8).
+        QuerySet should rank higher because it's a connector.
+        """
+        # "Sink" node: high in-degree, zero out-degree (like cached_property)
+        sink = make_symbol("cached_property")
+        # "Connector" node: moderate in-degree, high out-degree (like QuerySet)
+        connector = make_symbol("QuerySet")
+        # Callers of sink (10 callers)
+        sink_callers = [make_symbol(f"sink_caller_{i}") for i in range(10)]
+        # Callers of connector (6 callers)
+        conn_callers = [make_symbol(f"conn_caller_{i}") for i in range(6)]
+        # Callees of connector (8 callees)
+        conn_callees = [make_symbol(f"conn_callee_{i}") for i in range(8)]
+
+        edges = []
+        for caller in sink_callers:
+            edges.append(make_edge(caller.id, sink.id))
+        for caller in conn_callers:
+            edges.append(make_edge(caller.id, connector.id))
+        for callee in conn_callees:
+            edges.append(make_edge(connector.id, callee.id))
+
+        all_symbols = [sink, connector] + sink_callers + conn_callers + conn_callees
+
+        result = compute_centrality(all_symbols, edges)
+
+        # Connector should outrank sink despite lower in-degree
+        assert result[connector.id] > result[sink.id]
+
+    def test_pure_sink_still_has_nonzero_score(self):
+        """Pure sink nodes (no outgoing edges) still get nonzero centrality."""
+        sink = make_symbol("Error")
+        caller = make_symbol("caller")
+        edges = [make_edge(caller.id, sink.id)]
+
+        result = compute_centrality([sink, caller], edges)
+
+        assert result[sink.id] > 0
+
+    def test_zero_in_degree_has_zero_centrality(self):
+        """Nodes with zero in-degree have zero centrality regardless of out-degree."""
+        source = make_symbol("source")
+        target = make_symbol("target")
+        edges = [make_edge(source.id, target.id)]
+
+        result = compute_centrality([source, target], edges)
+
+        # source has 0 in-degree, so centrality should be 0
+        assert result[source.id] == 0.0
+
+    def test_existing_normalization_preserved(self):
+        """Max centrality is still normalized to 1.0."""
+        a = make_symbol("a")
+        b = make_symbol("b")
+        c = make_symbol("c")
+
+        # b gets 2 incoming + has 1 outgoing
+        # c gets 1 incoming + no outgoing
+        edges = [
+            make_edge(a.id, b.id),
+            make_edge(c.id, b.id),
+            make_edge(a.id, c.id),
+            make_edge(b.id, a.id),  # b calls a (gives b out-degree 1)
+        ]
+
+        result = compute_centrality([a, b, c], edges)
+
+        # Max should still be 1.0
+        assert max(result.values()) == pytest.approx(1.0)
 
 
 class TestApplyTierWeights:
@@ -279,6 +377,230 @@ class TestApplyTestWeights:
         result = apply_test_weights(centrality, [spec_sym], test_weight=0.5)
 
         assert result[spec_sym.id] == 0.5
+
+
+class TestApplyNoiseWeights:
+    """Tests for apply_noise_weights function."""
+
+    def test_migration_file_downweighted(self):
+        """Symbols in db/migrate/ are de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "CreateUsers", path="db/migrate/20231201_create_users.rb"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1  # Default noise_weight=0.1
+
+    def test_production_file_unchanged(self):
+        """Non-noise files are not affected."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        prod_sym = make_symbol(
+            "UsersController", path="app/controllers/users_controller.rb"
+        )
+        centrality = {prod_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [prod_sym])
+
+        assert result[prod_sym.id] == 1.0
+
+    def test_nested_db_migrate_path(self):
+        """Deeply nested db/migrate path is de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "AddIndex", path="postal/db/migrate/20240101_add_index.rb"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1
+
+    def test_python_migrations_downweighted(self):
+        """Django/Alembic migration files are de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "Migration", path="myapp/migrations/0001_initial.py"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1
+
+    def test_mixed_migration_and_production(self):
+        """Mix of migration and production code correctly weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "CreateUsers", path="db/migrate/20231201_create_users.rb"
+        )
+        prod_sym = make_symbol(
+            "User", path="app/models/user.rb"
+        )
+        centrality = {mig_sym.id: 0.8, prod_sym.id: 0.6}
+
+        result = apply_noise_weights(centrality, [mig_sym, prod_sym])
+
+        assert abs(result[mig_sym.id] - 0.08) < 1e-10  # 0.8 * 0.1
+        assert result[prod_sym.id] == 0.6  # Unchanged
+
+    def test_rank_symbols_applies_noise_weights(self):
+        """rank_symbols de-weights migration files by default."""
+        from hypergumbo_core.ranking import rank_symbols
+
+        # Migration symbol has high connectivity
+        mig_sym = make_symbol(
+            "Migration", path="db/migrate/20231201_create_users.rb"
+        )
+        prod_sym = make_symbol(
+            "User", path="app/models/user.rb"
+        )
+        # Migration has 10 incoming edges, production has 3
+        # Raw centrality: mig=1.0 (max), prod=0.3
+        # Tier weight (both first-party 2.0x): mig=2.0, prod=0.6
+        # Noise weight (0.1x for migration): mig=0.2, prod=0.6
+        # Result: production ranks higher
+        edges = [
+            make_edge(f"src{i}", mig_sym.id)
+            for i in range(10)
+        ] + [
+            make_edge(f"caller{i}", prod_sym.id)
+            for i in range(3)
+        ]
+        src_symbols = [
+            make_symbol(f"src{i}", path=f"src/file{i}.rb")
+            for i in range(10)
+        ] + [
+            make_symbol(f"caller{i}", path=f"src/caller{i}.rb")
+            for i in range(3)
+        ]
+
+        all_symbols = [mig_sym, prod_sym] + src_symbols
+
+        ranked = rank_symbols(all_symbols, edges)
+
+        # Despite migration having 10x more edges, production should rank
+        # higher due to noise de-weighting
+        mig_rank = next(r for r in ranked if r.symbol.id == mig_sym.id)
+        prod_rank = next(r for r in ranked if r.symbol.id == prod_sym.id)
+        assert prod_rank.rank < mig_rank.rank
+
+
+class TestHubDampening:
+    """Tests for hub dampening via in-degree saturation in compute_centrality.
+
+    Infrastructure utilities (error sentinels, loggers, DB accessors) accumulate
+    massive in-degree from being called everywhere, but they are architecturally
+    unimportant.  In-degree saturation (``hub_threshold`` parameter) compresses
+    extreme in-degree *before* normalization, letting mid-range connector symbols
+    (services, controllers) rank higher.
+
+    The saturation formula for ind > threshold is::
+
+        effective_in = threshold + ln(1 + ind - threshold)
+
+    This is nearly a hard cap with a tiny log term preserving ordering among hubs.
+    """
+
+    def test_hub_dampened_below_connector(self):
+        """A hub with 500 in-edges should rank below a connector with 50 in/30 out.
+
+        Without saturation, the hub (in=500, out=0) scores 500.
+        The connector (in=50, out=30) scores 50*(1+ln(31)) ≈ 222.
+        Hub wins by 2.3x despite being architecturally trivial.
+
+        With hub_threshold=100, the hub's effective in-degree ≈ 106,
+        so connector wins.
+        """
+        hub = make_symbol("ErrNotExist")
+        connector = make_symbol("ProcessRequest")
+
+        callers = [make_symbol(f"caller_{i}") for i in range(500)]
+        callees = [make_symbol(f"dep_{i}") for i in range(30)]
+
+        edges = (
+            [make_edge(c.id, hub.id) for c in callers]
+            + [make_edge(c.id, connector.id) for c in callers[:50]]
+            + [make_edge(connector.id, d.id) for d in callees]
+        )
+
+        all_symbols = [hub, connector] + callers + callees
+
+        # Without saturation, hub wins
+        raw = compute_centrality(all_symbols, edges)
+        assert raw[hub.id] > raw[connector.id]
+
+        # With saturation, connector wins
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+        assert saturated[connector.id] > saturated[hub.id], (
+            f"Connector ({saturated[connector.id]:.4f}) should rank above "
+            f"hub ({saturated[hub.id]:.4f}) after saturation"
+        )
+
+    def test_moderate_degree_not_affected(self):
+        """Symbols with in-degree below threshold are identical with or without saturation."""
+        sym = make_symbol("handler")
+        callers = [make_symbol(f"caller_{i}") for i in range(50)]
+        edges = [make_edge(c.id, sym.id) for c in callers]
+
+        all_symbols = [sym] + callers
+        raw = compute_centrality(all_symbols, edges)
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+
+        # Score should be identical for moderate-degree nodes
+        assert saturated[sym.id] == raw[sym.id]
+
+    def test_saturation_preserves_relative_order_below_threshold(self):
+        """Symbols below the threshold maintain their relative order."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        callers = [make_symbol(f"c_{i}") for i in range(30)]
+
+        # A gets 30 in-edges, B gets 10
+        edges = (
+            [make_edge(c.id, sym_a.id) for c in callers]
+            + [make_edge(c.id, sym_b.id) for c in callers[:10]]
+        )
+
+        all_symbols = [sym_a, sym_b] + callers
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+
+        # Relative order preserved: A > B
+        assert saturated[sym_a.id] > saturated[sym_b.id]
+
+    def test_rank_symbols_applies_hub_saturation(self):
+        """rank_symbols uses hub_threshold=100 by default, elevating connectors."""
+        # Hub: error sentinel with 200 callers, calls nothing
+        hub = make_symbol("Error")
+        # Connector: 40 callers + 20 callees (architecturally important)
+        connector = make_symbol("Handler")
+        callers = [make_symbol(f"c_{i}") for i in range(200)]
+        callees = [make_symbol(f"d_{i}") for i in range(20)]
+
+        edges = (
+            [make_edge(c.id, hub.id) for c in callers]
+            + [make_edge(c.id, connector.id) for c in callers[:40]]
+            + [make_edge(connector.id, d.id) for d in callees]
+        )
+
+        all_symbols = [hub, connector] + callers + callees
+
+        ranked = rank_symbols(all_symbols, edges)
+        hub_rank = next(r for r in ranked if r.symbol.id == hub.id)
+        conn_rank = next(r for r in ranked if r.symbol.id == connector.id)
+
+        # Connector should rank above hub (lower rank number = higher rank)
+        assert conn_rank.rank < hub_rank.rank, (
+            f"Connector ranked {conn_rank.rank}, hub ranked {hub_rank.rank}. "
+            f"Hub saturation should elevate connectors above pure hubs."
+        )
 
 
 class TestGroupSymbolsByFile:
@@ -480,6 +802,163 @@ class TestRankSymbols:
         assert prod_ranked.raw_centrality > 0
 
 
+    def test_exclude_test_edges_preserves_extends(self):
+        """Inheritance edges from test files to production base classes survive test filtering.
+
+        When exclude_test_edges=True, call edges from test files are excluded.
+        But extends/implements edges should be preserved because they indicate
+        architectural importance of the base class, regardless of where the
+        subclass lives. Without this, Django's Model (degree 5) is massively
+        underranked because most subclasses are in test files.
+        """
+        base_class = make_symbol("Model", path="src/models/base.py", kind="class")
+        # Multiple test subclasses (like Django's test models)
+        test_sub1 = make_symbol("TestModel1", path="tests/test_models.py", kind="class")
+        test_sub2 = make_symbol("TestModel2", path="tests/test_other.py", kind="class")
+        test_sub3 = make_symbol("TestModel3", path="tests/test_views.py", kind="class")
+        prod_sub = make_symbol("UserModel", path="src/models/user.py", kind="class")
+        # A utility function called by prod code (to create a non-trivial max)
+        util_fn = make_symbol("helper", path="src/utils.py")
+
+        # Extends edges: 3 from test, 1 from production
+        edges = [
+            make_edge(test_sub1.id, base_class.id, edge_type="extends"),
+            make_edge(test_sub2.id, base_class.id, edge_type="extends"),
+            make_edge(test_sub3.id, base_class.id, edge_type="extends"),
+            make_edge(prod_sub.id, base_class.id, edge_type="extends"),
+            # Call edges: 1 from test (should be excluded), 3 from prod to util
+            make_edge(test_sub1.id, util_fn.id, edge_type="calls"),
+            make_edge(prod_sub.id, util_fn.id, edge_type="calls"),
+            make_edge(base_class.id, util_fn.id, edge_type="calls"),
+            make_edge(test_sub2.id, util_fn.id, edge_type="calls"),
+        ]
+
+        all_symbols = [base_class, test_sub1, test_sub2, test_sub3, prod_sub, util_fn]
+
+        result = rank_symbols(all_symbols, edges, exclude_test_edges=True)
+
+        base_ranked = next(r for r in result if r.symbol.name == "Model")
+        util_ranked = next(r for r in result if r.symbol.name == "helper")
+
+        # Model should rank higher than helper because it has 4 extends edges
+        # (all preserved) vs helper's 2 production call edges (test calls excluded).
+        # Without the fix, Model only gets 1 extends edge (from prod_sub) and
+        # helper gets 2 call edges, making helper rank higher.
+        assert base_ranked.rank < util_ranked.rank, (
+            f"Model (rank {base_ranked.rank}) should rank above helper "
+            f"(rank {util_ranked.rank}) because extends edges from test files "
+            f"should be preserved"
+        )
+
+    def test_exclude_test_edges_preserves_implements(self):
+        """Implements edges from test files also survive test filtering."""
+        interface = make_symbol("Repository", path="src/repository.py", kind="interface")
+        test_impl = make_symbol("MockRepo", path="tests/mocks.py", kind="class")
+        prod_impl = make_symbol("SqlRepo", path="src/sql_repo.py", kind="class")
+        # Extra symbol with more production call edges to compare against
+        util_fn = make_symbol("connect", path="src/db.py")
+
+        edges = [
+            make_edge(test_impl.id, interface.id, edge_type="implements"),
+            make_edge(prod_impl.id, interface.id, edge_type="implements"),
+            # Call edges from production code to util
+            make_edge(prod_impl.id, util_fn.id, edge_type="calls"),
+        ]
+
+        result = rank_symbols(
+            [interface, test_impl, prod_impl, util_fn],
+            edges,
+            exclude_test_edges=True,
+        )
+
+        iface_ranked = next(r for r in result if r.symbol.name == "Repository")
+        # Repository should have in-degree 2 (both implements edges preserved)
+        # not just 1 (only production implements edge)
+        assert iface_ranked.raw_centrality == 1.0
+
+
+class TestFilterEdgesForRanking:
+    """Tests for filter_edges_for_ranking function."""
+
+    def test_excludes_test_edges(self):
+        """Edges from test files are excluded by default."""
+        prod = make_symbol("prod_func", path="src/main.py")
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        edge = make_edge(test_sym.id, prod.id, edge_type="calls")
+
+        result = filter_edges_for_ranking([edge], [prod, test_sym])
+        assert len(result) == 0
+
+    def test_preserves_structural_edges_from_tests(self):
+        """Structural edges (extends, implements) from tests are preserved."""
+        base = make_symbol("Base", path="src/base.py")
+        test_sym = make_symbol("TestHelper", path="tests/helpers.py")
+        edge = make_edge(test_sym.id, base.id, edge_type="extends")
+
+        result = filter_edges_for_ranking([edge], [base, test_sym])
+        assert len(result) == 1
+
+    def test_excludes_import_edges(self):
+        """Import edges are excluded by default."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+        call_edge = make_edge(a.id, b.id, edge_type="calls")
+
+        result = filter_edges_for_ranking(
+            [import_edge, call_edge], [a, b]
+        )
+        assert len(result) == 1
+        assert result[0].edge_type == "calls"
+
+    def test_filters_low_confidence(self):
+        """Edges below min_edge_confidence are excluded."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        low_conf = make_edge(a.id, b.id, confidence=0.3)
+        high_conf = make_edge(a.id, b.id, confidence=0.8)
+
+        result = filter_edges_for_ranking(
+            [low_conf, high_conf], [a, b], min_edge_confidence=0.5
+        )
+        assert len(result) == 1
+        assert result[0].confidence == 0.8
+
+    def test_no_filtering(self):
+        """All filters disabled passes through all edges."""
+        a = make_symbol("a", path="tests/test_a.py")
+        b = make_symbol("b", path="src/b.py")
+        call_edge = make_edge(a.id, b.id, edge_type="calls")
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+
+        result = filter_edges_for_ranking(
+            [call_edge, import_edge], [a, b],
+            exclude_test_edges=False,
+            exclude_import_edges=False,
+        )
+        assert len(result) == 2
+
+    def test_combined_filters(self):
+        """Multiple filters combine correctly."""
+        prod = make_symbol("prod", path="src/main.py")
+        test_sym = make_symbol("test", path="tests/test.py")
+        # Test edge (should be filtered by test filter)
+        e1 = make_edge(test_sym.id, prod.id, edge_type="calls")
+        # Import edge from prod (should be filtered by import filter)
+        e2 = make_edge(prod.id, test_sym.id, edge_type="imports")
+        # Low-confidence prod edge (should be filtered by confidence)
+        e3 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.1)
+        # Good prod edge (should survive)
+        e4 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.9)
+
+        result = filter_edges_for_ranking(
+            [e1, e2, e3, e4], [prod, test_sym],
+            min_edge_confidence=0.5,
+        )
+        assert len(result) == 1
+        assert result[0] is e4
+
+
 class TestRankFiles:
     """Tests for rank_files function."""
 
@@ -555,6 +1034,32 @@ class TestRankFiles:
         top_file = result[0]
         assert "lodash" in top_file.path or top_file.density_score > 0
 
+    def test_filters_test_edges(self):
+        """Test edges are filtered from file ranking by default."""
+        prod = make_symbol("prod_func", path="src/main.py")
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        # Only edge is from test file
+        edges = [make_edge(test_sym.id, prod.id)]
+
+        result = rank_files([prod, test_sym], edges)
+
+        # With test edges filtered, prod_func has 0 in-degree
+        main_file = next(r for r in result if r.path == "src/main.py")
+        assert main_file.density_score == 0.0
+
+    def test_filters_import_edges(self):
+        """Import edges are filtered from file ranking by default."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        # Import edge only
+        edges = [make_edge(a.id, b.id, edge_type="imports")]
+
+        result = rank_files([a, b], edges)
+
+        # With import edges filtered, b has 0 in-degree
+        b_file = next(r for r in result if r.path == "src/b.py")
+        assert b_file.density_score == 0.0
+
 
 class TestIsTestPath:
     """Tests for _is_test_path function."""
@@ -601,6 +1106,77 @@ class TestIsTestPath:
         """TypeScript type definition test files detected."""
         assert _is_test_path("types/index.test-d.ts")
         assert _is_test_path("src/types/api.test-d.tsx")
+
+    def test_t_directory_convention(self):
+        """C/Perl t/ test directory convention detected.
+
+        Git, Perl core, and other C/Perl projects use t/ for test suites.
+        t/test-lib-functions.sh and t/helper/test-reach.c should be test files.
+        """
+        assert _is_test_path("t/test-lib-functions.sh")
+        assert _is_test_path("t/helper/test-reach.c")
+        assert _is_test_path("t/t0001-init.sh")
+
+    def test_hyphen_test_prefix(self):
+        """Hyphen-separated test prefix (test-*.c) detected.
+
+        Common in C projects: test-reach.c, test-date.c, test-parse.c.
+        """
+        assert _is_test_path("test-reach.c")
+        assert _is_test_path("src/test-date.c")
+
+    def test_spec_directory(self):
+        """spec/ directory (Ruby RSpec convention) detected."""
+        assert _is_test_path("spec/models/user_spec.rb")
+        assert _is_test_path("spec/controllers/api_controller_spec.rb")
+
+    def test_mock_fake_patterns(self):
+        """Mock and fake file patterns detected."""
+        assert _is_test_path("src/fakes/fake_repo.go")
+        assert _is_test_path("src/mocks/mock_service.py")
+        assert _is_test_path("pkg/transportfakes/fake_client.go")
+
+    def test_test_edge_exclusion_with_t_directory(self):
+        """rank_symbols excludes test edges from t/ directory.
+
+        Symbols in t/ (like test_expect_success) should have their edges
+        excluded from centrality when exclude_test_edges=True.
+        """
+        # test_expect_success in t/test-lib-functions.sh — a test utility
+        test_fn = make_symbol("test_expect_success", path="t/test-lib-functions.sh",
+                              language="bash")
+        # Domain function called by test code and production code
+        domain_fn = make_symbol("run_command", path="src/run-command.c", language="c")
+        # Reference symbol with fixed call edges (for normalization baseline)
+        reference = make_symbol("parse_options", path="src/parse-options.c", language="c")
+        prod_caller1 = make_symbol("cmd_add", path="src/builtin/add.c", language="c")
+        prod_caller2 = make_symbol("cmd_commit", path="src/builtin/commit.c", language="c")
+        prod_caller3 = make_symbol("cmd_push", path="src/builtin/push.c", language="c")
+
+        edges = [
+            # 5 test edges from t/ (should be excluded when exclude_test_edges=True)
+            *[make_edge(test_fn.id, domain_fn.id) for _ in range(5)],
+            # 1 production edge to domain_fn
+            make_edge(prod_caller1.id, domain_fn.id),
+            # 3 production edges to reference (normalization baseline)
+            make_edge(prod_caller1.id, reference.id),
+            make_edge(prod_caller2.id, reference.id),
+            make_edge(prod_caller3.id, reference.id),
+        ]
+
+        all_symbols = [test_fn, domain_fn, reference, prod_caller1, prod_caller2, prod_caller3]
+
+        result_exclude = rank_symbols(all_symbols, edges, exclude_test_edges=True)
+
+        domain_ranked = next(r for r in result_exclude if r.symbol.name == "run_command")
+        ref_ranked = next(r for r in result_exclude if r.symbol.name == "parse_options")
+
+        # With t/ edges excluded, domain_fn has 1 prod edge vs reference's 3.
+        # Without exclusion it would have 6 edges (5 test + 1 prod) and rank higher.
+        assert ref_ranked.rank < domain_ranked.rank, (
+            f"parse_options (3 prod edges, rank {ref_ranked.rank}) should rank above "
+            f"run_command (1 prod edge after t/ exclusion, rank {domain_ranked.rank})"
+        )
 
 
 class TestGetImportanceThreshold:
@@ -779,6 +1355,22 @@ class TestComputeSymbolImportanceDensity:
 
         # File doesn't exist, LOC is 0, below min_loc
         assert result["does_not_exist.py"] == 0.0
+
+    def test_absolute_path_normalized(self, tmp_path):
+        """Absolute paths are normalized to relative for consistent keys."""
+        src = tmp_path / "main.py"
+        src.write_text("\n".join(["line"] * 10) + "\n")
+
+        abs_path = str(src)
+        foo = make_symbol("foo", path=abs_path)
+        by_file = {abs_path: [foo]}
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_importance_density(by_file, in_degree, tmp_path)
+
+        # Absolute path normalized to relative "main.py"
+        assert "main.py" in result
+        assert result["main.py"] == pytest.approx(0.5)
 
 
 class TestComputeSymbolMentionCentrality:
@@ -1228,3 +1820,1091 @@ class TestCentralityResultDeduplication:
         # So name_to_in_degree["foo"] should be sum of both
         assert result.name_to_in_degree["foo"] == 10  # 3 + 7
         assert result.symbols_per_file[f] == {"foo"}
+
+
+class TestExcludeImportEdgesCentrality:
+    """Tests for import edge exclusion from centrality computation.
+
+    Import edges (imports, imports_module) represent file-level visibility,
+    not actual call relationships. Including them inflates in-degree for
+    widely-imported symbols (string utilities, type aliases) without
+    reflecting architectural significance. These tests verify that
+    rank_symbols filters import edges by default.
+    """
+
+    def test_import_edges_excluded_by_default(self):
+        """rank_symbols excludes import edges from centrality by default.
+
+        A symbol with 3 import edges and 0 call edges should have lower
+        centrality than a symbol with 2 call edges and 0 import edges.
+        """
+        imported_sym = make_symbol("StringUtils", path="src/utils.py")
+        called_sym = make_symbol("Router", path="src/router.py")
+        caller1 = make_symbol("handler1", path="src/handlers/a.py")
+        caller2 = make_symbol("handler2", path="src/handlers/b.py")
+        importer1 = make_symbol("mod1", path="src/mod1.py")
+        importer2 = make_symbol("mod2", path="src/mod2.py")
+        importer3 = make_symbol("mod3", path="src/mod3.py")
+
+        edges = [
+            # 3 import edges to StringUtils
+            make_edge(importer1.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer2.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer3.id, imported_sym.id, edge_type="imports"),
+            # 2 call edges to Router
+            make_edge(caller1.id, called_sym.id, edge_type="calls"),
+            make_edge(caller2.id, called_sym.id, edge_type="calls"),
+        ]
+
+        all_symbols = [
+            imported_sym, called_sym, caller1, caller2,
+            importer1, importer2, importer3,
+        ]
+        result = rank_symbols(all_symbols, edges)
+
+        router_ranked = next(r for r in result if r.symbol.name == "Router")
+        utils_ranked = next(r for r in result if r.symbol.name == "StringUtils")
+
+        # Router (2 call edges) should rank above StringUtils (0 call edges,
+        # 3 import edges excluded)
+        assert router_ranked.rank < utils_ranked.rank, (
+            f"Router (rank {router_ranked.rank}) should rank above "
+            f"StringUtils (rank {utils_ranked.rank}) when import edges excluded"
+        )
+
+    def test_imports_module_edges_also_excluded(self):
+        """imports_module edges (JS/TS) are also excluded from centrality."""
+        js_module = make_symbol("helpers", path="src/helpers.ts", language="typescript")
+        js_caller = make_symbol("app", path="src/app.ts", language="typescript")
+        importer1 = make_symbol("comp1", path="src/comp1.ts", language="typescript")
+        importer2 = make_symbol("comp2", path="src/comp2.ts", language="typescript")
+
+        edges = [
+            make_edge(importer1.id, js_module.id, edge_type="imports_module"),
+            make_edge(importer2.id, js_module.id, edge_type="imports_module"),
+            make_edge(js_caller.id, js_module.id, edge_type="calls"),
+        ]
+
+        all_symbols = [js_module, js_caller, importer1, importer2]
+        result = rank_symbols(all_symbols, edges)
+
+        module_ranked = next(r for r in result if r.symbol.name == "helpers")
+        # With import exclusion, helpers has 1 call edge (not 3 total)
+        # Its raw centrality should reflect only the call edge
+        assert module_ranked.raw_centrality > 0  # Still has 1 call edge
+
+    def test_exclude_import_edges_false(self):
+        """When exclude_import_edges=False, import edges count toward centrality."""
+        imported_sym = make_symbol("Config", path="src/config.py")
+        importer1 = make_symbol("mod1", path="src/mod1.py")
+        importer2 = make_symbol("mod2", path="src/mod2.py")
+
+        edges = [
+            make_edge(importer1.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer2.id, imported_sym.id, edge_type="imports"),
+        ]
+
+        all_symbols = [imported_sym, importer1, importer2]
+        result = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        config_ranked = next(r for r in result if r.symbol.name == "Config")
+        # With import edges included, Config should have centrality > 0
+        assert config_ranked.raw_centrality > 0
+
+    def test_call_edges_unaffected(self):
+        """Call edges are preserved regardless of import edge filtering."""
+        target = make_symbol("core_fn", path="src/core.py")
+        caller1 = make_symbol("caller1", path="src/a.py")
+        caller2 = make_symbol("caller2", path="src/b.py")
+        caller3 = make_symbol("caller3", path="src/c.py")
+
+        edges = [
+            make_edge(caller1.id, target.id, edge_type="calls"),
+            make_edge(caller2.id, target.id, edge_type="calls"),
+            make_edge(caller3.id, target.id, edge_type="calls"),
+        ]
+
+        all_symbols = [target, caller1, caller2, caller3]
+
+        result_with = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+        result_without = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        core_with = next(r for r in result_with if r.symbol.name == "core_fn")
+        core_without = next(r for r in result_without if r.symbol.name == "core_fn")
+
+        # Call-only edges should give same centrality either way
+        assert core_with.raw_centrality == core_without.raw_centrality
+
+    def test_mixed_call_and_import_edges(self):
+        """Symbol with both call and import edges: only call edges counted.
+
+        A symbol that is both imported and called should have centrality
+        based only on call edges when import exclusion is active.
+        We use a reference symbol with 2 call edges to make normalization
+        reveal the difference.
+        """
+        target = make_symbol("Database", path="src/db.py")
+        reference = make_symbol("Router", path="src/router.py")
+        caller = make_symbol("service", path="src/service.py")
+        importer = make_symbol("controller", path="src/controller.py")
+        ref_caller1 = make_symbol("handler1", path="src/h1.py")
+        ref_caller2 = make_symbol("handler2", path="src/h2.py")
+
+        edges = [
+            # Database: 1 call + 1 import
+            make_edge(caller.id, target.id, edge_type="calls"),
+            make_edge(importer.id, target.id, edge_type="imports"),
+            # Router: 2 call edges (reference for normalization)
+            make_edge(ref_caller1.id, reference.id, edge_type="calls"),
+            make_edge(ref_caller2.id, reference.id, edge_type="calls"),
+        ]
+
+        all_symbols = [target, reference, caller, importer, ref_caller1, ref_caller2]
+
+        result_exclude = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+        result_include = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        db_exclude = next(r for r in result_exclude if r.symbol.name == "Database")
+        db_include = next(r for r in result_include if r.symbol.name == "Database")
+
+        # With exclusion: Database has 1 call edge, Router has 2 → db_exclude < 1.0
+        # Without exclusion: Database has 2 edges (call+import), Router has 2 → db_include = 1.0
+        assert db_exclude.raw_centrality > 0
+        assert db_include.raw_centrality > db_exclude.raw_centrality
+
+    def test_structural_edges_preserved_with_import_exclusion(self):
+        """extends/implements edges are preserved when import edges excluded.
+
+        Import edge exclusion should not affect structural edges (extends,
+        implements) which reflect architectural significance.
+        """
+        base = make_symbol("BaseModel", path="src/base.py", kind="class")
+        sub = make_symbol("UserModel", path="src/user.py", kind="class")
+        importer = make_symbol("mod", path="src/mod.py")
+
+        edges = [
+            make_edge(sub.id, base.id, edge_type="extends"),
+            make_edge(importer.id, base.id, edge_type="imports"),
+        ]
+
+        all_symbols = [base, sub, importer]
+        result = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+
+        base_ranked = next(r for r in result if r.symbol.name == "BaseModel")
+        # extends edge preserved, import edge excluded → centrality > 0
+        assert base_ranked.raw_centrality > 0
+
+
+class TestIsUtilitySymbol:
+    """Tests for is_utility_symbol function.
+
+    Infrastructure utility symbols (loggers, clocks, metrics, error sentinels)
+    should be detected by name so they can be demoted in rankings. This covers
+    the INV-mahap finding: DefaultClock.Now (in-degree 474) dominates rankings
+    because hub saturation alone is insufficient.
+    """
+
+    def test_logger_names(self):
+        """Common logger symbol names are detected."""
+        assert is_utility_symbol("Logger")
+        assert is_utility_symbol("logger")
+        assert is_utility_symbol("AppLogger")
+        assert is_utility_symbol("getLogger")
+        assert is_utility_symbol("log_message")
+
+    def test_clock_names(self):
+        """Clock/time infrastructure symbols are detected."""
+        assert is_utility_symbol("Clock")
+        assert is_utility_symbol("DefaultClock")
+        assert is_utility_symbol("SystemClock")
+
+    def test_metrics_names(self):
+        """Metrics/telemetry symbols are detected."""
+        assert is_utility_symbol("Metrics")
+        assert is_utility_symbol("MetricsCollector")
+        assert is_utility_symbol("metricsRecorder")
+
+    def test_error_sentinel_names(self):
+        """Error sentinel and exception names are detected."""
+        assert is_utility_symbol("ErrNotFound")
+        assert is_utility_symbol("ErrTimeout")
+        assert is_utility_symbol("errInvalid")
+
+    def test_stl_accessor_names(self):
+        """STL-like accessor methods are detected (empty, size, begin, end)."""
+        assert is_utility_symbol("empty")
+        assert is_utility_symbol("size")
+        assert is_utility_symbol("begin")
+        assert is_utility_symbol("end")
+        assert is_utility_symbol("length")
+
+    def test_toString_hashCode(self):
+        """Common boilerplate methods are detected."""
+        assert is_utility_symbol("toString")
+        assert is_utility_symbol("hashCode")
+        assert is_utility_symbol("equals")
+        assert is_utility_symbol("__repr__")
+        assert is_utility_symbol("__str__")
+        assert is_utility_symbol("__hash__")
+        assert is_utility_symbol("__eq__")
+
+    def test_logging_method_names(self):
+        """Universal logging method names are detected.
+
+        These are the methods that appear at top of rankings in bakeoff
+        repos (forgejo: XORMLogBridge.Errorf rank 2, kong: log rank 2,
+        postal: Base#log rank 7). Covers all common logging verb patterns.
+        """
+        # Core logging verbs (exact match, case-insensitive)
+        assert is_utility_symbol("log")
+        assert is_utility_symbol("Log")
+        assert is_utility_symbol("warn")
+        assert is_utility_symbol("Warn")
+        assert is_utility_symbol("debug")
+        assert is_utility_symbol("Debug")
+        assert is_utility_symbol("info")
+        assert is_utility_symbol("Info")
+        assert is_utility_symbol("trace")
+        assert is_utility_symbol("Trace")
+        assert is_utility_symbol("fatal")
+        assert is_utility_symbol("Fatal")
+        assert is_utility_symbol("error")
+        assert is_utility_symbol("Error")
+        # Go-style format variants
+        assert is_utility_symbol("Errorf")
+        assert is_utility_symbol("Warnf")
+        assert is_utility_symbol("Debugf")
+        assert is_utility_symbol("Infof")
+        assert is_utility_symbol("Tracef")
+        assert is_utility_symbol("Fatalf")
+        assert is_utility_symbol("Logf")
+        assert is_utility_symbol("Printf")
+        # Prefixed variants
+        assert is_utility_symbol("Warnln")
+        assert is_utility_symbol("Errorln")
+        assert is_utility_symbol("Println")
+
+    def test_logging_names_not_false_positive(self):
+        """Domain terms containing logging substrings are NOT matched.
+
+        'error' and 'info' are substrings of many domain-relevant names.
+        The patterns must not false-positive on these.
+        """
+        assert not is_utility_symbol("handleError")
+        # ErrorHandler IS matched by Go error sentinel pattern (?i)^err[A-Z_] — correct
+        assert not is_utility_symbol("UserInfo")
+        assert not is_utility_symbol("information")
+        assert not is_utility_symbol("traceback")
+        assert not is_utility_symbol("debugger")
+        assert not is_utility_symbol("warningLevel")
+        assert not is_utility_symbol("fatalError")  # compound word, not log method
+        assert not is_utility_symbol("login")
+        assert not is_utility_symbol("logout")
+        assert not is_utility_symbol("dialog")
+        assert not is_utility_symbol("catalog")
+
+    def test_exception_class_names(self):
+        """Exception/error classes are utility (thrown/caught infrastructure)."""
+        # Java-style exceptions
+        assert is_utility_symbol("GuacamoleServerException")
+        assert is_utility_symbol("GuacamoleSecurityException")
+        assert is_utility_symbol("IOException")
+        assert is_utility_symbol("RuntimeException")
+        assert is_utility_symbol("NullPointerException")
+        # Python-style errors
+        assert is_utility_symbol("ValueError")
+        assert is_utility_symbol("TypeError")
+        assert is_utility_symbol("KeyError")
+        assert is_utility_symbol("FileNotFoundError")
+        # C#-style exceptions
+        assert is_utility_symbol("ArgumentNullException")
+        assert is_utility_symbol("InvalidOperationException")
+        # Custom project exceptions
+        assert is_utility_symbol("GuacamoleUnsupportedException")
+        assert is_utility_symbol("GuacamoleResourceNotFoundException")
+
+    def test_exception_false_positives(self):
+        """Names containing 'Exception'/'Error' as substrings are NOT matched.
+
+        Note: ErrorHandler, ErrorResponse etc. ARE already matched by the
+        existing Go error sentinel pattern ``^err[A-Z_]`` — that's correct.
+        """
+        # ExceptionHandler ends with "Handler", not "Exception"
+        assert not is_utility_symbol("ExceptionHandler")
+        # camelCase compound words starting with lowercase
+        assert not is_utility_symbol("handleError")
+        assert not is_utility_symbol("showError")
+
+    def test_domain_names_not_matched(self):
+        """Domain-relevant symbol names are NOT detected as utility."""
+        assert not is_utility_symbol("handleRequest")
+        assert not is_utility_symbol("processOrder")
+        assert not is_utility_symbol("UserService")
+        assert not is_utility_symbol("createUser")
+        assert not is_utility_symbol("Router")
+        assert not is_utility_symbol("main")
+        assert not is_utility_symbol("checkout")
+
+
+class TestApplyUtilitySymbolWeights:
+    """Tests for apply_utility_symbol_weights function.
+
+    Utility symbols (loggers, clocks, STL accessors) get their centrality
+    dampened so they don't dominate rankings despite high in-degree.
+    """
+
+    def test_utility_symbol_dampened(self):
+        """Utility symbol centrality is reduced."""
+        logger = make_symbol("Logger", path="src/log.go", language="go")
+        router = make_symbol("Router", path="src/router.go", language="go")
+
+        centrality = {logger.id: 0.9, router.id: 0.7}
+        result = apply_utility_symbol_weights(centrality, [logger, router])
+
+        assert result[logger.id] < centrality[logger.id], (
+            "Logger centrality should be dampened"
+        )
+        assert result[router.id] == centrality[router.id], (
+            "Router centrality should be unchanged"
+        )
+
+    def test_utility_dampening_factor(self):
+        """Utility symbol centrality is reduced by the default factor (0.1)."""
+        clock = make_symbol("DefaultClock", path="src/clock.cs", language="csharp")
+        centrality = {clock.id: 1.0}
+        result = apply_utility_symbol_weights(centrality, [clock])
+        assert result[clock.id] == pytest.approx(0.1)
+
+    def test_non_utility_unchanged(self):
+        """Non-utility symbols are unaffected."""
+        svc = make_symbol("UserService", path="src/service.py")
+        centrality = {svc.id: 0.5}
+        result = apply_utility_symbol_weights(centrality, [svc])
+        assert result[svc.id] == 0.5
+
+    def test_rank_symbols_integrates_utility_weights(self):
+        """rank_symbols should demote utility symbols below domain symbols.
+
+        A Logger with 5 callers should rank below Router with 3 callers
+        because Logger is infrastructure.
+        """
+        logger = make_symbol("Logger", path="src/log.py")
+        router = make_symbol("Router", path="src/router.py")
+        c1 = make_symbol("c1", path="src/a.py")
+        c2 = make_symbol("c2", path="src/b.py")
+        c3 = make_symbol("c3", path="src/c.py")
+        c4 = make_symbol("c4", path="src/d.py")
+        c5 = make_symbol("c5", path="src/e.py")
+
+        edges = [
+            # Logger has 5 callers
+            make_edge(c1.id, logger.id),
+            make_edge(c2.id, logger.id),
+            make_edge(c3.id, logger.id),
+            make_edge(c4.id, logger.id),
+            make_edge(c5.id, logger.id),
+            # Router has 3 callers
+            make_edge(c1.id, router.id),
+            make_edge(c2.id, router.id),
+            make_edge(c3.id, router.id),
+        ]
+
+        all_syms = [logger, router, c1, c2, c3, c4, c5]
+        result = rank_symbols(all_syms, edges)
+
+        logger_ranked = next(r for r in result if r.symbol.name == "Logger")
+        router_ranked = next(r for r in result if r.symbol.name == "Router")
+
+        assert router_ranked.rank < logger_ranked.rank, (
+            f"Router (rank {router_ranked.rank}) should outrank "
+            f"Logger (rank {logger_ranked.rank}) due to utility dampening"
+        )
+
+
+class TestHasLoggingConcept:
+    """Tests for _has_logging_concept — concept-based logging detection."""
+
+    def test_symbol_with_logging_concept(self):
+        """Symbol enriched with 'logging' concept is detected."""
+        sym = make_symbol("XORMLogBridge", path="src/log.go", language="go")
+        sym.meta = {"concepts": [{"concept": "logging", "framework": "logging-conventions"}]}
+        assert _has_logging_concept(sym)
+
+    def test_symbol_with_logger_concept(self):
+        """Symbol enriched with 'logger' concept is detected."""
+        sym = make_symbol("MyCustomLog", path="src/log.py")
+        sym.meta = {"concepts": [{"concept": "logger", "framework": "laminas"}]}
+        assert _has_logging_concept(sym)
+
+    def test_symbol_without_logging_concept(self):
+        """Symbol with non-logging concept is not detected."""
+        sym = make_symbol("UserController", path="src/controller.py")
+        sym.meta = {"concepts": [{"concept": "route", "framework": "django"}]}
+        assert not _has_logging_concept(sym)
+
+    def test_symbol_without_meta(self):
+        """Symbol with no meta is not detected."""
+        sym = make_symbol("Something", path="src/main.py")
+        sym.meta = None
+        assert not _has_logging_concept(sym)
+
+    def test_symbol_without_concepts(self):
+        """Symbol with meta but no concepts is not detected."""
+        sym = make_symbol("Something", path="src/main.py")
+        sym.meta = {"decorators": ["@app.route"]}
+        assert not _has_logging_concept(sym)
+
+    def test_none_symbol(self):
+        """None symbol is not detected."""
+        assert not _has_logging_concept(None)
+
+    def test_concept_based_dampening_in_apply_utility(self):
+        """Symbols with logging concept are dampened by apply_utility_symbol_weights."""
+        bridge = make_symbol("XORMLogBridge", path="src/log_bridge.go", language="go")
+        bridge.meta = {"concepts": [{"concept": "logging", "framework": "logging-conventions"}]}
+        router = make_symbol("Router", path="src/router.go", language="go")
+
+        centrality = {bridge.id: 0.9, router.id: 0.7}
+        result = apply_utility_symbol_weights(centrality, [bridge, router])
+
+        assert result[bridge.id] == pytest.approx(0.09), (
+            "Logging-concept symbol should be dampened to 0.1x"
+        )
+        assert result[router.id] == 0.7, (
+            "Non-logging symbol should be unchanged"
+        )
+
+
+class TestMinEdgeConfidence:
+    """Tests for min_edge_confidence filtering in rank_symbols.
+
+    Low-confidence edges (ast_method_inferred, confidence <0.5) inflate
+    in-degree for common method names like .Lock(), .get(), .setValue().
+    DirLocker.Lock gets 255 false in-degree when only 2 production call
+    sites exist because every .Lock() call globally is attributed to it.
+    Filtering edges below a confidence threshold before computing
+    centrality addresses this.
+    """
+
+    def test_low_confidence_edges_excluded(self):
+        """Edges below min_edge_confidence are excluded from centrality."""
+        target = make_symbol("Lock", path="src/locker.go", language="go")
+        real_caller = make_symbol("OpenDB", path="src/db.go", language="go")
+        false_caller = make_symbol("DoWork", path="src/work.go", language="go")
+        # Third symbol with 2 high-confidence edges (to set the scale)
+        popular = make_symbol("Query", path="src/query.go", language="go")
+
+        edges = [
+            # Real call to Lock with high confidence
+            make_edge(real_caller.id, target.id, confidence=0.9),
+            # False positive from method name collision
+            make_edge(false_caller.id, target.id, confidence=0.35),
+            # Two high-confidence calls to Query (sets normalization scale)
+            make_edge(real_caller.id, popular.id, confidence=0.9),
+            make_edge(false_caller.id, popular.id, confidence=0.8),
+        ]
+
+        # With confidence filter, Lock has 1 edge vs Query has 2
+        result = rank_symbols(
+            [target, real_caller, false_caller, popular],
+            edges,
+            min_edge_confidence=0.5,
+        )
+        target_ranked = next(r for r in result if r.symbol.name == "Lock")
+        popular_ranked = next(r for r in result if r.symbol.name == "Query")
+        # Lock should rank below Query because the false edge was filtered
+        assert target_ranked.rank > popular_ranked.rank
+
+    def test_high_confidence_edges_preserved(self):
+        """Edges at or above min_edge_confidence are preserved."""
+        target = make_symbol("Handler", path="src/handler.go", language="go")
+        c1 = make_symbol("Route1", path="src/routes.go", language="go")
+        c2 = make_symbol("Route2", path="src/routes.go", language="go")
+
+        edges = [
+            make_edge(c1.id, target.id, confidence=0.8),
+            make_edge(c2.id, target.id, confidence=0.5),
+        ]
+
+        result = rank_symbols(
+            [target, c1, c2],
+            edges,
+            min_edge_confidence=0.5,
+        )
+        target_ranked = next(r for r in result if r.symbol.name == "Handler")
+        # Both edges should count — confidence >= threshold
+        assert target_ranked.raw_centrality > 0
+
+    def test_default_no_confidence_filter(self):
+        """Default behavior (no filter) preserves all edges."""
+        target = make_symbol("get", path="src/cache.go", language="go")
+        c1 = make_symbol("Fetch", path="src/fetch.go", language="go")
+
+        edges = [
+            make_edge(c1.id, target.id, confidence=0.1),
+        ]
+
+        # Default: no confidence filter
+        result = rank_symbols([target, c1], edges)
+        target_ranked = next(r for r in result if r.symbol.name == "get")
+        assert target_ranked.raw_centrality > 0
+
+    def test_confidence_filter_changes_ranking(self):
+        """Filtering low-confidence edges reorders symbols correctly.
+
+        Real scenario: DirLocker.Lock has 2 real calls (confidence 0.9)
+        plus 253 inferred .Lock() calls (confidence 0.35). Without filter,
+        Lock dominates. With filter, a domain function with 3 real callers
+        wins.
+        """
+        lock = make_symbol("Lock", path="src/locker.go", language="go")
+        domain = make_symbol("Scrape", path="src/scrape.go", language="go")
+        # 3 real callers for domain function
+        d1 = make_symbol("d1", path="src/a.go", language="go")
+        d2 = make_symbol("d2", path="src/b.go", language="go")
+        d3 = make_symbol("d3", path="src/c.go", language="go")
+        # 2 real callers + 5 false positives for Lock
+        real1 = make_symbol("r1", path="src/d.go", language="go")
+        real2 = make_symbol("r2", path="src/e.go", language="go")
+        false1 = make_symbol("f1", path="src/f.go", language="go")
+        false2 = make_symbol("f2", path="src/g.go", language="go")
+        false3 = make_symbol("f3", path="src/h.go", language="go")
+        false4 = make_symbol("f4", path="src/i.go", language="go")
+        false5 = make_symbol("f5", path="src/j.go", language="go")
+
+        edges = [
+            # Domain function: 3 real calls
+            make_edge(d1.id, domain.id, confidence=0.9),
+            make_edge(d2.id, domain.id, confidence=0.85),
+            make_edge(d3.id, domain.id, confidence=0.9),
+            # Lock: 2 real + 5 false
+            make_edge(real1.id, lock.id, confidence=0.9),
+            make_edge(real2.id, lock.id, confidence=0.85),
+            make_edge(false1.id, lock.id, confidence=0.35),
+            make_edge(false2.id, lock.id, confidence=0.35),
+            make_edge(false3.id, lock.id, confidence=0.35),
+            make_edge(false4.id, lock.id, confidence=0.35),
+            make_edge(false5.id, lock.id, confidence=0.35),
+        ]
+
+        all_syms = [
+            lock, domain, d1, d2, d3, real1, real2,
+            false1, false2, false3, false4, false5,
+        ]
+
+        # Without filter: Lock has 7 edges, domain has 3 → Lock ranks higher
+        result_no_filter = rank_symbols(all_syms, edges)
+        lock_rank_no = next(
+            r for r in result_no_filter if r.symbol.name == "Lock"
+        ).rank
+        domain_rank_no = next(
+            r for r in result_no_filter if r.symbol.name == "Scrape"
+        ).rank
+        assert lock_rank_no < domain_rank_no, (
+            "Without filter, Lock should rank higher (more edges)"
+        )
+
+        # With filter: Lock has 2 real edges, domain has 3 → domain ranks higher
+        result_filtered = rank_symbols(
+            all_syms, edges, min_edge_confidence=0.5
+        )
+        lock_rank_f = next(
+            r for r in result_filtered if r.symbol.name == "Lock"
+        ).rank
+        domain_rank_f = next(
+            r for r in result_filtered if r.symbol.name == "Scrape"
+        ).rank
+        assert domain_rank_f < lock_rank_f, (
+            f"With confidence filter, Scrape (rank {domain_rank_f}) "
+            f"should outrank Lock (rank {lock_rank_f})"
+        )
+
+
+class TestTrivialSinkDampening:
+    """Tests that trivial sinks (high in-degree, near-zero out-degree,
+    short body) are dampened in centrality rankings.
+
+    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
+    rankings purely through raw in-degree:
+      - Timer.Duration (in=98, out=0, LoC=3) ranked #1 in Prometheus
+      - noopMetric.Inc (in=109, out=0, LoC=1) ranked #2
+      - CheckError (in=195, out=1, LoC=3) ranked #2 in ArgoCD
+      - syncTask.name (in=109, out=0, LoC=2) ranked #3
+    These are plumbing — not architecture.
+    """
+
+    def _make_short_symbol(
+        self, name: str, path: str, *, loc: int = 3,
+    ) -> Symbol:
+        """Create a symbol with a controlled lines_of_code."""
+        sym = Symbol(
+            id=f"go:{path}:1-{loc}:function:{name}",
+            name=name,
+            kind="function",
+            language="go",
+            path=path,
+            span=Span(
+                start_line=1, end_line=loc, start_col=0, end_col=0,
+            ),
+        )
+        sym.supply_chain_tier = 1
+        sym.supply_chain_reason = "tier_1"
+        sym.lines_of_code = loc
+        return sym
+
+    def test_trivial_sink_ranks_below_connector(self):
+        """A short-bodied pure sink should rank below a connector that
+        has lower in-degree but meaningful out-degree and body size.
+
+        Real-world scenario from Prometheus bakeoff:
+          - Timer.Duration: in=98, out=0, LoC=3 — 1-line accessor
+          - evaluator.eval: in=15, out=30, LoC=200 — core evaluation loop
+        Without dampening, sink score=98 beats connector score≈66.
+        With dampening, sink should be penalized as trivial plumbing.
+        """
+        # Trivial sink: called by many, calls nothing, 3-line body
+        sink = self._make_short_symbol(
+            "Duration", "util/stats/timer.go", loc=3,
+        )
+
+        # Architectural connector: fewer callers but rich outgoing edges
+        connector = self._make_short_symbol(
+            "eval", "promql/engine.go", loc=200,
+        )
+
+        # Other symbols for edges
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(100)
+        ]
+        callees = [
+            make_symbol(f"callee_{i}", f"pkg/d{i}.go")
+            for i in range(30)
+        ]
+
+        all_syms = [sink, connector] + callers + callees
+
+        # 98 edges into sink, 0 out
+        edges = [make_edge(c.id, sink.id) for c in callers[:98]]
+        # 15 edges into connector, 30 out
+        edges += [make_edge(c.id, connector.id) for c in callers[:15]]
+        edges += [make_edge(connector.id, d.id) for d in callees]
+
+        result = rank_symbols(all_syms, edges)
+
+        sink_rank = next(
+            r for r in result if r.symbol.name == "Duration"
+        ).rank
+        connector_rank = next(
+            r for r in result if r.symbol.name == "eval"
+        ).rank
+
+        assert connector_rank < sink_rank, (
+            f"Connector eval (rank {connector_rank}) should outrank "
+            f"trivial sink Duration (rank {sink_rank})"
+        )
+
+    def test_long_bodied_sink_not_dampened(self):
+        """A sink with a large body should NOT be dampened — it may be a
+        genuinely important leaf function (e.g., a complex validator or
+        formatter).
+        """
+        # Long-bodied sink: high in-degree, 0 out, 100 lines
+        big_sink = self._make_short_symbol(
+            "Validate", "pkg/validator.go", loc=100,
+        )
+        # Short-bodied sink: high in-degree, 0 out, 3 lines
+        trivial_sink = self._make_short_symbol(
+            "Duration", "util/timer.go", loc=3,
+        )
+
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(60)
+        ]
+        all_syms = [big_sink, trivial_sink] + callers
+
+        # Both get 50 incoming edges
+        edges = [make_edge(c.id, big_sink.id) for c in callers[:50]]
+        edges += [make_edge(c.id, trivial_sink.id) for c in callers[:50]]
+
+        result = rank_symbols(all_syms, edges)
+
+        big_rank = next(
+            r for r in result if r.symbol.name == "Validate"
+        ).rank
+        trivial_rank = next(
+            r for r in result if r.symbol.name == "Duration"
+        ).rank
+
+        assert big_rank < trivial_rank, (
+            f"Long-bodied Validate (rank {big_rank}) should outrank "
+            f"trivial Duration (rank {trivial_rank})"
+        )
+
+    def test_sink_with_moderate_outdegree_not_dampened(self):
+        """A sink with out_degree > 1 should NOT be dampened — it's
+        making meaningful calls, not just a trivial accessor.
+        """
+        # Short body but calls 3 things — not trivial
+        meaningful = self._make_short_symbol(
+            "HandleError", "pkg/handler.go", loc=4,
+        )
+        trivial = self._make_short_symbol(
+            "Name", "pkg/task.go", loc=2,
+        )
+
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(60)
+        ]
+        callees = [
+            make_symbol(f"callee_{i}", f"pkg/d{i}.go")
+            for i in range(3)
+        ]
+        all_syms = [meaningful, trivial] + callers + callees
+
+        # Both get 50 incoming edges
+        edges = [make_edge(c.id, meaningful.id) for c in callers[:50]]
+        edges += [make_edge(c.id, trivial.id) for c in callers[:50]]
+        # meaningful calls 3 things (out_degree > 1 threshold)
+        edges += [make_edge(meaningful.id, d.id) for d in callees]
+
+        result = rank_symbols(all_syms, edges)
+
+        meaningful_rank = next(
+            r for r in result if r.symbol.name == "HandleError"
+        ).rank
+        trivial_rank = next(
+            r for r in result if r.symbol.name == "Name"
+        ).rank
+
+        assert meaningful_rank < trivial_rank, (
+            f"HandleError (rank {meaningful_rank}) should outrank "
+            f"trivial Name (rank {trivial_rank})"
+        )
+
+    def test_apply_trivial_sink_weights_directly(self):
+        """Unit test for apply_trivial_sink_weights function."""
+        from hypergumbo_core.ranking import apply_trivial_sink_weights
+
+        # Short-body sink
+        sink = self._make_short_symbol("Inc", "metrics.go", loc=1)
+        # Long-body sink
+        big = self._make_short_symbol("Process", "engine.go", loc=50)
+        # Short body, moderate out-degree
+        caller = self._make_short_symbol("Init", "init.go", loc=3)
+
+        symbols = [sink, big, caller]
+        edges = [
+            make_edge("other", sink.id),
+            make_edge("other", big.id),
+            make_edge(caller.id, "target_a"),
+            make_edge(caller.id, "target_b"),
+        ]
+        centrality = {sink.id: 1.0, big.id: 0.8, caller.id: 0.5}
+
+        result = apply_trivial_sink_weights(centrality, symbols, edges)
+
+        # sink: out=0, loc=1 → dampened
+        assert result[sink.id] == pytest.approx(0.1)
+        # big: out=0, loc=50 → NOT dampened (body too long)
+        assert result[big.id] == pytest.approx(0.8)
+        # caller: out=2, loc=3 → NOT dampened (out_degree > 1)
+        assert result[caller.id] == pytest.approx(0.5)
+
+
+class TestApplyCommonMethodNameWeights:
+    """Tests for apply_common_method_name_weights.
+
+    Methods with names shared across many distinct symbols (e.g., 'execute'
+    defined on 50+ classes) get centrality dampening proportional to the
+    number of symbols sharing that name.  This addresses bakeoff finding
+    WI-luvaj: PartialToViewsMappings#execute (in-degree 2894) dominates
+    rankings due to receiver_call false positives from 'execute' calls
+    resolving to the wrong target.
+    """
+
+    def test_common_name_dampened(self):
+        """Method names shared by many symbols get dampened."""
+        # 12 symbols all named "execute" — this exceeds the default threshold
+        execute_syms = [
+            make_symbol("execute", path=f"src/svc{i}.rb", language="ruby")
+            for i in range(12)
+        ]
+        unique = make_symbol("analyze_data", path="src/analyzer.py")
+
+        all_syms = execute_syms + [unique]
+        centrality = {s.id: 1.0 for s in all_syms}
+
+        result = apply_common_method_name_weights(centrality, all_syms)
+
+        # execute syms should be dampened
+        for s in execute_syms:
+            assert result[s.id] < 1.0, (
+                f"Symbol {s.id} with common name 'execute' should be dampened"
+            )
+        # unique name should be unchanged
+        assert result[unique.id] == 1.0
+
+    def test_below_threshold_not_dampened(self):
+        """Method names shared by fewer symbols than threshold are unaffected."""
+        # 5 symbols named "process" — below default threshold of 10
+        process_syms = [
+            make_symbol("process", path=f"src/handler{i}.py")
+            for i in range(5)
+        ]
+        centrality = {s.id: 1.0 for s in process_syms}
+
+        result = apply_common_method_name_weights(centrality, process_syms)
+
+        for s in process_syms:
+            assert result[s.id] == 1.0, "Below-threshold names should not be dampened"
+
+    def test_dampening_proportional_to_count(self):
+        """Higher duplication counts produce stronger dampening."""
+        # 20 symbols named "call" vs 11 named "run"
+        call_syms = [
+            make_symbol("call", path=f"src/c{i}.py") for i in range(20)
+        ]
+        run_syms = [
+            make_symbol("run", path=f"src/r{i}.py") for i in range(11)
+        ]
+
+        all_syms = call_syms + run_syms
+        centrality = {s.id: 1.0 for s in all_syms}
+
+        result = apply_common_method_name_weights(centrality, all_syms)
+
+        call_weight = result[call_syms[0].id]
+        run_weight = result[run_syms[0].id]
+
+        assert call_weight < run_weight, (
+            f"'call' (20 instances) weight {call_weight} should be less than "
+            f"'run' (11 instances) weight {run_weight}"
+        )
+
+    def test_class_names_excluded(self):
+        """Class-kind symbols are excluded from the method name count.
+
+        Multiple classes named 'Controller' is normal (different modules).
+        Only method/function names should trigger dampening.
+        """
+        controllers = [
+            make_symbol("Controller", path=f"src/app{i}.py", kind="class")
+            for i in range(15)
+        ]
+        centrality = {s.id: 1.0 for s in controllers}
+
+        result = apply_common_method_name_weights(centrality, controllers)
+
+        for s in controllers:
+            assert result[s.id] == 1.0, "Class names should not be dampened"
+
+    def test_integration_with_rank_symbols(self):
+        """rank_symbols integrates common method name dampening.
+
+        When 'execute' is defined on 50+ classes (as in gitlab bakeoff),
+        the first execute symbol should have reduced weighted_centrality
+        compared to its raw_centrality.
+        """
+        # 50 symbols named "execute" — realistic for enterprise codebase
+        execute_syms = [
+            make_symbol("execute", path=f"src/svc{i}.rb", language="ruby")
+            for i in range(50)
+        ]
+        domain_fn = make_symbol("validate_order", path="src/orders.rb", language="ruby")
+
+        # Callers
+        callers = [
+            make_symbol(f"caller{i}", path=f"src/caller{i}.rb", language="ruby")
+            for i in range(10)
+        ]
+
+        edges = (
+            # 10 callers of the first execute symbol
+            [make_edge(c.id, execute_syms[0].id) for c in callers]
+            # 8 callers of the domain function
+            + [make_edge(callers[i].id, domain_fn.id) for i in range(8)]
+        )
+
+        all_syms = execute_syms + [domain_fn] + callers
+        result = rank_symbols(all_syms, edges)
+
+        execute_ranked = next(r for r in result if r.symbol.id == execute_syms[0].id)
+        domain_ranked = next(r for r in result if r.symbol.name == "validate_order")
+
+        # With 50 instances, dampening = 10/50 = 0.2x
+        # execute raw vs weighted should show significant reduction
+        assert execute_ranked.weighted_centrality < execute_ranked.raw_centrality, (
+            f"execute weighted ({execute_ranked.weighted_centrality}) should be "
+            f"less than raw ({execute_ranked.raw_centrality}) due to common name dampening"
+        )
+        # domain function should outrank execute with similar caller counts
+        assert domain_ranked.rank < execute_ranked.rank, (
+            f"validate_order (rank {domain_ranked.rank}) should outrank "
+            f"execute (rank {execute_ranked.rank}) due to common name dampening"
+        )
+
+    def test_floor_applied(self):
+        """Dampening has a floor (doesn't go below 0.1)."""
+        # 200 symbols named "id" — dampening should not go below 0.1
+        id_syms = [
+            make_symbol("id", path=f"src/model{i}.py") for i in range(200)
+        ]
+        centrality = {s.id: 1.0 for s in id_syms}
+
+        result = apply_common_method_name_weights(centrality, id_syms)
+
+        for s in id_syms:
+            assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"
+
+
+class TestComputeTruncationElbow:
+    """Tests for compute_truncation_elbow function."""
+
+    def _make_sym(self, name: str, path: str, start: int, end: int) -> Symbol:
+        """Helper to create a symbol with specific span lines."""
+        return Symbol(
+            id=f"python:{path}:{start}-{end}:function:{name}",
+            name=name,
+            kind="function",
+            language="python",
+            path=path,
+            span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
+        )
+
+    def test_no_symbols_returns_default(self):
+        """With no symbols, returns default_tokens."""
+        result = compute_truncation_elbow([], {}, "src/main.py")
+        assert result == 500
+
+    def test_fewer_than_3_symbols_returns_default(self):
+        """With fewer than 3 symbols with positive centrality, returns default."""
+        syms = [
+            self._make_sym("foo", "src/main.py", 1, 10),
+            self._make_sym("bar", "src/main.py", 15, 25),
+        ]
+        centrality = {syms[0].id: 1.0, syms[1].id: 2.0}
+        result = compute_truncation_elbow(syms, centrality, "src/main.py")
+        assert result == 500
+
+    def test_symbols_concentrated_at_top(self):
+        """High-centrality symbols at top → elbow is early (low token count)."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("important1", path, 1, 10),
+            self._make_sym("important2", path, 12, 20),
+            self._make_sym("important3", path, 22, 30),
+            self._make_sym("trivial1", path, 100, 110),
+            self._make_sym("trivial2", path, 200, 210),
+            self._make_sym("trivial3", path, 300, 310),
+            self._make_sym("trivial4", path, 400, 410),
+        ]
+        centrality = {
+            syms[0].id: 10.0,
+            syms[1].id: 8.0,
+            syms[2].id: 6.0,
+            syms[3].id: 0.1,
+            syms[4].id: 0.1,
+            syms[5].id: 0.1,
+            syms[6].id: 0.1,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        # Elbow should be early — most centrality covered by line 30
+        # 30 lines * 80 chars / 4 chars_per_token = 600 tokens
+        assert result < 2000, f"Expected early elbow, got {result} tokens"
+
+    def test_symbols_spread_evenly(self):
+        """Evenly spread symbols → elbow is later."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym(f"func{i}", path, i * 50 + 1, i * 50 + 40)
+            for i in range(10)
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+        result = compute_truncation_elbow(syms, centrality, path)
+        # With uniform centrality, the chord is a straight line
+        # and distances are small — elbow is at some interior point
+        assert result > 0
+
+    def test_single_high_centrality_symbol_early(self):
+        """One very important symbol early, rest minor → elbow near that symbol."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("core", path, 1, 20),
+            self._make_sym("helper1", path, 50, 60),
+            self._make_sym("helper2", path, 100, 110),
+            self._make_sym("helper3", path, 200, 210),
+            self._make_sym("helper4", path, 300, 310),
+        ]
+        centrality = {
+            syms[0].id: 50.0,  # Dominant
+            syms[1].id: 1.0,
+            syms[2].id: 1.0,
+            syms[3].id: 1.0,
+            syms[4].id: 1.0,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        # Elbow should be near line 60 (after core + first helper)
+        # 60 * 80 / 4 = 1200
+        assert result < 3000
+
+    def test_filters_to_correct_file(self):
+        """Only considers symbols matching the given file_path."""
+        path_a = "src/a.py"
+        path_b = "src/b.py"
+        syms = [
+            self._make_sym("func_a1", path_a, 1, 10),
+            self._make_sym("func_a2", path_a, 20, 30),
+            self._make_sym("func_a3", path_a, 40, 50),
+            self._make_sym("func_b1", path_b, 1, 100),
+            self._make_sym("func_b2", path_b, 200, 300),
+            self._make_sym("func_b3", path_b, 400, 500),
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+
+        result_a = compute_truncation_elbow(syms, centrality, path_a)
+        result_b = compute_truncation_elbow(syms, centrality, path_b)
+
+        # path_b symbols span much further → higher token count
+        assert result_b > result_a
+
+    def test_zero_centrality_symbols_ignored(self):
+        """Symbols with zero centrality are filtered out."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("func1", path, 1, 10),
+            self._make_sym("func2", path, 20, 30),
+            self._make_sym("func3", path, 40, 50),
+            self._make_sym("dead1", path, 100, 110),
+            self._make_sym("dead2", path, 200, 210),
+        ]
+        # Only 2 symbols have positive centrality → fewer than 3 → default
+        centrality = {
+            syms[0].id: 1.0,
+            syms[1].id: 1.0,
+            syms[2].id: 0.0,
+            syms[3].id: 0.0,
+            syms[4].id: 0.0,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        assert result == 500  # Only 2 positive → returns default
+
+    def test_custom_default_tokens(self):
+        """Custom default_tokens is returned when elbow cannot be determined."""
+        result = compute_truncation_elbow([], {}, "src/main.py", default_tokens=1000)
+        assert result == 1000
+
+    def test_all_symbols_same_end_line(self):
+        """When all symbols end on the same line, elbow is at that line."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("func1", path, 1, 10),
+            self._make_sym("func2", path, 3, 10),
+            self._make_sym("func3", path, 5, 10),
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+        result = compute_truncation_elbow(syms, centrality, path)
+        # All end at line 10: 10 * 80 / 4 = 200 tokens
+        assert result == 200

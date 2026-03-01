@@ -1,0 +1,277 @@
+name: Nightly Tests
+
+# Nightly workflow runs expensive cross-Python and integration tests.
+# Results are recorded as commit statuses so release.yml can skip them
+# when the release SHA was already covered by nightly.
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # 11 PM UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-singleton
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Test matrix (Python versions on Linux)
+  # Uses container images to guarantee Python availability —
+  # setup-python@v5 can't find pre-built binaries for Debian 12
+  # (the versions manifest only ships Ubuntu builds).
+  # ─────────────────────────────────────────────────────────────
+  test-matrix:
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+
+    runs-on: codeberg-small-lazy
+    container: python:${{ matrix.python-version }}-bookworm
+    timeout-minutes: 15
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+
+    steps:
+      # Forgejo runner needs Node.js in the container to execute
+      # JS-based actions. python:*-bookworm images don't ship it.
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo-tracker[dev]" \
+                        -e packages/hypergumbo \
+                        jsonschema
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d "packages/hypergumbo-core" ]; then
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            TEST_PATHS="packages/*/tests/"
+          else
+            COV_PATHS="--cov=src"
+            TEST_PATHS=""
+          fi
+
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Test matrix retry (handles transient infra failures)
+  # ─────────────────────────────────────────────────────────────
+  test-matrix-retry:
+    needs: [test-matrix]
+    if: >-
+      always() &&
+      (needs.test-matrix.result == 'failure' || needs.test-matrix.result == 'cancelled')
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+
+    runs-on: self-hosted
+    container: python:${{ matrix.python-version }}-bookworm
+    timeout-minutes: 15
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+
+    steps:
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo-tracker[dev]" \
+                        -e packages/hypergumbo \
+                        jsonschema
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d "packages/hypergumbo-core" ]; then
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            TEST_PATHS="packages/*/tests/"
+          else
+            COV_PATHS="--cov=src"
+            TEST_PATHS=""
+          fi
+
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Integration tests
+  # ─────────────────────────────────────────────────────────────
+  integration-tests:
+    runs-on: codeberg-small-lazy
+    timeout-minutes: 30
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq || true
+
+      - name: Run integration tests
+        run: ./scripts/integration-test --quick
+
+  # ─────────────────────────────────────────────────────────────
+  # Report results as commit statuses
+  # ─────────────────────────────────────────────────────────────
+  report:
+    needs: [test-matrix, test-matrix-retry, integration-tests]
+    if: always()
+    runs-on: codeberg-small-lazy
+
+    steps:
+      - name: Set commit statuses
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "::warning::FORGEJO_TOKEN not set, skipping commit status updates"
+            exit 0
+          fi
+
+          # test-matrix passes if primary OR retry succeeded
+          MATRIX_STATE="failure"
+          if [ "${{ needs.test-matrix.result }}" = "success" ] || \
+             [ "${{ needs.test-matrix-retry.result }}" = "success" ]; then
+            MATRIX_STATE="success"
+          fi
+          curl -s -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"${MATRIX_STATE}\",
+              \"context\": \"nightly/test-matrix\",
+              \"description\": \"Nightly Python 3.10-3.13 test matrix\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API"
+          echo "Set nightly/test-matrix status: $MATRIX_STATE"
+
+          # Report integration-tests status
+          INTEGRATION_STATE="success"
+          if [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            INTEGRATION_STATE="failure"
+          fi
+          curl -s -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"${INTEGRATION_STATE}\",
+              \"context\": \"nightly/integration-tests\",
+              \"description\": \"Nightly integration tests\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API"
+          echo "Set nightly/integration-tests status: $INTEGRATION_STATE"

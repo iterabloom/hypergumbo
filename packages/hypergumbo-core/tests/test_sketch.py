@@ -1,4 +1,5 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
+from typing import ClassVar
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,6 @@ from hypergumbo_core.sketch import (
     truncate_to_tokens,
     _collect_source_files,
     _format_source_files,
-    _format_all_files,
     _format_additional_files,
     _format_language_stats,
     _run_analysis,
@@ -19,10 +19,8 @@ from hypergumbo_core.sketch import (
     _format_structure_tree,
     _format_structure_tree_fallback,
     _collect_important_files,
-    _extract_python_docstrings,
     _extract_domain_vocabulary,
-    _format_vocabulary,
-    _detect_test_summary,
+    _analyze_test_files,
     _format_test_summary,
     _estimate_test_coverage,
     SketchStats,
@@ -35,6 +33,8 @@ from hypergumbo_core.sketch import (
     _resolve_pages_url,
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
+    _format_file_content_block,
+    CONFIG_FILES_BY_LANG,
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
@@ -1297,6 +1297,66 @@ class TestReadmeLineFilterable:
         assert _is_readme_line_filterable("> This is a regular quote") is False
 
 
+class TestDedupeRepeatedPrefix:
+    """Tests for _dedupe_repeated_prefix helper."""
+
+    def test_single_word_repetition(self) -> None:
+        """Single word repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo foo bar") == "foo bar"
+        assert _dedupe_repeated_prefix("foo foo foo bar") == "foo bar"
+        assert _dedupe_repeated_prefix("hypergumbo hypergumbo is a CLI") == "hypergumbo is a CLI"
+
+    def test_two_word_repetition(self) -> None:
+        """Two-word phrase repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo bar foo bar baz") == "foo bar baz"
+        assert _dedupe_repeated_prefix("foo bar foo bar foo bar baz") == "foo bar baz"
+
+    def test_three_word_repetition(self) -> None:
+        """Three-word phrase repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("a b c a b c d") == "a b c d"
+        assert _dedupe_repeated_prefix("a b c a b c a b c d") == "a b c d"
+
+    def test_no_repetition(self) -> None:
+        """Text without repetition is unchanged."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo bar baz") == "foo bar baz"
+        assert _dedupe_repeated_prefix("hypergumbo is a CLI") == "hypergumbo is a CLI"
+
+    def test_empty_and_short_text(self) -> None:
+        """Empty and single-word text is unchanged."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("") == ""
+        assert _dedupe_repeated_prefix("foo") == "foo"
+
+    def test_entire_text_is_repetition(self) -> None:
+        """If entire text is repeated phrase, collapse to single occurrence."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo foo") == "foo"
+        assert _dedupe_repeated_prefix("foo foo foo") == "foo"
+        assert _dedupe_repeated_prefix("a b a b") == "a b"
+
+    def test_longer_phrase_repetition(self) -> None:
+        """Longer phrases (up to 10 words) are handled."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        phrase = "one two three four five"
+        text = f"{phrase} {phrase} remaining"
+        assert _dedupe_repeated_prefix(text) == f"{phrase} remaining"
+
+    def test_max_phrase_len_respected(self) -> None:
+        """Repetitions beyond max_phrase_len are not detected."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        # 11-word phrase repeated should not be detected with default max=10
+        long_phrase = "a b c d e f g h i j k"  # 11 words
+        text = f"{long_phrase} {long_phrase} end"
+        # Should be unchanged since we only check up to 10-word phrases
+        assert _dedupe_repeated_prefix(text) == text
+        # But with higher max, it would be detected
+        assert _dedupe_repeated_prefix(text, max_phrase_len=11) == f"{long_phrase} end"
+
+
 class TestCollectSourceFiles:
     """Tests for source file collection."""
 
@@ -1413,56 +1473,6 @@ class TestFormatSourceFiles:
         assert "`low.py`" in file_lines[2]
 
 
-class TestFormatAllFiles:
-    """Tests for all files formatting."""
-
-    def test_lists_all_files(self, tmp_path: Path) -> None:
-        """Lists all non-excluded files."""
-        (tmp_path / "readme.md").write_text("# README")
-        (tmp_path / "main.py").write_text("print('hello')")
-
-        result = _format_all_files(tmp_path)
-
-        assert "## All Files" in result
-        assert "`main.py`" in result
-        assert "`readme.md`" in result
-
-    def test_excludes_hidden_files(self, tmp_path: Path) -> None:
-        """Excludes hidden files."""
-        (tmp_path / ".hidden").write_text("secret")
-        (tmp_path / "visible.txt").write_text("public")
-
-        result = _format_all_files(tmp_path)
-
-        assert ".hidden" not in result
-        assert "`visible.txt`" in result
-
-    def test_excludes_node_modules(self, tmp_path: Path) -> None:
-        """Excludes node_modules directory."""
-        nm = tmp_path / "node_modules"
-        nm.mkdir()
-        (nm / "package.json").write_text("{}")
-        (tmp_path / "index.js").write_text("console.log('hi')")
-
-        result = _format_all_files(tmp_path)
-
-        assert "node_modules" not in result
-        assert "`index.js`" in result
-
-    def test_respects_max_files(self, tmp_path: Path) -> None:
-        """Limits output to max_files."""
-        for i in range(10):
-            (tmp_path / f"file_{i}.txt").write_text(f"content {i}")
-
-        result = _format_all_files(tmp_path, max_files=3)
-
-        assert "... and 7 more files" in result
-
-    def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
-        """Returns empty string for empty directory."""
-        result = _format_all_files(tmp_path)
-        assert result == ""
-
 
 def _make_test_symbol(
     name: str,
@@ -1478,6 +1488,38 @@ def _make_test_symbol(
         path=path,
         span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
     )
+
+
+class TestFormatFileContentBlock:
+    """Tests for _format_file_content_block fence delimiter selection."""
+
+    def test_simple_content_uses_triple_backticks(self) -> None:
+        """Content without backticks uses standard triple-backtick fence."""
+        lines = _format_file_content_block("readme.md", "Hello world")
+        assert lines[1] == "```"
+        assert lines[3] == "```"
+
+    def test_content_with_triple_backticks_uses_longer_fence(self) -> None:
+        """Content containing ``` gets a fence with 4+ backticks."""
+        content = "Some text\n```python\nprint('hi')\n```\nMore text"
+        lines = _format_file_content_block("readme.md", content)
+        fence = lines[1]
+        assert len(fence) >= 4
+        assert fence == "`" * len(fence)
+        assert lines[3] == fence
+
+    def test_content_with_quad_backticks_uses_five(self) -> None:
+        """Content containing ```` gets a fence with 5 backticks."""
+        content = "Outer\n````\ninner\n````\nEnd"
+        lines = _format_file_content_block("file.md", content)
+        fence = lines[1]
+        assert len(fence) >= 5
+
+    def test_markers_present(self) -> None:
+        """START and END markers are present in output."""
+        lines = _format_file_content_block("src/app.py", "x = 1")
+        assert "START of src/app.py" in lines[0]
+        assert "END of src/app.py" in lines[4]
 
 
 class TestFormatAdditionalFiles:
@@ -2590,6 +2632,23 @@ class TestIsTestPath:
         assert _is_test_path("/src/parser_test.rs") is True
         assert _is_test_path("lib_test.rs") is True
 
+    def test_testing_directory(self) -> None:
+        """Detects testing/ directory (Go convention for test helpers).
+
+        Harbor uses src/testing/ for test infrastructure (Suite struct).
+        ArgoCD uses gitops-engine/pkg/utils/testing/ for test helpers.
+        """
+        assert _is_test_path("/project/src/testing/suite.go") is True
+        assert _is_test_path("pkg/utils/testing/helpers.go") is True
+        # But not a file that merely contains 'testing' in name
+        assert _is_test_path("/src/testing_utils.go") is False
+
+    def test_testutil_directory(self) -> None:
+        """Detects testutil/ and testhelper/ directories."""
+        assert _is_test_path("/project/testutil/helpers.go") is True
+        assert _is_test_path("pkg/testhelper/mock_server.go") is True
+        assert _is_test_path("/project/testhelpers/setup.go") is True
+
 
 class TestComputeCentrality:
     """Tests for graph centrality computation."""
@@ -2626,7 +2685,7 @@ class TestFormatEntrypoints:
     """Tests for entry point formatting."""
 
     def test_formats_entrypoints(self, tmp_path: Path) -> None:
-        """Formats entry points as Markdown."""
+        """Formats entry points as Markdown with group sub-headers."""
         symbols = [
             Symbol(id="main", name="main", kind="function", language="python",
                    path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
@@ -2639,11 +2698,12 @@ class TestFormatEntrypoints:
         result = _format_entrypoints(entrypoints, symbols, tmp_path)
 
         assert "## Entry Points" in result
+        assert "### CLI & Scripts" in result
         assert "`main`" in result
         assert "CLI main" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
-        """Limits output to max_entries."""
+        """Limits output to max_entries per group."""
         symbols = [
             Symbol(id=f"ep{i}", name=f"ep{i}", kind="function", language="python",
                    path=str(tmp_path / "app.py"), span=Span(i, 1, i, 10))
@@ -2657,7 +2717,8 @@ class TestFormatEntrypoints:
 
         result = _format_entrypoints(entrypoints, symbols, tmp_path, max_entries=3)
 
-        assert "... and 7 more entry points" in result
+        assert "### HTTP Routes" in result
+        assert "... and 7 more" in result
 
     def test_empty_entrypoints_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty entry points."""
@@ -2676,12 +2737,90 @@ class TestFormatEntrypoints:
         assert "`unknown:symbol`" in result
         assert "CLI main" in result
 
+    def test_groups_by_kind(self, tmp_path: Path) -> None:
+        """Multiple kinds get separate group sub-headers; empty groups omitted."""
+        symbols = [
+            Symbol(id="cli_ep", name="cli_ep", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="route_ep", name="route_ep", kind="function", language="python",
+                   path=str(tmp_path / "api.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="cli_ep", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+            Entrypoint(symbol_id="route_ep", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.8, label="HTTP GET /"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### CLI & Scripts" in result
+        assert "### HTTP Routes" in result
+        # Empty groups should NOT appear
+        assert "### Controllers" not in result
+        assert "### GraphQL" not in result
+        assert "### Mobile" not in result
+
+    def test_excludes_test_functions(self, tmp_path: Path) -> None:
+        """TEST_FUNCTION entries are excluded from output."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="test_main", name="test_main", kind="function", language="python",
+                   path=str(tmp_path / "test_cli.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+            Entrypoint(symbol_id="test_main", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.95, label="pytest"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "`main`" in result
+        assert "test_main" not in result
+
+    def test_only_test_functions_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string when all entries are test functions."""
+        entrypoints = [
+            Entrypoint(symbol_id="test_a", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.95, label="pytest"),
+            Entrypoint(symbol_id="test_b", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.90, label="pytest"),
+        ]
+
+        result = _format_entrypoints(entrypoints, [], tmp_path)
+
+        assert result == ""
+
+    def test_ungrouped_kind_falls_to_other(self, tmp_path: Path) -> None:
+        """Entry points with kinds not in any group land in 'Other'."""
+        from unittest.mock import patch
+        import hypergumbo_core.sketch as sketch_mod
+
+        symbols = [
+            Symbol(id="ep1", name="ep1", kind="function", language="python",
+                   path=str(tmp_path / "app.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="ep1", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+        ]
+
+        # Patch _ENTRYPOINT_GROUPS to an empty list so CLI_MAIN is ungrouped
+        with patch.object(sketch_mod, "_ENTRYPOINT_GROUPS", [("Other", {EntrypointKind.CONNECTIVITY_BASED.value})]):
+            result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### Other" in result
+        assert "`ep1`" in result
+
 
 class TestFormatDatamodels:
     """Tests for data model formatting."""
 
     def test_formats_datamodels(self, tmp_path: Path) -> None:
-        """Formats data models as Markdown."""
+        """Formats data models grouped by file path."""
         symbols = [
             Symbol(id="test:User", name="User", kind="class", language="python",
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2694,8 +2833,8 @@ class TestFormatDatamodels:
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
         assert "## Data Models" in result
-        assert "`User`" in result
-        assert "Django model" in result
+        assert "`models.py`:" in result
+        assert "  - `User` (Django model)" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
         """Limits output to max_entries."""
@@ -2720,7 +2859,7 @@ class TestFormatDatamodels:
         assert result == ""
 
     def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
-        """Falls back to symbol_id when symbol not found."""
+        """Falls back to symbol_id in Unknown group when symbol not found."""
         datamodels = [
             DataModel(symbol_id="unknown:Model", kind=DataModelKind.DATACLASS,
                       confidence=0.90, label="@dataclass", framework="Python"),
@@ -2728,11 +2867,11 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, [], tmp_path)
 
-        assert "`unknown:Model`" in result
-        assert "@dataclass" in result
+        assert "Unknown:" in result
+        assert "  - `unknown:Model` (@dataclass)" in result
 
     def test_format_without_framework(self, tmp_path: Path) -> None:
-        """Formats model without framework info."""
+        """Formats model without framework info under file group."""
         symbols = [
             Symbol(id="test:UserModel", name="UserModel", kind="class", language="python",
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2744,11 +2883,11 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
-        assert "`UserModel`" in result
-        assert "(Domain model)" in result
+        assert "`models.py`:" in result
+        assert "  - `UserModel` (Domain model)" in result
 
     def test_strips_repo_root_from_path(self, tmp_path: Path) -> None:
-        """Strips repo root from file paths."""
+        """Strips repo root from file path group headers."""
         symbols = [
             Symbol(id="test:User", name="User", kind="class", language="python",
                    path=str(tmp_path / "src" / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2760,8 +2899,43 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
-        # Path should be relative, not absolute
-        assert "src/models.py" in result or "src\\models.py" in result
+        # Path should appear as a group header, relative not absolute
+        assert "`src/models.py`:" in result or "`src\\models.py`:" in result
+        assert str(tmp_path) not in result
+
+    def test_groups_models_by_file(self, tmp_path: Path) -> None:
+        """Groups multiple models from the same file under one header."""
+        symbols = [
+            Symbol(id="test:User", name="User", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="test:Post", name="Post", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(10, 1, 10, 10)),
+            Symbol(id="test:Config", name="Config", kind="class", language="python",
+                   path=str(tmp_path / "settings.py"), span=Span(1, 1, 1, 10)),
+        ]
+        datamodels = [
+            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:Post", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.90, label="model", framework="Django"),
+            DataModel(symbol_id="test:Config", kind=DataModelKind.DATACLASS,
+                      confidence=0.85, label="@dataclass", framework="Python"),
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path)
+
+        # File path appears once as a group header
+        assert result.count("`models.py`:") == 1
+        assert result.count("`settings.py`:") == 1
+        # Both models under models.py
+        assert "  - `User` (Django model)" in result
+        assert "  - `Post` (Django model)" in result
+        # Config under settings.py
+        assert "  - `Config` (Python @dataclass)" in result
+        # models.py group comes first (User has higher confidence)
+        models_pos = result.index("`models.py`:")
+        settings_pos = result.index("`settings.py`:")
+        assert models_pos < settings_pos
 
 
 class TestFormatSymbols:
@@ -3174,6 +3348,93 @@ class TestFormatSymbols:
         assert "we omitted" in result and "appearances of" in result
         # Third+: short format "X omitted"
         assert "2 omitted" in result  # Short format for third+ item
+
+
+    def test_trivial_sinks_dampened_in_symbols(self) -> None:
+        """Trivial sinks (short body, near-zero out-degree) should rank
+        below connectors with similar or lower in-degree.
+
+        This tests that _format_symbols applies trivial sink dampening
+        (from ranking.apply_trivial_sink_weights) so that one-line
+        accessors like Timer.Duration don't dominate the sketch output.
+        """
+        repo_root = Path("/fake/repo")
+
+        # Trivial sink: 3-line body, 0 out-degree, 80 callers
+        sink = Symbol(
+            id="go:util/timer.go:1-3:method:Duration",
+            name="Duration", kind="method", language="go",
+            path="/fake/repo/util/timer.go",
+            span=Span(1, 0, 3, 0),
+        )
+        sink.supply_chain_tier = 1
+        sink.supply_chain_reason = "tier_1"
+        sink.lines_of_code = 3
+
+        # Connector: 50-line body, has outgoing edges, 20 callers
+        connector = Symbol(
+            id="go:engine/eval.go:1-50:method:eval",
+            name="eval", kind="method", language="go",
+            path="/fake/repo/engine/eval.go",
+            span=Span(1, 0, 50, 0),
+        )
+        connector.supply_chain_tier = 1
+        connector.supply_chain_reason = "tier_1"
+        connector.lines_of_code = 50
+
+        # Caller symbols
+        callers = []
+        for i in range(80):
+            c = Symbol(
+                id=f"go:pkg/c{i}.go:1-10:function:caller_{i}",
+                name=f"caller_{i}", kind="function", language="go",
+                path=f"/fake/repo/pkg/c{i}.go",
+                span=Span(1, 0, 10, 0),
+            )
+            c.supply_chain_tier = 1
+            c.supply_chain_reason = "tier_1"
+            callers.append(c)
+
+        # Callees for the connector
+        callees = []
+        for i in range(10):
+            d = Symbol(
+                id=f"go:pkg/d{i}.go:1-10:function:callee_{i}",
+                name=f"callee_{i}", kind="function", language="go",
+                path=f"/fake/repo/pkg/d{i}.go",
+                span=Span(1, 0, 10, 0),
+            )
+            d.supply_chain_tier = 1
+            d.supply_chain_reason = "tier_1"
+            callees.append(d)
+
+        all_syms = [sink, connector] + callers + callees
+
+        # 80 edges into sink (0 out), 20 edges into connector + 10 out
+        edges = [
+            Edge.create(src=c.id, dst=sink.id, edge_type="calls", line=1, confidence=0.9)
+            for c in callers
+        ]
+        edges += [
+            Edge.create(src=c.id, dst=connector.id, edge_type="calls", line=1, confidence=0.9)
+            for c in callers[:20]
+        ]
+        edges += [
+            Edge.create(src=connector.id, dst=d.id, edge_type="calls", line=1, confidence=0.9)
+            for d in callees
+        ]
+
+        result = _format_symbols(all_syms, edges, repo_root)
+
+        # The connector (eval) should appear before the sink (Duration)
+        eval_pos = result.find("`eval`")
+        duration_pos = result.find("`Duration`")
+        assert eval_pos != -1, "eval should appear in symbols"
+        assert duration_pos != -1, "Duration should appear in symbols"
+        assert eval_pos < duration_pos, (
+            f"eval (pos {eval_pos}) should appear before Duration "
+            f"(pos {duration_pos}) in symbol output"
+        )
 
 
 class TestGenerateSketchWithBudget:
@@ -4508,144 +4769,6 @@ class TestCollectImportantFiles:
         assert result[0] == "file0.c"
 
 
-class TestExtractPythonDocstrings:
-    """Tests for Python docstring extraction."""
-
-    def test_extracts_function_docstring(self, tmp_path: Path) -> None:
-        """Extracts docstring from Python function."""
-        (tmp_path / "app.py").write_text(
-            "def hello():\n"
-            "    \"\"\"Greets the user.\"\"\"\n"
-            "    pass\n"
-        )
-        symbol = Symbol(
-            id="hello",
-            name="hello",
-            kind="function",
-            language="python",
-            path=str(tmp_path / "app.py"),
-            span=Span(1, 3, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        assert result.get("hello") == "Greets the user."
-
-    def test_extracts_class_docstring(self, tmp_path: Path) -> None:
-        """Extracts docstring from Python class."""
-        (tmp_path / "models.py").write_text(
-            "class User:\n"
-            "    \"\"\"Represents a user in the system.\"\"\"\n"
-            "    pass\n"
-        )
-        symbol = Symbol(
-            id="User",
-            name="User",
-            kind="class",
-            language="python",
-            path=str(tmp_path / "models.py"),
-            span=Span(1, 3, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        assert result.get("User") == "Represents a user in the system."
-
-    def test_truncates_long_docstrings(self, tmp_path: Path) -> None:
-        """Truncates docstrings longer than max_len."""
-        long_doc = "A" * 100
-        (tmp_path / "app.py").write_text(
-            f"def process():\n"
-            f"    \"\"\"{long_doc}\"\"\"\n"
-            f"    pass\n"
-        )
-        symbol = Symbol(
-            id="process",
-            name="process",
-            kind="function",
-            language="python",
-            path=str(tmp_path / "app.py"),
-            span=Span(1, 3, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol], max_len=50)
-
-        assert result.get("process") is not None
-        assert len(result["process"]) <= 50
-        assert result["process"].endswith("…")
-
-    def test_handles_missing_file(self, tmp_path: Path) -> None:
-        """Gracefully handles missing files."""
-        symbol = Symbol(
-            id="missing",
-            name="missing",
-            kind="function",
-            language="python",
-            path=str(tmp_path / "nonexistent.py"),
-            span=Span(1, 3, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        assert result.get("missing") is None
-
-    def test_handles_syntax_error(self, tmp_path: Path) -> None:
-        """Gracefully handles syntax errors in Python files."""
-        (tmp_path / "bad.py").write_text("def broken(:\n    pass\n")
-        symbol = Symbol(
-            id="broken",
-            name="broken",
-            kind="function",
-            language="python",
-            path=str(tmp_path / "bad.py"),
-            span=Span(1, 2, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        # Should not crash, just return empty
-        assert result.get("broken") is None
-
-    def test_ignores_non_python_symbols(self, tmp_path: Path) -> None:
-        """Ignores symbols from non-Python languages."""
-        symbol = Symbol(
-            id="main",
-            name="main",
-            kind="function",
-            language="javascript",
-            path=str(tmp_path / "app.js"),
-            span=Span(1, 3, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        assert len(result) == 0
-
-    def test_extracts_first_line_only(self, tmp_path: Path) -> None:
-        """Only extracts first line of multi-line docstrings."""
-        (tmp_path / "app.py").write_text(
-            "def compute():\n"
-            "    \"\"\"Computes the result.\n\n"
-            "    This is a longer explanation\n"
-            "    that spans multiple lines.\n"
-            "    \"\"\"\n"
-            "    pass\n"
-        )
-        symbol = Symbol(
-            id="compute",
-            name="compute",
-            kind="function",
-            language="python",
-            path=str(tmp_path / "app.py"),
-            span=Span(1, 7, 0, 10),
-        )
-
-        result = _extract_python_docstrings(tmp_path, [symbol])
-
-        assert result.get("compute") == "Computes the result."
-        assert "longer explanation" not in result.get("compute", "")
-
-
 class TestExtractDomainVocabulary:
     """Tests for domain vocabulary extraction."""
 
@@ -4804,36 +4927,6 @@ class TestExtractDomainVocabulary:
 
         assert isinstance(terms, list)
 
-
-class TestFormatVocabulary:
-    """Tests for vocabulary formatting."""
-
-    def test_formats_vocabulary_section(self) -> None:
-        """Formats vocabulary as Markdown section."""
-        terms = ["authentication", "payment", "invoice", "customer"]
-
-        result = _format_vocabulary(terms)
-
-        assert "## Domain Vocabulary" in result
-        assert "authentication" in result
-        assert "payment" in result
-        assert "invoice" in result
-        assert "customer" in result
-
-    def test_empty_terms_returns_empty(self) -> None:
-        """Returns empty string for empty terms list."""
-        result = _format_vocabulary([])
-
-        assert result == ""
-
-    def test_formats_as_key_terms(self) -> None:
-        """Formats terms with 'Key terms:' prefix."""
-        terms = ["user", "session", "token"]
-
-        result = _format_vocabulary(terms)
-
-        assert "*Key terms:" in result
-        assert "user, session, token" in result
 
 
 class TestConfigExtraction:
@@ -5232,12 +5325,12 @@ gem "puma"
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
-    def test_embedding_mode_deprioritizes_license_file(self, tmp_path: Path) -> None:
-        """Embedding mode deprioritizes LICENSE files to favor informative content.
+    def test_embedding_mode_excludes_license_file(self, tmp_path: Path) -> None:
+        """Embedding mode excludes LICENSE files entirely.
 
-        LICENSE files have verbose legal boilerplate that matches many probes
-        but has low information density. A 50% penalty is applied to LICENSE/COPYING
-        files to prioritize more useful config content.
+        LICENSE files contain verbose legal boilerplate. The heuristic path
+        already emits a compact one-liner like "LICENSE: MIT", so LICENSE
+        content should not be included in the embedding candidate pool.
         """
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
@@ -5255,7 +5348,9 @@ gem "puma"
 
         result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
 
-        # Should prioritize package.json content over LICENSE boilerplate
+        # LICENSE content should be absent from embedding output
+        assert "Permission is hereby granted" not in result
+        # package.json content should be present
         assert "package.json" in result or "test-project" in result or "express" in result
 
     @pytest.mark.skipif(
@@ -5370,6 +5465,39 @@ services:
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
+    def test_embedding_mode_no_overlapping_chunks(self, tmp_path: Path) -> None:
+        """Adjacent high-scoring lines should not produce duplicate text."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create config with adjacent lines that would all score high
+        (tmp_path / "package.json").write_text("""{
+  "name": "overlap-test",
+  "version": "1.0.0",
+  "description": "Testing overlap dedup",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.0.0",
+    "pg": "^8.0.0",
+    "redis": "^4.0.0"
+  }
+}""")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        lines = result.split("\n")
+        # Extract actual content lines (strip markers and whitespace)
+        content_lines = [
+            ln.lstrip(" >~").strip() for ln in lines
+            if ln.strip() and not ln.startswith("[")
+        ]
+        # No exact duplicate content lines
+        assert len(content_lines) == len(set(content_lines)), (
+            f"Found duplicate lines: {content_lines}"
+        )
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
         """Hybrid mode uses heuristics first, then embeddings for remaining."""
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
@@ -5471,6 +5599,254 @@ services:
         assert "groupId: com.example" in result
         assert "artifactId: my-app" in result
         assert "version: 1.0-SNAPSHOT" in result
+
+    def test_collect_config_content_excludes_license(self, tmp_path: Path) -> None:
+        """_collect_config_content does not include LICENSE file content."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "LICENSE").write_text("MIT License\nCopyright (c) 2024")
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert "LICENSE" not in sources
+        assert any("package.json" in s for s in sources)
+
+    def test_monorepo_nested_config_discovery(self, tmp_path: Path) -> None:
+        """Monorepo manifests at depth 1-2 are discovered."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        # Create monorepo structure
+        (tmp_path / "packages" / "core").mkdir(parents=True)
+        (tmp_path / "packages" / "core" / "pyproject.toml").write_text(
+            '[project]\nname = "core"'
+        )
+        (tmp_path / "services" / "api").mkdir(parents=True)
+        (tmp_path / "services" / "api" / "package.json").write_text(
+            '{"name": "api"}'
+        )
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert "packages/core/pyproject.toml" in sources
+        assert "services/api/package.json" in sources
+
+    def test_monorepo_deduplicates_config_subdirs(self, tmp_path: Path) -> None:
+        """Monorepo discovery does not duplicate files already found via CONFIG_SUBDIRS."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        # 'server' is in CONFIG_SUBDIRS, so server/package.json is found by both
+        # the CONFIG_SUBDIRS loop AND the monorepo glob (*/package.json)
+        (tmp_path / "server").mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        # Should appear exactly once, not duplicated
+        server_entries = [s for s in sources if "server" in s and "package.json" in s]
+        assert len(server_entries) == 1
+
+    def test_monorepo_excludes_node_modules(self, tmp_path: Path) -> None:
+        """node_modules package.json files are not discovered."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+        (tmp_path / "node_modules" / "pkg" / "package.json").write_text(
+            '{"name": "pkg"}'
+        )
+        # A real package should be found
+        (tmp_path / "packages" / "ui").mkdir(parents=True)
+        (tmp_path / "packages" / "ui" / "package.json").write_text(
+            '{"name": "ui"}'
+        )
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert not any("node_modules" in s for s in sources)
+        assert "packages/ui/package.json" in sources
+
+    def test_config_excludes_docs_directory(self, tmp_path: Path) -> None:
+        """Files under docs/ are excluded from config candidates."""
+        from hypergumbo_core.sketch import _is_config_excluded_path
+
+        assert _is_config_excluded_path("docs/schema.json") is True
+        assert _is_config_excluded_path("doc/config.yml") is True
+        assert _is_config_excluded_path("tests/fixtures/config.json") is True
+        # Root-level config files should not be excluded
+        assert _is_config_excluded_path("config.json") is False
+        assert _is_config_excluded_path("pyproject.toml") is False
+
+    def test_config_excludes_schema_json(self, tmp_path: Path) -> None:
+        """schema.json is excluded regardless of directory."""
+        from hypergumbo_core.sketch import _is_config_excluded_path
+
+        assert _is_config_excluded_path("schema.json") is True
+        assert _is_config_excluded_path("api/schema.json") is True
+        # Other JSON files are not excluded by name
+        assert _is_config_excluded_path("config.json") is False
+
+
+class TestCrossFileDedup:
+    """Tests for cross-file deduplication in embedding-based config extraction."""
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_cross_file_dedup_identical_content(self, tmp_path: Path) -> None:
+        """Identical build-system stanzas across monorepo packages collapse to one."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        identical_build = '[build-system]\nrequires = ["hatchling>=1.24"]\nbuild-backend = "hatchling.build"'
+
+        # Three monorepo packages with identical build-system but different names
+        for pkg in ("core", "utils", "cli"):
+            pkg_dir = tmp_path / "packages" / pkg
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "pyproject.toml").write_text(
+                f'[project]\nname = "myapp-{pkg}"\nversion = "1.0.0"\n'
+                f'description = "The {pkg} package for myapp"\n\n'
+                f'{identical_build}\n'
+            )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # The identical build-system line should appear at most once
+        count = result.count('requires = ["hatchling>=1.24"]')
+        assert count <= 1, (
+            f"Expected build-system line at most once, found {count} times:\n{result}"
+        )
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_cross_file_dedup_preserves_unique(self, tmp_path: Path) -> None:
+        """Different config content across files is preserved despite dedup."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Two packages with genuinely different content
+        pkg_a = tmp_path / "packages" / "api"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "pyproject.toml").write_text(
+            '[project]\nname = "myapp-api"\nversion = "2.0.0"\n'
+            'description = "REST API server using Flask and PostgreSQL"\n'
+            'dependencies = ["flask>=3.0", "psycopg2>=2.9"]\n'
+        )
+
+        pkg_b = tmp_path / "packages" / "ml"
+        pkg_b.mkdir(parents=True)
+        (pkg_b / "pyproject.toml").write_text(
+            '[project]\nname = "myapp-ml"\nversion = "0.5.0"\n'
+            'description = "Machine learning pipeline using PyTorch"\n'
+            'dependencies = ["torch>=2.0", "transformers>=4.30"]\n'
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Both packages' unique content should be represented
+        has_api = "flask" in result.lower() or "myapp-api" in result
+        has_ml = "torch" in result.lower() or "myapp-ml" in result
+        assert has_api and has_ml, (
+            f"Expected content from both packages. API present: {has_api}, "
+            f"ML present: {has_ml}.\nResult:\n{result}"
+        )
+
+    def test_cross_file_sim_threshold_value(self) -> None:
+        """_CROSS_FILE_SIM_THRESHOLD is set high enough for near-identical text only."""
+        from hypergumbo_core.sketch import _CROSS_FILE_SIM_THRESHOLD
+
+        # Must be in (0.9, 1.0) — high enough to avoid false positives
+        assert 0.9 < _CROSS_FILE_SIM_THRESHOLD <= 1.0
+
+
+class TestNegativePatterns:
+    """Tests for negative probe patterns that reduce false positives."""
+
+    def test_negative_patterns_exist(self) -> None:
+        """NEGATIVE_PATTERNS is a non-empty list of valid strings."""
+        from hypergumbo_core.sketch_embeddings import NEGATIVE_PATTERNS
+
+        assert len(NEGATIVE_PATTERNS) > 0
+        assert all(isinstance(p, str) and len(p) > 10 for p in NEGATIVE_PATTERNS)
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_negative_probes_reduce_schema_score(self, tmp_path: Path) -> None:
+        """Schema definitions should score lower than real config content."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create a real config and a schema definition file
+        (tmp_path / "package.json").write_text("""{
+  "name": "negative-probe-test",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.0.0",
+    "pg": "^8.0.0"
+  }
+}""")
+        (tmp_path / "schema.json").write_text("""{
+  "type": "object",
+  "required": ["name", "version"],
+  "properties": {
+    "name": {"type": "string", "description": "Package name"},
+    "version": {"type": "string", "description": "Version number"},
+    "license": {"type": "string", "description": "License identifier"}
+  }
+}""")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Real config should be present
+        assert "package.json" in result or "express" in result
+        # Schema definitions should not dominate (schema.json excluded by name)
+        assert "schema.json" not in result
+
+
+class TestLowQualityChunk:
+    """Tests for the _is_low_quality_chunk content quality filter."""
+
+    def test_high_punctuation_rejected(self) -> None:
+        """Chunks with mostly punctuation are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        # Short but all punctuation — caught by alnum < 20
+        assert _is_low_quality_chunk("==============================") is True
+        assert _is_low_quality_chunk("}, }, }, }, }, }") is True
+        # 20 alnum chars in 55 total → ratio 0.36 < 0.4 → rejected by punctuation check
+        punct_heavy = "abcdefghijklmnopqrst" + "!@#$%^&*(){}[]<>:;,./?-=_+~`" + "|\\'"
+        assert _is_low_quality_chunk(punct_heavy) is True
+
+    def test_short_meaningful_rejected(self) -> None:
+        """Chunks with very little meaningful text are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        assert _is_low_quality_chunk("---") is True
+        assert _is_low_quality_chunk("[") is True
+        assert _is_low_quality_chunk("  ") is True
+        assert _is_low_quality_chunk("") is True
+        # Whitespace-only after stripping
+        assert _is_low_quality_chunk("\t\t\t") is True
+
+    def test_normal_content_accepted(self) -> None:
+        """Normal config content passes the quality filter."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        assert _is_low_quality_chunk('"name": "my-awesome-project-name"') is False
+        assert _is_low_quality_chunk("dependencies = [flask, sqlalchemy, redis]") is False
+        assert _is_low_quality_chunk('version = "2.0.0" description = "A test project"') is False
+
+    def test_separator_lines_rejected(self) -> None:
+        """Chunks that are mostly separator lines are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        # Enough alnum chars to pass < 20, but separator lines dominate
+        assert _is_low_quality_chunk(
+            "abcdefghij1234567890\n===\n==="
+        ) is True
+        assert _is_low_quality_chunk("***\n***\n***") is True
 
 
 class TestLogScaledSampling:
@@ -5657,78 +6033,84 @@ class TestLogScaledSampling:
         assert chunk_explicit == "A B C"
 
 
-class TestDetectTestSummary:
-    """Tests for _detect_test_summary function."""
+class TestAnalyzeTestFiles:
+    """Tests for _analyze_test_files function (consolidates _count_test_loc + _detect_test_summary)."""
 
     def test_no_test_files(self, tmp_path: Path) -> None:
-        """Returns None when no test files exist."""
+        """Returns empty analysis when no test files exist."""
         (tmp_path / "main.py").write_text("print('hello')")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is None
-        assert frameworks == set()
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is None
+        assert result.frameworks == set()
+        assert result.test_files == 0
+        assert result.test_loc == 0
 
     def test_single_python_test_file(self, tmp_path: Path) -> None:
-        """Detects a single Python test file."""
+        """Detects a single Python test file with LOC."""
         (tmp_path / "test_example.py").write_text("def test_foo(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary  # Singular
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary  # Singular
+        assert result.test_files == 1
+        assert result.test_loc == 1  # One non-empty line
 
     def test_multiple_python_test_files(self, tmp_path: Path) -> None:
         """Detects multiple Python test files."""
         (tmp_path / "test_foo.py").write_text("def test_foo(): pass")
         (tmp_path / "test_bar.py").write_text("def test_bar(): pass")
         (tmp_path / "baz_test.py").write_text("def test_baz(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "3 test files" in summary  # Plural
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "3 test files" in result.summary  # Plural
+        assert result.test_files == 3
+        assert result.test_loc == 3
 
     def test_detects_pytest_framework(self, tmp_path: Path) -> None:
         """Detects pytest framework from imports."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "pytest" in summary
-        assert "pytest" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "pytest" in result.summary
+        assert "pytest" in result.frameworks
 
     def test_detects_unittest_framework(self, tmp_path: Path) -> None:
         """Detects unittest framework from imports."""
         (tmp_path / "test_example.py").write_text(
             "import unittest\n\nclass TestFoo(unittest.TestCase): pass"
         )
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "unittest" in summary
-        assert "unittest" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "unittest" in result.summary
+        assert "unittest" in result.frameworks
 
     def test_detects_multiple_frameworks(self, tmp_path: Path) -> None:
         """Detects multiple test frameworks."""
         (tmp_path / "test_a.py").write_text("import pytest\n\ndef test_a(): pass")
         (tmp_path / "test_b.py").write_text("import unittest\n\nclass TestB: pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "pytest" in summary
-        assert "unittest" in summary
-        assert frameworks == {"pytest", "unittest"}
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "pytest" in result.summary
+        assert "unittest" in result.summary
+        assert result.frameworks == {"pytest", "unittest"}
 
     def test_javascript_test_files(self, tmp_path: Path) -> None:
         """Detects JavaScript/TypeScript test files."""
         (tmp_path / "app.spec.ts").write_text("describe('app', () => {})")
         (tmp_path / "utils.test.js").write_text("test('utils', () => {})")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "2 test files" in summary
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "2 test files" in result.summary
 
     def test_go_test_files(self, tmp_path: Path) -> None:
         """Detects Go test files."""
         (tmp_path / "main_test.go").write_text(
             'package main\nimport "testing"\nfunc TestFoo(t *testing.T) {}'
         )
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary
-        assert "go test" in summary
-        assert "go test" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary
+        assert "go test" in result.summary
+        assert "go test" in result.frameworks
 
     def test_excludes_node_modules(self, tmp_path: Path) -> None:
         """Test files in excluded directories are not counted."""
@@ -5736,15 +6118,23 @@ class TestDetectTestSummary:
         nm.mkdir(parents=True)
         (nm / "test.spec.js").write_text("test('foo', () => {})")
         # Only the excluded file, no test files in main tree
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is None
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is None
 
     def test_bats_test_files(self, tmp_path: Path) -> None:
         """Detects shell test files (.bats)."""
         (tmp_path / "test_cli.bats").write_text("@test 'example' { true; }")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary
+
+    def test_counts_loc_correctly(self, tmp_path: Path) -> None:
+        """Counts non-empty lines in test files."""
+        (tmp_path / "test_example.py").write_text(
+            "import pytest\n\n\ndef test_foo():\n    assert True\n\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert result.test_loc == 3  # import, def, assert (blank lines excluded)
 
 
 class TestFormatTestSummary:
@@ -6845,8 +7235,8 @@ def func_c():
         # The important file's functions should appear
         assert "def func_a():" in sketch or "def func_b():" in sketch
 
-    def test_with_source_skips_large_file(self, tmp_path: Path) -> None:
-        """--with-source skips files that exceed remaining budget."""
+    def test_with_source_truncates_large_file(self, tmp_path: Path) -> None:
+        """--with-source truncates files that exceed remaining budget."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
 
@@ -6860,18 +7250,98 @@ def small_func():
 """
         (src_dir / "small.py").write_text(small_content)
 
-        # Create a large file (won't fit)
+        # Create a large file (won't fit entirely but should be truncated)
         large_content = "def big():\n" + "    pass\n" * 500
         (src_dir / "large.py").write_text(large_content)
 
-        # Budget large enough for small file, but not large file
-        sketch = generate_sketch(tmp_path, max_tokens=800, with_source=True)
+        # Budget large enough for small file + truncated large file
+        sketch = generate_sketch(tmp_path, max_tokens=1200, with_source=True)
 
         # Should have source content (small file fits)
         assert "## Source Files Content" in sketch
         assert "def small_func():" in sketch
-        # Large file should be skipped
+        # Large file should appear truncated, not skipped
+        assert "def big():" in sketch
+        assert "[...truncated...]" in sketch
+
+    def test_with_source_breaks_when_budget_too_small_for_truncation(
+        self, tmp_path: Path,
+    ) -> None:
+        """--with-source stops when budget is too small for meaningful truncation."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create only a large file
+        large_content = "def big():\n" + "    pass\n" * 500
+        (src_dir / "large.py").write_text(large_content)
+
+        # Very tight budget — not enough for even truncated content
+        sketch = generate_sketch(tmp_path, max_tokens=500, with_source=True)
+
+        # Should not have source content since budget is too tight
         assert "def big():" not in sketch
+
+    def test_with_source_small_files_not_truncated(self, tmp_path: Path) -> None:
+        """--with-source includes small files in full without truncation."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        content_a = """\
+def func_a():
+    x = 1
+    y = 2
+    z = 3
+    return x + y + z
+"""
+        content_b = """\
+def func_b():
+    a = 10
+    b = 20
+    c = 30
+    return a + b + c
+"""
+        (src_dir / "a.py").write_text(content_a)
+        (src_dir / "b.py").write_text(content_b)
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000, with_source=True)
+
+        assert "## Source Files Content" in sketch
+        assert "def func_a():" in sketch
+        assert "def func_b():" in sketch
+        # No truncation markers
+        assert "[...truncated...]" not in sketch
+
+    def test_with_source_median_truncation_after_three_files(
+        self, tmp_path: Path,
+    ) -> None:
+        """After 3 small files, a large file uses median-based truncation floor."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create 3 small files that import each other so they have higher
+        # density (centrality) than the large file, ensuring they sort first.
+        (src_dir / "a_00.py").write_text(
+            "from a_01 import func_1\ndef func_0():\n    a = 1\n    b = 2\n    return func_1()\n"
+        )
+        (src_dir / "a_01.py").write_text(
+            "from a_02 import func_2\ndef func_1():\n    a = 1\n    b = 2\n    return func_2()\n"
+        )
+        (src_dir / "a_02.py").write_text(
+            "from a_00 import func_0\ndef func_2():\n    a = 1\n    b = 2\n    return func_0()\n"
+        )
+
+        # Create a very large file (~5000 tokens) that won't fit entirely.
+        # No connections to the small files → lowest density → sorted last.
+        large_content = "def big_func():\n" + "    x = 'abcdefghij' * 10\n" * 2000
+        (src_dir / "z_large.py").write_text(large_content)
+
+        # Budget 5000: ~800 for overhead, ~4200 remaining, 75% = ~3150 for source.
+        # 3 small files use ~300 tokens. Remaining ~2640 is enough for a 500-token
+        # truncation target. This exercises the median branch (>=3 token_counts).
+        sketch = generate_sketch(tmp_path, max_tokens=5000, with_source=True)
+
+        assert "## Source Files Content" in sketch
+        assert "def func_" in sketch
 
     def test_with_source_skips_short_files(self, tmp_path: Path) -> None:
         """--with-source skips files with fewer than 5 lines of code."""
@@ -7385,4 +7855,42 @@ class TestBatchEmbedFiles:
         assert len(save_calls) == 1
         assert save_calls[0][0] == cache_dir
         assert save_calls[0][2] is fake_embedding
+
+
+class TestConfigFilesNoLockFiles:
+    """Lock files should not be in CONFIG_FILES_BY_LANG.
+
+    Lock files (go.sum, Cargo.lock, composer.lock, Gemfile.lock, etc.)
+    contain version-pinned checksums that waste sketch token budget.
+    The primary manifest files (go.mod, Cargo.toml, etc.) already provide
+    the useful dependency information. Lock files are also in
+    DEFAULT_EXCLUDES for source analysis.
+    """
+
+    # Exhaustive list of lock files that should NOT appear
+    LOCK_FILES: ClassVar[list[str]] = [
+        "go.sum",
+        "Cargo.lock",
+        "composer.lock",
+        "Gemfile.lock",
+        "mix.lock",
+        "shard.lock",
+        "Manifest.toml",  # Julia lock file
+        "renv.lock",       # R lock file
+        "flake.lock",      # Nix lock file
+    ]
+
+    def test_no_lock_files_in_config(self):
+        """CONFIG_FILES_BY_LANG should not include any lock files."""
+        all_config_files = []
+        for lang, files in CONFIG_FILES_BY_LANG.items():
+            for f in files:
+                all_config_files.append((lang, f))
+
+        for lang, filename in all_config_files:
+            assert filename not in self.LOCK_FILES, (
+                f"Lock file '{filename}' found in CONFIG_FILES_BY_LANG['{lang}']. "
+                f"Lock files waste sketch token budget — the primary manifest "
+                f"already provides dependency information."
+            )
 

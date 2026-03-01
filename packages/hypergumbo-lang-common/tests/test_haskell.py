@@ -14,6 +14,9 @@ Test coverage includes:
 - Two-pass cross-file resolution
 """
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 
 
@@ -318,19 +321,22 @@ class TestHaskellSpanAccuracy:
 class TestHaskellAnalyzeFallback:
     """Tests for fallback when tree-sitter-haskell is unavailable."""
 
-    def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
+    def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-haskell not available."""
         from hypergumbo_lang_common import haskell
 
-        # Mock tree-sitter-haskell as unavailable
-        monkeypatch.setattr(haskell, "is_haskell_tree_sitter_available", lambda: False)
-
         make_haskell_file(tmp_path, "Main.hs", "main = print 1")
 
-        result = haskell.analyze_haskell(tmp_path)
+        with patch.object(
+            haskell._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            with pytest.warns(UserWarning, match="haskell analysis skipped"):
+                result = haskell.analyze_haskell(tmp_path)
 
         assert result.skipped
-        assert "tree-sitter-haskell" in result.skip_reason
+        assert "not available" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "haskell-v1"

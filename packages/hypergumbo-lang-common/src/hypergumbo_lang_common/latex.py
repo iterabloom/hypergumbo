@@ -6,7 +6,11 @@ cross-reference relationships.
 
 How It Works
 ------------
-Uses tree-sitter-language-pack for LaTeX parsing. Two-pass analysis:
+Uses TreeSitterAnalyzer base class for two-pass orchestration.
+The base class handles grammar checking, parser creation,
+and result assembly. This module overrides file discovery for
+LaTeX-specific patterns (.tex, .sty, .cls) and provides the
+LaTeX-specific extraction logic.
 
 Pass 1 (Symbol Extraction):
 - Sections: \section{}, \subsection{}, \chapter{}, etc.
@@ -27,59 +31,35 @@ LaTeX documents are structured differently from programming languages:
 - Custom commands/environments define reusable constructs
 """
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.registry import register_analyzer
 
-PASS_ID = "latex"
+if TYPE_CHECKING:
+    import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-
-@dataclass
-class LaTeXAnalysisResult:
-    """Result of analyzing LaTeX files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skipped_reason: str = ""
+PASS_ID = make_pass_id("latex")
 
 
-def is_latex_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with LaTeX support is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("latex")
-        return True
-    except (ImportError, KeyError):  # pragma: no cover
-        return False
-
-
-def _get_parser():
-    """Get a parser for LaTeX."""
-    from tree_sitter_language_pack import get_parser
-
-    return get_parser("latex")
-
-
-def _make_symbol_id(
-    path: str, start_line: int, end_line: int, name: str, kind: str
-) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"latex:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _extract_text(node, source_bytes: bytes) -> str:
+def _extract_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
     """Extract text from a node."""
     return source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="ignore")
 
 
-def _find_child(node, child_type: str):
+def _find_child(node: "tree_sitter.Node", child_type: str):
     """Find first child of given type."""
     for child in node.children:
         if child.type == child_type:
@@ -87,7 +67,7 @@ def _find_child(node, child_type: str):
     return None  # pragma: no cover
 
 
-def _find_all_descendants(node, target_types: set):
+def _find_all_descendants(node: "tree_sitter.Node", target_types: set):
     """Find all descendant nodes of given types."""
     results = []
     for n in iter_tree(node):
@@ -96,7 +76,7 @@ def _find_all_descendants(node, target_types: set):
     return results
 
 
-def _get_curly_group_text(node, source_bytes: bytes) -> str:
+def _get_curly_group_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
     """Extract text content from a curly group node."""
     # Look for curly_group, curly_group_text, or similar
     for child in node.children:
@@ -113,7 +93,7 @@ def _get_curly_group_text(node, source_bytes: bytes) -> str:
 
 
 def _extract_symbols_from_file(
-    rel_path: str, source_bytes: bytes, tree, run: AnalysisRun
+    rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", run: "AnalysisRun"
 ) -> list[Symbol]:
     """Extract symbols from a parsed LaTeX file."""
     symbols = []
@@ -134,7 +114,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, title, "section"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, title, "section"),
                     name=title,
                     kind="section",
                     language="latex",
@@ -167,7 +147,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, label_name, "label"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, label_name, "label"),
                     name=label_name,
                     kind="label",
                     language="latex",
@@ -198,7 +178,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, cmd_name, "command"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, cmd_name, "command"),
                     name=cmd_name,
                     kind="command",
                     language="latex",
@@ -229,7 +209,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, env_name, "environment"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, env_name, "environment"),
                     name=env_name,
                     kind="environment",
                     language="latex",
@@ -249,7 +229,7 @@ def _extract_symbols_from_file(
 
 
 def _extract_edges_from_file(
-    rel_path: str, source_bytes: bytes, tree, labels: set[str]
+    rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", labels: set[str]
 ) -> list[Edge]:
     """Extract edges from a parsed LaTeX file."""
     edges = []
@@ -361,72 +341,138 @@ def _extract_edges_from_file(
     return edges
 
 
-def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
+def is_latex_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with LaTeX support is available."""
+    return _analyzer._check_grammar_available()
+
+
+class LatexAnalyzer(TreeSitterAnalyzer):
+    """LaTeX document analyzer using tree-sitter-language-pack."""
+
+    lang = "latex"
+    pass_version = "0.1.0"
+    file_patterns: ClassVar[list[str]] = ["*.tex", "*.sty", "*.cls"]
+    language_pack_name = "latex"
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Find LaTeX files with recursive patterns and deduplication."""
+        seen: set[Path] = set()
+        for pattern in ["**/*.tex", "**/*.sty", "**/*.cls"]:
+            for path in find_files(repo_root, [pattern]):
+                if path not in seen:
+                    seen.add(path)
+                    yield path
+
+    def extract_symbols_from_file(  # pragma: no cover
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract LaTeX symbols from a single file.
+
+        Note: This template method is not called by the custom analyze()
+        override below, which calls the module-level _extract_symbols_from_file()
+        directly. Kept for interface compatibility with TreeSitterAnalyzer.
+        """
+        analysis = FileAnalysis()
+        file_symbols = _extract_symbols_from_file(rel_path, source, tree, run)
+        analysis.symbols.extend(file_symbols)
+        for sym in file_symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(  # pragma: no cover
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract reference, citation, include, and import edges.
+
+        Note: This template method is not called by the custom analyze()
+        override below, which calls the module-level _extract_edges_from_file()
+        directly. Kept for interface compatibility with TreeSitterAnalyzer.
+        """
+        # Build labels set from global symbols
+        labels = {sym.name for sym in global_symbols.values()
+                  if isinstance(sym, Symbol) and sym.kind == "label"}
+        return _extract_edges_from_file(rel_path, source, tree, labels)
+
+    def analyze(self, repo_root: Path, max_files=None) -> AnalysisResult:
+        """Override analyze to use custom file discovery."""
+        import time
+        import warnings
+
+        start_time = time.time()
+        run_module = __import__("hypergumbo_core.ir", fromlist=["AnalysisRun"])
+        AnalysisRun = run_module.AnalysisRun
+
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        # Find LaTeX files using custom discovery
+        latex_files: list[Path] = list(self._find_source_files(repo_root))
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+
+        # Pass 1: Extract symbols
+        file_trees: dict[Path, tuple[bytes, object]] = {}
+        for file_path in latex_files:
+            try:
+                source_bytes = file_path.read_bytes()
+                tree = parser.parse(source_bytes)
+                file_trees[file_path] = (source_bytes, tree)
+
+                rel_path = str(file_path.relative_to(repo_root))
+                file_symbols = _extract_symbols_from_file(rel_path, source_bytes, tree, run)
+                symbols.extend(file_symbols)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, file_symbols)
+            except (OSError, IOError):  # pragma: no cover
+                continue
+
+        # Build label set for edge resolution
+        labels = {s.name for s in symbols if s.kind == "label"}
+
+        # Pass 2: Extract edges
+        for file_path, (source_bytes, tree) in file_trees.items():
+            rel_path = str(file_path.relative_to(repo_root))
+            file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, labels)
+            edges.extend(file_edges)
+
+        # Update run stats
+        run.files_analyzed = len(file_trees)
+        run.duration_ms = int((time.time() - start_time) * 1000)
+
+        return AnalysisResult(symbols=symbols, edges=edges, run=run)
+
+
+_analyzer = LatexAnalyzer()
+
+
+@register_analyzer("latex")
+def analyze_latex(repo_root: Path) -> AnalysisResult:
     """Analyze LaTeX files in the repository.
 
     Args:
         repo_root: Root directory of the repository
 
     Returns:
-        LaTeXAnalysisResult with symbols and edges from LaTeX files
+        AnalysisResult with symbols and edges from LaTeX files
     """
-    import warnings
-
-    if not is_latex_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-language-pack with LaTeX support not available. "
-            "Install with: pip install tree-sitter-language-pack",
-            UserWarning,
-            stacklevel=2,
-        )
-        return LaTeXAnalysisResult(
-            symbols=[],
-            edges=[],
-            skipped=True,
-            skipped_reason="tree-sitter-latex not available",
-        )
-
-    parser = _get_parser()
-
-    # Create analysis run
-    run = AnalysisRun.create(pass_id=PASS_ID, version="0.1.0")
-
-    # Find LaTeX files
-    latex_patterns = ["**/*.tex", "**/*.sty", "**/*.cls"]
-    latex_files: list[Path] = []
-    for pattern in latex_patterns:
-        latex_files.extend(find_files(repo_root, [pattern]))
-
-    # Deduplicate
-    latex_files = list(set(latex_files))
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Pass 1: Extract symbols
-    file_trees: dict[Path, tuple[bytes, object]] = {}
-    for file_path in latex_files:
-        try:
-            source_bytes = file_path.read_bytes()
-            tree = parser.parse(source_bytes)
-            file_trees[file_path] = (source_bytes, tree)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            file_symbols = _extract_symbols_from_file(rel_path, source_bytes, tree, run)
-            symbols.extend(file_symbols)
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-    # Build label set for edge resolution
-    labels = {s.name for s in symbols if s.kind == "label"}
-
-    # Pass 2: Extract edges
-    for file_path, (source_bytes, tree) in file_trees.items():
-        rel_path = str(file_path.relative_to(repo_root))
-        file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, labels)
-        edges.extend(file_edges)
-
-    # Update run stats
-    run.files_analyzed = len(file_trees)
-
-    return LaTeXAnalysisResult(symbols=symbols, edges=edges, run=run)
+    return _analyzer.analyze(repo_root)

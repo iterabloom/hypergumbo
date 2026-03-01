@@ -289,7 +289,7 @@ attributes #0 = { noinline nounwind optnone uwtable }
 
         result = analyze_llvm_ir(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "llvm-v1"
+        assert result.run.pass_id == "llvm_ir-v1"
         assert result.run.files_analyzed == 1
         assert result.run.duration_ms >= 0
 
@@ -297,8 +297,8 @@ attributes #0 = { noinline nounwind optnone uwtable }
         """Should return skipped result when tree-sitter-llvm unavailable."""
         make_llvm_file(tmp_path, "test.ll", "define void @test() { ret void }")
 
-        with patch.object(llvm_module, "is_llvm_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="LLVM IR analysis skipped"):
+        with patch.object(llvm_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="llvm_ir analysis skipped"):
                 result = llvm_module.analyze_llvm_ir(tmp_path)
 
         assert result.skipped is True

@@ -10,7 +10,98 @@ Use `git commit -s` to add this automatically.
 
 We use **Safe Trunk Based Development**. Direct pushes to `main` are blocked.
 
-### Option 1: The Automated Agent Way (Recommended)
+### External Contributors (Fork Workflow)
+
+If you don't have write access to the repo, use the fork-based workflow:
+
+```bash
+# 1. Fork the repo on Codeberg to your account
+
+# 2. Clone YOUR fork (not upstream)
+git clone https://codeberg.org/YOUR-USER/hypergumbo.git
+cd hypergumbo
+
+# 3. Add upstream remote
+git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git
+
+# 4. Set credentials (in .env or exported)
+export FORGEJO_USER=your-username
+export FORGEJO_TOKEN=your-token
+```
+
+Then for each contribution:
+
+```bash
+# Sync with upstream
+git fetch upstream
+git checkout dev
+git merge upstream/dev
+
+# Create feature branch
+git checkout -b yourname/feat/description
+
+# Make changes, commit with sign-off
+git commit -s -m "feat: description"
+
+# Create PR to upstream
+./scripts/contribute
+```
+
+The `contribute` script pushes to your fork and creates a PR to upstream. Unlike `auto-pr`, it does **not** auto-merge—you'll need to wait for maintainer review.
+
+| Aspect | Maintainer (`auto-pr`) | Contributor (`contribute`) |
+|--------|------------------------|---------------------------|
+| Push target | Upstream directly | Your fork |
+| PR creation | refs/for/dev/branch | Fork → upstream/dev PR |
+| CI polling | Waits and auto-merges | Exits after PR creation |
+| Merge | Automatic on CI pass | Requires maintainer approval |
+
+After your PR is merged, sync your fork:
+
+```bash
+git checkout dev
+git fetch upstream
+git merge upstream/dev
+git push origin dev
+```
+
+### Tracker & Fork Workflow
+
+The project uses a YAML-backed structured tracker (see [ADR-0013](docs/adr/0013-structured-tracker.md)) with three visibility tiers: **canonical** (shared with upstream), **workspace** (local to your fork), and **stealth** (never committed).
+
+**Initial setup** (run once after cloning your fork):
+
+```bash
+# Set tracker scope to workspace so your agent isn't blocked by upstream items
+scripts/tracker fork-setup
+```
+
+This sets `stop_hook.scope: workspace` in your local config, meaning the stop hook only counts your workspace items (not upstream's canonical items) when deciding whether the agent can stop.
+
+**How it works:**
+
+- Your agent writes tracker items to `.agent/tracker-workspace/` by default
+- Upstream's canonical items in `.agent/tracker/` are read-only context
+- `./scripts/contribute` automatically excludes workspace files from upstream PRs
+- The pre-push hook warns if you accidentally push workspace files to upstream
+
+**Promoting items to canonical:**
+
+If your workspace item should become part of upstream's tracker (e.g., a discovered invariant that affects the whole project), promote it:
+
+```bash
+scripts/tracker promote <ITEM-ID>
+```
+
+This moves the item from workspace to canonical. Include the promoted item in a separate PR.
+
+**Two-user permissions:** If your deployment uses separate OS users for human
+and agent (see the
+[tracker README setup](packages/hypergumbo-tracker/README.md#2-create-an-agent-user-optional)),
+run `htrac setup` to diagnose permission issues and verify with the
+[Permission Test Playbook](packages/hypergumbo-tracker/tests/permission/README.md).
+
+### Maintainers: The Automated Way (Recommended)
 We provide a script that handles pushing, waiting for CI, and merging automatically.
 
 ```bash
@@ -19,7 +110,7 @@ We provide a script that handles pushing, waiting for CI, and merging automatica
 
 See [auto-pr Documentation](#auto-pr-documentation) below for details.
 
-### Option 2: The Manual "Pure Git" Way
+### Maintainers: The Manual "Pure Git" Way
 If you prefer manual control without installing CLI tools like `tea`:
 
 1. **Commit changes** to a feature branch.
@@ -33,19 +124,134 @@ If you prefer manual control without installing CLI tools like `tea`:
 3. **Wait for CI** (Status check: `CI / pytest (pull_request)`).
 4. **Merge** via the Codeberg web UI.
 
+## Licensing
+
+This repository uses dual licensing:
+
+- **AGPL-3.0** for the core hypergumbo tool (`packages/hypergumbo-core/`, `packages/hypergumbo-lang-*/`)
+- **MPL-2.0** for the tracker package (`packages/hypergumbo-tracker/`)
+
+**SPDX headers:** Every `.py` source file must include a license header as its first line:
+
+```python
+# SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+or for the tracker package:
+
+```python
+# SPDX-License-Identifier: MPL-2.0
+```
+
+**DCO covers both licenses.** Your `Signed-off-by` line certifies you have the right to submit under the applicable license. No CLA is required.
+
 ## Canonical forge
 Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
 
 ## Testing
 
+### Smart Test Selection (ADR-0010)
+
+When you run `pytest`, you automatically get **smart-test**, which runs only tests affected by your changes. This speeds up the development cycle.
+
+```bash
+pytest                    # Runs affected tests only (via smart-test)
+pytest --full             # Runs complete test suite
+pytest tests/test_foo.py  # Specific file (still goes through smart-test)
+pytest --version          # Fast-path, no smart-test overhead
+```
+
+#### How It Works
+
+```
+pytest invocation
+       │
+       ▼
+┌─────────────────────────────────────┐
+│  .venv/bin/pytest (wrapper)         │
+│  - Fast-path for --version, --help  │
+│  - Checks SMART_TEST_ACTIVE env var │
+│  - Delegates to scripts/smart-test  │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  scripts/smart-test                 │
+│  - Sets SMART_TEST_ACTIVE=1         │
+│  - Finds affected tests via slice   │
+│  - Calls pytest with affected tests │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  .venv/bin/pytest (wrapper again)   │
+│  - Sees SMART_TEST_ACTIVE=1         │
+│  - Calls python -m pytest directly  │
+└─────────────────────────────────────┘
+```
+
+#### Self-Healing
+
+If `pip install pytest` overwrites the wrapper, it repairs automatically on the next pytest run:
+
+```
+pip install pytest  →  Overwrites wrapper with pip's entry point
+       │
+       ▼
+pytest invocation
+       │
+       ▼
+┌─────────────────────────────────────┐
+│  conftest.py (pytest_configure)     │
+│  - Detects wrapper is broken        │
+│  - Runs: install-hooks --repair     │
+│  - Prints: "wrapper repaired"       │
+│  - Re-execs through fixed wrapper   │
+└─────────────────────────────────────┘
+```
+
+#### Escape Hatches
+
+```bash
+python -m pytest ...              # Bypass wrapper completely
+SMART_TEST_ACTIVE=1 pytest ...    # Skip smart-test, use real pytest
+./scripts/install-hooks --repair-shims  # Manual repair
+```
+
+### Setup for Smart Test Selection
+
+When you run `install-hooks`, you may see:
+
+```
+⚠️  No stable hypergumbo found
+   smart-test will fall back to running full test suite
+```
+
+This means smart-test can't compute affected tests, so it runs everything (~10 min). To enable fast test selection (~30 sec for small changes), install a stable hypergumbo release **outside** your dev venv:
+
+```bash
+# Install stable hypergumbo via pipx (recommended)
+pipx install hypergumbo
+
+# Or via pip --user (if pipx not available)
+python3 -m pip install --user hypergumbo
+```
+
+This installs the PyPI release to `~/.local/bin/hypergumbo`, which smart-test uses for `slice --files` analysis.
+
+**Why a separate install?** This is a bootstrap safety measure: we use a known-good release to analyze the code under development, avoiding the "testing hypergumbo with itself" paradox. See [ADR-0010](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0010-modular-packages-and-smart-testing.md) for design rationale.
+
 ### Running Tests Locally
 
 ```bash
-# Fast parallel run with coverage
+# Fast parallel run with coverage (goes through smart-test)
 pytest -n auto --cov=src --cov-fail-under=100
 
 # Sequential run (for debugging)
 pytest --cov=src --cov-fail-under=100
+
+# Bypass smart-test for full control
+SMART_TEST_ACTIVE=1 pytest -n auto --cov=src --cov-fail-under=100
 ```
 
 ### Embedding Tests and sentence-transformers
@@ -62,7 +268,7 @@ pip install sentence-transformers
 
 This works on most development machines where PyTorch wheels are available (Linux x86_64, macOS, Windows).
 
-**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
+**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `packages/hypergumbo-core/tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
 
 ### Coverage Configuration
 
@@ -70,8 +276,8 @@ We maintain 100% test coverage. Two coverage configurations exist:
 
 | Config | Used When | Omits |
 |--------|-----------|-------|
-| Default (`pyproject.toml`) | Local dev, CI with embeddings | `sketch_embeddings.py` |
-| `.coveragerc.no-embeddings` | CI without embeddings (Python 3.10 matrix) | `sketch_embeddings.py`, `_embedding_data.py` |
+| Default (`pyproject.toml`) | Local dev, CI with embeddings | Embedding-only modules |
+| `.coveragerc.no-embeddings` | CI without embeddings (Python 3.10 matrix) | Embedding-only modules + `_embedding_data.py` |
 
 **When to use `# pragma: no cover`:**
 
@@ -99,7 +305,7 @@ We maintain 100% test coverage. Two coverage configurations exist:
        data = None  # fallback
    ```
 
-**Release workflow note:** The release CI (`release.yml`) runs a test matrix on Python 3.10-3.13. The 3.10 jobs use `.coveragerc.no-embeddings` since sentence-transformers may not be available. If you add new embedding-related code, ensure it's either omitted or marked with pragma.
+**Release workflow note:** Multi-Python testing (3.10-3.13) and integration tests run nightly (`nightly.yml`), not during release. `release.yml` checks whether nightly already covered the release SHA — if so, it skips those jobs; otherwise they run post-publish as verification. The 3.10 jobs use `.coveragerc.no-embeddings` since sentence-transformers may not be available. If you add new embedding-related code, ensure it's either omitted or marked with pragma.
 
 ---
 

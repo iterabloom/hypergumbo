@@ -13,11 +13,14 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter with Cap'n Proto grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all .capnp files and extract symbols
-4. Detect import statements and create import edges
-5. Create contains edges from interfaces to their methods
+Uses TreeSitterAnalyzer base class for single-pass orchestration:
+1. Parse all .capnp files and extract symbols
+2. Detect import statements and create import edges
+3. Create contains edges from interfaces to their methods
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Cap'n Proto-specific
+extraction logic.
 
 Why This Design
 ---------------
@@ -36,23 +39,30 @@ Cap'n Proto-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    make_file_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "capnp-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("capnp")
 
 
 def find_capnp_files(repo_root: Path) -> Iterator[Path]:
@@ -62,55 +72,12 @@ def find_capnp_files(repo_root: Path) -> Iterator[Path]:
 
 def is_capnp_tree_sitter_available() -> bool:
     """Check if tree-sitter with Cap'n Proto grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("capnp")
-        return True
-    except Exception:  # pragma: no cover - capnp grammar not available
-        return False
-
-
-@dataclass
-class CapnpAnalysisResult:
-    """Result of analyzing Cap'n Proto files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"capnp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Cap'n Proto file node (used as import edge source)."""
-    return f"capnp:{path}:1-1:file:file"
+    return _analyzer._check_grammar_available()
 
 
 def _make_edge_id() -> str:
     """Generate a unique edge ID."""
     return f"edge:capnp:{uuid.uuid4().hex[:12]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) -> str:
@@ -126,9 +93,9 @@ def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) ->
 
     for child in method_node.children:
         if child.type == "method_parameters":
-            params = _node_text(child, source).strip()
+            params = node_text(child, source).strip()
         elif child.type == "return_type":
-            returns = _node_text(child, source).strip()
+            returns = node_text(child, source).strip()
 
     sig = params or "()"
     if returns:
@@ -146,9 +113,9 @@ def _get_struct_prefix(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     while current is not None:
         # If parent is "nested_struct", its parent is "field", and field's parent is "struct"
         if current.type == "struct":
-            name_node = _find_child_by_type(current, "type_identifier")
+            name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                parts.append(_node_text(name_node, source).strip())
+                parts.append(node_text(name_node, source).strip())
         current = current.parent
     if parts:
         # Reverse because we walked up the tree
@@ -161,9 +128,9 @@ def _get_interface_name_for_method(node: "tree_sitter.Node", source: bytes) -> O
     current = node.parent
     while current is not None:
         if current.type == "interface":
-            name_node = _find_child_by_type(current, "type_identifier")
+            name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                return _node_text(name_node, source).strip()
+                return node_text(name_node, source).strip()
         current = current.parent  # pragma: no cover - loop continuation
     return None  # pragma: no cover - defensive
 
@@ -206,7 +173,7 @@ def _extract_symbols_and_edges(
             start_col=start_col,
             end_col=end_col,
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("capnp", file_path, start_line, end_line, name, kind)
         return Symbol(
             id=sym_id,
             name=name,
@@ -223,24 +190,24 @@ def _extract_symbols_and_edges(
     # Process all nodes using iterative traversal
     for node in iter_tree(tree.root_node):
         if node.type == "struct":
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
             if name_node:
-                struct_name = _node_text(name_node, source).strip()
+                struct_name = node_text(name_node, source).strip()
                 prefix = _get_struct_prefix(node, source)
                 symbols.append(make_symbol(node, struct_name, "struct", prefix=prefix))
 
         elif node.type == "interface":
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
             if name_node:
-                interface_name = _node_text(name_node, source).strip()
+                interface_name = node_text(name_node, source).strip()
                 interface_sym = make_symbol(node, interface_name, "interface")
                 symbols.append(interface_sym)
                 interface_symbols[interface_name] = interface_sym
 
         elif node.type == "method":
-            method_name_node = _find_child_by_type(node, "method_identifier")
+            method_name_node = find_child_by_type(node, "method_identifier")
             if method_name_node:
-                method_name = _node_text(method_name_node, source).strip()
+                method_name = node_text(method_name_node, source).strip()
                 interface_name = _get_interface_name_for_method(node, source)
                 method_sig = _extract_method_signature(node, source)
                 method_sym = make_symbol(
@@ -262,15 +229,15 @@ def _extract_symbols_and_edges(
                     ))
 
         elif node.type == "enum":
-            name_node = _find_child_by_type(node, "enum_identifier")
+            name_node = find_child_by_type(node, "enum_identifier")
             if name_node:
-                enum_name = _node_text(name_node, source).strip()
+                enum_name = node_text(name_node, source).strip()
                 symbols.append(make_symbol(node, enum_name, "enum"))
 
         elif node.type == "const":
-            name_node = _find_child_by_type(node, "const_identifier")
+            name_node = find_child_by_type(node, "const_identifier")
             if name_node:
-                const_name = _node_text(name_node, source).strip()
+                const_name = node_text(name_node, source).strip()
                 symbols.append(make_symbol(node, const_name, "const"))
 
         elif node.type == "using_directive":
@@ -281,10 +248,10 @@ def _extract_symbols_and_edges(
                         if import_child.type == "import_path":
                             for path_child in import_child.children:
                                 if path_child.type == "string_fragment":
-                                    import_path = _node_text(path_child, source).strip()
+                                    import_path = node_text(path_child, source).strip()
                                     edges.append(Edge(
                                         id=_make_edge_id(),
-                                        src=_make_file_id(file_path),
+                                        src=make_file_id("capnp", file_path),
                                         dst=f"capnp:{import_path}:1-1:file:file",
                                         edge_type="imports",
                                         line=node.start_point[0] + 1,
@@ -293,56 +260,55 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
-def analyze_capnp(repo_root: Path) -> CapnpAnalysisResult:
+class CapnpAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Cap'n Proto files using TreeSitterAnalyzer base class."""
+
+    lang = "capnp"
+    file_patterns: ClassVar[list[str]] = ["*.capnp"]
+    language_pack_name = "capnp"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Cap'n Proto symbols (structs, interfaces, methods, etc.)."""
+        analysis = FileAnalysis()
+        symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        analysis.symbols.extend(symbols)
+        # Store edge data for Pass 2 retrieval via import_aliases
+        for i, edge in enumerate(edges):
+            analysis.import_aliases[f"__edge_{i}__"] = (
+                f"{edge.src}|{edge.dst}|{edge.edge_type}|{edge.line}"
+            )
+        # Register callable symbols by name
+        for sym in symbols:
+            if sym.kind in ("method", "interface"):
+                analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Re-extract edges from Cap'n Proto file during Pass 2."""
+        _, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        return edges
+
+
+_analyzer = CapnpAnalyzer()
+
+
+@register_analyzer("capnp")
+def analyze_capnp(repo_root: Path) -> AnalysisResult:
     """Analyze all Cap'n Proto files in the repository.
 
     Args:
         repo_root: Path to the repository root.
 
     Returns:
-        CapnpAnalysisResult with symbols and edges found.
+        AnalysisResult with symbols and edges found.
     """
-    if not is_capnp_tree_sitter_available():
-        warnings.warn("Cap'n Proto analysis skipped: tree-sitter-language-pack not available")
-        return CapnpAnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("capnp")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for file_path in find_capnp_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
-
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return CapnpAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

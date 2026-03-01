@@ -22,12 +22,13 @@ checked in order; first match wins:
 4. Workspace package detection:
    - If file is in src/, lib/, or app/ within workspace → tier 1
    - Otherwise (tests, configs, etc.) → tier 2
-5. First-party detection (tier 1) - src/, lib/, app/ or default
+5. Test code detection (tier 2) - tests/, spec/, __tests__/, _test.go, .test.js, etc.
+6. First-party detection (tier 1) - src/, lib/, app/ or default
 
 This ensures library monorepos classify workspace source code as tier 1,
 while examples outside workspaces are tier 2 (lower priority).
 
-See §8.6 of the hypergumbo spec for full details.
+See §14 of the hypergumbo spec for full details.
 """
 
 from __future__ import annotations
@@ -129,6 +130,18 @@ EXTERNAL_DEP_PATTERNS = [
     (r"^_vendor/", "_vendor/"),
 ]
 
+# Patterns matched with re.search (anywhere in path) for vendored SDKs
+# that live inside subdirectories rather than at the repo root.
+# Common in Go monorepos where cloud providers embed SDK copies.
+# INV-mogud: cluster-autoscaler has 19K+ nodes from these SDKs classified
+# as tier-1 because they don't match the root-anchored patterns above.
+EXTERNAL_DEP_DEEP_PATTERNS = [
+    (r"(?:^|/)[^/]+-sdk-go(?:-[^/]+)?/", "vendored Go SDK"),
+    (r"(?:^|/)[^/]+-go-sdk/", "vendored Go SDK"),
+    (r"(?:^|/)[^/]+-sdk-golang/", "vendored Go SDK"),
+    (r"(?:^|/)vendor-internal/", "vendor-internal/"),
+]
+
 FIRST_PARTY_PATTERNS = [
     r"^src/",
     r"^lib/",
@@ -146,6 +159,34 @@ EXAMPLE_PATTERNS = [
     r"^demos?/",     # demos/ or demo/
     r"^samples?/",   # samples/ or sample/
     r"^tutorials?/",  # tutorials/ or tutorial/
+]
+
+# Patterns for fuzz targets and benchmarks (tier 2) — not production code.
+# Checked with re.search to match at any depth (e.g., crates/core/fuzz/).
+FUZZ_BENCH_PATTERNS = [
+    r"(?:^|/)fuzz(?:ing)?/",       # fuzz/ or fuzzing/ at any level
+    r"(?:^|/)fuzz_targets/",       # fuzz_targets/ (cargo-fuzz convention)
+    r"(?:^|/)benchmarks?/",        # benchmark/ or benchmarks/ at any level
+    r"(?:^|/)benches/",            # benches/ (Rust convention) at any level
+]
+
+# Patterns for test code (tier 2) — checked BEFORE first-party patterns so that
+# test files in src/ or pkg/ are correctly classified as tier 2, not tier 1.
+# Directory patterns: top-level or nested test directories
+TEST_DIR_PATTERNS = [
+    r"(?:^|/)tests?/",       # tests/ or test/ at any level
+    r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
+    r"(?:^|/)specs?/",       # spec/ or specs/ (RSpec/Jasmine) at any level
+    r"(?:^|/)unit_tests?/",  # unit_tests/ or unit_test/ (C++ GTest convention)
+]
+
+# File suffix patterns: language-specific test naming conventions
+TEST_FILE_PATTERNS = [
+    r"_test\.go$",                # Go: handler_test.go
+    r"\.test\.[jt]sx?$",         # JS/TS: app.test.js, app.test.tsx
+    r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
+    r"_spec\.rb$",               # Ruby: user_spec.rb
+    r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
 ]
 
 # Simple first-party patterns to check within workspaces
@@ -208,6 +249,12 @@ def classify_file(
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 
+    # 3b. Check deep external dependency patterns (vendored SDKs anywhere in path)
+    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
+        if re.search(pattern, rel):
+            pkg = _extract_package_name(rel, label)
+            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
+
     # 4. Check example/demo patterns (lower priority than workspace packages)
     for pattern in EXAMPLE_PATTERNS:
         if re.match(pattern, rel):
@@ -242,7 +289,21 @@ def classify_file(
             except (ValueError, TypeError):
                 continue
 
-    # 5b. Check custom first_party_patterns from config
+    # 5b. Check test directory and file patterns (before first-party so that
+    # src/test/, pkg/handler_test.go are classified as tier 2 not tier 1)
+    for pattern in TEST_DIR_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"test path matches {pattern}")
+    for pattern in TEST_FILE_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"test file matches {pattern}")
+
+    # 5c. Check fuzz/benchmark patterns (not production code)
+    for pattern in FUZZ_BENCH_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"fuzz/bench path matches {pattern}")
+
+    # 5d. Check custom first_party_patterns from config
     if config and config.first_party_patterns:
         for pattern in config.first_party_patterns:
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
@@ -312,6 +373,7 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
     Scans for:
     - npm/yarn/pnpm workspaces in package.json
     - Cargo workspace members in Cargo.toml
+    - Maven modules in pom.xml
 
     Args:
         repo_root: Root directory of the repository
@@ -361,6 +423,28 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                             if path.is_dir():
                                 roots.add(path)
         except OSError:
+            pass
+
+    # Maven multi-module projects
+    pom_xml = repo_root / "pom.xml"
+    if pom_xml.exists():
+        try:
+            import xml.etree.ElementTree as ET  # nosec B405 - parsing local pom.xml
+
+            tree = ET.parse(pom_xml)  # noqa: S314  # nosec B314
+            root_el = tree.getroot()
+            # Handle Maven namespace (xmlns="http://maven.apache.org/POM/4.0.0")
+            ns = ""
+            if root_el.tag.startswith("{"):
+                ns = root_el.tag.split("}")[0] + "}"
+            modules_el = root_el.find(f"{ns}modules")
+            if modules_el is not None:
+                for mod_el in modules_el.findall(f"{ns}module"):
+                    if mod_el.text:
+                        mod_path = repo_root / mod_el.text.strip()
+                        if mod_path.is_dir():
+                            roots.add(mod_path)
+        except (OSError, ET.ParseError):
             pass
 
     return roots

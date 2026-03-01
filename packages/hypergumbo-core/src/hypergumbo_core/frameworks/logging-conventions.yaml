@@ -1,0 +1,54 @@
+# Logging infrastructure patterns (INV-mosag)
+#
+# These patterns detect logging-related symbols by naming and inheritance.
+# Symbols matching these patterns get the "logging" concept, which triggers
+# centrality dampening in ranking.py (apply_utility_symbol_weights).
+#
+# This complements the name-based regex patterns in ranking.py which catch
+# exact method names (log, warn, error, debug, info, trace, fatal).
+# These convention patterns catch:
+# - Classes inheriting from Logger base classes
+# - Logger factory/builder classes
+# - Custom logger wrappers with non-standard names
+#
+# Logging frameworks covered:
+# - Python: logging.Logger, structlog
+# - Go: logrus, zap, slog (via naming)
+# - Java: log4j, slf4j, logback (Logger, LogManager)
+# - JavaScript: winston, pino, bunyan
+# - Ruby: Logger
+# - Rust: tracing, log crate
+
+id: logging-conventions
+language: multi
+
+patterns:
+  # ====== Logger classes by inheritance ======
+  # Classes extending Logger/BaseLogger base classes
+  - concept: logging
+    base_class: "^(Logger|BaseLogger|AbstractLogger|LoggerInterface)$"
+
+  # ====== Logger classes by naming ======
+  # Classes/structs with "Logger" suffix are logging infrastructure
+  - concept: logging
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Logger$"
+    symbol_kind: "^(class|struct)$"
+
+  # ====== Logger factory methods ======
+  # Functions/methods that create loggers
+  - concept: logging
+    symbol_name: "^(getLogger|get_logger|NewLogger|createLogger|makeLogger|LoggerFactory)$"
+
+  # ====== Log handler/formatter classes ======
+  # Classes that process or format log records
+  - concept: logging
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*(LogHandler|LogFormatter|LogWriter|LogSink)$"
+    symbol_kind: "^class$"
+
+  # ====== Go structured logging bridges ======
+  # Classes like XORMLogBridge, GormLogger that bridge ORMs to loggers
+  - concept: logging
+    symbol_name: "^[A-Z][a-zA-Z0-9_]*Log(Bridge|Adapter|Wrapper)$"
+    symbol_kind: "^(class|struct)$"
+
+linkers: []

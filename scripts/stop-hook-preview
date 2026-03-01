@@ -1,0 +1,349 @@
+#!/bin/bash
+# stop-hook-preview — Dry-run stop hook simulator.
+# Shows what the stop hook would do (which path, decision, guidance content)
+# without any side effects on disk.
+#
+# Usage: scripts/stop-hook-preview [OPTIONS]
+#
+# Options:
+#   --mode broad|deep|off   Assume this autonomous mode (default: read AUTONOMOUS_MODE.txt)
+#   --bakeoff active|inactive  Assume bakeoff is/isn't active (default: auto-detect)
+#   --path 1|2|3            Force a specific code path (default: show natural path)
+#   -h, --help              Show this help
+#
+# Examples:
+#   scripts/stop-hook-preview                                    # Current state
+#   scripts/stop-hook-preview --path 2                           # Force cooldown path
+#   scripts/stop-hook-preview --mode deep --bakeoff active       # Deep mode with bakeoff
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# --- Parse arguments ---
+REQUESTED_MODE=""
+REQUESTED_BAKEOFF=""
+FORCED_PATH=""
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/stop-hook-preview [OPTIONS]
+
+Options:
+  --mode broad|deep|off     Assume this autonomous mode (default: read AUTONOMOUS_MODE.txt)
+  --bakeoff active|inactive Assume bakeoff is/isn't active (default: auto-detect)
+  --path 1|2|3              Force a specific code path (default: natural)
+  -h, --help                Show this help
+
+Paths:
+  1  TODO blocking — TODOs exist, circuit breaker not tripped
+  2  Cooldown — reflection completed <30 min ago, no TODOs
+  3  Full reflection — stale/no reflection, no TODOs
+USAGE
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)
+      REQUESTED_MODE="${2:-}"
+      [[ -z "$REQUESTED_MODE" ]] && { echo "ERROR: --mode requires a value (broad|deep|off)" >&2; exit 1; }
+      REQUESTED_MODE=$(echo "$REQUESTED_MODE" | tr '[:lower:]' '[:upper:]')
+      shift 2
+      ;;
+    --bakeoff)
+      REQUESTED_BAKEOFF="${2:-}"
+      [[ -z "$REQUESTED_BAKEOFF" ]] && { echo "ERROR: --bakeoff requires a value (active|inactive)" >&2; exit 1; }
+      REQUESTED_BAKEOFF=$(echo "$REQUESTED_BAKEOFF" | tr '[:upper:]' '[:lower:]')
+      if [[ "$REQUESTED_BAKEOFF" != "active" && "$REQUESTED_BAKEOFF" != "inactive" ]]; then
+        echo "ERROR: --bakeoff must be 'active' or 'inactive'" >&2; exit 1
+      fi
+      shift 2
+      ;;
+    --path)
+      FORCED_PATH="${2:-}"
+      [[ -z "$FORCED_PATH" ]] && { echo "ERROR: --path requires a value (1|2|3)" >&2; exit 1; }
+      if [[ "$FORCED_PATH" != "1" && "$FORCED_PATH" != "2" && "$FORCED_PATH" != "3" ]]; then
+        echo "ERROR: --path must be 1, 2, or 3" >&2; exit 1
+      fi
+      shift 2
+      ;;
+    -h|--help) usage ;;
+    *)
+      echo "ERROR: Unknown option: $1" >&2
+      echo "Run with -h for help" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# --- Determine mode ---
+if [[ -n "$REQUESTED_MODE" ]]; then
+  MODE="$REQUESTED_MODE"
+  MODE_SOURCE="--mode flag"
+else
+  MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+  MODE_SOURCE="AUTONOMOUS_MODE.txt"
+fi
+
+# Normalize TRUE → BROAD
+if [[ "$MODE" == "TRUE" ]]; then
+  MODE="BROAD"
+fi
+
+# If mode is OFF/FALSE/empty, the stop hook would approve immediately
+if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
+  cat <<EOF
+
+$(printf '\xe2\x95\x90%.0s' {1..55})
+  stop-hook-preview (dry run — no side effects)
+$(printf '\xe2\x95\x90%.0s' {1..55})
+
+Mode:             OFF (from $MODE_SOURCE)
+Decision:         APPROVE
+Reason:           Autonomous mode disabled — stop hook approves immediately.
+
+$(printf '\xe2\x95\x90%.0s' {1..55})
+EOF
+  exit 0
+fi
+
+# --- Check loop sentinel ---
+# When --mode broad|deep is explicit, imply the sentinel is present for simulation
+LOOP_SENTINEL="absent"
+if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
+  LOOP_SENTINEL="present"
+elif [[ -n "$REQUESTED_MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
+  LOOP_SENTINEL="present (implied by --mode $MODE)"
+fi
+
+# If loop sentinel is missing, the stop hook would approve
+if [[ "$LOOP_SENTINEL" == "absent" ]]; then
+  cat <<EOF
+
+$(printf '\xe2\x95\x90%.0s' {1..55})
+  stop-hook-preview (dry run — no side effects)
+$(printf '\xe2\x95\x90%.0s' {1..55})
+
+Mode:             $MODE (from $MODE_SOURCE)
+Loop sentinel:    absent
+Decision:         APPROVE
+Reason:           Loop sentinel (.agent/LOOP) removed — stop hook approves.
+
+$(printf '\xe2\x95\x90%.0s' {1..55})
+EOF
+  exit 0
+fi
+
+# --- Set up dry-run environment ---
+export STOP_HOOK_DRY_RUN=1
+export REPO_ROOT
+
+# --- Handle bakeoff filtering ---
+if [[ "$REQUESTED_BAKEOFF" == "inactive" ]]; then
+  # Point to a nonexistent dir so no bakeoff state is found
+  export STOP_HOOK_BAKEOFF_FILTER="__nonexistent__"
+elif [[ -n "$REQUESTED_MODE" ]]; then
+  # Filter bakeoff sessions to match the requested mode
+  case "$MODE" in
+    BROAD) export STOP_HOOK_BAKEOFF_FILTER="broad-*" ;;
+    DEEP)  export STOP_HOOK_BAKEOFF_FILTER="deep-*" ;;
+  esac
+fi
+
+# --- Source stop_logic.sh (all state computed, writes go to temp dir) ---
+source "$REPO_ROOT/.agent/hooks/_shared/stop_logic.sh"
+
+# --- Compute circuit breaker hash count ---
+CB_COUNT=0
+CB_STATUS="not tripped"
+if [[ -f "$HASH_FILE" && "$TOTAL_TODOS" -gt 0 ]]; then
+  TAIL_HASHES=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE")
+  CB_COUNT=$(echo "$TAIL_HASHES" | wc -l)
+  CB_UNIQUE=$(echo "$TAIL_HASHES" | sort -u | wc -l)
+  if [[ "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+    CB_STATUS="TRIPPED ($CB_COUNT/$HASH_THRESHOLD identical hashes)"
+  else
+    CB_STATUS="not tripped ($CB_COUNT entries, $CB_UNIQUE unique)"
+  fi
+fi
+
+# --- Determine last reflection time display ---
+LAST_REFLECTION_DISPLAY="never"
+if [[ -f "$STATE_FILE" ]]; then
+  LAST_TS_DISPLAY=$(jq -r '.last_completed_utc // ""' "$STATE_FILE" 2>/dev/null || true)
+  if [[ -n "$LAST_TS_DISPLAY" && "$LAST_TS_DISPLAY" != "1970-01-01T00:00:00Z" ]]; then
+    LAST_REFLECTION_DISPLAY="${ELAPSED_MIN} min ago (${LAST_TS_DISPLAY})"
+  fi
+fi
+
+# --- Determine bakeoff status ---
+BAKEOFF_DISPLAY="none detected"
+if [[ -n "${BAKEOFF_SUMMARY:-}" ]]; then
+  SESSION_DIR=$(dirname "${LATEST_STATE:-}")
+  SESSION_NAME=$(basename "$SESSION_DIR")
+  BAKEOFF_DISPLAY="$BAKEOFF_SUMMARY ($SESSION_NAME)"
+elif [[ "$REQUESTED_BAKEOFF" == "inactive" ]]; then
+  BAKEOFF_DISPLAY="inactive (--bakeoff flag)"
+fi
+
+# --- Determine natural path ---
+NATURAL_PATH=""
+NATURAL_PATH_NAME=""
+NATURAL_DECISION=""
+NATURAL_REASON=""
+
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  NATURAL_PATH="1"
+  NATURAL_PATH_NAME="TODO blocking"
+  NATURAL_DECISION="BLOCK"
+  NATURAL_REASON="${TOTAL_TODOS} TODO(s) block stopping (${TOTAL_HARD} hard, ${TOTAL_SOFT} soft)"
+elif [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  NATURAL_PATH="1"
+  NATURAL_PATH_NAME="TODO blocking (circuit breaker tripped)"
+  NATURAL_DECISION="APPROVE"
+  NATURAL_REASON="No progress on ${TOTAL_TODOS} TODO(s) across ${HASH_THRESHOLD} stop events — circuit breaker approves"
+elif [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  NATURAL_PATH="2"
+  NATURAL_PATH_NAME="Cooldown"
+  NATURAL_DECISION="BLOCK"
+  NATURAL_REASON="Reflection completed ${ELAPSED_MIN} min ago (cooldown active)"
+else
+  NATURAL_PATH="3"
+  NATURAL_PATH_NAME="Full reflection"
+  NATURAL_DECISION="BLOCK"
+  NATURAL_REASON="Stale reflection (${ELAPSED_MIN} min ago) — full checklist required"
+fi
+
+# --- Determine which path to display ---
+DISPLAY_PATH="${FORCED_PATH:-$NATURAL_PATH}"
+
+# --- Determine guidance file for the displayed path ---
+GUIDANCE_CONTENT=""
+case "$DISPLAY_PATH" in
+  1)
+    DISPLAY_PATH_NAME="TODO blocking"
+    if [[ -n "$GUIDANCE_FILE" && -f "$GUIDANCE_FILE" ]]; then
+      GUIDANCE_CONTENT=$(cat "$GUIDANCE_FILE")
+    elif [[ "$TOTAL_TODOS" -eq 0 ]]; then
+      GUIDANCE_CONTENT="(No TODOs exist — Path 1 would not fire in current state)"
+    else
+      GUIDANCE_CONTENT="(Guidance file generation failed or empty)"
+    fi
+    ;;
+  2)
+    DISPLAY_PATH_NAME="Cooldown"
+    if [[ -n "$GUIDANCE_FILE_COOLDOWN" && -f "$GUIDANCE_FILE_COOLDOWN" ]]; then
+      GUIDANCE_CONTENT=$(cat "$GUIDANCE_FILE_COOLDOWN")
+    elif [[ "$ELAPSED_MIN" -ge 30 ]]; then
+      # Cooldown file wasn't generated because elapsed >= 30; generate it now for preview
+      _PREVIEW_COOLDOWN=$(mktemp)
+      {
+        cat "$REPO_ROOT/.agent/cooldown_prompt.md"
+        if [[ -f "$STATE_FILE" ]]; then
+          NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
+          if [[ -n "$NOTES" ]]; then
+            printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES"
+          fi
+        fi
+        if [[ -n "${BAKEOFF_SUFFIX:-}" ]]; then
+          printf '%s' "$BAKEOFF_SUFFIX"
+        fi
+      } > "$_PREVIEW_COOLDOWN"
+      GUIDANCE_CONTENT=$(cat "$_PREVIEW_COOLDOWN")
+      rm -f "$_PREVIEW_COOLDOWN"
+    else
+      GUIDANCE_CONTENT="(Cooldown guidance file not generated)"
+    fi
+    ;;
+  3)
+    DISPLAY_PATH_NAME="Full reflection"
+    if [[ -n "$GUIDANCE_FILE_REFLECTION" && -f "$GUIDANCE_FILE_REFLECTION" ]]; then
+      GUIDANCE_CONTENT=$(cat "$GUIDANCE_FILE_REFLECTION")
+    elif [[ "$ELAPSED_MIN" -lt 30 ]]; then
+      # Reflection file wasn't generated because elapsed < 30; generate it now for preview
+      _PREVIEW_REFLECT=$(mktemp)
+      {
+        cat "$REPO_ROOT/.agent/stop_reflect.md"
+        if [[ -n "${BAKEOFF_SUFFIX:-}" ]]; then
+          printf '%s' "$BAKEOFF_SUFFIX"
+        fi
+      } > "$_PREVIEW_REFLECT"
+      GUIDANCE_CONTENT=$(cat "$_PREVIEW_REFLECT")
+      rm -f "$_PREVIEW_REFLECT"
+    else
+      GUIDANCE_CONTENT="(Reflection guidance file not generated)"
+    fi
+    ;;
+esac
+
+# --- Print output ---
+SEPARATOR=$(printf '\xe2\x95\x90%.0s' {1..55})
+THIN_SEP=$(printf '\xe2\x94\x80%.0s' {1..55})
+
+cat <<EOF
+
+$SEPARATOR
+  stop-hook-preview (dry run — no side effects)
+$SEPARATOR
+
+Mode:             $MODE (from $MODE_SOURCE)
+Loop sentinel:    $LOOP_SENTINEL
+TODOs:            $TOTAL_TODOS ($TOTAL_HARD hard, $TOTAL_SOFT soft)
+Circuit breaker:  $CB_STATUS
+Last reflection:  $LAST_REFLECTION_DISPLAY
+Bakeoff:          $BAKEOFF_DISPLAY
+
+EOF
+
+# Show path header
+if [[ -n "$FORCED_PATH" && "$FORCED_PATH" != "$NATURAL_PATH" ]]; then
+  echo "$THIN_SEP Forced path: Path $DISPLAY_PATH ($DISPLAY_PATH_NAME) $THIN_SEP"
+  echo ""
+  echo "  Current state would select Path $NATURAL_PATH ($NATURAL_PATH_NAME), not Path $DISPLAY_PATH."
+  echo "  Assumptions overridden:"
+  case "$DISPLAY_PATH" in
+    1)
+      if [[ "$TOTAL_TODOS" -eq 0 ]]; then
+        echo "  - TOTAL_TODOS=0 — Path 1 requires >0 TODOs"
+      fi
+      if [[ "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+        echo "  - CIRCUIT_BREAKER_TRIPPED=true — Path 1 blocking requires false"
+      fi
+      ;;
+    2)
+      if [[ "$TOTAL_TODOS" -gt 0 ]]; then
+        echo "  - TOTAL_TODOS=$TOTAL_TODOS (>0) — Path 1 would fire first"
+      fi
+      if [[ "$ELAPSED_MIN" -ge 30 ]]; then
+        echo "  - ELAPSED_MIN=$ELAPSED_MIN (>=30) — Path 2 requires <30"
+      fi
+      ;;
+    3)
+      if [[ "$TOTAL_TODOS" -gt 0 ]]; then
+        echo "  - TOTAL_TODOS=$TOTAL_TODOS (>0) — Path 1 would fire first"
+      fi
+      if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+        echo "  - ELAPSED_MIN=$ELAPSED_MIN (<30) — Path 3 requires >=30"
+      fi
+      ;;
+  esac
+  echo "  Showing Path $DISPLAY_PATH content anyway:"
+  echo ""
+else
+  echo "$THIN_SEP Natural path: Path $DISPLAY_PATH ($DISPLAY_PATH_NAME) $THIN_SEP"
+  echo "Decision: $NATURAL_DECISION"
+  echo "Reason:   $NATURAL_REASON"
+  echo ""
+fi
+
+echo "$THIN_SEP Guidance content $THIN_SEP"
+echo "$GUIDANCE_CONTENT"
+echo ""
+echo "$SEPARATOR"
+
+# --- Cleanup dry-run temp dir ---
+if [[ -n "${_DRY_RUN_TMPDIR:-}" && -d "${_DRY_RUN_TMPDIR:-}" ]]; then
+  rm -rf "$_DRY_RUN_TMPDIR"
+fi

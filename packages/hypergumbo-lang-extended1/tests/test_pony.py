@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import pony as pony_module
 from hypergumbo_lang_extended1.pony import (
-    PonyAnalysisResult,
     analyze_pony,
     find_pony_files,
     is_pony_tree_sitter_available,
@@ -46,7 +46,7 @@ class TestIsPonyTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(pony_module, "is_pony_tree_sitter_available", return_value=False):
+        with patch.object(pony_module._analyzer, "_check_grammar_available", return_value=False):
             assert pony_module.is_pony_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzePony:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", "actor Main")
-        with patch.object(pony_module, "is_pony_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Pony analysis skipped"):
+        with patch.object(pony_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="pony analysis skipped"):
                 result = pony_module.analyze_pony(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -268,13 +268,13 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        assert actor.origin == "pony.tree_sitter"
+        assert actor.origin == "pony-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", "actor Main")
         result = analyze_pony(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "pony.tree_sitter"
+        assert result.run.pass_id == "pony-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -282,7 +282,8 @@ actor Main
         result = analyze_pony(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """

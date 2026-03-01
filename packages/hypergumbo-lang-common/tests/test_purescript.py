@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import purescript as purescript_module
-from hypergumbo_lang_common.purescript import (
-    PureScriptAnalysisResult,
-    analyze_purescript,
-    find_purescript_files,
-    is_purescript_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.purescript import analyze_purescript, find_purescript_files, is_purescript_tree_sitter_available
 
 def make_purescript_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a PureScript file in the temp directory."""
@@ -20,7 +15,6 @@ def make_purescript_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPurescriptFiles:
     """Tests for find_purescript_files function."""
@@ -37,7 +31,6 @@ class TestFindPurescriptFiles:
         files = list(find_purescript_files(tmp_path))
         assert files == []
 
-
 class TestIsPurescriptTreeSitterAvailable:
     """Tests for is_purescript_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsPurescriptTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(purescript_module, "is_purescript_tree_sitter_available", return_value=False):
+        with patch.object(purescript_module._analyzer, "_check_grammar_available", return_value=False):
             assert purescript_module.is_purescript_tree_sitter_available() is False
-
 
 class TestAnalyzePurescript:
     """Tests for analyze_purescript function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", "module Test where")
-        with patch.object(purescript_module, "is_purescript_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="PureScript analysis skipped"):
+        with patch.object(purescript_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="purescript analysis skipped"):
                 result = purescript_module.analyze_purescript(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -204,13 +196,13 @@ foo = 42
         result = analyze_purescript(tmp_path)
         func = next((s for s in result.symbols if "foo" in s.name), None)
         assert func is not None
-        assert func.origin == "purescript.tree_sitter"
+        assert func.origin == "purescript-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", "module Test where")
         result = analyze_purescript(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "purescript.tree_sitter"
+        assert result.run.pass_id == "purescript-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -229,9 +221,9 @@ myFunc = 42
         result = analyze_purescript(tmp_path)
         func = next((s for s in result.symbols if "myFunc" in s.name), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "purescript:" in func.id
-        assert "Test.purs" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("purescript:Test.purs:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", """module Test where

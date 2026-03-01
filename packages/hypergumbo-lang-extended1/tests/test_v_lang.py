@@ -118,7 +118,7 @@ class TestIsVTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_extended1.v_lang as v_module
-        with patch.object(v_module, "is_v_tree_sitter_available", return_value=False):
+        with patch.object(v_module._analyzer, "_check_grammar_available", return_value=False):
             assert v_module.is_v_tree_sitter_available() is False
 
 
@@ -129,12 +129,12 @@ class TestAnalyzeV:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_extended1.v_lang as v_module
 
-        with patch.object(v_module, "is_v_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(v_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="v analysis skipped"):
                 result = v_module.analyze_v(v_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "v" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -293,7 +293,7 @@ class TestAnalyzeV:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, v_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

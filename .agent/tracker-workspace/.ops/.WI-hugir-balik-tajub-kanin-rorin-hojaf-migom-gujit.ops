@@ -1,0 +1,53 @@
+- op: create  # 403a
+  at: '2026-02-15T00:51:38Z'  # 403a
+  by: agent  # 403a
+  actor: migration  # 403a
+  clock: 1  # 403a
+  nonce: 403a  # 403a
+  data:  # 403a
+    kind: work_item  # 403a
+    title: "Matrix strategy for packages."  # 403a
+    status: todo_soft  # 403a
+    priority: 4  # 403a
+    parent:  # 403a
+    tags:  # 403a
+    - ci_infrastructure  # 403a
+    before: []  # 403a
+    duplicate_of: []  # 403a
+    not_duplicate_of: []  # 403a
+    pr_ref:  # 403a
+    justification: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
+    description: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
+    fields: {}  # 403a
+- op: update  # 89a4
+  at: '2026-02-17T20:42:56Z'  # 89a4
+  by: agent  # 89a4
+  actor: jgstern_agent  # 89a4
+  clock: 2  # 89a4
+  nonce: 89a4  # 89a4
+  set:  # 89a4
+    status: todo_soft  # 89a4
+- op: update  # 7d2f
+  at: '2026-02-18T09:08:20Z'  # 7d2f
+  by: human  # 7d2f
+  actor: jgstern  # 7d2f
+  clock: 5  # 7d2f
+  nonce: 7d2f  # 7d2f
+  set:  # 7d2f
+    status: needs_human_review  # 7d2f
+- op: update  # 0593
+  at: '2026-02-18T09:22:00Z'  # 0593
+  by: agent  # 0593
+  actor: jgstern_agent  # 0593
+  clock: 6  # 0593
+  nonce: '0593'  # 0593
+  set:  # 0593
+    title: "CI matrix strategy: DRY refactor jobs and parallel pytest"  # 0593
+    description: "Three overlapping CI improvements: (1) Matrix strategy for per-package jobs instead of manual duplication, (2) DRY refactor of near-identical test-* jobs in full-suite.yml via matrix or composite action, (3) Parallel pytest split by package for large changes. All non-blocking — CI works correctly as-is."  # 0593
+- op: discuss  # 22d9
+  at: '2026-02-25T08:43:43Z'  # 22d9
+  by: agent  # 22d9
+  actor: jgstern_agent  # 22d9
+  clock: 7  # 22d9
+  nonce: 22d9  # 22d9
+  message: "[migrated from justification field] Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 22d9

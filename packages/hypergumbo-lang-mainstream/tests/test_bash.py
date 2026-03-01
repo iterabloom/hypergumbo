@@ -1,23 +1,25 @@
 """Tests for Bash/shell script analyzer."""
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+import pytest
+
+from hypergumbo_core.analyze.base import find_child_by_type
+from hypergumbo_lang_mainstream import bash as bash_module
+from unittest.mock import patch, MagicMock
 
 class TestBashHelpers:
     """Tests for Bash analyzer helper functions."""
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo_lang_mainstream.bash import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "identifier")
+        result = find_child_by_type(mock_node, "identifier")
         assert result is None
-
 
 class TestFindBashFiles:
     """Tests for Bash file discovery."""
@@ -50,7 +52,6 @@ class TestFindBashFiles:
         assert len(files) == 1
         assert files[0].name == "run-script"
 
-
 class TestBashTreeSitterAvailability:
     """Tests for tree-sitter-bash availability checking."""
 
@@ -82,7 +83,6 @@ class TestBashTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_bash_tree_sitter_available() is False
 
-
 class TestAnalyzeBashFallback:
     """Tests for fallback behavior when tree-sitter-bash unavailable."""
 
@@ -92,12 +92,13 @@ class TestAnalyzeBashFallback:
 
         (tmp_path / "test.sh").write_text("#!/bin/bash\necho hello")
 
-        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=False):
-            result = analyze_bash(tmp_path)
+        with patch.object(bash_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bash analysis skipped"):
+                result = analyze_bash(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-bash" in result.skip_reason
-
+        assert "not available" in result.skip_reason
+        assert result.run is not None
 
 class TestBashFunctionExtraction:
     """Tests for extracting Bash functions."""
@@ -119,7 +120,6 @@ function helper() {
 """)
 
         result = analyze_bash(tmp_path)
-
 
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
@@ -144,12 +144,10 @@ do_work() {
 
         result = analyze_bash(tmp_path)
 
-
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
         assert "say_hello" in func_names
         assert "do_work" in func_names
-
 
 class TestBashVariableExtraction:
     """Tests for extracting Bash variables."""
@@ -167,12 +165,10 @@ export PATH="/usr/bin:$PATH"
 
         result = analyze_bash(tmp_path)
 
-
         exports = [s for s in result.symbols if s.kind == "export"]
         export_names = [s.name for s in exports]
         assert "MY_CONFIG" in export_names
         assert "PATH" in export_names
-
 
 class TestBashSourceEdges:
     """Tests for extracting source/import statements."""
@@ -189,7 +185,6 @@ source lib/common.sh
 """)
 
         result = analyze_bash(tmp_path)
-
 
         import_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(import_edges) >= 2
@@ -211,10 +206,8 @@ source lib/common.sh
 
         result = analyze_bash(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(import_edges) >= 2
-
 
 class TestBashCallEdges:
     """Tests for extracting function call edges."""
@@ -236,7 +229,6 @@ function main() {
 """)
 
         result = analyze_bash(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -265,14 +257,12 @@ function run() {
 
         result = analyze_bash(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
         # Check for cross-file call edge with lower confidence
         cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
         assert len(cross_file_edges) >= 1
-
 
 class TestBashSymbolProperties:
     """Tests for symbol property correctness."""
@@ -289,13 +279,11 @@ class TestBashSymbolProperties:
 
         result = analyze_bash(tmp_path)
 
-
         test_func = next((s for s in result.symbols if s.name == "test"), None)
         assert test_func is not None
         assert test_func.span.start_line == 1
         assert test_func.language == "bash"
         assert test_func.origin == "bash-v1"
-
 
 class TestBashEdgeProperties:
     """Tests for edge property correctness."""
@@ -312,12 +300,10 @@ source utils.sh
 
         result = analyze_bash(tmp_path)
 
-
         source_edges = [e for e in result.edges if e.edge_type == "sources"]
         for edge in source_edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestBashEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -330,7 +316,6 @@ class TestBashEmptyFile:
         bash_file.write_text("")
 
         result = analyze_bash(tmp_path)
-
 
         assert result.run is not None
 
@@ -346,27 +331,19 @@ class TestBashEmptyFile:
 
         result = analyze_bash(tmp_path)
 
-
         assert result.run is not None
 
+class TestBashEmptyRepo:
+    """Tests for empty repository handling."""
 
-class TestBashParserFailure:
-    """Tests for parser failure handling."""
-
-    def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load Bash parser."""
+    def test_empty_repo(self, tmp_path: Path) -> None:
+        """Empty repo returns result with run metadata and zero files."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
-        bash_file = tmp_path / "test.sh"
-        bash_file.write_text("#!/bin/bash\necho hello")
+        result = analyze_bash(tmp_path)
 
-        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_bash.language", side_effect=Exception("Parser error")):
-                result = analyze_bash(tmp_path)
-
-        assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
-
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
 class TestBashAliasExtraction:
     """Tests for extracting Bash aliases."""
@@ -384,12 +361,10 @@ alias gs='git status'
 
         result = analyze_bash(tmp_path)
 
-
         aliases = [s for s in result.symbols if s.kind == "alias"]
         alias_names = [s.name for s in aliases]
         assert "ll" in alias_names
         assert "gs" in alias_names
-
 
 class TestBashInternalHelpers:
     """Tests for internal helper functions."""
@@ -412,10 +387,8 @@ alias myalias=value
 
         result = analyze_bash(tmp_path)
 
-
         aliases = [s for s in result.symbols if s.kind == "alias"]
         assert any(s.name == "myalias" for s in aliases)
-
 
 class TestBashShebangHandling:
     """Tests for shebang handling in files."""
@@ -451,6 +424,23 @@ class TestBashShebangHandling:
 
         assert len(files) == 4
 
+    def test_excludes_shebanged_files_in_excluded_directories(self, tmp_path: Path) -> None:
+        """Excludes shebanged files in directories like node_modules."""
+        from hypergumbo_lang_mainstream.bash import find_bash_files
+
+        # Valid shebanged file at root
+        (tmp_path / "run-script").write_text("#!/bin/bash\necho hello")
+
+        # Shebanged file in excluded directory (node_modules)
+        node_modules = tmp_path / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "some-bin").write_text("#!/bin/bash\necho excluded")
+
+        files = list(find_bash_files(tmp_path))
+
+        # Should only find the root script, not the one in node_modules
+        assert len(files) == 1
+        assert files[0].name == "run-script"
 
 class TestBashSignatureExtraction:
     """Tests for Bash function signature extraction."""

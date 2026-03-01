@@ -50,6 +50,17 @@ class TestFindDFiles:
 
         assert "module.di" in filenames
 
+    def test_skips_gcc_dependency_files(self, temp_repo: Path) -> None:
+        """GCC dependency files (.d) are filtered out by content classification."""
+        (temp_repo / "real.d").write_text("module real;\nvoid main() {}\n")
+        (temp_repo / "gcc_dep.d").write_text("gcc_dep.o: gcc_dep.c gcc_dep.h\n")
+
+        files = list(find_d_files(temp_repo))
+        filenames = {f.name for f in files}
+
+        assert "real.d" in filenames
+        assert "gcc_dep.d" not in filenames
+
 
 class TestDTreeSitterAvailable:
     """Tests for tree-sitter availability check."""
@@ -270,8 +281,8 @@ class TestDAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "test.d").write_text("module test;")
 
-        with patch.object(d_module, "is_d_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="D analysis skipped"):
+        with patch.object(d_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="d analysis skipped"):
                 result = d_module.analyze_d(temp_repo)
 
         assert result.skipped is True
@@ -293,6 +304,90 @@ void hello() {}
         assert result.run is not None
         assert result.run.pass_id == "d-v1"
         assert result.run.files_analyzed >= 1
+
+
+class TestDMethodExtraction:
+    """Tests for D method extraction from struct/class/interface bodies."""
+
+    def test_struct_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside structs should be extracted as methods with qualified names."""
+        (temp_repo / "types.d").write_text('''
+module types;
+
+struct Searcher {
+    void search() {}
+    int count() { return 42; }
+}
+
+void standalone() {}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Searcher.search" in methods
+        assert "Searcher.count" in methods
+
+        # standalone should remain a function, not a method
+        funcs = {s.name for s in result.symbols if s.kind == "function"}
+        assert "standalone" in funcs
+
+    def test_class_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside classes should be extracted as methods with qualified names."""
+        (temp_repo / "animal.d").write_text('''
+module animal;
+
+class Animal {
+    void speak() {}
+    void move(int x, int y) {}
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Animal.speak" in methods
+        assert "Animal.move" in methods
+
+    def test_interface_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside interfaces should be extracted as methods with qualified names."""
+        (temp_repo / "drawable.d").write_text('''
+module drawable;
+
+interface Drawable {
+    void draw();
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Drawable.draw" in methods
+
+    def test_method_call_edge_from_method(self, temp_repo: Path) -> None:
+        """Call edges from methods should have method as caller."""
+        (temp_repo / "worker.d").write_text('''
+module worker;
+
+void helper() {}
+
+struct Worker {
+    void doWork() {
+        helper();
+    }
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        # doWork should be a method
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Worker.doWork" in methods
+
+        # Should have call edge from Worker.doWork to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        method_calls = [e for e in call_edges if "Worker.doWork" in e.src]
+        assert len(method_calls) >= 1
 
 
 class TestDImportAliases:
@@ -352,3 +447,246 @@ void calculate() {
         calc_calls = [e for e in call_edges if "calculate" in e.src]
         # Should have at least the sin call
         assert len(calc_calls) >= 1
+
+    def test_bare_call_prefers_imported_module(self, temp_repo: Path) -> None:
+        """Bare function call resolves to imported module, not same-named file.
+
+        This is the DMD pattern: main.d imports dmd.errors and calls error(),
+        but another file also defines error(). The call should resolve to the
+        imported module's symbol, not an arbitrary same-named symbol.
+
+        To force the wrong symbol into the registry, we name the conflicting
+        file so it sorts alphabetically AFTER the production file — the last
+        file processed wins in the global_symbol_registry dict.
+        """
+        # Production error() function — at root level, processed first by rglob
+        (temp_repo / "errors.d").write_text("""
+module errors;
+
+void error(string msg) {
+}
+
+void fatal() {
+}
+""")
+
+        # Main file imports errors module and calls error()
+        (temp_repo / "main.d").write_text("""
+module main;
+
+import errors;
+
+void tryMain() {
+    error("something went wrong");
+    fatal();
+}
+""")
+
+        # Conflicting error() in a subdirectory — rglob processes subdirectories
+        # AFTER root-level files, so this overwrites errors.d's "error" in the
+        # global_symbol_registry. Without import-scope disambiguation, the call
+        # will resolve to this wrong target.
+        sub = temp_repo / "other"
+        sub.mkdir()
+        (sub / "unrelated.d").write_text("""
+module unrelated;
+
+void error(int code) {
+}
+""")
+
+        result = analyze_d(temp_repo)
+
+        # Find call edges from tryMain
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        trymain_calls = [e for e in call_edges if "tryMain" in e.src]
+
+        # Should have at least 2 calls (error + fatal)
+        assert len(trymain_calls) >= 2
+
+        # The error() call should resolve to errors.d, NOT other/unrelated.d
+        error_call = next(
+            (e for e in trymain_calls if "error" in e.dst and "external" not in e.dst),
+            None,
+        )
+        assert error_call is not None, "error() call should be resolved (not external)"
+        assert "errors.d" in error_call.dst and "unrelated" not in error_call.dst, (
+            f"error() should resolve to errors.d (imported module), got: {error_call.dst}"
+        )
+
+
+class TestDTemplateCalls:
+    """Tests for D template instantiation call detection."""
+
+    def test_template_call_detected(self, temp_repo: Path) -> None:
+        """Template calls like to!string(x) should produce call edges."""
+        (temp_repo / "convert.d").write_text('''
+module convert;
+
+string stringify(int x) {
+    return to!string(x);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        stringify_calls = [e for e in call_edges if "stringify" in e.src]
+        assert len(stringify_calls) >= 1
+        assert any("to" in e.dst for e in stringify_calls)
+
+    def test_plain_property_access_no_edge(self, temp_repo: Path) -> None:
+        """Plain property access (obj.field) should NOT produce a call edge."""
+        (temp_repo / "access.d").write_text('''
+module access;
+
+void read_field() {
+    auto x = obj.length;
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # obj.length is a property access, not a UFCS template call
+        read_calls = [e for e in call_edges if "read_field" in e.src]
+        # Should have no UFCS edge for 'length' (it's a plain property, not template)
+        assert not any("length" in e.dst and "external" not in e.dst for e in read_calls)
+
+    def test_ufcs_template_call_detected(self, temp_repo: Path) -> None:
+        """UFCS template calls like arr.map!(fn) should produce call edges."""
+        (temp_repo / "transform.d").write_text('''
+module transform;
+
+void process() {
+    auto arr = [1, 2, 3];
+    auto result = arr.map!(a => a * 2);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+        assert any("map" in e.dst for e in process_calls)
+
+
+class TestDCrossFileCallResolution:
+    """Tests for cross-file call resolution in D."""
+
+    def test_cross_file_call_resolved(self, temp_repo: Path) -> None:
+        """Calls to functions defined in another file should resolve."""
+        (temp_repo / "utils.d").write_text('''
+module utils;
+
+int helper(int x) {
+    return x + 1;
+}
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import utils;
+
+void run() {
+    auto x = helper(42);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "run" in e.src]
+        # helper() should be resolved to utils.d, not external
+        resolved = [e for e in run_calls if "external" not in e.dst]
+        assert len(resolved) >= 1, (
+            f"Cross-file call to helper() should resolve. Edges: {[(e.src, e.dst) for e in run_calls]}"
+        )
+
+
+class TestDImportEdgeResolution:
+    """Tests for resolving D import edges to actual module symbols."""
+
+    def test_internal_import_resolved_to_module_symbol(self, temp_repo: Path) -> None:
+        """Import of a module defined in the repo resolves to that module's symbol ID."""
+        (temp_repo / "utils.d").write_text('''
+module utils;
+
+void helper() {}
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import utils;
+
+void run() { helper(); }
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        utils_imports = [e for e in import_edges if "utils" in e.dst]
+
+        # Should have at least one import edge for 'utils'
+        assert len(utils_imports) >= 1
+
+        # The dst should point to the actual module symbol, NOT d:?:utils:module
+        for edge in utils_imports:
+            assert "?" not in edge.dst, (
+                f"Import edge dst should be resolved, got unresolved: {edge.dst}"
+            )
+            assert "utils.d" in edge.dst, (
+                f"Import edge should point to utils.d module, got: {edge.dst}"
+            )
+
+    def test_external_import_stays_unresolved(self, temp_repo: Path) -> None:
+        """Import of a module NOT in the repo stays unresolved (d:?:...)."""
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import std.stdio;
+
+void run() {}
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        stdio_imports = [e for e in import_edges if "std.stdio" in e.dst]
+
+        assert len(stdio_imports) >= 1
+        # External imports should remain unresolved
+        for edge in stdio_imports:
+            assert "?" in edge.dst, (
+                f"External import should be unresolved (d:?:...), got: {edge.dst}"
+            )
+
+    def test_dotted_module_import_resolved(self, temp_repo: Path) -> None:
+        """Import of a dotted module name (pkg.sub) resolves when present."""
+        sub = temp_repo / "pkg"
+        sub.mkdir()
+        (sub / "math.d").write_text('''
+module pkg.math;
+
+int add(int a, int b) { return a + b; }
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import pkg.math;
+
+void run() { add(1, 2); }
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        math_imports = [e for e in import_edges if "math" in e.dst]
+
+        assert len(math_imports) >= 1
+        # Should be resolved to the actual module
+        resolved = [e for e in math_imports if "?" not in e.dst]
+        assert len(resolved) >= 1, (
+            f"Dotted module import should be resolved, edges: {[e.dst for e in math_imports]}"
+        )
+        assert any("pkg/math.d" in e.dst or "pkg.math" in e.dst for e in resolved)

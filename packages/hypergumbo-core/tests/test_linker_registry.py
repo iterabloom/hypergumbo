@@ -22,10 +22,19 @@ from hypergumbo_core.linkers.registry import (
 
 @pytest.fixture(autouse=True)
 def clean_registry():
-    """Clear registry before and after each test."""
+    """Save, clear, and restore registry around each test.
+
+    Tests in this file need a clean registry to test registration mechanics.
+    But clearing globally would break other test files that depend on linkers
+    registered at import time (e.g., test_vue_component_linker).
+    """
+    from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+    saved = dict(_LINKER_REGISTRY)
     clear_registry()
     yield
     clear_registry()
+    _LINKER_REGISTRY.update(saved)
 
 
 class TestLinkerContext:

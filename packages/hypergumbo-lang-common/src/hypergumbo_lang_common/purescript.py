@@ -22,40 +22,19 @@ Key constructs extracted:
 """
 
 import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "purescript.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("purescript")
 
-
-@dataclass
-class PureScriptAnalysisResult:
-    """Result of analyzing PureScript files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def is_purescript_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with PureScript support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("purescript")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_purescript_files(root: Path) -> Iterator[Path]:
@@ -65,15 +44,9 @@ def find_purescript_files(root: Path) -> Iterator[Path]:
             yield path
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a PureScript symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"purescript:{rel_path}:{name}:{kind}"
-
-
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8")
+    return node.text.decode("utf-8", errors="replace")
 
 
 def _get_module_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -145,26 +118,31 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class PureScriptAnalyzer:
+class _PureScriptExtractor:
     """Analyzer for PureScript source files."""
 
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, analyzer: "TreeSitterAnalyzer"):
         self.repo_root = repo_root
+        self._ts_analyzer = analyzer
         self.symbols: list[Symbol] = []
         self.edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
         self._current_module: Optional[str] = None
 
-    def analyze(self) -> PureScriptAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all PureScript files in the repository."""
-        if not is_purescript_tree_sitter_available():
+        if not is_purescript_tree_sitter_available():  # pragma: no cover
+            # Defense-in-depth: PureScriptAnalyzer.analyze() gates on
+            # _check_grammar_available() before constructing this extractor,
+            # so this branch is unreachable through the public API.
+            import warnings
             warnings.warn(
                 "PureScript analysis skipped: tree-sitter-language-pack not available",
                 UserWarning,
                 stacklevel=2,
             )
-            return PureScriptAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -179,7 +157,7 @@ class PureScriptAnalyzer:
         ps_files = list(find_purescript_files(self.repo_root))
 
         if not ps_files:
-            return PureScriptAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in ps_files:
@@ -187,7 +165,9 @@ class PureScriptAnalyzer:
                 content = path.read_bytes()
                 tree = parser.parse(content)
                 self._current_module = None
+                before = len(self.symbols)
                 self._extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, self.symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 
@@ -216,7 +196,7 @@ class PureScriptAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return PureScriptAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -231,8 +211,8 @@ class PureScriptAnalyzer:
                 self._current_module = mod_name
                 rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, mod_name, "module"),
-                    stable_id=_make_stable_id(path, self.repo_root, mod_name, "module"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, mod_name, "module"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="module"),
                     name=mod_name,
                     kind="module",
                     language="purescript",
@@ -255,8 +235,8 @@ class PureScriptAnalyzer:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                     name=qualified_name,
                     kind="function",
                     language="purescript",
@@ -289,8 +269,8 @@ class PureScriptAnalyzer:
                     # Create symbol for signature without implementation
                     rel_path = str(path.relative_to(self.repo_root))
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                        stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
+                        id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                         name=qualified_name,
                         kind="function",
                         language="purescript",
@@ -318,8 +298,8 @@ class PureScriptAnalyzer:
                 constructors = [c for c in node.children if c.type == "constructor"]
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "type"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "type"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type"),
                     name=qualified_name,
                     kind="type",
                     language="purescript",
@@ -343,8 +323,8 @@ class PureScriptAnalyzer:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "type_alias"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "type_alias"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type_alias"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type_alias"),
                     name=qualified_name,
                     kind="type_alias",
                     language="purescript",
@@ -368,8 +348,8 @@ class PureScriptAnalyzer:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "class"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "class"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "class"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class"),
                     name=qualified_name,
                     kind="class",
                     language="purescript",
@@ -393,8 +373,8 @@ class PureScriptAnalyzer:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "instance"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "instance"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "instance"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="instance"),
                     name=qualified_name,
                     kind="instance",
                     language="purescript",
@@ -478,19 +458,59 @@ class PureScriptAnalyzer:
                 name = _get_function_name(current)
                 if name:
                     qualified = f"{self._current_module}.{name}" if self._current_module else name
-                    return _make_stable_id(path, self.repo_root, qualified, "fn")
+                    rel_path = str(path.relative_to(self.repo_root))
+                    return make_symbol_id("purescript", rel_path,
+                        current.start_point[0]+1, current.end_point[0]+1, qualified, "function")
             current = current.parent
         return None  # pragma: no cover
 
 
-def analyze_purescript(repo_root: Path) -> PureScriptAnalysisResult:
+class PureScriptAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for PureScript source files.
+
+    Extracts modules, functions, data types, type aliases, classes, instances,
+    and call edges. Uses language_pack_name for the purescript grammar.
+    """
+
+    lang = "purescript"
+    file_patterns: ClassVar[list[str]] = ["**/*.purs"]
+    language_pack_name = "purescript"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run PureScript analysis with cross-file symbol registry."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _PureScriptExtractor(repo_root, self)
+        return extractor.analyze()
+
+
+_analyzer = PureScriptAnalyzer()
+
+
+def is_purescript_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with PureScript support is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("purescript")
+def analyze_purescript(repo_root: Path) -> AnalysisResult:
     """Analyze PureScript source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        PureScriptAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = PureScriptAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

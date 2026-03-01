@@ -8,20 +8,43 @@ Tests verify that the analyzer correctly extracts:
 - Binding attributes (@group/@binding)
 """
 
+from unittest.mock import patch
+
+import pytest
+
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
+from hypergumbo_lang_common import wgsl as wgsl_module
 from hypergumbo_lang_common.wgsl import (
     PASS_ID,
-    PASS_VERSION,
-    WGSLAnalysisResult,
     analyze_wgsl_files,
     find_wgsl_files,
+    is_wgsl_tree_sitter_available,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "wgsl-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
+def test_is_wgsl_tree_sitter_available():
+    """Availability check returns True when grammar installed."""
+    result = is_wgsl_tree_sitter_available()
+    assert result is True
+
+def test_returns_false_when_unavailable():
+    """Availability check returns False when grammar not installed."""
+    with patch.object(wgsl_module._analyzer, "_check_grammar_available", return_value=False):
+        assert is_wgsl_tree_sitter_available() is False
+
+def test_skipped_when_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter unavailable."""
+    (tmp_path / "shader.wgsl").write_text("@vertex fn main() {}")
+    with patch.object(wgsl_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="wgsl analysis skipped"):
+            result = wgsl_module.analyze_wgsl_files(tmp_path)
+    assert result.skipped is True
+    assert "not available" in result.skip_reason
 
 def test_analyze_vertex_shader(tmp_path):
     """Test detection of @vertex entry point."""
@@ -40,10 +63,10 @@ fn vs_main(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
     vs_main = next((f for f in functions if f.name == "vs_main"), None)
     assert vs_main is not None
     assert vs_main.language == "wgsl"
-    assert vs_main.stable_id == "vertex"
+    assert vs_main.stable_id is not None
+    assert len(vs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert vs_main.meta is not None
     assert vs_main.meta.get("entry_point") == "vertex"
-
 
 def test_analyze_fragment_shader(tmp_path):
     """Test detection of @fragment entry point."""
@@ -59,9 +82,9 @@ fn fs_main() -> @location(0) vec4<f32> {
     functions = [s for s in result.symbols if s.kind == "function"]
     fs_main = next((f for f in functions if f.name == "fs_main"), None)
     assert fs_main is not None
-    assert fs_main.stable_id == "fragment"
+    assert fs_main.stable_id is not None
+    assert len(fs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert fs_main.meta.get("entry_point") == "fragment"
-
 
 def test_analyze_compute_shader(tmp_path):
     """Test detection of @compute entry point."""
@@ -77,9 +100,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     functions = [s for s in result.symbols if s.kind == "function"]
     cs_main = next((f for f in functions if f.name == "cs_main"), None)
     assert cs_main is not None
-    assert cs_main.stable_id == "compute"
+    assert cs_main.stable_id is not None
+    assert len(cs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert cs_main.meta.get("entry_point") == "compute"
-
 
 def test_analyze_struct(tmp_path):
     """Test detection of struct definitions."""
@@ -101,7 +124,6 @@ fn main() -> @builtin(position) vec4<f32> {
     assert len(structs) >= 1
     uniforms_struct = next((s for s in structs if s.name == "Uniforms"), None)
     assert uniforms_struct is not None
-
 
 def test_analyze_uniform_binding(tmp_path):
     """Test detection of uniform bindings with @group/@binding."""
@@ -129,7 +151,6 @@ fn main() -> @builtin(position) vec4<f32> {
     assert uniform.meta.get("group") == 0
     assert uniform.meta.get("binding") == 0
 
-
 def test_analyze_storage_buffer(tmp_path):
     """Test detection of storage buffers."""
     wgsl_file = tmp_path / "compute.wgsl"
@@ -155,7 +176,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     assert data_buffer.meta.get("group") == 0
     assert data_buffer.meta.get("binding") == 1
 
-
 def test_analyze_function_calls(tmp_path):
     """Test detection of function calls."""
     wgsl_file = tmp_path / "shader.wgsl"
@@ -175,7 +195,6 @@ fn main() -> @location(0) vec4<f32> {
     calls = [e for e in result.edges if e.edge_type == "calls"]
     assert len(calls) >= 1
 
-
 def test_find_wgsl_files(tmp_path):
     """Test that WGSL files are discovered correctly."""
     (tmp_path / "shader.wgsl").write_text("@vertex fn main() {}")
@@ -188,7 +207,6 @@ def test_find_wgsl_files(tmp_path):
     # Should find only .wgsl files
     assert len(files) == 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no WGSL files."""
     result = analyze_wgsl_files(tmp_path)
@@ -196,7 +214,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -211,7 +228,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     wgsl_file = tmp_path / "broken.wgsl"
@@ -221,8 +237,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_wgsl_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, WGSLAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -239,7 +254,6 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = functions[0]
     assert main_fn.span is not None
     assert main_fn.span.start_line >= 1
-
 
 def test_non_entry_point_function(tmp_path):
     """Test that non-entry-point functions are detected without stable_id."""
@@ -265,8 +279,29 @@ fn main() -> @builtin(position) vec4<f32> {
 
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
-    assert main_fn.stable_id == "vertex"  # Has @vertex attribute
+    assert main_fn.stable_id is not None
+    assert len(main_fn.stable_id) == 64  # Has @vertex → sha256 entry stable_id
 
+def test_entry_point_stable_id_no_collision(tmp_path):
+    """Different @vertex functions must have different stable_ids (ADR-0014 §4)."""
+    wgsl_file = tmp_path / "shader.wgsl"
+    wgsl_file.write_text("""
+@vertex
+fn main_vs(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
+    return position;
+}
+
+@vertex
+fn shadow_vs(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
+    return position;
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+
+    entry_fns = [s for s in result.symbols if s.kind == "function" and s.stable_id is not None]
+    assert len(entry_fns) >= 2
+    stable_ids = [s.stable_id for s in entry_fns]
+    assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
 
 class TestWGSLSignatureExtraction:
     """Tests for WGSL function signature extraction."""

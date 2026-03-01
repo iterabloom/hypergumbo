@@ -1,0 +1,31 @@
+- op: create  # 926e
+  at: '2026-02-20T08:25:47Z'  # 926e
+  by: agent  # 926e
+  actor: jgstern_agent  # 926e
+  clock: 1  # 926e
+  nonce: 926e  # 926e
+  data:  # 926e
+    kind: work_item  # 926e
+    title: "Add containing_module_stable_id to Python and bump scheme to v2"  # 926e
+    status: todo_soft  # 926e
+    priority: 2  # 926e
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 926e
+    tags:  # 926e
+    - phase-0  # 926e
+    - stable-id  # 926e
+    before: []  # 926e
+    duplicate_of: []  # 926e
+    not_duplicate_of: []  # 926e
+    pr_ref:  # 926e
+    justification:  # 926e
+    description: "Python's _compute_stable_id() (py.py:836-877) omits containing_module_stable_id. Spec includes it. Two methods with identical signatures in different classes collide (Foo.process(x) == Bar.process(x)). Fix: include recursive parent stable_id in the hash. Bump STABLE_ID_SCHEME from v1 to v2 in schema.py. This is a prerequisite for Phase 2 (base-class stable_id generalization). See ADR-0014 §5."  # 926e
+    fields: {}  # 926e
+- op: update  # 896e
+  at: '2026-02-20T10:05:31Z'  # 896e
+  by: agent  # 896e
+  actor: jgstern_agent  # 896e
+  clock: 2  # 896e
+  nonce: 896e  # 896e
+  set:  # 896e
+    status: done  # 896e
+    pr_ref: 'PR #1250'  # 896e

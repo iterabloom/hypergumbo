@@ -351,6 +351,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "lines_of_code": {
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
                 "description": "Number of source lines in the symbol body"
+            },
+            "signature": {
+                "oneOf": [{"type": "string"}, {"type": "null"}],
+                "description": "Function/method signature string, e.g., '(x: int, y: str) -> bool'"
+            },
+            "docstring": {
+                "oneOf": [{"type": "string"}, {"type": "null"}],
+                "description": "First-line summary of doc comment (truncated to 80 chars)"
+            },
+            "modifiers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Semantic modifiers (e.g., 'native', 'public', 'static')"
             }
         },
         "required": ["id", "name", "kind", "language", "path", "span"]
@@ -373,13 +386,16 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "description": "Relationship type",
                 "enum": [
                     "calls", "imports", "instantiates", "extends", "implements",
-                    "references", "depends_on", "links", "sources",
+                    "contains", "dispatches_to", "uses",
+                    "references", "depends_on", "depends_on_manifest",
+                    "links", "sources", "routes_to",
                     "script_src", "base_image", "kernel_launch",
                     "native_bridge", "message_send", "message_receive",
                     "websocket_message", "websocket_connection",
                     "grpc_calls", "http_calls", "graphql_calls",
                     "message_queue", "query_references", "event_publishes",
-                    "resolver_implements", "resolver_for_type"
+                    "resolver_implements", "resolver_for_type",
+                    "openapi_implements", "subprocess_calls"
                 ]
             },
             "line": {

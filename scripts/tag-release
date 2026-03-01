@@ -131,8 +131,13 @@ if [[ -d "packages/hypergumbo-core" ]]; then
         echo "Make sure the release PR was merged correctly."
         exit 1
     fi
-    # Verify all packages have the same version
+    # Verify all main packages have the same version (skip tracker — independent version)
     for pkg in packages/*/pyproject.toml; do
+        PKG_DIR=$(dirname "$pkg")
+        PKG_NAME=$(basename "$PKG_DIR")
+        if [[ "$PKG_NAME" == "hypergumbo-tracker" ]]; then
+            continue
+        fi
         PKG_VERSION=$(grep -E '^version\s*=' "$pkg" | head -1 | sed 's/.*"\(.*\)".*/\1/')
         if [[ "$PKG_VERSION" != "$VERSION" ]]; then
             echo -e "${RED}Error: Package version mismatch in $pkg${NC}"
@@ -141,7 +146,14 @@ if [[ -d "packages/hypergumbo-core" ]]; then
             exit 1
         fi
     done
-    echo -e "${GREEN}✓${NC} All package versions match: $VERSION"
+    echo -e "${GREEN}✓${NC} All main package versions match: $VERSION"
+
+    # Print tracker version for awareness
+    TRACKER_PYPROJECT="packages/hypergumbo-tracker/pyproject.toml"
+    if [[ -f "$TRACKER_PYPROJECT" ]]; then
+        TRACKER_VER=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        echo -e "${GREEN}✓${NC} Tracker version: $TRACKER_VER (independently versioned)"
+    fi
 else
     # Legacy single-package structure
     PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')

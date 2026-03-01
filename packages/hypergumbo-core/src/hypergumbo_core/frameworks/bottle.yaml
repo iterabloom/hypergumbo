@@ -27,11 +27,12 @@ patterns:
     extract_path: "args[0]"
     extract_method: "kwargs.method"
 
-  # Shortcut routes without app prefix
-  - concept: route
-    decorator: "^(get|post|put|delete|patch)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_name"
+  # NOTE: Bare shortcut routes (@get, @post, @put, @delete, @patch) without
+  # an app/bottle prefix are NOT matched. While Bottle supports this syntax
+  # via `from bottle import get, post`, the bare names collide with common
+  # non-route decorators like unittest.mock.patch, causing massive false
+  # positives (e.g., 76% of Superset "routes" were @mock.patch decorators).
+  # Use @app.get or @bottle.get style for detection.
 
   # Bottle hooks - @app.hook('before_request')
   - concept: middleware

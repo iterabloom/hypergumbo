@@ -1,0 +1,28 @@
+- op: create  # c2aa
+  at: '2026-02-22T04:50:40Z'  # c2aa
+  by: agent  # c2aa
+  actor: jgstern_agent  # c2aa
+  clock: 1  # c2aa
+  nonce: c2aa  # c2aa
+  data:  # c2aa
+    kind: work_item  # c2aa
+    title: "Ruby: extract meta.base_classes for inheritance linker"  # c2aa
+    status: todo_soft  # c2aa
+    priority: 2  # c2aa
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # c2aa
+    tags: []  # c2aa
+    before: []  # c2aa
+    duplicate_of: []  # c2aa
+    not_duplicate_of: []  # c2aa
+    pr_ref:  # c2aa
+    justification:  # c2aa
+    description: "Ruby class Foo < Bar superclass is not stored in meta.base_classes, so the centralized inheritance linker cannot create extends edges for Ruby. Ruby analyzer creates call edges to parent class but not the metadata the inheritance linker needs. Fix: store superclass in meta.base_classes during symbol extraction."  # c2aa
+    fields: {}  # c2aa
+- op: update  # a279
+  at: '2026-02-23T12:16:02Z'  # a279
+  by: agent  # a279
+  actor: jgstern_agent  # a279
+  clock: 2  # a279
+  nonce: a279  # a279
+  set:  # a279
+    status: done  # a279

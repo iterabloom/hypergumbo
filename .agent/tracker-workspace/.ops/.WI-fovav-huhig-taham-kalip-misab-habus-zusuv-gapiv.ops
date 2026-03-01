@@ -1,0 +1,40 @@
+- op: create  # 640e
+  at: '2026-02-20T08:28:39Z'  # 640e
+  by: agent  # 640e
+  actor: jgstern_agent  # 640e
+  clock: 1  # 640e
+  nonce: 640e  # 640e
+  data:  # 640e
+    kind: work_item  # 640e
+    title: "Implement ArityFlags and classify_parameter_flags() hook in base class"  # 640e
+    status: todo_soft  # 640e
+    priority: 2  # 640e
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 640e
+    tags:  # 640e
+    - phase-2  # 640e
+    - stable-id  # 640e
+    before: []  # 640e
+    duplicate_of: []  # 640e
+    not_duplicate_of: []  # 640e
+    pr_ref:  # 640e
+    justification:  # 640e
+    description: "Add ArityFlags dataclass (param_count, has_defaults, has_varargs, has_kwargs) and classify_parameter_flags(params_node) hook to TreeSitterAnalyzer. Default implementation counts children and checks common node types. Per-language overrides for: Java (spread_parameter), JS/TS (rest_pattern, assignment_pattern), Ruby (splat_parameter, hash_splat_parameter, optional_parameter), Go (no defaults/varargs — flags False). ~30 lines per language. See ADR-0014 §2."  # 640e
+    fields: {}  # 640e
+- op: update  # 8a72
+  at: '2026-02-20T08:34:38Z'  # 8a72
+  by: agent  # 8a72
+  actor: jgstern_agent  # 8a72
+  clock: 2  # 8a72
+  nonce: 8a72  # 8a72
+  set: {}  # 8a72
+  add:  # 8a72
+    before: [WI-jagus-tikab-givij-vorig-titag-lolil-mimap-kodur]  # 8a72
+- op: update  # 48c7
+  at: '2026-02-20T10:44:35Z'  # 48c7
+  by: agent  # 48c7
+  actor: jgstern_agent  # 48c7
+  clock: 3  # 48c7
+  nonce: 48c7  # 48c7
+  set:  # 48c7
+    status: done  # 48c7
+    pr_ref: 'PR #1253'  # 48c7

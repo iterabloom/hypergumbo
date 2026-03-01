@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import apex as apex_module
 from hypergumbo_lang_extended1.apex import (
-    ApexAnalysisResult,
     analyze_apex,
     find_apex_files,
     is_apex_tree_sitter_available,
@@ -52,7 +52,7 @@ class TestIsApexTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(apex_module, "is_apex_tree_sitter_available", return_value=False):
+        with patch.object(apex_module._analyzer, "_check_grammar_available", return_value=False):
             assert apex_module.is_apex_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeApex:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Test.cls", "public class Test {}")
-        with patch.object(apex_module, "is_apex_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Apex analysis skipped"):
+        with patch.object(apex_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="apex analysis skipped"):
                 result = apex_module.analyze_apex(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -388,13 +388,13 @@ public class Test {}
         result = analyze_apex(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.origin == "apex.tree_sitter"
+        assert cls.origin == "apex-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Test.cls", "public class Test {}")
         result = analyze_apex(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "apex.tree_sitter"
+        assert result.run.pass_id == "apex-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -402,7 +402,8 @@ public class Test {}
         result = analyze_apex(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run even for empty repos
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """
@@ -411,9 +412,9 @@ public class Service {}
         result = analyze_apex(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.id == cls.stable_id
-        assert "apex:" in cls.id
-        assert "Service.cls" in cls.id
+        assert cls.id != cls.stable_id
+        assert cls.id.startswith("apex:Service.cls:")
+        assert cls.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """

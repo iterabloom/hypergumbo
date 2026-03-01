@@ -1,0 +1,89 @@
+- op: create  # 1546
+  at: '2026-02-15T00:51:38Z'  # 1546
+  by: agent  # 1546
+  actor: migration  # 1546
+  clock: 1  # 1546
+  nonce: '1546'  # 1546
+  data:  # 1546
+    kind: work_item  # 1546
+    title: "Improve D language cross-file call resolution."  # 1546
+    status: todo_soft  # 1546
+    priority: 4  # 1546
+    parent:  # 1546
+    tags:  # 1546
+    - analysis_quality  # 1546
+    before: []  # 1546
+    duplicate_of: []  # 1546
+    not_duplicate_of: []  # 1546
+    pr_ref:  # 1546
+    justification: "requires understanding D import system (modules, package imports, selective imports) and modifying the D analyzer's call resolution. Lower priority than other linker work (affects a smaller user base)."  # 1546
+    description: "DMD bakeoff shows 72.2% orphan rate and 5.3% cross-file ratio despite extracting 78K nodes. D symbols are extracted but import-based cross-file calls are not resolved. Would benefit the D ecosystem (DMD, Phobos, etc.). Deferred: requires understanding D import system (modules, package imports, selective imports) and modifying the D analyzer's call resolution. Lower priority than other linker work (affects a smaller user base)."  # 1546
+    fields: {}  # 1546
+- op: update  # a4c1
+  at: '2026-02-17T20:42:57Z'  # a4c1
+  by: agent  # a4c1
+  actor: jgstern_agent  # a4c1
+  clock: 2  # a4c1
+  nonce: a4c1  # a4c1
+  set:  # a4c1
+    status: todo_soft  # a4c1
+- op: update  # 603e
+  at: '2026-02-18T09:12:14Z'  # 603e
+  by: human  # 603e
+  actor: jgstern  # 603e
+  clock: 4  # 603e
+  nonce: 603e  # 603e
+  set:  # 603e
+    priority: 2  # 603e
+- op: discuss  # 1ffc
+  at: '2026-02-18T13:44:37Z'  # 1ffc
+  by: agent  # 1ffc
+  actor: jgstern_agent  # 1ffc
+  clock: 5  # 1ffc
+  nonce: 1ffc  # 1ffc
+  message: "D language cross-file resolution: The current analyzer resolves calls within a single file. For cross-file, need to handle D module imports (import std.algorithm) and track exported symbols per module to build accurate call edges across files."  # 1ffc
+- op: discuss  # 8a46
+  at: '2026-02-18T14:01:12Z'  # 8a46
+  by: agent  # 8a46
+  actor: jgstern_agent  # 8a46
+  clock: 6  # 8a46
+  nonce: 8a46  # 8a46
+  message: "D module system: Each file defines a module based on its path (std/algorithm.d -> std.algorithm). Public symbols are exported by default unless marked private. The cross-file resolver needs to build a module-to-symbol map from the filesystem layout."  # 8a46
+- op: discuss  # 85a8
+  at: '2026-02-18T14:41:45Z'  # 85a8
+  by: agent  # 85a8
+  actor: jgstern_agent  # 85a8
+  clock: 7  # 85a8
+  nonce: 85a8  # 85a8
+  message: "D also supports selective imports (import std.algorithm : sort) and renamed imports (import io = std.stdio). The cross-file resolver needs to track both the module path and the specific imported symbols."  # 85a8
+- op: discuss  # 99c6
+  at: '2026-02-18T14:55:14Z'  # 99c6
+  by: agent  # 99c6
+  actor: jgstern_agent  # 99c6
+  clock: 8  # 99c6
+  nonce: 99c6  # 99c6
+  message: "D mixin templates are another challenge for cross-file resolution. A mixin can inject code from one module into another at compile time, creating implicit dependencies that are not visible in import statements."  # 99c6
+- op: discuss  # c62d
+  at: '2026-02-18T16:25:47Z'  # c62d
+  by: agent  # c62d
+  actor: jgstern_agent  # c62d
+  clock: 9  # c62d
+  nonce: c62d  # c62d
+  message: "Auto-sync test 4: D language improvements remain deferred."  # c62d
+- op: update  # be7d
+  at: '2026-02-18T17:24:06Z'  # be7d
+  by: agent  # be7d
+  actor: jgstern_agent  # be7d
+  clock: 10  # be7d
+  nonce: be7d  # be7d
+  set:  # be7d
+    status: done  # be7d
+    pr_ref: '1178'  # be7d
+    justification: "Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # be7d
+- op: discuss  # 6199
+  at: '2026-02-25T08:41:25Z'  # 6199
+  by: agent  # 6199
+  actor: jgstern_agent  # 6199
+  clock: 11  # 6199
+  nonce: '6199'  # 6199
+  message: "[migrated from justification field] Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # 6199

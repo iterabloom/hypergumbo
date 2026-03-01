@@ -7,17 +7,33 @@ id: fastapi
 language: python
 
 patterns:
-  # Route patterns - @app.get("/path"), @router.post("/path"), etc.
+  # Route patterns - @app.get("/path"), @router.post("/path"),
+  # @dag_run_router.get("/dag_runs"), etc.
+  # Named routers (e.g. connections_router, v1_router) are common in
+  # FastAPI projects like Airflow's core_api.
   - concept: route
-    decorator: "^(app|router)\\.(get|post|put|delete|patch|options|head)$"
+    decorator: "^(app|router|\\w+_router)\\.(get|post|put|delete|patch|options|head)$"
     extract_path: "args[0]"
     extract_method: "decorator_suffix"
 
   # Generic route - @app.route("/path", methods=["POST"])
   - concept: route
-    decorator: "^(app|router)\\.route$"
+    decorator: "^(app|router|\\w+_router)\\.route$"
     extract_path: "args[0]"
     extract_method: "kwargs.methods"
+
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # FastAPI add_api_route - router.add_api_route('/path', handler, methods=['GET'])
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|router|\\w+_router)\\.add_api_route$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
 
   # APIRouter with prefix - router = APIRouter(prefix="/api/v1")
   # Note: This pattern won't match directly since it's an assignment,
@@ -49,15 +65,15 @@ patterns:
 
   # Middleware decorator (Starlette)
   - concept: middleware
-    decorator: "^(app|router)\\.middleware$"
+    decorator: "^(app|router|\\w+_router)\\.middleware$"
 
   # Exception handlers
   - concept: error_handler
-    decorator: "^(app|router)\\.exception_handler$"
+    decorator: "^(app|router|\\w+_router)\\.exception_handler$"
 
   # Startup/shutdown events
   - concept: lifecycle
-    decorator: "^(app|router)\\.(on_event|on_startup|on_shutdown)$"
+    decorator: "^(app|router|\\w+_router)\\.(on_event|on_startup|on_shutdown)$"
 
   # SQLModel (SQLAlchemy + Pydantic)
   - concept: model

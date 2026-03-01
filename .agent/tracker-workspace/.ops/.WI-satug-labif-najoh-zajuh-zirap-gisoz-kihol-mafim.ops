@@ -1,0 +1,52 @@
+- op: create  # 61eb
+  at: '2026-02-20T16:44:03Z'  # 61eb
+  by: agent  # 61eb
+  actor: jgstern_agent  # 61eb
+  clock: 1  # 61eb
+  nonce: 61eb  # 61eb
+  data:  # 61eb
+    kind: work_item  # 61eb
+    title: "Java: ambiguity guard for overloaded methods"  # 61eb
+    status: todo_soft  # 61eb
+    priority: 3  # 61eb
+    parent:  # 61eb
+    tags: []  # 61eb
+    before: []  # 61eb
+    duplicate_of: []  # 61eb
+    not_duplicate_of: []  # 61eb
+    pr_ref:  # 61eb
+    justification:  # 61eb
+    description: "Java has overloaded method names across class hierarchy. Direct global_symbols lookup can pick arbitrary candidate."  # 61eb
+    fields: {}  # 61eb
+- op: update  # 7019
+  at: '2026-02-20T17:51:12Z'  # 7019
+  by: agent  # 7019
+  actor: jgstern_agent  # 7019
+  clock: 2  # 7019
+  nonce: '7019'  # 7019
+  set:  # 7019
+    description: "Java uses NameResolver (exact match, last-write-wins) not ListNameResolver. Same approach needed as Ruby: either switch to ListNameResolver or add explicit candidate-count check. More involved than PHP/JS/TS."  # 7019
+- op: update  # dbb3
+  at: '2026-02-20T18:44:25Z'  # dbb3
+  by: agent  # dbb3
+  actor: jgstern_agent  # dbb3
+  clock: 3  # dbb3
+  nonce: dbb3  # dbb3
+  set:  # dbb3
+    priority: 2  # dbb3
+- op: update  # 23e6
+  at: '2026-02-20T20:11:04Z'  # 23e6
+  by: agent  # 23e6
+  actor: jgstern_agent  # 23e6
+  clock: 4  # 23e6
+  nonce: '23e6'  # 23e6
+  set:  # 23e6
+    status: done  # 23e6
+- op: update  # cfab
+  at: '2026-02-22T04:47:43Z'  # cfab
+  by: agent  # cfab
+  actor: jgstern_agent  # cfab
+  clock: 5  # cfab
+  nonce: cfab  # cfab
+  set:  # cfab
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # cfab

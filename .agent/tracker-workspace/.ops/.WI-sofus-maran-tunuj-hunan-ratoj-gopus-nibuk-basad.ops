@@ -1,0 +1,39 @@
+- op: create  # 48f0
+  at: '2026-02-25T11:19:19Z'  # 48f0
+  by: agent  # 48f0
+  actor: jgstern_agent  # 48f0
+  clock: 1  # 48f0
+  nonce: 48f0  # 48f0
+  data:  # 48f0
+    kind: work_item  # 48f0
+    title: "Scope expansion: add errors=replace to all _get_node_text() functions"  # 48f0
+    status: todo_soft  # 48f0
+    priority: 4  # 48f0
+    parent:  # 48f0
+    tags:  # 48f0
+    - analysis-quality  # 48f0
+    before: []  # 48f0
+    duplicate_of: []  # 48f0
+    not_duplicate_of: []  # 48f0
+    pr_ref:  # 48f0
+    description: ""  # 48f0
+    fields:  # 48f0
+      statement: "40+ analyzers in hypergumbo-lang-extended1, hypergumbo-lang-common, and hypergumbo-core/analyze/base.py use node.text.decode('utf-8') without errors='replace'. Properties and INI are fixed (INV-runos). Remaining analyzers are lower risk (source code is usually UTF-8) but could crash on repos with non-UTF-8 source files."  # 48f0
+- op: update  # 7f02
+  at: '2026-02-25T15:39:28Z'  # 7f02
+  by: agent  # 7f02
+  actor: jgstern_agent  # 7f02
+  clock: 2  # 7f02
+  nonce: 7f02  # 7f02
+  set:  # 7f02
+    status: done  # 7f02
+    pr_ref: '#1449'  # 7f02
+- op: update  # cb5d
+  at: '2026-02-25T15:39:32Z'  # cb5d
+  by: agent  # cb5d
+  actor: jgstern_agent  # cb5d
+  clock: 3  # cb5d
+  nonce: cb5d  # cb5d
+  set:  # cb5d
+    status: done  # cb5d
+    pr_ref: '#1449'  # cb5d

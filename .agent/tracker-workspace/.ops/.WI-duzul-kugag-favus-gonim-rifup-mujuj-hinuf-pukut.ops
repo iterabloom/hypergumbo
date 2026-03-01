@@ -1,0 +1,73 @@
+- op: create  # cd71
+  at: '2026-02-20T08:33:16Z'  # cd71
+  by: agent  # cd71
+  actor: jgstern_agent  # cd71
+  clock: 1  # cd71
+  nonce: cd71  # cd71
+  data:  # cd71
+    kind: work_item  # cd71
+    title: "Implement typed stable_id tier (Phase 3, deferred)"  # cd71
+    status: todo_soft  # cd71
+    priority: 4  # cd71
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # cd71
+    tags:  # cd71
+    - phase-3  # cd71
+    - stable-id  # cd71
+    before: []  # cd71
+    duplicate_of: []  # cd71
+    not_duplicate_of: []  # cd71
+    pr_ref:  # cd71
+    justification:  # cd71
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Three blockers must be resolved first: (1) generic type parameter preservation (currently stripped: List<T>→List, need List<$0>), (2) visibility modifier extraction (public/private/protected — not tracked by any analyzer), (3) cross-language type normalization (String vs str vs string must not collide). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # cd71
+    fields: {}  # cd71
+- op: update  # 441e
+  at: '2026-02-20T08:36:06Z'  # 441e
+  by: agent  # 441e
+  actor: jgstern_agent  # 441e
+  clock: 2  # 441e
+  nonce: 441e  # 441e
+  set: {}  # 441e
+  add:  # 441e
+    before: [WI-dapoh-migav-novik-lusub-ratof-datad-rubag-tikas]  # 441e
+- op: update  # 23ca
+  at: '2026-02-20T18:44:27Z'  # 23ca
+  by: agent  # 23ca
+  actor: jgstern_agent  # 23ca
+  clock: 3  # 23ca
+  nonce: 23ca  # 23ca
+  set:  # 23ca
+    priority: 3  # 23ca
+    title: "Implement typed stable_id tier (Phase 3)"  # 23ca
+- op: update  # 6ac7
+  at: '2026-02-20T21:16:52Z'  # 6ac7
+  by: agent  # 6ac7
+  actor: jgstern_agent  # 6ac7
+  clock: 4  # 6ac7
+  nonce: 6ac7  # 6ac7
+  set:  # 6ac7
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Blockers status: (1) generic type parameter preservation — DONE, signatures already preserve generics (WI-murig). (2) visibility modifier extraction — DONE, 11 languages covered (WI-gifoh, PR #1282). (3) cross-language type normalization — needs human review (WI-silik). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # 6ac7
+- op: update  # 565a
+  at: '2026-02-20T22:51:45Z'  # 565a
+  by: agent  # 565a
+  actor: jgstern_agent  # 565a
+  clock: 5  # 565a
+  nonce: 565a  # 565a
+  set:  # 565a
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). All three prerequisite blockers resolved: (1) generic type parameter preservation — DONE (WI-murig). (2) visibility modifier extraction — DONE, 11 languages (WI-gifoh, PR #1282). (3) per-language normalize_signature() — DONE, 12 languages (WI-silik, PR #1285). Remaining work: wire typed formula into analyzers with sufficient type extraction (Java, Kotlin, TypeScript, C#, Dart, Go, Python). Phase 2 (untyped tier) should be proven first per ADR-0014. See ADR-0014 §3."  # 565a
+- op: update  # 996f
+  at: '2026-02-20T23:09:30Z'  # 996f
+  by: agent  # 996f
+  actor: jgstern_agent  # 996f
+  clock: 6  # 996f
+  nonce: 996f  # 996f
+  set:  # 996f
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). All prerequisites resolved: (1) generic type parameter preservation — DONE (WI-murig). (2) visibility modifier extraction — DONE, 11 languages (WI-gifoh, PR #1282). (3) per-language normalize_signature() — DONE, 12 languages (WI-silik, PR #1285). (4) Phase 2 untyped tier — already implemented (WI-dogir). Remaining: implement compute_typed_stable_id() in base class and wire into 7+ analyzers with sufficient type extraction (Java, Kotlin, TypeScript, C#, Dart, Go, Python). See ADR-0014 §3."  # 996f
+- op: update  # a571
+  at: '2026-02-21T00:04:16Z'  # a571
+  by: agent  # a571
+  actor: jgstern_agent  # a571
+  clock: 7  # a571
+  nonce: a571  # a571
+  set:  # a571
+    status: done  # a571
+    pr_ref: 'PR #1288'  # a571

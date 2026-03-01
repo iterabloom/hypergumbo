@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import markdown as markdown_module
 from hypergumbo_lang_mainstream.markdown import (
-    MarkdownAnalysisResult,
+    _analyzer,
     analyze_markdown,
     find_markdown_files,
     is_markdown_tree_sitter_available,
 )
-
 
 def make_markdown_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a markdown file in the temp directory."""
@@ -20,7 +20,6 @@ def make_markdown_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindMarkdownFiles:
     """Tests for find_markdown_files function."""
@@ -43,7 +42,6 @@ class TestFindMarkdownFiles:
         files = find_markdown_files(tmp_path)
         assert files == []
 
-
 class TestIsMarkdownTreeSitterAvailable:
     """Tests for is_markdown_tree_sitter_available function."""
 
@@ -55,14 +53,13 @@ class TestIsMarkdownTreeSitterAvailable:
         with patch.object(markdown_module, "is_markdown_tree_sitter_available", return_value=False):
             assert markdown_module.is_markdown_tree_sitter_available() is False
 
-
 class TestAnalyzeMarkdown:
     """Tests for analyze_markdown function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Hello")
-        with patch.object(markdown_module, "is_markdown_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Markdown analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="markdown analysis skipped"):
                 result = markdown_module.analyze_markdown(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -187,13 +184,13 @@ some code
         result = analyze_markdown(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "markdown.tree_sitter"
+        assert section.origin == "markdown-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n")
         result = analyze_markdown(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "markdown.tree_sitter"
+        assert result.run.pass_id == "markdown-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -201,7 +198,9 @@ some code
         result = analyze_markdown(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run, even with no files
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n")

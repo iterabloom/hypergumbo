@@ -238,8 +238,8 @@ class TestNimAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "test.nim").write_text("echo \"test\"")
 
-        with patch.object(nim_module, "is_nim_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Nim analysis skipped"):
+        with patch.object(nim_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="nim analysis skipped"):
                 result = nim_module.analyze_nim(temp_repo)
 
         assert result.skipped is True

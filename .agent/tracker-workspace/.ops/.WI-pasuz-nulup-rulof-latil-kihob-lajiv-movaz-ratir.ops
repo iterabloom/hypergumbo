@@ -1,0 +1,28 @@
+- op: create  # 4012
+  at: '2026-02-25T20:49:41Z'  # 4012
+  by: agent  # 4012
+  actor: jgstern_agent  # 4012
+  clock: 1  # 4012
+  nonce: '4012'  # 4012
+  data:  # 4012
+    kind: work_item  # 4012
+    title: "Route symbols in generated code (tier 4) not visible at default tier 3"  # 4012
+    status: todo_soft  # 4012
+    priority: 3  # 4012
+    parent:  # 4012
+    tags: []  # 4012
+    before: []  # 4012
+    duplicate_of: []  # 4012
+    not_duplicate_of: []  # 4012
+    pr_ref:  # 4012
+    description: "Go-swagger routes in alertmanager api/v2/restapi/operations/ are tier 4 (correctly classified as generated code) but route symbols carry API contract info valuable at all tiers. Options: (1) promote route symbols to tier 1 regardless of file tier, (2) add --max-tier to routes command, (3) document usage of --max-tier 4 for codegen projects."  # 4012
+    fields: {}  # 4012
+- op: update  # 84e9
+  at: '2026-02-25T22:18:53Z'  # 84e9
+  by: agent  # 84e9
+  actor: jgstern_agent  # 84e9
+  clock: 2  # 84e9
+  nonce: '84e9'  # 84e9
+  set:  # 84e9
+    status: done  # 84e9
+    pr_ref: '1471'  # 84e9

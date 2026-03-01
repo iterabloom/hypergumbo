@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import luau as luau_module
 from hypergumbo_lang_extended1.luau import (
-    LuauAnalysisResult,
     analyze_luau,
     find_luau_files,
     is_luau_tree_sitter_available,
@@ -33,11 +33,19 @@ class TestFindLuauFiles:
         names = {f.name for f in files}
         assert names == {"main.luau", "utils.luau"}
 
-    def test_finds_lua_files(self, tmp_path: Path) -> None:
+    def test_ignores_lua_files(self, tmp_path: Path) -> None:
+        """Luau analyzer only processes .luau files; .lua handled by lua-v1."""
         make_luau_file(tmp_path, "module.lua", "local x = 1")
         files = find_luau_files(tmp_path)
+        assert files == []
+
+    def test_mixed_lua_and_luau(self, tmp_path: Path) -> None:
+        """Only .luau files are returned when both .lua and .luau exist."""
+        make_luau_file(tmp_path, "module.lua", "local x = 1")
+        make_luau_file(tmp_path, "types.luau", "export type Foo = {}")
+        files = find_luau_files(tmp_path)
         assert len(files) == 1
-        assert files[0].name == "module.lua"
+        assert files[0].name == "types.luau"
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         files = find_luau_files(tmp_path)
@@ -52,7 +60,7 @@ class TestIsLuauTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(luau_module, "is_luau_tree_sitter_available", return_value=False):
+        with patch.object(luau_module._analyzer, "_check_grammar_available", return_value=False):
             assert luau_module.is_luau_tree_sitter_available() is False
 
 
@@ -61,8 +69,8 @@ class TestAnalyzeLuau:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", "local x = 1")
-        with patch.object(luau_module, "is_luau_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Luau analysis skipped"):
+        with patch.object(luau_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="luau analysis skipped"):
                 result = luau_module.analyze_luau(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -278,13 +286,13 @@ end
         result = analyze_luau(tmp_path)
         func = next((s for s in result.symbols if s.kind == "function"), None)
         assert func is not None
-        assert func.origin == "luau.tree_sitter"
+        assert func.origin == "luau-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", "local x = 1")
         result = analyze_luau(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "luau.tree_sitter"
+        assert result.run.pass_id == "luau-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -292,7 +300,7 @@ end
         result = analyze_luau(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """
@@ -302,9 +310,9 @@ end
         result = analyze_luau(tmp_path)
         func = next((s for s in result.symbols if s.kind == "function"), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "luau:" in func.id
-        assert "test.luau" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("luau:test.luau:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """

@@ -1137,3 +1137,53 @@ socket.on(EVENT, handler);
         # No message edges: literal 'user-login' != variable 'EVENT'
         msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
         assert len(msg_edges) == 0
+
+    def test_generic_send_receive_no_interfile_edges(self, tmp_path: Path) -> None:
+        """Generic send/receive (no event name) should not create inter-file edges.
+
+        FastAPI websocket.send_text() and websocket.receive_text() represent
+        the base WebSocket protocol, not named events. Linking every sender
+        file to every receiver file creates combinatorial explosion (e.g.,
+        852 edges in FastAPI with 19 files). Only named events (Socket.io
+        emit/on, Django Channels) warrant inter-file linking.
+        """
+        # FastAPI server 1 with websocket.send_text()
+        server1 = tmp_path / "server1.py"
+        server1.write_text(
+            "@app.websocket('/ws')\n"
+            "async def ws_endpoint(websocket):\n"
+            "    await websocket.accept()\n"
+            "    await websocket.send_text('hello')\n"
+        )
+        # FastAPI server 2 with websocket.receive_text()
+        server2 = tmp_path / "server2.py"
+        server2.write_text(
+            "@app.websocket('/chat')\n"
+            "async def chat(websocket):\n"
+            "    await websocket.accept()\n"
+            "    data = await websocket.receive_text()\n"
+        )
+        result = link_websocket(tmp_path)
+        # Should NOT have websocket_message edges between the files
+        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        assert len(msg_edges) == 0, (
+            f"Generic send/receive should not create inter-file edges, "
+            f"got {len(msg_edges)}"
+        )
+
+
+class TestWebSocketLinkerRegistry:
+    """Test the registry-based websocket_linker wrapper."""
+
+    def test_websocket_linker_returns_linker_result(self, tmp_path: Path) -> None:
+        """websocket_linker() wraps link_websocket() for registry dispatch."""
+        from hypergumbo_core.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.websocket import websocket_linker
+
+        js_file = tmp_path / "app.js"
+        js_file.write_text("io.on('connection', handler);\n")
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = websocket_linker(ctx)
+        assert result.symbols is not None
+        assert result.edges is not None
+        assert result.run is not None

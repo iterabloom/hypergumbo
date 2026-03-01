@@ -1,0 +1,36 @@
+- op: create  # f5d2
+  at: '2026-02-26T02:45:48Z'  # f5d2
+  by: agent  # f5d2
+  actor: jgstern_agent  # f5d2
+  clock: 1  # f5d2
+  nonce: f5d2  # f5d2
+  data:  # f5d2
+    kind: work_item  # f5d2
+    title: "GraphQL resolver false positive guard"  # f5d2
+    status: todo_soft  # f5d2
+    priority: 3  # f5d2
+    parent:  # f5d2
+    tags:  # f5d2
+    - framework  # f5d2
+    - graphql  # f5d2
+    before: []  # f5d2
+    duplicate_of: []  # f5d2
+    not_duplicate_of: []  # f5d2
+    pr_ref:  # f5d2
+    description: "DEEP bakeoff cohort #20 (podman-desktop): 180 false-positive graphql_resolver nodes detected in a repo with zero GraphQL. Pattern matcher triggers on TypeScript object property access patterns that superficially resemble resolvers. Fix: require GraphQL dependency in package.json or presence of .graphql schema files before emitting graphql_resolver nodes. Also: 35 false-positive redis:subscribe (mq_subscriber) nodes from Svelte store subscriptions."  # f5d2
+    fields: {}  # f5d2
+- op: update  # f925
+  at: '2026-02-26T04:01:45Z'  # f925
+  by: agent  # f925
+  actor: jgstern_agent  # f925
+  clock: 2  # f925
+  nonce: f925  # f925
+  set:  # f925
+    status: done  # f925
+- op: discuss  # 4b1b
+  at: '2026-02-26T04:01:45Z'  # 4b1b
+  by: agent  # 4b1b
+  actor: jgstern_agent  # 4b1b
+  clock: 3  # 4b1b
+  nonce: 4b1b  # 4b1b
+  message: "Fixed in PR #1486. Removed bare 'graphql' npm package from JS_FRAMEWORKS trigger list. Only server-specific packages (@apollo/server, graphql-yoga, mercurius, type-graphql, @nestjs/graphql) now trigger graphql framework detection."  # 4b1b

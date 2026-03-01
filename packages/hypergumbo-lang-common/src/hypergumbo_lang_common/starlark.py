@@ -12,41 +12,44 @@ The tree-sitter-starlark parser handles BUILD, BUILD.bazel, BUCK, and .bzl files
 
 How It Works
 ------------
-1. Check if tree-sitter with Starlark grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all BUILD, BUILD.bazel, BUCK, and .bzl files
-4. Extract function definitions and signatures
-5. Extract build targets with rule types
-6. Track load statements as import edges
-7. Track target dependencies as depends_on edges
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
+1. Parse all BUILD, BUILD.bazel, BUCK, and .bzl files
+2. Extract function definitions and signatures
+3. Extract build targets with rule types
+4. Track load statements as import edges
+5. Track target dependencies as depends_on edges
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Uses tree-sitter-language-pack for Starlark grammar
 - Starlark is essential for Bazel/Buck build systems
 - Enables analysis of build configurations for understanding dependencies
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "starlark-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("starlark")
 
 # Starlark file patterns
 STARLARK_PATTERNS = ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"]
@@ -58,52 +61,11 @@ def find_starlark_files(repo_root: Path) -> Iterator[Path]:
         yield from find_files(repo_root, [pattern])
 
 
-@dataclass
-class StarlarkAnalysisResult:
-    """Result of analyzing Starlark files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def is_starlark_tree_sitter_available() -> bool:
-    """Check if tree-sitter-starlark is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("starlark")
-        return True
-    except Exception:  # pragma: no cover - starlark grammar not available
-        return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
-
-
 def _extract_string_content(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract string content from a string node."""
-    content = _find_child_by_type(node, "string_content")
+    content = find_child_by_type(node, "string_content")
     if content:
-        return _node_text(content, source)
+        return node_text(content, source)
     return None  # pragma: no cover - defensive
 
 
@@ -114,15 +76,15 @@ def _extract_function_signature(
     params = []
     for child in params_node.children:
         if child.type == "identifier":
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
         elif child.type == "default_parameter":
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                params.append(f"{_node_text(name_node, source)} = ...")
+                params.append(f"{node_text(name_node, source)} = ...")
         elif child.type == "typed_default_parameter":  # pragma: no cover - defensive
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                params.append(f"{_node_text(name_node, source)} = ...")
+                params.append(f"{node_text(name_node, source)} = ...")
         elif child.type == "list_splat_pattern":  # pragma: no cover - defensive
             params.append("*args")
         elif child.type == "dictionary_splat_pattern":  # pragma: no cover - defensive
@@ -130,26 +92,37 @@ def _extract_function_signature(
     return f"({', '.join(params)})"
 
 
-@dataclass
 class _FileContext:
     """Context for processing a single file."""
 
-    source: bytes
-    rel_path: str
-    file_stable_id: str
-    run_id: str
-    symbols: list[Symbol]
-    edges: list[Edge]
-    target_ids: dict[str, str]
-    load_aliases: dict[str, str] = field(default_factory=dict)  # alias → source_path
+    def __init__(
+        self,
+        source: bytes,
+        rel_path: str,
+        file_stable_id: str,
+        run_id: str,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        target_ids: dict[str, str],
+        load_aliases: Optional[dict[str, str]] = None,
+    ) -> None:
+        self.source = source
+        self.rel_path = rel_path
+        self.file_stable_id = file_stable_id
+        self.run_id = run_id
+        self.symbols = symbols
+        self.edges = edges
+        self.target_ids = target_ids
+        self.load_aliases: dict[str, str] = load_aliases if load_aliases is not None else {}
 
 
-def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
+def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                 node: "tree_sitter.Node", name: str, kind: str,
                  signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"starlark:{ctx.rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("starlark", ctx.rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -166,41 +139,43 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
         span=span,
         origin=PASS_ID,
         origin_run_id=ctx.run_id,
-        stable_id=f"starlark:{ctx.rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
 
 
-def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_function(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                      node: "tree_sitter.Node") -> None:
     """Process a function definition."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover
 
-    name = _node_text(name_node, ctx.source)
-    params_node = _find_child_by_type(node, "parameters")
+    name = node_text(name_node, ctx.source)
+    params_node = find_child_by_type(node, "parameters")
     signature = (
         _extract_function_signature(params_node, ctx.source) if params_node else "()"
     )
 
-    ctx.symbols.append(_make_symbol(ctx, node, name, "function", signature=signature))
+    ctx.symbols.append(_make_symbol(analyzer, ctx, node, name, "function", signature=signature))
 
 
-def _process_assignment(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_assignment(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                        node: "tree_sitter.Node") -> None:
     """Process a variable assignment."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover
 
-    name = _node_text(name_node, ctx.source)
+    name = node_text(name_node, ctx.source)
 
     # Skip lowercase names (likely local variables in functions)
     # Only capture uppercase constants at top level
     if not name.isupper() and not name[0].isupper():
         return  # pragma: no cover - filtering lowercase
 
-    ctx.symbols.append(_make_symbol(ctx, node, name, "variable"))
+    ctx.symbols.append(_make_symbol(analyzer, ctx, node, name, "variable"))
 
 
 def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
@@ -213,7 +188,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     Both forms create import edges. Aliased imports also populate ctx.load_aliases
     for use in call resolution with path_hint disambiguation.
     """
-    arg_list = _find_child_by_type(node, "argument_list")
+    arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
         return  # pragma: no cover
 
@@ -232,10 +207,10 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     loaded_symbols.append(content)
         elif child.type == "keyword_argument":
             # Aliased import: alias = "original_name"
-            alias_node = _find_child_by_type(child, "identifier")
-            value_node = _find_child_by_type(child, "string")
+            alias_node = find_child_by_type(child, "identifier")
+            value_node = find_child_by_type(child, "string")
             if alias_node and value_node:
-                alias = _node_text(alias_node, ctx.source)
+                alias = node_text(alias_node, ctx.source)
                 original_name = _extract_string_content(value_node, ctx.source)
                 if alias and original_name:
                     aliased_symbols.append((alias, original_name))
@@ -274,9 +249,10 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
             ctx.load_aliases[alias] = source_file
 
 
-def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str) -> None:
+def _process_target(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                    node: "tree_sitter.Node", rule_type: str) -> None:
     """Process a build target invocation."""
-    arg_list = _find_child_by_type(node, "argument_list")
+    arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
         return  # pragma: no cover
 
@@ -286,11 +262,11 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
 
     for child in arg_list.children:
         if child.type == "keyword_argument":
-            key_node = _find_child_by_type(child, "identifier")
+            key_node = find_child_by_type(child, "identifier")
             if not key_node:
                 continue  # pragma: no cover - defensive
 
-            key = _node_text(key_node, ctx.source)
+            key = node_text(key_node, ctx.source)
 
             if key == "name":
                 # Get the value
@@ -309,12 +285,10 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
                                     deps_list.append(dep)
 
     if target_name:
-        stable_id = f"starlark:{ctx.rel_path}:{target_name}"
-        ctx.target_ids[target_name] = stable_id
-
-        ctx.symbols.append(
-            _make_symbol(ctx, node, target_name, "target", meta={"rule_type": rule_type})
-        )
+        sym = _make_symbol(analyzer, ctx, node, target_name, "target",
+                           meta={"rule_type": rule_type})
+        ctx.target_ids[target_name] = sym.id
+        ctx.symbols.append(sym)
 
         # Create dependency edges
         for dep in deps_list:
@@ -322,7 +296,7 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
             ctx.edges.append(
                 Edge(
                     id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
-                    src=stable_id,
+                    src=sym.id,
                     dst=f"starlark:{ctx.rel_path}:{dep}",
                     edge_type="depends_on",
                     line=node.start_point[0] + 1,
@@ -342,9 +316,9 @@ def _find_enclosing_function_starlark(
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 sym = local_symbols.get(name)
                 if sym:
                     return sym
@@ -354,31 +328,32 @@ def _find_enclosing_function_starlark(
 
 def _get_call_target_name_starlark(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the target name from a call expression."""
-    func_node = _find_child_by_type(node, "identifier")
+    func_node = find_child_by_type(node, "identifier")
     if func_node:
-        return _node_text(func_node, source)
+        return node_text(func_node, source)
     # Handle attribute access like module.function
-    attr_node = _find_child_by_type(node, "attribute")
+    attr_node = find_child_by_type(node, "attribute")
     if attr_node:
         # Get the last identifier (the function name)
         last_ident = None
         for child in attr_node.children:
             if child.type == "identifier":
-                last_ident = _node_text(child, source)
+                last_ident = node_text(child, source)
         return last_ident
     return None  # pragma: no cover - defensive
 
 
-def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
+def _extract_starlark_symbols(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                               root_node: "tree_sitter.Node",
                                symbol_registry: dict[str, Symbol]) -> None:
     """Extract symbols from Starlark AST (pass 1)."""
     for node in iter_tree(root_node):
         if node.type == "function_definition":
-            _process_function(ctx, node)
+            _process_function(analyzer, ctx, node)
             # Register function in symbol registry
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, ctx.source)
+                name = node_text(name_node, ctx.source)
                 # Find the symbol we just added
                 for sym in reversed(ctx.symbols):
                     if sym.name == name and sym.kind == "function":
@@ -388,16 +363,16 @@ def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
             # Check for assignment or call (targets)
             for child in node.children:
                 if child.type == "assignment":
-                    _process_assignment(ctx, child)
+                    _process_assignment(analyzer, ctx, child)
                 elif child.type == "call":
                     # Only process load and target definitions in pass 1
-                    func_node = _find_child_by_type(child, "identifier")
+                    func_node = find_child_by_type(child, "identifier")
                     if func_node:
-                        func_name = _node_text(func_node, ctx.source)
+                        func_name = node_text(func_node, ctx.source)
                         if func_name == "load":
                             _process_load(ctx, child)
                         else:
-                            _process_target(ctx, child, func_name)
+                            _process_target(analyzer, ctx, child, func_name)
 
 
 def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
@@ -447,100 +422,130 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                     ))
 
 
-def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
+class StarlarkAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Starlark files using TreeSitterAnalyzer base class."""
+
+    lang = "starlark"
+    file_patterns: ClassVar[list[str]] = STARLARK_PATTERNS
+    language_pack_name = "starlark"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Starlark's custom two-pass with load aliases."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+        run_id = str(uuid.uuid4())
+
+        # Track targets by name for dependency resolution
+        target_ids: dict[str, str] = {}
+
+        # Global symbol registry for cross-file resolution
+        global_symbol_registry: dict[str, Symbol] = {}
+
+        # Store parsed files for pass 2 (with load_aliases)
+        parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
+
+        # Pass 1: Extract symbols from all files
+        for file_path in find_starlark_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+            except (OSError, IOError):  # pragma: no cover
+                continue
+
+            tree = parser.parse(source)
+            files_analyzed += 1
+
+            rel_path = str(file_path.relative_to(repo_root))
+            file_stable_id = f"starlark:{rel_path}:file:"
+
+            ctx = _FileContext(
+                source=source,
+                rel_path=rel_path,
+                file_stable_id=file_stable_id,
+                run_id=run_id,
+                symbols=symbols,
+                edges=edges,
+                target_ids=target_ids,
+            )
+
+            before = len(ctx.symbols)
+            _extract_starlark_symbols(self, ctx, tree.root_node, global_symbol_registry)
+            populate_docstrings_from_tree(tree.root_node, source, ctx.symbols[before:])
+
+            # Store for pass 2 (including load_aliases for path_hint resolution)
+            parsed_files.append((rel_path, source, tree, ctx.load_aliases))
+
+        # Create resolver from global registry
+        resolver = NameResolver(global_symbol_registry)
+
+        # Pass 2: Extract call edges
+        for rel_path, source, tree, load_aliases in parsed_files:
+            # Build local symbol map for this file (functions only)
+            local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+
+            ctx = _FileContext(
+                source=source,
+                rel_path=rel_path,
+                file_stable_id=f"starlark:{rel_path}:file:",
+                run_id=run_id,
+                symbols=[],  # Not adding symbols in pass 2
+                edges=edges,
+                target_ids=target_ids,
+                load_aliases=load_aliases,
+            )
+
+            _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
+
+        duration_ms = int((_time.time() - start_time) * 1000)
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=AnalysisRun(
+                execution_id=run_id,
+                pass_id=PASS_ID,
+                version=PASS_VERSION,
+                files_analyzed=files_analyzed,
+                duration_ms=duration_ms,
+            ),
+        )
+
+
+_analyzer = StarlarkAnalyzer()
+
+
+def is_starlark_tree_sitter_available() -> bool:
+    """Check if tree-sitter-starlark is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("starlark")
+def analyze_starlark(repo_root: Path) -> AnalysisResult:
     """Analyze Starlark files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all symbols from all files
     - Pass 2: Extract edges (imports + calls) using NameResolver
 
-    Returns a StarlarkAnalysisResult with symbols for functions, targets, and variables,
+    Returns a AnalysisResult with symbols for functions, targets, and variables,
     plus edges for load statements, target dependencies, and function calls.
     """
-    if not is_starlark_tree_sitter_available():
-        warnings.warn("Starlark analysis skipped: tree-sitter-starlark unavailable")
-        return StarlarkAnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-starlark unavailable",
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("starlark")
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = str(uuid.uuid4())
-    start_time = time.time()
-
-    # Track targets by name for dependency resolution
-    target_ids: dict[str, str] = {}
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2 (with load_aliases)
-    parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_starlark_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-
-        rel_path = str(file_path.relative_to(repo_root))
-        file_stable_id = f"starlark:{rel_path}:file:"
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=symbols,
-            edges=edges,
-            target_ids=target_ids,
-        )
-
-        _extract_starlark_symbols(ctx, tree.root_node, global_symbol_registry)
-
-        # Store for pass 2 (including load_aliases for path_hint resolution)
-        parsed_files.append((rel_path, source, tree, ctx.load_aliases))
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract call edges
-    for rel_path, source, tree, load_aliases in parsed_files:
-        # Build local symbol map for this file (functions only)
-        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=f"starlark:{rel_path}:file:",
-            run_id=run_id,
-            symbols=[],  # Not adding symbols in pass 2
-            edges=edges,
-            target_ids=target_ids,
-            load_aliases=load_aliases,
-        )
-
-        _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
-
-    duration_ms = int((time.time() - start_time) * 1000)
-    return StarlarkAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+    return _analyzer.analyze(repo_root)

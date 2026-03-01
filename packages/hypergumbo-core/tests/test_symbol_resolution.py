@@ -407,6 +407,59 @@ class TestNameResolverExactMatch:
         assert result.symbol is None
 
 
+class TestNameResolverPathHints:
+    """Tests for import-scope disambiguation via path_hints in NameResolver."""
+
+    def test_path_hints_skip_wrong_exact_match(self) -> None:
+        """When path_hints are provided and exact match is NOT in an imported
+        module, fall through to suffix matching which checks all candidates."""
+        sym_wrong = make_symbol("error", "test/unrelated.d", "d")
+        sym_right = make_symbol("error", "src/errors.d", "d")
+        registry = {
+            "error": sym_wrong,  # exact match points to wrong symbol
+            "errors.error": sym_right,  # qualified name in suffix index
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["errors"])
+
+        assert result.found is True
+        assert result.symbol is sym_right
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+
+    def test_path_hints_confirm_correct_exact_match(self) -> None:
+        """When path_hints are provided and exact match IS in an imported
+        module, return the exact match with full confidence."""
+        sym = make_symbol("error", "src/errors.d", "d")
+        registry = {
+            "error": sym,
+            "errors.error": sym,
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["errors"])
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_EXACT
+
+    def test_path_hints_no_match_falls_through(self) -> None:
+        """When path_hints don't match any candidate, return ambiguous result."""
+        sym_a = make_symbol("error", "test/a.d", "d")
+        sym_b = make_symbol("error", "test/b.d", "d")
+        registry = {
+            "error": sym_a,
+            "a.error": sym_a,
+            "b.error": sym_b,
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["nonexistent"])
+
+        # Should still find something (ambiguous/suffix match)
+        assert result.found is True
+
+
 class TestNameResolverSuffixMatch:
     """Tests for suffix-based name matching in NameResolver."""
 
@@ -585,6 +638,34 @@ class TestListNameResolverExactMatch:
         assert result.confidence == 1.0
         assert len(result.candidates) == 1
 
+    def test_single_candidate_with_matching_path_hint(self) -> None:
+        """Single candidate whose path matches hint is returned normally."""
+        sym = make_symbol("Encode", "/encoding/json/stream.go", "json")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+
+    def test_single_candidate_with_non_matching_path_hint(self) -> None:
+        """Single candidate whose path doesn't match hint returns not-found.
+
+        Prevents false edges like json.NewEncoder(w).Encode(data) resolving
+        to a local MarshalEncoder.Encode method when the path_hint says the
+        call targets encoding/json.
+        """
+        sym = make_symbol("Encode", "/myapp/marshal.go", "myapp")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is False
+        assert result.symbol is None
+
     def test_not_found_returns_none(self) -> None:
         """No candidates returns None."""
         registry: dict = {}
@@ -610,7 +691,7 @@ class TestListNameResolverDisambiguation:
     """Tests for disambiguation in ListNameResolver."""
 
     def test_multiple_candidates_without_hint_returns_first(self) -> None:
-        """Multiple candidates without hint returns first with low confidence."""
+        """Multiple candidates without hint returns first with scaled confidence."""
         sym_grpc = make_symbol("Register", "/grpc/server.go", "grpc")
         sym_http = make_symbol("Register", "/http/server.go", "http")
         registry = {"Register": [sym_grpc, sym_http]}
@@ -619,8 +700,9 @@ class TestListNameResolverDisambiguation:
         result = resolver.lookup("Register")
 
         assert result.found is True
-        assert result.symbol is sym_grpc  # First candidate
-        assert result.confidence == ListNameResolver.CONFIDENCE_AMBIGUOUS
+        assert result.symbol is sym_grpc  # First candidate (sorted by path)
+        # 1/sqrt(2) ≈ 0.707
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
         assert result.match_type == "ambiguous"
         assert len(result.candidates) == 2
 
@@ -663,4 +745,327 @@ class TestListNameResolverDisambiguation:
 
         assert result.found is True
         assert result.symbol is sym_grpc  # Falls back to first
-        assert result.confidence == ListNameResolver.CONFIDENCE_AMBIGUOUS
+        # 1/sqrt(2) ≈ 0.707
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+
+    def test_short_path_hint_uses_full_path(self) -> None:
+        """Short path hint like 'entities/bug' disambiguates via full path match.
+
+        When the last segment alone is ambiguous (both paths contain
+        'bug'), the full path 'entities/bug' should uniquely match.
+        """
+        sym_pkg = make_symbol("AddComment", "/entities/bug/op_add_comment.go", "go")
+        sym_local = make_symbol("AddComment", "/cache/bug_cache.go", "go")
+        registry = {"AddComment": [sym_pkg, sym_local]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("AddComment", path_hint="entities/bug")
+
+        assert result.found is True
+        assert result.symbol is sym_pkg
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+        assert result.match_type == "path_hint"
+
+
+class TestListNameResolverCandidateScaling:
+    """Ambiguous confidence scales down with more candidates.
+
+    When many types implement the same method (e.g., Close(), String(),
+    Name() in Go), a random pick among 50 candidates should have much
+    lower confidence than a pick among 2. The formula is
+    1/sqrt(num_candidates), giving:
+      2 → 0.707,  5 → 0.447,  10 → 0.316,  50 → 0.141
+    """
+
+    def test_two_candidates_confidence(self) -> None:
+        """Two candidates gives ~0.71 confidence."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(2)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close")
+        assert result.found is True
+        assert result.match_type == "ambiguous"
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+
+    def test_ten_candidates_lower_confidence(self) -> None:
+        """Ten candidates gives ~0.32 confidence."""
+        syms = [make_symbol("String", f"/pkg{i}/x.go", "go") for i in range(10)]
+        resolver = ListNameResolver({"String": syms})
+        result = resolver.lookup("String")
+        assert result.found is True
+        assert result.confidence < 0.35
+        assert result.confidence > 0.28
+
+    def test_fifty_candidates_very_low_confidence(self) -> None:
+        """Fifty candidates gives ~0.14 confidence."""
+        syms = [make_symbol("Name", f"/pkg{i:02d}/x.go", "go") for i in range(50)]
+        resolver = ListNameResolver({"Name": syms})
+        result = resolver.lookup("Name")
+        assert result.found is True
+        assert result.confidence < 0.18
+        assert result.confidence > 0.10
+
+    def test_path_hint_not_affected_by_scaling(self) -> None:
+        """Path hint disambiguation maintains full confidence regardless of candidate count."""
+        syms = [make_symbol("Close", f"/pkg{i:02d}/x.go", "go") for i in range(50)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close", path_hint="/pkg07/")
+        assert result.found is True
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+
+    def test_single_candidate_not_affected(self) -> None:
+        """Single candidate still gets exact confidence."""
+        syms = [make_symbol("Unique", "/pkg/x.go", "go")]
+        resolver = ListNameResolver({"Unique": syms})
+        result = resolver.lookup("Unique")
+        assert result.found is True
+        assert result.confidence == ListNameResolver.CONFIDENCE_EXACT
+
+
+class TestListNameResolverAmbiguityThreshold:
+    """Tests for the ambiguity_threshold parameter.
+
+    When candidate count >= ambiguity_threshold and no path_hint match,
+    the resolver should return an unresolved result (found=False) instead
+    of picking an arbitrary candidate. This prevents false-positive call
+    edges for common method names like Get(), Set(), Close(), String().
+
+    Invariant: AMB-METHOD — method calls with 3+ ambiguous receiver types
+    must not produce resolved call edges.
+    """
+
+    def test_threshold_returns_unresolved_at_boundary(self) -> None:
+        """Exactly 3 candidates with threshold=3 → unresolved."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(3)]
+        resolver = ListNameResolver({"Close": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Close")
+        assert result.found is False, (
+            "3 candidates at threshold=3 should be unresolved"
+        )
+        assert result.is_ambiguous is True
+        assert len(result.candidates) == 3
+
+    def test_threshold_returns_unresolved_above_boundary(self) -> None:
+        """5 candidates with threshold=3 → unresolved."""
+        syms = [make_symbol("Get", f"/pkg{i}/x.go", "go") for i in range(5)]
+        resolver = ListNameResolver({"Get": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Get")
+        assert result.found is False, (
+            "5 candidates at threshold=3 should be unresolved"
+        )
+        assert result.is_ambiguous is True
+
+    def test_below_threshold_still_resolves(self) -> None:
+        """2 candidates with threshold=3 → still resolves (below threshold)."""
+        syms = [make_symbol("Run", f"/pkg{i}/x.go", "go") for i in range(2)]
+        resolver = ListNameResolver({"Run": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Run")
+        assert result.found is True, (
+            "2 candidates below threshold=3 should still resolve"
+        )
+        assert result.match_type == "ambiguous"
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+
+    def test_path_hint_bypasses_threshold(self) -> None:
+        """Path hint resolves even when candidate count >= threshold."""
+        syms = [make_symbol("Close", f"/pkg{i:02d}/x.go", "go") for i in range(5)]
+        resolver = ListNameResolver({"Close": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Close", path_hint="/pkg03/")
+        assert result.found is True, (
+            "Path hint should bypass ambiguity threshold"
+        )
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+
+    def test_default_threshold_is_none(self) -> None:
+        """Default threshold is None (no guard), preserving backward compat."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(10)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close")
+        assert result.found is True, (
+            "Default (no threshold) should still resolve ambiguous lookups"
+        )
+
+    def test_threshold_single_candidate_unaffected(self) -> None:
+        """Single candidate is never affected by threshold."""
+        syms = [make_symbol("Unique", "/pkg/x.go", "go")]
+        resolver = ListNameResolver({"Unique": syms}, ambiguity_threshold=1)
+        result = resolver.lookup("Unique")
+        assert result.found is True, (
+            "Single candidate should always resolve regardless of threshold"
+        )
+
+    def test_path_hint_narrowing_avoids_threshold(self) -> None:
+        """When path hint narrows 3 → 2 candidates, threshold=3 is avoided.
+
+        Three candidates for "Err":
+          - /repo/pkg/log/handler.go  (standalone Err)
+          - /repo/pkg/log/handler.go  (Handler.Err, stored by short name)
+          - /repo/pkg/parser/lexer.go (Lexer.Err)
+
+        Path hint "pkg/log" matches 2/3 candidates (both in pkg/log/).
+        Without narrowing, the threshold fires (3 >= 3 → unresolved).
+        With narrowing, the filtered set is 2 < 3 → resolves.
+        """
+        syms = [
+            make_symbol("Err", "/repo/pkg/log/handler.go", "go"),
+            make_symbol("Handler.Err", "/repo/pkg/log/handler.go", "go"),
+            make_symbol("Lexer.Err", "/repo/pkg/parser/lexer.go", "go"),
+        ]
+        # Store all under short name "Err" (as Go analyzer does)
+        resolver = ListNameResolver({"Err": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Err", path_hint="pkg/log")
+        assert result.found is True, (
+            "Path hint 'pkg/log' should narrow from 3 to 2 candidates, "
+            "avoiding threshold=3"
+        )
+        # Should pick one of the two pkg/log symbols
+        assert "log" in result.symbol.path, (
+            f"Should resolve to a symbol in pkg/log, got {result.symbol.path}"
+        )
+
+
+# ============================================================================
+# NameResolver :: separator tests (Rust qualified names)
+# ============================================================================
+
+
+class TestNameResolverRustSeparator:
+    """Tests for NameResolver suffix index handling of :: separators.
+
+    Rust uses :: as the path separator (e.g., Diff::compute, crate::module::Foo).
+    The suffix index must split on both . and :: to support suffix lookups
+    like looking up "compute" and finding "Diff::compute".
+    """
+
+    def test_suffix_lookup_double_colon(self) -> None:
+        """Looking up 'compute' finds 'Diff::compute' via suffix matching."""
+        sym = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        registry = {"Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("compute")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_SUFFIX
+        assert result.match_type == "suffix"
+
+    def test_suffix_lookup_nested_double_colon(self) -> None:
+        """Nested :: path supports suffix matching at multiple levels."""
+        sym = make_symbol(
+            "crate::module::Diff::compute", "/src/diff.rs", "rust",
+        )
+        registry = {"crate::module::Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        # Lookup by short name
+        result = resolver.lookup("compute")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Lookup by intermediate qualified name
+        result2 = resolver.lookup("Diff::compute")
+        assert result2.found is True
+        assert result2.symbol is sym
+
+    def test_exact_match_still_works(self) -> None:
+        """Exact match on full :: name returns confidence 1.0."""
+        sym = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        registry = {"Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("Diff::compute")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+        assert result.match_type == "exact"
+
+    def test_ambiguous_double_colon(self) -> None:
+        """Multiple :: entries with same suffix → ambiguous."""
+        sym1 = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        sym2 = make_symbol("Parser::compute", "/src/parser.rs", "rust")
+        registry = {"Diff::compute": sym1, "Parser::compute": sym2}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("compute")
+
+        assert result.found is True
+        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        assert result.match_type == "suffix_ambiguous"
+        assert len(result.candidates) == 2
+
+    def test_mixed_separators(self) -> None:
+        """Mixed . and :: in a key (e.g., 'pkg.Foo::bar') supports suffix lookup."""
+        sym = make_symbol("pkg.Foo::bar", "/src/foo.rs", "rust")
+        registry = {"pkg.Foo::bar": sym}
+        resolver = NameResolver(registry)
+
+        # Lookup by short name
+        result = resolver.lookup("bar")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Lookup by intermediate suffix crossing separator boundary
+        result2 = resolver.lookup("Foo::bar")
+        assert result2.found is True
+        assert result2.symbol is sym
+
+    def test_hash_separator_ruby(self) -> None:
+        """Ruby # separator: 'User#save' → lookup 'save' finds it."""
+        sym = make_symbol("User#save", "/app/user.rb", "ruby")
+        registry = {"User#save": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("save")
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_SUFFIX
+
+    def test_backslash_separator_hack(self) -> None:
+        r"""Hack \\ separator: 'App\\Utils\\helper' → lookup 'helper' finds it."""
+        sym = make_symbol("App\\Utils\\helper", "/src/utils.hack", "hack")
+        registry = {"App\\Utils\\helper": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("helper")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Intermediate suffix
+        result2 = resolver.lookup("Utils\\helper")
+        assert result2.found is True
+        assert result2.symbol is sym
+
+    def test_colon_separator_luau(self) -> None:
+        """Luau : separator: 'Player:attack' → lookup 'attack' finds it."""
+        sym = make_symbol("Player:attack", "/src/player.luau", "luau")
+        registry = {"Player:attack": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("attack")
+        assert result.found is True
+        assert result.symbol is sym
+
+    def test_colon_vs_double_colon(self) -> None:
+        """Single : and :: are both handled without conflict."""
+        sym_lua = make_symbol("Obj:method", "/src/obj.luau", "luau")
+        sym_rust = make_symbol("Obj::method", "/src/obj.rs", "rust")
+        registry = {"Obj:method": sym_lua, "Obj::method": sym_rust}
+        resolver = NameResolver(registry)
+
+        # "method" suffix matches both
+        result = resolver.lookup("method")
+        assert result.found is True
+        assert result.match_type == "suffix_ambiguous"
+        assert len(result.candidates) == 2
+
+        # Full qualified name still exact matches
+        result_lua = resolver.lookup("Obj:method")
+        assert result_lua.found is True
+        assert result_lua.symbol is sym_lua
+        assert result_lua.confidence == 1.0
+
+        result_rust = resolver.lookup("Obj::method")
+        assert result_rust.found is True
+        assert result_rust.symbol is sym_rust
+        assert result_rust.confidence == 1.0

@@ -23,21 +23,18 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
-
-# ------------------------------------------------------------------
-# Load secrets from .env if present
-# ------------------------------------------------------------------
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
-if [[ -f "$REPO_ROOT/.env" ]]; then
-  set -o allexport
-  source "$REPO_ROOT/.env"
-  set +o allexport
-fi
 
 # ------------------------------------------------------------------
 # Parse arguments
@@ -160,14 +157,43 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
+# Exclude workspace tracker data from upstream PR
+# ------------------------------------------------------------------
+WORKSPACE_FILES=$(git diff dev..HEAD --name-only -- '.agent/tracker-workspace/' 2>/dev/null || true)
+PUSH_BRANCH="$BRANCH"
+if [[ -n "$WORKSPACE_FILES" ]]; then
+    echo "━━━ Workspace Exclusion ━━━"
+    WORKSPACE_COUNT=$(echo "$WORKSPACE_FILES" | wc -l | tr -d ' ')
+    echo -e "${YELLOW}!${NC} Stripping $WORKSPACE_COUNT workspace file(s) from PR push"
+    echo "  (your local branch is unchanged — workspace stays in your fork)"
+
+    # Create a temp branch, reset workspace files to upstream state, push that
+    CLEAN_BRANCH="${BRANCH}__upstream-clean"
+    git checkout -b "$CLEAN_BRANCH" 2>/dev/null
+    # Restore workspace to upstream/dev state (or remove if new)
+    git checkout upstream/dev -- .agent/tracker-workspace/ 2>/dev/null \
+        || git rm -r --cached .agent/tracker-workspace/ 2>/dev/null || true
+    git commit -m "chore: exclude workspace from upstream PR" --allow-empty --no-verify 2>/dev/null || true
+    PUSH_BRANCH="$CLEAN_BRANCH"
+    echo -e "${GREEN}✓${NC} Workspace files excluded"
+    echo ""
+fi
+
+# ------------------------------------------------------------------
 # Push to fork
 # ------------------------------------------------------------------
 echo "━━━ Pushing to Fork ━━━"
 
 git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-    push -u origin "$BRANCH" --force-with-lease
+    push -u origin "$PUSH_BRANCH:$BRANCH" --force-with-lease
 
 echo -e "${GREEN}✓${NC} Pushed to $FORK_SLUG:$BRANCH"
+
+# Clean up temp branch if workspace exclusion was used
+if [[ "$PUSH_BRANCH" != "$BRANCH" ]]; then
+    git checkout "$BRANCH" 2>/dev/null
+    git branch -D "$PUSH_BRANCH" 2>/dev/null || true
+fi
 echo ""
 
 # ------------------------------------------------------------------
@@ -185,13 +211,16 @@ if [[ -z "$BODY" ]]; then
     BODY=$(git log dev..HEAD --pretty=format:'- %s' | head -10)
 fi
 
-# Check if PR already exists
-API_BASE="https://codeberg.org/api/v1/repos/$UPSTREAM_SLUG"
+# Check if PR already exists using shared library
+UPSTREAM_API_BASE="https://codeberg.org/api/v1/repos/$UPSTREAM_SLUG"
+
+# Save/restore API_BASE since find_open_pr uses the global
+_saved_api_base="$API_BASE"
+API_BASE="$UPSTREAM_API_BASE"
 
 # Search for existing PR from this fork/branch
-EXISTING_PR=$(curl -s -H "Authorization: token $TOKEN" \
-    "$API_BASE/pulls?state=open" | \
-    python3 -c "
+if api_get "$API_BASE/pulls?state=open"; then
+    EXISTING_PR=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -206,6 +235,11 @@ try:
 except Exception:
     pass
 " 2>/dev/null || echo "")
+else
+    EXISTING_PR=""
+fi
+
+API_BASE="$_saved_api_base"
 
 if [[ -n "$EXISTING_PR" ]]; then
     echo -e "${YELLOW}PR #$EXISTING_PR already exists for this branch${NC}"
@@ -216,37 +250,50 @@ if [[ -n "$EXISTING_PR" ]]; then
 fi
 
 # Create new PR
-PR_RESPONSE=$(curl -s -X POST \
-    -H "Authorization: token $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{
-        \"title\": $(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
-        \"body\": $(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
-        \"head\": \"$USER:$BRANCH\",
-        \"base\": \"dev\"
-    }" \
-    "$API_BASE/pulls")
+PR_PAYLOAD=$(python3 -c "
+import json, sys
+payload = {
+    'title': sys.stdin.readline().rstrip('\n'),
+    'body': sys.stdin.read(),
+    'head': '$USER:$BRANCH',
+    'base': 'dev'
+}
+print(json.dumps(payload))
+" <<EOF
+$TITLE
+$BODY
+EOF
+)
 
-PR_NUM=$(echo "$PR_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('number', ''))" 2>/dev/null || echo "")
+if api_post "$UPSTREAM_API_BASE/pulls" "$PR_PAYLOAD"; then
+    PR_NUM=$(echo "$API_RESPONSE" | json_field "number")
 
-if [[ -n "$PR_NUM" && "$PR_NUM" != "None" ]]; then
-    echo -e "${GREEN}✓${NC} Created PR #$PR_NUM"
-    echo ""
-    echo "╔════════════════════════════════════════╗"
-    echo -e "║  ${GREEN}PR Created Successfully!${NC}              ║"
-    echo "╚════════════════════════════════════════╝"
-    echo ""
-    echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$PR_NUM"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Wait for CI to run"
-    echo "  2. Address any review feedback"
-    echo "  3. Maintainer will merge when ready"
-    echo ""
-    echo -e "${YELLOW}Note: You don't have write access, so the PR will NOT auto-merge.${NC}"
+    if [[ -n "$PR_NUM" && "$PR_NUM" != "None" && "$PR_NUM" != "" ]]; then
+        echo -e "${GREEN}✓${NC} Created PR #$PR_NUM"
+        echo ""
+        echo "╔════════════════════════════════════════╗"
+        echo -e "║  ${GREEN}PR Created Successfully!${NC}              ║"
+        echo "╚════════════════════════════════════════╝"
+        echo ""
+        echo "🔗 https://codeberg.org/$UPSTREAM_SLUG/pulls/$PR_NUM"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Wait for CI to run"
+        echo "  2. Address any review feedback"
+        echo "  3. Maintainer will merge when ready"
+        echo ""
+        echo -e "${YELLOW}Note: You don't have write access, so the PR will NOT auto-merge.${NC}"
+    else
+        echo -e "${RED}✗ Failed to create PR${NC}"
+        echo "Response: $API_RESPONSE"
+        echo ""
+        echo "You can create manually at:"
+        echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/dev...$USER:$BRANCH"
+        exit 1
+    fi
 else
-    echo -e "${RED}✗ Failed to create PR${NC}"
-    echo "Response: $PR_RESPONSE"
+    echo -e "${RED}✗ Failed to create PR (HTTP $API_HTTP_CODE)${NC}"
+    echo "Response: $API_RESPONSE"
     echo ""
     echo "You can create manually at:"
     echo "  https://codeberg.org/$UPSTREAM_SLUG/compare/dev...$USER:$BRANCH"

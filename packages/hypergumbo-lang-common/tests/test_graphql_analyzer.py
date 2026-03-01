@@ -7,20 +7,18 @@ Tests verify that the analyzer correctly extracts:
 - Directive definitions
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_common.graphql import (
     PASS_ID,
-    PASS_VERSION,
-    GraphQLAnalysisResult,
     analyze_graphql_files,
     find_graphql_files,
 )
 
-
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "graphql-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_type(tmp_path):
     """Test detection of object type definition."""
@@ -40,7 +38,6 @@ type User {
     assert types[0].name == "User"
     assert types[0].language == "graphql"
 
-
 def test_analyze_input_type(tmp_path):
     """Test detection of input type definition."""
     graphql_file = tmp_path / "schema.graphql"
@@ -56,7 +53,6 @@ input CreateUserInput {
     assert len(inputs) >= 1
     assert inputs[0].name == "CreateUserInput"
 
-
 def test_analyze_interface(tmp_path):
     """Test detection of interface type definition."""
     graphql_file = tmp_path / "schema.graphql"
@@ -70,7 +66,6 @@ interface Node {
     interfaces = [s for s in result.symbols if s.kind == "interface"]
     assert len(interfaces) >= 1
     assert interfaces[0].name == "Node"
-
 
 def test_analyze_enum(tmp_path):
     """Test detection of enum type definition."""
@@ -88,7 +83,6 @@ enum Status {
     assert len(enums) >= 1
     assert enums[0].name == "Status"
 
-
 def test_analyze_scalar(tmp_path):
     """Test detection of scalar type definition."""
     graphql_file = tmp_path / "schema.graphql"
@@ -103,7 +97,6 @@ scalar JSON
     names = [s.name for s in scalars]
     assert "DateTime" in names
     assert "JSON" in names
-
 
 def test_analyze_directive(tmp_path):
     """Test detection of directive definition."""
@@ -123,7 +116,6 @@ directive @deprecated(reason: String) on FIELD_DEFINITION
     auth = next(d for d in directives if d.name == "auth")
     assert auth.canonical_name == "@auth"
 
-
 def test_analyze_fragment(tmp_path):
     """Test detection of fragment definition."""
     graphql_file = tmp_path / "queries.graphql"
@@ -139,7 +131,6 @@ fragment UserFields on User {
     fragments = [s for s in result.symbols if s.kind == "fragment"]
     assert len(fragments) >= 1
     assert fragments[0].name == "UserFields"
-
 
 def test_analyze_query_operation(tmp_path):
     """Test detection of query operation definition."""
@@ -158,7 +149,6 @@ query GetUser($id: ID!) {
     assert len(queries) >= 1
     assert queries[0].name == "GetUser"
 
-
 def test_analyze_mutation_operation(tmp_path):
     """Test detection of mutation operation definition."""
     graphql_file = tmp_path / "mutations.graphql"
@@ -176,7 +166,6 @@ mutation CreateUser($input: CreateUserInput!) {
     assert len(mutations) >= 1
     assert mutations[0].name == "CreateUser"
 
-
 def test_find_graphql_files(tmp_path):
     """Test that GraphQL files are discovered correctly."""
     (tmp_path / "schema.graphql").write_text("type Query {}")
@@ -189,7 +178,6 @@ def test_find_graphql_files(tmp_path):
     # Should find .graphql and .gql files
     assert len(files) >= 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no GraphQL files."""
     result = analyze_graphql_files(tmp_path)
@@ -197,7 +185,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -212,7 +199,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     graphql_file = tmp_path / "broken.graphql"
@@ -222,8 +208,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_graphql_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, GraphQLAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -241,7 +226,6 @@ def test_span_information(tmp_path):
     assert types[0].span.start_line >= 1
     assert types[0].span.end_line >= types[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_common.graphql import is_graphql_tree_sitter_available
@@ -249,7 +233,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_graphql_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_graphql_files(tmp_path):
     """Test analysis across multiple GraphQL files."""
@@ -273,7 +256,6 @@ type Mutation {
 
     types = [s for s in result.symbols if s.kind == "type"]
     assert len(types) >= 3  # Query, User, Mutation
-
 
 def test_complete_graphql_schema(tmp_path):
     """Test a complete GraphQL schema structure."""
@@ -328,7 +310,6 @@ fragment UserFields on User {
     assert "type" in kinds
     assert "input" in kinds
     assert "fragment" in kinds
-
 
 class TestGraphQLSignatureExtraction:
     """Tests for GraphQL operation signature extraction."""

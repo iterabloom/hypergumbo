@@ -8,20 +8,18 @@ Tests verify that the analyzer correctly extracts:
 - Multi-stage build dependencies (COPY --from)
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream.dockerfile import (
     PASS_ID,
-    PASS_VERSION,
-    DockerfileAnalysisResult,
     analyze_dockerfiles,
     find_dockerfiles,
 )
 
-
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "dockerfile-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_simple_dockerfile(tmp_path):
     """Test detection of simple Dockerfile with FROM and CMD."""
@@ -43,7 +41,6 @@ CMD ["python", "main.py"]
     assert len(stages) >= 1
     # Default stage when no AS alias
     assert any("python:3.11-slim" in s.name or s.name == "0" for s in stages)
-
 
 def test_analyze_multi_stage_build(tmp_path):
     """Test detection of multi-stage build with named stages."""
@@ -71,7 +68,6 @@ CMD ["node", "app.js"]
     depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
     assert len(depends_edges) >= 1
 
-
 def test_analyze_exposed_port(tmp_path):
     """Test detection of EXPOSE instruction."""
     dockerfile = tmp_path / "Dockerfile"
@@ -88,7 +84,6 @@ EXPOSE 443
     port_values = {s.name for s in ports}
     assert "80" in port_values
     assert "443" in port_values
-
 
 def test_analyze_env_variable(tmp_path):
     """Test detection of ENV instruction."""
@@ -107,7 +102,6 @@ ENV DEBUG=false
     assert "APP_ENV" in var_names
     assert "DEBUG" in var_names
 
-
 def test_analyze_base_image(tmp_path):
     """Test detection of base images."""
     dockerfile = tmp_path / "Dockerfile"
@@ -123,7 +117,6 @@ CMD ["/bin/bash"]
     # Check for base_image edge
     base_edges = [e for e in result.edges if e.edge_type == "base_image"]
     assert len(base_edges) >= 1
-
 
 def test_analyze_copy_from(tmp_path):
     """Test detection of COPY --from dependencies."""
@@ -143,7 +136,6 @@ ENTRYPOINT ["/app"]
     depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
     assert len(depends_edges) >= 1
 
-
 def test_find_dockerfiles(tmp_path):
     """Test that Dockerfile files are discovered correctly."""
     (tmp_path / "Dockerfile").write_text("FROM alpine")
@@ -157,7 +149,6 @@ def test_find_dockerfiles(tmp_path):
     # Should find Dockerfile, Dockerfile.dev, dockerfile, Dockerfile.prod
     assert len(files) >= 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no Dockerfiles."""
     result = analyze_dockerfiles(tmp_path)
@@ -165,7 +156,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -180,7 +170,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     dockerfile = tmp_path / "Dockerfile"
@@ -190,8 +179,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_dockerfiles(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, DockerfileAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -208,7 +196,6 @@ CMD ["python"]
     assert stages[0].span.start_line >= 1
     assert stages[0].span.end_line >= stages[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_mainstream.dockerfile import is_dockerfile_tree_sitter_available
@@ -216,7 +203,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_dockerfile_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_dockerfiles(tmp_path):
     """Test analysis across multiple Dockerfiles."""
@@ -235,7 +221,6 @@ ENV TEST_MODE=1
     kinds = {s.kind for s in result.symbols}
     assert "stage" in kinds
 
-
 def test_arg_instruction(tmp_path):
     """Test detection of ARG instruction."""
     dockerfile = tmp_path / "Dockerfile"
@@ -249,3 +234,17 @@ ARG APP_VERSION=1.0.0
     args = [s for s in result.symbols if s.kind == "build_arg"]
     # ARG instructions should be detected
     assert len(args) >= 1
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.dockerfile as module
+
+    with patch.object(module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="dockerfile analysis skipped"):
+            result = module.analyze_dockerfiles(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

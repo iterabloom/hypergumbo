@@ -1,28 +1,31 @@
 # Library export detection (ADR-0003 v1.3.x)
 #
-# Detects exports from library entry point files (index.ts, index.js, etc.)
-# that define the public API surface of a library.
+# Detects exports that define the public API surface of a library.
 #
 # Libraries differ from applications:
 # - Applications have main() functions, HTTP routes, CLI commands
 # - Libraries have exports that form their public API
 #
-# This pattern matches UsageContext records for exports from index files,
-# marking the exported symbols as library entry points. Confidence is
-# lower than framework routes (0.75 vs 0.95) because:
+# Confidence is lower than framework routes (0.75 vs 0.95) because:
 # - Libraries may have many exports, not all equally important
-# - Index files may re-export internal utilities
-# - The "main" export is often more important than named exports
+# - Not all exports are meaningful entry points
 #
-# Detection strategy:
-# - Match exports from index.ts, index.js, index.mjs, index.cjs, index.jsx, index.tsx
-# - Default exports get slightly higher priority in the label
-# - Named exports are also detected as entry points
+# Detection strategies by language:
+# - JS/TS: Match UsageContext records for exports from index files
+# - Go: Match exported (uppercase) functions, types, interfaces, structs
+# - Elixir: Match module definitions (defmodule) and public functions (def, not defp)
+# - Rust: Match pub items (functions, structs, traits, enums, methods)
+#   Note: pub(crate)/pub(super) are crate-internal, not library exports
+#
+# The entrypoint scoring system (confidence * connectivity boost) ensures
+# the most important/connected exports are prioritized for auto-slicing.
 
 id: library-exports
 language: multi
 
 patterns:
+  # === JS/TS: Usage-based (index file exports) ===
+
   # Default exports from index files
   # Usage: export default class Hls { ... }
   # Context: kind="library_export", context_name="export.default"
@@ -44,5 +47,164 @@ patterns:
     extract:
       export_name: "metadata.export_name"
       is_default: "literal:false"
+
+  # === Python: Definition-based (__init__.py public symbols) ===
+  # Python libraries expose their public API through __init__.py files.
+  # Symbols defined/imported in __init__.py are the package's public interface.
+  # Private symbols (prefixed with _) are excluded via symbol_name filter.
+  # Test files are handled by the entrypoint scorer's test-file penalty.
+
+  # Public functions in __init__.py (e.g., create_app, get_application)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^function$"
+    language: "^python$"
+    symbol_path: "__init__\\.py$"
+
+  # Public classes in __init__.py (e.g., FastAPI, Flask, Django)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^class$"
+    language: "^python$"
+    symbol_path: "__init__\\.py$"
+
+  # Re-exported functions from __init__.py
+  # When __init__.py does "from .module import func", the original symbol
+  # in module.py gets a "re_exported" modifier. This pattern matches those
+  # symbols even though they're not physically in __init__.py.
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^function$"
+    language: "^python$"
+    modifiers: "^re_exported$"
+
+  # Re-exported classes from __init__.py (e.g., FastAPI, APIRouter)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^class$"
+    language: "^python$"
+    modifiers: "^re_exported$"
+
+  # === Go: Definition-based (exported symbols) ===
+  # Go convention: exported symbols start with uppercase.
+  # Matches functions, types, interfaces, and structs.
+  # Test files (_test.go) are handled by the entrypoint scorer's
+  # test-file penalty (50% confidence reduction).
+
+  # Exported functions (e.g., New, Default, HandleRequest)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # Exported types (type aliases, named types)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^type$"
+    language: "^go$"
+
+  # Exported interfaces (e.g., Handler, Router)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^interface$"
+    language: "^go$"
+
+  # Exported structs (e.g., Engine, Context, Config)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^struct$"
+    language: "^go$"
+
+  # === Java/Kotlin: Definition-based (public interfaces, classes, enums) ===
+  # Java libraries expose their public API through public classes and interfaces.
+  # Interfaces define the API contract; public classes are implementations.
+  # Test files are handled by the entrypoint scorer's test-file penalty (90% reduction).
+  # When semantic entrypoints exist (routes, controllers, commands), library
+  # exports are further demoted by 90%.
+
+  # Public interfaces (e.g., Table, Catalog, Schema in Apache Iceberg)
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Public classes (e.g., BaseTable, GenericRecord, PartitionSpec)
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Public enums (e.g., FileFormat, ManifestContent)
+  - concept: library_export
+    symbol_kind: "^enum$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Kotlin public interfaces
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^kotlin$"
+    modifiers: "^public$"
+
+  # Kotlin public classes
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^kotlin$"
+    modifiers: "^public$"
+
+  # === Elixir: Definition-based (modules + public functions) ===
+  # Elixir modules (defmodule) are the primary unit of public API.
+  # Public functions (def) are the callable API surface.
+  # Private functions (defp) are excluded via modifiers_exclude.
+  # Test modules/functions are handled by the entrypoint scorer's test-file penalty.
+
+  # Modules (e.g., Phoenix.Router, Ecto.Query)
+  - concept: library_export
+    symbol_kind: "^module$"
+    language: "^elixir$"
+
+  # Public functions (e.g., Phoenix.Socket.handle_in)
+  # Excludes defp (private) functions via modifiers_exclude.
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^elixir$"
+    modifiers_exclude: "^private$"
+
+  # === Rust: Definition-based (pub items) ===
+  # Rust library crates expose their public API through `pub` items.
+  # `pub(crate)`, `pub(super)`, and `pub(in path)` are crate-internal
+  # visibility, NOT library exports — the regex matches only bare `pub`.
+  # The Rust analyzer extracts modifiers as ["pub"], ["pub(crate)"], etc.
+  # Test files are handled by the entrypoint scorer's test-file penalty.
+
+  # Pub functions (e.g., pub fn new(), pub fn parse())
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub structs (e.g., pub struct Config, pub struct Builder)
+  - concept: library_export
+    symbol_kind: "^struct$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub traits (e.g., pub trait Handler, pub trait Serialize)
+  - concept: library_export
+    symbol_kind: "^trait$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub enums (e.g., pub enum ErrorKind, pub enum Mode)
+  - concept: library_export
+    symbol_kind: "^enum$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub methods (e.g., pub fn load(&self) in impl blocks)
+  - concept: library_export
+    symbol_kind: "^method$"
+    language: "^rust$"
+    modifiers: "^pub$"
 
 linkers: []

@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import bitbake as bitbake_module
 from hypergumbo_lang_extended1.bitbake import (
-    BitBakeAnalysisResult,
     analyze_bitbake,
     find_bitbake_files,
     is_bitbake_tree_sitter_available,
@@ -64,7 +64,7 @@ class TestIsBitBakeTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(bitbake_module, "is_bitbake_tree_sitter_available", return_value=False):
+        with patch.object(bitbake_module._analyzer, "_check_grammar_available", return_value=False):
             assert bitbake_module.is_bitbake_tree_sitter_available() is False
 
 
@@ -73,8 +73,8 @@ class TestAnalyzeBitBake:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", "SUMMARY = \"Test\"")
-        with patch.object(bitbake_module, "is_bitbake_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="BitBake analysis skipped"):
+        with patch.object(bitbake_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bitbake analysis skipped"):
                 result = bitbake_module.analyze_bitbake(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -209,13 +209,13 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.origin == "bitbake.tree_sitter"
+        assert var.origin == "bitbake-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", "SUMMARY = \"Test\"")
         result = analyze_bitbake(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "bitbake.tree_sitter"
+        assert result.run.pass_id == "bitbake-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -223,7 +223,7 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", """

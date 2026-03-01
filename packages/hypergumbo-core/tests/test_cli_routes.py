@@ -1,4 +1,8 @@
-"""Tests for the hypergumbo routes command."""
+"""Tests for the hypergumbo routes command.
+
+Covers cmd_routes CLI command: listing API routes, filtering by language,
+test path exclusion, and output formatting.
+"""
 import json
 from pathlib import Path
 
@@ -491,3 +495,305 @@ def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     assert "[hypergumbo routes] Using 1 cached" in out
     assert "Output: stdout" in out
+
+
+def test_cmd_routes_includes_test_routes_by_default(tmp_path: Path, capsys) -> None:
+    """Routes from test files are included by default (consistent with other commands).
+
+    All subcommands use --exclude-tests (opt-in exclusion). Routes is no exception.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
+            },
+            {
+                "id": "python:tests/test_views.py:1-5:test_get_user:function",
+                "name": "test_get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_views.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/test-endpoint", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Both routes should be present by default
+    assert "get_user" in out
+    assert "test_get_user" in out
+    assert "Found 2 API route" in out
+
+
+def test_cmd_routes_shows_kind_route_symbols(tmp_path: Path, capsys) -> None:
+    """Route symbols (kind='route') are shown even without concept enrichment.
+
+    Go analyzers create route symbols with kind='route' and route metadata
+    in meta (route_path, http_method, handler_name) without concept enrichment.
+    The routes command should detect these based on symbol kind.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:cmd/webui.go:10-10:ANY /graphql:route",
+                "name": "graphqlHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "cmd/webui.go",
+                "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 50},
+                "stable_id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                "meta": {
+                    "route_path": "/graphql",
+                    "http_method": "ANY",
+                    "handler_name": "graphqlHandler",
+                },
+            },
+            {
+                "id": "go:cmd/webui.go:12-12:POST /upload:route",
+                "name": "uploadHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "cmd/webui.go",
+                "span": {"start_line": 12, "end_line": 12, "start_col": 0, "end_col": 60},
+                "stable_id": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+                "meta": {
+                    "route_path": "/upload/{repo}",
+                    "http_method": "POST",
+                    "handler_name": "uploadHandler",
+                },
+            },
+            {
+                "id": "go:cmd/server.go:5-20:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "go",
+                "path": "cmd/server.go",
+                "span": {"start_line": 5, "end_line": 20},
+                # Not a route - no concept, not kind=route
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "graphqlHandler" in out
+    assert "uploadHandler" in out
+    assert "/graphql" in out
+    assert "/upload/{repo}" in out
+    assert "ANY" in out
+    assert "POST" in out
+    assert "main" not in out  # Non-route should not appear
+    assert "Found 2 API route" in out
+
+
+def test_cmd_routes_shows_controller_action(tmp_path: Path, capsys) -> None:
+    """Routes with controller_action in meta display it instead of symbol name.
+
+    Rails route symbols have controller_action populated (e.g. 'users#index').
+    The output should show this mapping so developers can navigate from route
+    to handler: [GET] /users -> users#index (line 5).
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "ruby:config/routes.rb:5-5:GET /users:route",
+                "name": "GET /users",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 5, "end_line": 5, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "http_method": "GET",
+                    "route_path": "/users",
+                    "controller_action": "users#index",
+                },
+            },
+            {
+                "id": "ruby:config/routes.rb:6-6:POST /users:route",
+                "name": "POST /users",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 6, "end_line": 6, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "http_method": "POST",
+                    "route_path": "/users",
+                    "controller_action": "users#create",
+                },
+            },
+            {
+                "id": "ruby:config/routes.rb:10-10:GET /health:route",
+                "name": "GET /health",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:ghi789",
+                "meta": {
+                    "http_method": "GET",
+                    "route_path": "/health",
+                    # No controller_action - should fall back to name
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Routes with controller_action should show it
+    assert "users#index" in out
+    assert "users#create" in out
+    # Route without controller_action falls back to name
+    assert "GET /health" in out
+    # controller_action should appear after the arrow
+    assert "[GET] /users -> users#index" in out
+    assert "[POST] /users -> users#create" in out
+
+
+def test_cmd_routes_controller_action_from_concept(tmp_path: Path, capsys) -> None:
+    """Routes with controller_action in concept metadata display it.
+
+    Concept-enriched routes (from YAML pattern matching) may also carry
+    controller_action in the concept dict.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [
+                        {
+                            "concept": "route",
+                            "path": "/users/{id}",
+                            "method": "GET",
+                            "controller_action": "UserController.get_user",
+                        }
+                    ]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "UserController.get_user" in out
+    assert "[GET] /users/{id} -> UserController.get_user" in out
+
+
+def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
+    """Routes from test files are excluded when --exclude-tests is used.
+
+    Django bakeoff showed 73% of route source files were from test
+    directories. Use -x/--exclude-tests to filter them out.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
+            },
+            {
+                "id": "python:tests/test_views.py:1-5:test_get_user:function",
+                "name": "test_get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_views.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/test-endpoint", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = True
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Production route should be present
+    assert "get_user" in out
+    # Test route should be excluded
+    assert "test_get_user" not in out
+    assert "Found 1 API route" in out

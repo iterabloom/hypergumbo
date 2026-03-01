@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-lang-common"
-version = "2.0.2"
+version = "2.1.0"
 description = "Common domain-specific language analyzers for hypergumbo"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,21 +18,21 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "hypergumbo-core==2.0.2",
+  "hypergumbo-core==2.1.0",
   # Tree-sitter grammars for common languages
-  "tree-sitter-haskell>=0.21",
-  "tree-sitter-ocaml>=0.21",
-  "tree-sitter-language-pack>=0.13",  # Elixir, Dart, LaTeX, R, COBOL
-  "tree-sitter-commonlisp>=0.4",
+  "tree-sitter-haskell~=0.23.1",
+  "tree-sitter-ocaml~=0.24.2",
+  "tree-sitter-language-pack~=0.13.0",  # Elixir, Dart, LaTeX, R, COBOL
+  "tree-sitter-commonlisp~=0.4.1",
   # Additional common language grammars (separate packages, not in language-pack)
-  "tree-sitter-cuda>=0.20",
-  "tree-sitter-fortran>=0.1",
-  "tree-sitter-glsl>=0.1",
-  "tree-sitter-graphql>=0.1",
-  "tree-sitter-hcl>=1.2",
-  "tree-sitter-julia>=0.23",
-  "tree-sitter-nix>=0.1",
-  "tree-sitter-robot>=1.1",
+  "tree-sitter-cuda~=0.21.1",
+  "tree-sitter-fortran~=0.5.1",
+  "tree-sitter-glsl~=0.2.0",
+  "tree-sitter-graphql~=0.1.0",
+  "tree-sitter-hcl~=1.2.0",
+  "tree-sitter-julia~=0.23.1",
+  "tree-sitter-nix~=0.1.0",
+  "tree-sitter-robot~=1.1.2",
   # Note: scss, hlsl, wgsl, proto use tree-sitter-language-pack (get_language()),
   # not separate packages
   # Note: Some grammars may need to be built from source
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.entry-points."hypergumbo.analyzers"]
-common = "hypergumbo_lang_common:ANALYZER_SPECS"
+common = "hypergumbo_lang_common:ANALYZER_MODULES"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hypergumbo_lang_common"]

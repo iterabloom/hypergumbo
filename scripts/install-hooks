@@ -32,15 +32,92 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 cd "$repo_root"
 
+# -----------------------------
+# Detect venv directory
+# -----------------------------
+detect_venv() {
+  for candidate in .venv venv .env env; do
+    if [[ -d "$repo_root/$candidate" ]] && [[ -f "$repo_root/$candidate/bin/activate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# -----------------------------
+# Pytest wrapper for smart-test (ADR-0010)
+# -----------------------------
+# Replaces .venv/bin/pytest with a wrapper that delegates to smart-test.
+# This ensures all pytest invocations go through smart-test for test selection.
+# The wrapper self-heals via conftest.py if pip overwrites it.
+
+create_pytest_wrapper() {
+  local venv_dir="$1"
+  local wrapper="$repo_root/$venv_dir/bin/pytest"
+
+  # Create the wrapper script
+  cat > "$wrapper" << 'WRAPPER_EOF'
+#!/bin/bash
+# Pytest wrapper for smart-test (ADR-0010)
+#
+# This wrapper ensures pytest invocations go through smart-test for
+# intelligent test selection. If pip overwrites this file, conftest.py
+# will detect and repair it automatically.
+#
+# Escape hatches:
+#   python -m pytest ...              # Bypass completely
+#   SMART_TEST_ACTIVE=1 pytest ...    # Skip smart-test logic
+
+# Fast-path for info commands (no need to run smart-test analysis)
+case "${1:-}" in
+    --version|-V|--help|-h|--co|--collect-only)
+        exec python -m pytest "$@"
+        ;;
+esac
+
+# If called from within smart-test, use real pytest to avoid recursion
+if [[ -n "${SMART_TEST_ACTIVE:-}" ]]; then
+    exec python -m pytest "$@"
+fi
+
+# Delegate to smart-test for test selection
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+if [[ -x "$REPO_ROOT/scripts/smart-test" ]]; then
+    exec "$REPO_ROOT/scripts/smart-test" "$@"
+else
+    # Fallback if smart-test doesn't exist
+    echo "warning: smart-test not found, using real pytest" >&2
+    exec python -m pytest "$@"
+fi
+WRAPPER_EOF
+
+  chmod +x "$wrapper"
+}
+
+# -----------------------------
+# Handle --repair-shims flag (called by conftest.py and git hooks)
+# -----------------------------
+if [[ "${1:-}" == "--repair-shims" ]]; then
+  venv_dir=$(detect_venv) || die "no venv found to repair"
+  create_pytest_wrapper "$venv_dir"
+  echo "✅ pytest wrapper repaired"
+  exit 0
+fi
+
 hooks_path=".githooks"
 commit_msg_hook="$hooks_path/commit-msg"
 prepare_hook="$hooks_path/prepare-commit-msg"
 pre_commit_hook="$hooks_path/pre-commit"
+pre_push_hook="$hooks_path/pre-push"
 
 [[ -d "$hooks_path" ]]    || die "expected $hooks_path/ directory at repo root"
 [[ -f "$commit_msg_hook" ]] || die "expected hook file $commit_msg_hook"
 [[ -f "$prepare_hook" ]]    || die "expected hook file $prepare_hook"
 [[ -f "$pre_commit_hook" ]] || die "expected hook file $pre_commit_hook"
+[[ -f "$pre_push_hook" ]]   || die "expected hook file $pre_push_hook"
 
 # -----------------------------
 # Dependency checks for commit-msg hook
@@ -76,6 +153,9 @@ chmod +x "$hooks_path"/* 2>/dev/null || true
 
 git config --local core.hooksPath "$hooks_path"
 
+# Configure textconv driver for tracker .ops files (ADR-0013)
+git config --local diff.tracker.textconv "$repo_root/scripts/tracker-textconv"
+
 # -----------------------------
 # Initialize AUTONOMOUS_MODE.txt from default if missing
 # -----------------------------
@@ -86,6 +166,7 @@ fi
 
 echo "✅ Git hooks installed for this clone"
 echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
+echo "   diff.tracker.textconv=$(git config --local --get diff.tracker.textconv)"
 echo "   Dependencies look OK for commit-msg hook."
 echo "   Secret will be auto-generated on first commit by commit-msg hook."
 echo ""
@@ -103,30 +184,67 @@ else
 fi
 
 # -----------------------------
-# Install smart-test pytest alias
+# Install pytest wrapper for smart-test (ADR-0010)
 # -----------------------------
-# Inject alias into venv activate script so `pytest` runs smart-test by default
-# This gives developers and LLMs fast feedback by running only affected tests
+# Replace .venv/bin/pytest with a wrapper that delegates to smart-test.
+# This works for all invocation contexts (interactive, scripts, CI tools).
+# The wrapper self-heals via conftest.py if pip overwrites it.
 
-ACTIVATE_SCRIPT=".venv/bin/activate"
-ALIAS_MARKER="# smart-test alias"
-ALIAS_LINE="alias pytest='./scripts/smart-test'  $ALIAS_MARKER"
-
-if [[ -f "$ACTIVATE_SCRIPT" ]]; then
-  if grep -q "$ALIAS_MARKER" "$ACTIVATE_SCRIPT" 2>/dev/null; then
-    echo ""
-    echo "✅ pytest alias already installed in .venv/bin/activate"
-  else
-    echo "" >> "$ACTIVATE_SCRIPT"
-    echo "$ALIAS_LINE" >> "$ACTIVATE_SCRIPT"
-    echo ""
-    echo "✅ pytest alias installed in .venv/bin/activate"
-    echo "   Re-activate your venv to enable: source .venv/bin/activate"
-    echo "   Then 'pytest' will run smart-test (affected tests only)"
-    echo "   Use 'pytest --full' or 'command pytest' for full suite"
-  fi
+echo ""
+if venv_dir=$(detect_venv); then
+  create_pytest_wrapper "$venv_dir"
+  echo "✅ pytest wrapper installed in $venv_dir/bin/pytest"
+  echo "   All pytest invocations now use smart-test (affected tests only)"
+  echo "   Use 'pytest --full' for complete test suite"
+  echo "   Use 'python -m pytest' to bypass smart-test"
 else
-  echo ""
-  echo "⚠️  No .venv/bin/activate found - skipping pytest alias"
+  echo "⚠️  No venv found - skipping pytest wrapper"
   echo "   Create venv first: python3 -m venv .venv && source .venv/bin/activate"
+  echo "   Then re-run: ./scripts/install-hooks"
+fi
+
+# -----------------------------
+# Warn if hypergumbo in venv is missing or shadowed
+# -----------------------------
+if venv_dir=$(detect_venv); then
+  VENV_HG="$repo_root/$venv_dir/bin/hypergumbo"
+  if [[ ! -x "$VENV_HG" ]]; then
+    echo ""
+    echo "⚠️  No hypergumbo CLI found in $venv_dir/bin/"
+    echo "   Dev commands will use the system/pipx version instead of your source checkout."
+    echo "   Run: ./scripts/dev-install"
+  fi
+fi
+
+# -----------------------------
+# Check for stable hypergumbo (for smart-test)
+# -----------------------------
+# smart-test needs a stable hypergumbo release (not the dev version) to
+# perform affected-test detection via slice --files. Without it, smart-test
+# falls back to running the full test suite.
+
+STABLE_HG=""
+if [[ -x "$HOME/.local/bin/hypergumbo" ]]; then
+  STABLE_HG="$HOME/.local/bin/hypergumbo"
+elif command -v hypergumbo &> /dev/null; then
+  HG_PATH=$(command -v hypergumbo)
+  if [[ "$HG_PATH" != *".venv"* ]]; then
+    STABLE_HG="$HG_PATH"
+  fi
+fi
+
+echo ""
+if [[ -n "$STABLE_HG" ]]; then
+  STABLE_VERSION=$("$STABLE_HG" --version 2>/dev/null | head -1 || echo "unknown")
+  echo "✅ Stable hypergumbo found: $STABLE_HG ($STABLE_VERSION)"
+  echo "   smart-test will use this for affected-test detection"
+else
+  echo "⚠️  No stable hypergumbo found"
+  echo "   smart-test will fall back to running full test suite"
+  echo ""
+  echo "   To enable smart test selection, install stable hypergumbo:"
+  echo "     pipx install hypergumbo"
+  echo ""
+  echo "   Or with pip (outside venv):"
+  echo "     python3 -m pip install --user hypergumbo"
 fi

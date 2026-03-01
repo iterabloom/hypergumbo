@@ -29,21 +29,23 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    make_symbol_id,
+    node_text,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "xml-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("xml")
 
 # XML file extensions and patterns
 XML_EXTENSIONS = ["*.xml"]
@@ -60,50 +62,10 @@ def find_xml_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, XML_EXTENSIONS)
 
 
-def is_xml_tree_sitter_available() -> bool:
-    """Check if tree-sitter with XML grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    # Try tree_sitter_language_pack first (bundled languages)
-    if importlib.util.find_spec("tree_sitter_language_pack") is not None:
-        try:
-            from tree_sitter_language_pack import get_language
-
-            get_language("xml")
-            return True
-        except Exception:  # pragma: no cover
-            pass  # pragma: no cover
-    # Fall back to standalone tree_sitter_xml
-    if importlib.util.find_spec("tree_sitter_xml") is not None:  # pragma: no cover
-        return True  # pragma: no cover
-    return False  # pragma: no cover
-
-
-@dataclass
-class XMLAnalysisResult:
-    """Result of analyzing XML files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"xml:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
 def _get_element_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -112,11 +74,11 @@ def _get_element_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if child.type == "STag":
             for sub in child.children:
                 if sub.type == "Name":
-                    return _node_text(sub, source)
+                    return node_text(sub, source)
         elif child.type == "EmptyElemTag":
             for sub in child.children:
                 if sub.type == "Name":
-                    return _node_text(sub, source)
+                    return node_text(sub, source)
     return None  # pragma: no cover - element must have a name
 
 
@@ -134,11 +96,11 @@ def _get_attribute(node: "tree_sitter.Node", source: bytes, attr_name: str) -> O
                         elif attr_child.type == "AttValue":
                             value_node = attr_child
                     if name_node and value_node:
-                        name = _node_text(name_node, source)
+                        name = node_text(name_node, source)
                         # Handle both plain name and namespace:name
                         if name == attr_name or name.endswith(":" + attr_name):
                             # Remove quotes from value
-                            value = _node_text(value_node, source)
+                            value = node_text(value_node, source)
                             if value.startswith('"') and value.endswith('"'):
                                 return value[1:-1]
                             elif value.startswith("'") and value.endswith("'"):  # pragma: no cover - rare
@@ -153,7 +115,7 @@ def _get_text_content(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if child.type == "content":
             for sub in child.children:
                 if sub.type == "CharData":
-                    text = _node_text(sub, source).strip()
+                    text = node_text(sub, source).strip()
                     if text:
                         return text
     return None  # pragma: no cover - empty content
@@ -204,7 +166,7 @@ def _process_maven_dependency(
         start_line = dep_node.start_point[0] + 1
         end_line = dep_node.end_point[0] + 1
         dep_name = f"{group_id}:{artifact_id}"
-        symbol_id = _make_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
+        symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, dep_name, "dependency")
 
         meta = {"groupId": group_id, "artifactId": artifact_id}
         if version:
@@ -285,7 +247,7 @@ def _process_maven_pom(
         start_line = project_node.start_point[0] + 1
         end_line = project_node.end_point[0] + 1
         project_name = f"{group_id}:{artifact_id}" if group_id else artifact_id
-        project_id = _make_symbol_id(rel_path, start_line, end_line, project_name, "module")
+        project_id = make_symbol_id("xml", rel_path, start_line, end_line, project_name, "module")
 
         meta = {"artifactId": artifact_id}
         if group_id:
@@ -356,7 +318,7 @@ def _process_android_manifest(
                             end_line = sub.end_point[0] + 1
                             # Extract just the permission name
                             short_name = perm_name.split(".")[-1]
-                            symbol_id = _make_symbol_id(rel_path, start_line, end_line, short_name, "permission")
+                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, "permission")
 
                             sym = Symbol(
                                 id=symbol_id,
@@ -413,7 +375,7 @@ def _process_android_application(
                             end_line = sub.end_point[0] + 1
                             # Use short name without package prefix
                             short_name = full_name.split(".")[-1]
-                            symbol_id = _make_symbol_id(rel_path, start_line, end_line, short_name, elem_name)
+                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, elem_name)
 
                             meta: dict = {"component_type": elem_name, "full_name": full_name}
                             if exported:
@@ -479,86 +441,119 @@ def _detect_xml_type(path: Path, source: bytes) -> str:
     return "generic"
 
 
-def analyze_xml_files(repo_root: Path) -> XMLAnalysisResult:
+class XmlAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based XML configuration analyzer.
+
+    Uses tree-sitter-language-pack for the XML grammar.
+    Parses Maven pom.xml, Android Manifest, and other XML config files.
+    Extracts dependencies, components, permissions, and relationships.
+
+    Overrides ``analyze`` because XML uses a single-pass approach with
+    per-file type detection (Maven, Android, generic) that determines
+    which extraction logic to apply.
+    """
+
+    lang = "xml"
+    file_patterns: ClassVar[list[str]] = ["*.xml"]
+    language_pack_name = "xml"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run XML analysis with per-file type detection.
+
+        Each XML file is classified (Maven, Android, generic) and processed
+        with type-specific extraction logic in a single pass.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+
+        xml_files = list(find_xml_files(repo_root))
+
+        for xml_path in xml_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                rel_path = str(xml_path.relative_to(repo_root))
+                source = xml_path.read_bytes()
+
+                # Detect XML type
+                xml_type = _detect_xml_type(xml_path, source)
+
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                # Process based on type
+                if xml_type == "maven":
+                    _process_maven_pom(tree.root_node, source, rel_path, symbols, edges)
+                elif xml_type == "android_manifest":
+                    _process_android_manifest(tree.root_node, source, rel_path, symbols, edges)
+                # Generic XML and layouts are not extracted (too noisy)
+
+            except Exception as e:  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                warnings_list.append(f"Failed to parse {xml_path}: {e}")  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = XmlAnalyzer()
+
+
+def is_xml_tree_sitter_available() -> bool:
+    """Check if tree-sitter with XML grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("xml")
+def analyze_xml_files(repo_root: Path) -> AnalysisResult:
     """Analyze XML files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        XMLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
-    if not is_xml_tree_sitter_available():  # pragma: no cover
-        return XMLAnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-xml not installed (pip install tree-sitter-xml or tree-sitter-language-pack)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Create parser - try language pack first, then standalone
-    try:
-        try:
-            from tree_sitter_language_pack import get_language
-
-            xml_lang = get_language("xml")
-            parser = tree_sitter.Parser(xml_lang)
-        except Exception:  # pragma: no cover - language pack available
-            import tree_sitter_xml  # pragma: no cover
-
-            parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_xml.language()))  # pragma: no cover
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize XML parser: {e}")
-        return XMLAnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    xml_files = list(find_xml_files(repo_root))
-
-    for xml_path in xml_files:
-        try:
-            rel_path = str(xml_path.relative_to(repo_root))
-            source = xml_path.read_bytes()
-
-            # Detect XML type
-            xml_type = _detect_xml_type(xml_path, source)
-
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Process based on type
-            if xml_type == "maven":
-                _process_maven_pom(tree.root_node, source, rel_path, symbols, edges)
-            elif xml_type == "android_manifest":
-                _process_android_manifest(tree.root_node, source, rel_path, symbols, edges)
-            # Generic XML and layouts are not extracted (too noisy)
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {xml_path}: {e}")  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return XMLAnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)
 
 
 # Convenience alias

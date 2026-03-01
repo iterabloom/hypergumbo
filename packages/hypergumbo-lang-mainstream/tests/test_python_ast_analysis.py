@@ -423,11 +423,10 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     assert len(data["nodes"]) == 3
 
     # Should detect run -> helper via self.helper()
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
-    assert edge["type"] == "calls"
-    assert "run" in edge["src"]
-    assert "helper" in edge["dst"]
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    assert "run" in call_edges[0]["src"]
+    assert "helper" in call_edges[0]["dst"]
 
 
 def test_run_detects_class_instantiation(tmp_path: Path) -> None:
@@ -690,6 +689,48 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     assert func["stable_id"].startswith("sha256:")
 
 
+def test_containing_module_differentiates_stable_id(tmp_path: Path) -> None:
+    """Methods with identical signatures in different classes must get different stable_ids.
+
+    ADR-0014 §5: containing_stable_id is included in the hash formula so
+    Foo.process(x) and Bar.process(x) produce distinct stable_id values
+    when their containing classes have different stable_ids (e.g. different
+    decorators). Classes with identical structure produce the same stable_id
+    by design (survives renames); the typed tier (Phase 3) addresses that.
+    """
+    py_file = tmp_path / "models.py"
+    py_file.write_text(
+        "def my_decorator(cls):\n"
+        "    return cls\n"
+        "\n"
+        "class Foo:\n"
+        "    def process(self, x):\n"
+        "        pass\n"
+        "\n"
+        "@my_decorator\n"
+        "class Bar:\n"
+        "    def process(self, x):\n"
+        "        pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    methods = [n for n in data["nodes"] if n["kind"] == "method"]
+    foo_process = next(m for m in methods if m["name"] == "Foo.process")
+    bar_process = next(m for m in methods if m["name"] == "Bar.process")
+
+    # Both should have sha256-based stable_ids
+    assert foo_process["stable_id"].startswith("sha256:")
+    assert bar_process["stable_id"].startswith("sha256:")
+
+    # They must differ because containing classes have different stable_ids
+    # (Bar has @my_decorator, Foo does not)
+    assert foo_process["stable_id"] != bar_process["stable_id"]
+
+
 def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     """Flask @app.route decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
@@ -718,6 +759,74 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     assert decorators[0]["name"] == "app.route"
     assert decorators[0]["args"] == ["/hello"]
     assert decorators[0]["kwargs"] == {"methods": ["GET"]}
+
+
+def test_decorator_with_wrapper_function_call_arg(tmp_path: Path) -> None:
+    """Decorator args that are function calls with string literal args should extract the literal.
+
+    Common pattern: @app.route(_add_static_prefix("/health")) should extract "/health"
+    as the route path, not "<complex>".
+    """
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def _add_static_prefix(route):\n"
+        "    return route\n"
+        "\n"
+        "@app.route(_add_static_prefix('/health'))\n"
+        "def health():\n"
+        "    return 'OK'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and n["name"] == "health"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.route"
+    # Should extract the string literal from the wrapper function call
+    assert decorators[0]["args"] == ["/health"]
+
+
+def test_decorator_with_no_arg_function_call(tmp_path: Path) -> None:
+    """Decorator args that are function calls with no args should not crash."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def get_route():\n"
+        "    return '/dynamic'\n"
+        "\n"
+        "@app.route(get_route())\n"
+        "def handler():\n"
+        "    return 'OK'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and n["name"] == "handler"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.route"
+    # No string literal arg in get_route() call, so falls through to <complex>
+    assert decorators[0]["args"] == ["<complex>"]
 
 
 def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
@@ -908,6 +1017,108 @@ def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None
 
 
 # ============================================================================
+# FastAPI add_api_route UsageContext Tests
+# ============================================================================
+
+
+def test_fastapi_add_api_route_usage_context(tmp_path: Path) -> None:
+    """FastAPI add_api_route() should emit UsageContext records."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def list_items():\n"
+        "    return []\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/items', list_items, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["context_name"] == "router.add_api_route"
+    assert ctx["metadata"]["route_path"] == "/items"
+    assert ctx["metadata"]["view_name"] == "list_items"
+    assert ctx["metadata"]["methods"] == ["GET"]
+
+
+def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
+    """FastAPI add_api_route handler is the second positional arg (not third)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "v2_endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter()\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "infer"
+    assert ctx["metadata"]["route_path"] == "/models/{model_name}/infer"
+    assert ctx["metadata"]["methods"] == ["POST"]
+
+
+def test_fastapi_add_api_route_attribute_handler(tmp_path: Path) -> None:
+    """FastAPI add_api_route with attribute-based handler (endpoints.func)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "import endpoints\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/health', endpoints.health_check, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "health_check"
+    assert ctx["metadata"]["route_path"] == "/health"
+
+
+def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
+    """FastAPI add_api_route without explicit methods defaults to ['GET']."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def root():\n"
+        "    return {'status': 'ok'}\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/', root)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "root"
+    assert ctx["metadata"]["methods"] == ["GET"]  # default
+
+
+# ============================================================================
 # Django/DRF Decorator Metadata Tests
 # ============================================================================
 
@@ -1018,10 +1229,14 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     method_by_name = {m["name"]: m for m in methods}
 
     # Methods named get/post in a View class should be marked as HTTP handlers
+    # stable_id is now sha256-based (ADR-0014 §4), not bare HTTP method strings
     assert "UserView.get" in method_by_name
     assert "UserView.post" in method_by_name
-    assert method_by_name["UserView.get"]["stable_id"] == "GET"
-    assert method_by_name["UserView.post"]["stable_id"] == "POST"
+    get_sid = method_by_name["UserView.get"]["stable_id"]
+    post_sid = method_by_name["UserView.post"]["stable_id"]
+    assert len(get_sid) == 64  # sha256 hex digest
+    assert len(post_sid) == 64
+    assert get_sid != post_sid  # Different methods must not collide
 
 
 def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
@@ -1072,6 +1287,32 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     route_paths = {r.get("meta", {}).get("route_path") for r in routes}
     assert "/users/" in route_paths or "users/" in route_paths
     assert "/users/<int:pk>/" in route_paths or "users/<int:pk>/" in route_paths
+
+
+def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
+    """Different Django URL routes must have different stable_ids (ADR-0014 §4)."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('users/', views.user_list),\n"
+        "    path('posts/', views.post_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2
+    stable_ids = [r["stable_id"] for r in routes]
+    assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
+    # Both should be sha256 hex digests
+    assert all(len(sid) == 64 for sid in stable_ids)
 
 
 def test_django_path_empty_string_root_route(tmp_path: Path) -> None:
@@ -1170,9 +1411,123 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     assert routes[0].get("meta", {}).get("view_name") == "my_view"
 
 
+def test_django_path_with_cbv_as_view(tmp_path: Path) -> None:
+    """Django path() with class-based view .as_view() should extract view name."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from django.contrib.auth import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('login/', views.LoginView.as_view(), name='login'),\n"
+        "    path('logout/', views.LogoutView.as_view(), name='logout'),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2
+
+    view_names = [r.get("meta", {}).get("view_name") for r in routes]
+    assert "LoginView" in view_names
+    assert "LogoutView" in view_names
+
+
+def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
+    """Django path() with local CBV using .as_view() should extract view name."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from django.views.generic import TemplateView\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('about/', TemplateView.as_view(template_name='about.html')),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+    assert routes[0].get("meta", {}).get("view_name") == "TemplateView"
+
+
 # NOTE: Router prefix combination tests were removed.
 # Router prefix functionality is now handled by FRAMEWORK_PATTERNS phase.
 # See test_framework_patterns.py for pattern matching tests.
+
+
+def test_reexported_symbols_get_modifier(tmp_path: Path) -> None:
+    """Symbols re-exported from __init__.py get the 're_exported' modifier.
+
+    When a package __init__.py re-exports symbols from submodules:
+        # mypackage/__init__.py
+        from .submodule import MyClass
+        from .submodule import helper_func
+
+    The original symbols in submodule.py should gain a 're_exported' modifier,
+    enabling library-export pattern detection for re-exported public APIs.
+    """
+    pkg = tmp_path / "mypackage"
+    pkg.mkdir()
+
+    submodule = pkg / "submodule.py"
+    submodule.write_text(
+        "class MyClass:\n"
+        "    '''A public class.'''\n"
+        "    pass\n"
+        "\n"
+        "def helper_func():\n"
+        "    '''A public function.'''\n"
+        "    return 42\n"
+        "\n"
+        "def _private_func():\n"
+        "    '''A private function (not re-exported).'''\n"
+        "    return 0\n"
+    )
+
+    init_file = pkg / "__init__.py"
+    init_file.write_text(
+        "from .submodule import MyClass\n"
+        "from .submodule import helper_func\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the re-exported symbols
+    my_class = next(
+        (n for n in data["nodes"] if n["name"] == "MyClass"), None
+    )
+    helper = next(
+        (n for n in data["nodes"] if n["name"] == "helper_func"), None
+    )
+    private = next(
+        (n for n in data["nodes"] if n["name"] == "_private_func"), None
+    )
+
+    assert my_class is not None, "MyClass should be in output"
+    assert helper is not None, "helper_func should be in output"
+    assert private is not None, "_private_func should be in output"
+
+    # Re-exported symbols should have the 're_exported' modifier
+    assert "re_exported" in my_class.get("modifiers", []), \
+        f"MyClass should have re_exported modifier, got {my_class.get('modifiers', [])}"
+    assert "re_exported" in helper.get("modifiers", []), \
+        f"helper_func should have re_exported modifier, got {helper.get('modifiers', [])}"
+
+    # Non-re-exported symbol should NOT have the modifier
+    assert "re_exported" not in private.get("modifiers", []), \
+        "_private_func should NOT have re_exported modifier"
 
 
 def test_reexport_call_edges_resolved(tmp_path: Path) -> None:
@@ -1402,6 +1757,45 @@ def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
     call_dsts = {e["dst"] for e in call_edges}
     assert helper_id in call_dsts, \
         f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
+
+def test_src_dir_without_packages_not_detected_as_layout(tmp_path: Path) -> None:
+    """When src/ exists but has no package dirs, it's not src/ layout (covers py.py:977).
+
+    If src/ exists but contains no directories with __init__.py,
+    _find_src_layout should return None and analysis continues normally.
+    """
+    # Create src/ directory with just files, no packages
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "utils.py").write_text(
+        "def utility():\n"
+        "    return 'util'\n"
+    )
+    # Create a subdirectory WITHOUT __init__.py
+    subdir = src / "subdir"
+    subdir.mkdir()
+    (subdir / "helper.py").write_text(
+        "def helper():\n"
+        "    return 'help'\n"
+    )
+
+    # Create main.py at project root
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "def main():\n"
+        "    return 'main'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Should detect functions (analysis proceeds despite src/ not being a layout)
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_names = {f["name"] for f in functions}
+    assert "main" in func_names, "main function should be detected"
 
 
 def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
@@ -1928,6 +2322,34 @@ class TestPythonSignatureExtraction:
         assert len(sig) <= 60
         assert sig.endswith("…")
 
+    def test_method_long_signature_untyped_fallback(self, tmp_path: Path) -> None:
+        """Class method with truncated signature falls back to untyped stable_id.
+
+        When ``_format_function_signature`` truncates the signature (>60 chars),
+        ``normalize_python_signature`` returns None because the closing paren is
+        missing.  The analyzer must fall back to the untyped ``_compute_stable_id``
+        (ADR-0014 §2) rather than crash.
+        """
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "class MyClass:\n"
+            "    def long_method(self, param_a: str, param_b: str, "
+            "param_c: str, param_d: str, param_e: str, param_f: str) -> str:\n"
+            "        return 'x'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        methods = [n for n in data["nodes"] if n["kind"] == "method"]
+        assert len(methods) == 1
+        method = methods[0]
+        # Signature is truncated (no closing paren)
+        assert method["signature"].endswith("…")
+        # stable_id still assigned via untyped fallback
+        assert method["stable_id"].startswith("sha256:")
+
     def test_signature_constant_annotation(self, tmp_path: Path) -> None:
         """Extract signature with constant type like Literal['a', 'b']."""
         py_file = tmp_path / "test.py"
@@ -2288,9 +2710,55 @@ class TestVariableMethodCalls:
         )
         assert method_edge is not None, "Expected call edge for SendEmail method"
 
-    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
-        """Type inference only works for constructor assignments, not function returns."""
-        # Create a client class
+    def test_type_inference_from_return_type_annotation(self, tmp_path: Path) -> None:
+        """Return type annotations enable type inference for function results.
+
+        When a function has a return type annotation like `-> ServiceClient`,
+        assigning its result to a variable should track the type so that
+        subsequent method calls (stub.send_request()) resolve correctly.
+        """
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client() -> ServiceClient:\n"
+            "    return ServiceClient()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        # get_client() call should resolve
+        get_client_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for get_client"
+
+        # stub.send_request() should resolve via return type annotation
+        send_request_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is not None, (
+            "Expected call edge for stub.send_request() via return type inference"
+        )
+
+    def test_type_inference_no_annotation_no_resolution(self, tmp_path: Path) -> None:
+        """Without return type annotation, function results don't enable type inference."""
         client_file = tmp_path / "client.py"
         client_file.write_text(
             "class ServiceClient:\n"
@@ -2301,21 +2769,19 @@ class TestVariableMethodCalls:
             "    return ServiceClient()\n"
         )
 
-        # Create main module using function return (NOT tracked)
         main_file = tmp_path / "main.py"
         main_file.write_text(
             "from client import get_client\n"
             "\n"
             "def make_request():\n"
-            "    stub = get_client()  # NOT tracked - function return\n"
-            "    stub.send_request()  # Should NOT be resolved\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()  # Should NOT be resolved - no annotation\n"
         )
 
         out_path = tmp_path / "out.json"
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        # Should have a call edge for get_client()
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         get_client_edge = next(
             (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
@@ -2323,12 +2789,140 @@ class TestVariableMethodCalls:
         )
         assert get_client_edge is not None, "Expected call edge for get_client"
 
-        # Should NOT have a call edge for send_request (type not tracked from function return)
+        # No annotation → no resolution
         send_request_edge = next(
             (e for e in call_edges if "send_request" in e["dst"]),
             None
         )
-        assert send_request_edge is None, "Should NOT resolve stub.send_request() from function return"
+        assert send_request_edge is None, "Should NOT resolve stub.send_request() without annotation"
+
+    def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
+        """Generic return types like Optional[X] are not tracked."""
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "from typing import Optional\n"
+            "\n"
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client() -> Optional[ServiceClient]:\n"
+            "    return ServiceClient()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        # Generic return type → no resolution for method call
+        send_request_edge = next(
+            (e for e in call_edges if "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is None, "Generic return types should not enable type inference"
+
+    def test_return_type_local_class(self, tmp_path: Path) -> None:
+        """Return type resolved from same file as caller."""
+        single_file = tmp_path / "app.py"
+        single_file.write_text(
+            "class Repo:\n"
+            "    def query(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_repo() -> Repo:\n"
+            "    return Repo()\n"
+            "\n"
+            "def handler():\n"
+            "    r = get_repo()\n"
+            "    r.query()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        query_edge = next(
+            (e for e in call_edges if "handler" in e["src"] and "query" in e["dst"]),
+            None
+        )
+        assert query_edge is not None, "Return type from local class should resolve method calls"
+
+    def test_return_type_imported_class(self, tmp_path: Path) -> None:
+        """Return type resolved via caller's imports."""
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class User:\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        factory_file = tmp_path / "factory.py"
+        factory_file.write_text(
+            "from models import User\n"
+            "\n"
+            "def create_user() -> User:\n"
+            "    return User()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from models import User\n"
+            "from factory import create_user\n"
+            "\n"
+            "def handler():\n"
+            "    u = create_user()\n"
+            "    u.save()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        save_edge = next(
+            (e for e in call_edges if "handler" in e["src"] and "save" in e["dst"]),
+            None
+        )
+        assert save_edge is not None, "Return type imported by caller should resolve method calls"
+
+    def test_return_type_unknown_class(self, tmp_path: Path) -> None:
+        """Return type pointing to unknown class doesn't crash."""
+        lib_file = tmp_path / "lib.py"
+        lib_file.write_text(
+            "def get_thing() -> ExternalThing:\n"
+            "    pass\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from lib import get_thing\n"
+            "\n"
+            "def handler():\n"
+            "    t = get_thing()\n"
+            "    t.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "process" in e["dst"]),
+            None
+        )
+        assert process_edge is None, "Unknown return type class should not resolve"
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
         """Module-level code with module.func() calls should emit edges from <module> node."""
@@ -2572,6 +3166,85 @@ class TestVariableMethodCalls:
         )
         assert process_edge is not None, "Expected call edge for svc.process() via local class annotation"
 
+    def test_self_field_method_call_with_param_type(self, tmp_path: Path) -> None:
+        """self.field.method() should resolve when field is assigned from typed param.
+
+        Pattern: class Controller(__init__(self, svc: Service)) assigns self.svc = svc,
+        then handle() calls self.svc.process(). INV-014 structural fix for Python.
+        """
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Service:\n"
+            "    def process(self, data):\n"
+            "        pass\n"
+        )
+
+        controller_file = tmp_path / "controller.py"
+        controller_file.write_text(
+            "from service import Service\n"
+            "\n"
+            "class Controller:\n"
+            "    def __init__(self, svc: Service):\n"
+            "        self.svc = svc\n"
+            "\n"
+            "    def handle(self, data):\n"
+            "        self.svc.process(data)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "handle" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert process_edge is not None, (
+            "Expected call edge from Controller.handle to Service.process "
+            "via self.svc.process() with typed param"
+        )
+        assert "service.py" in process_edge["dst"]
+
+    def test_self_field_method_call_with_constructor(self, tmp_path: Path) -> None:
+        """self.field.method() should resolve when field is assigned from constructor.
+
+        Pattern: self.repo = Repository() in __init__, then self.repo.save() in method.
+        """
+        repo_file = tmp_path / "repo.py"
+        repo_file.write_text(
+            "class Repository:\n"
+            "    def save(self, item):\n"
+            "        pass\n"
+        )
+
+        controller_file = tmp_path / "controller.py"
+        controller_file.write_text(
+            "from repo import Repository\n"
+            "\n"
+            "class Controller:\n"
+            "    def __init__(self):\n"
+            "        self.repo = Repository()\n"
+            "\n"
+            "    def create(self, item):\n"
+            "        self.repo.save(item)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        save_edge = next(
+            (e for e in call_edges if "create" in e["src"] and "save" in e["dst"]),
+            None
+        )
+        assert save_edge is not None, (
+            "Expected call edge from Controller.create to Repository.save "
+            "via self.repo.save() with constructor assignment"
+        )
+        assert "repo.py" in save_edge["dst"]
+
 
 # ============================================================================
 # Rich Metadata Extraction Tests (ADR-0003)
@@ -2686,6 +3359,32 @@ class TestDecoratorMetadata:
         decorators = func["meta"]["decorators"]
         assert decorators[0]["args"] == []
         assert decorators[0]["kwargs"] == {"response_model": "dict"}
+
+    def test_attribute_decorator_without_call(self, tmp_path: Path) -> None:
+        """Decorator like @module.attribute without parentheses (covers py.py:211,810)."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import functools\n"
+            "\n"
+            "@functools.cache\n"
+            "def expensive_func(x):\n"
+            "    return x * 2\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "expensive_func")
+
+        assert "meta" in func
+        assert "decorators" in func["meta"]
+        decorators = func["meta"]["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "functools.cache"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
 
     def test_multiple_decorators(self, tmp_path: Path) -> None:
         """Multiple decorators should all be captured in order."""
@@ -3748,6 +4447,128 @@ class TestPythonInheritanceEdges:
         assert any("LogMixin" in dst for dst in dst_names)
         assert any("SaveMixin" in dst for dst in dst_names)
 
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        Regression test for the Django bakeoff finding: 238 classes named 'Model'
+        exist across Django's codebase (1 real in db/models/base.py + 237 test stubs).
+        All 2376 extends edges were pointing to a single test stub because
+        class_symbols used last-writer-wins dict semantics.
+
+        The fix: use import information to disambiguate.  When test_app.py has
+        ``from db.models import Model`` and defines ``class Article(Model):``,
+        the extends edge should resolve to db/models.py::Model, not to
+        tests/test_other.py::Model.
+        """
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Real Model class in non-test file
+        (tmp_path / "db").mkdir()
+        (tmp_path / "db" / "__init__.py").write_text("")
+        (tmp_path / "db" / "models.py").write_text(
+            "class Model:\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "__init__.py").write_text("")
+        (tmp_path / "tests" / "test_helpers.py").write_text(
+            "class Model:\n"
+            "    '''Test stub model.'''\n"
+            "    pass\n"
+        )
+
+        # A file that imports from db.models and extends Model
+        (tmp_path / "app.py").write_text(
+            "from db.models import Model\n"
+            "\n"
+            "class Article(Model):\n"
+            "    def publish(self):\n"
+            "        pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to db/models.py::Model, NOT tests/test_helpers.py::Model
+        edge = article_extends[0]
+        assert "db/models.py" in edge.dst or "db\\models.py" in edge.dst, (
+            f"Article extends edge should point to db/models.py::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Model defined in file A
+        (tmp_path / "a.py").write_text(
+            "class Base:\n    pass\n"
+        )
+
+        # Model defined in file B AND used as base in same file
+        (tmp_path / "b.py").write_text(
+            "class Base:\n    pass\n"
+            "\n"
+            "class Child(Base):\n    pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to b.py::Base (same file), not a.py::Base
+        edge = child_extends[0]
+        assert "b.py" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (b.py), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback.
+
+        With multiple classes named 'Base' in different files and no import
+        information, the resolver falls back to sorted-by-ID for stability.
+        """
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "mod_a.py").write_text(
+            "class Base:\n    pass\n"
+        )
+        (tmp_path / "mod_b.py").write_text(
+            "class Base:\n    pass\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "child.py").write_text(
+            "class Child(Base):\n    pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+        # The target should be deterministic (sorted by ID)
+        edge = child_extends[0]
+        assert "Base" in edge.dst
+
     def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
         """No extends edge created when base class is external (not in repo)."""
         from hypergumbo_lang_mainstream.py import analyze_python
@@ -3773,3 +4594,207 @@ class TestPythonInheritanceEdges:
         assert len(extends_edges) == 0
 
 
+class TestPythonVisibilityModifiers:
+    """Tests for Python visibility modifier extraction (underscore convention)."""
+
+    def test_private_function(self, tmp_path: Path) -> None:
+        """Functions with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "funcs.py").write_text("""
+def public_func():
+    pass
+
+def _private_func():
+    pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "public_func")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "_private_func")
+        assert "private" in priv.modifiers
+
+    def test_private_method(self, tmp_path: Path) -> None:
+        """Methods with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "cls.py").write_text("""
+class MyClass:
+    def public_method(self):
+        pass
+
+    def _private_method(self):
+        pass
+
+    def __init__(self):
+        pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "MyClass.public_method")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "MyClass._private_method")
+        assert "private" in priv.modifiers
+
+        # Dunder methods are NOT private
+        init = next(s for s in result.symbols if s.name == "MyClass.__init__")
+        assert "private" not in init.modifiers
+
+    def test_private_class(self, tmp_path: Path) -> None:
+        """Classes with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "cls.py").write_text("""
+class PublicClass:
+    pass
+
+class _PrivateClass:
+    pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PublicClass")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "_PrivateClass")
+        assert "private" in priv.modifiers
+
+
+class TestNormalizePythonSignature:
+    """Tests for Python signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(name: str, age: int) -> bool") == "(str,int)bool"
+
+    def test_self_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(self, name: str) -> bool") == "(str)bool"
+
+    def test_cls_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(cls, name: str) -> bool") == "(str)bool"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature(None) is None
+
+
+class TestPythonFunctionReferences:
+    """Tests for function references in non-call contexts (INV-dinur).
+
+    Python code often passes functions as values — arguments, dict values,
+    and assignment RHS.  These should produce "references" edges.
+    """
+
+    def test_function_passed_as_argument(self, tmp_path: Path) -> None:
+        """map(transform, items) should create a references edge to transform."""
+        (tmp_path / "app.py").write_text(
+            "def transform(x):\n"
+            "    return x * 2\n"
+            "\n"
+            "def run():\n"
+            "    items = [1, 2, 3]\n"
+            "    result = list(map(transform, items))\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "run" in e["src"] and "transform" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_function_as_dict_value(self, tmp_path: Path) -> None:
+        """handlers = {'GET': handle_get} should create a references edge."""
+        (tmp_path / "app.py").write_text(
+            "def handle_get():\n"
+            "    return 'ok'\n"
+            "\n"
+            "def setup():\n"
+            "    handlers = {'GET': handle_get}\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "setup" in e["src"] and "handle_get" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_function_assigned_to_variable(self, tmp_path: Path) -> None:
+        """callback = my_func should create a references edge."""
+        (tmp_path / "app.py").write_text(
+            "def my_func():\n"
+            "    pass\n"
+            "\n"
+            "def register():\n"
+            "    callback = my_func\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "register" in e["src"] and "my_func" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_class_reference_not_emitted(self, tmp_path: Path) -> None:
+        """Class names in non-call contexts should NOT produce references edges.
+
+        Only function/method references are interesting here — class references
+        are typically type annotations or container names, not first-class values.
+        """
+        (tmp_path / "app.py").write_text(
+            "class MyClass:\n"
+            "    pass\n"
+            "\n"
+            "def register():\n"
+            "    cls = MyClass\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "register" in e["src"] and "MyClass" in e["dst"]
+        ]
+        assert len(ref_edges) == 0, f"Class references should not emit edges: {ref_edges}"
+
+    def test_cross_file_function_reference(self, tmp_path: Path) -> None:
+        """Function references across files should resolve via imports."""
+        (tmp_path / "handlers.py").write_text(
+            "def handle_request():\n"
+            "    return 'ok'\n"
+        )
+        (tmp_path / "router.py").write_text(
+            "from handlers import handle_request\n"
+            "\n"
+            "def setup_routes():\n"
+            "    routes = {'GET': handle_request}\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references"
+            and "setup_routes" in e["src"]
+            and "handle_request" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected cross-file reference edge: {ref_edges}"
+        assert "handlers.py" in ref_edges[0]["dst"]

@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import astro as astro_module
-from hypergumbo_lang_common.astro import (
-    AstroAnalysisResult,
-    analyze_astro,
-    find_astro_files,
-    is_astro_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.astro import analyze_astro, find_astro_files, is_astro_tree_sitter_available
 
 def make_astro_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an Astro file in the temp directory."""
@@ -20,7 +15,6 @@ def make_astro_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindAstroFiles:
     """Tests for find_astro_files function."""
@@ -37,7 +31,6 @@ class TestFindAstroFiles:
         files = find_astro_files(tmp_path)
         assert files == []
 
-
 class TestIsAstroTreeSitterAvailable:
     """Tests for is_astro_tree_sitter_available function."""
 
@@ -46,17 +39,16 @@ class TestIsAstroTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(astro_module, "is_astro_tree_sitter_available", return_value=False):
+        with patch.object(astro_module._analyzer, "_check_grammar_available", return_value=False):
             assert astro_module.is_astro_tree_sitter_available() is False
-
 
 class TestAnalyzeAstro:
     """Tests for analyze_astro function."""
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
-        with patch.object(astro_module, "is_astro_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Astro analysis skipped"):
+        with patch.object(astro_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="astro analysis skipped"):
                 result = astro_module.analyze_astro(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -65,7 +57,8 @@ class TestAnalyzeAstro:
         result = analyze_astro(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -249,7 +242,7 @@ import Counter from './Counter.astro';
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
         result = analyze_astro(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "astro.tree_sitter"
+        assert result.run.pass_id == "astro-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -271,7 +264,7 @@ import Header from './Header.astro';
         result = analyze_astro(tmp_path)
         comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
         assert comp is not None
-        assert comp.origin == "astro.tree_sitter"
+        assert comp.origin == "astro-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---

@@ -16,15 +16,17 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter with Dart grammar is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract classes, functions, methods, constructors, enums, mixins
+2. Pass 2: Detect calls, imports, and instantiations using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Dart-specific
+extraction logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for Dart grammar
 - Two-pass allows cross-file call resolution
@@ -54,90 +56,38 @@ AST Structure Notes
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    make_typed_stable_id,
+    node_text,
+    visibility_from_modifiers,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
+
+from hypergumbo_core.symbol_resolution import ListNameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "dart-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("dart")
 
 
 def find_dart_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Dart files in the repository."""
     yield from find_files(repo_root, ["*.dart"])
-
-
-def is_dart_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Dart grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("dart")
-        return True
-    except Exception:  # pragma: no cover - dart grammar not available
-        return False
-
-
-@dataclass
-class DartAnalysisResult:
-    """Result of analyzing Dart files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    import_hints: dict[str, str] = field(default_factory=dict)
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"dart:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Dart file node (used as import edge source)."""
-    return f"dart:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _find_next_sibling_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
@@ -185,17 +135,17 @@ def _extract_dart_signature(
         if child.type == "type_identifier":
             # Return type comes before function name
             if return_type is None:
-                return_type = _node_text(child, source).strip()
+                return_type = node_text(child, source).strip()
         elif child.type == "formal_parameter_list":
             # Extract parameters
             for param_child in child.children:
                 if param_child.type == "formal_parameter":
-                    param_text = _node_text(param_child, source).strip()
+                    param_text = node_text(param_child, source).strip()
                     if param_text:
                         params.append(param_text)
                 elif param_child.type == "optional_formal_parameters":
                     # Handle optional/named parameters
-                    opt_text = _node_text(param_child, source).strip()
+                    opt_text = node_text(param_child, source).strip()
                     if opt_text:
                         # Replace default values with ...
                         import re
@@ -208,6 +158,40 @@ def _extract_dart_signature(
     return sig
 
 
+def normalize_dart_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Dart signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_types_first
+    return normalize_signature_types_first(signature, type_params)
+
+
+def _extract_dart_return_type_name(signature: str | None) -> str | None:
+    """Extract the return type name from a Dart function signature.
+
+    Dart signatures use the format ``(params) ReturnType`` where void is omitted.
+    Returns the type name only if it is a simple uppercase identifier (filters
+    out primitive types like ``int``, ``String`` and generics like ``List<T>``).
+
+    Examples:
+        ``"() ServiceClient"`` → ``"ServiceClient"``
+        ``"(String name, int age) User"`` → ``"User"``
+        ``"()"`` → ``None``
+        ``"() int"`` → ``None`` (lowercase = primitive)
+        ``"() List<String>"`` → ``None`` (generic)
+    """
+    if not signature:
+        return None
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0 or paren_idx == len(signature) - 1:
+        return None
+    ret_part = signature[paren_idx + 1:].strip()
+    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+        return ret_part
+    return None
+
+
 def _find_enclosing_class(
     node: "tree_sitter.Node",
     source: bytes,
@@ -216,9 +200,9 @@ def _find_enclosing_class(
     current = node.parent
     while current:
         if current.type in ("class_definition", "mixin_declaration", "extension_declaration"):
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None
 
@@ -250,7 +234,19 @@ def _extract_symbols_from_file(
             start_col=start_col,
             end_col=end_col,
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, full_name, kind)
+        sym_id = make_symbol_id("dart", file_path, start_line, end_line, full_name, kind)
+        # Dart visibility: underscore-prefixed names are library-private
+        modifiers = ["private"] if name.startswith("_") else []
+
+        # Typed stable_id (ADR-0014 §3)
+        stable_id = None
+        if signature:
+            norm_sig = normalize_dart_signature(signature)
+            if norm_sig:
+                stable_id = make_typed_stable_id(
+                    kind, norm_sig, visibility_from_modifiers(modifiers),
+                )
+
         return Symbol(
             id=sym_id,
             name=full_name,
@@ -260,42 +256,44 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            stable_id=stable_id,
             signature=signature,
+            modifiers=modifiers,
         )
 
     for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_definition":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "class"))
             continue
 
         # Mixin declaration
         if node.type == "mixin_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "mixin"))
             continue
 
         # Extension declaration
         if node.type == "extension_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "extension"))
             continue
 
         # Enum declaration
         if node.type == "enum_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 start_line, end_line, start_col, end_col = _get_combined_span(node, None)
                 symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "enum"))
             continue
@@ -305,11 +303,11 @@ def _extract_symbols_from_file(
             class_name = _find_enclosing_class(node, source)
 
             # Check for getter_signature
-            getter_sig = _find_child_by_type(node, "getter_signature")
+            getter_sig = find_child_by_type(node, "getter_signature")
             if getter_sig:
-                name_node = _find_child_by_type(getter_sig, "identifier")
+                name_node = find_child_by_type(getter_sig, "identifier")
                 if name_node:
-                    name = _node_text(name_node, source)
+                    name = node_text(name_node, source)
                     # Find the function_body sibling
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
@@ -317,23 +315,23 @@ def _extract_symbols_from_file(
                 continue
 
             # Check for setter_signature
-            setter_sig = _find_child_by_type(node, "setter_signature")
+            setter_sig = find_child_by_type(node, "setter_signature")
             if setter_sig:
-                name_node = _find_child_by_type(setter_sig, "identifier")
+                name_node = find_child_by_type(setter_sig, "identifier")
                 if name_node:
-                    name = _node_text(name_node, source)
+                    name = node_text(name_node, source)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name))
                 continue
 
             # Check for constructor_signature (rare in method_signature)
-            ctor_sig = _find_child_by_type(node, "constructor_signature")
+            ctor_sig = find_child_by_type(node, "constructor_signature")
             if ctor_sig:  # pragma: no cover - constructor in method_signature
                 name_parts = []
                 for child in ctor_sig.children:
                     if child.type == "identifier":
-                        name_parts.append(_node_text(child, source))
+                        name_parts.append(node_text(child, source))
                 if name_parts:
                     name = ".".join(name_parts)
                     body = _find_next_sibling_by_type(node, "function_body")
@@ -342,11 +340,11 @@ def _extract_symbols_from_file(
                 continue
 
             # Regular function_signature inside method_signature
-            func_sig = _find_child_by_type(node, "function_signature")
+            func_sig = find_child_by_type(node, "function_signature")
             if func_sig:
-                name_node = _find_child_by_type(func_sig, "identifier")
+                name_node = find_child_by_type(func_sig, "identifier")
                 if name_node:
-                    name = _node_text(name_node, source)
+                    name = node_text(name_node, source)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     sig = _extract_dart_signature(func_sig, source)
@@ -356,9 +354,9 @@ def _extract_symbols_from_file(
         # Top-level function_signature (not inside method_signature)
         if node.type == "function_signature" and (node.parent is None or node.parent.type != "method_signature"):
             class_name = _find_enclosing_class(node, source)
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 # Find the function_body sibling
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
@@ -372,7 +370,7 @@ def _extract_symbols_from_file(
             name_parts = []
             for child in node.children:
                 if child.type == "identifier":
-                    name_parts.append(_node_text(child, source))
+                    name_parts.append(node_text(child, source))
             if name_parts:
                 name = ".".join(name_parts)
                 body = _find_next_sibling_by_type(node, "function_body")
@@ -433,12 +431,12 @@ def _extract_import_hints(
                 # Extract path from uri > string_literal
                 for sub in iter_tree(child):
                     if sub.type == "string_literal":
-                        import_path = _node_text(sub, source).strip("'\"")
+                        import_path = node_text(sub, source).strip("'\"")
                         break
             elif child.type == "as":
                 has_as = True
             elif child.type == "identifier" and has_as:
-                as_prefix = _node_text(child, source)
+                as_prefix = node_text(child, source)
             elif child.type == "combinator":
                 # Look for show followed by identifiers
                 is_show = False
@@ -446,7 +444,7 @@ def _extract_import_hints(
                     if sub.type == "show":
                         is_show = True
                     elif sub.type == "identifier" and is_show:
-                        show_names.append(_node_text(sub, source))
+                        show_names.append(node_text(sub, source))
 
         if import_path:
             if as_prefix:
@@ -461,7 +459,7 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> Optional[st
     """Extract the import path from an import/export directive using iterative traversal."""
     for n in iter_tree(node):
         if n.type == "string_literal":
-            text = _node_text(n, source)
+            text = node_text(n, source)
             # Remove quotes
             return text.strip("'\"")
     return None  # pragma: no cover - no string literal found
@@ -482,7 +480,7 @@ def _extract_param_types(
     param_types: dict[str, str] = {}
 
     # Find the formal_parameter_list child
-    params_node = _find_child_by_type(node, "formal_parameter_list")
+    params_node = find_child_by_type(node, "formal_parameter_list")
     if params_node is None:
         return param_types  # pragma: no cover - no params in function
 
@@ -494,14 +492,14 @@ def _extract_param_types(
 
             for subchild in child.children:
                 if subchild.type == "type_identifier":
-                    param_type = _node_text(subchild, source)
+                    param_type = node_text(subchild, source)
                     # Strip generics: List<T> -> List (defensive - tree-sitter usually separates generics)
                     if "<" in param_type:  # pragma: no cover
                         param_type = param_type.split("<")[0]
                 elif subchild.type == "identifier":
                     # First identifier after type is the parameter name
                     if param_type is not None and param_name is None:
-                        param_name = _node_text(subchild, source)
+                        param_name = node_text(subchild, source)
 
             if param_type and param_name:
                 param_types[param_name] = param_type
@@ -515,12 +513,12 @@ def _extract_param_types(
 
                     for subchild in opt_child.children:
                         if subchild.type == "type_identifier":
-                            param_type = _node_text(subchild, source)
+                            param_type = node_text(subchild, source)
                             if "<" in param_type:  # pragma: no cover - defensive
                                 param_type = param_type.split("<")[0]
                         elif subchild.type == "identifier":
                             if param_type is not None and param_name is None:
-                                param_name = _node_text(subchild, source)
+                                param_name = node_text(subchild, source)
 
                     if param_type and param_name:
                         param_types[param_name] = param_type
@@ -536,16 +534,18 @@ def _extract_edges_from_file(
     resolver: NameResolver,
     run_id: str,
     import_hints: dict[str, str] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a parsed Dart file.
 
     Args:
         import_hints: Optional dict mapping short names to full import paths for disambiguation.
+        method_resolver: Optional ListNameResolver for AMB-METHOD ambiguity guard.
     """
     if import_hints is None:  # pragma: no cover - defensive default
         import_hints = {}
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("dart", file_path)
 
     # Track functions by their enclosing scope
     function_scopes: dict[int, Symbol] = {}  # line -> symbol
@@ -564,6 +564,71 @@ def _extract_edges_from_file(
         if node.type == "function_signature":
             param_types = _extract_param_types(node, source)
             var_types.update(param_types)
+
+        # Track return types from function/method calls in variable declarations
+        # Pattern: var client = getClient() or var client = factory.create()
+        # AST: initialized_variable_definition > [inferred_type] identifier = identifier [selector(.method)] selector(args)
+        if node.type == "initialized_variable_definition":
+            children = list(node.children)
+            var_name = None
+            call_target = None
+            call_method = None
+            has_args = False
+            after_eq = False
+
+            for child in children:
+                if child.type == "identifier":
+                    if not after_eq:
+                        var_name = node_text(child, source)
+                    elif call_target is None:
+                        call_target = node_text(child, source)
+                elif child.type == "=":
+                    after_eq = True
+                elif child.type == "selector" and after_eq:
+                    for sel_child in child.children:
+                        if sel_child.type == "unconditional_assignable_selector":
+                            for sub in sel_child.children:
+                                if sub.type == "identifier":
+                                    call_method = node_text(sub, source)
+                        if sel_child.type in ("argument_part", "arguments"):
+                            has_args = True
+                    if any(
+                        c.type in ("argument_part", "arguments")
+                        for c in child.children
+                    ):
+                        has_args = True
+
+            if var_name and call_target and has_args:
+                resolved_sym = None
+                if call_method and call_target in var_types:
+                    # receiver.method() pattern
+                    class_name = var_types[call_target]
+                    qualified_name = f"{class_name}.{call_method}"
+                    path_hint = import_hints.get(class_name)
+                    lookup_result = resolver.lookup(
+                        qualified_name, path_hint=path_hint
+                    )
+                    if lookup_result.found and lookup_result.symbol:
+                        resolved_sym = lookup_result.symbol
+                elif not call_method:
+                    # Simple function call pattern
+                    path_hint = import_hints.get(call_target)
+                    lookup_result = resolver.lookup(
+                        call_target, path_hint=path_hint
+                    )
+                    if lookup_result.found and lookup_result.symbol:
+                        resolved_sym = lookup_result.symbol
+
+                if resolved_sym and resolved_sym.kind in ("function", "method"):
+                    ret_name = _extract_dart_return_type_name(
+                        resolved_sym.signature
+                    )
+                    if ret_name:
+                        # Verify return type class exists
+                        class_result = resolver.lookup(ret_name)
+                        if class_result.found:
+                            var_types[var_name] = ret_name
+
         # Import/export directive
         if node.type == "import_or_export":
             import_path = _extract_import_path(node, source)
@@ -593,14 +658,14 @@ def _extract_edges_from_file(
 
             for child in children:
                 if child.type == "identifier" and first_ident is None:
-                    first_ident = _node_text(child, source)
+                    first_ident = node_text(child, source)
                 elif child.type == "selector":
                     # Check for method name in unconditional_assignable_selector
                     for sel_child in child.children:
                         if sel_child.type == "unconditional_assignable_selector":
                             for sub in sel_child.children:
                                 if sub.type == "identifier":
-                                    method_name = _node_text(sub, source)
+                                    method_name = node_text(sub, source)
                                     break
                         # Check for arguments in this or any selector
                         if sel_child.type in ("argument_part", "arguments"):
@@ -634,7 +699,15 @@ def _extract_edges_from_file(
                             edges.append(edge)
                     elif not method_name:
                         # Simple function call: func()
+                        # AMB-METHOD guard: when 3+ classes define the same
+                        # method name, suppress the edge to avoid false positives.
                         path_hint = import_hints.get(first_ident)
+                        if method_resolver is not None:
+                            amb_check = method_resolver.lookup(
+                                first_ident, path_hint=path_hint,
+                            )
+                            if not amb_check.found and amb_check.candidates:
+                                continue  # 3+ method candidates, suppress
                         lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
@@ -658,7 +731,7 @@ def _extract_edges_from_file(
                     method_name = None
                     for sub in child.children:
                         if sub.type == "identifier":
-                            method_name = _node_text(sub, source)
+                            method_name = node_text(sub, source)
                     # Check if followed by argument_part
                     if method_name:
                         has_args = any(c.type == "argument_part" for c in node.children)
@@ -687,7 +760,7 @@ def _extract_edges_from_file(
             # Look for the type/class name
             for child in node.children:
                 if child.type in ("type_identifier", "identifier"):
-                    class_name = _node_text(child, source)
+                    class_name = node_text(child, source)
                     caller = _find_enclosing_function(node, function_scopes)
                     if caller:
                         path_hint = import_hints.get(class_name)
@@ -713,9 +786,9 @@ def _extract_edges_from_file(
                     parent = node.parent
                     if parent and parent.type == "initialized_variable_definition":
                         # Pattern: var x = new ClassName() or final x = new ClassName()
-                        var_name_node = _find_child_by_type(parent, "identifier")
+                        var_name_node = find_child_by_type(parent, "identifier")
                         if var_name_node:
-                            var_name = _node_text(var_name_node, source)
+                            var_name = node_text(var_name_node, source)
                             var_types[var_name] = class_name
                     break
 
@@ -725,7 +798,7 @@ def _extract_edges_from_file(
             children = list(node.children)
             for i, child in enumerate(children):
                 if child.type == "type_identifier":
-                    class_name = _node_text(child, source)
+                    class_name = node_text(child, source)
                     # Check for following arguments
                     if i + 1 < len(children) and children[i + 1].type == "arguments":
                         caller = _find_enclosing_function(node, function_scopes)
@@ -751,109 +824,72 @@ def _extract_edges_from_file(
     return edges
 
 
-def analyze_dart(repo_root: Path) -> DartAnalysisResult:
+class DartAnalyzer(TreeSitterAnalyzer):
+    """Dart language analyzer using tree-sitter-language-pack."""
+
+    lang = "dart"
+    file_patterns: ClassVar[list[str]] = ["*.dart"]
+    language_pack_name = "dart"
+    create_file_symbols = True
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a Dart file."""
+        analysis = FileAnalysis()
+        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract import hints for disambiguation."""
+        return _extract_import_hints(tree, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call, import, and instantiation edges from a Dart file."""
+        # AMB-METHOD: build method resolver for ambiguity guard.
+        # Dart's base register_symbol stores each symbol under its qualified
+        # name only (no short-name duplicates), so no dedup needed.
+        global_methods: dict[str, list[Symbol]] = {}
+        for sym in global_symbols.values():
+            if sym.kind == "method":
+                short = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                global_methods.setdefault(short, []).append(sym)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path,
+            file_symbols, resolver,
+            run.execution_id, import_hints=import_aliases,
+            method_resolver=method_resolver,
+        )
+
+
+_analyzer = DartAnalyzer()
+
+
+def is_dart_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Dart grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("dart")
+def analyze_dart(repo_root: Path) -> AnalysisResult:
     """Analyze Dart files in a repository.
 
-    Returns a DartAnalysisResult with symbols, edges, and provenance.
-    If tree-sitter for Dart is not available, returns a skipped result.
+    Returns an AnalysisResult with symbols, edges, and provenance.
+    If tree-sitter-language-pack is not available, returns a skipped result.
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_dart_tree_sitter_available():
-        skip_reason = (
-            "Dart analysis skipped: requires tree-sitter-language-pack "
-            "(pip install tree-sitter-language-pack)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return DartAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    import tree_sitter
-    from tree_sitter_language_pack import get_language
-
-    DART_LANGUAGE = get_language("dart")
-    parser = tree_sitter.Parser(DART_LANGUAGE)
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for dart_file in find_dart_files(repo_root):
-        try:
-            source = dart_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(dart_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=_make_file_id(rel_path),
-            name="file",
-            kind="file",
-            language="dart",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Extract import hints for disambiguation
-        import_hints = _extract_import_hints(tree, source)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-            import_hints=import_hints,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-            import_hints=fa.import_hints,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return DartAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

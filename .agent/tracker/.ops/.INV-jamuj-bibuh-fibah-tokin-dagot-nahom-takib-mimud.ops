@@ -1,0 +1,49 @@
+- op: create  # d13e
+  at: '2026-02-15T00:51:38Z'  # d13e
+  by: agent  # d13e
+  actor: migration  # d13e
+  clock: 1  # d13e
+  nonce: d13e  # d13e
+  data:  # d13e
+    kind: invariant  # d13e
+    title: "Django Route-Handler Linking"  # d13e
+    status: done  # d13e
+    priority: 4  # d13e
+    parent:  # d13e
+    tags: []  # d13e
+    before: []  # d13e
+    duplicate_of: []  # d13e
+    not_duplicate_of: []  # d13e
+    pr_ref:  # d13e
+    justification:  # d13e
+    description: "Impact: Feature bakeoff showed 884 orphan routes in Django. These can now be linked."  # d13e
+    fields:  # d13e
+      statement: "Django routes with view_name metadata must create `routes_to` edges to their handler functions"  # d13e
+      root_cause: "Route-handler linker (`linkers/route_handler.py`) only supported Rails, Laravel, Phoenix, and Express frameworks. Django routes with `view_name` metadata were not linked to their handlers."  # d13e
+      fix: "Added `_resolve_django_handler()` function that resolves view_name to handler symbols: Simple names: `view_name=\"list_users\"` → function CBV: `view_name=\"UserListView\"` → class Module-qualified: `view_name=\"accounts.views.list_accounts\"` → last segment"  # d13e
+      regression_tests:  # d13e
+      - tests/test_route_handler_linker.py::TestDjangoViewNameLinking  # d13e
+- op: update  # ee85
+  at: '2026-02-22T04:46:17Z'  # ee85
+  by: agent  # ee85
+  actor: jgstern_agent  # ee85
+  clock: 2  # ee85
+  nonce: ee85  # ee85
+  set:  # ee85
+    parent: INV-nimik  # ee85
+- op: update  # c3b6
+  at: '2026-02-22T04:47:50Z'  # c3b6
+  by: agent  # c3b6
+  actor: jgstern_agent  # c3b6
+  clock: 3  # c3b6
+  nonce: c3b6  # c3b6
+  set:  # c3b6
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # c3b6
+- op: update  # 2b70
+  at: '2026-02-23T07:07:21Z'  # 2b70
+  by: agent  # 2b70
+  actor: jgstern_agent  # 2b70
+  clock: 4  # 2b70
+  nonce: 2b70  # 2b70
+  set:  # 2b70
+    status: holding  # 2b70

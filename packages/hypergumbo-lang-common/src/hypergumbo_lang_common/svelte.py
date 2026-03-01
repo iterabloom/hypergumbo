@@ -6,6 +6,7 @@ and CSS (<style>) in a single-file component format.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-svelte grammar from tree-sitter-language-pack
 2. Extracts component structure (script, style, template)
 3. Identifies component references and event handlers
@@ -33,50 +34,23 @@ Why This Design
 from __future__ import annotations
 
 import re
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
 
-PASS_ID = "svelte.tree_sitter"
-PASS_VERSION = "0.1.0"
-
-
-class SvelteAnalysisResult:
-    """Result of Svelte component analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
-def is_svelte_tree_sitter_available() -> bool:
-    """Check if tree-sitter-svelte is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("svelte")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+PASS_ID = make_pass_id("svelte")
 
 
 def find_svelte_files(repo_root: Path) -> list[Path]:
@@ -86,7 +60,7 @@ def find_svelte_files(repo_root: Path) -> list[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
@@ -124,289 +98,136 @@ SVELTE_SPECIAL_ELEMENTS = {
 }
 
 
-class SvelteAnalyzer:
-    """Analyzer for Svelte component files."""
+def _extract_script_imports(
+    node: "tree_sitter.Node",
+    current_imports: dict[str, str],
+) -> None:
+    """Extract component imports from script element."""
+    for child in node.children:
+        if child.type == "raw_text":
+            script_content = _get_node_text(child)
+            _parse_imports(script_content, current_imports)
+            break
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
-        self._current_imports: dict[str, str] = {}  # component name -> import path
 
-    def analyze(self) -> SvelteAnalysisResult:
-        """Run the Svelte analysis."""
-        start_time = time.time()
+def _parse_imports(script: str, current_imports: dict[str, str]) -> None:
+    """Parse import statements from script content."""
+    # Match: import Component from './Component.svelte';
+    # Match: import { A, B } from './components';
+    import_pattern = re.compile(
+        r"import\s+(?:(\w+)|{\s*([^}]+)\s*})\s+from\s+['\"]([^'\"]+)['\"]",
+        re.MULTILINE,
+    )
 
-        files = find_svelte_files(self.repo_root)
-        if not files:
-            return SvelteAnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    for _line_offset, line in enumerate(script.split("\n")):
+        for match in import_pattern.finditer(line):
+            default_import = match.group(1)
+            named_imports = match.group(2)
+            import_path = match.group(3)
 
-        from tree_sitter_language_pack import get_parser
+            # Track Svelte component imports
+            if import_path.endswith(".svelte"):
+                if default_import:
+                    current_imports[default_import] = import_path
+                if named_imports:
+                    for name in named_imports.split(","):
+                        name = name.strip()
+                        if name and name[0].isupper():
+                            current_imports[name] = import_path
 
-        parser = get_parser("svelte")
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_imports = {}
-                self._extract_symbols(tree.root_node, path, content)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
-
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "svelte", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
-
-        return SvelteAnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
-
-    def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
-    ) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "script_element":
-            self._extract_script_imports(node, path)
-        elif node.type == "element":
-            self._extract_element(node, path)
-            # Recurse into element children but skip start_tag/self_closing_tag
-            # since _extract_element already handled them
-            for child in node.children:
-                if child.type not in ("start_tag", "self_closing_tag"):
-                    self._extract_symbols(child, path, content)
-            return  # Already handled children above, skip default recursion
-        elif node.type == "if_statement":
-            self._extract_control_block(node, path, "if")
-        elif node.type == "each_statement":
-            self._extract_control_block(node, path, "each")
-        elif node.type == "await_statement":
-            self._extract_control_block(node, path, "await")
-
+def _extract_svelte_symbols(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    content: bytes,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    execution_id: str,
+    current_imports: dict[str, str],
+) -> None:
+    """Extract symbols from a syntax tree node (recursive)."""
+    if node.type == "script_element":
+        _extract_script_imports(node, current_imports)
+    elif node.type == "element":
+        _extract_element(node, path, repo_root, symbols, edges, execution_id, current_imports)
+        # Recurse into element children but skip start_tag/self_closing_tag
         for child in node.children:
-            self._extract_symbols(child, path, content)
+            if child.type not in ("start_tag", "self_closing_tag"):
+                _extract_svelte_symbols(child, path, repo_root, content, symbols, edges, execution_id, current_imports)
+        return  # Already handled children above
+    elif node.type == "if_statement":
+        _extract_control_block(node, path, repo_root, symbols, "if")
+    elif node.type == "each_statement":
+        _extract_control_block(node, path, repo_root, symbols, "each")
+    elif node.type == "await_statement":
+        _extract_control_block(node, path, repo_root, symbols, "await")
 
-    def _extract_script_imports(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> None:
-        """Extract component imports from script element."""
-        # Find raw_text child which contains the script content
-        for child in node.children:
-            if child.type == "raw_text":
-                script_content = _get_node_text(child)
-                self._parse_imports(script_content, path, child.start_point[0] + 1)
-                break
+    for child in node.children:
+        _extract_svelte_symbols(child, path, repo_root, content, symbols, edges, execution_id, current_imports)
 
-    def _parse_imports(self, script: str, path: Path, base_line: int) -> None:
-        """Parse import statements from script content."""
-        # Match: import Component from './Component.svelte';
-        # Match: import { A, B } from './components';
-        import_pattern = re.compile(
-            r"import\s+(?:(\w+)|{\s*([^}]+)\s*})\s+from\s+['\"]([^'\"]+)['\"]",
-            re.MULTILINE,
-        )
 
-        for _line_offset, line in enumerate(script.split("\n")):
-            for match in import_pattern.finditer(line):
-                default_import = match.group(1)
-                named_imports = match.group(2)
-                import_path = match.group(3)
+def _extract_element(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    execution_id: str,
+    current_imports: dict[str, str],
+) -> None:
+    """Extract information from an HTML element."""
+    for child in node.children:
+        if child.type == "start_tag":
+            _process_tag(child, path, repo_root, symbols, edges, execution_id, current_imports)
+            break
+        elif child.type == "self_closing_tag":
+            _process_tag(child, path, repo_root, symbols, edges, execution_id, current_imports)
+            break
 
-                # Track Svelte component imports
-                if import_path.endswith(".svelte"):
-                    if default_import:
-                        self._current_imports[default_import] = import_path
-                    if named_imports:
-                        for name in named_imports.split(","):
-                            name = name.strip()
-                            if name and name[0].isupper():
-                                self._current_imports[name] = import_path
 
-    def _extract_element(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract information from an HTML element."""
-        # Find start_tag or self_closing_tag to get tag info
-        for child in node.children:
-            if child.type == "start_tag":
-                self._process_tag(child, path)
-                break
-            elif child.type == "self_closing_tag":
-                self._process_tag(child, path)
-                break
+def _process_tag(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    execution_id: str,
+    current_imports: dict[str, str],
+) -> None:
+    """Process a tag node (start_tag or self_closing_tag)."""
+    tag_name = ""
+    events: list[str] = []
+    has_slot_attr = False
 
-    def _process_tag(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Process a tag node (start_tag or self_closing_tag)."""
-        tag_name = ""
-        events: list[str] = []
-        has_slot_attr = False
+    for child in node.children:
+        if child.type == "tag_name":
+            tag_name = _get_node_text(child)
+        elif child.type == "attribute":
+            attr_name = ""
+            for attr_child in child.children:
+                if attr_child.type == "attribute_name":
+                    attr_name = _get_node_text(attr_child)
+                    break
 
-        for child in node.children:
-            if child.type == "tag_name":
-                tag_name = _get_node_text(child)
-            elif child.type == "attribute":
-                attr_name = ""
-                for attr_child in child.children:
-                    if attr_child.type == "attribute_name":
-                        attr_name = _get_node_text(attr_child)
-                        break
+            # Check for event handlers
+            if attr_name.startswith("on:"):
+                event_name = attr_name[3:]
+                events.append(event_name)
 
-                # Check for event handlers
-                if attr_name.startswith("on:"):
-                    event_name = attr_name[3:]
-                    events.append(event_name)
+            # Check for slot attribute
+            if attr_name == "slot":
+                has_slot_attr = True
 
-                # Check for slot attribute
-                if attr_name == "slot":
-                    has_slot_attr = True
+    if not tag_name:
+        return  # pragma: no cover
 
-        if not tag_name:
-            return  # pragma: no cover
+    rel_path = path.relative_to(repo_root)
+    line = node.start_point[0] + 1
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-
-        # Check if this is a component reference (capitalized = always a component in Svelte)
-        # In Svelte, any tag starting with uppercase is a component, even if lowercase
-        # version would be an HTML element (e.g., Header component vs header element)
-        if tag_name[0].isupper():
-            symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
-            span = Span(
-                start_line=line,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            )
-
-            import_path = self._current_imports.get(tag_name, "")
-
-            symbol = Symbol(
-                id=symbol_id,
-                stable_id=symbol_id,
-                name=tag_name,
-                kind="component_ref",
-                language="svelte",
-                path=str(rel_path),
-                span=span,
-                origin=PASS_ID,
-                signature=f"<{tag_name}>",
-                meta={
-                    "import_path": import_path,
-                    "events": events,
-                    "has_slot_attr": has_slot_attr,
-                },
-            )
-            self._symbols.append(symbol)
-
-            # Create edge if we have import info
-            if import_path:
-                edge = Edge.create(
-                    src=symbol_id,
-                    dst=import_path,
-                    edge_type="imports_component",
-                    line=line,
-                    origin=PASS_ID,
-                    origin_run_id=self._execution_id,
-                    evidence_type="import",
-                    confidence=0.95,
-                )
-                self._edges.append(edge)
-
-        # Check for slot elements
-        elif tag_name == "slot":
-            slot_name = "default"
-            # Look for name attribute
-            for child in node.children:
-                if child.type == "attribute":
-                    attr_name = ""
-                    attr_value = ""
-                    for attr_child in child.children:
-                        if attr_child.type == "attribute_name":
-                            attr_name = _get_node_text(attr_child)
-                        elif attr_child.type == "quoted_attribute_value":
-                            attr_value = _get_node_text(attr_child).strip("\"'")
-                    if attr_name == "name" and attr_value:
-                        slot_name = attr_value
-
-            symbol_id = _make_symbol_id(rel_path, slot_name, "slot", line)
-            span = Span(
-                start_line=line,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            )
-
-            symbol = Symbol(
-                id=symbol_id,
-                stable_id=symbol_id,
-                name=slot_name,
-                kind="slot",
-                language="svelte",
-                path=str(rel_path),
-                span=span,
-                origin=PASS_ID,
-                signature=f"<slot name=\"{slot_name}\">" if slot_name != "default" else "<slot>",
-                meta={"is_default": slot_name == "default"},
-            )
-            self._symbols.append(symbol)
-
-        # Record event handlers
-        if events:
-            for event in events:
-                symbol_id = _make_symbol_id(rel_path, f"{tag_name}:{event}", "event", line)
-                span = Span(
-                    start_line=line,
-                    start_col=node.start_point[1],
-                    end_line=node.end_point[0] + 1,
-                    end_col=node.end_point[1],
-                )
-
-                symbol = Symbol(
-                    id=symbol_id,
-                    stable_id=symbol_id,
-                    name=event,
-                    kind="event",
-                    language="svelte",
-                    path=str(rel_path),
-                    span=span,
-                    origin=PASS_ID,
-                    signature=f"on:{event}",
-                    meta={"element": tag_name},
-                )
-                self._symbols.append(symbol)
-
-    def _extract_control_block(
-        self, node: "tree_sitter.Node", path: Path, block_type: str
-    ) -> None:
-        """Extract a Svelte control flow block."""
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-
-        # Get the expression from the start block
-        expression = ""
-        for child in node.children:
-            if child.type in ("if_start_expr", "each_start_expr", "await_start_expr"):
-                for expr_child in child.children:
-                    if expr_child.type in ("raw_text_expr", "raw_text_each"):
-                        expression = _get_node_text(expr_child).strip()
-                        break
-                break
-
-        symbol_id = _make_symbol_id(rel_path, f"{block_type}:{expression[:20]}", "block", line)
+    # Check if this is a component reference (capitalized = always a component in Svelte)
+    if tag_name[0].isupper():
+        symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
@@ -414,60 +235,241 @@ class SvelteAnalyzer:
             end_col=node.end_point[1],
         )
 
-        # Count nested elements
-        nested_count = 0
-        for child in node.children:
-            if child.type == "element":
-                nested_count += 1
+        import_path = current_imports.get(tag_name, "")
 
         symbol = Symbol(
             id=symbol_id,
             stable_id=symbol_id,
-            name=f"#{block_type}",
-            kind="block",
+            name=tag_name,
+            kind="component_ref",
             language="svelte",
             path=str(rel_path),
             span=span,
             origin=PASS_ID,
-            signature=f"{{#{block_type} {expression[:30]}}}",
+            signature=f"<{tag_name}>",
             meta={
-                "block_type": block_type,
-                "expression": expression,
-                "nested_elements": nested_count,
+                "import_path": import_path,
+                "events": events,
+                "has_slot_attr": has_slot_attr,
             },
         )
-        self._symbols.append(symbol)
+        symbols.append(symbol)
+
+        # Create edge if we have import info
+        if import_path:
+            edge = Edge.create(
+                src=symbol_id,
+                dst=import_path,
+                edge_type="imports_component",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=execution_id,
+                evidence_type="import",
+                confidence=0.95,
+            )
+            edges.append(edge)
+
+    # Check for slot elements
+    elif tag_name == "slot":
+        slot_name = "default"
+        # Look for name attribute
+        for child in node.children:
+            if child.type == "attribute":
+                attr_name = ""
+                attr_value = ""
+                for attr_child in child.children:
+                    if attr_child.type == "attribute_name":
+                        attr_name = _get_node_text(attr_child)
+                    elif attr_child.type == "quoted_attribute_value":
+                        attr_value = _get_node_text(attr_child).strip("\"'")
+                if attr_name == "name" and attr_value:
+                    slot_name = attr_value
+
+        symbol_id = _make_symbol_id(rel_path, slot_name, "slot", line)
+        span = Span(
+            start_line=line,
+            start_col=node.start_point[1],
+            end_line=node.end_point[0] + 1,
+            end_col=node.end_point[1],
+        )
+
+        symbol = Symbol(
+            id=symbol_id,
+            stable_id=symbol_id,
+            name=slot_name,
+            kind="slot",
+            language="svelte",
+            path=str(rel_path),
+            span=span,
+            origin=PASS_ID,
+            signature=f"<slot name=\"{slot_name}\">" if slot_name != "default" else "<slot>",
+            meta={"is_default": slot_name == "default"},
+        )
+        symbols.append(symbol)
+
+    # Record event handlers
+    if events:
+        for event in events:
+            symbol_id = _make_symbol_id(rel_path, f"{tag_name}:{event}", "event", line)
+            span = Span(
+                start_line=line,
+                start_col=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_col=node.end_point[1],
+            )
+
+            symbol = Symbol(
+                id=symbol_id,
+                stable_id=symbol_id,
+                name=event,
+                kind="event",
+                language="svelte",
+                path=str(rel_path),
+                span=span,
+                origin=PASS_ID,
+                signature=f"on:{event}",
+                meta={"element": tag_name},
+            )
+            symbols.append(symbol)
 
 
-def analyze_svelte(repo_root: Path) -> SvelteAnalysisResult:
+def _extract_control_block(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbols: list[Symbol],
+    block_type: str,
+) -> None:
+    """Extract a Svelte control flow block."""
+    rel_path = path.relative_to(repo_root)
+    line = node.start_point[0] + 1
+
+    # Get the expression from the start block
+    expression = ""
+    for child in node.children:
+        if child.type in ("if_start_expr", "each_start_expr", "await_start_expr"):
+            for expr_child in child.children:
+                if expr_child.type in ("raw_text_expr", "raw_text_each"):
+                    expression = _get_node_text(expr_child).strip()
+                    break
+            break
+
+    symbol_id = _make_symbol_id(rel_path, f"{block_type}:{expression[:20]}", "block", line)
+    span = Span(
+        start_line=line,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+    # Count nested elements
+    nested_count = 0
+    for child in node.children:
+        if child.type == "element":
+            nested_count += 1
+
+    symbol = Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=f"#{block_type}",
+        kind="block",
+        language="svelte",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=f"{{#{block_type} {expression[:30]}}}",
+        meta={
+            "block_type": block_type,
+            "expression": expression,
+            "nested_elements": nested_count,
+        },
+    )
+    symbols.append(symbol)
+
+
+class SvelteAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Svelte component files using TreeSitterAnalyzer base class."""
+
+    lang = "svelte"
+    file_patterns: ClassVar[list[str]] = ["*.svelte"]
+    language_pack_name = "svelte"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Svelte's single-file component parsing."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        files = find_svelte_files(repo_root)
+        if not files:
+            return AnalysisResult(
+                symbols=[],
+                edges=[],
+                run=None,
+            )
+
+        parser = self._create_parser()
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+
+        for path in files:
+            try:
+                content = path.read_bytes()
+                tree = parser.parse(content)
+                current_imports: dict[str, str] = {}
+                before = len(symbols)
+                _extract_svelte_symbols(
+                    tree.root_node, path, repo_root, content,
+                    symbols, edges, run.execution_id, current_imports,
+                )
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
+                files_analyzed += 1
+            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
+                continue
+
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.files_analyzed = files_analyzed
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = SvelteAnalyzer()
+
+
+def is_svelte_tree_sitter_available() -> bool:
+    """Check if tree-sitter-svelte is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("svelte")
+def analyze_svelte(repo_root: Path) -> AnalysisResult:
     """Analyze Svelte component files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        SvelteAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
-    if not is_svelte_tree_sitter_available():
-        warnings.warn(
-            "Svelte analysis skipped: tree-sitter-svelte not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return SvelteAnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "svelte", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-svelte not available",
-        )
-
-    analyzer = SvelteAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

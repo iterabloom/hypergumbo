@@ -1,0 +1,48 @@
+- op: create  # e16c
+  at: '2026-02-20T20:20:58Z'  # e16c
+  by: agent  # e16c
+  actor: jgstern_agent  # e16c
+  clock: 1  # e16c
+  nonce: e16c  # e16c
+  data:  # e16c
+    kind: work_item  # e16c
+    title: "Extract visibility modifiers for symbols"  # e16c
+    status: todo_soft  # e16c
+    priority: 3  # e16c
+    parent:  # e16c
+    tags:  # e16c
+    - stable-id  # e16c
+    - phase-3  # e16c
+    before:  # e16c
+    - WI-duzul-kugag-favus-gonim-rifup-mujuj-hinuf-pukut  # e16c
+    duplicate_of: []  # e16c
+    not_duplicate_of: []  # e16c
+    pr_ref:  # e16c
+    justification:  # e16c
+    description: "No analyzer currently tracks visibility modifiers (public/private/protected/internal/package-private). Typed stable_id requires visibility as a component of the hash: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Must be added to Symbol metadata across all languages that have visibility modifiers."  # e16c
+    fields: {}  # e16c
+- op: update  # 330e
+  at: '2026-02-20T21:14:19Z'  # 330e
+  by: agent  # 330e
+  actor: jgstern_agent  # 330e
+  clock: 2  # 330e
+  nonce: 330e  # 330e
+  set:  # 330e
+    status: done  # 330e
+    pr_ref: '#1282'  # 330e
+    justification: "Visibility modifiers extracted for 11 languages: C#, Kotlin, Groovy, Go, Rust, Swift, PHP, Scala, Dart, Python. Deferred: Ruby, C++, Obj-C."  # 330e
+- op: update  # 08ff
+  at: '2026-02-22T04:47:51Z'  # 08ff
+  by: agent  # 08ff
+  actor: jgstern_agent  # 08ff
+  clock: 3  # 08ff
+  nonce: 08ff  # 08ff
+  set:  # 08ff
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 08ff
+- op: discuss  # e71c
+  at: '2026-02-25T08:42:41Z'  # e71c
+  by: agent  # e71c
+  actor: jgstern_agent  # e71c
+  clock: 4  # e71c
+  nonce: e71c  # e71c
+  message: "[migrated from justification field] Visibility modifiers extracted for 11 languages: C#, Kotlin, Groovy, Go, Rust, Swift, PHP, Scala, Dart, Python. Deferred: Ruby, C++, Obj-C."  # e71c

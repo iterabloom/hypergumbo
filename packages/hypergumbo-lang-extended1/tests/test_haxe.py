@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import haxe as haxe_module
 from hypergumbo_lang_extended1.haxe import (
-    HaxeAnalysisResult,
     analyze_haxe,
     find_haxe_files,
     is_haxe_tree_sitter_available,
@@ -46,7 +46,7 @@ class TestIsHaxeTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(haxe_module, "is_haxe_tree_sitter_available", return_value=False):
+        with patch.object(haxe_module._analyzer, "_check_grammar_available", return_value=False):
             assert haxe_module.is_haxe_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeHaxe:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", "class Test {}")
-        with patch.object(haxe_module, "is_haxe_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Haxe analysis skipped"):
+        with patch.object(haxe_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="haxe analysis skipped"):
                 result = haxe_module.analyze_haxe(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -220,13 +220,13 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         func = next((s for s in result.symbols if "foo" in s.name), None)
         assert func is not None
-        assert func.origin == "haxe.tree_sitter"
+        assert func.origin == "haxe-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", "class Test {}")
         result = analyze_haxe(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "haxe.tree_sitter"
+        assert result.run.pass_id == "haxe-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 
@@ -234,7 +234,7 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {
@@ -244,9 +244,9 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         func = next((s for s in result.symbols if "myFunc" in s.name), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "haxe:" in func.id
-        assert "Test.hx" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("haxe:Test.hx:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {

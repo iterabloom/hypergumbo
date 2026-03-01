@@ -1,9 +1,11 @@
 """Tests for LaTeX analyzer."""
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_lang_common.latex import analyze_latex
+import hypergumbo_lang_common.latex as latex_module
+from hypergumbo_lang_common.latex import analyze_latex, is_latex_tree_sitter_available
 
 
 class TestAnalyzeLaTeX:
@@ -267,6 +269,23 @@ Content
         assert result.edges == []
 
 
+class TestIsLatexTreeSitterAvailable:
+    """Tests for is_latex_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_latex_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            latex_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_latex_tree_sitter_available() is False
+
+
 class TestAnalyzeLaTeXFallback:
     """Tests for fallback when LaTeX tree-sitter is not available."""
 
@@ -274,20 +293,8 @@ class TestAnalyzeLaTeXFallback:
         """Should return skipped result when tree-sitter not available."""
         (tmp_path / "test.tex").write_text(r"\documentclass{article}")
 
-        # Temporarily make it unavailable by mocking
-        import hypergumbo_lang_common.latex as latex_mod
-
-        original_func = latex_mod.is_latex_tree_sitter_available
-
-        def mock_unavailable():
-            return False
-
-        latex_mod.is_latex_tree_sitter_available = mock_unavailable
-
-        try:
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack"):
+        with patch.object(latex_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="latex analysis skipped"):
                 result = analyze_latex(tmp_path)
-            assert result.skipped
-            assert "not available" in result.skipped_reason
-        finally:
-            latex_mod.is_latex_tree_sitter_available = original_func
+        assert result.skipped
+        assert "not available" in result.skip_reason

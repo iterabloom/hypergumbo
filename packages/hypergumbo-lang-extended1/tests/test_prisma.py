@@ -112,11 +112,9 @@ class TestIsPrismaTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        with patch("hypergumbo_lang_extended1.prisma.is_prisma_tree_sitter_available", return_value=False):
-            # Direct test
-            from hypergumbo_lang_extended1 import prisma as prisma_module
-            with patch.object(prisma_module, "is_prisma_tree_sitter_available", return_value=False):
-                assert prisma_module.is_prisma_tree_sitter_available() is False
+        from hypergumbo_lang_extended1 import prisma as prisma_module
+        with patch.object(prisma_module._analyzer, "_check_grammar_available", return_value=False):
+            assert prisma_module.is_prisma_tree_sitter_available() is False
 
 
 class TestAnalyzePrisma:
@@ -126,12 +124,12 @@ class TestAnalyzePrisma:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_extended1.prisma as prisma_module
 
-        with patch.object(prisma_module, "is_prisma_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(prisma_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="prisma analysis skipped"):
                 result = prisma_module.analyze_prisma(prisma_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "prisma" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -243,7 +241,7 @@ class TestAnalyzePrisma:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, prisma_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

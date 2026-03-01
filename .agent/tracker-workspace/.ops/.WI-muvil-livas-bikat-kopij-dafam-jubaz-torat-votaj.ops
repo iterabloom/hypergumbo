@@ -1,0 +1,66 @@
+- op: create  # af5a
+  at: '2026-02-15T00:51:38Z'  # af5a
+  by: agent  # af5a
+  actor: migration  # af5a
+  clock: 1  # af5a
+  nonce: af5a  # af5a
+  data:  # af5a
+    kind: work_item  # af5a
+    title: "Add Kconfig analyzer."  # af5a
+    status: todo_soft  # af5a
+    priority: 4  # af5a
+    parent:  # af5a
+    tags:  # af5a
+    - language_additions  # af5a
+    before: []  # af5a
+    duplicate_of: []  # af5a
+    not_duplicate_of: []  # af5a
+    pr_ref:  # af5a
+    justification: "No known tree-sitter grammar. Blocked on grammar availability."  # af5a
+    description: "No known tree-sitter grammar. Blocked on grammar availability."  # af5a
+    fields: {}  # af5a
+- op: update  # 1b53
+  at: '2026-02-17T20:42:56Z'  # 1b53
+  by: agent  # 1b53
+  actor: jgstern_agent  # 1b53
+  clock: 2  # 1b53
+  nonce: 1b53  # 1b53
+  set:  # 1b53
+    status: todo_soft  # 1b53
+- op: discuss  # 70d4
+  at: '2026-02-18T14:01:12Z'  # 70d4
+  by: agent  # 70d4
+  actor: jgstern_agent  # 70d4
+  clock: 3  # 70d4
+  nonce: 70d4  # 70d4
+  message: "Kconfig analyzer: Linux kernel configuration files use a custom syntax with config, menuconfig, choice, depends on, select, and tristate keywords. No tree-sitter grammar exists; regex-based parsing of menu hierarchy and dependency graphs would work."  # 70d4
+- op: discuss  # b777
+  at: '2026-02-18T14:55:13Z'  # b777
+  by: agent  # b777
+  actor: jgstern_agent  # b777
+  clock: 4  # b777
+  nonce: b777  # b777
+  message: "Kconfig tristate options (y/m/n) control whether code compiles as built-in, module, or excluded. The analyzer should model these as conditional compilation edges affecting which source files participate in the build."  # b777
+- op: update  # 2783
+  at: '2026-02-18T21:45:00Z'  # 2783
+  by: agent  # 2783
+  actor: jgstern_agent  # 2783
+  clock: 5  # 2783
+  nonce: '2783'  # 2783
+  set:  # 2783
+    justification: "Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # 2783
+- op: update  # 92f4
+  at: '2026-02-20T20:30:14Z'  # 92f4
+  by: agent  # 92f4
+  actor: jgstern_agent  # 92f4
+  clock: 6  # 92f4
+  nonce: 92f4  # 92f4
+  set:  # 92f4
+    status: needs_human_review  # 92f4
+- op: discuss  # ddf0
+  at: '2026-02-25T08:43:43Z'  # ddf0
+  by: agent  # ddf0
+  actor: jgstern_agent  # ddf0
+  clock: 7  # ddf0
+  nonce: ddf0  # ddf0
+  message: "[migrated from justification field] Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # ddf0

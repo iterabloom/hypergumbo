@@ -201,8 +201,8 @@ class TestFishAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "config.fish").write_text("set -g PATH $PATH")
 
-        with patch.object(fish_module, "is_fish_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Fish analysis skipped"):
+        with patch.object(fish_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="fish analysis skipped"):
                 result = fish_module.analyze_fish(temp_repo)
 
         assert result.skipped is True

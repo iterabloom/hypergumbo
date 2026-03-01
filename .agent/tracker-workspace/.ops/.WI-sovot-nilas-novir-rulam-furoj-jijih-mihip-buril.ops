@@ -1,0 +1,36 @@
+- op: create  # 1cf2
+  at: '2026-02-26T18:09:51Z'  # 1cf2
+  by: agent  # 1cf2
+  actor: jgstern_agent  # 1cf2
+  clock: 1  # 1cf2
+  nonce: 1cf2  # 1cf2
+  data:  # 1cf2
+    kind: work_item  # 1cf2
+    title: "Library crate entrypoint detection: detect pub items from lib.rs for Rust library crates"  # 1cf2
+    status: todo_soft  # 1cf2
+    priority: 2  # 1cf2
+    parent:  # 1cf2
+    tags:  # 1cf2
+    - bakeoff  # 1cf2
+    - entrypoint  # 1cf2
+    before: []  # 1cf2
+    duplicate_of: []  # 1cf2
+    not_duplicate_of: []  # 1cf2
+    pr_ref:  # 1cf2
+    description: "For Rust library crates without [[bin]], hypergumbo selects fuzz targets, example binaries, or benchmark mains as entrypoints instead of pub fn/pub struct items from lib.rs. This renders forward slices useless for the actual library API surface. Affected: imara-diff, rodio, scap, tiktoken-rs, mermaid-rs-renderer, livekit-rust-sdks, client-sdk-js, candle."  # 1cf2
+    fields: {}  # 1cf2
+- op: update  # 61cd
+  at: '2026-02-26T21:01:15Z'  # 61cd
+  by: agent  # 61cd
+  actor: jgstern_agent  # 61cd
+  clock: 2  # 61cd
+  nonce: 61cd  # 61cd
+  set:  # 61cd
+    status: done  # 61cd
+- op: discuss  # a372
+  at: '2026-02-26T21:01:15Z'  # a372
+  by: agent  # a372
+  actor: jgstern_agent  # a372
+  clock: 3  # a372
+  nonce: a372  # a372
+  message: "Fixed in PR #1514. Added 5 Rust patterns to library-exports.yaml matching pub functions, structs, traits, enums, and methods. Only bare pub matches (not pub(crate)/pub(super))."  # a372

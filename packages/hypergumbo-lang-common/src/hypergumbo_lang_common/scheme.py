@@ -7,7 +7,7 @@ Scheme is a minimalist Lisp dialect that emphasizes lexical scoping and first-cl
 continuations. It's widely used in computer science education and research.
 
 Implementation approach:
-- Uses tree-sitter-language-pack for Scheme grammar
+- Uses TreeSitterAnalyzer base class for grammar checking and parser creation
 - Two-pass analysis: First pass collects all symbols, second pass extracts edges
 - Handles Scheme-specific constructs like define, lambda, let
 
@@ -17,41 +17,23 @@ Key constructs extracted:
 - (name args) - function calls
 """
 
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    make_symbol_id,
+    populate_docstrings_from_tree,
+)
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "scheme.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class SchemeAnalysisResult:
-    """Result of analyzing Scheme files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def is_scheme_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with Scheme support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("scheme")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
+PASS_ID = make_pass_id("scheme")
 
 
 def find_scheme_files(root: Path) -> Iterator[Path]:
@@ -62,15 +44,9 @@ def find_scheme_files(root: Path) -> Iterator[Path]:
                 yield path
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Scheme symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"scheme:{rel_path}:{name}:{kind}"
-
-
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8")
+    return node.text.decode("utf-8", errors="replace")
 
 
 def _is_define_form(node: "tree_sitter.Node") -> bool:
@@ -137,221 +113,260 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class SchemeAnalyzer:
-    """Analyzer for Scheme source files."""
+def _extract_scheme_symbols(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbols: list[Symbol],
+    analyzer: "SchemeAnalyzer",
+) -> None:
+    """Extract symbols from a syntax tree node (recursive)."""
+    if _is_define_form(node):
+        if _is_function_define(node):
+            name = _get_function_name(node)
+            if name:
+                params = _get_function_params(node)
+                signature = f"(define ({name} {' '.join(params)}) ...)"
+                rel_path = str(path.relative_to(repo_root))
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
+                sym = Symbol(
+                    id=make_symbol_id(
+                        "scheme", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "function",
+                    ),
+                    stable_id=analyzer.compute_stable_id(node, kind="function"),
+                    name=name,
+                    kind="function",
+                    language="scheme",
+                    path=rel_path,
+                    span=Span(
+                        start_line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    signature=signature,
+                    meta={"param_count": len(params)},
+                )
+                symbols.append(sym)
+        else:
+            name = _get_variable_name(node)
+            if name:
+                rel_path = str(path.relative_to(repo_root))
 
-    def analyze(self) -> SchemeAnalysisResult:
-        """Analyze all Scheme files in the repository."""
-        if not is_scheme_tree_sitter_available():
+                sym = Symbol(
+                    id=make_symbol_id(
+                        "scheme", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "variable",
+                    ),
+                    stable_id=analyzer.compute_stable_id(node, kind="variable"),
+                    name=name,
+                    kind="variable",
+                    language="scheme",
+                    path=rel_path,
+                    span=Span(
+                        start_line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                symbols.append(sym)
+        return  # Don't recursively process define children
+
+    # Recursively process children
+    for child in node.children:
+        _extract_scheme_symbols(child, path, repo_root, symbols, analyzer)
+
+
+# Scheme special forms and builtins that should not generate call edges
+_SPECIAL_FORMS = frozenset({
+    "define", "lambda", "let", "let*", "letrec", "if", "cond",
+    "case", "begin", "set!", "quote", "quasiquote", "unquote",
+    "unquote-splicing", "and", "or", "do", "delay", "define-syntax",
+    "let-syntax", "letrec-syntax", "syntax-rules", "syntax-case",
+    "import", "export", "library", "define-library",
+})
+
+_BUILTINS = frozenset({
+    "+", "-", "*", "/", "=", "<", ">", "<=", ">=",
+    "eq?", "eqv?", "equal?", "not", "null?", "pair?",
+    "list?", "number?", "string?", "symbol?", "procedure?",
+    "car", "cdr", "cons", "list", "append", "reverse",
+    "length", "map", "filter", "fold", "for-each",
+    "apply", "eval", "read", "write", "display", "newline",
+    "error", "string-append", "string-length", "string-ref",
+    "number->string", "string->number", "symbol->string",
+    "string->symbol", "vector", "vector-ref", "vector-set!",
+    "make-vector", "vector-length", "call/cc",
+    "call-with-current-continuation", "values", "call-with-values",
+})
+
+
+def _find_enclosing_function(
+    node: "tree_sitter.Node", path: Path, repo_root: Path,
+    analyzer: "SchemeAnalyzer",
+) -> Optional[str]:
+    """Find the enclosing function for a node."""
+    current = node.parent
+    while current is not None:
+        if _is_define_form(current) and _is_function_define(current):
+            name = _get_function_name(current)
+            if name:
+                return make_symbol_id(
+                    "scheme", str(path.relative_to(repo_root)),
+                    current.start_point[0] + 1, current.end_point[0] + 1,
+                    name, "function",
+                )
+        current = current.parent
+    return None  # pragma: no cover
+
+
+def _extract_scheme_edges(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbol_registry: dict[str, str],
+    run_id: str,
+    edges: list[Edge],
+    analyzer: "SchemeAnalyzer",
+) -> None:
+    """Extract edges from a syntax tree node (recursive)."""
+    # Skip processing inside define forms' signature lists
+    if _is_define_form(node):
+        # For function defines, only process the body (skip the signature)
+        if _is_function_define(node):
+            children = [c for c in node.children if c.type not in ("(", ")")]
+            # Skip define symbol (0), skip signature list (1), process body (2+)
+            for child in children[2:]:
+                _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges, analyzer)
+        return  # Don't process other parts of define forms
+
+    # Look for function calls (list expressions that aren't special forms)
+    if node.type == "list":
+        call_name = _get_call_name(node)
+        if call_name:
+            if call_name not in _SPECIAL_FORMS and call_name not in _BUILTINS:
+                caller_id = _find_enclosing_function(node, path, repo_root, analyzer)
+                if caller_id:
+                    callee_id = symbol_registry.get(call_name)
+                    confidence = 1.0 if callee_id else 0.6
+                    if callee_id is None:
+                        callee_id = f"scheme:unresolved:{call_name}"
+
+                    line = node.start_point[0] + 1
+                    edge = Edge.create(
+                        src=caller_id,
+                        dst=callee_id,
+                        edge_type="calls",
+                        line=line,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        evidence_type="ast_call_direct",
+                        confidence=confidence,
+                        evidence_lang="scheme",
+                    )
+                    edges.append(edge)
+
+    # Recursively process children
+    for child in node.children:
+        _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges, analyzer)
+
+
+class SchemeAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Scheme source files using TreeSitterAnalyzer base class."""
+
+    lang = "scheme"
+    file_patterns: ClassVar[list[str]] = ["*.scm", "*.ss", "*.sld", "*.sls"]
+    language_pack_name = "scheme"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Scheme's recursive tree walking."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
             warnings.warn(
-                "Scheme analysis skipped: tree-sitter-language-pack not available",
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
                 UserWarning,
                 stacklevel=2,
             )
-            return SchemeAnalysisResult(
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
                 skipped=True,
-                skip_reason="tree-sitter-language-pack not available",
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
             )
 
-        import uuid as uuid_module
-        from tree_sitter_language_pack import get_parser
-
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
-
-        parser = get_parser("scheme")
-        scheme_files = list(find_scheme_files(self.repo_root))
-
+        scheme_files = list(find_scheme_files(repo_root))
         if not scheme_files:
-            return SchemeAnalysisResult()
+            return AnalysisResult()
+
+        parser = self._create_parser()
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        symbol_registry: dict[str, str] = {}  # name -> id
 
         # Pass 1: Collect all symbols
         for path in scheme_files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
+                before = len(symbols)
+                _extract_scheme_symbols(tree.root_node, path, repo_root, symbols, self)
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 
         # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
+        for sym in symbols:
+            symbol_registry[sym.name] = sym.id
 
         # Pass 2: Extract edges
         for path in scheme_files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
+                _extract_scheme_edges(
+                    tree.root_node, path, repo_root,
+                    symbol_registry, run.execution_id, edges, self,
+                )
             except Exception:  # pragma: no cover
                 pass
 
-        elapsed = time.time() - start_time
+        run.duration_ms = int((_time.time() - start_time) * 1000)
 
-        run = AnalysisRun(
-            execution_id=self._run_id,
-            run_signature="",
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            toolchain={"name": "scheme", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
-        )
-
-        return SchemeAnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
             run=run,
         )
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if _is_define_form(node):
-            if _is_function_define(node):
-                name = _get_function_name(node)
-                if name:
-                    params = _get_function_params(node)
-                    signature = f"(define ({name} {' '.join(params)}) ...)"
-                    rel_path = str(path.relative_to(self.repo_root))
 
-                    sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "fn"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "fn"),
-                        name=name,
-                        kind="function",
-                        language="scheme",
-                        path=rel_path,
-                        span=Span(
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                        signature=signature,
-                        meta={"param_count": len(params)},
-                    )
-                    self.symbols.append(sym)
-            else:
-                name = _get_variable_name(node)
-                if name:
-                    rel_path = str(path.relative_to(self.repo_root))
-
-                    sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "var"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "var"),
-                        name=name,
-                        kind="variable",
-                        language="scheme",
-                        path=rel_path,
-                        span=Span(
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                    )
-                    self.symbols.append(sym)
-            return  # Don't recursively process define children
-
-        # Recursively process children
-        for child in node.children:
-            self._extract_symbols(child, path)
-
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
-        # Skip processing inside define forms' signature lists
-        if _is_define_form(node):
-            # For function defines, only process the body (skip the signature)
-            if _is_function_define(node):
-                children = [c for c in node.children if c.type not in ("(", ")")]
-                # Skip define symbol (0), skip signature list (1), process body (2+)
-                for child in children[2:]:
-                    self._extract_edges(child, path)
-            return  # Don't process other parts of define forms
-
-        # Look for function calls (list expressions that aren't special forms)
-        if node.type == "list":
-            call_name = _get_call_name(node)
-            if call_name:
-                # Skip special forms and built-ins
-                special_forms = {
-                    "define", "lambda", "let", "let*", "letrec", "if", "cond",
-                    "case", "begin", "set!", "quote", "quasiquote", "unquote",
-                    "unquote-splicing", "and", "or", "do", "delay", "define-syntax",
-                    "let-syntax", "letrec-syntax", "syntax-rules", "syntax-case",
-                    "import", "export", "library", "define-library",
-                }
-                builtins = {
-                    "+", "-", "*", "/", "=", "<", ">", "<=", ">=",
-                    "eq?", "eqv?", "equal?", "not", "null?", "pair?",
-                    "list?", "number?", "string?", "symbol?", "procedure?",
-                    "car", "cdr", "cons", "list", "append", "reverse",
-                    "length", "map", "filter", "fold", "for-each",
-                    "apply", "eval", "read", "write", "display", "newline",
-                    "error", "string-append", "string-length", "string-ref",
-                    "number->string", "string->number", "symbol->string",
-                    "string->symbol", "vector", "vector-ref", "vector-set!",
-                    "make-vector", "vector-length", "call/cc",
-                    "call-with-current-continuation", "values", "call-with-values",
-                }
-
-                if call_name not in special_forms and call_name not in builtins:
-                    caller_id = self._find_enclosing_function(node, path)
-                    if caller_id:
-                        callee_id = self._symbol_registry.get(call_name)
-                        confidence = 1.0 if callee_id else 0.6
-                        if callee_id is None:
-                            callee_id = f"scheme:unresolved:{call_name}"
-
-                        line = node.start_point[0] + 1
-                        edge = Edge.create(
-                            src=caller_id,
-                            dst=callee_id,
-                            edge_type="calls",
-                            line=line,
-                            origin=PASS_ID,
-                            origin_run_id=self._run_id,
-                            evidence_type="ast_call_direct",
-                            confidence=confidence,
-                            evidence_lang="scheme",
-                        )
-                        self.edges.append(edge)
-
-        # Recursively process children
-        for child in node.children:
-            self._extract_edges(child, path)
-
-    def _find_enclosing_function(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
-        """Find the enclosing function for a node."""
-        current = node.parent
-        while current is not None:
-            if _is_define_form(current) and _is_function_define(current):
-                name = _get_function_name(current)
-                if name:
-                    return _make_stable_id(path, self.repo_root, name, "fn")
-            current = current.parent
-        return None  # pragma: no cover
+_analyzer = SchemeAnalyzer()
 
 
-def analyze_scheme(repo_root: Path) -> SchemeAnalysisResult:
+def is_scheme_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with Scheme support is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("scheme")
+def analyze_scheme(repo_root: Path) -> AnalysisResult:
     """Analyze Scheme source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        SchemeAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = SchemeAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

@@ -39,33 +39,12 @@ class TestFindPhpFiles:
 class TestPhpTreeSitterAvailability:
     """Tests for tree-sitter-php availability checking."""
 
-    def test_is_php_tree_sitter_available_true(self) -> None:
-        """Returns True when tree-sitter-php is available."""
+    def test_is_php_tree_sitter_available(self) -> None:
+        """Availability check returns a boolean."""
         from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_php_tree_sitter_available() is True
-
-    def test_is_php_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_php_tree_sitter_available() is False
-
-    def test_is_php_tree_sitter_available_no_php_grammar(self) -> None:
-        """Returns False when tree-sitter-php is not available."""
-        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_php is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_php_tree_sitter_available() is False
+        result = is_php_tree_sitter_available()
+        assert isinstance(result, bool)
 
 
 class TestAnalyzePhpFallback:
@@ -73,12 +52,12 @@ class TestAnalyzePhpFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-php unavailable."""
-        from hypergumbo_lang_mainstream.php import analyze_php
+        from hypergumbo_lang_mainstream import php as php_module
 
         (tmp_path / "test.php").write_text("<?php function foo() {} ?>")
 
-        with patch("hypergumbo_lang_mainstream.php.is_php_tree_sitter_available", return_value=False):
-            result = analyze_php(tmp_path)
+        with patch.object(php_module._analyzer, "_check_grammar_available", return_value=False):
+            result = php_module.analyze_php(tmp_path)
 
         assert result.skipped is True
         assert "tree-sitter-php" in result.skip_reason
@@ -464,6 +443,54 @@ class Caller {
         assert inferred[0].confidence < 0.9  # Lower confidence for inferred
 
 
+class TestPhpInferredMethodNoFanout:
+    """Bare name fallback should emit at most one edge, not N per candidate."""
+
+    def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
+        """Multiple classes with same method name: emit at most 1 inferred edge.
+
+        When multiple classes define the same method name and a call site can't
+        be resolved via type info, the fallback should emit a single best-guess
+        edge rather than fanning out to all candidates.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "app.php").write_text("""<?php
+class CatsService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class UsersService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class OrdersService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class Handler {
+    public function run($unknown) {
+        return $unknown->create(["name" => "test"]);
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
+        # Should emit at most 1 edge, NOT 3 (one per candidate)
+        assert len(inferred) <= 1
+        if inferred:
+            assert "create" in inferred[0].dst
+
+
 class TestPhpCrossFileResolution:
     """Tests for cross-file call resolution."""
 
@@ -735,21 +762,21 @@ class MyClass {
 
     def test_analyze_php_parser_none_after_check(self, tmp_path: Path) -> None:
         """analyze_php handles case where parser is None after availability check."""
-        from hypergumbo_lang_mainstream.php import analyze_php
+        from hypergumbo_lang_mainstream import php as php_module
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
 
-        # Mock is_php_tree_sitter_available to return True
+        # Mock _check_grammar_available to return True
         # but _get_php_parser to return None
-        with patch(
-            "hypergumbo_lang_mainstream.php.is_php_tree_sitter_available",
+        with patch.object(
+            php_module._analyzer, "_check_grammar_available",
             return_value=True,
         ), patch(
             "hypergumbo_lang_mainstream.php._get_php_parser",
             return_value=None,
         ):
-            result = analyze_php(tmp_path)
+            result = php_module.analyze_php(tmp_path)
 
         assert result.run is not None
         assert result.skipped is True
@@ -1213,3 +1240,169 @@ class User extends BaseModel {
         assert len(extends_edges) == 1
         assert "User" in extends_edges[0].src
         assert "BaseModel" in extends_edges[0].dst
+
+
+class TestPhpAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in PHP.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """$obj->close() with 3 classes defining close() → no resolved edge.
+
+        When Server, Client, and Worker all define close(), and $obj's type
+        cannot be inferred, the call should NOT produce a resolved edge
+        pointing to any specific class's close() method.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        php_file = tmp_path / "multi.php"
+        php_file.write_text("""<?php
+class Server {
+    public function close() { return true; }
+}
+
+class Client {
+    public function close() { return true; }
+}
+
+class Worker {
+    public function close() { return true; }
+}
+
+function cleanup($obj) {
+    $obj->close();
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            if "close" in edge.dst.lower():
+                assert edge.dst == "close", (
+                    "Ambiguous method call should not resolve to a specific class, "
+                    f"got {edge.dst}"
+                )
+                # If an edge exists, it should NOT be high confidence
+                assert edge.confidence < 0.50, (
+                    f"Ambiguous method with 3+ candidates should have low confidence, "
+                    f"got {edge.confidence}"
+                )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """$obj->run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        php_file = tmp_path / "two.php"
+        php_file.write_text("""<?php
+class Server {
+    public function run() { return true; }
+}
+
+class Client {
+    public function run() { return true; }
+}
+
+function execute($obj) {
+    $obj->run();
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, (
+            "2 candidates should still resolve"
+        )
+
+
+class TestPHPVisibilityModifiers:
+    """Tests for PHP visibility modifier extraction."""
+
+    def test_method_visibility(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Vis.php").write_text("""<?php
+class Vis {
+    public function pubMethod() {}
+    private function privMethod() {}
+    protected function protMethod() {}
+    public static function staticPub() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.protMethod")
+        assert "protected" in prot.modifiers
+
+        static_pub = next(s for s in result.symbols if s.name == "Vis.staticPub")
+        assert "public" in static_pub.modifiers
+        assert "static" in static_pub.modifiers
+
+    def test_abstract_final_readonly_class(self, tmp_path: Path) -> None:
+        """Abstract, final, readonly class modifiers are extracted."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Mods.php").write_text("""<?php
+abstract class Base {
+    abstract function doWork();
+}
+
+final class Sealed {}
+
+readonly class Data {}
+?>""")
+        result = analyze_php(tmp_path)
+
+        base = next(s for s in result.symbols if s.name == "Base")
+        assert "abstract" in base.modifiers
+
+        do_work = next(s for s in result.symbols if s.name == "Base.doWork")
+        assert "abstract" in do_work.modifiers
+
+        sealed = next(s for s in result.symbols if s.name == "Sealed")
+        assert "final" in sealed.modifiers
+
+        data = next(s for s in result.symbols if s.name == "Data")
+        assert "readonly" in data.modifiers
+
+
+class TestNormalizePhpSignature:
+    """Tests for PHP signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature("(int $x, int $y): int") == "(int,int)int"
+
+    def test_void_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature("(string $msg): void") == "(string)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature(None) is None

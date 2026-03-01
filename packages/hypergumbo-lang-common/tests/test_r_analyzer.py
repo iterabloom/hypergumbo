@@ -7,20 +7,22 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
+from unittest.mock import patch
+
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
+from hypergumbo_lang_common import r_lang as r_lang_module
 from hypergumbo_lang_common.r_lang import (
     PASS_ID,
-    PASS_VERSION,
-    RAnalysisResult,
     analyze_r_files,
     find_r_files,
+    is_r_tree_sitter_available,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "r-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
-
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_function_definition(tmp_path):
     """Test detection of function definitions."""
@@ -47,7 +49,6 @@ another <- function(data) {
     another_func = next((f for f in functions if f.name == "another"), None)
     assert another_func is not None
 
-
 def test_analyze_function_with_equals(tmp_path):
     """Test function definition with = assignment."""
     r_file = tmp_path / "script.R"
@@ -61,7 +62,6 @@ my_func = function(x) {
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
     assert functions[0].name == "my_func"
-
 
 def test_analyze_library_imports(tmp_path):
     """Test detection of library() imports."""
@@ -82,7 +82,6 @@ require(tidyr)
     dplyr_import = next((i for i in imports if i.name == "dplyr"), None)
     assert dplyr_import is not None
 
-
 def test_analyze_source_imports(tmp_path):
     """Test detection of source() file references."""
     r_file = tmp_path / "script.R"
@@ -97,7 +96,6 @@ source("lib/helpers.R")
 
     utils_src = next((s for s in sources if s.name == "utils.R"), None)
     assert utils_src is not None
-
 
 def test_analyze_function_calls(tmp_path):
     """Test detection of function calls."""
@@ -121,7 +119,6 @@ main <- function() {
     helper_call = next((c for c in calls if "helper" in c.dst), None)
     assert helper_call is not None
 
-
 def test_find_r_files(tmp_path):
     """Test that R files are discovered correctly."""
     (tmp_path / "script.R").write_text("x <- 1")
@@ -134,7 +131,6 @@ def test_find_r_files(tmp_path):
     # Should find only .R and .r files
     assert len(files) == 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no R files."""
     result = analyze_r_files(tmp_path)
@@ -142,7 +138,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -156,7 +151,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.version == PASS_VERSION
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
-
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -172,7 +166,6 @@ def test_span_information(tmp_path):
     assert functions[0].span is not None
     assert functions[0].span.start_line >= 1
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     r_file = tmp_path / "broken.R"
@@ -182,8 +175,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_r_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, RAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_pipe_operator_in_function(tmp_path):
     """Test function with pipe operators."""
@@ -202,7 +194,6 @@ process_data <- function(data) {
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
     assert functions[0].name == "process_data"
-
 
 class TestRNamespaceQualifiedCalls:
     """Tests for R namespace-qualified call tracking (ADR-0007)."""
@@ -286,7 +277,6 @@ my_func <- function(data) {
         assert qualified.confidence >= 0.70  # External qualified
         assert unqualified.confidence >= 0.70  # External unqualified
 
-
 class TestRSignatureExtraction:
     """Tests for R function signature extraction."""
 
@@ -341,3 +331,20 @@ double_it <- function(x) {
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double_it"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(x)"
+
+
+class TestIsRTreeSitterAvailable:
+    """Tests for is_r_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_r_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            r_lang_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_r_tree_sitter_available() is False

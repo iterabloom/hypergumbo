@@ -6,6 +6,8 @@ We pledge to make our community welcoming, safe, and equitable for all.
 
 We are committed to fostering an environment that respects and promotes the dignity, rights, and contributions of all individuals, regardless of characteristics including race, ethnicity, caste, color, age, physical characteristics, neurodiversity, disability, sex or gender, gender identity or expression, sexual orientation, language, philosophy or religion, national or social origin, socio-economic position, level of education, or other status. The same privileges of participation are extended to everyone who participates in good faith and in accordance with this Covenant.
 
+This project is anti-genocide and pro-human rights. We support Palestinian liberation and oppose the mass killing, dispossession, or dehumanization of civilians. Advocacy for or celebration of such harms (including calls for extermination, ethnic cleansing, or collective punishment) is not welcome in this community.
+
 ## Encouraged Behaviors
 
 While acknowledging differences in social norms, we all strive to meet our community's expectations for positive behavior. We also understand that our words and actions may be interpreted differently than we intend based on culture, background, or native language.

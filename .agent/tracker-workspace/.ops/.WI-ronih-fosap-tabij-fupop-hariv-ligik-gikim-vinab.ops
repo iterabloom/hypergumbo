@@ -1,0 +1,51 @@
+- op: create  # 2f13
+  at: '2026-02-24T04:33:39Z'  # 2f13
+  by: agent  # 2f13
+  actor: jgstern_agent  # 2f13
+  clock: 1  # 2f13
+  nonce: 2f13  # 2f13
+  data:  # 2f13
+    kind: work_item  # 2f13
+    title: "Document two-phase bakeoff strategy in curriculum files"  # 2f13
+    status: needs_human_review  # 2f13
+    priority: 3  # 2f13
+    parent:  # 2f13
+    tags:  # 2f13
+    - bakeoff  # 2f13
+    before: []  # 2f13
+    duplicate_of: []  # 2f13
+    not_duplicate_of: []  # 2f13
+    pr_ref:  # 2f13
+    justification:  # 2f13
+    description: "SOURCE: Process health synthesis 5.1, recommendation 10. The bakeoff operates in two phases: Phase 1 (intensive iteration on fixed repos, validating fixes as they land) and Phase 2 (validation sweep on new repos to confirm accumulated fixes generalize). This is effective but not formally documented — it was reconstructed from notebook entries and commit histories during the process health investigation. Adding a bakeoff strategy section to session metadata or a curriculum file (as described in ADR-0009 section 2b) would make the strategy legible to future agents and auditors. Should also document the expected Phase 3: deep-dive on Phase 2 repos that received WARN/PARTIALLY_USEFUL, which has not yet been done for cohorts 14-18."  # 2f13
+    fields: {}  # 2f13
+- op: discuss  # c840
+  at: '2026-02-25T08:04:46Z'  # c840
+  by: human  # c840
+  actor: jgstern  # c840
+  clock: 2  # c840
+  nonce: c840  # c840
+  message: "The thing is I don't really remember ever doing two phases and this item seems a little bit redundant."  # c840
+- op: update  # 19b9
+  at: '2026-02-25T08:05:03Z'  # 19b9
+  by: human  # 19b9
+  actor: jgstern  # 19b9
+  clock: 3  # 19b9
+  nonce: 19b9  # 19b9
+  set:  # 19b9
+    priority: 4  # 19b9
+- op: discuss  # 27b9
+  at: '2026-02-25T09:47:12Z'  # 27b9
+  by: agent  # 27b9
+  actor: jgstern_agent  # 27b9
+  clock: 4  # 27b9
+  nonce: 27b9  # 27b9
+  message: "Agree this is redundant. The two-phase concept was reconstructed from commit history during process health analysis but doesn't reflect an intentional strategy. Recommend closing as won't-do."  # 27b9
+- op: update  # 665d
+  at: '2026-02-26T02:29:46Z'  # 665d
+  by: human  # 665d
+  actor: jgstern  # 665d
+  clock: 5  # 665d
+  nonce: 665d  # 665d
+  set:  # 665d
+    status: wont_do  # 665d

@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from hypergumbo_lang_mainstream import java as java_module
+
 
 class TestFindJavaFiles:
     """Tests for Java file discovery."""
@@ -26,31 +28,17 @@ class TestJavaTreeSitterAvailability:
 
     def test_is_java_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-java is available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_java_tree_sitter_available() is True
+        result = java_module.is_java_tree_sitter_available()
+        assert result is True
 
     def test_is_java_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
+        """Returns False when grammar is not available."""
+        with patch.object(java_module._java_analyzer, "_check_grammar_available", return_value=False):
+            assert java_module.is_java_tree_sitter_available() is False
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_java_tree_sitter_available() is False
-
-    def test_is_java_tree_sitter_available_no_java_grammar(self) -> None:
-        """Returns False when tree-sitter-java is not available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_java is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_java_tree_sitter_available() is False
+    def test_is_java_tree_sitter_available_via_analyzer(self) -> None:
+        """Availability check delegates to TreeSitterAnalyzer._check_grammar_available."""
+        assert java_module.is_java_tree_sitter_available() == java_module._java_analyzer._check_grammar_available()
 
 
 class TestAnalyzeJavaFallback:
@@ -62,11 +50,11 @@ class TestAnalyzeJavaFallback:
 
         (tmp_path / "Test.java").write_text("public class Test {}")
 
-        with patch("hypergumbo_lang_mainstream.java.is_java_tree_sitter_available", return_value=False):
+        with patch.object(java_module._java_analyzer, "_check_grammar_available", return_value=False):
             result = analyze_java(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-java" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestJavaClassExtraction:
@@ -226,9 +214,408 @@ public class Service {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
+    def test_extracts_field_access_method_calls(self, tmp_path: Path) -> None:
+        """Extracts method calls on field access receivers (e.g., this.field.method()).
+
+        Tree-sitter represents `this.owners.findById()` as a method_invocation
+        where the object child is a `field_access` node, not an `identifier`.
+        The analyzer must use child_by_field_name("name") to extract the method
+        name and child_by_field_name("object") for the receiver.
+
+        Without this fix, the identifier scanning loop misidentifies the method
+        name: it finds only one identifier (the method name) from child[2] and
+        treats it as the receiver, then sets method_name=receiver_name with no
+        actual method name to resolve.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Controller.java"
+        java_file.write_text("""
+public class Controller {
+    private Service svc;
+
+    public void doWork() {
+        this.svc.process();
+    }
+}
+
+class Service {
+    public void process() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.doWork"), None
+        )
+        assert do_work is not None
+
+        # this.svc.process() should produce a call edge from doWork to
+        # Service.process. The receiver is a field_access node ("this.svc"),
+        # and the method name is "process".
+        do_work_calls = [e for e in call_edges if e.src == do_work.id]
+        assert len(do_work_calls) >= 1, (
+            f"Expected call edges from doWork for this.svc.process(), "
+            f"got {len(do_work_calls)}. "
+            "field_access receiver likely not handled."
+        )
+        # The edge should target Service.process
+        svc_process = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert svc_process is not None
+        targets = {e.dst for e in do_work_calls}
+        assert svc_process.id in targets, (
+            f"Expected call to Service.process, got targets: {targets}"
+        )
+
+    def test_extracts_variable_dot_method_calls(self, tmp_path: Path) -> None:
+        """Extracts calls like `variable.method()` where variable is a local var.
+
+        This is the most common Java call pattern: `mav.addObject(owner)`.
+        The tree-sitter node has an `identifier` as the `object` field and
+        another `identifier` as the `name` field.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    public void process() {
+        Helper h = new Helper();
+        h.doWork();
+    }
+}
+
+class Helper {
+    public void doWork() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        process_sym = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert process_sym is not None
+        process_calls = [e for e in calls if e.src == process_sym.id]
+        # h.doWork() should resolve via type inference (h is Helper)
+        assert len(process_calls) >= 1, (
+            f"Expected call edge from process to doWork via type inference, "
+            f"got {len(process_calls)}."
+        )
+
+
+class TestJavaMonorepoDuplicateNames:
+    """Tests for monorepo handling where multiple files define same class names."""
+
+    def test_enclosing_method_found_for_all_duplicate_named_classes(self, tmp_path: Path) -> None:
+        """All instances of a duplicate-named method must produce call edges.
+
+        In monorepos where multiple modules define the same class name (e.g.,
+        UserService in module_a and module_b), each service's methods must
+        produce their own call edges.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        for d in ["module_a", "module_b", "module_c"]:
+            (tmp_path / d).mkdir()
+            (tmp_path / d / "UserService.java").write_text(
+                "public class UserService {\n"
+                "    public void save(String name) {}\n"
+                "}\n"
+            )
+            (tmp_path / d / "UserController.java").write_text(
+                "public class UserController {\n"
+                "    private UserService svc;\n"
+                "    public void create() {\n"
+                "        svc.save(\"test\");\n"
+                "    }\n"
+                "}\n"
+            )
+
+        result = analyze_java(tmp_path)
+
+        ctrl_creates = [s for s in result.symbols if s.name == "UserController.create"]
+        assert len(ctrl_creates) == 3, (
+            f"Expected 3 UserController.create, got {len(ctrl_creates)}"
+        )
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        controllers_with_edges = set()
+        for ctrl in ctrl_creates:
+            ctrl_edges = [e for e in call_edges if e.src == ctrl.id]
+            if ctrl_edges:
+                controllers_with_edges.add(ctrl.path)
+
+        assert len(controllers_with_edges) == 3, (
+            f"Expected ALL 3 controllers to have call edges, "
+            f"but only {len(controllers_with_edges)} do"
+        )
+
 
 class TestJavaInheritanceEdges:
     """Tests for Java inheritance edge detection."""
+
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        INV-015: Same structural bug as Python/Kotlin. Two files define
+        class 'Model'; child file imports the one from models package.
+        Edge should resolve to the imported Model, not the test stub.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Real Model class in models package
+        (tmp_path / "models").mkdir()
+        (tmp_path / "models" / "Model.java").write_text(
+            "package com.example.models;\n"
+            "\n"
+            "public class Model {\n"
+            "    public void save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "TestModel.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.models.Model and extends it
+        (tmp_path / "Article.java").write_text(
+            "package com.example;\n"
+            "\n"
+            "import com.example.models.Model;\n"
+            "\n"
+            "public class Article extends Model {\n"
+            "    public void publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to models/Model.java::Model, NOT tests/TestModel.java::Model
+        edge = article_extends[0]
+        assert "models/Model.java" in edge.dst or "models\\Model.java" in edge.dst, (
+            f"Article extends edge should point to models/Model.java::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Base defined in file A
+        (tmp_path / "A.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "B.java").write_text(
+            "class Base {\n    public void run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    public void go() {}\n}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to B.java::Base (same file), not A.java::Base
+        edge = child_extends[0]
+        assert "B.java" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (B.java), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "ModA.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+        (tmp_path / "ModB.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "Child.java").write_text(
+            "public class Child extends Base {\n    public void go() {}\n}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
+    def test_implements_prefers_imported_interface_over_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple interfaces share a name, implements resolves to the imported one."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Real Serializable interface
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "Serializable.java").write_text(
+            "package com.example.core;\n"
+            "\n"
+            "public interface Serializable {\n"
+            "    String serialize();\n"
+            "}\n"
+        )
+
+        # Test stub Serializable interface (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "TestInterfaces.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public interface Serializable {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.core.Serializable and implements it
+        (tmp_path / "User.java").write_text(
+            "package com.example;\n"
+            "\n"
+            "import com.example.core.Serializable;\n"
+            "\n"
+            "public class User implements Serializable {\n"
+            "    public String serialize() { return \"\"; }\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        user_impl = [e for e in impl_edges if "User" in e.src]
+        assert len(user_impl) == 1, (
+            f"Expected 1 implements edge from User, got {len(user_impl)}"
+        )
+
+        # Edge should point to core/Serializable.java, NOT tests/TestInterfaces.java
+        edge = user_impl[0]
+        assert "core/Serializable.java" in edge.dst or "core\\Serializable.java" in edge.dst, (
+            f"User implements edge should point to core/Serializable.java, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_import_matches_full_fqn_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Import disambiguation via full FQN-to-path when directory mirrors package."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Directory mirrors Java package: com/example/models/Model.java
+        (tmp_path / "com" / "example" / "models").mkdir(parents=True)
+        (tmp_path / "com" / "example" / "models" / "Model.java").write_text(
+            "package com.example.models;\n"
+            "\n"
+            "public class Model {\n"
+            "    public void save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model in a different package path
+        (tmp_path / "com" / "example" / "tests").mkdir(parents=True)
+        (tmp_path / "com" / "example" / "tests" / "Model.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # Child imports the real Model via FQN
+        (tmp_path / "App.java").write_text(
+            "import com.example.models.Model;\n"
+            "\n"
+            "public class App extends Model {\n"
+            "    public void run() {}\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        app_extends = [e for e in extends_edges if "App" in e.src]
+        assert len(app_extends) == 1
+
+        # Should resolve to com/example/models/Model.java
+        edge = app_extends[0]
+        assert "models/Model.java" in edge.dst or "models\\Model.java" in edge.dst, (
+            f"App extends edge should point to models/Model.java, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_single_file_extends_fallback(self, tmp_path: Path) -> None:
+        """Legacy _analyze_java_file path creates extends edges without multi-value lookup."""
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
+
+        java_file = tmp_path / "Child.java"
+        java_file.write_text(
+            "class Base {\n    void run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    void go() {}\n}\n"
+        )
+
+        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        symbols, edges, success = _analyze_java_file(java_file, run)
+        assert success
+
+        extends_edges = [e for e in edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert "Base" in extends_edges[0].dst
+
+    def test_single_file_implements_fallback(self, tmp_path: Path) -> None:
+        """Legacy _analyze_java_file path creates implements edges without multi-value lookup."""
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
+
+        java_file = tmp_path / "Impl.java"
+        java_file.write_text(
+            "interface Runnable {\n    void run();\n}\n"
+            "\n"
+            "class Worker implements Runnable {\n"
+            "    public void run() {}\n"
+            "}\n"
+        )
+
+        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        symbols, edges, success = _analyze_java_file(java_file, run)
+        assert success
+
+        impl_edges = [e for e in edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+        assert "Runnable" in impl_edges[0].dst
 
     def test_extracts_extends_edge(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges."""
@@ -484,8 +871,8 @@ class TestJavaEdgeCases:
         java_file = tmp_path / "Test.java"
         java_file.write_text("public class Test {}")
 
-        with patch(
-            "hypergumbo_lang_mainstream.java.is_java_tree_sitter_available",
+        with patch.object(
+            java_module._java_analyzer, "_check_grammar_available",
             return_value=True,
         ), patch(
             "hypergumbo_lang_mainstream.java._get_java_parser",
@@ -495,7 +882,7 @@ class TestJavaEdgeCases:
 
         assert result.run is not None
         assert result.skipped is True
-        assert "tree-sitter-java" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestJavaConstructors:
@@ -1189,6 +1576,105 @@ public class JNIBridge {
         assert "protected" in final_methods[0].modifiers
 
 
+class TestJavaClassInterfaceModifiers:
+    """Tests for visibility modifier extraction on classes and interfaces.
+
+    Java classes and interfaces have access modifiers (public, abstract, etc.)
+    that must be captured in the symbol's modifiers list to support YAML
+    pattern matching (e.g., library export detection for public interfaces).
+    """
+
+    def test_public_class_has_public_modifier(self, tmp_path: Path) -> None:
+        """A public class captures 'public' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "MyClass.java"
+        java_file.write_text("""
+public class MyClass {
+    public void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "MyClass"),
+            None,
+        )
+        assert cls_sym is not None
+        assert cls_sym.modifiers is not None
+        assert "public" in cls_sym.modifiers, (
+            f"Public class should have 'public' modifier, got: {cls_sym.modifiers}"
+        )
+
+    def test_public_interface_has_public_modifier(self, tmp_path: Path) -> None:
+        """A public interface captures 'public' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "MyInterface.java"
+        java_file.write_text("""
+public interface MyInterface {
+    void doSomething();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        iface_sym = next(
+            (s for s in result.symbols if s.kind == "interface" and s.name == "MyInterface"),
+            None,
+        )
+        assert iface_sym is not None
+        assert iface_sym.modifiers is not None
+        assert "public" in iface_sym.modifiers, (
+            f"Public interface should have 'public' modifier, got: {iface_sym.modifiers}"
+        )
+
+    def test_abstract_class_has_abstract_modifier(self, tmp_path: Path) -> None:
+        """An abstract class captures 'abstract' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Base.java"
+        java_file.write_text("""
+public abstract class Base {
+    abstract void process();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "Base"),
+            None,
+        )
+        assert cls_sym is not None
+        assert cls_sym.modifiers is not None
+        assert "public" in cls_sym.modifiers
+        assert "abstract" in cls_sym.modifiers
+
+    def test_package_private_class_no_public_modifier(self, tmp_path: Path) -> None:
+        """A package-private class does NOT have 'public' in modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Internal.java"
+        java_file.write_text("""
+class Internal {
+    void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "Internal"),
+            None,
+        )
+        assert cls_sym is not None
+        # modifiers may be None or empty list - either way, no "public"
+        if cls_sym.modifiers:
+            assert "public" not in cls_sym.modifiers
+
+
 class TestJavaSignatureExtraction:
     """Tests for Java function signature extraction."""
 
@@ -1367,6 +1853,108 @@ public class Legacy {
         assert method.signature == "(String[] args)"
 
 
+class TestJavaReturnTypeExtraction:
+    """Unit tests for _extract_java_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("(int a) Client") == "Client"
+
+    def test_void_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("(String msg)") is None
+
+    def test_primitive_return(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        # Primitive types start with lowercase, not tracked
+        assert _extract_java_return_type_name("(int a, int b) int") is None
+
+    def test_none_signature(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name(None) is None
+
+    def test_empty_signature(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("") is None
+
+    def test_no_paren(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("no parens") is None
+
+
+class TestJavaReturnTypeMetadata:
+    """Tests for return_type in method symbol metadata."""
+
+    def test_method_return_type_in_meta(self, tmp_path: Path) -> None:
+        """Non-void, non-primitive return type is stored in meta.return_type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public UserResource getUser() {\n"
+            "        return new UserResource();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.getUser")
+        assert method.meta is not None
+        assert method.meta.get("return_type") == "UserResource"
+
+    def test_void_method_no_return_type(self, tmp_path: Path) -> None:
+        """Void methods do not have return_type in metadata."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public void doWork() {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.doWork")
+        assert method.meta is None or "return_type" not in (method.meta or {})
+
+    def test_primitive_return_type_excluded(self, tmp_path: Path) -> None:
+        """Primitive return types (int, boolean, etc.) are not stored."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public int getCount() { return 0; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.getCount")
+        assert method.meta is None or "return_type" not in (method.meta or {})
+
+    def test_constructor_no_return_type(self, tmp_path: Path) -> None:
+        """Constructors do not have return_type metadata."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public Foo(String name) {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        constructor = next(
+            (s for s in result.symbols if s.kind == "method" and "Foo.Foo" in s.name),
+            None,
+        )
+        if constructor is not None:
+            assert constructor.meta is None or "return_type" not in (constructor.meta or {})
+
+
 class TestJavaStaticImportSkip:
     """Tests for static import handling."""
 
@@ -1453,6 +2041,212 @@ public class Caller {
         assert call_edge is not None
         assert call_edge.evidence_type == "ast_call_type_inferred"
         assert call_edge.confidence == 0.85
+
+
+class TestJavaReturnTypeInference:
+    """Tests for return type tracking from method signatures."""
+
+    def test_return_type_enables_method_resolution(self, tmp_path: Path) -> None:
+        """Factory method return type enables resolution of subsequent method calls."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Factory.java").write_text("""
+public class Factory {
+    public Client createClient() {
+        return new Client();
+    }
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Factory f = new Factory();
+        Client c = f.createClient();
+        c.send();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # c.send() should resolve via return type of createClient()
+        send_edge = next(
+            (e for e in call_edges if "run" in e.src and "send" in e.dst),
+            None,
+        )
+        assert send_edge is not None, "Expected call edge for c.send() via return type inference"
+        assert send_edge.evidence_type == "ast_call_type_inferred"
+
+    def test_no_return_type_no_resolution(self, tmp_path: Path) -> None:
+        """Void methods don't enable return type inference."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Service.java").write_text("""
+public class Service {
+    public void process() {}
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Service s = new Service();
+        s.process();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # process() is void — no return type inference needed (resolved via constructor type)
+        process_edge = next(
+            (e for e in call_edges if "run" in e.src and "process" in e.dst),
+            None,
+        )
+        assert process_edge is not None
+
+    def test_generic_return_type_not_tracked(self, tmp_path: Path) -> None:
+        """Generic return types like List<Client> are not tracked for inference."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Factory.java").write_text("""
+import java.util.List;
+import java.util.ArrayList;
+
+public class Factory {
+    public List<Client> getClients() {
+        return new ArrayList<>();
+    }
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Factory f = new Factory();
+        Object result = f.getClients();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        # Just verify it doesn't crash - generic returns aren't tracked
+        assert result.run is not None
+
+
+class TestJpaInheritedMethodFallback:
+    """Tests for JPA repository inherited method resolution.
+
+    Spring Data JPA repositories extend framework interfaces like JpaRepository
+    which provide methods (save, findById, findAll, deleteById) not defined in
+    user code. When a controller calls repo.save(entity), the analyzer can
+    infer the type (OwnerRepository) but can't find OwnerRepository.save as a
+    symbol. The analyzer should fall back to linking to the repository
+    interface/class itself.
+    """
+
+    def test_jpa_inherited_method_falls_back_to_type(self, tmp_path: Path) -> None:
+        """repo.save() on JPA repository creates edge to the repository interface."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "OwnerRepository.java").write_text("""
+public interface OwnerRepository {
+    Owner findByLastName(String lastName);
+}
+""")
+        (tmp_path / "OwnerController.java").write_text("""
+public class OwnerController {
+    private OwnerRepository owners;
+
+    public void processCreation(Owner owner) {
+        this.owners.save(owner);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        controller_method = next(
+            (s for s in result.symbols if "processCreation" in s.name), None
+        )
+        repo_iface = next(
+            (s for s in result.symbols if s.name == "OwnerRepository" and s.kind == "interface"), None
+        )
+
+        assert controller_method is not None, "Should find processCreation"
+        assert repo_iface is not None, "Should find OwnerRepository interface"
+
+        # Should have an edge from processCreation to OwnerRepository
+        # (fallback when specific method not found)
+        call_edges = [
+            e for e in result.edges
+            if e.src == controller_method.id
+            and e.dst == repo_iface.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected fallback edge to OwnerRepository, got {len(call_edges)}. "
+            f"All edges from controller: "
+            f"{[(e.edge_type, e.dst) for e in result.edges if e.src == controller_method.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited_method"
+        assert call_edges[0].confidence < 0.85  # Lower than direct resolution
+
+    def test_jpa_declared_method_resolves_normally(self, tmp_path: Path) -> None:
+        """Methods defined in the repository resolve normally, no fallback."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "OwnerRepository.java").write_text("""
+public interface OwnerRepository {
+    Owner findByLastName(String lastName);
+}
+""")
+        (tmp_path / "OwnerController.java").write_text("""
+public class OwnerController {
+    private OwnerRepository owners;
+
+    public void search() {
+        this.owners.findByLastName("Smith");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        controller_method = next(
+            (s for s in result.symbols if "search" in s.name), None
+        )
+        find_method = next(
+            (s for s in result.symbols if "findByLastName" in s.name), None
+        )
+
+        assert controller_method is not None
+        assert find_method is not None
+
+        # Normal resolution to the actual method
+        call_edges = [
+            e for e in result.edges
+            if e.src == controller_method.id
+            and e.dst == find_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_type_inferred"
 
 
 class TestJavaImportResolution:
@@ -2278,3 +3072,424 @@ public class Callback {
             None,
         )
         assert call_edge is not None, "Call inside callback lambda should be attributed to caller"
+
+
+class TestNormalizeJavaSignature:
+    """Tests for Java signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature("(String name, int age) User") == "(String,int)User"
+
+    def test_void_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature("(String msg)") == "(String)"
+
+    def test_generics(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        result = normalize_java_signature("(List<T> items) Map<K, V>", ["T", "K", "V"])
+        assert result == "(List<$0>)Map<$1, $2>"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature(None) is None
+
+
+class TestJavaMethodReferences:
+    """Tests for Java method reference (::) detection."""
+
+    def test_static_method_reference(self, tmp_path: Path) -> None:
+        """Detects App::transform as a references edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    static String transform(String s) { return s; }\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(App::transform);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "transform" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected method reference edge, got: {ref_edges}"
+
+    def test_instance_method_reference(self, tmp_path: Path) -> None:
+        """Detects this::process as a references edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    void process(String s) {}\n"
+            "    void run(List<String> items) {\n"
+            "        items.forEach(this::process);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "process" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected instance method reference edge, got: {ref_edges}"
+
+    def test_constructor_reference(self, tmp_path: Path) -> None:
+        """Detects StringBuilder::new as an instantiates edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(StringBuilder::new);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        # Constructor references should not produce edges since
+        # StringBuilder is an external class, not in the codebase.
+        # Just verify no crash occurs.
+        assert result.symbols  # analysis completed
+
+    def test_method_reference_evidence_type(self, tmp_path: Path) -> None:
+        """Method reference edges have correct evidence_type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    static int parse(String s) { return 0; }\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(App::parse);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        matching = [e for e in ref_edges if "parse" in e.dst]
+        assert len(matching) == 1
+        assert matching[0].evidence_type == "method_reference"
+
+    def test_constructor_reference_to_local_class(self, tmp_path: Path) -> None:
+        """Detects Widget::new as an instantiates edge to local class."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class Widget {}\n"
+        )
+        (tmp_path / "Runner.java").write_text(
+            "import java.util.List;\n"
+            "import java.util.stream.Collectors;\n"
+            "class Runner {\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(Widget::new).collect(Collectors.toList());\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert any(
+            "Widget" in e.dst and "run" in e.src
+            for e in inst_edges
+        ), f"Expected constructor reference edge, got: {inst_edges}"
+
+    def test_method_reference_no_enclosing_method(self, tmp_path: Path) -> None:
+        """Method reference at class level (e.g. field initializer) is ignored gracefully."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.function.Function;\n"
+            "class App {\n"
+            "    static int transform(int x) { return x; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        # No crash, no spurious edges
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0
+
+
+class TestClassNameCollision:
+    """Tests for INV-finak: Java class name collision dampening.
+
+    When a file imports an external library class (e.g., org.slf4j.Logger)
+    and source code contains an inner class with the same simple name
+    (e.g., Config.Logger), the NameResolver's suffix matching incorrectly
+    resolves the simple name to the inner class. The fix checks file-level
+    imports: if the import FQN doesn't match the resolved candidate's path,
+    the edge is skipped (the developer intended the external class).
+    """
+
+    def test_instantiation_skipped_when_import_mismatches(self, tmp_path: Path) -> None:
+        """new Logger() should NOT resolve to Config.Logger when file imports org.slf4j.Logger."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with inner class named Logger
+        (tmp_path / "Config.java").write_text(
+            "package com.example.config;\n"
+            "public class Config {\n"
+            "    public static class Logger {\n"
+            "        public void log(String msg) {}\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that imports external Logger and instantiates it
+        (tmp_path / "App.java").write_text(
+            "package com.example.app;\n"
+            "import org.slf4j.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        # Find the inner class symbol
+        config_logger = next(
+            (s for s in result.symbols if s.name == "Config.Logger"), None
+        )
+        assert config_logger is not None, "Config.Logger should be extracted"
+
+        # App.run should NOT have an instantiates edge to Config.Logger
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None, "App.run should be extracted"
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == config_logger.id
+        ]
+        assert len(false_edges) == 0, (
+            f"new Logger() in App.run should NOT resolve to Config.Logger "
+            f"when file imports org.slf4j.Logger (got {len(false_edges)} false edges)"
+        )
+
+    def test_instantiation_allowed_when_import_matches(self, tmp_path: Path) -> None:
+        """new Logger() SHOULD resolve when file imports the matching source-code class."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Use directory structure matching the package declaration
+        logging_dir = tmp_path / "com" / "example" / "logging"
+        logging_dir.mkdir(parents=True)
+        app_dir = tmp_path / "com" / "example" / "app"
+        app_dir.mkdir(parents=True)
+
+        # File with top-level Logger class
+        (logging_dir / "Logger.java").write_text(
+            "package com.example.logging;\n"
+            "public class Logger {\n"
+            "    public void log(String msg) {}\n"
+            "}\n"
+        )
+        # File that imports the source-code Logger and instantiates it
+        (app_dir / "App.java").write_text(
+            "package com.example.app;\n"
+            "import com.example.logging.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        logger_sym = next(
+            (s for s in result.symbols if s.name == "Logger"), None
+        )
+        assert logger_sym is not None
+
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None
+
+        inst_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == logger_sym.id
+        ]
+        assert len(inst_edges) == 1, (
+            "new Logger() should resolve when import matches source-code class"
+        )
+
+    def test_instantiation_allowed_when_import_matches_short_path(self, tmp_path: Path) -> None:
+        """new Logger() SHOULD resolve when import short-matches source-code class path.
+
+        Covers the short-path match branch in _is_import_class_mismatch: when
+        the full FQN path doesn't match but the last 2 segments (package/Class)
+        do, the edge is allowed.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Directory structure uses abbreviated path that doesn't match full FQN
+        # but DOES match short path: "logging/Logger"
+        logging_dir = tmp_path / "src" / "logging"
+        logging_dir.mkdir(parents=True)
+        app_dir = tmp_path / "src" / "app"
+        app_dir.mkdir(parents=True)
+
+        (logging_dir / "Logger.java").write_text(
+            "package com.example.logging;\n"
+            "public class Logger {\n"
+            "    public void log(String msg) {}\n"
+            "}\n"
+        )
+        (app_dir / "App.java").write_text(
+            "package com.example.app;\n"
+            "import com.example.logging.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        logger_sym = next(
+            (s for s in result.symbols if s.name == "Logger"), None
+        )
+        assert logger_sym is not None
+
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None
+
+        inst_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == logger_sym.id
+        ]
+        assert len(inst_edges) == 1, (
+            "new Logger() should resolve when import short-path matches"
+        )
+
+    def test_type_inferred_call_skipped_when_import_mismatches(self, tmp_path: Path) -> None:
+        """logger.log() via type inference should NOT resolve to Config.Logger.log
+        when file imports org.slf4j.Logger."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with inner class Logger that has a log method
+        (tmp_path / "Config.java").write_text(
+            "package com.example.config;\n"
+            "public class Config {\n"
+            "    public static class Logger {\n"
+            "        public void log(String msg) {}\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that imports external Logger and calls methods on it
+        (tmp_path / "Service.java").write_text(
+            "package com.example.service;\n"
+            "import org.slf4j.Logger;\n"
+            "public class Service {\n"
+            "    private Logger logger;\n"
+            "    public void process() {\n"
+            "        logger.log(\"hello\");\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        config_logger_log = next(
+            (s for s in result.symbols if s.name == "Config.Logger.log"), None
+        )
+        assert config_logger_log is not None
+
+        service_process = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert service_process is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == service_process.id
+            and e.dst == config_logger_log.id
+        ]
+        assert len(false_edges) == 0, (
+            f"logger.log() should NOT resolve to Config.Logger.log "
+            f"when file imports org.slf4j.Logger (got {len(false_edges)} false edges)"
+        )
+
+
+class TestJavaAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in Java.
+
+    When a method name appears in 3+ classes and the resolver falls back
+    to suffix matching, the analyzer must not create false-positive edges
+    to an arbitrary class's implementation.
+    """
+
+    def test_ambiguous_method_via_suffix_not_resolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """Bare process() with 3 classes defining process() → no false edge.
+
+        In Java, method calls are always class-qualified by the analyzer.
+        But when the qualified name doesn't exist (e.g., inherited method),
+        the NameResolver falls back to suffix matching. This test verifies
+        that when 3+ classes define the same method, the ambiguity guard
+        prevents false resolution.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Server.java").write_text("""
+public class Server {
+    public void process() { }
+}
+""")
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void process() { }
+}
+""")
+        (tmp_path / "Worker.java").write_text("""
+public class Worker {
+    public void process() { }
+}
+""")
+        # Orchestrator calls process() which is NOT defined in its own class.
+        # Without a receiver, lookup becomes "Orchestrator.process" which
+        # doesn't exist → falls to suffix matching → finds "process" in
+        # Server/Client/Worker → should NOT pick one.
+        (tmp_path / "Orchestrator.java").write_text("""
+public class Orchestrator {
+    public void run() {
+        process();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [
+            e for e in call_edges
+            if any("Orchestrator.run" in e.src for _ in [1])
+        ]
+
+        # Should NOT resolve to Server/Client/Worker.process
+        for edge in run_calls:
+            if "process" in edge.dst.lower():
+                assert "Server.process" not in edge.dst, (
+                    f"Should not resolve to Server.process: {edge.dst}"
+                )
+                assert "Client.process" not in edge.dst, (
+                    f"Should not resolve to Client.process: {edge.dst}"
+                )
+                assert "Worker.process" not in edge.dst, (
+                    f"Should not resolve to Worker.process: {edge.dst}"
+                )
