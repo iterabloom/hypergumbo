@@ -28,6 +28,7 @@ from hypergumbo_core.ranking import (
     compute_symbol_importance_density,
     compute_symbol_mention_centrality,
     compute_symbol_mention_centrality_batch,
+    compute_truncation_elbow,
     _compute_centrality_with_python,
     _has_logging_concept,
 )
@@ -2757,3 +2758,153 @@ class TestApplyCommonMethodNameWeights:
 
         for s in id_syms:
             assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"
+
+
+class TestComputeTruncationElbow:
+    """Tests for compute_truncation_elbow function."""
+
+    def _make_sym(self, name: str, path: str, start: int, end: int) -> Symbol:
+        """Helper to create a symbol with specific span lines."""
+        return Symbol(
+            id=f"python:{path}:{start}-{end}:function:{name}",
+            name=name,
+            kind="function",
+            language="python",
+            path=path,
+            span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
+        )
+
+    def test_no_symbols_returns_default(self):
+        """With no symbols, returns default_tokens."""
+        result = compute_truncation_elbow([], {}, "src/main.py")
+        assert result == 500
+
+    def test_fewer_than_3_symbols_returns_default(self):
+        """With fewer than 3 symbols with positive centrality, returns default."""
+        syms = [
+            self._make_sym("foo", "src/main.py", 1, 10),
+            self._make_sym("bar", "src/main.py", 15, 25),
+        ]
+        centrality = {syms[0].id: 1.0, syms[1].id: 2.0}
+        result = compute_truncation_elbow(syms, centrality, "src/main.py")
+        assert result == 500
+
+    def test_symbols_concentrated_at_top(self):
+        """High-centrality symbols at top → elbow is early (low token count)."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("important1", path, 1, 10),
+            self._make_sym("important2", path, 12, 20),
+            self._make_sym("important3", path, 22, 30),
+            self._make_sym("trivial1", path, 100, 110),
+            self._make_sym("trivial2", path, 200, 210),
+            self._make_sym("trivial3", path, 300, 310),
+            self._make_sym("trivial4", path, 400, 410),
+        ]
+        centrality = {
+            syms[0].id: 10.0,
+            syms[1].id: 8.0,
+            syms[2].id: 6.0,
+            syms[3].id: 0.1,
+            syms[4].id: 0.1,
+            syms[5].id: 0.1,
+            syms[6].id: 0.1,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        # Elbow should be early — most centrality covered by line 30
+        # 30 lines * 80 chars / 4 chars_per_token = 600 tokens
+        assert result < 2000, f"Expected early elbow, got {result} tokens"
+
+    def test_symbols_spread_evenly(self):
+        """Evenly spread symbols → elbow is later."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym(f"func{i}", path, i * 50 + 1, i * 50 + 40)
+            for i in range(10)
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+        result = compute_truncation_elbow(syms, centrality, path)
+        # With uniform centrality, the chord is a straight line
+        # and distances are small — elbow is at some interior point
+        assert result > 0
+
+    def test_single_high_centrality_symbol_early(self):
+        """One very important symbol early, rest minor → elbow near that symbol."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("core", path, 1, 20),
+            self._make_sym("helper1", path, 50, 60),
+            self._make_sym("helper2", path, 100, 110),
+            self._make_sym("helper3", path, 200, 210),
+            self._make_sym("helper4", path, 300, 310),
+        ]
+        centrality = {
+            syms[0].id: 50.0,  # Dominant
+            syms[1].id: 1.0,
+            syms[2].id: 1.0,
+            syms[3].id: 1.0,
+            syms[4].id: 1.0,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        # Elbow should be near line 60 (after core + first helper)
+        # 60 * 80 / 4 = 1200
+        assert result < 3000
+
+    def test_filters_to_correct_file(self):
+        """Only considers symbols matching the given file_path."""
+        path_a = "src/a.py"
+        path_b = "src/b.py"
+        syms = [
+            self._make_sym("func_a1", path_a, 1, 10),
+            self._make_sym("func_a2", path_a, 20, 30),
+            self._make_sym("func_a3", path_a, 40, 50),
+            self._make_sym("func_b1", path_b, 1, 100),
+            self._make_sym("func_b2", path_b, 200, 300),
+            self._make_sym("func_b3", path_b, 400, 500),
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+
+        result_a = compute_truncation_elbow(syms, centrality, path_a)
+        result_b = compute_truncation_elbow(syms, centrality, path_b)
+
+        # path_b symbols span much further → higher token count
+        assert result_b > result_a
+
+    def test_zero_centrality_symbols_ignored(self):
+        """Symbols with zero centrality are filtered out."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("func1", path, 1, 10),
+            self._make_sym("func2", path, 20, 30),
+            self._make_sym("func3", path, 40, 50),
+            self._make_sym("dead1", path, 100, 110),
+            self._make_sym("dead2", path, 200, 210),
+        ]
+        # Only 2 symbols have positive centrality → fewer than 3 → default
+        centrality = {
+            syms[0].id: 1.0,
+            syms[1].id: 1.0,
+            syms[2].id: 0.0,
+            syms[3].id: 0.0,
+            syms[4].id: 0.0,
+        }
+        result = compute_truncation_elbow(syms, centrality, path)
+        assert result == 500  # Only 2 positive → returns default
+
+    def test_custom_default_tokens(self):
+        """Custom default_tokens is returned when elbow cannot be determined."""
+        result = compute_truncation_elbow([], {}, "src/main.py", default_tokens=1000)
+        assert result == 1000
+
+    def test_all_symbols_same_end_line(self):
+        """When all symbols end on the same line, elbow is at that line."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("func1", path, 1, 10),
+            self._make_sym("func2", path, 3, 10),
+            self._make_sym("func3", path, 5, 10),
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+        result = compute_truncation_elbow(syms, centrality, path)
+        # All end at line 10: 10 * 80 / 4 = 200 tokens
+        assert result == 200

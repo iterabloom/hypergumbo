@@ -1240,3 +1240,88 @@ def compute_symbol_mention_centrality(
                 matched_names.add(sym.name)
 
     return total_in_degree / len(content) if content else 0.0
+
+
+def compute_truncation_elbow(
+    symbols: List[Symbol],
+    centrality: Dict[str, float],
+    file_path: str,
+    chars_per_line: int = 80,
+    chars_per_token: int = 4,
+    default_tokens: int = 500,
+) -> int:
+    """Determine the optimal truncation point for a file based on symbol centrality.
+
+    Uses the cumulative centrality curve of symbols ordered by their end_line
+    to find the "elbow" — the point of diminishing returns where most of
+    the file's important symbols have been covered. The elbow is computed
+    using the max-distance-from-chord method (point maximizing perpendicular
+    distance from the line connecting the first and last points on the curve).
+
+    This provides a semantically-informed minimum truncation target: truncate
+    the file at the point where you've captured most of its important content.
+
+    Args:
+        symbols: All symbols in the repository.
+        centrality: Weighted centrality scores (symbol ID → score).
+        file_path: The file path to compute elbow for (matched against symbol.path).
+        chars_per_line: Average characters per line. Default 80.
+        chars_per_token: Average characters per token. Default 4.
+        default_tokens: Returned when elbow cannot be determined. Default 500.
+
+    Returns:
+        Token count representing the optimal truncation point.
+    """
+    # Filter to symbols in this file that have spans and positive centrality
+    file_symbols = [
+        s for s in symbols
+        if s.path == file_path
+        and s.span.end_line > 0
+        and centrality.get(s.id, 0) > 0
+    ]
+
+    if len(file_symbols) < 3:
+        return default_tokens
+
+    # Sort by end_line
+    file_symbols.sort(key=lambda s: s.span.end_line)
+
+    # Build cumulative centrality curve
+    total = sum(centrality.get(s.id, 0) for s in file_symbols)
+    if total <= 0:  # pragma: no cover - filtered to positive centrality above
+        return default_tokens
+
+    cumulative = 0.0
+    points: list[tuple[int, float]] = []
+    for s in file_symbols:
+        cumulative += centrality.get(s.id, 0)
+        points.append((s.span.end_line, cumulative / total))
+
+    # Need at least 3 points for meaningful elbow detection
+    if len(points) < 3:  # pragma: no cover - same as len(file_symbols) check above
+        return default_tokens
+
+    # Max-distance-from-chord method
+    # Chord from first to last point
+    x1, y1 = float(points[0][0]), points[0][1]
+    x2, y2 = float(points[-1][0]), points[-1][1]
+
+    dx = x2 - x1
+    dy = y2 - y1
+    chord_len = math.sqrt(dx * dx + dy * dy)
+
+    if chord_len == 0:  # pragma: no cover - unreachable: y_last=1.0, y_first<1.0
+        return default_tokens
+
+    # Find point with maximum perpendicular distance from chord
+    max_dist = 0.0
+    elbow_line = points[0][0]
+    for px, py in points[1:-1]:  # Exclude endpoints
+        # Perpendicular distance from point to line
+        dist = abs(dy * float(px) - dx * py + x2 * y1 - y2 * x1) / chord_len
+        if dist > max_dist:
+            max_dist = dist
+            elbow_line = px
+
+    # Convert elbow line number to tokens
+    return elbow_line * chars_per_line // chars_per_token

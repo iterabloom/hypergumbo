@@ -45,7 +45,9 @@ from .ranking import (
     compute_transitive_test_coverage,
     compute_raw_in_degree,
     compute_symbol_mention_centrality_batch,
+    compute_truncation_elbow,
     rank_files,
+    rank_symbols,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -5748,7 +5750,9 @@ def generate_sketch(
         # Compute density scores for source file ordering using rank_files()
         # (canonical pipeline: edge filtering, hub saturation, full dampening).
         # Also compute raw in-degree for stats tracking.
+        # Additionally compute per-symbol weighted centrality for truncation elbow.
         raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
+        symbol_centrality: dict[str, float] = {}  # For truncation elbow computation
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             ranked_files = rank_files(symbols, edges)
@@ -5762,6 +5766,12 @@ def generate_sketch(
                 except ValueError:  # pragma: no cover
                     key = rf.path
                 density_scores[key] = rf.density_score
+
+            # Build per-symbol weighted centrality for truncation elbow
+            ranked_syms = rank_symbols(symbols, edges)
+            symbol_centrality = {
+                rs.symbol.id: rs.weighted_centrality for rs in ranked_syms
+            }
 
     prog.complete_phase("analysis")
 
@@ -6067,8 +6077,13 @@ def generate_sketch(
     prog.start_phase("format")
 
     # Section 9: Source Files Content (if with_source is True and we have budget)
-    # ADR-0005: Source Files Content gets 70% of remaining budget, all-or-nothing per file
+    # ADR-0005: Source Files Content gets 70% of remaining budget, dynamic truncation
+    # with elbow-based min floor for early files, median-based floor after 3 files.
     if with_source and source_files and max_tokens is not None:
+        from statistics import median as _median
+
+        MIN_SOURCE_TRUNCATION_TOKENS = 500
+
         # Recalculate remaining budget
         current_sketch = "\n\n".join(sections)
         current_tokens = estimate_tokens(current_sketch)
@@ -6093,6 +6108,8 @@ def generate_sketch(
 
             # Track files with content shown for stats
             source_content_files_added: list[Path] = []
+            # Track token counts for median-based truncation floor
+            source_token_counts: list[int] = []
 
             for src_file in ordered_files:
                 try:
@@ -6107,16 +6124,53 @@ def generate_sketch(
                     # Estimate full block size including markers, not just content
                     file_tokens = _estimate_file_block_tokens(str(rel_path), content)
 
-                    # ADR-0005: All-or-nothing per file - skip if file doesn't fit
-                    if source_tokens_used + file_tokens > source_budget:
-                        continue
+                    if source_tokens_used + file_tokens <= source_budget:
+                        # File fits completely
+                        source_content_lines.extend(
+                            _format_file_content_block(str(rel_path), content)
+                        )
+                        source_content_files_added.append(src_file)
+                        source_token_counts.append(file_tokens)
+                        source_tokens_used += file_tokens
+                    else:
+                        # File needs truncation — compute min truncation target
+                        if len(source_token_counts) < 3:
+                            # Early files: use elbow-based floor from symbol centrality
+                            min_tokens = compute_truncation_elbow(
+                                symbols, symbol_centrality, str(rel_path),
+                            )
+                        else:
+                            # After 3 files: use median of already-included files
+                            min_tokens = max(
+                                int(_median(source_token_counts)),
+                                MIN_SOURCE_TRUNCATION_TOKENS,
+                            )
 
-                    source_content_lines.extend(
-                        _format_file_content_block(str(rel_path), content)
-                    )
-                    source_content_files_added.append(src_file)
+                        truncation_target = min(
+                            min_tokens,
+                            source_budget - source_tokens_used - 50,
+                        )
 
-                    source_tokens_used += file_tokens
+                        if truncation_target < MIN_SOURCE_TRUNCATION_TOKENS:
+                            break
+
+                        truncated_content = truncate_to_tokens(content, truncation_target)
+                        if truncated_content != content:
+                            truncated_content += "\n\n[...truncated...]"
+
+                        truncated_tokens = _estimate_file_block_tokens(
+                            str(rel_path), truncated_content
+                        )
+
+                        if source_tokens_used + truncated_tokens <= source_budget:
+                            source_content_lines.extend(
+                                _format_file_content_block(str(rel_path), truncated_content)
+                            )
+                            source_content_files_added.append(src_file)
+                            source_token_counts.append(truncated_tokens)
+                            source_tokens_used += truncated_tokens
+                        else:  # pragma: no cover - block overhead pushes over budget
+                            break
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
                     continue
 

@@ -6917,8 +6917,8 @@ def func_c():
         # The important file's functions should appear
         assert "def func_a():" in sketch or "def func_b():" in sketch
 
-    def test_with_source_skips_large_file(self, tmp_path: Path) -> None:
-        """--with-source skips files that exceed remaining budget."""
+    def test_with_source_truncates_large_file(self, tmp_path: Path) -> None:
+        """--with-source truncates files that exceed remaining budget."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
 
@@ -6932,18 +6932,98 @@ def small_func():
 """
         (src_dir / "small.py").write_text(small_content)
 
-        # Create a large file (won't fit)
+        # Create a large file (won't fit entirely but should be truncated)
         large_content = "def big():\n" + "    pass\n" * 500
         (src_dir / "large.py").write_text(large_content)
 
-        # Budget large enough for small file, but not large file
-        sketch = generate_sketch(tmp_path, max_tokens=800, with_source=True)
+        # Budget large enough for small file + truncated large file
+        sketch = generate_sketch(tmp_path, max_tokens=1200, with_source=True)
 
         # Should have source content (small file fits)
         assert "## Source Files Content" in sketch
         assert "def small_func():" in sketch
-        # Large file should be skipped
+        # Large file should appear truncated, not skipped
+        assert "def big():" in sketch
+        assert "[...truncated...]" in sketch
+
+    def test_with_source_breaks_when_budget_too_small_for_truncation(
+        self, tmp_path: Path,
+    ) -> None:
+        """--with-source stops when budget is too small for meaningful truncation."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create only a large file
+        large_content = "def big():\n" + "    pass\n" * 500
+        (src_dir / "large.py").write_text(large_content)
+
+        # Very tight budget — not enough for even truncated content
+        sketch = generate_sketch(tmp_path, max_tokens=500, with_source=True)
+
+        # Should not have source content since budget is too tight
         assert "def big():" not in sketch
+
+    def test_with_source_small_files_not_truncated(self, tmp_path: Path) -> None:
+        """--with-source includes small files in full without truncation."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        content_a = """\
+def func_a():
+    x = 1
+    y = 2
+    z = 3
+    return x + y + z
+"""
+        content_b = """\
+def func_b():
+    a = 10
+    b = 20
+    c = 30
+    return a + b + c
+"""
+        (src_dir / "a.py").write_text(content_a)
+        (src_dir / "b.py").write_text(content_b)
+
+        sketch = generate_sketch(tmp_path, max_tokens=2000, with_source=True)
+
+        assert "## Source Files Content" in sketch
+        assert "def func_a():" in sketch
+        assert "def func_b():" in sketch
+        # No truncation markers
+        assert "[...truncated...]" not in sketch
+
+    def test_with_source_median_truncation_after_three_files(
+        self, tmp_path: Path,
+    ) -> None:
+        """After 3 small files, a large file uses median-based truncation floor."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        # Create 3 small files that import each other so they have higher
+        # density (centrality) than the large file, ensuring they sort first.
+        (src_dir / "a_00.py").write_text(
+            "from a_01 import func_1\ndef func_0():\n    a = 1\n    b = 2\n    return func_1()\n"
+        )
+        (src_dir / "a_01.py").write_text(
+            "from a_02 import func_2\ndef func_1():\n    a = 1\n    b = 2\n    return func_2()\n"
+        )
+        (src_dir / "a_02.py").write_text(
+            "from a_00 import func_0\ndef func_2():\n    a = 1\n    b = 2\n    return func_0()\n"
+        )
+
+        # Create a very large file (~5000 tokens) that won't fit entirely.
+        # No connections to the small files → lowest density → sorted last.
+        large_content = "def big_func():\n" + "    x = 'abcdefghij' * 10\n" * 2000
+        (src_dir / "z_large.py").write_text(large_content)
+
+        # Budget 5000: ~800 for overhead, ~4200 remaining, 70% = ~2940 for source.
+        # 3 small files use ~300 tokens. Remaining ~2640 is enough for a 500-token
+        # truncation target. This exercises the median branch (>=3 token_counts).
+        sketch = generate_sketch(tmp_path, max_tokens=5000, with_source=True)
+
+        assert "## Source Files Content" in sketch
+        assert "def func_" in sketch
 
     def test_with_source_skips_short_files(self, tmp_path: Path) -> None:
         """--with-source skips files with fewer than 5 lines of code."""

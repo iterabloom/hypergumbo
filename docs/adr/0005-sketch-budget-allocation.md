@@ -120,10 +120,10 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 | Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
-| Source Content | varies | 1 | — | All-or-nothing per file |
-| Additional File Content | varies | 1 | — | All-or-nothing per file |
+| Source Content | varies | 1 | — | Dynamic truncation with elbow/median floor |
+| Additional File Content | varies | 1 | — | Dynamic truncation with median floor |
 
-The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. For source content sections, item size equals the full file size (no partial files).
+The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source content sections use dynamic truncation: files that fit are included in full, oversized files are truncated to a computed floor (elbow-based for early source files, median-based thereafter).
 
 ### Structure: Tree Built from Important Files
 
@@ -168,24 +168,20 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 - Nested structure revealed along the path to important files
 - Hidden directories (`.github/`, etc.) included if they contain important files
 
-### Source Content: All-or-Nothing Per File
+### Source Content: Dynamic Truncation
 
-When including source code (Source Content and Additional File Content sections), files must be included completely or not at all:
+Both Source Files Content (Section 9) and Additional Files Content (Section 10) use dynamic truncation. Files that fit within budget are included in full; oversized files are truncated to a computed target and appended with `[...truncated...]`.
 
-1. **Before adding a file**: Check if the entire file fits in remaining budget
-2. **If yes**: Include the complete file with proper markdown fencing
-3. **If no**: Skip the file entirely and try the next one
-4. **Never truncate mid-file**: Partial files are useless and leave unclosed markdown fences
+**Truncation floor for Source Files Content:**
+- **First 3 files** (before enough data for a meaningful median): Uses an elbow-based floor from `compute_truncation_elbow()`, which analyzes cumulative symbol centrality to find the point of diminishing returns — the line number after which most important symbols have been covered. This is converted to a token count.
+- **After 3 files**: Uses `max(median(token_counts), 500)`, matching the Additional Files Content pattern.
 
-This prevents the bug where naive token truncation cuts a file mid-way, producing broken markdown like:
+**Truncation floor for Additional Files Content:**
+- Uses `max(median(token_counts), 500)` throughout.
 
-```
-### path/to/file.py
-```python
-def foo():
-    return bar(
-<EOF with no closing fence>
-```
+**Why elbow-based truncation for early source files:** The most important files (e.g., `ir.py`, `base.py`, `cli.py`) tend to be the largest and were frequently skipped entirely under the previous all-or-nothing strategy. By using symbol centrality to determine where to truncate, we capture the architecturally significant portion of each file while staying within budget.
+
+**Safety:** Truncation uses `truncate_to_tokens()` which respects line boundaries and proper markdown fencing. The `[...truncated...]` marker signals to readers that content continues.
 
 ### Key Symbols: Minimum Guarantee
 
