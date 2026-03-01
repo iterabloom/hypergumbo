@@ -23,6 +23,8 @@ exclude_also =
     def _compute_log_sample_size
     def _compute_stride
     def _build_context_chunk
+    def _is_low_quality_chunk
+    def _is_config_excluded_path
     # Embedding mode branches
     if mode == ConfigExtractionMode.EMBEDDING
     elif mode == ConfigExtractionMode.HYBRID

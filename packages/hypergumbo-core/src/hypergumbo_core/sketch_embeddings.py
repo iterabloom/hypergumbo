@@ -347,6 +347,27 @@ BIG_PICTURE_QUESTIONS = [
     "How are database migrations handled?",
 ]
 
+# Negative probe patterns: chunks matching these are penalized.
+# These represent content that shares vocabulary with config probes
+# but is NOT actual project configuration (docs, schemas, tests, etc.).
+#
+# WARNING: If you modify NEGATIVE_PATTERNS, you MUST regenerate precomputed
+# embeddings: python scripts/compute_probe_embeddings.py
+NEGATIVE_PATTERNS = [
+    "JSON schema type definition with required properties",
+    "API documentation example showing request and response",
+    "output format specification describing data structure",
+    "test fixture data for unit testing",
+    "error message string for exception handling",
+    "legal license text boilerplate copyright notice",
+    "changelog release notes version history",
+    "code comment explaining implementation details",
+    "markdown documentation section heading",
+    "function signature with parameters and return type",
+    "class definition with methods and properties",
+    "HTML template markup with tags and attributes",
+]
+
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""

@@ -5325,12 +5325,12 @@ gem "puma"
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
-    def test_embedding_mode_deprioritizes_license_file(self, tmp_path: Path) -> None:
-        """Embedding mode deprioritizes LICENSE files to favor informative content.
+    def test_embedding_mode_excludes_license_file(self, tmp_path: Path) -> None:
+        """Embedding mode excludes LICENSE files entirely.
 
-        LICENSE files have verbose legal boilerplate that matches many probes
-        but has low information density. A 50% penalty is applied to LICENSE/COPYING
-        files to prioritize more useful config content.
+        LICENSE files contain verbose legal boilerplate. The heuristic path
+        already emits a compact one-liner like "LICENSE: MIT", so LICENSE
+        content should not be included in the embedding candidate pool.
         """
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
@@ -5348,7 +5348,9 @@ gem "puma"
 
         result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
 
-        # Should prioritize package.json content over LICENSE boilerplate
+        # LICENSE content should be absent from embedding output
+        assert "Permission is hereby granted" not in result
+        # package.json content should be present
         assert "package.json" in result or "test-project" in result or "express" in result
 
     @pytest.mark.skipif(
@@ -5463,6 +5465,39 @@ services:
         not _has_sentence_transformers(),
         reason="sentence-transformers not installed (1GB+ torch dependency)"
     )
+    def test_embedding_mode_no_overlapping_chunks(self, tmp_path: Path) -> None:
+        """Adjacent high-scoring lines should not produce duplicate text."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create config with adjacent lines that would all score high
+        (tmp_path / "package.json").write_text("""{
+  "name": "overlap-test",
+  "version": "1.0.0",
+  "description": "Testing overlap dedup",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.0.0",
+    "pg": "^8.0.0",
+    "redis": "^4.0.0"
+  }
+}""")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        lines = result.split("\n")
+        # Extract actual content lines (strip markers and whitespace)
+        content_lines = [
+            ln.lstrip(" >~").strip() for ln in lines
+            if ln.strip() and not ln.startswith("[")
+        ]
+        # No exact duplicate content lines
+        assert len(content_lines) == len(set(content_lines)), (
+            f"Found duplicate lines: {content_lines}"
+        )
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
     def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
         """Hybrid mode uses heuristics first, then embeddings for remaining."""
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
@@ -5564,6 +5599,180 @@ services:
         assert "groupId: com.example" in result
         assert "artifactId: my-app" in result
         assert "version: 1.0-SNAPSHOT" in result
+
+    def test_collect_config_content_excludes_license(self, tmp_path: Path) -> None:
+        """_collect_config_content does not include LICENSE file content."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "LICENSE").write_text("MIT License\nCopyright (c) 2024")
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert "LICENSE" not in sources
+        assert any("package.json" in s for s in sources)
+
+    def test_monorepo_nested_config_discovery(self, tmp_path: Path) -> None:
+        """Monorepo manifests at depth 1-2 are discovered."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        # Create monorepo structure
+        (tmp_path / "packages" / "core").mkdir(parents=True)
+        (tmp_path / "packages" / "core" / "pyproject.toml").write_text(
+            '[project]\nname = "core"'
+        )
+        (tmp_path / "services" / "api").mkdir(parents=True)
+        (tmp_path / "services" / "api" / "package.json").write_text(
+            '{"name": "api"}'
+        )
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert "packages/core/pyproject.toml" in sources
+        assert "services/api/package.json" in sources
+
+    def test_monorepo_deduplicates_config_subdirs(self, tmp_path: Path) -> None:
+        """Monorepo discovery does not duplicate files already found via CONFIG_SUBDIRS."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        # 'server' is in CONFIG_SUBDIRS, so server/package.json is found by both
+        # the CONFIG_SUBDIRS loop AND the monorepo glob (*/package.json)
+        (tmp_path / "server").mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        # Should appear exactly once, not duplicated
+        server_entries = [s for s in sources if "server" in s and "package.json" in s]
+        assert len(server_entries) == 1
+
+    def test_monorepo_excludes_node_modules(self, tmp_path: Path) -> None:
+        """node_modules package.json files are not discovered."""
+        from hypergumbo_core.sketch import _collect_config_content
+
+        (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+        (tmp_path / "node_modules" / "pkg" / "package.json").write_text(
+            '{"name": "pkg"}'
+        )
+        # A real package should be found
+        (tmp_path / "packages" / "ui").mkdir(parents=True)
+        (tmp_path / "packages" / "ui" / "package.json").write_text(
+            '{"name": "ui"}'
+        )
+
+        result, _seen = _collect_config_content(tmp_path)
+        sources = [name for name, _content in result]
+        assert not any("node_modules" in s for s in sources)
+        assert "packages/ui/package.json" in sources
+
+    def test_config_excludes_docs_directory(self, tmp_path: Path) -> None:
+        """Files under docs/ are excluded from config candidates."""
+        from hypergumbo_core.sketch import _is_config_excluded_path
+
+        assert _is_config_excluded_path("docs/schema.json") is True
+        assert _is_config_excluded_path("doc/config.yml") is True
+        assert _is_config_excluded_path("tests/fixtures/config.json") is True
+        # Root-level config files should not be excluded
+        assert _is_config_excluded_path("config.json") is False
+        assert _is_config_excluded_path("pyproject.toml") is False
+
+    def test_config_excludes_schema_json(self, tmp_path: Path) -> None:
+        """schema.json is excluded regardless of directory."""
+        from hypergumbo_core.sketch import _is_config_excluded_path
+
+        assert _is_config_excluded_path("schema.json") is True
+        assert _is_config_excluded_path("api/schema.json") is True
+        # Other JSON files are not excluded by name
+        assert _is_config_excluded_path("config.json") is False
+
+
+class TestNegativePatterns:
+    """Tests for negative probe patterns that reduce false positives."""
+
+    def test_negative_patterns_exist(self) -> None:
+        """NEGATIVE_PATTERNS is a non-empty list of valid strings."""
+        from hypergumbo_core.sketch_embeddings import NEGATIVE_PATTERNS
+
+        assert len(NEGATIVE_PATTERNS) > 0
+        assert all(isinstance(p, str) and len(p) > 10 for p in NEGATIVE_PATTERNS)
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_negative_probes_reduce_schema_score(self, tmp_path: Path) -> None:
+        """Schema definitions should score lower than real config content."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Create a real config and a schema definition file
+        (tmp_path / "package.json").write_text("""{
+  "name": "negative-probe-test",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.0.0",
+    "pg": "^8.0.0"
+  }
+}""")
+        (tmp_path / "schema.json").write_text("""{
+  "type": "object",
+  "required": ["name", "version"],
+  "properties": {
+    "name": {"type": "string", "description": "Package name"},
+    "version": {"type": "string", "description": "Version number"},
+    "license": {"type": "string", "description": "License identifier"}
+  }
+}""")
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Real config should be present
+        assert "package.json" in result or "express" in result
+        # Schema definitions should not dominate (schema.json excluded by name)
+        assert "schema.json" not in result
+
+
+class TestLowQualityChunk:
+    """Tests for the _is_low_quality_chunk content quality filter."""
+
+    def test_high_punctuation_rejected(self) -> None:
+        """Chunks with mostly punctuation are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        # Short but all punctuation — caught by alnum < 20
+        assert _is_low_quality_chunk("==============================") is True
+        assert _is_low_quality_chunk("}, }, }, }, }, }") is True
+        # 20 alnum chars in 55 total → ratio 0.36 < 0.4 → rejected by punctuation check
+        punct_heavy = "abcdefghijklmnopqrst" + "!@#$%^&*(){}[]<>:;,./?-=_+~`" + "|\\'"
+        assert _is_low_quality_chunk(punct_heavy) is True
+
+    def test_short_meaningful_rejected(self) -> None:
+        """Chunks with very little meaningful text are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        assert _is_low_quality_chunk("---") is True
+        assert _is_low_quality_chunk("[") is True
+        assert _is_low_quality_chunk("  ") is True
+        assert _is_low_quality_chunk("") is True
+        # Whitespace-only after stripping
+        assert _is_low_quality_chunk("\t\t\t") is True
+
+    def test_normal_content_accepted(self) -> None:
+        """Normal config content passes the quality filter."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        assert _is_low_quality_chunk('"name": "my-awesome-project-name"') is False
+        assert _is_low_quality_chunk("dependencies = [flask, sqlalchemy, redis]") is False
+        assert _is_low_quality_chunk('version = "2.0.0" description = "A test project"') is False
+
+    def test_separator_lines_rejected(self) -> None:
+        """Chunks that are mostly separator lines are rejected."""
+        from hypergumbo_core.sketch import _is_low_quality_chunk
+
+        # Enough alnum chars to pass < 20, but separator lines dominate
+        assert _is_low_quality_chunk(
+            "abcdefghij1234567890\n===\n==="
+        ) is True
+        assert _is_low_quality_chunk("***\n***\n***") is True
 
 
 class TestLogScaledSampling:

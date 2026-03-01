@@ -764,6 +764,12 @@ CONFIG_FILES = list({
 # Subdirectories to check for config files (monorepo support)
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
 
+# Exact-name manifest files for monorepo discovery (depth 1-2 glob).
+# Derived from CONFIG_FILES_BY_LANG, excluding glob patterns like *.csproj.
+_MONOREPO_MANIFEST_NAMES: frozenset[str] = frozenset(
+    f for files in CONFIG_FILES_BY_LANG.values() for f in files if "*" not in f
+)
+
 # Key dependencies to highlight (db drivers, frameworks, etc.)
 INTERESTING_DEPS = frozenset({
     # Databases
@@ -781,6 +787,46 @@ INTERESTING_DEPS = frozenset({
 
 # License file names to check
 LICENSE_FILES = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"]
+
+# Directories excluded from embedding-based config candidate discovery.
+# These contain documentation, tests, examples, etc. — not project config.
+_CONFIG_EXCLUDE_DIRS: frozenset[str] = frozenset({
+    "docs", "doc", "documentation",
+    "test", "tests", "testing",
+    "examples", "example",
+    "samples", "sample",
+    "fixtures", "testdata", "test_data",
+    "spec", "specs",
+})
+
+# Filenames excluded from config candidates regardless of directory.
+# JSON Schema definitions match config probes but aren't project config.
+_CONFIG_EXCLUDE_NAMES: frozenset[str] = frozenset({
+    "schema.json",
+})
+
+
+def _is_config_excluded_path(rel_path: str) -> bool:
+    """Check if a relative path should be excluded from config candidates.
+
+    Excludes paths whose directory components overlap with _CONFIG_EXCLUDE_DIRS
+    or whose filename is in _CONFIG_EXCLUDE_NAMES.
+
+    Args:
+        rel_path: Relative path string (e.g., "docs/schema.json").
+
+    Returns:
+        True if the path should be excluded.
+    """
+    from pathlib import PurePosixPath
+    parts = PurePosixPath(rel_path).parts
+    # Check directory components (all but the last part, which is the filename)
+    if any(part in _CONFIG_EXCLUDE_DIRS for part in parts[:-1]):
+        return True
+    # Check filename
+    if parts and parts[-1] in _CONFIG_EXCLUDE_NAMES:
+        return True
+    return False
 
 
 def _section_header(title: str, exclude_tests: bool = False) -> str:
@@ -1079,18 +1125,24 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     return lines
 
 
-def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
+def _collect_config_content(
+    repo_root: Path,
+) -> tuple[list[tuple[str, str]], set[Path]]:
     """Collect all config file content as (filename, content) pairs.
 
     Used by embedding mode to have raw content for semantic selection.
+    Also scans depth 1-2 for monorepo manifests (e.g., packages/core/pyproject.toml).
 
     Args:
         repo_root: Path to repository root.
 
     Returns:
-        List of (prefixed_filename, content) tuples.
+        Tuple of (config_content, seen_paths) where config_content is a list
+        of (prefixed_filename, content) tuples and seen_paths tracks absolute
+        paths already collected.
     """
     config_content: list[tuple[str, str]] = []
+    seen_paths: set[Path] = set()
 
     for config_name in CONFIG_FILES:
         for subdir in CONFIG_SUBDIRS:
@@ -1102,21 +1154,34 @@ def _collect_config_content(repo_root: Path) -> list[tuple[str, str]]:
                 content = config_path.read_text(encoding="utf-8", errors="replace")
                 prefix = f"{subdir}/" if subdir else ""
                 config_content.append((f"{prefix}{config_name}", content))
+                seen_paths.add(config_path.resolve())
             except OSError:  # pragma: no cover
                 pass  # pragma: no cover
 
-    # Also include LICENSE file content
-    for license_name in LICENSE_FILES:
-        license_path = repo_root / license_name
-        if license_path.exists():
-            try:
-                content = license_path.read_text(encoding="utf-8", errors="replace")[:2000]
-                config_content.append((license_name, content))
-                break  # Only first license file
-            except OSError:  # pragma: no cover
-                pass  # pragma: no cover
+    # Monorepo discovery: scan depth 1-2 for manifest files.
+    # Catches packages/core/pyproject.toml, services/api/package.json, etc.
+    _exclude_dirs = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    for manifest_name in _MONOREPO_MANIFEST_NAMES:
+        for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
+            for match in repo_root.glob(pattern):
+                if not match.is_file():
+                    continue  # pragma: no cover
+                resolved = match.resolve()
+                if resolved in seen_paths:
+                    continue
+                # Skip hidden dirs and excluded dirs
+                rel = match.relative_to(repo_root)
+                parts = rel.parts[:-1]  # directory components only
+                if any(p.startswith(".") or p in _exclude_dirs for p in parts):
+                    continue
+                try:
+                    content = match.read_text(encoding="utf-8", errors="replace")
+                    config_content.append((str(rel), content))
+                    seen_paths.add(resolved)
+                except OSError:  # pragma: no cover
+                    pass  # pragma: no cover
 
-    return config_content
+    return config_content, seen_paths
 
 
 def _get_repo_languages(repo_root: Path) -> set[str]:
@@ -1334,25 +1399,8 @@ def _collect_config_content_with_discovery(
     Returns:
         List of (prefixed_filename, content) tuples.
     """
-    # Start with standard config collection
-    config_content = _collect_config_content(repo_root)
-    seen_paths: set[Path] = set()
-
-    # Track which files we already have
-    for config_name in CONFIG_FILES:
-        for subdir in CONFIG_SUBDIRS:
-            if "*" in config_name:  # pragma: no cover - glob patterns rare in tests
-                # Handle glob patterns
-                pattern = config_name
-                search_dir = repo_root / subdir if subdir else repo_root
-                if search_dir.exists():
-                    for match in search_dir.glob(pattern):
-                        if match.is_file():
-                            seen_paths.add(match)
-            else:
-                config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
-                if config_path.exists():
-                    seen_paths.add(config_path)
+    # Start with standard config collection (includes monorepo discovery)
+    config_content, seen_paths = _collect_config_content(repo_root)
 
     # Also handle glob patterns from CONFIG_FILES
     for config_name in CONFIG_FILES:
@@ -1361,12 +1409,13 @@ def _collect_config_content_with_discovery(
                 search_dir = repo_root / subdir if subdir else repo_root
                 if search_dir.exists():
                     for match in search_dir.glob(config_name):
-                        if match.is_file() and match not in seen_paths:
+                        resolved = match.resolve()
+                        if match.is_file() and resolved not in seen_paths:
                             try:
                                 content = match.read_text(encoding="utf-8", errors="replace")
                                 rel_path = match.relative_to(repo_root)
                                 config_content.append((str(rel_path), content))
-                                seen_paths.add(match)
+                                seen_paths.add(resolved)
                             except OSError:
                                 pass
 
@@ -1380,8 +1429,10 @@ def _collect_config_content_with_discovery(
         if path in seen_paths:
             continue
         try:
-            content = path.read_text(encoding="utf-8", errors="replace")
             rel_path = path.relative_to(repo_root)
+            if _is_config_excluded_path(str(rel_path)):
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
             config_content.append((str(rel_path), content))
             seen_paths.add(path)
         except OSError:
@@ -1509,6 +1560,48 @@ def _build_context_chunk(
     return result
 
 
+def _is_low_quality_chunk(chunk_text: str) -> bool:
+    """Check if a chunk is low-quality noise that should be filtered out.
+
+    Detects horizontal rules, raw JSON structural fragments, and chunks
+    that are mostly punctuation with little meaningful content.
+
+    Args:
+        chunk_text: The text of a candidate chunk.
+
+    Returns:
+        True if the chunk should be rejected as noise.
+    """
+    stripped = chunk_text.strip()
+    if not stripped:
+        return True
+
+    # Count alphanumeric vs total characters (ignoring whitespace)
+    no_ws = stripped.replace(" ", "").replace("\t", "").replace("\n", "")
+    if not no_ws:  # pragma: no cover - unreachable after strip()
+        return True  # pragma: no cover
+    alnum_count = sum(1 for c in no_ws if c.isalnum())
+
+    # Very short meaningful content (<20 alphanumeric chars)
+    if alnum_count < 20:
+        return True
+
+    # High punctuation ratio: >60% non-alphanumeric
+    if alnum_count / len(no_ws) < 0.4:
+        return True
+
+    # Separator lines: mostly repeated single characters (===, ---, ***)
+    lines = [ln.strip() for ln in stripped.split("\n") if ln.strip()]
+    separator_lines = sum(
+        1 for ln in lines
+        if len(ln) >= 3 and len(set(ln)) <= 2
+    )
+    if lines and separator_lines / len(lines) > 0.5:
+        return True
+
+    return False
+
+
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
@@ -1596,6 +1689,10 @@ def _extract_config_embedding(
         if processed_files >= max_config_files:  # pragma: no cover
             break
 
+        # Skip files in excluded directories or with excluded filenames
+        if _is_config_excluded_path(source):  # pragma: no cover - defensive, tested via unit test
+            continue  # pragma: no cover
+
         file_lines = [ln.strip() for ln in content.split("\n")]
         _vlog(f"Collecting chunks from {source} ({len(file_lines)} lines)...")
 
@@ -1618,19 +1715,10 @@ def _extract_config_embedding(
         for i in range(0, num_lines, stride):
             sampled_indices.append(non_empty[i][0])  # Get original line index
 
-        # Build context chunks for each sampled line
-        # For license/copying files, enforce minimum chunk size to avoid
-        # undersized chunks (e.g., heading-only fragments like "Preamble")
-        source_lower = source.lower()
-        is_license_file = any(
-            lic.lower() in source_lower for lic in LICENSE_FILES
-        )
-        min_chars = 80 if is_license_file else 0
-
         start_idx = len(all_chunks)
         for center_idx in sampled_indices:
             chunk = _build_context_chunk(
-                file_lines, center_idx, max_chunk_chars, min_chunk_chars=min_chars
+                file_lines, center_idx, max_chunk_chars
             )
             if chunk:  # Skip empty chunks
                 all_chunks.append((source, center_idx, chunk, file_lines))
@@ -1675,7 +1763,16 @@ def _extract_config_embedding(
         all_similarities = np.mean(top_k_values, axis=1)
     else:
         all_similarities = np.mean(combined_sim_matrix, axis=1)  # pragma: no cover
-    _vlog(f"Similarity computation in {(_time.time() - _t1)*1000:.1f}ms")
+    # Negative probe scoring: penalize chunks matching non-config content
+    from .sketch_embeddings import NEGATIVE_PATTERNS
+    negative_embeddings = model.encode(NEGATIVE_PATTERNS, convert_to_numpy=True)
+    neg_norms = np.linalg.norm(negative_embeddings, axis=1, keepdims=True)
+    neg_normalized = negative_embeddings / (neg_norms + 1e-8)
+    neg_sim_matrix = np.dot(all_normalized, neg_normalized.T)
+    max_neg_sim = np.max(neg_sim_matrix, axis=1)
+    negative_weight = 0.3
+    all_similarities = np.maximum(all_similarities - negative_weight * max_neg_sim, 0.0)
+    _vlog(f"Similarity computation (with negative probes) in {(_time.time() - _t1)*1000:.1f}ms")
 
     if progress_callback:  # pragma: no cover - progress callback optional
         progress_callback(total_files, total_files)  # Signal embedding complete
@@ -1687,19 +1784,14 @@ def _extract_config_embedding(
         # Get this file's similarities
         file_similarities = all_similarities[start_idx:end_idx].copy()
 
-        # Apply penalty for LICENSE/COPYING files
-        source_lower = source.lower()
-        if "license" in source_lower or "copying" in source_lower:
-            license_penalty = 0.5
-            file_similarities = file_similarities * license_penalty
-            _vlog(f"  Applied LICENSE penalty ({license_penalty}x) to {source}")
-
         # Collect chunks above threshold
         above_threshold = []
         for i, global_idx in enumerate(range(start_idx, end_idx)):
             sim = float(file_similarities[i])
             if sim >= similarity_threshold:
                 _, center_idx, chunk_text, file_lines = all_chunks[global_idx]
+                if _is_low_quality_chunk(chunk_text):
+                    continue
                 above_threshold.append(
                     (sim, center_idx, chunk_text, file_lines, all_normalized[global_idx])
                 )
@@ -1831,12 +1923,13 @@ def _extract_config_embedding(
         result_lines.append(f"[{source}]")
 
         # Output chunks (context already included, may have ellipsis for subsampled)
-        seen_chunks: set[int] = set()
+        covered_lines: set[int] = set()
         for _sim, center_idx, chunk_text in file_selected:
-            # Deduplicate overlapping chunks by center index
-            if center_idx in seen_chunks:  # pragma: no cover
+            # Deduplicate overlapping 3-line context windows
+            chunk_range = set(range(max(0, center_idx - 1), center_idx + 2))
+            if chunk_range & covered_lines:
                 continue
-            seen_chunks.add(center_idx)
+            covered_lines.update(chunk_range)
 
             # Format chunk - indent and mark with ~ if it contains ellipsis (was subsampled)
             if " ... " in chunk_text:  # pragma: no cover - tested in unit test
@@ -1985,7 +2078,7 @@ def _extract_config_info(
     # Check if output uses [filename] headers (embedding/hybrid modes)
     # If not, just join and truncate (heuristic mode)
     has_file_headers = any(
-        line.startswith("[") and line.endswith("]") and "/" not in line
+        line.startswith("[") and line.endswith("]") and "." in line[1:-1]
         for line in lines
     )
 
@@ -2009,7 +2102,7 @@ def _extract_config_info(
     current_lines: list[str] = []  # pragma: no cover - embedding output only
 
     for line in lines:  # pragma: no cover - embedding output only
-        if line.startswith("[") and line.endswith("]") and "/" not in line:
+        if line.startswith("[") and line.endswith("]") and "." in line[1:-1]:
             if current_file and current_lines:
                 file_sections.append((current_file, current_lines))
             elif current_lines:
