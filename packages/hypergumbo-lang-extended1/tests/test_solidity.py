@@ -811,6 +811,87 @@ contract MyToken {}
         assert len(import_edges) >= 1
 
 
+class TestSoliditySuperCalls:
+    """Tests for Solidity super.method() and this.method() call resolution."""
+
+    def test_super_call_creates_edge(self, temp_repo: Path) -> None:
+        """super.transfer() should create a calls edge to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+
+    function safeTransfer(address to, uint256 amount) public returns (bool) {
+        super.transfer(to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        # Find the edge from safeTransfer → transfer
+        safe_transfer = next(
+            (s for s in result.symbols if "safeTransfer" in s.name and s.kind == "function"),
+            None,
+        )
+        transfer = next(
+            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind == "function"),
+            None,
+        )
+        assert safe_transfer is not None
+        assert transfer is not None
+
+        call_edges = [
+            e for e in edges
+            if e.src == safe_transfer.id and e.dst == transfer.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, f"Expected 1 edge from safeTransfer→transfer, found {len(call_edges)}"
+
+    def test_this_call_creates_edge(self, temp_repo: Path) -> None:
+        """this.transfer() should create a calls edge to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+
+    function delegateTransfer(address to, uint256 amount) public returns (bool) {
+        this.transfer(to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        delegate = next(
+            (s for s in result.symbols if "delegateTransfer" in s.name and s.kind == "function"),
+            None,
+        )
+        transfer = next(
+            (s for s in result.symbols if s.name.endswith("transfer") and "delegate" not in s.name.lower() and s.kind == "function"),
+            None,
+        )
+        assert delegate is not None
+        assert transfer is not None
+
+        call_edges = [
+            e for e in edges
+            if e.src == delegate.id and e.dst == transfer.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, f"Expected 1 edge from delegateTransfer→transfer, found {len(call_edges)}"
+
+
 class TestSoliditySignatureExtraction:
     """Tests for Solidity function signature extraction."""
 

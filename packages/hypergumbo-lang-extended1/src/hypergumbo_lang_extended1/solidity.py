@@ -388,6 +388,11 @@ def _extract_edges_from_tree(
             )
             if func_node and current_function:
                 call_name = node_text(func_node, source)
+                # Strip super./this. prefix — these resolve to the same
+                # contract's methods (super dispatches to parent, this
+                # dispatches to the current contract via external call).
+                if call_name.startswith(("super.", "this.")):
+                    call_name = call_name.split(".", 1)[1]
                 # Try to resolve the called function - local first
                 target = local_symbols.get(call_name)
                 if target:
