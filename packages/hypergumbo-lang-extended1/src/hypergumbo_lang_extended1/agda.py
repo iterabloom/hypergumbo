@@ -350,6 +350,62 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
+    # Reference edges: scan pattern clauses (function with RHS starting with =)
+    # for qid references to defined symbols.
+    seen_ref_pairs: set[tuple[str, str]] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type != "function":
+            continue
+        rhs = find_child_by_type(node, "rhs")
+        if not rhs:
+            continue  # pragma: no cover
+        rhs_text = node_text(rhs, source).strip()
+        if not rhs_text.startswith("="):
+            continue  # Type signature, not pattern clause
+
+        # Determine the enclosing function name (first atom/qid in LHS)
+        lhs = find_child_by_type(node, "lhs")
+        if not lhs:
+            continue  # pragma: no cover
+        enclosing_name = ""
+        for child in lhs.children:
+            if child.type == "atom":
+                qid_node = find_child_by_type(child, "qid")
+                if qid_node:
+                    enclosing_name = node_text(qid_node, source).strip()
+                    break
+        if not enclosing_name:
+            continue  # pragma: no cover
+
+        # Resolve enclosing function to get its ID
+        enclosing_result = resolver.lookup(enclosing_name)
+        if not enclosing_result.symbol:
+            continue
+
+        # Scan all qid nodes in the RHS for references
+        for rhs_child in iter_tree(rhs):
+            if rhs_child.type != "qid":
+                continue
+            ref_name = node_text(rhs_child, source).strip()
+            if not ref_name or ref_name == enclosing_name:
+                continue  # Skip self-references and empty names
+
+            ref_result = resolver.lookup(ref_name)
+            if ref_result.symbol:
+                pair = (enclosing_result.symbol.id, ref_result.symbol.id)
+                if pair not in seen_ref_pairs:
+                    seen_ref_pairs.add(pair)
+                    edge = Edge.create(
+                        src=enclosing_result.symbol.id,
+                        dst=ref_result.symbol.id,
+                        edge_type="references",
+                        line=rhs_child.start_point[0] + 1,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        confidence=0.80,
+                    )
+                    edges.append(edge)
+
     return edges, import_aliases
 
 

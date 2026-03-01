@@ -437,3 +437,58 @@ data Bool : Set where
         ctors = [s for s in result.symbols if s.kind == "function" and s.name == "true"]
         assert len(ctors) == 1
         assert ctors[0].signature == ": Bool"
+
+
+class TestAgdaReferenceEdges:
+    """Tests for reference edge extraction in Agda."""
+
+    def test_function_references_in_rhs(self, tmp_path: Path) -> None:
+        """Function pattern clauses create references edges to used symbols."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+
+double : Nat -> Nat
+double zero = zero
+double (suc n) = suc (suc (double n))
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # double references suc and itself (recursion)
+        double_sym = next(s for s in result.symbols if s.name == "double")
+        suc_sym = next(s for s in result.symbols if s.name == "suc")
+        # double → suc reference
+        assert any(
+            e.src == double_sym.id and e.dst == suc_sym.id
+            for e in ref_edges
+        ), f"Expected double→suc reference edge, got: {[(e.src, e.dst) for e in ref_edges]}"
+
+    def test_cross_file_reference(self, tmp_path: Path) -> None:
+        """References across files are resolved."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Nat.agda", """\
+module Nat where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+""")
+        make_agda_file(tmp_path, "Main.agda", """\
+module Main where
+
+open import Nat
+
+double : Nat -> Nat
+double zero = zero
+double (suc n) = suc (suc (double n))
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # Should have at least one reference edge
+        assert len(ref_edges) >= 1
