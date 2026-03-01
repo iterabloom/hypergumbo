@@ -15921,6 +15921,161 @@ class TestRustLibraryExportPatterns:
         assert len(lib_exports) == 1
 
 
+class TestSolidityLibraryExportPatterns:
+    """Tests for Solidity library export YAML patterns.
+
+    Solidity smart contracts expose their ABI through public and external
+    functions. These are the callable surface from external accounts and
+    other contracts. The Solidity analyzer extracts visibility modifiers:
+    public, external, internal, private.
+    """
+
+    def test_public_function_matches_library_export(self) -> None:
+        """Solidity public function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:5-10:Token.transfer:function",
+            name="Token.transfer",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(5, 10, 0, 80),
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_external_function_matches_library_export(self) -> None:
+        """Solidity external function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:12-18:Token.approve:function",
+            name="Token.approve",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(12, 18, 0, 80),
+            modifiers=["external"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_internal_function_no_match(self) -> None:
+        """Solidity internal functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:20-25:Token._mint:function",
+            name="Token._mint",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(20, 25, 0, 80),
+            modifiers=["internal"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_private_function_no_match(self) -> None:
+        """Solidity private functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:30-35:Token._secret:function",
+            name="Token._secret",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(30, 35, 0, 80),
+            modifiers=["private"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_contract_matches_library_export(self) -> None:
+        """Solidity contracts match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:1-100:Token:contract",
+            name="Token",
+            kind="contract",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(1, 100, 0, 1),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_interface_matches_library_export(self) -> None:
+        """Solidity interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:IERC20.sol:1-20:IERC20:interface",
+            name="IERC20",
+            kind="interface",
+            language="solidity",
+            path="contracts/IERC20.sol",
+            span=Span(1, 20, 0, 1),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_solidity_enrichment_without_framework(self) -> None:
+        """Solidity library exports are enriched even without framework detection."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="solidity:Token.sol:5-10:Token.transfer:function",
+            name="Token.transfer",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(5, 10, 0, 80),
+            modifiers=["public"],
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
 class TestOpenRestyPhaseHandlerPatterns:
     """Tests for OpenResty/nginx phase handler definition-based patterns.
 

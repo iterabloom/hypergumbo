@@ -390,6 +390,145 @@ contract Token {
         assert len(call_edges) == 0
 
 
+class TestSolidityVisibilityModifiers:
+    """Tests for Solidity visibility modifier extraction."""
+
+    def test_public_function_has_modifier(self, temp_repo: Path) -> None:
+        """Public functions have 'public' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "transfer" in s.name]
+        assert len(funcs) == 1
+        assert "public" in funcs[0].modifiers
+
+    def test_external_function_has_modifier(self, temp_repo: Path) -> None:
+        """External functions have 'external' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function externalFn() external pure returns (uint256) {
+        return 42;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "externalFn" in s.name]
+        assert len(funcs) == 1
+        assert "external" in funcs[0].modifiers
+
+    def test_internal_function_has_modifier(self, temp_repo: Path) -> None:
+        """Internal functions have 'internal' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function _internal() internal pure returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "_internal" in s.name]
+        assert len(funcs) == 1
+        assert "internal" in funcs[0].modifiers
+
+    def test_private_function_has_modifier(self, temp_repo: Path) -> None:
+        """Private functions have 'private' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function _secret() private pure returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "_secret" in s.name]
+        assert len(funcs) == 1
+        assert "private" in funcs[0].modifiers
+
+    def test_view_and_pure_captured(self, temp_repo: Path) -> None:
+        """State mutability modifiers (view, pure) are captured."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function getValue() public view returns (uint256) {
+        return 0;
+    }
+    function compute() public pure returns (uint256) {
+        return 42;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        view_fn = next(s for s in result.symbols if s.kind == "function" and "getValue" in s.name)
+        pure_fn = next(s for s in result.symbols if s.kind == "function" and "compute" in s.name)
+
+        assert "view" in view_fn.modifiers
+        assert "public" in view_fn.modifiers
+        assert "pure" in pure_fn.modifiers
+        assert "public" in pure_fn.modifiers
+
+    def test_no_visibility_means_empty_modifiers(self, temp_repo: Path) -> None:
+        """Functions without explicit visibility have empty modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function noVisibility() returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "noVisibility" in s.name]
+        assert len(funcs) == 1
+        # No visibility keyword → empty modifiers
+        assert funcs[0].modifiers == []
+
+    def test_multiple_modifiers_captured(self, temp_repo: Path) -> None:
+        """Functions with multiple modifiers capture all of them."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function externalView() external view returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "externalView" in s.name]
+        assert len(funcs) == 1
+        assert "external" in funcs[0].modifiers
+        assert "view" in funcs[0].modifiers
+
+
 class TestSolidityImportAliases:
     """Tests for Solidity import alias tracking (ADR-0007)."""
 

@@ -179,6 +179,25 @@ def _extract_import_aliases(
     return import_path, aliases
 
 
+def _extract_visibility_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract visibility and state mutability modifiers from a Solidity function.
+
+    Solidity functions can have:
+    - Visibility: public, external, internal, private
+    - State mutability: view, pure, payable
+
+    These are direct children of function_definition nodes with types
+    'visibility' and 'state_mutability' in the tree-sitter-solidity grammar.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "visibility":
+            modifiers.append(node_text(child, source))
+        elif child.type == "state_mutability":
+            modifiers.append(node_text(child, source))
+    return modifiers
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     run_id: str, analysis: FileAnalysis,
@@ -190,6 +209,7 @@ def _extract_symbols_from_tree(
         node: "tree_sitter.Node",
         prefix: str = "",
         signature: Optional[str] = None,
+        modifiers: Optional[list[str]] = None,
     ) -> Symbol:
         """Helper to create and register a symbol."""
         start_line = node.start_point[0] + 1
@@ -211,6 +231,7 @@ def _extract_symbols_from_tree(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            modifiers=modifiers or [],
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
@@ -246,7 +267,8 @@ def _extract_symbols_from_tree(
                 func_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
-                add_symbol(func_name, "function", node, current_contract, signature=signature)
+                modifiers = _extract_visibility_modifiers(node, source)
+                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers)
 
         # Constructor definition
         elif node.type == "constructor_definition":

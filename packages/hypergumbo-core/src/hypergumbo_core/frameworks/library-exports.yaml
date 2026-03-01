@@ -207,4 +207,32 @@ patterns:
     language: "^rust$"
     modifiers: "^pub$"
 
+  # === Solidity: Definition-based (public/external contract functions) ===
+  # Solidity smart contracts expose their ABI through public and external functions.
+  # These are the callable surface from external accounts and other contracts.
+  # Internal and private functions are excluded via explicit modifiers match.
+  # The Solidity analyzer extracts visibility modifiers: public, external, internal, private.
+
+  # Public functions (callable externally and internally)
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^solidity$"
+    modifiers: "^public$"
+
+  # External functions (callable only externally — primary ABI surface)
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^solidity$"
+    modifiers: "^external$"
+
+  # Public contracts (the contract itself is a deployable unit)
+  - concept: library_export
+    symbol_kind: "^contract$"
+    language: "^solidity$"
+
+  # Public interfaces (define the callable surface)
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^solidity$"
+
 linkers: []
