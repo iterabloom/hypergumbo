@@ -419,6 +419,8 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                     r"members\s*=\s*\[(.*?)\]", content, re.DOTALL
                 ):
                     for member in re.findall(r'"([^"]+)"', match.group(1)):
+                        if not member or member == ".":
+                            continue
                         for path in repo_root.glob(member):
                             if path.is_dir():
                                 roots.add(path)

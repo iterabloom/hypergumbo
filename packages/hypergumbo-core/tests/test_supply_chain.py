@@ -253,6 +253,28 @@ class TestInternalDepDetection:
         assert pkg_dir in roots
         assert tmp_path not in roots  # "." pattern should be skipped
 
+    def test_cargo_workspaces_dot_member(self, tmp_path):
+        """Skip '.' Cargo workspace member (would cause glob error).
+
+        This mirrors test_npm_workspaces_dot_pattern. The bellman repo uses
+        members = ["."] to indicate the root package is a workspace member.
+        Without the guard, pathlib.glob(".") raises or returns unexpected results.
+        """
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text('''
+[workspace]
+members = [".", "crates/*"]
+''')
+
+        # Create a crates subdirectory
+        crate_dir = tmp_path / "crates" / "mylib"
+        crate_dir.mkdir(parents=True)
+
+        # Should not crash, should find crates/mylib, should NOT add repo root
+        roots = detect_package_roots(tmp_path)
+        assert crate_dir in roots
+        assert tmp_path not in roots  # "." member should be skipped
+
     def test_cargo_workspaces(self, tmp_path):
         """Detect internal crates from Cargo.toml workspace."""
         cargo_toml = tmp_path / "Cargo.toml"
