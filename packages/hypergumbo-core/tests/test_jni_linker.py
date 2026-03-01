@@ -774,3 +774,113 @@ class TestJniLinkerEdgeCases:
         assert result.edges[0].edge_type == "native_bridge"
         assert result.edges[0].src == java_symbols[0].id
         assert result.edges[0].dst == cpp_symbols[0].id
+
+    def test_rust_jni_symbols_linked(self) -> None:
+        """Rust JNI functions are linked to Java native methods.
+
+        Rust can implement JNI functions via #[no_mangle] extern "C" fn Java_*
+        (e.g., didkit repo uses Rust for JNI implementations).
+        """
+        from hypergumbo_core.linkers.jni import link_jni
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        java_symbols = [
+            Symbol(
+                id="java:DIDKit.java:1-10:DIDKit.verifyCredential:method",
+                name="DIDKit.verifyCredential",
+                kind="method",
+                language="java",
+                path="DIDKit.java",
+                span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+                origin="java-v1",
+                origin_run_id=run.execution_id,
+                modifiers=["native", "public", "static"],
+            ),
+        ]
+
+        # Rust symbol with JNI function name (via #[no_mangle] extern "C")
+        rust_symbols = [
+            Symbol(
+                id="rust:lib/src/jni.rs:1-10:Java_DIDKit_verifyCredential:function",
+                name="Java_DIDKit_verifyCredential",
+                kind="function",
+                language="rust",
+                path="lib/src/jni.rs",
+                span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+                origin="rust-v1",
+                origin_run_id=run.execution_id,
+            ),
+        ]
+
+        result = link_jni(java_symbols, rust_symbols)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].src == java_symbols[0].id
+        assert result.edges[0].dst == rust_symbols[0].id
+
+    def test_rust_jni_with_package(self) -> None:
+        """Rust JNI function with full package path links correctly."""
+        from hypergumbo_core.linkers.jni import link_jni
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        java_symbols = [
+            Symbol(
+                id="java:DIDKit.java:1-10:com.spruceid.DIDKit.verifyCredential:method",
+                name="com.spruceid.DIDKit.verifyCredential",
+                kind="method",
+                language="java",
+                path="com/spruceid/DIDKit.java",
+                span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+                origin="java-v1",
+                origin_run_id=run.execution_id,
+                modifiers=["native", "public", "static"],
+            ),
+        ]
+
+        rust_symbols = [
+            Symbol(
+                id="rust:lib/src/jni.rs:5-20:Java_com_spruceid_DIDKit_verifyCredential:function",
+                name="Java_com_spruceid_DIDKit_verifyCredential",
+                kind="function",
+                language="rust",
+                path="lib/src/jni.rs",
+                span=Span(start_line=5, end_line=20, start_col=0, end_col=0),
+                origin="rust-v1",
+                origin_run_id=run.execution_id,
+            ),
+        ]
+
+        result = link_jni(java_symbols, rust_symbols)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "native_bridge"
+
+    def test_rust_jni_requirement_count(self) -> None:
+        """Rust JNI functions are counted in the requirements check."""
+        from pathlib import Path
+        from hypergumbo_core.linkers.jni import _count_c_cpp_jni_functions
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        rust_sym = Symbol(
+            id="rust:jni.rs:1-10:Java_com_spruceid_DIDKit_verify:function",
+            name="Java_com_spruceid_DIDKit_verify",
+            kind="function",
+            language="rust",
+            path="lib/src/jni.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id=run.execution_id,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[rust_sym],
+        )
+
+        count = _count_c_cpp_jni_functions(ctx)
+        assert count == 1

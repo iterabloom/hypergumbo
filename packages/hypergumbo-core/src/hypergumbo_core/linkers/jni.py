@@ -1,18 +1,20 @@
-"""JNI linker for connecting Java native methods to C/C++ implementations.
+"""JNI linker for connecting Java native methods to C/C++/Rust implementations.
 
 This linker creates native_bridge edges between Java native method declarations
-and their corresponding C/C++ JNI function implementations.
+and their corresponding C/C++/Rust JNI function implementations.
 
 How It Works
 ------------
 1. Find all Java method symbols marked as native (via modifiers field)
-2. Find all C/C++ function symbols with JNI naming pattern (Java_Package_Class_Method)
+2. Find all C/C++/Rust function symbols with JNI naming pattern (Java_Package_Class_Method)
 3. Parse JNI function names to extract package, class, and method components
-4. Match Java native methods to C/C++ JNI functions by fully qualified name
+4. Match Java native methods to C/C++/Rust JNI functions by fully qualified name
 5. Create native_bridge edges for matched pairs
 
-JNI implementations can be written in either C (.c) or C++ (.cpp) files.
-Android NDK projects commonly use C++ for their JNI implementations.
+JNI implementations can be written in C (.c), C++ (.cpp), or Rust (.rs) files.
+Android NDK projects commonly use C++ for their JNI implementations. Rust
+projects use #[no_mangle] extern "C" fn Java_* to implement the JNI ABI
+(e.g., didkit exposes DIDKit functions to Java/Android via Rust JNI).
 
 JNI Naming Convention
 ---------------------
@@ -65,15 +67,18 @@ def _count_java_native_methods(ctx: LinkerContext) -> int:
     return count
 
 
-def _count_c_cpp_jni_functions(ctx: LinkerContext) -> int:
-    """Count C/C++ functions with JNI naming convention (Java_...).
+_JNI_IMPL_LANGUAGES = frozenset({"c", "cpp", "rust"})
 
-    JNI implementations can be written in either C or C++ files. In practice,
-    many Android NDK projects use .cpp files for their JNI implementations.
+
+def _count_c_cpp_jni_functions(ctx: LinkerContext) -> int:
+    """Count C/C++/Rust functions with JNI naming convention (Java_...).
+
+    JNI implementations can be written in C, C++, or Rust files. Android NDK
+    projects commonly use C++; Rust projects use #[no_mangle] extern "C".
     """
     count = 0
     for sym in ctx.symbols:
-        if sym.language in ("c", "cpp") and sym.kind == "function" and sym.name.startswith("Java_"):
+        if sym.language in _JNI_IMPL_LANGUAGES and sym.kind == "function" and sym.name.startswith("Java_"):
             count += 1
     return count
 
@@ -176,17 +181,17 @@ def parse_jni_function_name(name: str) -> Optional[dict[str, str]]:
 def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, Symbol]:
     """Build a lookup table from JNI-style names to C/C++ symbols.
 
-    Maps Java method names to their C/C++ implementations. Creates entries for both
-    fully qualified names (com.example.MyClass.method) and short names
+    Maps Java method names to their C/C++/Rust implementations. Creates entries
+    for both fully qualified names (com.example.MyClass.method) and short names
     (MyClass.method) to support matching regardless of whether the Java analyzer
     includes package information.
 
-    JNI implementations can be in .c or .cpp files - Android NDK commonly uses C++.
+    JNI implementations can be in .c, .cpp, or .rs files.
     """
     lookup: dict[str, Symbol] = {}
 
     for sym in native_symbols:
-        if sym.language not in ("c", "cpp") or sym.kind != "function":
+        if sym.language not in _JNI_IMPL_LANGUAGES or sym.kind != "function":
             continue
 
         parsed = parse_jni_function_name(sym.name)
@@ -206,11 +211,11 @@ def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, Symbol]:
 
 
 def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLinkResult:
-    """Link Java native methods to their C/C++ JNI implementations.
+    """Link Java native methods to their C/C++/Rust JNI implementations.
 
     Args:
         java_symbols: Symbols from Java analyzer
-        native_symbols: Symbols from C and C++ analyzers (JNI can use either)
+        native_symbols: Symbols from C, C++, and Rust analyzers
 
     Returns:
         JniLinkResult with native_bridge edges.
@@ -237,7 +242,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
         if not (is_native_via_modifiers or is_native_via_meta):
             continue
 
-        # Look up the corresponding C/C++ function
+        # Look up the corresponding C/C++/Rust function
         # sym.name is like "MyClass.processData" or "com.example.MyClass.processData"
         if sym.name in jni_lookup:
             native_sym = jni_lookup[sym.name]
@@ -262,19 +267,19 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
 @register_linker(
     "jni",
     priority=10,  # Early priority - JNI linking should happen before other linkers
-    description="Java/C/C++ JNI bridge - links native method declarations to C/C++ implementations",
+    description="Java/C/C++/Rust JNI bridge - links native method declarations to C/C++/Rust implementations",
     requirements=JNI_REQUIREMENTS,
-    activation=LinkerActivation(language_pairs=[("java", "c"), ("java", "cpp")]),
+    activation=LinkerActivation(language_pairs=[("java", "c"), ("java", "cpp"), ("java", "rust")]),
 )
 def jni_linker(ctx: LinkerContext) -> LinkerResult:
     """JNI linker for registry-based dispatch.
 
     This wraps link_jni() to use the LinkerContext/LinkerResult interface.
-    JNI implementations can be in either C (.c) or C++ (.cpp) files.
+    JNI implementations can be in C (.c), C++ (.cpp), or Rust (.rs) files.
     """
-    # Separate Java and C/C++ symbols
+    # Separate Java and C/C++/Rust symbols
     java_symbols = [s for s in ctx.symbols if s.language == "java"]
-    native_symbols = [s for s in ctx.symbols if s.language in ("c", "cpp")]
+    native_symbols = [s for s in ctx.symbols if s.language in _JNI_IMPL_LANGUAGES]
 
     result = link_jni(java_symbols, native_symbols)
 

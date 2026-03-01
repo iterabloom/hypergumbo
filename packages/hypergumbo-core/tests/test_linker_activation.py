@@ -116,15 +116,15 @@ class TestLinkerActivationRegistry:
         assert "grpc" in linker.activation.frameworks or linker.activation.always
 
     def test_jni_linker_language_pair_activation(self) -> None:
-        """JNI linker should only run when Java and C/C++ present."""
+        """JNI linker should only run when Java and C/C++/Rust present."""
         linker = _get_linker_by_name("jni")
         assert linker is not None
-        # Should have language_pairs for (java, c) or (java, cpp)
-        has_java_c = any(
-            ("java" in pair and ("c" in pair or "cpp" in pair))
+        # Should have language_pairs for (java, c), (java, cpp), or (java, rust)
+        has_java_native = any(
+            ("java" in pair and ("c" in pair or "cpp" in pair or "rust" in pair))
             for pair in linker.activation.language_pairs
         )
-        assert has_java_c or linker.activation.always
+        assert has_java_native or linker.activation.always
 
 
 class TestShouldRunLinker:
