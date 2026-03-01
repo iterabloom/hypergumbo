@@ -20,6 +20,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Solidity library export patterns**: Libraries with `public`/`external` functions are detected as entrypoints.
 - **Solidity `using Library for Type` call resolution**: Resolves implicit library calls like `x.add(y)` to `SafeMath.add(x, y)` by tracking `using` directive AST nodes per contract. Correctly disambiguates when multiple libraries define the same function name.
 - **Circom language support**: New analyzer for Circom (.circom) zero-knowledge circuit files. Extracts template definitions (as classes), function definitions, signal declarations (with input/output visibility), main component definitions. Creates call edges for template instantiation, function calls, and include directives. Built from source via `build-source-grammars`.
+- **Agda reference edges**: Agda function pattern clauses now create `references` edges to symbols used in RHS expressions. Reduces crypto-agda orphan rate from 91.1% to 41.6% (+4880 edges).
+- **Lean reference edges**: Lean def/theorem/lemma bodies now create `references` edges to symbols used in expressions. Reduces ArkLib orphan rate from 82.9% to 51.9% (+579 edges).
 - **Rust trait `impl` edges**: Creates `implements` edges from `impl Trait for Struct` declarations, linking struct methods to trait definitions.
 - **Rust JNI support**: JNI linker now detects Rust `#[no_mangle] pub extern "C"` functions matching `Java_*` naming conventions.
 
