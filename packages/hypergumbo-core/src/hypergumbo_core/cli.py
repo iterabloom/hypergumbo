@@ -3819,6 +3819,11 @@ without re-running the full analysis."""
     return p
 
 
+_DEPENDENCY_KINDS = frozenset({
+    "dependency", "devDependency", "dev-dependency", "build-dependency",
+})
+
+
 def _classify_symbols(
     symbols: list[Symbol], repo_root: Path, package_roots: set[Path]
 ) -> None:
@@ -3828,9 +3833,18 @@ def _classify_symbols(
     and supply_chain_reason fields.  Symbols that already have a tier
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
+
+    Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
+    classified as tier 3 (EXTERNAL_DEP) since they represent references
+    to external packages, not first-party code.
     """
     for symbol in symbols:
         if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+            continue
+        # Dependency declarations are external references, not source code
+        if symbol.kind in _DEPENDENCY_KINDS:
+            symbol.supply_chain_tier = 3
+            symbol.supply_chain_reason = "dependency declaration (external)"
             continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)

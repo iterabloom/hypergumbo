@@ -1383,6 +1383,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
             rc2, _, _ = run_cmd(
                 rslice_base_args + [
                     "--exclude-tests",
+                    "--exclude-utility",
                     "--out", os.path.join(repo_out, f"rslice.{i}.prod.json"),
                 ]
             )

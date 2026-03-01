@@ -171,7 +171,7 @@ def is_utility_file(path: str) -> bool:
         # Build systems
         "vcbuild", "cmake",
         # Benchmarks
-        "benchmarks", "benchmark", "bench", "perf",
+        "benchmarks", "benchmark", "benches", "bench", "perf",
     }
 
     for part in path_parts[:-1]:  # Exclude filename

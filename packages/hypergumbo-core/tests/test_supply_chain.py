@@ -1262,3 +1262,110 @@ class TestClassifySymbolsPreservesTier:
         _classify_symbols([sym], tmp_path, package_roots)
 
         assert sym.supply_chain_reason == "manually classified"
+
+
+class TestClassifySymbolsDependencyTier:
+    """_classify_symbols assigns tier 3 to dependency-kind symbols."""
+
+    def test_cargo_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """Cargo.toml dependency declarations should be tier 3 (EXTERNAL_DEP)."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "Cargo.toml").write_text('[dependencies]\nff = "0.13"\n')
+
+        sym = Symbol(
+            id="toml:dep:ff",
+            name="ff",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(2, 0, 2, 12),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_workspace_cargo_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """Dependency in workspace sub-crate Cargo.toml → tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        subcrate = tmp_path / "groth16"
+        subcrate.mkdir()
+        (subcrate / "Cargo.toml").write_text('[dependencies]\nff = "0.13"\n')
+
+        sym = Symbol(
+            id="toml:dep:ff:groth16",
+            name="ff",
+            kind="dependency",
+            language="toml",
+            path="groth16/Cargo.toml",
+            span=Span(2, 0, 2, 12),
+        )
+
+        package_roots = {subcrate}
+        _classify_symbols([sym], tmp_path, package_roots)
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_npm_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """package.json dependency declarations should be tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "package.json").write_text('{"dependencies": {"lodash": "^4.0"}}')
+
+        sym = Symbol(
+            id="json:dep:lodash",
+            name="lodash",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(1, 0, 1, 20),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_dev_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """devDependency kind symbols should be tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "package.json").write_text('{"devDependencies": {"jest": "^29"}}')
+
+        sym = Symbol(
+            id="json:dep:jest",
+            name="jest",
+            kind="devDependency",
+            language="json",
+            path="package.json",
+            span=Span(1, 0, 1, 20),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_non_dependency_kind_unaffected(self, tmp_path: Path) -> None:
+        """Regular symbols (kind=function etc.) are not affected by dependency rule."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text("fn main() {}\n")
+
+        sym = Symbol(
+            id="rs:main",
+            name="main",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 0, 1, 12),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 1  # First-party, not tier 3

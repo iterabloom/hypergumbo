@@ -289,6 +289,7 @@ class TestIsUtilityFile:
         """Files in benchmark directories are utility files."""
         assert is_utility_file("benchmarks/perf.py") is True
         assert is_utility_file("benchmark/gcbench/testgc3.d") is True
+        assert is_utility_file("benches/slow.rs") is True  # Rust convention
         assert is_utility_file("bench/speed.go") is True
 
     def test_build_system_directories(self) -> None:
