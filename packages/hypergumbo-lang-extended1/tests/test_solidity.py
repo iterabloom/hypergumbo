@@ -604,6 +604,91 @@ interface IERC20Metadata is IERC20 {
         assert len(inherit_edges) >= 1
 
 
+class TestSolidityOverloading:
+    """Tests for Solidity function overloading resolution.
+
+    Solidity supports function overloading (same name, different params).
+    The analyzer must correctly identify the enclosing function by position
+    rather than by name, so that overloaded functions aren't orphaned.
+    """
+
+    def test_overloaded_functions_both_connected(self, temp_repo: Path) -> None:
+        """Both overloads of a function should have call edges, not just the last one."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract AccessControl {
+    function hasRole(bytes32 role, address account) public view returns (bool) {
+        return true;
+    }
+
+    function _checkRole(bytes32 role) internal view {
+        _checkRole(role, msg.sender);
+    }
+
+    function _checkRole(bytes32 role, address account) internal view {
+        require(hasRole(role, account));
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Both _checkRole overloads should exist as symbols
+        check_role_syms = [s for s in result.symbols if "._checkRole" in s.name and s.kind == "function"]
+        assert len(check_role_syms) == 2, f"Expected 2 _checkRole symbols, got {len(check_role_syms)}"
+
+        # Both should be connected (not orphaned)
+        connected_ids = set()
+        for e in result.edges:
+            connected_ids.add(e.src)
+            connected_ids.add(e.dst)
+
+        for sym in check_role_syms:
+            assert sym.id in connected_ids, (
+                f"Overload {sym.name} (lines {sym.span.start_line}-{sym.span.end_line}) is orphaned"
+            )
+
+    def test_overloaded_caller_resolved_by_position(self, temp_repo: Path) -> None:
+        """Call from first overload should have that overload as src, not the second."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to) public returns (bool) {
+        return transfer(to, 0);
+    }
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Get both transfer symbols
+        transfer_syms = sorted(
+            [s for s in result.symbols if "transfer" in s.name and s.kind == "function"],
+            key=lambda s: s.span.start_line,
+        )
+        assert len(transfer_syms) == 2
+        first_overload = transfer_syms[0]  # transfer(address)
+        second_overload = transfer_syms[1]  # transfer(address, uint256)
+
+        # The call from transfer(address) to transfer(address, uint256)
+        # should have first_overload as src
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        matching = [e for e in call_edges if e.dst == second_overload.id]
+        assert len(matching) >= 1, "Expected call edge to second overload"
+        assert matching[0].src == first_overload.id, (
+            f"Call src should be first overload (line {first_overload.span.start_line}), "
+            f"not second (line {second_overload.span.start_line})"
+        )
+
+
 class TestSolidityImportAliases:
     """Tests for Solidity import alias tracking (ADR-0007)."""
 

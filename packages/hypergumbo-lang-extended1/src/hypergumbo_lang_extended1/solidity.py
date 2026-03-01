@@ -85,28 +85,44 @@ def _get_enclosing_function_solidity(
     source: bytes,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
+    symbols_by_span: Optional[dict[tuple[int, int], Symbol]] = None,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/constructor/modifier."""
+    """Walk up the tree to find the enclosing function/constructor/modifier.
+
+    Uses position-based matching (symbols_by_span) when available to correctly
+    handle Solidity function overloading. Without it, overloaded functions
+    (same name, different parameters) would resolve to the last-registered
+    overload because symbol_by_name can only hold one entry per name.
+    """
     current = node.parent
     while current is not None:
-        if current.type == "function_definition":
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                func_name = node_text(name_node, source)
-                sym = local_symbols.get(func_name) or global_symbols.get(func_name)
+        if current.type in ("function_definition", "constructor_definition", "modifier_definition"):
+            start_line = current.start_point[0] + 1
+            end_line = current.end_point[0] + 1
+            # Prefer position-based match (handles overloads correctly)
+            if symbols_by_span is not None:
+                sym = symbols_by_span.get((start_line, end_line))
                 if sym:
                     return sym
-        elif current.type == "constructor_definition":  # pragma: no cover - constructor calls rare
-            sym = local_symbols.get("constructor") or global_symbols.get("constructor")
-            if sym:
-                return sym
-        elif current.type == "modifier_definition":
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                mod_name = node_text(name_node, source)
-                sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
+            # Fall back to name-based lookup (when symbols_by_span not provided)
+            if current.type == "function_definition":  # pragma: no cover - position match preferred
+                name_node = _find_child_by_field(current, "name")
+                if name_node:
+                    func_name = node_text(name_node, source)
+                    sym = local_symbols.get(func_name) or global_symbols.get(func_name)
+                    if sym:
+                        return sym
+            elif current.type == "constructor_definition":  # pragma: no cover - constructor calls rare
+                sym = local_symbols.get("constructor") or global_symbols.get("constructor")
                 if sym:
                     return sym
+            elif current.type == "modifier_definition":  # pragma: no cover - modifier calls rare
+                name_node = _find_child_by_field(current, "name")
+                if name_node:
+                    mod_name = node_text(name_node, source)
+                    sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
+                    if sym:
+                        return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -296,15 +312,28 @@ def _extract_edges_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
     run_id: str, resolver: NameResolver,
+    all_local_symbols: Optional[list[Symbol]] = None,
 ) -> tuple[list[Edge], dict[str, str]]:
     """Extract edges (calls, imports) from a Solidity file's parse tree.
 
     Returns (edges, import_aliases) where import_aliases maps alias names
     to import paths for path_hint resolution.
+
+    The all_local_symbols parameter provides the full list of symbols for
+    position-based lookup, needed to correctly resolve overloaded functions
+    (where symbol_by_name would only return the last-registered overload).
     """
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
     file_id = make_file_id("solidity", file_path)
+
+    # Build position-based symbol index for overload-safe enclosing function lookup.
+    # Maps (start_line, end_line) -> Symbol for functions/constructors/modifiers.
+    symbols_by_span: dict[tuple[int, int], Symbol] = {}
+    if all_local_symbols:
+        for sym in all_local_symbols:
+            if sym.kind in ("function", "constructor", "modifier"):
+                symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
 
     # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
@@ -354,7 +383,8 @@ def _extract_edges_from_tree(
         elif node.type == "call_expression":
             func_node = _find_child_by_field(node, "function")
             current_function = _get_enclosing_function_solidity(
-                node, source, local_symbols, global_symbols
+                node, source, local_symbols, global_symbols,
+                symbols_by_span=symbols_by_span,
             )
             if func_node and current_function:
                 call_name = node_text(func_node, source)
@@ -397,11 +427,21 @@ def _extract_edges_from_tree(
 
 
 class SolidityAnalyzer(TreeSitterAnalyzer):
-    """Analyzer for Solidity smart contract files using TreeSitterAnalyzer base class."""
+    """Analyzer for Solidity smart contract files using TreeSitterAnalyzer base class.
+
+    Stores per-file symbol lists between Pass 1 and Pass 2 to enable
+    position-based enclosing function resolution. This is needed because
+    Solidity supports function overloading (same name, different params),
+    and the name-based symbol_by_name dict can only hold one entry per name.
+    """
 
     lang = "solidity"
     file_patterns: ClassVar[list[str]] = ["*.sol"]
     grammar_module = "tree_sitter_solidity"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._file_symbols: dict[str, list[Symbol]] = {}
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -412,6 +452,8 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         _extract_symbols_from_tree(
             tree, source, str(file_path), run.execution_id, analysis,
         )
+        # Store full symbol list for position-based lookup in Pass 2
+        self._file_symbols[str(file_path)] = list(analysis.symbols)
         return analysis
 
     def extract_edges_from_file(
@@ -422,10 +464,12 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and import edges from a single Solidity file."""
+        all_local = self._file_symbols.get(str(file_path))
         edges, _aliases = _extract_edges_from_tree(
             tree, source, str(file_path),
             local_symbols, global_symbols,
             run.execution_id, resolver,
+            all_local_symbols=all_local,
         )
         return edges
 
