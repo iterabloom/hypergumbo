@@ -205,3 +205,43 @@ def answer : Nat := 42
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "answer"]
         assert len(funcs) == 1
         assert funcs[0].signature == ": Nat"
+
+
+class TestLeanReferenceEdges:
+    """Tests for reference edge extraction in Lean."""
+
+    def test_def_references(self, tmp_path: Path) -> None:
+        """Def bodies create reference edges to used symbols."""
+        make_lean_file(tmp_path, "Example.lean", """\
+def double (n : Nat) : Nat :=
+  n + n
+
+def quadruple (n : Nat) : Nat :=
+  double (double n)
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        double_sym = next(s for s in result.symbols if s.name == "double")
+        quad_sym = next(s for s in result.symbols if s.name == "quadruple")
+        # quadruple → double reference
+        assert any(
+            e.src == quad_sym.id and e.dst == double_sym.id
+            for e in ref_edges
+        ), f"Expected quadruple→double reference, got: {[(e.src, e.dst) for e in ref_edges]}"
+
+    def test_cross_file_reference(self, tmp_path: Path) -> None:
+        """References across files are resolved."""
+        make_lean_file(tmp_path, "Lib.lean", """\
+def helper (n : Nat) : Nat :=
+  n + 1
+""")
+        make_lean_file(tmp_path, "Main.lean", """\
+import Lib
+
+def caller (x : Nat) : Nat :=
+  helper x
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # Should have at least one reference edge
+        assert len(ref_edges) >= 1

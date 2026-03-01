@@ -313,6 +313,59 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
+    # Reference edges: scan def/theorem/lemma bodies (after :=) for
+    # identifier references to defined symbols.
+    seen_ref_pairs: set[tuple[str, str]] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type not in ("def", "theorem", "lemma"):
+            continue
+        # Find the declaration name
+        decl_name_node = find_child_by_type(node, "identifier")
+        if not decl_name_node:
+            continue  # pragma: no cover
+        decl_name = _get_identifier_text(decl_name_node, source)
+        if not decl_name:
+            continue  # pragma: no cover
+
+        decl_result = resolver.lookup(decl_name)
+        if not decl_result.symbol:
+            continue  # pragma: no cover
+
+        # Find the body: everything after :=
+        in_body = False
+        body_nodes: list = []
+        for child in node.children:
+            if child.type == ":=":
+                in_body = True
+                continue
+            if in_body:
+                body_nodes.append(child)
+
+        # Scan body for identifier references
+        for body_node in body_nodes:
+            for id_node in iter_tree(body_node):
+                if id_node.type != "identifier":
+                    continue
+                ref_name = node_text(id_node, source).strip()
+                if not ref_name or ref_name == decl_name:
+                    continue  # pragma: no cover — skip self-ref
+
+                ref_result = resolver.lookup(ref_name)
+                if ref_result.symbol:
+                    pair = (decl_result.symbol.id, ref_result.symbol.id)
+                    if pair not in seen_ref_pairs:
+                        seen_ref_pairs.add(pair)
+                        edge = Edge.create(
+                            src=decl_result.symbol.id,
+                            dst=ref_result.symbol.id,
+                            edge_type="references",
+                            line=id_node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            confidence=0.80,
+                        )
+                        edges.append(edge)
+
     return edges
 
 
