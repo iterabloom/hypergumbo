@@ -16,6 +16,7 @@ from typing import Any
 
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
+from ..paths import normalize_path
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -146,5 +147,19 @@ def run_all_analyzers(
             seen_edge_ids.add(edge.id)
             deduped_edges.append(edge)
     all_edges = deduped_edges
+
+    # Normalize paths: some analyzers produce absolute paths instead of
+    # paths relative to repo_root.  Stripping the repo_root prefix ensures
+    # consistent tier classification, test-file detection, and
+    # machine-independent output.
+    root_prefix = normalize_path(str(repo_root)).rstrip("/") + "/"
+    for sym in all_symbols:
+        normed = normalize_path(sym.path)
+        if normed.startswith(root_prefix):
+            sym.path = normed[len(root_prefix):]
+    for uc in all_usage_contexts:
+        normed = normalize_path(uc.path)
+        if normed.startswith(root_prefix):
+            uc.path = normed[len(root_prefix):]
 
     return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols

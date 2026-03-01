@@ -9,6 +9,33 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+#### Analyzers
+
+- **Solidity inheritance edges**: Detects `is` clauses on contracts/interfaces and creates `extends` edges. Resolves single and multiple inheritance.
+- **Solidity override edges**: Creates `overrides` edges from child contract functions to inherited parent functions with matching names. Correctly handles multiple inheritance (diamond patterns).
+- **Solidity emit event edges**: Creates `emits` edges from functions to events via `emit EventName(...)` statements.
+- **Solidity visibility modifiers**: Extracts `public`/`private`/`internal`/`external` visibility as symbol metadata for export detection.
+- **Solidity library export patterns**: Libraries with `public`/`external` functions are detected as entrypoints.
+- **Solidity `using Library for Type` call resolution**: Resolves implicit library calls like `x.add(y)` to `SafeMath.add(x, y)` by tracking `using` directive AST nodes per contract. Correctly disambiguates when multiple libraries define the same function name.
+- **Rust trait `impl` edges**: Creates `implements` edges from `impl Trait for Struct` declarations, linking struct methods to trait definitions.
+- **Rust JNI support**: JNI linker now detects Rust `#[no_mangle] pub extern "C"` functions matching `Java_*` naming conventions.
+
+### Fixed
+
+- **Solidity super/this call resolution**: `super.method()` and `this.method()` calls now resolve to the correct parent/current contract methods.
+- **Solidity member access calls**: `IERC20(addr).transfer(...)` and similar typed member access patterns now resolve to the correct interface/contract methods.
+- **Solidity function overload resolution**: Overloaded functions (same name, different parameters) now resolve by argument position rather than name-only matching.
+- **Rust co-located test detection**: Files named `tests.rs` and `testonly.rs` are classified as test code. Prevents `npm_package` phantom symbols from Rust test fixtures.
+- **Cargo workspace handling**: Skip `"."` member in Cargo workspace `members` lists to avoid self-referential package roots.
+- **Dependency symbol tier classification**: Dependency-directory symbols are correctly classified as tier 3 (external). Benchmark directories (`bench/`, `benches/`) excluded from production slices.
+- **Test file classification**: Added `fv/` (formal verification) and `harnesses/` directories to test detection. Added `build.rs` as utility file for entrypoint ranking demotion.
+
+### Changed
+
+- **Edge creation**: Migrated all `Edge()` constructor calls to `Edge.create()` factory for consistent provenance tracking.
+
 ## [2.1.0] - 2026-03-01
 
 ### Added

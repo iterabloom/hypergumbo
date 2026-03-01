@@ -739,3 +739,155 @@ class TestCollectAnalyzerResult:
         assert len(limits.skipped_passes) == 1
         assert limits.skipped_passes[0]["pass"] == "lean-ts-v1"
         assert "grammar not available" in limits.skipped_passes[0]["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Path normalization in run_all_analyzers (facade)
+# ---------------------------------------------------------------------------
+
+
+class TestRunAllAnalyzersPathNormalization:
+    """Tests that run_all_analyzers normalizes absolute paths to relative."""
+
+    def test_absolute_symbol_paths_are_relativized(self) -> None:
+        """Symbol paths that are absolute and under repo_root become relative."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+
+        repo_root = Path("/home/user/myrepo")
+
+        sym_absolute = Symbol(
+            id="java:/home/user/myrepo/src/Main.java:1-10:Main:class",
+            name="Main",
+            kind="class",
+            language="java",
+            path="/home/user/myrepo/src/Main.java",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="java-v1",
+            origin_run_id="run1",
+        )
+        sym_relative = Symbol(
+            id="rust:src/lib.rs:1-5:foo:function",
+            name="foo",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[sym_absolute, sym_relative],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_abs_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+
+        # Absolute path should be relativized
+        assert symbols[0].path == "src/Main.java"
+        # Already-relative path should be unchanged
+        assert symbols[1].path == "src/lib.rs"
+
+    def test_absolute_usage_context_paths_are_relativized(self) -> None:
+        """UsageContext paths that are absolute and under repo_root become relative."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, UsageContext
+
+        repo_root = Path("/home/user/myrepo")
+
+        uc = UsageContext(
+            id="uc1",
+            kind="call",
+            context_name="register",
+            symbol_ref=None,
+            position="args[0]",
+            metadata={},
+            path="/home/user/myrepo/routes/web.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[],
+            edges=[],
+            usage_contexts=[uc],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_uc_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, usage_contexts, _, _ = facade_run_all(repo_root)
+
+        assert usage_contexts[0].path == "routes/web.py"
+
+    def test_path_outside_repo_root_unchanged(self) -> None:
+        """Absolute paths NOT under repo_root are left unchanged."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+
+        repo_root = Path("/home/user/myrepo")
+
+        sym = Symbol(
+            id="c:/usr/include/stdlib.h:1-5:malloc:function",
+            name="malloc",
+            kind="function",
+            language="c",
+            path="/usr/include/stdlib.h",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[sym],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_outside_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+
+        # Path outside repo_root should be left as-is
+        assert symbols[0].path == "/usr/include/stdlib.h"
