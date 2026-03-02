@@ -1,0 +1,19 @@
+- op: create  # 750e
+  at: '2026-03-02T00:41:36Z'  # 750e
+  by: agent  # 750e
+  actor: jgstern_agent  # 750e
+  clock: 1  # 750e
+  nonce: 750e  # 750e
+  data:  # 750e
+    kind: work_item  # 750e
+    title: "Rust trait-aware method resolution: disambiguate by receiver type"  # 750e
+    status: todo_soft  # 750e
+    priority: 2  # 750e
+    parent:  # 750e
+    tags: []  # 750e
+    before: []  # 750e
+    duplicate_of: []  # 750e
+    not_duplicate_of: []  # 750e
+    pr_ref:  # 750e
+    description: "LLM assessment finding from ZK cohort bakeoff (5/5 repos affected). Name-only disambiguation causes 0.566 confidence edges that are mostly false positives. Example: coeff.double() where coeff: F resolves to AllocatedPoint::double instead of ff::Field::double. The receiver type is available from the AST — adding type context to method name lookup would fix the dominant source of call edge noise (~15% of all call edges in Nova). See reflect/cohort-001/iter-001/summary.yaml in deep-20260301-zk-cohort."  # 750e
+    fields: {}  # 750e

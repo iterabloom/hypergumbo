@@ -24,3 +24,25 @@
   clock: 2  # d3cb
   nonce: d3cb  # d3cb
   message: "Please double-check whether any further code changes are needed in order to mark this item as \"done\"?"  # d3cb
+- op: update  # 12d2
+  at: '2026-03-01T23:46:53Z'  # 12d2
+  by: agent  # 12d2
+  actor: jgstern_agent  # 12d2
+  clock: 3  # 12d2
+  nonce: 12d2  # 12d2
+  set:  # 12d2
+    status: done  # 12d2
+- op: discuss  # f0c0
+  at: '2026-03-01T23:46:54Z'  # f0c0
+  by: agent  # f0c0
+  actor: jgstern_agent  # f0c0
+  clock: 4  # f0c0
+  nonce: f0c0  # f0c0
+  message: "Complete. Commit 135efdec migrated all 53 Edge() constructor calls to Edge.create(). Verified: grep finds zero Edge() calls in production source (packages/*/src/). Only test files retain Edge() for test data construction. No further code changes needed."  # f0c0
+- op: discuss  # 879f
+  at: '2026-03-01T23:47:01Z'  # 879f
+  by: agent  # 879f
+  actor: jgstern_agent  # 879f
+  clock: 5  # 879f
+  nonce: 879f  # 879f
+  message: "No further code changes needed. Commit 135efdec (PR #1577 era) migrated all 53 Edge() constructor calls to Edge.create(). Verified with grep: zero Edge() calls remain in production source (packages/*/src/). Test files retain Edge() for test data construction, which is fine since tests don't need auto-generated edge_key."  # 879f

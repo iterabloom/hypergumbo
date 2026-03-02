@@ -39,3 +39,10 @@
   clock: 4  # 38e5
   nonce: '38e5'  # 38e5
   message: "your latest message seems to contradict part of the description. The description implies that bakeoff-features and/or bakeoff-features-reflect does not (or did not) have --all/--some. Yet your last message implies that they *do* have --all/--some. Which is it? Or was it the former situation first and then subsequently the latter situation after specific code changes?"  # 38e5
+- op: discuss  # 708e
+  at: '2026-03-01T23:47:33Z'  # 708e
+  by: agent  # 708e
+  actor: jgstern_agent  # 708e
+  clock: 5  # 708e
+  nonce: 708e  # 708e
+  message: "The latter: it was the former situation first, then the latter after code changes. At the time this work item was created, bakeoff-features-reflect aggregate lacked --all/--some. Commit d7a435f9 ('feat: add --all and --some flags to bakeoff-features-reflect') added them. My audit message confirmed the post-fix state. The description captures the original gap; the resolution is that it was fixed by that commit. Apologies for the confusing timeline."  # 708e
