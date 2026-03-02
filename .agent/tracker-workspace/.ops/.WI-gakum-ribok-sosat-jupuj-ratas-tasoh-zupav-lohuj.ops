@@ -1,0 +1,21 @@
+- op: create  # 3571
+  at: '2026-03-02T22:04:45Z'  # 3571
+  by: agent  # 3571
+  actor: jgstern_agent  # 3571
+  clock: 1  # 3571
+  nonce: '3571'  # 3571
+  data:  # 3571
+    kind: work_item  # 3571
+    title: "Revalidation: final comparison and wrap-up"  # 3571
+    status: todo_soft  # 3571
+    priority: 2  # 3571
+    parent:  # 3571
+    tags:  # 3571
+    - bakeoff-revalidation  # 3571
+    before:  # 3571
+    - WI-juhub-zanos-tobuk-jojuh-pukil-mukuh-juhor-hovof  # 3571
+    duplicate_of: []  # 3571
+    not_duplicate_of: []  # 3571
+    pr_ref:  # 3571
+    description: "Final analysis comparing three snapshots:\n1. Initial run (deep-20260301-063114, code hash e0ca04d3)\n2. Revalidation run (from item 1, current codebase)\n3. Post-fix run (from item 15, if applicable)\n\nDeliverables:\n- Three-way comparison table in lab notebook (verdict and LLM score per repo across all 3)\n- Summary: how many repos improved, regressed, stayed the same at each stage\n- Close or update tracker items created in triage (item 11) based on final results\n- Update CHANGELOG.md if the revalidation cycle produced significant improvements\n- Update docs/hypergumbo-spec.md emoji indicators if feature status changed\n- Final lab notebook entry summarizing the entire revalidation exercise\n\nIf no fixes were needed (rounds 1-2 empty), this collapses to a two-way comparison\n(initial vs revalidation) and the wrap-up is simpler."  # 3571
+    fields: {}  # 3571

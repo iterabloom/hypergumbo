@@ -1,0 +1,21 @@
+- op: create  # 9adb
+  at: '2026-03-02T22:04:38Z'  # 9adb
+  by: agent  # 9adb
+  actor: jgstern_agent  # 9adb
+  clock: 1  # 9adb
+  nonce: 9adb  # 9adb
+  data:  # 9adb
+    kind: work_item  # 9adb
+    title: "Revalidation: re-run affected cohorts on post-fix codebase"  # 9adb
+    status: todo_soft  # 9adb
+    priority: 2  # 9adb
+    parent:  # 9adb
+    tags:  # 9adb
+    - bakeoff-revalidation  # 9adb
+    before:  # 9adb
+    - WI-nobon-tasav-zinot-jafuz-banud-tosut-kihop-vigaz  # 9adb
+    duplicate_of: []  # 9adb
+    not_duplicate_of: []  # 9adb
+    pr_ref:  # 9adb
+    description: "Re-run only the cohorts that contain repos affected by fixes from rounds 1 and 2.\n\nOptions:\na) Init a new session and add only the affected cohorts\nb) Re-iterate the existing session (the bakeoff-features CLI supports multiple iterations\n   per cohort via iter-001, iter-002, etc.)\n\nFor each affected cohort: run, diagnose, reflect.\n\nDo NOT re-run the entire 41-repo curriculum — only cohorts with repos where fixes changed\nbehavior. If fixes only affected Rust analysis and Cohort 0 (formal methods) had no Rust\nrepos, skip Cohort 0.\n\nIf fix rounds 1 and 2 produced zero fixes, close this item as \"no re-run needed.\""  # 9adb
+    fields: {}  # 9adb
