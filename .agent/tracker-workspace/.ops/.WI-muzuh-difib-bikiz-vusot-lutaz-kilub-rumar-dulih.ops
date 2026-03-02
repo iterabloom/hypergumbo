@@ -1,0 +1,21 @@
+- op: create  # 6cda
+  at: '2026-03-02T21:59:14Z'  # 6cda
+  by: agent  # 6cda
+  actor: jgstern_agent  # 6cda
+  clock: 1  # 6cda
+  nonce: 6cda  # 6cda
+  data:  # 6cda
+    kind: work_item  # 6cda
+    title: "Revalidation: compare revalidation session vs initial run"  # 6cda
+    status: todo_soft  # 6cda
+    priority: 2  # 6cda
+    parent:  # 6cda
+    tags:  # 6cda
+    - bakeoff-revalidation  # 6cda
+    before:  # 6cda
+    - WI-zudor-mimor-dodub-bunin-mogov-mupok-pijod-muhul  # 6cda
+    duplicate_of: []  # 6cda
+    not_duplicate_of: []  # 6cda
+    pr_ref:  # 6cda
+    description: "Compare the revalidation session against the initial March 1 run to measure impact of\nthe ~15 PRs that landed between them.\n\nCommands:\n  ./scripts/bakeoff-features compare deep-20260301-063114 <new-session-dir>\n\nRecord in the lab notebook:\n- Per-repo delta table: verdict changes (GOOD↔WARN), metric changes (orphan rate, tier1%,\n  avg_slice_nodes, total nodes/edges)\n- Identify regressions: any repo that moved GOOD→WARN or whose LLM score dropped\n- Identify improvements: WARN→GOOD transitions, LLM score increases\n- Per-cohort aggregate: how many GOOD/WARN changed in each cohort\n\nThe initial run's diagnostic data is at:\n  ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260301-063114/diag/cohort-{001..007}/iter-001/report.yaml\nThe initial run's reflect data is at:\n  ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260301-063114/reflect/cohort-{001..007}/iter-001/summary.yaml"  # 6cda
+    fields: {}  # 6cda

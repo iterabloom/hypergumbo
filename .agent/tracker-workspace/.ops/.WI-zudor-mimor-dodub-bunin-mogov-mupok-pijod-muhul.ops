@@ -1,0 +1,21 @@
+- op: create  # 1a57
+  at: '2026-03-02T21:59:02Z'  # 1a57
+  by: agent  # 1a57
+  actor: jgstern_agent  # 1a57
+  clock: 1  # 1a57
+  nonce: 1a57  # 1a57
+  data:  # 1a57
+    kind: work_item  # 1a57
+    title: "Revalidation: run LLM reflect on all 7 cohorts"  # 1a57
+    status: todo_soft  # 1a57
+    priority: 2  # 1a57
+    parent:  # 1a57
+    tags:  # 1a57
+    - bakeoff-revalidation  # 1a57
+    before:  # 1a57
+    - WI-zugor-rufid-rikiv-gukah-sobat-kufas-nasir-fasiz  # 1a57
+    duplicate_of: []  # 1a57
+    not_duplicate_of: []  # 1a57
+    pr_ref:  # 1a57
+    description: "Run LLM-driven qualitative assessment on all 7 cohorts of the revalidation session.\n\nCommands:\n  ./scripts/bakeoff-features-reflect --all\n  ./scripts/bakeoff-features-reflect aggregate --all\n\nThis produces per-repo .assessment.yaml files with developer-centric scoring (refactoring,\nnew_feature, understanding tasks) and a summary.yaml per cohort. The aggregate step\nsynthesizes cross-cohort patterns (common issues, improvement ideas, noise/overranking).\n\nThe initial run's reflect data (deep-20260301-063114/reflect/) covers all 7 cohorts but\nagainst the pre-fix codebase. This re-reflect establishes whether the fixes improved\nLLM-assessed quality. The initial run scored: C0=0U/2P/8N, C1=0U/4P/0N, C2=0U/3P/2N,\nC3=0U/4P/0N, C4=0U/6P/0N, C5=1U/4P/0N, C6=0U/5P/1N. (U=USEFUL, P=PARTIAL, N=NOT_USEFUL)"  # 1a57
+    fields: {}  # 1a57
