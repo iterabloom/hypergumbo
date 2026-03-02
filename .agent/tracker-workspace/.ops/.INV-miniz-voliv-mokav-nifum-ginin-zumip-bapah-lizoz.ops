@@ -1,0 +1,23 @@
+- op: create  # df3e
+  at: '2026-03-02T23:44:49Z'  # df3e
+  by: agent  # df3e
+  actor: jgstern_agent  # df3e
+  clock: 1  # df3e
+  nonce: df3e  # df3e
+  data:  # df3e
+    kind: invariant  # df3e
+    title: "Edge endpoint resolution: every edge must point to a node or explicit external boundary"  # df3e
+    status: violated  # df3e
+    priority: 1  # df3e
+    parent:  # df3e
+    tags:  # df3e
+    - structural  # df3e
+    - external-bakeoff  # df3e
+    before: []  # df3e
+    duplicate_of: []  # df3e
+    not_duplicate_of: []  # df3e
+    pr_ref:  # df3e
+    description: "Independent external bakeoff (March 2026, Jenkins/Kong/Vault) found that edge endpoint\nintegrity failures are the single most impactful structural issue across all three repos:\n\n- Jenkins: 16,466 of 62,526 edges (26.3%) have missing destinations. Almost entirely\n  decorated_by edges to Java annotation symbols (@Override: 5,596; @Test: 3,301;\n  @NonNull: 936) that don't exist as nodes. Call graph itself is clean (<1% missing).\n- Kong: 10,793 of 17,237 edges (62.6%) have missing destinations. 6,893 are calls edges\n  to Lua/OpenResty builtins (ngx.encode_base64, string.format, tonumber, type, tostring).\n- Vault: 75,958 of 133,742 edges (56.8%) have missing destinations. 50,701 are calls\n  edges to Go stdlib (fmt.Errorf, os.Getenv, encoding/json.Marshal). 24,564 are imports.\n\nThe downstream impact is identical across all three: slice traversal breaks at external\nboundaries, producing artificially shallow slices. A forward slice from Vault's main()\nreaches only 13 nodes because 100% of frontier calls terminate at unresolved IDs.\n\nThe causes are language-specific but the root is structural: the IR has no concept of\n\"external boundary.\" Three manifestations, one missing abstraction:\n\n1. Java annotations: decorated_by edges to annotation symbols that were never created as\n   nodes. Fix: either emit lightweight annotation stub nodes or stop emitting edges to\n   absent targets. Annotations are a small closed set per project.\n\n2. Lua/Go stdlib+builtins: calls edges to external functions. Fix requires a general\n   concept of \"external sink node\" — a tier-3 node that exists in the graph as a traversal\n   boundary but doesn't claim to model the external function's internals.\n\n3. Go/Lua imports: imports edges to external modules. Same fix as (2).\n\nThe analyst notes: \"A pragmatic mitigation is to emit lightweight stub/sink nodes for\nunresolved external targets, preserving traversability without claiming to model their\ninternals. Alternatively, edge consumers could be taught to treat unresolved destinations\nas explicit external boundaries rather than errors.\"\n\nRelated items:\n- INV-mogud: Go vendored SDK classification (a subset of this problem)\n- INV-bolil: Call attribution completeness (different axis — caller resolution, not callee)\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # df3e
+    fields:  # df3e
+      statement: "Every edge in the behavior map must have both source and destination resolve to a node in the graph. Edges to symbols outside the analyzed codebase must point to explicit external boundary nodes (tier-3 or tier-4), not to synthetic IDs that don't exist as nodes."  # df3e
+      root_cause: "Analyzers emit calls/imports/decorated_by edges to synthetic IDs (go:*:unresolved, lua:?:0-0:*, java:unresolved:0-0:*:unresolved) without creating corresponding nodes. The IR has no concept of 'external boundary node' — there is no way to represent 'this edge crosses into code we didn't analyze' without creating a dangling reference."  # df3e

@@ -37,3 +37,18 @@
   set:  # fa3b
     status: holding  # fa3b
     pr_ref: '1382'  # fa3b
+- op: discuss  # 7f53
+  at: '2026-03-02T23:43:43Z'  # 7f53
+  by: agent  # 7f53
+  actor: jgstern_agent  # 7f53
+  clock: 4  # 7f53
+  nonce: 7f53  # 7f53
+  message: "Independent external bakeoff (March 2026, Jenkins/Kong/Vault) confirms and strengthens this invariant violation with concrete data.\n\nAnalyst used a custom \"reach3\" metric (3-hop BFS over calls edges, test-excluded) and found:\n- Jenkins: auto-selects MyViewsProperty (64 slice nodes but ZERO outgoing frontier calls — an island) over SetupWizard.doCreateAdminUser (57 nodes, rich connectivity, zero missing call targets)\n- Vault: auto-selects tools/stubmaker/main.go (reach3=24) and peripheral plugin CLIs (reach3=13) over the actual HTTP API surface (handleSysSealStatus etc.)\n- Kong: auto-selected Kong.init_worker is actually the best candidate (reach3=47) — one repo where it works\n\nThe analyst recommends: \"incorporating a lightweight reachability signal into entrypoint scoring — even a 1-hop or 2-hop internal call count — would meaningfully improve auto-slice quality.\" This aligns with the existing INV description but provides the clearest external evidence yet that the fix is high-leverage.\n\nThe analyst also showed that main_function and http_route kinds are favored by confidence, but confidence doesn't account for downstream reachability. Route nodes with routes_to edges (Vault's actual API surface) don't appear in top entrypoints because they're kind=route, not kind=main_function.\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # 7f53
+- op: update  # 3b58
+  at: '2026-03-02T23:43:53Z'  # 3b58
+  by: agent  # 3b58
+  actor: jgstern_agent  # 3b58
+  clock: 5  # 3b58
+  nonce: 3b58  # 3b58
+  set:  # 3b58
+    status: violated  # 3b58

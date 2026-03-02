@@ -17,3 +17,10 @@
     pr_ref:  # 953f
     description: "is_utility_file matches any path component named dev as utility. In halo2, src/dev/gates.rs contains MockProver (core production code), not developer tooling. Fix: skip dev match when it appears after a source root (src/, lib/, app/). This caused rslice.0.prod.json to return 0 nodes for halo2."  # 953f
     fields: {}  # 953f
+- op: discuss  # cd1d
+  at: '2026-03-02T23:44:23Z'  # cd1d
+  by: agent  # cd1d
+  actor: jgstern_agent  # cd1d
+  clock: 2  # cd1d
+  nonce: cd1d  # cd1d
+  message: "External bakeoff (March 2026) found the same class of issue in Vault: 107 of 130 unlinked route nodes are in ui/mirage/ — Ember.js Mirage test stubs that simulate server endpoints for frontend testing. These are test infrastructure but aren't in a standard test directory, so they're classified as production code, inflating the unlinked-route count from 75% to 25%.\n\nThis is the same pattern as src/dev/ in halo2: non-standard paths containing test/dev infrastructure get misclassified as production code. The fix for src/dev/ (skip dev match after source roots) won't cover ui/mirage. The deeper issue is that test-path detection relies on a fixed set of directory name patterns rather than understanding framework-specific test infrastructure locations.\n\nConsider whether the fix should be:\na) Narrow: add specific patterns (src/dev/, ui/mirage/) one at a time\nb) Structural: add a framework-aware test-directory detection hook that frameworks like Ember/Mirage can register (similar to how framework detection works for routes)\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # cd1d
