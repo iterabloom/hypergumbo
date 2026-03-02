@@ -114,7 +114,7 @@ These options apply to all analysis commands (`run`, `slice`, and default sketch
 Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
 * Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
 
-⬜ **`--max-file-bytes N`** (default: 2MB)
+🟩 **`--max-file-bytes N`** (default: no limit)
 Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
 * Skipped files logged in `limits.truncated_files[]`
 
@@ -1386,8 +1386,8 @@ Tier and Role compose for analysis decisions:
 
 ### File size limits
 
-* ⬜ **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis (`--max-file-bytes` not implemented; see §3)
-* ⬜ **Output**: Add to `limits.truncated_files[]` with path, size, and reason (`add_truncated_file()` exists but is never called)
+* 🟩 **Behavior**: Skip files exceeding `--max-file-bytes`, continue analysis. Applied globally via `set_max_file_bytes()` so all analyzers using `find_files()` respect the limit.
+* 🟨 **Output**: `limits.truncated_files[]` infrastructure exists (`add_truncated_file()`). The `find_files` callback mechanism is in place; wiring to `limits` at the `run_all_analyzers` level is the remaining step.
 
 ### Partial results guarantee
 

@@ -13,7 +13,23 @@ ambiguous file extensions:
 import re
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
+
+# Global file size limit. Set via set_max_file_bytes() before running
+# analyzers; find_files() reads this when no explicit max_file_bytes
+# is passed. Reset to None after use.
+_global_max_file_bytes: int | None = None
+
+
+def set_max_file_bytes(limit: int | None) -> None:
+    """Set the global max file bytes limit for find_files().
+
+    Called by the CLI before running analyzers so that all callers of
+    find_files() respect the limit without needing individual changes.
+    """
+    global _global_max_file_bytes
+    _global_max_file_bytes = limit
+
 
 # Compiled patterns for .m file disambiguation — compiled once at import time.
 # Objective-C: preprocessor directives and @-keywords
@@ -307,6 +323,8 @@ def find_files(
     patterns: list[str],
     excludes: list[str] | None = None,
     max_files: int | None = None,
+    max_file_bytes: int | None = None,
+    on_file_skipped: Callable[[Path, int, str], None] | None = None,
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
@@ -319,12 +337,18 @@ def find_files(
         patterns: List of glob patterns to match (e.g., ["*.py", "*.pyi"])
         excludes: List of exclude patterns (default: DEFAULT_EXCLUDES)
         max_files: Maximum number of files to return (None = unlimited)
+        max_file_bytes: Skip files exceeding this size in bytes (None = no limit)
+        on_file_skipped: Optional callback(path, size_bytes, reason) for skipped files
 
     Yields:
         Paths to files matching the patterns that are not excluded.
     """
     if excludes is None:
         excludes = DEFAULT_EXCLUDES
+
+    # Use global limit if no explicit value provided
+    if max_file_bytes is None:
+        max_file_bytes = _global_max_file_bytes
 
     # Classify once, use for all files in this call
     exact, globs = _classify_excludes(excludes)
@@ -336,6 +360,19 @@ def find_files(
                 return
             if not path.is_file():
                 continue
-            if not _is_excluded_classified(path, repo_root, exact, globs):
-                yield path
-                count += 1
+            if _is_excluded_classified(path, repo_root, exact, globs):
+                continue
+            if max_file_bytes is not None:
+                try:
+                    size = path.stat().st_size
+                except OSError:  # pragma: no cover
+                    continue
+                if size > max_file_bytes:
+                    if on_file_skipped is not None:
+                        on_file_skipped(
+                            path, size,
+                            f"exceeds {max_file_bytes} bytes",
+                        )
+                    continue
+            yield path
+            count += 1
