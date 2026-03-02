@@ -24,7 +24,7 @@
   - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
   - Use `./scripts/loop-toggle` to manage autonomous mode:
     - `./scripts/loop-toggle off` - Disable autonomous mode
-    - `./scripts/loop-toggle broad` - Enable BROAD mode (parse correctness, fast iteration)
+    - `./scripts/loop-toggle broad` - Enable BROAD mode (coverage breadth, fast iteration)
     - `./scripts/loop-toggle deep` - Enable DEEP mode (feature usefulness, larger repos)
     - `./scripts/loop-toggle status` - Show current mode
   - Backward compatibility: TRUE is treated as BROAD.
@@ -99,10 +99,9 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
      - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
      - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
      - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping.
-  2. **First-class work items:** Both `todo_hard` and `todo_soft` items block the stop hook (subject to circuit breaker) and surface via `scripts/tracker ready`.
+  2. **Hook enforcement:** Both `todo_hard` and `todo_soft` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 identical firings with no progress → approve.
   3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
-  4. **Track to completion:** When done, update the item's status to `done` with a PR reference.
-  5. **Hook enforcement:** The stop hook queries the tracker (`scripts/tracker count-todos`). Both `todo_hard` and `todo_soft` statuses block stopping, subject to circuit breaker (5 identical firings with no progress → approve).
+  4. **Track to completion:** When done, update the item's status to `done`/`holding`/etc with a PR reference.
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -262,20 +261,14 @@ git commit -s -m "feat: description"
     tip=$(./scripts/auto-pr status | grep "Queue tip" | awk '{print $3}')
     git checkout -b author/feat/next-change "$tip"
     ```
-- **If `auto-pr` exits unexpectedly:**
-  - **Exit code 0:** Success. PR merged or vPR queued.
-  - **Exit code 1:** Failure. Run `./scripts/ci-debug status` to diagnose. Fix the issue, then re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
-  - **Exit code 2:** Timeout. CI is stuck or slow. Use `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600` with a longer timeout, or follow the Scenario B policy below.
-  - **vPR queued:** Run `./scripts/auto-pr flush` when remote is available.
-
 - **CI Interaction Policy:**
   - **NEVER** write bash loops that poll CI via curl/wget/api calls.
   - **NEVER** call the Forgejo API directly outside of approved scripts.
   - **Approved scripts** (exhaustive list): `auto-pr`, `merge-pr`, `ci-debug`, `contribute`. All CI/API interaction MUST go through these.
-  - **Recovery steps when auto-pr fails:**
-    1. `./scripts/ci-debug status` — check what's happening
-    2. `./scripts/merge-pr <PR_NUM> --wait-for-ci` — poll and merge
-    3. `./scripts/merge-pr <PR_NUM>` — merge immediately (if CI already passed)
+  - **When `auto-pr` fails**, recover by exit code:
+    - **Exit 0:** Success — PR merged or vPR queued. If vPR queued, run `./scripts/auto-pr flush` when remote is available.
+    - **Exit 1:** Failure. Run `./scripts/ci-debug status` to diagnose, fix the issue, then either re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
+    - **Exit 2:** Timeout (CI stuck or slow). Try `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600`, or if CI already passed, `./scripts/merge-pr <PR_NUM>` to merge immediately. If CI remains stuck, follow Scenario B.
   - **Scenario B (CI stuck after timeout):** Do NOT accumulate more changes to git-tracked hypergumbo code. Work on untracked activities: lab notebooks, analysis scripts, or experiments in other repos. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge.
 
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
@@ -494,14 +487,14 @@ When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefin
 ### Mode Selection
 | Mode | Focus | Bakeoff Script | When to Use |
 |------|-------|----------------|-------------|
-| **BROAD** | Parse correctness | `scripts/bakeoff` | Default. Fast iteration on call graph, routes, frameworks |
+| **BROAD** | Coverage breadth | `scripts/bakeoff` | Default. Ensure comprehensive linker, framework, and call graph detection |
 | **DEEP** | Feature usefulness | `scripts/bakeoff-features` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
 
-- **BROAD** answers: "Does hypergumbo parse this correctly?"
+- **BROAD** answers: "Are we detecting all the linker edges, framework patterns, and call relationships?"
 - **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
 
 Use DEEP mode when:
-- You've converged on parse correctness (no CRITICAL/HIGH issues)
+- You've converged on coverage breadth (no CRITICAL/HIGH gaps)
 - You want to test slice limits, supply chain tiers, or graph centrality
 - You're preparing for a release and want qualitative assessment
 
@@ -511,7 +504,7 @@ Use DEEP mode when:
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. Once you begin experimenting, keep going until it gets boring or repetitive. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
@@ -522,27 +515,51 @@ Use DEEP mode when:
 - **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
 - **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
-### BROAD Mode Priority Queue:
-1. **Actionable tracker items** (`scripts/tracker ready`):
+### Priority Queues:
+Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`):
    - `todo_hard` items: structural issues, invariant violations — investigate deeply
    - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
    - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
-2. **Parse correctness assessment:** Run `bakeoff-reflect` for LLM-driven parse assessment (parallel to DEEP's `bakeoff-features-reflect`)
-3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
-4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
+
+### BROAD Mode Priority Queue:
+1. **Assess coverage breadth:** Run `bakeoff-reflect` for LLM-driven coverage assessment
+2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
+
+BROAD mode scripts:
+```bash
+# Initialize a new bakeoff session (creates timestamped dir in canonical default)
+./scripts/bakeoff init --pool ~/repos
+
+# Select next cohort (5 smallest unused repos)
+./scripts/bakeoff cohort --count 5
+
+# Run hypergumbo on current cohort
+./scripts/bakeoff run
+
+# Diagnose and generate issue report
+./scripts/bakeoff diagnose
+
+# Full cycle: run + diagnose
+./scripts/bakeoff cycle
+
+# Session introspection
+./scripts/bakeoff status            # Convergence status and cohort breakdown
+./scripts/bakeoff issues --format json  # Machine-readable issue list
+./scripts/bakeoff questions         # Diagnostic questions for analysis
+
+# LLM-driven qualitative assessment
+./scripts/bakeoff-reflect
+```
 
 ### DEEP Mode Priority Queue:
-When in DEEP mode, focus on feature quality rather than parse correctness:
-1. **Actionable tracker items** (`scripts/tracker ready`):
-   - `todo_hard` items: structural issues, invariant violations — investigate deeply
-   - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
-   - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
-2. **Slice quality:** Does forward slice capture actual dependencies?
-3. **Reverse slice:** Does it correctly identify callers?
-4. **Supply chain tiers:** Is tier classification accurate for monorepos?
-5. **Centrality ranking:** Do top-ranked symbols match developer intuition?
-6. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment
-7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+When in DEEP mode, focus on feature quality rather than coverage breadth:
+1. **Slice quality:** Does forward slice capture actual dependencies?
+2. **Reverse slice:** Does it correctly identify callers?
+3. **Supply chain tiers:** Is tier classification accurate for monorepos?
+4. **Centrality ranking:** Do top-ranked symbols match developer intuition?
+5. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment (analogous to BROAD's `bakeoff-reflect`)
+6. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 
 DEEP mode scripts:
 ```bash
@@ -614,4 +631,4 @@ Key design decisions:
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-02-01.0 -->
+<!-- CANARY: agents-policy-v2026-03-02.0 -->
