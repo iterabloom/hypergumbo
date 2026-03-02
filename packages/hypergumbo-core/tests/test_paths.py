@@ -275,6 +275,18 @@ class TestIsTestFile:
         assert is_test_file("harnesses/AccessManagerHarness.sol") is True
         assert is_test_file("contracts/harnesses/mock.sol") is True
 
+    def test_benchmark_directories(self) -> None:
+        """Files in bench/benches/benchmark/benchmarks directories are test files.
+
+        Benchmarks are non-production code that should be excluded from
+        production slices (--exclude-tests). Same treatment as fv/ and harnesses/.
+        """
+        assert is_test_file("benches/slow.rs") is True
+        assert is_test_file("bench/speed.go") is True
+        assert is_test_file("benchmarks/perf.py") is True
+        assert is_test_file("benchmark/gcbench.d") is True
+        assert is_test_file("crates/core/benches/prover_bench.rs") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False

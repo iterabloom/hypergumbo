@@ -256,6 +256,7 @@ def is_test_file(path: str) -> bool:
         "fixtures", "testdata", "testutils", "testutil",  # Test support directories
         "testhelper", "testhelpers",  # Test helper directories
         "fv", "harnesses",  # Formal verification / test harness directories
+        "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories
     }
     # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
     for part in path_parts:
