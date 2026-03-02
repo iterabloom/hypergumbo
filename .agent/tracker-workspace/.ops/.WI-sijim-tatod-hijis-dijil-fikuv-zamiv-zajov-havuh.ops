@@ -1,0 +1,19 @@
+- op: create  # fe3b
+  at: '2026-03-02T06:17:29Z'  # fe3b
+  by: agent  # fe3b
+  actor: jgstern_agent  # fe3b
+  clock: 1  # fe3b
+  nonce: fe3b  # fe3b
+  data:  # fe3b
+    kind: work_item  # fe3b
+    title: "Rust: detect #[cfg(test)] inline test functions"  # fe3b
+    status: todo_soft  # fe3b
+    priority: 3  # fe3b
+    parent:  # fe3b
+    tags: []  # fe3b
+    before: []  # fe3b
+    duplicate_of: []  # fe3b
+    not_duplicate_of: []  # fe3b
+    pr_ref:  # fe3b
+    description: "LLM assessment (Nova): 27 test_ functions from src/nova/mod.rs remain in rslice.*.prod.json because they're in src/ files (not tests/ directory). Detect #[cfg(test)] attribute during AST parsing and mark those functions for prod-filter exclusion."  # fe3b
+    fields: {}  # fe3b

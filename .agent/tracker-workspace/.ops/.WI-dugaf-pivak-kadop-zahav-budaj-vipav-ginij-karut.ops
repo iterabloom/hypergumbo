@@ -1,0 +1,19 @@
+- op: create  # 2374
+  at: '2026-03-02T06:17:24Z'  # 2374
+  by: agent  # 2374
+  actor: jgstern_agent  # 2374
+  clock: 1  # 2374
+  nonce: '2374'  # 2374
+  data:  # 2374
+    kind: work_item  # 2374
+    title: "Rust: fix generic Into/From false positives in centrality"  # 2374
+    status: todo_hard  # 2374
+    priority: 2  # 2374
+    parent:  # 2374
+    tags: []  # 2374
+    before: []  # 2374
+    duplicate_of: []  # 2374
+    not_duplicate_of: []  # 2374
+    pr_ref:  # 2374
+    description: "LLM assessment (penumbra): StatusRow::into ranked #1 with 817 in-degree because all generic .into() calls resolve to a single concrete impl. Same issue with .len(), .push() etc. in other repos (jolt, halo2). Need to dampen or prevent resolution of common trait method names to single arbitrary candidates."  # 2374
+    fields: {}  # 2374
