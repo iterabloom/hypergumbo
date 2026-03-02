@@ -1,0 +1,21 @@
+- op: create  # b30a
+  at: '2026-03-02T22:00:47Z'  # b30a
+  by: agent  # b30a
+  actor: jgstern_agent  # b30a
+  clock: 1  # b30a
+  nonce: b30a  # b30a
+  data:  # b30a
+    kind: work_item  # b30a
+    title: "Revalidation: write lab notebook entry with full analysis"  # b30a
+    status: todo_soft  # b30a
+    priority: 2  # b30a
+    parent:  # b30a
+    tags:  # b30a
+    - bakeoff-revalidation  # b30a
+    before:  # b30a
+    - WI-kugub-havur-dumuf-lalim-pasoz-ralop-nurib-bahoh  # b30a
+    duplicate_of: []  # b30a
+    not_duplicate_of: []  # b30a
+    pr_ref:  # b30a
+    description: "Write a comprehensive lab notebook entry (notebookjournal_MMDDYYYY_HHMM.md) covering:\n\n1. Per-cohort verdict tables (initial vs revalidation, side by side)\n2. LLM score comparison (per-repo and per-cohort averages, initial vs revalidation)\n3. Top improvement themes from LLM reflect (ranked by frequency across repos)\n4. Regression analysis (any repos that got worse, with root cause hypothesis)\n5. Triage decisions from item 11 (which issues are being worked vs deferred vs accepted)\n6. Cross-reference with the initial-run notebook (notebookjournal_03012026_0706.md) and\n   the post-blocklist notebook (notebookjournal_03022026_0220.md)\n\nThis entry serves as the permanent record of the revalidation exercise."  # b30a
+    fields: {}  # b30a

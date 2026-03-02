@@ -1,0 +1,21 @@
+- op: create  # c0e2
+  at: '2026-03-02T22:00:36Z'  # c0e2
+  by: agent  # c0e2
+  actor: jgstern_agent  # c0e2
+  clock: 1  # c0e2
+  nonce: c0e2  # c0e2
+  data:  # c0e2
+    kind: work_item  # c0e2
+    title: "Revalidation: triage WARN/FAIL verdicts into actionable items"  # c0e2
+    status: todo_soft  # c0e2
+    priority: 2  # c0e2
+    parent:  # c0e2
+    tags:  # c0e2
+    - bakeoff-revalidation  # c0e2
+    before:  # c0e2
+    - WI-muzuh-difib-bikiz-vusot-lutaz-kilub-rumar-dulih  # c0e2
+    duplicate_of: []  # c0e2
+    not_duplicate_of: []  # c0e2
+    pr_ref:  # c0e2
+    description: "Review all WARN and FAIL verdicts from the revalidation session. For each repo:\n\n1. Is it a known gap? (e.g., formal methods languages with structural analyzer limitations\n   tracked in WI-juviz, WI-kujuf, WI-zijos) → Document as known gap, no new item needed.\n2. Is it a regression? (was GOOD in initial run, now WARN) → Create todo_hard tracker item.\n3. Is it a new fix opportunity? (was WARN before, still WARN, but the diagnose report\n   points to a specific fixable issue) → Create todo_hard or todo_soft tracker item\n   depending on severity.\n4. Is it a \"close enough\" case? (metrics improved but didn't cross GOOD threshold) →\n   Note in lab notebook, no item needed unless there's a clear low-hanging fix.\n\nAlso review the LLM reflect improvement_ideas from item 9. Group them by theme and\nfrequency. Create tracker items for recurring themes that appear in 3+ repos.\n\nRecord all triage decisions in the lab notebook entry (item 12)."  # c0e2
+    fields: {}  # c0e2
