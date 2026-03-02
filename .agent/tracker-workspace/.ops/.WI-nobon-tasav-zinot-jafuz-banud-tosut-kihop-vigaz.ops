@@ -1,0 +1,21 @@
+- op: create  # 2014
+  at: '2026-03-02T22:02:04Z'  # 2014
+  by: agent  # 2014
+  actor: jgstern_agent  # 2014
+  clock: 1  # 2014
+  nonce: '2014'  # 2014
+  data:  # 2014
+    kind: work_item  # 2014
+    title: "Revalidation: fix round 2 — remaining issues"  # 2014
+    status: todo_soft  # 2014
+    priority: 2  # 2014
+    parent:  # 2014
+    tags:  # 2014
+    - bakeoff-revalidation  # 2014
+    before:  # 2014
+    - WI-rabon-gadut-fimom-lukib-turud-movoh-dirub-jukav  # 2014
+    duplicate_of: []  # 2014
+    not_duplicate_of: []  # 2014
+    pr_ref:  # 2014
+    description: "Continue with next-priority issues from triage that were not addressed in fix round 1.\n\nGuidelines:\n- Same TDD and PR discipline as fix round 1\n- Target: up to 5 more PRs\n- Stop when diminishing returns: if remaining issues are all low-impact or require\n  architectural changes that are out of scope (e.g., full trait dispatch resolution)\n- It is acceptable to close this item with \"no further fixes warranted\" if round 1\n  addressed everything actionable\n\nIf this round produces zero fixes, that's a valid outcome — it means round 1 was sufficient\nor remaining issues are structural gaps to be deferred."  # 2014
+    fields: {}  # 2014
