@@ -884,28 +884,57 @@ def _extract_edges_from_file(
             if current_function is not None:
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
+                    # Unwrap generic_function (turbofish):
+                    # x.collect::<Vec<i32>>() wraps a field_expression
+                    # inside a generic_function node; similarly
+                    # Foo::<T>::bar() wraps a scoped_identifier.
+                    inner = func_node
+                    if inner.type == "generic_function":
+                        for child in inner.children:
+                            if child.type in (
+                                "identifier", "field_expression",
+                                "scoped_identifier",
+                            ):
+                                inner = child
+                                break
                     # Get the function name being called
                     is_method_call = False
                     full_scoped_name = None
-                    if func_node.type == "identifier":
-                        callee_name = node_text(func_node, source)
-                    elif func_node.type == "field_expression":
+                    if inner.type == "identifier":
+                        callee_name = node_text(inner, source)
+                    elif inner.type == "field_expression":
                         # method call like foo.bar()
                         is_method_call = True
-                        field_node = _find_child_by_field(func_node, "field")
+                        field_node = _find_child_by_field(inner, "field")
                         if field_node:
                             callee_name = node_text(field_node, source)
                         else:
                             callee_name = None
-                    elif func_node.type == "scoped_identifier":
-                        # Qualified call like Foo::bar() or module::func().
+                    elif inner.type == "scoped_identifier":
+                        # Qualified call like Foo::bar() or
+                        # Foo::<T>::bar() (turbofish).
                         # Extract full qualified name for precise lookup.
-                        full_scoped_name = node_text(func_node, source)
-                        name_node = _find_child_by_field(func_node, "name")
+                        name_node = _find_child_by_field(inner, "name")
+                        path_node = _find_child_by_field(inner, "path")
                         if name_node:
                             callee_name = node_text(name_node, source)
                         else:
-                            callee_name = full_scoped_name
+                            callee_name = node_text(inner, source)
+                        # Build clean scoped name stripping type args:
+                        # "PublicParams::<E1,E2>::setup" → "PublicParams::setup"
+                        if path_node and path_node.type == "generic_type":
+                            type_id = next(
+                                (c for c in path_node.children
+                                 if c.type == "type_identifier"),
+                                None,
+                            )
+                            if type_id and callee_name:
+                                full_scoped_name = (
+                                    f"{node_text(type_id, source)}"
+                                    f"::{callee_name}"
+                                )
+                        if full_scoped_name is None:
+                            full_scoped_name = node_text(inner, source)
                     else:
                         callee_name = None
 

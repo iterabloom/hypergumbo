@@ -2729,3 +2729,264 @@ class TestRustGenericTraitMethodBlocklist:
             f"{len(call_edges)}"
         )
         assert call_edges[0].dst == target.id
+
+
+class TestRustTurbofishCalls:
+    """Tests for turbofish / fully-qualified generic call resolution (WI-jabut).
+
+    Rust turbofish syntax (``PublicParams::<E1,E2>::setup()``) and generic
+    method calls (``x.collect::<Vec<i32>>()``) wrap the inner function node
+    inside a ``generic_function`` tree-sitter node.  The analyzer must unwrap
+    this to extract the callee name and resolve edges correctly.  For scoped
+    turbofish calls, type arguments must be stripped from ``full_scoped_name``
+    so registry lookup succeeds (e.g., ``PublicParams::setup`` not
+    ``PublicParams::<E1,E2>::setup``).
+    """
+
+    def test_scoped_turbofish_resolves(self, tmp_path: Path) -> None:
+        """PublicParams::<E1,E2>::setup() resolves to PublicParams::setup.
+
+        Type arguments are stripped from the scoped name so Strategy 1
+        matches the registry key.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    PublicParams::<E1, E2>::setup();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:PublicParams::setup:function",
+            name="PublicParams::setup", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"PublicParams::setup": target}
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(
+            {"setup": [target]}, ambiguity_threshold=3,
+        )
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for PublicParams::<E1,E2>::setup() "
+            f"but got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_method_turbofish_resolves(self, tmp_path: Path) -> None:
+        """x.collect::<Vec<i32>>() resolves to the collect method.
+
+        The generic_function wrapper around field_expression must be
+        unwrapped so the method call is detected correctly.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.collect::<Vec<i32>>();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:MyIter::collect:method",
+            name="MyIter::collect", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"MyIter::collect": target}
+        method_reg: dict[str, list[Symbol]] = {"collect": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for x.collect::<Vec<i32>>() "
+            f"but got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_plain_scoped_call_still_works(self, tmp_path: Path) -> None:
+        """Vec::new() (no turbofish) still resolves correctly.
+
+        Regression check: the turbofish handling must not break plain
+        scoped identifiers.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    Vec::new();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:Vec::new:function",
+            name="Vec::new", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"Vec::new": target}
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(
+            {"new": [target]}, ambiguity_threshold=3,
+        )
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_turbofish_method_blocklist_still_applies(
+        self, tmp_path: Path,
+    ) -> None:
+        """x.clone::<T>() is still blocked by the generic trait blocklist.
+
+        Turbofish unwrapping should expose the field_expression so the
+        blocklist check on the short method name still fires.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.clone::<T>();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:Foo::clone:method",
+            name="Foo::clone", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"Foo::clone": target}
+        method_reg: dict[str, list[Symbol]] = {"clone": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .clone::<T>() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
