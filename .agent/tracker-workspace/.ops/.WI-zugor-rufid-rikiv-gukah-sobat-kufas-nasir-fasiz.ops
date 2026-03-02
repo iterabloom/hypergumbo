@@ -1,0 +1,21 @@
+- op: create  # dae5
+  at: '2026-03-02T21:58:04Z'  # dae5
+  by: agent  # dae5
+  actor: jgstern_agent  # dae5
+  clock: 1  # dae5
+  nonce: dae5  # dae5
+  data:  # dae5
+    kind: work_item  # dae5
+    title: "Revalidation: run C6 VC/DID + Rollup + Governance (6 repos)"  # dae5
+    status: todo_soft  # dae5
+    priority: 2  # dae5
+    parent:  # dae5
+    tags:  # dae5
+    - bakeoff-revalidation  # dae5
+    before:  # dae5
+    - WI-zazid-rukuz-muduj-lifof-pojah-supap-nafav-zodit  # dae5
+    duplicate_of: []  # dae5
+    not_duplicate_of: []  # dae5
+    pr_ref:  # dae5
+    description: "Run Cohort 6 of the OptAttest curriculum: VC/DID + Rollup + Governance Integration.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos ssi,didkit,zksync-era,openzeppelin-contracts,osx,sp1-contract-call\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (6): ssi, didkit, zksync-era, openzeppelin-contracts, osx, sp1-contract-call\nLanguages: Rust (ssi, didkit), Rust+Solidity+TS (zksync-era), Solidity (openzeppelin-contracts, osx), Rust+Solidity (sp1-contract-call)\n\nInitial run results: 2 GOOD (ssi, zksync-era), 4 WARN (didkit, openzeppelin-contracts, osx, sp1-contract-call).\nLLM reflect: 0 USEFUL, 5 PARTIALLY_USEFUL, 1 NOT_USEFUL.\nThis cohort WAS re-validated in the post-fixes sessions (bellman added) with similar results.\nThe \"integration reality check\" cohort — most polyglot, most language diversity.\nSolidity repos have known structural gaps (visibility modifiers, inheritance, 46% orphan in OZ)."  # dae5
+    fields: {}  # dae5

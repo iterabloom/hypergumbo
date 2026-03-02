@@ -1,0 +1,21 @@
+- op: create  # 7e27
+  at: '2026-03-02T21:57:53Z'  # 7e27
+  by: agent  # 7e27
+  actor: jgstern_agent  # 7e27
+  clock: 1  # 7e27
+  nonce: '7e27'  # 7e27
+  data:  # 7e27
+    kind: work_item  # 7e27
+    title: "Revalidation: run C5 Privacy Protocols + Attestation (5 repos)"  # 7e27
+    status: todo_soft  # 7e27
+    priority: 2  # 7e27
+    parent:  # 7e27
+    tags:  # 7e27
+    - bakeoff-revalidation  # 7e27
+    before:  # 7e27
+    - WI-rijoj-bimar-misut-luton-rupon-latur-zinur-ravol  # 7e27
+    duplicate_of: []  # 7e27
+    not_duplicate_of: []  # 7e27
+    pr_ref:  # 7e27
+    description: "Run Cohort 5 of the OptAttest curriculum: Privacy Protocols + Attestation References.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos librustzcash,orchard,penumbra,private-proof-of-innocence,engine\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (5): librustzcash, orchard, penumbra, private-proof-of-innocence, engine\nLanguages: Rust (librustzcash, orchard, penumbra), TypeScript (PPOI, engine)\n\nInitial run results: 1 GOOD (librustzcash), 4 WARN (orchard, penumbra, PPOI, engine).\nLLM reflect: 1 USEFUL, 4 PARTIALLY_USEFUL.\npenumbra was later cherry-pick tested and improved WARN→GOOD after codegen-derived\npatterns fix (PR#1641: .serde.rs nodes reclassified tier1→tier4, orphan 21.4%→9.4%).\nPPOI is \"the closest existing system to OptAttest\" per the curriculum.\nTypeScript repos test cross-language analysis capability."  # 7e27
+    fields: {}  # 7e27
