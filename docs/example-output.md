@@ -16,7 +16,7 @@ Successfully installed hypergumbo-2.1.0 hypergumbo-core-2.1.0 hypergumbo-lang-co
 /content# hypergumbo add-extras
 ```
 
-[above `hypergumbo add-extras` step is only necessary if your repos of interest might contain Lean 4, Wolfram Language, or Circom; or if you want Gitleaks to attempt to detect accidental secret leaks; or if you want embeddings for arguably-better sketches]
+[above `hypergumbo add-extras` step is only necessary if your repos of interest might contain Lean 4 or Wolfram Language; or if you want Gitleaks to attempt to detect accidental secret leaks; or if you want embeddings for arguably-better sketches]
 
 ```
 Building tree-sitter grammars from source...
