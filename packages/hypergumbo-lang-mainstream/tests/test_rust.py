@@ -2990,3 +2990,149 @@ class TestRustTurbofishCalls:
             f"Expected 0 call edges for blocked .clone::<T>() but got "
             f"{len(call_edges)}: {[e.dst for e in call_edges]}"
         )
+
+
+class TestRustCfgTestInheritance:
+    """Tests for #[cfg(test)] annotation inheritance (WI-sijim).
+
+    Functions inside ``#[cfg(test)] mod tests { ... }`` should inherit the
+    ``cfg(test)`` annotation so that ``is_test_node`` in the slicer correctly
+    excludes them from production slices, even when the individual function
+    doesn't carry its own ``#[test]`` attribute.
+    """
+
+    def test_helper_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Helper function inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub fn real_function() {}\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    fn helper() {}\n"
+            "\n"
+            "    #[test]\n"
+            "    fn test_something() {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_fn = next(s for s in result.symbols if s.name == "real_function")
+        helper_fn = next(s for s in result.symbols if s.name == "helper")
+        test_fn = next(
+            s for s in result.symbols if s.name == "test_something"
+        )
+
+        # real_function should NOT have cfg(test)
+        real_anns = (real_fn.meta or {}).get("annotations", [])
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+        assert cfg_test not in real_anns
+
+        # helper should inherit cfg(test) from enclosing module
+        helper_anns = (helper_fn.meta or {}).get("annotations", [])
+        assert cfg_test in helper_anns, (
+            f"helper inside #[cfg(test)] mod should have cfg(test) "
+            f"annotation, got: {helper_anns}"
+        )
+
+        # test_something already has #[test]; should also have cfg(test)
+        test_anns = (test_fn.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_struct_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Struct inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub struct RealStruct;\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    struct TestFixture;\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_struct = next(
+            s for s in result.symbols if s.name == "RealStruct"
+        )
+        test_struct = next(
+            s for s in result.symbols if s.name == "TestFixture"
+        )
+
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+
+        real_anns = (real_struct.meta or {}).get("annotations", [])
+        assert cfg_test not in real_anns
+
+        test_anns = (test_struct.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_enum_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Enum inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub enum RealEnum { A, B }\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    enum TestEnum { X, Y }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_enum = next(s for s in result.symbols if s.name == "RealEnum")
+        test_enum = next(s for s in result.symbols if s.name == "TestEnum")
+
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+
+        real_anns = (real_enum.meta or {}).get("annotations", [])
+        assert cfg_test not in real_anns
+
+        test_anns = (test_enum.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_is_test_node_detects_cfg_test_helper(
+        self, tmp_path: Path,
+    ) -> None:
+        """is_test_node returns True for helper inside #[cfg(test)] mod.
+
+        End-to-end test: the inherited annotation must be in the format
+        that is_test_node / _has_test_annotation recognizes.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        from hypergumbo_core.paths import is_test_node
+
+        (tmp_path / "lib.rs").write_text(
+            "pub fn real_function() {}\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    fn helper() {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_fn = next(s for s in result.symbols if s.name == "real_function")
+        helper_fn = next(s for s in result.symbols if s.name == "helper")
+
+        # real_function in src/ is NOT a test node
+        assert not is_test_node(real_fn.path, real_fn.meta)
+
+        # helper inside #[cfg(test)] IS a test node
+        assert is_test_node(helper_fn.path, helper_fn.meta), (
+            f"helper inside #[cfg(test)] should be detected as test node, "
+            f"meta={helper_fn.meta}"
+        )

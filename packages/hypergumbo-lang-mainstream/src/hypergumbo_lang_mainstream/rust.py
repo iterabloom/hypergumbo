@@ -379,6 +379,36 @@ def _extract_modifiers_rust(node: "tree_sitter.Node", source: bytes) -> list[str
     return modifiers
 
 
+def _is_inside_cfg_test(
+    node: "tree_sitter.Node", source: bytes,
+) -> bool:
+    """Check whether *node* is nested inside a ``#[cfg(test)]`` module.
+
+    Walks ancestor nodes looking for a ``mod_item`` whose preceding sibling
+    attributes include ``#[cfg(test)]``.  This catches the idiomatic Rust
+    pattern::
+
+        #[cfg(test)]
+        mod tests {
+            fn helper() { ... }   // <-- should be marked as test code
+        }
+
+    Individual functions already carry their own ``#[test]`` annotation, but
+    helper functions and other items inside the module do not.  This function
+    bridges that gap so that ``is_test_node`` in the slicer correctly
+    excludes them from production slices.
+    """
+    ancestor = node.parent
+    while ancestor is not None:
+        if ancestor.type == "mod_item":
+            for ann in _extract_rust_annotations(ancestor, source):
+                name = ann.get("name", "")
+                if name == "cfg" and "test" in ann.get("args", []):
+                    return True
+        ancestor = ancestor.parent
+    return False
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -413,6 +443,16 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
+
+                # Inherit #[cfg(test)] from enclosing module so slicer
+                # can exclude helper functions inside test modules.
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
+
                 meta: dict[str, object] | None = None
                 if annotations:
                     meta = {"annotations": annotations}
@@ -460,6 +500,12 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching (e.g., derive macros)
                 annotations = _extract_rust_annotations(node, source)
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
@@ -494,6 +540,12 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
