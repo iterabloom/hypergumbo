@@ -201,6 +201,7 @@ class SliceResult:
     query: SliceQuery
     limits_hit: List[str] = field(default_factory=list)
     node_depths: Dict[str, int] = field(default_factory=dict)
+    node_tiers: Dict[str, int] = field(default_factory=dict)
 
     @property
     def feature_id(self) -> str:
@@ -222,6 +223,8 @@ class SliceResult:
         }
         if self.node_depths:
             result["node_depths"] = dict(sorted(self.node_depths.items()))
+        if self.node_tiers:
+            result["node_tiers"] = dict(sorted(self.node_tiers.items()))
         return result
 
 
@@ -358,6 +361,7 @@ def slice_graph(
     limits_hit: List[str] = []
     entry_node_ids: Set[str] = {n.id for n in entry_nodes}
     node_depths: Dict[str, int] = {}
+    node_tiers: Dict[str, int] = {}
 
     def add_file_imports(file_path: str) -> None:
         """Add import edges from the file node(s) for the given path."""
@@ -392,6 +396,7 @@ def slice_graph(
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         node_depths[entry.id] = 0
+        node_tiers[entry.id] = getattr(entry, 'supply_chain_tier', 1)
         files_seen.add(entry.path)
         # Add import edges from this file (forward only, unless imports excluded)
         if not query.reverse and not query.exclude_imports:
@@ -421,6 +426,7 @@ def slice_graph(
             if member.id not in visited_nodes:
                 visited_nodes.add(member.id)
                 node_depths[member.id] = 0
+                node_tiers[member.id] = getattr(member, 'supply_chain_tier', 1)
                 files_seen.add(member.path)
                 queue.append((member.id, 0))
                 if not query.reverse and not query.exclude_imports:
@@ -516,6 +522,9 @@ def slice_graph(
             if next_node.id not in visited_nodes:
                 visited_nodes.add(next_node.id)
                 node_depths[next_node.id] = hop + 1
+                node_tiers[next_node.id] = getattr(
+                    next_node, 'supply_chain_tier', 1,
+                )
                 queue.append((next_node.id, hop + 1))
                 # Add import edges from the visited file (forward only,
                 # unless imports excluded)
@@ -529,6 +538,7 @@ def slice_graph(
         query=query,
         limits_hit=limits_hit,
         node_depths=node_depths,
+        node_tiers=node_tiers,
     )
 
 
