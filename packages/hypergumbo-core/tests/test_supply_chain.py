@@ -76,6 +76,15 @@ class TestDerivedArtifactDetection:
         "compiled/output.compiled.js",
         "__pycache__/module.cpython-311.pyc",
         "src/__pycache__/test.pyc",
+        # Rust prost-build generated serde implementations
+        "crates/proto/src/gen/penumbra.core.keys.v1.serde.rs",
+        "src/gen/mypackage.serde.rs",
+        # Go protobuf generated code
+        "pkg/api/v1/service.pb.go",
+        "internal/proto/message.pb.go",
+        # Python protobuf generated code
+        "src/proto/service_pb2.py",
+        "proto/message_pb2_grpc.py",
     ])
     def test_derived_path_patterns(self, path, tmp_path):
         """Files matching derived patterns are tier 4."""

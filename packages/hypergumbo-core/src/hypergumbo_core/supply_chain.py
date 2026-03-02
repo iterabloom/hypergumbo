@@ -118,6 +118,11 @@ DERIVED_FILENAME_PATTERNS = [
     r"\.compiled\.js$",
     r"\.pyc$",
     r"\.pyo$",
+    # Protobuf/gRPC code generation artifacts
+    r"\.serde\.rs$",        # Rust prost-build generated serde implementations
+    r"\.pb\.go$",           # Go protobuf generated code
+    r"_pb2\.py$",           # Python protobuf generated code
+    r"_pb2_grpc\.py$",      # Python gRPC generated code
 ]
 
 EXTERNAL_DEP_PATTERNS = [
