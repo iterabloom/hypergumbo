@@ -1,0 +1,21 @@
+- op: create  # bf39
+  at: '2026-03-02T21:57:03Z'  # bf39
+  by: agent  # bf39
+  actor: jgstern_agent  # bf39
+  clock: 1  # bf39
+  nonce: bf39  # bf39
+  data:  # bf39
+    kind: work_item  # bf39
+    title: "Revalidation: run C4 Commitments + Accumulators (6 repos)"  # bf39
+    status: todo_soft  # bf39
+    priority: 2  # bf39
+    parent:  # bf39
+    tags:  # bf39
+    - bakeoff-revalidation  # bf39
+    before:  # bf39
+    - WI-subor-hinuj-zubuz-sizug-sudiv-juzif-talut-tanam  # bf39
+    duplicate_of: []  # bf39
+    not_duplicate_of: []  # bf39
+    pr_ref:  # bf39
+    description: "Run Cohort 4 of the OptAttest curriculum: Commitments + Curves + Accumulators.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos curve25519-dalek,bulletproofs,pasta_curves,incrementalmerkletree,crypto-primitives,jmt\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (6): curve25519-dalek, bulletproofs, pasta_curves, incrementalmerkletree, crypto-primitives, jmt\nLanguages: Rust (all)\n\nInitial run results: 3 GOOD (bulletproofs, crypto-primitives, curve25519-dalek), 3 WARN (incrementalmerkletree, jmt, pasta_curves).\nLLM reflect: 0 USEFUL, 6 PARTIALLY_USEFUL.\nZERO repos from this cohort were re-validated after fixes — the entire cohort is stale.\nincrementalmerkletree is noted in the curriculum as \"probably the single most directly\nrelevant primitive repo\" for OptAttest. All pure Rust libraries that should benefit from\nthe generic trait blocklist and turbofish fixes."  # bf39
+    fields: {}  # bf39
