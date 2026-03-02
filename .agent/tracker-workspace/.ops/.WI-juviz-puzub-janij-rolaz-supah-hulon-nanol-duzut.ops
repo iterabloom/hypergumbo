@@ -1,0 +1,22 @@
+- op: create  # 5996
+  at: '2026-03-02T21:23:40Z'  # 5996
+  by: agent  # 5996
+  actor: jgstern_agent  # 5996
+  clock: 1  # 5996
+  nonce: '5996'  # 5996
+  data:  # 5996
+    kind: work_item  # 5996
+    title: "Lean 4: scan type signatures and theorem statements for reference edges"  # 5996
+    status: todo_soft  # 5996
+    priority: 2  # 5996
+    parent:  # 5996
+    tags:  # 5996
+    - analyzer  # 5996
+    - lean  # 5996
+    - formal-methods  # 5996
+    before: []  # 5996
+    duplicate_of: []  # 5996
+    not_duplicate_of: []  # 5996
+    pr_ref:  # 5996
+    description: "## Context\n\nThe Lean 4 analyzer (packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/lean.py)\ncurrently extracts symbols (def, theorem, lemma, structure, inductive, class, instance) and\ncreates reference edges by scanning identifier nodes in definition bodies (after :=). However,\nit completely ignores type signatures, which are architecturally critical in dependently-typed\nlanguages.\n\nIn the March 2026 deep bakeoff (OptAttest curriculum, 7 Lean repos), all Lean repositories\nscored WARN with 37-46% orphan rates and zero cross-file connectivity despite extracting\nthousands of declarations. When reference edges were first added (PR #1626), orphan rates\nhalved — but the remaining gap is largely due to missing type-signature references.\n\n## Problem\n\nWhen a Lean definition has `def double (n : Nat) : Nat := n + n`, the current analyzer\ncreates a reference edge from `double` to `n` (found in the body after `:=`), but NOT to\n`Nat` (which appears only in the type signature before `:=`). In Lean 4, the type signature\nIS the specification — it's arguably more architecturally important than the body.\n\nSimilarly, theorem statements like `theorem add_comm (m n : Nat) : m + n = n + m` contain\nreferences to `Nat`, `+`, and `=` that are never captured.\n\n## Specific gaps\n\n1. **Type signatures ignored**: Parameters `(n : Nat)` and return types `: ReturnType` in\n   def/theorem/lemma/abbrev are not scanned for identifier references.\n2. **Typeclass constraints invisible**: `[ToString α]` or `[BEq α]` implicit arguments create\n   dispatch edges (Lean's elaborator resolves which instance to use) that never appear as\n   identifiers in the body. These are secondary priority but architecturally significant.\n3. **Tactic dependencies opaque**: Tactics like `simp`, `rw`, `exact` invoke lemmas silently.\n   Low priority — this requires understanding Lean's tactic evaluation.\n\n## Proposed fix (incremental)\n\n**Phase 1 (high impact, moderate effort):** After extracting a def/theorem/lemma/abbrev, also\nscan the type signature portion (nodes between the symbol name and `:=`) for identifier/qid\nreferences. Create reference edges with confidence ~0.75 (slightly lower than body references\nat 0.80, since type references are less direct). This alone should capture most missing edges.\n\n**Phase 2 (medium impact, higher effort):** Extract typeclass constraint identifiers from\nimplicit argument brackets `[ClassName α]` and create reference edges to the class symbol.\n\n## Bakeoff evidence\n\n- crypto-agda: 3985 nodes, 100% tier1, 41.6% orphan rate — many orphans are types referenced\n  only in signatures\n- bft-consensus-agda: 2489 nodes, 46.4% orphan rate\n- ArkLib: 1199 nodes, 37.2% orphan rate, 0% cross-file connectivity"  # 5996
+    fields: {}  # 5996

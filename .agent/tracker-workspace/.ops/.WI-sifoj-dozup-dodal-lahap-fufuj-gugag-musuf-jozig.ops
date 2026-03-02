@@ -1,0 +1,19 @@
+- op: create  # 85eb
+  at: '2026-03-02T08:10:03Z'  # 85eb
+  by: agent  # 85eb
+  actor: jgstern_agent  # 85eb
+  clock: 1  # 85eb
+  nonce: 85eb  # 85eb
+  data:  # 85eb
+    kind: work_item  # 85eb
+    title: "Module-level grouping view for slice/analysis output"  # 85eb
+    status: needs_human_review  # 85eb
+    priority: 2  # 85eb
+    parent:  # 85eb
+    tags: []  # 85eb
+    before: []  # 85eb
+    duplicate_of: []  # 85eb
+    not_duplicate_of: []  # 85eb
+    pr_ref:  # 85eb
+    description: "Top LLM assessment improvement suggestion across 5 ZK repos (mean score 68.8): group nodes by directory/module and show inter-module edge counts. This would highlight coupling, suggest architectural improvements, and make outputs less overwhelming for large repos (e.g., penumbra with 10,951 nodes). Needs design discussion: should this be a new CLI subcommand, a flag on existing slice/analyze commands, or a post-processing script?"  # 85eb
+    fields: {}  # 85eb
