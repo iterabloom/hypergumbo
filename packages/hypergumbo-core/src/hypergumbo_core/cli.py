@@ -1258,7 +1258,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2))
+    out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
 
     mode = "reverse" if args.reverse else "forward"
     print(f"[hypergumbo slice] Wrote {mode} slice to {out_path}")
@@ -2594,10 +2594,10 @@ def cmd_compact(args: argparse.Namespace) -> int:
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w") as f:
-            json.dump(compact_map, f, indent=2)
+            json.dump(compact_map, f, indent=2, sort_keys=True)
         print(f"Compact behavior map written to: {out_path}")
     else:
-        print(json.dumps(compact_map, indent=2))
+        print(json.dumps(compact_map, indent=2, sort_keys=True))
 
     return 0
 
@@ -2754,7 +2754,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 entry["cyclomatic_complexity"] = complexity
             output["cold_spots"].append(entry)
 
-        print(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2, sort_keys=True))
     else:
         # Human-readable output
         print("Test Coverage Estimate")
@@ -4329,7 +4329,7 @@ def run_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
                 with open(budget_path, "w") as f:
-                    json.dump(tiered_map, f, indent=2)
+                    json.dump(tiered_map, f, indent=2, sort_keys=True)
                 generated_files.append(budget_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
@@ -4357,7 +4357,7 @@ def run_behavior_map(
 
     show_progress("Writing output", 95)
     with open(out_path, "w") as f:
-        json.dump(behavior_map, f, indent=2)
+        json.dump(behavior_map, f, indent=2, sort_keys=True)
     generated_files.append(out_path)
     _log_memory("after write")
 

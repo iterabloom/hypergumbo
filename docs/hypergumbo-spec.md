@@ -1064,7 +1064,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
 Output ordering is deterministic (same input → same output) and optimized for consumption priority.
 
 * 🟩 **Default: centrality-ranked** — Nodes sorted by centrality score (most important first). Edges sorted by source node centrality. This ordering is deterministic given the same input graph and optimizes for LLM context windows and human scanning. Used in JSON output, sketch output, and compact/tiered views.
-* ⬜ **JSON key-level reproducibility** — `json.dumps` should use `sort_keys=True` for reproducible diffs at the key level (currently missing).
+* 🟩 **JSON key-level reproducibility** — all `json.dump`/`json.dumps` output calls use `sort_keys=True` for reproducible diffs at the key level.
 * 🟪 **`--sort-order` option** — Future flag to allow alternative orderings (e.g., `--sort-order alphabetical` with sort keys: nodes by `(language, path, start_line, name)`, edges by `(src, dst, type)`) for users who prefer diffability over importance ranking.
 
 ## 14) Supply chain classification
