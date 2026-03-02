@@ -37,6 +37,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Dependency symbol tier classification**: Dependency-directory symbols are correctly classified as tier 3 (external). Benchmark directories (`bench/`, `benches/`) excluded from production slices.
 - **Test file classification**: Added `fv/` (formal verification) and `harnesses/` directories to test detection. Added `build.rs` as utility file for entrypoint ranking demotion.
 - **Symbol path normalization**: Centralized path normalization in `run_all_analyzers` and `run_behavior_map` strips absolute repo_root prefix from symbol and usage context paths. Fixes incorrect tier classification in Java, TypeScript, Kotlin, HTML, C, Objective-C, Swift analyzers and event-sourcing/websocket/swift-objc linkers.
+- **Derive-macro centrality dampening**: `is_utility_symbol()` now checks the unqualified part of qualified names (e.g., `AllocatedNum::clone` → `clone`). Adds Rust derive method names (`fmt`, `default`, `into`, `from`, `as_ref`, `deref`, `drop`, `unwrap`) to utility dampening patterns.
+- **Rust same-module method resolution**: Method calls now pass the caller's directory as `path_hint` to prefer same-module candidates over cross-module ones with identical names (e.g., `nova/nifs.rs::NIFS::prove` preferred over `neutron/nifs.rs::NIFS::prove` when called from `nova/mod.rs`).
 
 ### Changed
 
