@@ -23,6 +23,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Rust
 
 - `implements` edges from `impl Trait for Struct` declarations. JNI linker support for `#[no_mangle] pub extern "C"` functions.
+- Turbofish/fully-qualified generic call resolution: `PublicParams::<E1,E2>::setup()` and `x.collect::<Vec<i32>>()` now produce call edges by unwrapping `generic_function` nodes and stripping type arguments from scoped names.
+- Generic trait method blocklist: 33 common trait/collection method names (`.into()`, `.clone()`, `.len()`, `.push()`, etc.) are blocked from short-name method resolution to prevent false-positive in-degree. Fully-scoped calls (`StatusRow::into()`) still resolve.
+- `#[cfg(test)]` module inheritance: functions, structs, and enums inside `#[cfg(test)] mod tests { ... }` blocks inherit the `cfg(test)` annotation, enabling correct production slice exclusion.
+
+#### Slicing
+
+- `node_tiers` field in slice output: each node's `supply_chain_tier` integer is now propagated into `SliceResult`, enabling tier-based filtering without the full behavior map.
 
 #### Formal methods
 
