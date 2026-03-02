@@ -1,0 +1,21 @@
+- op: create  # 025e
+  at: '2026-03-02T21:54:50Z'  # 025e
+  by: agent  # 025e
+  actor: jgstern_agent  # 025e
+  clock: 1  # 025e
+  nonce: 025e  # 025e
+  data:  # 025e
+    kind: work_item  # 025e
+    title: "Revalidation: run C0 Formal Methods (10 repos: Lean, Agda, Wolfram)"  # 025e
+    status: todo_soft  # 025e
+    priority: 2  # 025e
+    parent:  # 025e
+    tags:  # 025e
+    - bakeoff-revalidation  # 025e
+    before:  # 025e
+    - WI-nituj-katib-zomut-migav-pibad-nagip-domif-midom  # 025e
+    duplicate_of: []  # 025e
+    not_duplicate_of: []  # 025e
+    pr_ref:  # 025e
+    description: "Run Cohort 0 of the OptAttest curriculum: Formal Methods + Language Coverage.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos proven-zk,ArkLib,VCV-io,gnark-lean-demo,clean,ix,risc0-lean4,bft-consensus-agda,crypto-agda,ZeroKnowledgeProofs\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (10): proven-zk, ArkLib, VCV-io, gnark-lean-demo, clean, ix, risc0-lean4,\nbft-consensus-agda, crypto-agda, ZeroKnowledgeProofs\nLanguages: Lean 4 (7 repos), Agda (2 repos), Wolfram (1 repo)\n\nInitial run results (code hash e0ca04d3): 0 GOOD, 10 WARN, 0 SKIP.\nLLM reflect: 0 USEFUL, 2 PARTIALLY_USEFUL, 8 NOT_USEFUL.\nKnown gaps: Lean/Agda type signatures not scanned for references (WI-juviz, WI-kujuf).\nExpect limited improvement from Rust-focused fixes, but reference edge PRs #1626-1627\nare in the current codebase and were not re-tested on these repos."  # 025e
+    fields: {}  # 025e
