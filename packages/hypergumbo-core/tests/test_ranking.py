@@ -29,6 +29,7 @@ from hypergumbo_core.ranking import (
     compute_symbol_mention_centrality,
     compute_symbol_mention_centrality_batch,
     compute_truncation_elbow,
+    compute_harmonic_shares,
     _compute_centrality_with_python,
     _has_logging_concept,
 )
@@ -2937,3 +2938,55 @@ class TestComputeTruncationElbow:
         result = compute_truncation_elbow(syms, centrality, path)
         # All end at line 10: 10 * 80 / 4 = 200 tokens
         assert result == 200
+
+
+class TestComputeHarmonicShares:
+    """Tests for compute_harmonic_shares function."""
+
+    def test_basic_n5_budget1000(self):
+        """n=5, budget=1000: shares sum to 1000, monotonically decreasing."""
+        shares = compute_harmonic_shares(5, 1000)
+        assert len(shares) == 5
+        assert sum(shares) == 1000
+        # Monotonically non-increasing
+        for i in range(len(shares) - 1):
+            assert shares[i] >= shares[i + 1]
+
+    def test_n1_returns_full_budget(self):
+        """n=1 returns [budget]."""
+        assert compute_harmonic_shares(1, 500) == [500]
+
+    def test_n0_returns_empty(self):
+        """n=0 returns []."""
+        assert compute_harmonic_shares(0, 1000) == []
+
+    def test_negative_n_returns_empty(self):
+        """Negative n returns []."""
+        assert compute_harmonic_shares(-1, 1000) == []
+
+    def test_zero_budget(self):
+        """Zero budget returns list of zeros."""
+        shares = compute_harmonic_shares(5, 0)
+        assert shares == [0, 0, 0, 0, 0]
+
+    def test_file1_gets_most(self):
+        """File 1's share > file 2's share > ... > file n's share."""
+        shares = compute_harmonic_shares(10, 5000)
+        assert len(shares) == 10
+        # Strictly decreasing (with sufficient budget)
+        for i in range(len(shares) - 1):
+            assert shares[i] > shares[i + 1], f"shares[{i}]={shares[i]} not > shares[{i+1}]={shares[i+1]}"
+
+    def test_sum_equals_budget(self):
+        """Sum of all shares equals the total budget exactly."""
+        for n, budget in [(3, 100), (7, 999), (1, 1), (20, 10000)]:
+            shares = compute_harmonic_shares(n, budget)
+            assert sum(shares) == budget, f"n={n}, budget={budget}: sum={sum(shares)}"
+
+    def test_small_budget_large_n(self):
+        """When budget < n, some shares are 0 but sum is still correct."""
+        shares = compute_harmonic_shares(10, 3)
+        assert len(shares) == 10
+        assert sum(shares) == 3
+        # At least first share is > 0
+        assert shares[0] > 0

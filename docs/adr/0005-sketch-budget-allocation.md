@@ -71,8 +71,8 @@ When `--with-source` is set, budget shifts dramatically from file listings to ac
 | Frameworks | Fixed: all detected frameworks (no limit) | — |
 | Tests | Fixed: summary line only | — |
 | Configuration | Heuristic lines + semantic embedding | — |
-| Entry Points | 33% of remaining | High signal, keep as-is |
-| Data Models | 20% of remaining | High signal for domain understanding |
+| Entry Points | 33% of remaining, **capped at 2000 tokens** | Prevents starving source content at large budgets |
+| Data Models | 20% of remaining, **capped at 1500 tokens** | Prevents starving source content at large budgets |
 | Source Files (list) | **10%** of remaining | Shrink: paths are low-value |
 | Key Symbols | **20%** of remaining | Shrink: actual code is better |
 | Additional Files (list) | **5%** of remaining | Shrink: paths are low-value |
@@ -120,10 +120,10 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 | Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
-| Source Content | varies | 1 | — | Dynamic truncation with elbow/median floor |
+| Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
 | Additional File Content | varies | 1 | — | Dynamic truncation with median floor |
 
-The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source content sections use dynamic truncation: files that fit are included in full, oversized files are truncated to a computed floor (elbow-based for early source files, median-based thereafter).
+The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content uses harmonic truncation (top-ranked files get proportionally more space); Additional Files Content uses median-based truncation.
 
 ### Structure: Tree Built from Important Files
 
@@ -172,14 +172,18 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 
 Both Source Files Content (Section 9) and Additional Files Content (Section 10) use dynamic truncation. Files that fit within budget are included in full; oversized files are truncated to a computed target and appended with `[...truncated...]`.
 
-**Truncation floor for Source Files Content:**
-- **First 3 files** (before enough data for a meaningful median): Uses an elbow-based floor from `compute_truncation_elbow()`, which analyzes cumulative symbol centrality to find the point of diminishing returns — the line number after which most important symbols have been covered. This is converted to a token count.
-- **After 3 files**: Uses `max(median(token_counts), 500)`, matching the Additional Files Content pattern.
+**Truncation for Source Files Content (harmonic):**
+- Uses `compute_harmonic_shares(effective_n, source_budget)` to distribute budget across files by density rank. File at rank *i* (1-indexed) gets `budget * (1/i) / H_n` tokens, where `H_n` is the *n*-th harmonic number.
+- **Effective N** is the largest rank whose harmonic share meets the 500-token floor. This prevents diluting shares across too many files.
+- **Surplus handling**: When a file uses fewer tokens than its harmonic share, the surplus remains available for later files (they can exceed their pure harmonic share).
+- Files that fit entirely within their share are included in full. Oversized files are truncated to their share.
 
 **Truncation floor for Additional Files Content:**
 - Uses `max(median(token_counts), 500)` throughout.
 
-**Why elbow-based truncation for early source files:** The most important files (e.g., `ir.py`, `base.py`, `cli.py`) tend to be the largest and were frequently skipped entirely under the previous all-or-nothing strategy. By using symbol centrality to determine where to truncate, we capture the architecturally significant portion of each file while staying within budget.
+**Why harmonic truncation for source files:** The previous elbow+median approach spread content evenly across files. Harmonic weighting gives proportionally more depth to higher-ranked (more architecturally important) files, matching developer intuition: you want the most detail on the most important code.
+
+**Entry Point / Data Model caps (--with-source only):** At large budgets, Entry Points and Data Models can saturate to 100% representativeness early but keep consuming their full percentage allocation. Absolute caps (2000 tokens for Entry Points, 1500 for Data Models) ensure surplus budget flows to Source Files Content where it provides more value. The caps are generous enough that they only clip at large budgets (32k+) where the sections are already fully represented.
 
 **Safety:** Truncation uses `truncate_to_tokens()` which respects line boundaries and proper markdown fencing. The `[...truncated...]` marker signals to readers that content continues.
 

@@ -1340,3 +1340,40 @@ def compute_truncation_elbow(
 
     # Convert elbow line number to tokens
     return elbow_line * chars_per_line // chars_per_token
+
+
+def compute_harmonic_shares(n: int, total_budget: int) -> list[int]:
+    """Compute harmonic budget shares for N ranked items.
+
+    File at rank i (1-indexed) gets ``total_budget * (1/i) / H_n`` tokens,
+    where ``H_n = sum(1/k for k=1..n)`` is the n-th harmonic number.  This
+    gives a depth-over-breadth distribution: the highest-ranked file gets
+    the most tokens, with each subsequent file receiving proportionally less.
+
+    Allocations are rounded down to integers.  Any leftover tokens from
+    rounding are distributed one each to the highest-ranked items so the
+    sum equals *exactly* ``total_budget``.
+
+    Args:
+        n: Number of items to allocate budget across.  Must be >= 0.
+        total_budget: Total token budget to distribute.  Must be >= 0.
+
+    Returns:
+        A list of ``n`` integer allocations summing to ``total_budget``,
+        monotonically non-increasing.
+    """
+    if n <= 0 or total_budget <= 0:
+        return [] if n <= 0 else [0] * n
+
+    # Compute H_n (n-th harmonic number)
+    h_n = sum(1.0 / k for k in range(1, n + 1))
+
+    # Compute raw shares and floor them
+    shares = [int(total_budget * (1.0 / i) / h_n) for i in range(1, n + 1)]
+
+    # Distribute remainder to top-ranked items
+    remainder = total_budget - sum(shares)
+    for i in range(remainder):
+        shares[i] += 1
+
+    return shares
