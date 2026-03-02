@@ -32,3 +32,18 @@
   clock: 3  # c705
   nonce: c705  # c705
   message: "Deprioritized to P4. Derive-generated method dampening depends on detecting which methods come from derive macros, which requires either: (1) tree-sitter AST annotation tracking (derive attribute → generated methods), or (2) heuristic name matching (clone, into, default, debug, eq, hash, etc.). Option 2 is simpler and partially covered by the existing common-method-name penalty. Best addressed after the Rust trait resolution work (WI-ronoj) since both touch the same call resolution pipeline."  # c705
+- op: update  # 2879
+  at: '2026-03-02T01:05:13Z'  # 2879
+  by: agent  # 2879
+  actor: jgstern_agent  # 2879
+  clock: 4  # 2879
+  nonce: '2879'  # 2879
+  set:  # 2879
+    status: done  # 2879
+- op: discuss  # 278b
+  at: '2026-03-02T01:05:13Z'  # 278b
+  by: agent  # 278b
+  actor: jgstern_agent  # 278b
+  clock: 5  # 278b
+  nonce: 278b  # 278b
+  message: "Fixed in PR #1635. Extended is_utility_symbol() to check unqualified part of qualified names (AllocatedNum::clone → clone matches). Added Rust derive method names (fmt, default, into, from, as_ref, deref, drop, unwrap) to utility pattern list."  # 278b
