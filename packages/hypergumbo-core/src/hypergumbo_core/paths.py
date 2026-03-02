@@ -159,14 +159,16 @@ def is_utility_file(path: str) -> bool:
     normalized = normalize_path(path)
     path_parts = normalized.split("/")
 
+    # Always-utility: these names are unambiguously non-production
+    # regardless of where they appear in the path.
     utility_dirs = {
         # Documentation
         "docs_src", "docs", "documentation", "doc",
         # Examples
         "examples", "example", "samples", "sample", "demos", "demo",
-        # Scripts/tools
-        "scripts", "tools", "bin", "utils", "utilities",
-        # Dev/contrib (e.g., Airflow dev/, Kubernetes hack/, contrib/ dirs)
+        # Scripts
+        "scripts",
+        # Contrib (e.g., Kubernetes contrib/ dirs)
         "contrib", "hack",
         # Build systems
         "vcbuild", "cmake",
@@ -174,8 +176,11 @@ def is_utility_file(path: str) -> bool:
         "benchmarks", "benchmark", "benches", "bench", "perf",
     }
 
-    # Source roots: when "dev" appears after one of these, it's a
-    # source module (e.g., halo2's src/dev/gates.rs), not tooling.
+    # Ambiguous names: at the project root these are tooling directories
+    # (e.g., dev/check_providers.py, tools/build.py, bin/run.sh), but
+    # inside source roots they are legitimate modules (e.g.,
+    # src/dev/gates.rs, src/utils/helpers.py, src/bin/main.rs).
+    _AMBIGUOUS_UTILITY_DIRS = {"dev", "tools", "bin", "utils", "utilities"}
     _SOURCE_ROOTS = {"src", "lib", "app", "crates", "packages"}
     seen_source_root = False
 
@@ -185,8 +190,8 @@ def is_utility_file(path: str) -> bool:
             seen_source_root = True
         if lower in utility_dirs:
             return True
-        # "dev" is utility only at project root, not inside source trees
-        if lower == "dev" and not seen_source_root:
+        # Ambiguous dirs are utility only at project root
+        if lower in _AMBIGUOUS_UTILITY_DIRS and not seen_source_root:
             return True
         # devel-common/, devel-tools/, etc. — CI/dev tooling directories
         if lower.startswith("devel"):

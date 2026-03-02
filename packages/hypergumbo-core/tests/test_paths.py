@@ -363,19 +363,33 @@ class TestIsUtilityFile:
         assert is_utility_file("src/lib.rs") is False
         assert is_utility_file("src/main.rs") is False
 
-    def test_dev_inside_source_root_not_utility(self) -> None:
-        """dev/ inside src/ is a source module, not tooling (WI-kafif).
+    def test_ambiguous_dirs_inside_source_root_not_utility(self) -> None:
+        """dev/, utils/, tools/, bin/ inside source roots are modules (WI-kafif).
 
         In halo2, ``src/dev/gates.rs`` contains MockProver — production code.
-        Only project-root ``dev/`` directories are developer tooling.
+        In Rust, ``src/bin/main.rs`` is a binary crate.
+        In Python, ``src/utils/helpers.py`` is a source module.
+        Only project-root occurrences are developer tooling.
         """
+        # dev/ inside source roots
         assert is_utility_file("src/dev/gates.rs") is False
         assert is_utility_file("halo2_proofs/src/dev/gates.rs") is False
         assert is_utility_file("lib/dev/mod.py") is False
         assert is_utility_file("crates/core/src/dev.rs") is False
-        # But project-root dev/ is still utility
+        # utils/ inside source roots
+        assert is_utility_file("src/utils/helpers.py") is False
+        assert is_utility_file("packages/core/src/utils/mod.rs") is False
+        # tools/ inside source roots
+        assert is_utility_file("src/tools/parser.py") is False
+        # bin/ inside source roots (Rust convention)
+        assert is_utility_file("src/bin/main.rs") is False
+        assert is_utility_file("crates/cli/src/bin/tool.rs") is False
+        # But project-root occurrences are still utility
         assert is_utility_file("dev/check_providers.py") is True
         assert is_utility_file("dev/breeze/src/tool.py") is True
+        assert is_utility_file("utils/deploy.sh") is True
+        assert is_utility_file("tools/build.py") is True
+        assert is_utility_file("bin/run.sh") is True
 
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
