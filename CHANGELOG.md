@@ -34,12 +34,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Call resolution
 
 - **Solidity**: `super.method()`, `this.method()`, typed member access (`IERC20(addr).transfer()`), and function overload resolution by position.
-- **Rust**: Same-module method preference via caller directory `path_hint`. Derive-macro methods (`clone`, `into`, `default`, `fmt`, etc.) dampened in centrality ranking via qualified-name utility matching.
+- **Rust**: Same-module method preference via caller directory `path_hint` with `soft_hint` mode — single cross-crate candidates are kept with reduced confidence instead of being rejected. Derive-macro methods (`clone`, `into`, `default`, `fmt`, etc.) dampened in centrality ranking via qualified-name utility matching.
 
 #### Classification
 
 - Absolute symbol paths normalized to relative in `run_all_analyzers` and `run_behavior_map`. Fixes tier misclassification across Java, TypeScript, Kotlin, HTML, C, Objective-C, Swift, and three linkers.
 - `fv/`, `harnesses/` as test directories; `build.rs` as utility file; `tests.rs`/`testonly.rs` as Rust co-located test files; `bench/`/`benches/` excluded from production slices; `"."` skipped in Cargo workspace members; dependency symbols classified as tier 3.
+- Protobuf/gRPC codegen artifacts (`.serde.rs`, `.pb.go`, `_pb2.py`, `_pb2_grpc.py`) now classified as derived (tier 4) and excluded from behavior maps. Reduces orphan rate inflation from generated boilerplate (penumbra: 5750 serde nodes removed, orphan rate drops from 21% to ~9%).
 
 ### Changed
 
