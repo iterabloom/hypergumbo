@@ -2258,6 +2258,35 @@ class TestHasLoggingConcept:
         """None symbol is not detected."""
         assert not _has_logging_concept(None)
 
+    def test_qualified_name_utility_match(self):
+        """Qualified names like 'AllocatedNum::clone' match on unqualified part."""
+        # Rust derive-generated clone
+        sym = make_symbol("AllocatedNum::clone", path="src/num.rs", language="rust")
+        centrality = {sym.id: 1.0}
+        result = apply_utility_symbol_weights(centrality, [sym])
+        assert result[sym.id] < 1.0, (
+            "AllocatedNum::clone should be dampened as a utility symbol"
+        )
+
+    def test_derive_method_dampened(self):
+        """Rust derive-generated methods (fmt, default, into) are dampened."""
+        fmt_sym = make_symbol("MyStruct::fmt", path="src/lib.rs", language="rust")
+        default_sym = make_symbol("Config::default", path="src/config.rs", language="rust")
+        into_sym = make_symbol("StatusRow::into", path="src/status.rs", language="rust")
+        real_sym = make_symbol("Prover::prove", path="src/prover.rs", language="rust")
+
+        centrality = {
+            fmt_sym.id: 1.0, default_sym.id: 1.0,
+            into_sym.id: 1.0, real_sym.id: 1.0,
+        }
+        result = apply_utility_symbol_weights(
+            centrality, [fmt_sym, default_sym, into_sym, real_sym],
+        )
+        assert result[fmt_sym.id] < 1.0, "fmt should be dampened"
+        assert result[default_sym.id] < 1.0, "default should be dampened"
+        assert result[into_sym.id] < 1.0, "into should be dampened"
+        assert result[real_sym.id] == 1.0, "prove should NOT be dampened"
+
     def test_concept_based_dampening_in_apply_utility(self):
         """Symbols with logging concept are dampened by apply_utility_symbol_weights."""
         bridge = make_symbol("XORMLogBridge", path="src/log_bridge.go", language="go")

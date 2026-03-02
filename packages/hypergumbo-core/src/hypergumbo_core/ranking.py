@@ -372,6 +372,9 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^(?:insert|erase|push_back|pop_back|front|back|clear|swap|reserve|resize|at)$"),
     re.compile(r"^(?:toString|hashCode|equals|compareTo|clone|finalize)$"),  # Java boilerplate
     re.compile(r"^__(?:repr|str|hash|eq|ne|lt|le|gt|ge|len|bool|init|del)__$"),  # Python dunder
+    # Rust derive-generated methods: Clone, Default, Debug, Hash, PartialEq, Into/From.
+    # These have high in-degree from derive macros but low architectural relevance.
+    re.compile(r"^(?:fmt|default|into|from|as_ref|deref|drop|unwrap)$"),
 ]
 
 
@@ -383,13 +386,25 @@ def is_utility_symbol(name: str) -> bool:
     domain relevance. This supplements is_utility_file (path-based) with
     name-based detection.
 
+    Checks both the full name and the unqualified part (after the last
+    separator: `::`, `.`, `#`, `\\`). This catches derive-generated methods
+    like `AllocatedNum::clone` where only the unqualified `clone` matches.
+
     Args:
         name: Symbol name to check.
 
     Returns:
         True if the name matches a known utility pattern.
     """
-    return any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS)
+    if any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS):
+        return True
+    # Check unqualified name for qualified symbols (Rust ::, Java/C# ., Ruby #)
+    for sep in ("::", ".", "#", "\\"):
+        if sep in name:
+            unqualified = name.rsplit(sep, 1)[-1]
+            if any(p.search(unqualified) for p in _UTILITY_SYMBOL_PATTERNS):
+                return True
+    return False
 
 
 # Concepts from framework YAML patterns that indicate infrastructure logging.
