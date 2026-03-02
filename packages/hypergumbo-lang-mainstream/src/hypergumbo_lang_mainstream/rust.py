@@ -972,7 +972,18 @@ def _extract_edges_from_file(
                                     is_method_call or full_scoped_name is not None
                                 )
                                 if use_method_guard and method_resolver is not None:
-                                    lookup_result = method_resolver.lookup(callee_name)
+                                    # Pass the caller's directory as path_hint to
+                                    # prefer same-module methods over cross-module
+                                    # ones with the same name (e.g., nova/nifs.rs
+                                    # over neutron/nifs.rs when called from nova/).
+                                    caller_dir = (
+                                        file_path.rsplit("/", 1)[0]
+                                        if "/" in file_path else ""
+                                    )
+                                    lookup_result = method_resolver.lookup(
+                                        callee_name,
+                                        path_hint=caller_dir if caller_dir else None,
+                                    )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
                                     lookup_result = resolver.lookup(callee_name, path_hint=import_hint)

@@ -1632,6 +1632,79 @@ class TestRustMethodCallAmbiguity:
         # With 20 candidates and ambiguity_threshold=3, no edge should be created
         assert len(call_edges) == 0
 
+    def test_method_call_prefers_same_module(self, tmp_path: Path) -> None:
+        """Method call prefers candidate from the same module path.
+
+        When foo.prove() is called from nova/mod.rs and there are two
+        candidates (nova/nifs.rs::NIFS::prove, neutron/nifs.rs::NIFS::prove),
+        the resolver should prefer the one in the same module tree (nova/).
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.prove();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:nova/mod.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="nova/mod.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Two candidates named "prove" in different modules
+        nova_prove = Symbol(
+            id="rust:nova/nifs.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="nova/nifs.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        neutron_prove = Symbol(
+            id="rust:neutron/nifs.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="neutron/nifs.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry = {"caller": caller}
+        method_reg: dict[str, list[Symbol]] = {
+            "prove": [nova_prove, neutron_prove],
+        }
+        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        resolver = NameResolver(registry)
+        span_idx = {(1, 3): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "nova/mod.rs",
+            registry, {"caller": caller, "NIFS::prove": nova_prove},
+            "run1", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Should prefer nova/nifs.rs (same module tree) over neutron/nifs.rs
+        assert call_edges[0].dst == nova_prove.id, (
+            f"Expected nova/nifs.rs::NIFS::prove, got {call_edges[0].dst}"
+        )
+
     def test_function_call_not_penalized(self, tmp_path: Path) -> None:
         """Regular function calls (not method calls) keep normal confidence.
 
