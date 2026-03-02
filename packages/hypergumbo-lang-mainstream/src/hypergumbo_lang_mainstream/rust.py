@@ -54,7 +54,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
-from hypergumbo_core.symbol_resolution import ListNameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -972,19 +972,27 @@ def _extract_edges_from_file(
                                     is_method_call or full_scoped_name is not None
                                 )
                                 if use_method_guard and method_resolver is not None:
-                                    # Pass the caller's directory as path_hint to
-                                    # prefer same-module methods over cross-module
-                                    # ones with the same name (e.g., nova/nifs.rs
-                                    # over neutron/nifs.rs when called from nova/).
-                                    caller_dir = (
-                                        file_path.rsplit("/", 1)[0]
-                                        if "/" in file_path else ""
-                                    )
-                                    lookup_result = method_resolver.lookup(
-                                        callee_name,
-                                        path_hint=caller_dir if caller_dir else None,
-                                        soft_hint=True,
-                                    )
+                                    if callee_name in _RUST_GENERIC_TRAIT_METHODS:
+                                        # Generic trait methods (.into(), .clone(),
+                                        # .len(), etc.) cannot be resolved without
+                                        # receiver type info — skip lookup to avoid
+                                        # false edges.
+                                        lookup_result = LookupResult(symbol=None)
+                                    else:
+                                        # Pass the caller's directory as path_hint
+                                        # to prefer same-module methods over
+                                        # cross-module ones with the same name
+                                        # (e.g., nova/nifs.rs over
+                                        # neutron/nifs.rs when called from nova/).
+                                        caller_dir = (
+                                            file_path.rsplit("/", 1)[0]
+                                            if "/" in file_path else ""
+                                        )
+                                        lookup_result = method_resolver.lookup(
+                                            callee_name,
+                                            path_hint=caller_dir if caller_dir else None,
+                                            soft_hint=True,
+                                        )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
                                     lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
@@ -1038,6 +1046,38 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
     "panic_handler", "global_allocator", "windows_subsystem",
     # Common ecosystem proc-macro crate names (not user functions)
     "serde", "tokio", "async_trait",
+})
+
+# Generic trait method names that create false-positive in-degree when resolved
+# via method_resolver.  Without receiver type information, calls like `x.into()`
+# or `v.push()` resolve to arbitrary concrete implementations (e.g.,
+# `StatusRow::into` absorbing 817 `.into()` edges in penumbra).  These method
+# names are blocked from short-name resolution; fully-scoped calls like
+# `StatusRow::into()` still resolve via Strategy 1.
+_RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
+    # core::convert
+    "into", "from", "try_into", "try_from",
+    # core::fmt
+    "fmt",
+    # core::default
+    "default",
+    # core::clone
+    "clone", "clone_from",
+    # core::cmp / core::hash
+    "eq", "ne", "partial_cmp", "cmp", "hash",
+    # core::ops
+    "deref", "deref_mut", "drop",
+    # core::iter
+    "next", "into_iter",
+    # core::convert (ref)
+    "as_ref", "as_mut",
+    # std collection methods (ambiguous without receiver type)
+    "len", "is_empty", "push", "pop", "get", "insert", "remove", "contains",
+    "iter", "iter_mut",
+    # serde
+    "serialize", "deserialize",
+    # core::str / parsing
+    "from_str", "parse", "unwrap",
 })
 
 

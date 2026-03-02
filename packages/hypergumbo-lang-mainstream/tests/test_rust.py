@@ -2507,3 +2507,225 @@ class TestRustTraitImplEdges:
         square = next(s for s in result.symbols if s.name == "Square")
         assert circle.id in srcs
         assert square.id in srcs
+
+
+class TestRustGenericTraitMethodBlocklist:
+    """Tests for generic trait method blocklist (false-positive suppression).
+
+    Generic trait methods like ``.into()``, ``.clone()``, ``.len()`` create
+    massive false-positive in-degree when resolved via ``method_resolver``
+    because, without receiver type information, ``x.into()`` resolves to
+    an arbitrary concrete ``Into`` implementation.  The blocklist prevents
+    short-name resolution for these methods while preserving fully-scoped
+    resolution (``StatusRow::into()`` via Strategy 1).
+    """
+
+    def test_blocked_into_single_candidate_no_edge(self, tmp_path: Path) -> None:
+        """x.into() with a single candidate produces no edge.
+
+        Even with only 1 candidate (below the ambiguity threshold), a
+        blocked method name should not resolve.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.into();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Single candidate — would normally resolve without the blocklist
+        target = Symbol(
+            id="rust:lib.rs:1-5:StatusRow::into:method",
+            name="StatusRow::into", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"StatusRow::into": target}
+        method_reg: dict[str, list[Symbol]] = {"into": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .into() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
+
+    def test_nonblocked_prove_still_resolves(self, tmp_path: Path) -> None:
+        """x.prove() with candidates still resolves (not in blocklist)."""
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.prove();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"NIFS::prove": target}
+        method_reg: dict[str, list[Symbol]] = {"prove": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_blocklist_contains_expected_names(self) -> None:
+        """Constant contains core trait methods and collection methods."""
+        from hypergumbo_lang_mainstream.rust import _RUST_GENERIC_TRAIT_METHODS
+
+        # Core convert traits
+        for name in ("into", "from", "try_into", "try_from"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Clone / Eq / Hash
+        for name in ("clone", "eq", "ne", "hash", "cmp"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Collection methods
+        for name in ("len", "push", "pop", "get", "insert", "remove"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Serde
+        for name in ("serialize", "deserialize"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Domain-specific names should NOT be in the blocklist
+        for name in ("prove", "synthesize", "verify", "compute", "serve"):
+            assert name not in _RUST_GENERIC_TRAIT_METHODS, (
+                f"{name} should not be blocked"
+            )
+
+    def test_scoped_into_still_resolves_via_strategy1(
+        self, tmp_path: Path,
+    ) -> None:
+        """StatusRow::into() with full match in registry still resolves.
+
+        The blocklist only affects short-name fallback via method_resolver.
+        When the full scoped name ``StatusRow::into`` exists in global_symbols,
+        Strategy 1 resolves it before the blocklist is consulted.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        # Scoped call: StatusRow::into() — Strategy 1 should find it
+        source_text = b"fn caller() {\n    StatusRow::into(x);\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:StatusRow::into:method",
+            name="StatusRow::into", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Full scoped name is in global_symbols — Strategy 1 resolves it
+        registry: dict[str, Symbol] = {"StatusRow::into": target}
+        method_reg: dict[str, list[Symbol]] = {"into": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for scoped StatusRow::into() but got "
+            f"{len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
