@@ -17,3 +17,18 @@
     pr_ref:  # 8aef
     description: "LLM assessment (ZK bakeoff): calls like PublicParams::<E1,E2,C>::setup produce zero edges. The Rust analyzer needs to handle turbofish syntax in call resolution. Most impactful single fix for Rust monorepo usefulness."  # 8aef
     fields: {}  # 8aef
+- op: update  # 094d
+  at: '2026-03-02T06:44:46Z'  # 094d
+  by: agent  # 094d
+  actor: jgstern_agent  # 094d
+  clock: 2  # 094d
+  nonce: 094d  # 094d
+  set:  # 094d
+    status: done  # 094d
+- op: discuss  # a396
+  at: '2026-03-02T06:44:46Z'  # a396
+  by: agent  # a396
+  actor: jgstern_agent  # a396
+  clock: 3  # a396
+  nonce: a396  # a396
+  message: "Fixed by unwrapping generic_function nodes (turbofish) and stripping type arguments from scoped names. PublicParams::<E1,E2>::setup() now resolves to PublicParams::setup, and x.collect::<Vec<i32>>() is properly detected as a method call."  # a396

@@ -17,3 +17,18 @@
     pr_ref:  # 2374
     description: "LLM assessment (penumbra): StatusRow::into ranked #1 with 817 in-degree because all generic .into() calls resolve to a single concrete impl. Same issue with .len(), .push() etc. in other repos (jolt, halo2). Need to dampen or prevent resolution of common trait method names to single arbitrary candidates."  # 2374
     fields: {}  # 2374
+- op: update  # e838
+  at: '2026-03-02T06:33:14Z'  # e838
+  by: agent  # e838
+  actor: jgstern_agent  # e838
+  clock: 2  # e838
+  nonce: e838  # e838
+  set:  # e838
+    status: done  # e838
+- op: discuss  # 7b7e
+  at: '2026-03-02T06:33:14Z'  # 7b7e
+  by: agent  # 7b7e
+  actor: jgstern_agent  # 7b7e
+  clock: 3  # 7b7e
+  nonce: 7b7e  # 7b7e
+  message: "Fixed by adding _RUST_GENERIC_TRAIT_METHODS blocklist in rust.py. Generic trait methods (.into(), .clone(), .len(), .push(), etc.) are now blocked from short-name resolution via method_resolver. Fully-scoped calls (StatusRow::into()) still resolve via Strategy 1."  # 7b7e
