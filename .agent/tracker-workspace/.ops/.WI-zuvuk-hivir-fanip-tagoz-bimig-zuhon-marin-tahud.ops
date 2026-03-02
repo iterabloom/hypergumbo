@@ -1,0 +1,21 @@
+- op: create  # 4ca0
+  at: '2026-03-02T21:55:53Z'  # 4ca0
+  by: agent  # 4ca0
+  actor: jgstern_agent  # 4ca0
+  clock: 1  # 4ca0
+  nonce: 4ca0  # 4ca0
+  data:  # 4ca0
+    kind: work_item  # 4ca0
+    title: "Revalidation: run C1 zkVMs + STARK Backends (5 repos)"  # 4ca0
+    status: todo_soft  # 4ca0
+    priority: 2  # 4ca0
+    parent:  # 4ca0
+    tags:  # 4ca0
+    - bakeoff-revalidation  # 4ca0
+    before:  # 4ca0
+    - WI-sabas-kavip-rijup-huzih-motop-fanun-zugor-lodab  # 4ca0
+    duplicate_of: []  # 4ca0
+    not_duplicate_of: []  # 4ca0
+    pr_ref:  # 4ca0
+    description: "Run Cohort 1 of the OptAttest curriculum: zkVMs + STARK Proving Backends.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos sp1,Plonky3,risc0,jolt,op-succinct\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (5): sp1, Plonky3, risc0, jolt, op-succinct\nLanguages: Rust (all), Solidity (op-succinct)\n\nInitial run results: 4 GOOD (sp1, Plonky3, risc0, jolt), 0 WARN, 1 not in initial session (op-succinct).\nLLM reflect: 0 USEFUL, 4 PARTIALLY_USEFUL.\nsp1 is a 50+ crate workspace. risc0 has C++ components.\nThese are the primary target proving infrastructure for OptAttest.\nPlonky3 and jolt both improved dramatically in the ZK cherry-pick sessions\n(50.3→68.8 LLM score) from the blocklist fix — this run confirms on full cohort."  # 4ca0
+    fields: {}  # 4ca0

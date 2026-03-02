@@ -1,0 +1,21 @@
+- op: create  # 6fc4
+  at: '2026-03-02T21:56:03Z'  # 6fc4
+  by: agent  # 6fc4
+  actor: jgstern_agent  # 6fc4
+  clock: 1  # 6fc4
+  nonce: 6fc4  # 6fc4
+  data:  # 6fc4
+    kind: work_item  # 6fc4
+    title: "Revalidation: run C2 Circuits + Algebra + DSL (5 repos)"  # 6fc4
+    status: todo_soft  # 6fc4
+    priority: 2  # 6fc4
+    parent:  # 6fc4
+    tags:  # 6fc4
+    - bakeoff-revalidation  # 6fc4
+    before:  # 6fc4
+    - WI-zuvuk-hivir-fanip-tagoz-bimig-zuhon-marin-tahud  # 6fc4
+    duplicate_of: []  # 6fc4
+    not_duplicate_of: []  # 6fc4
+    pr_ref:  # 6fc4
+    description: "Run Cohort 2 of the OptAttest curriculum: Circuit Frameworks + Algebra + ZK DSL.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos halo2,algebra,bellman,circom,circomlib\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (5): halo2, algebra, bellman, circom, circomlib\nLanguages: Rust (halo2, algebra, bellman, circom compiler), Circom DSL (circomlib)\n\nInitial run results: 1 GOOD (halo2), 3 WARN (algebra, circom, circomlib), 1 SKIP (bellman — crash from empty glob pattern, fixed in PR#1611).\nLLM reflect: 0 USEFUL, 3 PARTIALLY_USEFUL, 2 NOT_USEFUL.\nalgebra is the most trait/generic-heavy Rust code in the curriculum — should benefit from blocklist.\ncircomlib exercises the Circom analyzer (signal flow gaps tracked in WI-zijos).\nbellman should no longer crash."  # 6fc4
+    fields: {}  # 6fc4
