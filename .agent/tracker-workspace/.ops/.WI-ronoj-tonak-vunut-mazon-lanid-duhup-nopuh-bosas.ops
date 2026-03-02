@@ -17,3 +17,18 @@
     pr_ref:  # 750e
     description: "LLM assessment finding from ZK cohort bakeoff (5/5 repos affected). Name-only disambiguation causes 0.566 confidence edges that are mostly false positives. Example: coeff.double() where coeff: F resolves to AllocatedPoint::double instead of ff::Field::double. The receiver type is available from the AST — adding type context to method name lookup would fix the dominant source of call edge noise (~15% of all call edges in Nova). See reflect/cohort-001/iter-001/summary.yaml in deep-20260301-zk-cohort."  # 750e
     fields: {}  # 750e
+- op: update  # e894
+  at: '2026-03-02T00:43:23Z'  # e894
+  by: agent  # e894
+  actor: jgstern_agent  # e894
+  clock: 2  # e894
+  nonce: e894  # e894
+  set:  # e894
+    priority: 4  # e894
+- op: discuss  # b2da
+  at: '2026-03-02T00:43:23Z'  # b2da
+  by: agent  # b2da
+  actor: jgstern_agent  # b2da
+  clock: 3  # b2da
+  nonce: b2da  # b2da
+  message: "Deprioritized to P4 for now. This is a significant Rust analyzer enhancement requiring type inference or receiver-type tracking. The current session (12 PRs) focused on formal methods/Circom/Solidity improvements. Rust trait resolution is real but requires careful design — the receiver type isn't always trivially available from the AST (generics, trait bounds, impl blocks). Best tackled in a dedicated session with focused investigation of tree-sitter-rust's type information availability."  # b2da

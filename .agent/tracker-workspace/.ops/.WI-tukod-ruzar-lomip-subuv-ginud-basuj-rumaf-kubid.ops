@@ -1,0 +1,34 @@
+- op: create  # 5a94
+  at: '2026-03-02T00:42:27Z'  # 5a94
+  by: agent  # 5a94
+  actor: jgstern_agent  # 5a94
+  clock: 1  # 5a94
+  nonce: 5a94  # 5a94
+  data:  # 5a94
+    kind: work_item  # 5a94
+    title: "Down-rank derive-macro-generated methods in centrality"  # 5a94
+    status: todo_soft  # 5a94
+    priority: 3  # 5a94
+    parent:  # 5a94
+    tags: []  # 5a94
+    before: []  # 5a94
+    duplicate_of: []  # 5a94
+    not_duplicate_of: []  # 5a94
+    pr_ref:  # 5a94
+    description: "LLM assessment finding: AllocatedNum::clone ranks #2 by in-degree (139) in Nova due to #[derive(Clone)]. Similarly PrefixCheckpoint::unwrap ranks #1 in jolt, StatusRow::into ranks #5 in penumbra with 737 in-edges. Derive-generated methods (Clone, Default, Debug, Into) inflate centrality without architectural significance. Either filter them from ranking or apply a dampening factor similar to the existing common-method-name penalty."  # 5a94
+    fields: {}  # 5a94
+- op: update  # ee01
+  at: '2026-03-02T00:43:35Z'  # ee01
+  by: agent  # ee01
+  actor: jgstern_agent  # ee01
+  clock: 2  # ee01
+  nonce: ee01  # ee01
+  set:  # ee01
+    priority: 4  # ee01
+- op: discuss  # c705
+  at: '2026-03-02T00:43:35Z'  # c705
+  by: agent  # c705
+  actor: jgstern_agent  # c705
+  clock: 3  # c705
+  nonce: c705  # c705
+  message: "Deprioritized to P4. Derive-generated method dampening depends on detecting which methods come from derive macros, which requires either: (1) tree-sitter AST annotation tracking (derive attribute → generated methods), or (2) heuristic name matching (clone, into, default, debug, eq, hash, etc.). Option 2 is simpler and partially covered by the existing common-method-name penalty. Best addressed after the Rust trait resolution work (WI-ronoj) since both touch the same call resolution pipeline."  # c705
