@@ -1,0 +1,22 @@
+- op: create  # 8cf9
+  at: '2026-03-02T23:46:08Z'  # 8cf9
+  by: agent  # 8cf9
+  actor: jgstern_agent  # 8cf9
+  clock: 1  # 8cf9
+  nonce: 8cf9  # 8cf9
+  data:  # 8cf9
+    kind: work_item  # 8cf9
+    title: "Type hierarchy linker: exclude test-file destinations from dispatches_to edges"  # 8cf9
+    status: todo_hard  # 8cf9
+    priority: 2  # 8cf9
+    parent:  # 8cf9
+    tags:  # 8cf9
+    - structural  # 8cf9
+    - linker  # 8cf9
+    - external-bakeoff  # 8cf9
+    before: []  # 8cf9
+    duplicate_of: []  # 8cf9
+    not_duplicate_of: []  # 8cf9
+    pr_ref:  # 8cf9
+    description: "## Problem\n\nThe type hierarchy linker generates dispatches_to edges connecting base class methods to\nall override implementations, including those in test files. In Jenkins, 24.3% of\ndispatches_to destinations land in test files. Source nodes are almost exclusively production\ncode (0.12% from tests), creating a pattern of: production base class method → test file\ninner class override.\n\nExample: InvisibleAction.getUrlName → RelativePathTest.RootActionImpl.getUrlName\n\nThis inflates the dispatch edge set, misleads centrality computation (test overrides\naccumulate in-degree from production base classes), and pollutes reverse slices.\n\n## Structural analysis\n\nThis is the same class of bug fixed for Rust in PR#1648 (WI-rujun: #[cfg(test)] attribute\ninheritance in AST walk). That fix was Rust-specific — it taught the Rust analyzer to\npropagate cfg(test) annotations down the AST. But the type hierarchy linker operates at the\nIR level, after all analyzers have run. It connects base→derived regardless of whether the\nderived symbol is in a test file.\n\nThe root cause is: **linkers don't have a uniform test-exclusion API.** Each linker\nindependently decides whether to filter test files. The type hierarchy linker doesn't.\nThis affects every language with inheritance + test files:\n- Java: confirmed 24.3% test pollution (Jenkins bakeoff)\n- C#, Kotlin, TypeScript, Python: likely same pattern (class hierarchies + test overrides)\n- Rust: partially fixed via cfg(test) attribute, but test files without cfg(test) still leak\n- Go: interface implementations in _test.go files would create the same pattern\n\n## Proposed fix\n\nAdd test-file filtering to the type hierarchy linker at the IR level. When generating\ndispatches_to edges, check if the destination symbol's path matches test-file patterns\n(is_test_path / is_test_file). Options:\na) Skip test destinations entirely (aggressive, may lose real dispatch info)\nb) Apply a confidence penalty (e.g., 0.3x) to test-file dispatches (preserves info, reduces\n   centrality impact)\nc) Add a metadata flag (test_override=true) so consumers can filter\n\nOption (b) matches the precedent set by edge confidence filtering in ranking.py.\n\n## Evidence\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md\nRelated: WI-rujun (done, Rust-specific fix), WI-zifah (done, separate test from production\nin reverse slices — addresses the slice consumer side but not the edge generation side)"  # 8cf9
+    fields: {}  # 8cf9
