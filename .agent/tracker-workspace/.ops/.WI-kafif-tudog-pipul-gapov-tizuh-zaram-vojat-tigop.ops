@@ -1,0 +1,19 @@
+- op: create  # 953f
+  at: '2026-03-02T07:25:56Z'  # 953f
+  by: agent  # 953f
+  actor: jgstern_agent  # 953f
+  clock: 1  # 953f
+  nonce: 953f  # 953f
+  data:  # 953f
+    kind: work_item  # 953f
+    title: "Fix is_utility_file false positive on src/dev/ paths"  # 953f
+    status: todo_hard  # 953f
+    priority: 2  # 953f
+    parent:  # 953f
+    tags: []  # 953f
+    before: []  # 953f
+    duplicate_of: []  # 953f
+    not_duplicate_of: []  # 953f
+    pr_ref:  # 953f
+    description: "is_utility_file matches any path component named dev as utility. In halo2, src/dev/gates.rs contains MockProver (core production code), not developer tooling. Fix: skip dev match when it appears after a source root (src/, lib/, app/). This caused rslice.0.prod.json to return 0 nodes for halo2."  # 953f
+    fields: {}  # 953f

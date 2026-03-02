@@ -17,3 +17,18 @@
     pr_ref:  # fe3b
     description: "LLM assessment (Nova): 27 test_ functions from src/nova/mod.rs remain in rslice.*.prod.json because they're in src/ files (not tests/ directory). Detect #[cfg(test)] attribute during AST parsing and mark those functions for prod-filter exclusion."  # fe3b
     fields: {}  # fe3b
+- op: update  # 3bf9
+  at: '2026-03-02T06:58:56Z'  # 3bf9
+  by: agent  # 3bf9
+  actor: jgstern_agent  # 3bf9
+  clock: 2  # 3bf9
+  nonce: 3bf9  # 3bf9
+  set:  # 3bf9
+    status: done  # 3bf9
+- op: discuss  # 588c
+  at: '2026-03-02T06:58:56Z'  # 588c
+  by: agent  # 588c
+  actor: jgstern_agent  # 588c
+  clock: 3  # 588c
+  nonce: 588c  # 588c
+  message: "Fixed by adding _is_inside_cfg_test() helper that walks ancestor nodes for #[cfg(test)] modules. Functions, structs, and enums inside cfg(test) modules now inherit the cfg(test) annotation in their metadata, enabling is_test_node() to correctly exclude them from production slices."  # 588c
