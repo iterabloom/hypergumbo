@@ -167,16 +167,26 @@ def is_utility_file(path: str) -> bool:
         # Scripts/tools
         "scripts", "tools", "bin", "utils", "utilities",
         # Dev/contrib (e.g., Airflow dev/, Kubernetes hack/, contrib/ dirs)
-        "dev", "contrib", "hack",
+        "contrib", "hack",
         # Build systems
         "vcbuild", "cmake",
         # Benchmarks
         "benchmarks", "benchmark", "benches", "bench", "perf",
     }
 
+    # Source roots: when "dev" appears after one of these, it's a
+    # source module (e.g., halo2's src/dev/gates.rs), not tooling.
+    _SOURCE_ROOTS = {"src", "lib", "app", "crates", "packages"}
+    seen_source_root = False
+
     for part in path_parts[:-1]:  # Exclude filename
         lower = part.lower()
+        if lower in _SOURCE_ROOTS:
+            seen_source_root = True
         if lower in utility_dirs:
+            return True
+        # "dev" is utility only at project root, not inside source trees
+        if lower == "dev" and not seen_source_root:
             return True
         # devel-common/, devel-tools/, etc. — CI/dev tooling directories
         if lower.startswith("devel"):

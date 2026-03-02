@@ -363,6 +363,20 @@ class TestIsUtilityFile:
         assert is_utility_file("src/lib.rs") is False
         assert is_utility_file("src/main.rs") is False
 
+    def test_dev_inside_source_root_not_utility(self) -> None:
+        """dev/ inside src/ is a source module, not tooling (WI-kafif).
+
+        In halo2, ``src/dev/gates.rs`` contains MockProver — production code.
+        Only project-root ``dev/`` directories are developer tooling.
+        """
+        assert is_utility_file("src/dev/gates.rs") is False
+        assert is_utility_file("halo2_proofs/src/dev/gates.rs") is False
+        assert is_utility_file("lib/dev/mod.py") is False
+        assert is_utility_file("crates/core/src/dev.rs") is False
+        # But project-root dev/ is still utility
+        assert is_utility_file("dev/check_providers.py") is True
+        assert is_utility_file("dev/breeze/src/tool.py") is True
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False
