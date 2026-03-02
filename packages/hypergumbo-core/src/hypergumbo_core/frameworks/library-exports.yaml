@@ -235,4 +235,16 @@ patterns:
     symbol_kind: "^interface$"
     language: "^solidity$"
 
+  # === Circom: Templates are the API surface ===
+  # Circom templates define reusable circuit components. In library repos
+  # like circomlib, templates are the primary exports (Poseidon, MiMC, etc.)
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^circom$"
+
+  # Circom functions (pure computations) are also library exports
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^circom$"
+
 linkers: []
