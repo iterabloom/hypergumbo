@@ -438,3 +438,83 @@ class TestClassifyDotDFile:
         f = tmp_path / "api.di"
         f.write_text("module api;\nvoid process();\n")
         assert classify_dot_d_file(f) == "d"
+
+
+class TestFindFilesMaxFileBytes:
+    """Tests for find_files max_file_bytes parameter."""
+
+    def test_skips_large_files(self, tmp_path: Path) -> None:
+        """Files exceeding max_file_bytes are excluded."""
+        small = tmp_path / "small.py"
+        small.write_text("x = 1")
+        large = tmp_path / "large.py"
+        large.write_text("x" * 1000)
+
+        result = list(find_files(tmp_path, ["*.py"], max_file_bytes=500))
+        names = {p.name for p in result}
+        assert "small.py" in names
+        assert "large.py" not in names
+
+    def test_no_limit_includes_all(self, tmp_path: Path) -> None:
+        """Without max_file_bytes, all files are included."""
+        for name in ("a.py", "b.py"):
+            (tmp_path / name).write_text("x" * 1000)
+
+        result = list(find_files(tmp_path, ["*.py"], max_file_bytes=None))
+        assert len(result) == 2
+
+    def test_callback_called_for_skipped(self, tmp_path: Path) -> None:
+        """on_file_skipped callback fires for oversized files."""
+        large = tmp_path / "big.py"
+        large.write_text("x" * 2000)
+
+        skipped: list[tuple] = []
+
+        def on_skip(path, size, reason):
+            skipped.append((path.name, size, reason))
+
+        list(find_files(
+            tmp_path, ["*.py"],
+            max_file_bytes=100,
+            on_file_skipped=on_skip,
+        ))
+
+        assert len(skipped) == 1
+        assert skipped[0][0] == "big.py"
+        assert skipped[0][1] > 100
+        assert "exceeds" in skipped[0][2]
+
+    def test_global_limit_respected(self, tmp_path: Path) -> None:
+        """Global set_max_file_bytes is used when no explicit value given."""
+        from hypergumbo_core.discovery import set_max_file_bytes
+
+        large = tmp_path / "huge.py"
+        large.write_text("x" * 5000)
+        small = tmp_path / "tiny.py"
+        small.write_text("x = 1")
+
+        try:
+            set_max_file_bytes(100)
+            result = list(find_files(tmp_path, ["*.py"]))
+            names = {p.name for p in result}
+            assert "tiny.py" in names
+            assert "huge.py" not in names
+        finally:
+            set_max_file_bytes(None)
+
+    def test_explicit_overrides_global(self, tmp_path: Path) -> None:
+        """Explicit max_file_bytes overrides global setting."""
+        from hypergumbo_core.discovery import set_max_file_bytes
+
+        f = tmp_path / "medium.py"
+        f.write_text("x" * 500)
+
+        try:
+            set_max_file_bytes(100)  # Would skip
+            # But explicit None means no limit
+            result = list(find_files(
+                tmp_path, ["*.py"], max_file_bytes=10000,
+            ))
+            assert len(result) == 1
+        finally:
+            set_max_file_bytes(None)

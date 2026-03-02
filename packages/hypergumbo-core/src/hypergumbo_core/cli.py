@@ -785,6 +785,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_path = Path(args.out) if args.out else None
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
+    max_file_bytes = getattr(args, "max_file_bytes", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
     connectivity = not getattr(args, "no_connectivity", False)
@@ -799,6 +800,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         out_path=out_path,
         max_tier=max_tier,
         max_files=max_files,
+        max_file_bytes=max_file_bytes,
         compact=compact,
         coverage=coverage,
         connectivity=connectivity,
@@ -3077,6 +3079,13 @@ Cache location:
         help="Maximum files to analyze per language (for large repos)",
     )
     p_run.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=None,
+        dest="max_file_bytes",
+        help="Skip files exceeding this size in bytes (default: no limit)",
+    )
+    p_run.add_argument(
         "--compact",
         action="store_true",
         help="Compact output: include top symbols by centrality coverage with "
@@ -3891,6 +3900,7 @@ def run_behavior_map(
     out_path: Path | None = None,
     max_tier: int | None = None,
     max_files: int | None = None,
+    max_file_bytes: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
     connectivity: bool = True,
@@ -3991,6 +4001,11 @@ def run_behavior_map(
 
     # Detect internal package roots for supply chain classification
     package_roots = detect_package_roots(repo_root)
+
+    # Set global file size limit so all analyzers using find_files()
+    # automatically skip oversized files (e.g., minified JS, huge HTML).
+    from hypergumbo_core.discovery import set_max_file_bytes
+    set_max_file_bytes(max_file_bytes)
 
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
