@@ -983,6 +983,7 @@ def _extract_edges_from_file(
                                     lookup_result = method_resolver.lookup(
                                         callee_name,
                                         path_hint=caller_dir if caller_dir else None,
+                                        soft_hint=True,
                                     )
                                 else:
                                     import_hint = use_aliases.get(callee_name)

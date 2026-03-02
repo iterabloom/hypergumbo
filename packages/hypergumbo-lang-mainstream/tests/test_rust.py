@@ -1705,6 +1705,72 @@ class TestRustMethodCallAmbiguity:
             f"Expected nova/nifs.rs::NIFS::prove, got {call_edges[0].dst}"
         )
 
+    def test_cross_crate_single_candidate_method_resolves(self, tmp_path: Path) -> None:
+        """A method call with a single cross-crate candidate still resolves.
+
+        When x.serve() is called from crates/core/src/app.rs and the only
+        candidate is in crates/util/tower/src/lib.rs, the call should
+        resolve (with reduced confidence) rather than being rejected.
+        This tests the soft_hint=True behavior in the Rust analyzer.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.serve();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:crates/core/src/app.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="crates/core/src/app.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Single candidate in a different crate
+        tower_serve = Symbol(
+            id="rust:crates/util/tower/src/lib.rs:1-10:Server::serve:method",
+            name="Server::serve", kind="method", language="rust",
+            path="crates/util/tower/src/lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry = {"caller": caller}
+        method_reg: dict[str, list[Symbol]] = {
+            "serve": [tower_serve],
+        }
+        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        resolver = NameResolver(registry)
+        span_idx = {(1, 3): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "crates/core/src/app.rs",
+            registry, {"caller": caller, "Server::serve": tower_serve},
+            "run1", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            "Single cross-crate method candidate should resolve, not be rejected"
+        )
+        assert call_edges[0].dst == tower_serve.id
+
     def test_function_call_not_penalized(self, tmp_path: Path) -> None:
         """Regular function calls (not method calls) keep normal confidence.
 

@@ -666,6 +666,59 @@ class TestListNameResolverExactMatch:
         assert result.found is False
         assert result.symbol is None
 
+    def test_soft_hint_single_candidate_non_matching_returns_symbol(self) -> None:
+        """With soft_hint=True, a single candidate is returned even when path_hint
+        doesn't match — with reduced confidence instead of rejection.
+
+        This supports Rust-style "prefer same-module" semantics where the hint is
+        the caller's directory (preference evidence), not Go-style import-path
+        evidence (filter evidence).
+        """
+        sym = make_symbol("prove", "/crates/util/tower/src/lib.rs", "tower")
+        registry = {"prove": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup(
+            "prove",
+            path_hint="crates/core/keys/src/keys",
+            soft_hint=True,
+        )
+
+        assert result.found is True
+        assert result.symbol is sym
+        # Confidence should be reduced (not 1.0) since path didn't match
+        assert result.confidence < 1.0
+
+    def test_soft_hint_single_candidate_matching_returns_exact(self) -> None:
+        """With soft_hint=True and matching path, returns with exact confidence."""
+        sym = make_symbol("prove", "/crates/core/nifs/src/lib.rs", "nifs")
+        registry = {"prove": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup(
+            "prove",
+            path_hint="crates/core/nifs/src",
+            soft_hint=True,
+        )
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+
+    def test_hard_hint_single_candidate_non_matching_rejects(self) -> None:
+        """Default (soft_hint=False) still rejects non-matching single candidates.
+
+        Preserves Go-style import-path filtering behavior.
+        """
+        sym = make_symbol("Encode", "/myapp/marshal.go", "myapp")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is False
+        assert result.symbol is None
+
     def test_not_found_returns_none(self) -> None:
         """No candidates returns None."""
         registry: dict = {}

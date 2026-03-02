@@ -646,6 +646,7 @@ class ListNameResolver:
         name: str,
         *,
         path_hint: str | None = None,
+        soft_hint: bool = False,
     ) -> LookupResult:
         """Look up a symbol by name with disambiguation.
 
@@ -658,6 +659,11 @@ class ListNameResolver:
         Args:
             name: The symbol name to look up.
             path_hint: Optional path substring to prefer among candidates.
+            soft_hint: When True, path_hint is treated as a preference rather
+                than a filter.  A single candidate that doesn't match the hint
+                is still returned (with reduced confidence) instead of rejected.
+                Use for Rust-style "prefer same-module" semantics where the hint
+                is the caller's directory, not Go-style import-path evidence.
 
         Returns:
             LookupResult with the found symbol and match metadata.
@@ -674,6 +680,11 @@ class ListNameResolver:
             # that happens to share the name (e.g. local MarshalEncoder.Encode
             # vs encoding/json Encode).  Return not-found so the caller can
             # create an unresolved edge.
+            #
+            # With soft_hint=True, the hint is preference-level evidence (e.g.
+            # Rust caller directory), not filter-level evidence (e.g. Go import
+            # path).  Return the candidate with reduced confidence instead of
+            # rejecting it.
             if path_hint:
                 path_parts = path_hint.rstrip("/").split("/")
                 matched = False
@@ -683,6 +694,13 @@ class ListNameResolver:
                         matched = True
                         break
                 if not matched:
+                    if soft_hint:
+                        return LookupResult(
+                            symbol=candidates[0],
+                            confidence=self.CONFIDENCE_PATH_HINT,
+                            match_type="soft_hint_fallback",
+                            candidates=candidates,
+                        )
                     return LookupResult(symbol=None)
             return LookupResult(
                 symbol=candidates[0],
