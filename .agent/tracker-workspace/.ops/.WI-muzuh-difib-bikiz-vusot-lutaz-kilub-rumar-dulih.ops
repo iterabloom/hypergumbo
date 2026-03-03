@@ -19,3 +19,18 @@
     pr_ref:  # 6cda
     description: "Compare the revalidation session against the initial March 1 run to measure impact of\nthe ~15 PRs that landed between them.\n\nCommands:\n  ./scripts/bakeoff-features compare deep-20260301-063114 <new-session-dir>\n\nRecord in the lab notebook:\n- Per-repo delta table: verdict changes (GOOD↔WARN), metric changes (orphan rate, tier1%,\n  avg_slice_nodes, total nodes/edges)\n- Identify regressions: any repo that moved GOOD→WARN or whose LLM score dropped\n- Identify improvements: WARN→GOOD transitions, LLM score increases\n- Per-cohort aggregate: how many GOOD/WARN changed in each cohort\n\nThe initial run's diagnostic data is at:\n  ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260301-063114/diag/cohort-{001..007}/iter-001/report.yaml\nThe initial run's reflect data is at:\n  ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260301-063114/reflect/cohort-{001..007}/iter-001/summary.yaml"  # 6cda
     fields: {}  # 6cda
+- op: update  # dd78
+  at: '2026-03-03T21:53:52Z'  # dd78
+  by: agent  # dd78
+  actor: jgstern_agent  # dd78
+  clock: 2  # dd78
+  nonce: dd78  # dd78
+  set:  # dd78
+    status: done  # dd78
+- op: discuss  # ee84
+  at: '2026-03-03T21:53:52Z'  # ee84
+  by: agent  # ee84
+  actor: jgstern_agent  # ee84
+  clock: 3  # ee84
+  nonce: ee84  # ee84
+  message: "Comparison complete: initial (e0ca04d3) vs revalidation (e62e1edd). Aggregate: orphan -17.38pp, avg_slice +44.35, cross_file +7.09pp. 3 verdict upgrades (Nova, algebra, penumbra → GOOD). Agda repos: orphan rate halved (-65 to -88pp). 3 repos now SKIP (plonky2, proof-systems, sonobe — no hg.json)."  # ee84
