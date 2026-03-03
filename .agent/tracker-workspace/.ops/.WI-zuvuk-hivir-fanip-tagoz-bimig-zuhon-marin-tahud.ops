@@ -19,3 +19,18 @@
     pr_ref:  # 4ca0
     description: "Run Cohort 1 of the OptAttest curriculum: zkVMs + STARK Proving Backends.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos sp1,Plonky3,risc0,jolt,op-succinct\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (5): sp1, Plonky3, risc0, jolt, op-succinct\nLanguages: Rust (all), Solidity (op-succinct)\n\nInitial run results: 4 GOOD (sp1, Plonky3, risc0, jolt), 0 WARN, 1 not in initial session (op-succinct).\nLLM reflect: 0 USEFUL, 4 PARTIALLY_USEFUL.\nsp1 is a 50+ crate workspace. risc0 has C++ components.\nThese are the primary target proving infrastructure for OptAttest.\nPlonky3 and jolt both improved dramatically in the ZK cherry-pick sessions\n(50.3→68.8 LLM score) from the blocklist fix — this run confirms on full cohort."  # 4ca0
     fields: {}  # 4ca0
+- op: update  # 642a
+  at: '2026-03-03T22:26:18Z'  # 642a
+  by: agent  # 642a
+  actor: jgstern_agent  # 642a
+  clock: 2  # 642a
+  nonce: 642a  # 642a
+  set:  # 642a
+    status: done  # 642a
+- op: discuss  # 07a8
+  at: '2026-03-03T22:26:18Z'  # 07a8
+  by: agent  # 07a8
+  actor: jgstern_agent  # 07a8
+  clock: 3  # 07a8
+  nonce: 07a8  # 07a8
+  message: "C1 completed in revalidation session."  # 07a8
