@@ -1,0 +1,22 @@
+- op: create  # 192b
+  at: '2026-03-03T06:17:45Z'  # 192b
+  by: agent  # 192b
+  actor: jgstern_agent  # 192b
+  clock: 1  # 192b
+  nonce: 192b  # 192b
+  data:  # 192b
+    kind: work_item  # 192b
+    title: "Java/JAX-RS: materialize route nodes and routes_to edges from @Path annotation chains"  # 192b
+    status: todo_hard  # 192b
+    priority: 2  # 192b
+    parent:  # 192b
+    tags:  # 192b
+    - analyzer  # 192b
+    - java  # 192b
+    - external-bakeoff  # 192b
+    before: []  # 192b
+    duplicate_of: []  # 192b
+    not_duplicate_of: []  # 192b
+    pr_ref:  # 192b
+    description: "## Problem\n\nThe Java analyzer detects JAX-RS route annotations (@GET, @POST, @Path, @DELETE) and\nstores them as method metadata. hypergumbo routes reads this metadata and produces a\nroutes.txt listing (1,302 entries for keycloak). But the analyzer does NOT create kind=route\ngraph nodes with route_path/http_method fields, and does NOT emit routes_to edges connecting\nroute nodes to handler methods.\n\nResult: keycloak has zero route nodes and zero routes_to edges in hg.json despite having\n1,302 detected routes in routes.txt. Forward/reverse slices produce useful call chains\n(calls, dispatches_to, implements) but have no route context — no way to determine which\nHTTP endpoint reaches a handler method.\n\nContrast with gitlab (Rails): 5,223 route nodes, 1,275 routes_to edges, end-to-end\nroute→handler→service slice traversal works perfectly.\n\n## Root cause\n\nThree pipeline stages exist; only the first two are implemented for Java:\n1. Route annotation detection (works): @GET/@POST/@Path detected, stored in meta\n2. Route display (works): hypergumbo routes formats metadata as routes.txt\n3. Route graph materialization (MISSING): synthesize kind=route nodes + routes_to edges\n\nFor Rails, all three work because config/routes.rb is a centralized DSL. For Go, explicit\nr.GET(\"/path\", handler) calls provide both path and handler in one statement. For JAX-RS,\npaths are distributed across @Path annotation chains:\n\n    @Path(\"/admin\")                       // class-level prefix\n    public class RealmAdminResource {\n        @GET @Path(\"/{realm}\")            // method-level suffix\n        public RealmRepresentation getRealm(...) { ... }\n    }\n\nReconstructing the full path (GET /admin/{realm}) requires chaining class-level and\nmethod-level @Path values, and potentially traversing subresource locator methods.\n\n## Proposed fix\n\nAfter annotation detection, add a post-processing step that:\n1. Collects class-level @Path values\n2. Chains them with method-level @Path values to reconstruct full URL paths\n3. Creates kind=route nodes with route_path and http_method fields\n4. Emits routes_to edges from route nodes to the annotated handler methods\n\nThe path chaining logic partially exists — some keycloak routes in routes.txt already show\nreconstructed paths (e.g., POST /{realm}/clients/{id}/authz/resource-server/policy/aggregate).\nThe missing piece is creating graph nodes from these reconstructed paths.\n\n## Scope\n\nAffects all JAX-RS applications: keycloak, Quarkus apps, Jersey apps, RESTEasy apps.\nAlso affects Spring MVC @RequestMapping (similar annotation-based routing), though Spring\nmay have different patterns for path composition.\n\n## Related items\n\n- INV-nimik (violated): Route-to-Handler Edge Completeness — this WI is the Java-specific fix\n- WI-fokok (todo_soft): Stapler route path synthesis — same pattern (detection without materialization) for a different Java framework\n- WI-tafaf (done): Java DI/interface resolution — covers dispatches_to but not routes_to\n- INV-posun (violated): Compact special edge retention — even after fixing this, compact needs to retain the resulting routes_to edges\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 192b
+    fields: {}  # 192b

@@ -49,3 +49,10 @@
   nonce: 16d7  # 16d7
   set:  # 16d7
     status: holding  # 16d7
+- op: discuss  # f8bd
+  at: '2026-03-03T06:16:33Z'  # f8bd
+  by: agent  # f8bd
+  actor: jgstern_agent  # f8bd
+  clock: 5  # f8bd
+  nonce: f8bd  # f8bd
+  message: "External bakeoff (March 2026) found a downstream symptom of stable_id issues in compact output. grafana's compact hg.compact.json stores some node references as SHA-256 hashes (sha256:239e23c703d50e88) rather than language-prefixed stable_ids. When these hash IDs appear as routes_to edge endpoints, the edge becomes unsliceable — slice --entry can't resolve hash-format IDs. Language-prefixed stable_ids work correctly.\n\nThis may be related to this INV (route stable_ids set to bare HTTP method strings) or to the Phase 3 typed stable_id rollout (ADR-0014). If some node types (e.g., route nodes synthesized by linkers) don't yet have typed stable_ids, they may fall back to hash-based IDs in compact output.\n\nImpact: even when compact retains a routes_to edge, it may be unusable if endpoints use hash IDs. This compounds the compact edge retention problem (see new INV for compact special edge loss)."  # f8bd
