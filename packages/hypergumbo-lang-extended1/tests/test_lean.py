@@ -245,3 +245,28 @@ def caller (x : Nat) : Nat :=
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # Should have at least one reference edge
         assert len(ref_edges) >= 1
+
+    def test_type_signature_references(self, tmp_path: Path) -> None:
+        """Type signatures create reference edges (WI-juviz)."""
+        make_lean_file(tmp_path, "Types.lean", """\
+structure MyNat where
+  val : Nat
+
+def mkNat (n : Nat) : MyNat :=
+  { val := n }
+
+theorem natId (x : MyNat) : MyNat :=
+  x
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        my_nat_sym = next(
+            (s for s in result.symbols if s.name == "MyNat"), None
+        )
+        assert my_nat_sym is not None, "MyNat structure should be detected"
+        # mkNat and natId both reference MyNat in their type signatures
+        refs_to_mynat = [e for e in ref_edges if e.dst == my_nat_sym.id]
+        assert len(refs_to_mynat) >= 2, (
+            f"Expected >= 2 references to MyNat from type signatures, "
+            f"got {len(refs_to_mynat)}: {[(e.src, e.dst) for e in refs_to_mynat]}"
+        )

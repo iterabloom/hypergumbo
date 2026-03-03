@@ -313,8 +313,10 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-    # Reference edges: scan def/theorem/lemma bodies (after :=) for
-    # identifier references to defined symbols.
+    # Reference edges: scan def/theorem/lemma type signatures AND bodies
+    # for identifier references to defined symbols (WI-juviz).
+    # In dependently-typed languages like Lean, type signatures contain
+    # architecturally significant references (e.g., theorem dependencies).
     seen_ref_pairs: set[tuple[str, str]] = set()
     for node in iter_tree(tree.root_node):
         if node.type not in ("def", "theorem", "lemma"):
@@ -331,19 +333,22 @@ def _extract_edges_from_file(
         if not decl_result.symbol:
             continue  # pragma: no cover
 
-        # Find the body: everything after :=
-        in_body = False
-        body_nodes: list = []
+        # Collect both type signature nodes (before :=) and body nodes
+        # (after :=).  Skip the keyword and declaration name.
+        scan_nodes: list = []
+        past_name = False
         for child in node.children:
-            if child.type == ":=":
-                in_body = True
+            if child.type == "identifier" and not past_name:
+                past_name = True
                 continue
-            if in_body:
-                body_nodes.append(child)
+            if child.type in ("def", "theorem", "lemma"):
+                continue
+            if past_name:
+                scan_nodes.append(child)
 
-        # Scan body for identifier references
-        for body_node in body_nodes:
-            for id_node in iter_tree(body_node):
+        # Scan all collected nodes for identifier references
+        for scan_node in scan_nodes:
+            for id_node in iter_tree(scan_node):
                 if id_node.type != "identifier":
                     continue
                 ref_name = node_text(id_node, source).strip()
