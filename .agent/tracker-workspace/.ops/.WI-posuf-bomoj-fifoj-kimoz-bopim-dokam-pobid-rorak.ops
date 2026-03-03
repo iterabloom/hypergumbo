@@ -34,3 +34,17 @@
   clock: 3  # f8a3
   nonce: f8a3  # f8a3
   message: "Root causes largely addressed: INV-popop (stable_id collisions fixed), WI-lodik (route materialization). Remaining risk: some node types may still produce hash-format IDs in compact. Needs bakeoff revalidation to confirm. Downgrading to soft since the structural fixes are in place."  # f8a3
+- op: update  # ccbd
+  at: '2026-03-03T21:15:58Z'  # ccbd
+  by: agent  # ccbd
+  actor: jgstern_agent  # ccbd
+  clock: 4  # ccbd
+  nonce: ccbd  # ccbd
+  set: {}  # ccbd
+- op: discuss  # 6d87
+  at: '2026-03-03T21:15:58Z'  # 6d87
+  by: agent  # 6d87
+  actor: jgstern_agent  # 6d87
+  clock: 5  # 6d87
+  nonce: 6d87  # 6d87
+  message: "Code audit confirms route symbols use location-based id (not hash) for edge endpoints. routes_to edges reference route.id and handler.id correctly. Root cause was likely INV-popop (stable_id collisions) or missing route materialization (WI-lodik). Both fixed. Downgrading — needs revalidation to confirm."  # 6d87
