@@ -19,7 +19,7 @@
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
+  - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). Progress is measured by file changes in sentinel directories (configured in `.agent/tracker/config.yaml` under `stop_hook.progress_sentinel_dirs`), not by tracker updates. This means merging a PR, editing source files, or writing lab notebook entries all count as progress and reset the breaker. If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
   - **Lazy-load guidance:** The stop hook writes full guidance to `~/hypergumbo_lab_notebook/guidance_log/` and returns only a short pointer (1-2 lines). This applies to all three stop paths: TODO blocking, cooldown, and full reflection. When the hook fires, read the file path it provides to get the full instructions.
   - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
   - Use `./scripts/loop-toggle` to manage autonomous mode:
@@ -99,7 +99,7 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
      - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
      - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
      - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping.
-  2. **Hook enforcement:** Both `todo_hard` and `todo_soft` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 identical firings with no progress → approve.
+  2. **Hook enforcement:** Both `todo_hard` and `todo_soft` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
   3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
   4. **Track to completion:** When done, update the item's status to `done`/`holding`/etc with a PR reference.
 - **Signing & Identity:**

@@ -39,11 +39,51 @@ if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]
 fi
 TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 
-# --- Circuit breaker (hash-based no-progress detection) ---
+# --- Circuit breaker (file-change-based no-progress detection) ---
+# Hashes file modification times in sentinel directories to detect whether
+# real work product changed between stop events.  This measures whether the
+# agent *did* make progress (files changed) rather than whether it *said* it
+# made progress (tracker updated).  Dotfiles and invisible directories are
+# excluded because tracker bookkeeping and git metadata shouldn't count as
+# progress — source code and docs changes should.
 CIRCUIT_BREAKER_TRIPPED=false
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || \
-    { echo "WARNING: hash-todos failed, using fallback hash" >&2; CURRENT_HASH="fallback-$$"; }
+  # Read sentinel dirs from tracker config, fall back to sensible defaults
+  SENTINEL_DIRS=()
+  if command -v python3 &>/dev/null; then
+    while IFS= read -r dir; do
+      [[ -n "$dir" ]] && SENTINEL_DIRS+=("$dir")
+    done < <(python3 -c "
+import yaml, os, sys
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    dirs = cfg.get('stop_hook', {}).get('progress_sentinel_dirs', [])
+    for d in dirs:
+        d = os.path.expanduser(d)
+        if not os.path.isabs(d):
+            d = os.path.join('$REPO_ROOT', d)
+        print(d)
+except Exception:
+    pass
+" 2>/dev/null)
+  fi
+  # Fall back to defaults if config didn't provide any
+  if [[ ${#SENTINEL_DIRS[@]} -eq 0 ]]; then
+    SENTINEL_DIRS=("$REPO_ROOT/packages" "$REPO_ROOT/docs" "$REPO_ROOT/scripts")
+  fi
+
+  # Build file-change hash from sentinel directories
+  FIND_ARGS=()
+  for d in "${SENTINEL_DIRS[@]}"; do
+    [[ -d "$d" ]] && FIND_ARGS+=("$d")
+  done
+  if [[ ${#FIND_ARGS[@]} -gt 0 ]]; then
+    CURRENT_HASH=$(find "${FIND_ARGS[@]}" -not -path '*/.*' -type f -printf '%p %T@\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+  else
+    CURRENT_HASH="no-sentinel-dirs-$$"
+  fi
+
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     echo "$CURRENT_HASH" >> "$HASH_FILE"
   fi

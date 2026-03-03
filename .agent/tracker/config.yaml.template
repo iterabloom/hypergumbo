@@ -74,6 +74,16 @@ stop_hook:
     - holding
   human_only_statuses:
     - deleted
+  # Sentinel directories for circuit breaker progress detection.
+  # The circuit breaker hashes file modification times in these directories
+  # (excluding dotfiles) to detect whether real work product changed between
+  # stop events.  If files here changed, the agent made progress regardless
+  # of whether the tracker was updated.
+  progress_sentinel_dirs:
+    - packages/
+    - docs/
+    - scripts/
+    - ~/hypergumbo_lab_notebook/
 well_known_tags:
   - developer_experience
   - bakeoff_infrastructure
