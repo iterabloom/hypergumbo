@@ -108,6 +108,16 @@ _GUICE_PROVIDES = re.compile(
     re.DOTALL,
 )
 
+# Jakarta CDI: @Produces method — same pattern as Guice @Provides
+# @Produces public Foo createFoo() { return new FooImpl(); }
+_CDI_PRODUCES = re.compile(
+    r"@Produces\b[^{]*?"                            # @Produces with optional annotations
+    r"(?:public\s+|protected\s+|private\s+)?"       # optional access modifier
+    r"(\w+)\s+\w+\s*\([^)]*\)\s*\{"                # return-type method() {
+    r"[^}]*?new\s+(\w+)\s*\(",                      # new Impl(
+    re.DOTALL,
+)
+
 # Java: @ImplementedBy(Impl.class) on interface declaration
 # Group 1 = impl class (from annotation), group 2 = interface name
 _GUICE_IMPLEMENTED_BY = re.compile(
@@ -131,6 +141,7 @@ _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
         (_GUICE_BIND, 0.90),
         (_SPRING_BEAN, 0.90),
         (_GUICE_PROVIDES, 0.90),
+        (_CDI_PRODUCES, 0.90),
     ],
     ".kt": [
         (_GUICE_BIND, 0.90),

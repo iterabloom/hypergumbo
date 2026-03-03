@@ -724,6 +724,60 @@ class TestGuiceProvidesBindings:
 
 
 # ===========================================================================
+# Jakarta CDI: @Produces methods
+# ===========================================================================
+
+
+class TestCDIProducesBindings:
+    """Tests for Jakarta CDI @Produces method binding detection (WI-polir)."""
+
+    def test_produces_with_new_impl(self, tmp_path: Path) -> None:
+        """CDI @Produces method with new Impl() body creates binding."""
+        src = tmp_path / "Producers.java"
+        src.write_text(
+            "public class Producers {\n"
+            "  @Produces\n"
+            "  public AuthService createAuthService() {\n"
+            "    return new KeycloakAuthService();\n"
+            "  }\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "AuthService" and b.impl_name == "KeycloakAuthService"
+            for b in bindings
+        ), f"Expected AuthService→KeycloakAuthService binding, got: {bindings}"
+
+    def test_produces_with_scope_annotation(self, tmp_path: Path) -> None:
+        """@Produces @ApplicationScoped still detected."""
+        src = tmp_path / "Producers.java"
+        src.write_text(
+            "@Produces\n"
+            "@ApplicationScoped\n"
+            "public DataSource createDataSource() {\n"
+            "  return new HikariDataSource();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "DataSource" and b.impl_name == "HikariDataSource"
+            for b in bindings
+        )
+
+    def test_produces_self_binding_ignored(self, tmp_path: Path) -> None:
+        """@Produces method returning same type is ignored."""
+        src = tmp_path / "Producers.java"
+        src.write_text(
+            "@Produces\n"
+            "public Foo createFoo() {\n"
+            "  return new Foo();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(b.interface_name == "Foo" for b in bindings)
+
+
+# ===========================================================================
 # Java: Guice @ImplementedBy annotation
 # ===========================================================================
 
