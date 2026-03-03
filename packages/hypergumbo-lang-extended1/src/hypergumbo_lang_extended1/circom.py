@@ -202,6 +202,24 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _extract_signal_refs_from_constraint(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Extract signal identifier names from a constraint expression.
+
+    Walks the AST subtree and collects all identifiers that reference
+    signals in signal flow constraints (<==, ===).
+    """
+    refs: list[str] = []
+    for child in iter_tree(node):
+        if child.type == "identifier":
+            name = node_text(child, source).strip()
+            if name:
+                refs.append(name)
+    return refs
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -216,6 +234,7 @@ def _extract_edges_from_file(
     - imports: include directives
     - calls: template instantiations (component declarations, main component)
     - calls: function calls
+    - references: signal flow constraints (<==, ===)
     """
     edges: list[Edge] = []
 
@@ -315,6 +334,45 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                             )
                             edges.append(edge)
+
+        # Signal flow constraints (<==, ===) → references edges (WI-zijos)
+        # These define how data flows between signals and between components.
+        elif node.type == "assignment_expression":
+            # Check for constraint operators (<==, ==>, ===)
+            has_constraint_op = False
+            for child in node.children:
+                if not child.is_named and child.type in ("<==", "==>", "==="):
+                    has_constraint_op = True
+                    break
+            if not has_constraint_op:
+                continue
+
+            src_id = _find_enclosing_symbol_id(
+                node, source, file_path, run_id, resolver,
+            )
+            if not src_id:  # pragma: no cover
+                continue
+
+            # Extract signal references from the constraint expression
+            signal_refs = _extract_signal_refs_from_constraint(node, source)
+            seen_in_stmt: set[str] = set()
+            for ref_name in signal_refs:
+                if ref_name in seen_in_stmt:
+                    continue
+                seen_in_stmt.add(ref_name)
+                result = resolver.lookup(ref_name)
+                if result.symbol and result.symbol.kind == "variable":
+                    edge = Edge.create(
+                        src=src_id,
+                        dst=result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        evidence_type="signal_constraint",
+                    )
+                    edges.append(edge)
 
     return edges
 

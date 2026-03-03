@@ -233,3 +233,82 @@ class TestCircomSkipped:
                 result = circom_module.analyze_circom(tmp_path)
         assert result.skipped is True
         assert len(result.symbols) == 0
+
+
+class TestCircomSignalFlowConstraints:
+    """Tests for signal flow constraint edge detection (WI-zijos)."""
+
+    def test_signal_assignment_creates_references_edges(self, tmp_path: Path) -> None:
+        """out <== a * b creates references edges to signals a, b, out."""
+        _make_circom_file(tmp_path, "mult.circom", """
+template Multiplier() {
+    signal input a;
+    signal input b;
+    signal output out;
+    out <== a * b;
+}
+""")
+        result = analyze_circom(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # Should have references from Multiplier to a, b, and out
+        assert len(ref_edges) >= 2, (
+            f"Expected >= 2 references edges for <== constraint, got {len(ref_edges)}: "
+            f"{[(e.src, e.dst) for e in ref_edges]}"
+        )
+        ref_dst_names = {e.dst.split(":")[-2] for e in ref_edges}
+        assert "a" in ref_dst_names or "b" in ref_dst_names
+
+    def test_constraint_equality_creates_references_edges(self, tmp_path: Path) -> None:
+        """a * b === c creates references edges."""
+        _make_circom_file(tmp_path, "check.circom", """
+template Check() {
+    signal input a;
+    signal input b;
+    signal input c;
+    a * b === c;
+}
+""")
+        result = analyze_circom(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) >= 2, (
+            f"Expected >= 2 references edges for === constraint, got {len(ref_edges)}"
+        )
+
+    def test_constraint_evidence_type(self, tmp_path: Path) -> None:
+        """Signal constraint edges have evidence_type='signal_constraint'."""
+        _make_circom_file(tmp_path, "ev.circom", """
+template T() {
+    signal input x;
+    signal output y;
+    y <== x;
+}
+""")
+        result = analyze_circom(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) >= 1
+        assert ref_edges[0].evidence_type == "signal_constraint"
+
+    def test_no_constraint_no_references(self, tmp_path: Path) -> None:
+        """Templates without constraints don't get references edges."""
+        _make_circom_file(tmp_path, "empty.circom", """
+template Empty() {
+    signal input x;
+    signal output y;
+}
+""")
+        result = analyze_circom(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0
+
+    def test_regular_assignment_not_treated_as_constraint(self, tmp_path: Path) -> None:
+        """x = a + 1 (regular = assignment) does not produce references edges."""
+        _make_circom_file(tmp_path, "reg.circom", """
+template T() {
+    signal input a;
+    var x;
+    x = a + 1;
+}
+""")
+        result = analyze_circom(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0
