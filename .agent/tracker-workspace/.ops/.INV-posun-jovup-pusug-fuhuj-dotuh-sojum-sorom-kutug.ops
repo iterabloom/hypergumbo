@@ -22,3 +22,18 @@
     fields:  # 2583
       statement: "The compact behavior map must retain a representative sample of each cross-cutting edge type present in the full graph, not just high-centrality calls/references edges"  # 2583
       root_cause: "Compact mode selects top ~100 nodes by centrality (in_degree * (1 + ln(1 + out_degree))). Route nodes are structurally peripheral (in_degree=0, out_degree=1), so they're always excluded. http_calls endpoints are often leaf nodes. dispatches_to implementation endpoints are one of many alternatives with moderate centrality. The induced-subgraph step then drops all edges whose endpoints aren't in the selected set."  # 2583
+- op: update  # ddcd
+  at: '2026-03-03T07:13:01Z'  # ddcd
+  by: agent  # ddcd
+  actor: jgstern_agent  # ddcd
+  clock: 2  # ddcd
+  nonce: ddcd  # ddcd
+  set:  # ddcd
+    status: holding  # ddcd
+- op: discuss  # c0bd
+  at: '2026-03-03T07:13:01Z'  # c0bd
+  by: agent  # c0bd
+  actor: jgstern_agent  # c0bd
+  clock: 3  # c0bd
+  nonce: c0bd  # c0bd
+  message: "Fixed in PR batch. Compact mode seeds cross-cutting edge endpoints into node selection. Seeds capped at 25% of max_symbols."  # c0bd

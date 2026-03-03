@@ -71,3 +71,18 @@
   clock: 7  # 0cf7
   nonce: 0cf7  # 0cf7
   message: "Route nodes falling back to hash IDs in compact output (grafana bakeoff) is this invariant violation manifesting. Routes lack proper stable_ids, so compact can't produce resolvable references."  # 0cf7
+- op: update  # 7d23
+  at: '2026-03-03T07:13:01Z'  # 7d23
+  by: agent  # 7d23
+  actor: jgstern_agent  # 7d23
+  clock: 8  # 7d23
+  nonce: 7d23  # 7d23
+  set:  # 7d23
+    status: holding  # 7d23
+- op: discuss  # b37c
+  at: '2026-03-03T07:13:01Z'  # b37c
+  by: agent  # b37c
+  actor: jgstern_agent  # b37c
+  clock: 9  # b37c
+  nonce: b37c  # b37c
+  message: "Fixed in PR batch. HTTP linker was last remaining violation — now uses make_route_stable_id(method, url_path)."  # b37c

@@ -31,3 +31,18 @@
   clock: 3  # d2ef
   nonce: d2ef  # d2ef
   message: "Second external bakeoff (March 2026) found another manifestation: bun's 86 detected routes are 100% from test files (test/js/node/, test/js/third_party/). bun is a JavaScript runtime, not a web app — its \"routes\" are test fixtures that instantiate Express/Fastify/Node HTTP servers to test compatibility. Zero routes come from production code.\n\nThis is test infrastructure leaking into production analysis — same structural class as src/dev/ (halo2) and ui/mirage/ (Vault). The test-path detection catches standard test/ directories for exclusion purposes, but the route detector runs before test filtering, and route nodes created from test files aren't flagged as test-tier.\n\nAdditionally: grafana's top http_route entrypoint is a React component event handler (handleRemove in VariableStaticOptionsFormItems.tsx) classified as [http_route] HTTP DELETE /:uid at confidence 1.00. Frontend code in components/ directories is being misclassified as server-side route handlers. This is a different vector (framework detection false positive rather than test path misclassification) but the same downstream effect: noise in production analysis."  # d2ef
+- op: update  # 700a
+  at: '2026-03-03T06:55:16Z'  # 700a
+  by: agent  # 700a
+  actor: jgstern_agent  # 700a
+  clock: 4  # 700a
+  nonce: 700a  # 700a
+  set:  # 700a
+    status: done  # 700a
+- op: discuss  # 92ab
+  at: '2026-03-03T06:55:16Z'  # 92ab
+  by: agent  # 92ab
+  actor: jgstern_agent  # 92ab
+  clock: 5  # 92ab
+  nonce: 92ab  # 92ab
+  message: "Already fixed. src/dev/ paths correctly bypass utility classification when after source roots (src/, lib/, app/, crates/, packages/). Tests exist in test_paths.py lines 369-378. Broader issues (ui/mirage/, test routes) are separate concerns tracked in discussion."  # 92ab

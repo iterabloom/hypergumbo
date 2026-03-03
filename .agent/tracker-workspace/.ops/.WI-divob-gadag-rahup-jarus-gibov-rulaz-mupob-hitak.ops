@@ -20,3 +20,18 @@
     pr_ref:  # befb
     description: "## Problem\n\nThe Java analyzer emits decorated_by edges to annotation symbols (@Override, @Test,\n@NonNull, @Deprecated, @Issue, etc.) without creating corresponding nodes. In Jenkins,\nthis produces 16,268 edges (26.3% of all edges) pointing to IDs like\njava:unresolved:0-0:Override:unresolved that don't exist in the behavior map.\n\nBreakdown of missing annotation destinations in Jenkins:\n- @Override: 5,596\n- @Test: 3,301\n- @Issue: 1,057\n- @NonNull: 936\n- @Deprecated: 751\n- Others: ~4,627\n\nThe call graph itself is clean — if decorated_by is excluded, missing-dst drops below 1%.\nThis is purely a representational issue, but it breaks any traversal logic that expects all\nedge endpoints to resolve, and it inflates the \"missing edge endpoint\" metric.\n\n## Why this is separate from the general external boundary node fix\n\nThe general fix (WI-sikur) addresses calls/imports to external functions by creating\nboundary nodes in a post-analysis pass. Annotation edges are different:\n\n1. Annotations are a closed set per project (Java has ~20 common annotations)\n2. decorated_by is semantically different from calls — it's metadata, not a dependency\n3. The fix is simpler: either create lightweight annotation stub nodes in the Java analyzer\n   itself, or don't emit the edge when the annotation symbol doesn't exist as a node\n\nOption (a) — create stub nodes: Add a node for each unique annotation referenced, with\nkind=annotation, tier=3 (or tier=1 if it's a project-defined annotation). This preserves\nthe decorated_by edges and makes them traversable.\n\nOption (b) — suppress the edges: Don't emit decorated_by edges when the target annotation\nwas never extracted as a symbol. This reduces edge count but loses the annotation metadata.\n\nRecommendation: Option (a) for project-defined annotations, option (b) for standard Java\nannotations (@Override, @SuppressWarnings, etc.) that carry no architectural information.\n\n## Related items\n\n- INV-miniz: Edge endpoint resolution invariant\n- WI-sikur: General external boundary node fix (handles calls/imports, not decorated_by)\n- WI-votaj (done): Rust #[test] attribute creates false decorated_by edges — same edge type,\n  different language, different root cause\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # befb
     fields: {}  # befb
+- op: update  # 764c
+  at: '2026-03-03T07:13:01Z'  # 764c
+  by: agent  # 764c
+  actor: jgstern_agent  # 764c
+  clock: 2  # 764c
+  nonce: 764c  # 764c
+  set:  # 764c
+    status: done  # 764c
+- op: discuss  # 8be5
+  at: '2026-03-03T07:13:01Z'  # 8be5
+  by: agent  # 8be5
+  actor: jgstern_agent  # 8be5
+  clock: 3  # 8be5
+  nonce: 8be5  # 8be5
+  message: "Fixed in PR batch. Java/Kotlin/C# suppress standard annotation unresolved edges."  # 8be5
