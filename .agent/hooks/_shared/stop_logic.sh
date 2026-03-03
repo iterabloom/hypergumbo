@@ -79,7 +79,7 @@ except Exception:
     [[ -d "$d" ]] && FIND_ARGS+=("$d")
   done
   if [[ ${#FIND_ARGS[@]} -gt 0 ]]; then
-    CURRENT_HASH=$(find "${FIND_ARGS[@]}" -not -path '*/.*' -type f -printf '%p %T@\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+    CURRENT_HASH=$(find "${FIND_ARGS[@]}" -not -path '*/.*' -not -path '*/guidance_log/*' -type f -printf '%p %T@\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
   else
     CURRENT_HASH="no-sentinel-dirs-$$"
   fi
