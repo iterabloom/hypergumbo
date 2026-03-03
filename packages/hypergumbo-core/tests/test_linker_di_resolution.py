@@ -778,6 +778,89 @@ class TestCDIProducesBindings:
 
 
 # ===========================================================================
+# Jakarta CDI: Scope-annotated class implements interface → explicit binding
+# ===========================================================================
+
+
+class TestCDIScopeBindings:
+    """Tests for CDI scope annotation → interface binding detection."""
+
+    def test_application_scoped_implements(self, tmp_path: Path) -> None:
+        """@ApplicationScoped class implementing interface creates binding."""
+        src = tmp_path / "UserServiceImpl.java"
+        src.write_text(
+            "@ApplicationScoped\n"
+            "public class UserServiceImpl implements UserService {\n"
+            "  public User findById(long id) { return null; }\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "UserService" and b.impl_name == "UserServiceImpl"
+            and b.confidence == 0.85
+            for b in bindings
+        ), f"Expected UserService→UserServiceImpl CDI binding, got: {bindings}"
+
+    def test_request_scoped_implements(self, tmp_path: Path) -> None:
+        """@RequestScoped class implementing interface creates binding."""
+        src = tmp_path / "RequestHandler.java"
+        src.write_text(
+            "@RequestScoped\n"
+            "public class DefaultHandler implements RequestHandler {\n"
+            "  public void handle() {}\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "RequestHandler" and b.impl_name == "DefaultHandler"
+            for b in bindings
+        )
+
+    def test_dependent_scoped_implements(self, tmp_path: Path) -> None:
+        """@Dependent class implementing interface creates binding."""
+        src = tmp_path / "Impl.java"
+        src.write_text(
+            "@Dependent\n"
+            "public class FooImpl implements Foo {\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "Foo" and b.impl_name == "FooImpl"
+            for b in bindings
+        )
+
+    def test_scope_without_implements_ignored(self, tmp_path: Path) -> None:
+        """@ApplicationScoped class without implements is ignored."""
+        src = tmp_path / "Config.java"
+        src.write_text(
+            "@ApplicationScoped\n"
+            "public class AppConfig {\n"
+            "  public String getUrl() { return \"http://localhost\"; }\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(
+            b.impl_name == "AppConfig" for b in bindings
+        )
+
+    def test_multiple_interfaces(self, tmp_path: Path) -> None:
+        """@ApplicationScoped class with multiple interfaces uses first."""
+        src = tmp_path / "MultiImpl.java"
+        src.write_text(
+            "@ApplicationScoped\n"
+            "public class MultiImpl implements Serializable, UserService {\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        # Should capture first interface (Serializable)
+        assert any(
+            b.interface_name == "Serializable" and b.impl_name == "MultiImpl"
+            for b in bindings
+        )
+
+
+# ===========================================================================
 # Java: Guice @ImplementedBy annotation
 # ===========================================================================
 

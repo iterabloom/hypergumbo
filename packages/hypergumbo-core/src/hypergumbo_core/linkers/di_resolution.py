@@ -32,7 +32,8 @@ How It Works
 Supported Frameworks
 --------------------
 Java: Guice (``bind().to()``, ``@Provides``, ``@ImplementedBy``), Spring
-(``@Bean``), CDI, SPI.  Kotlin: Koin, Guice.  C#: ASP.NET Core DI.
+(``@Bean``), CDI (``@Produces``, scope-annotated ``implements``), SPI.
+Kotlin: Koin, Guice.  C#: ASP.NET Core DI.
 TypeScript: NestJS, Angular, InversifyJS.  Python: injector.  Scala: Guice (same
 patterns as Java).
 """
@@ -135,6 +136,18 @@ _KOIN_SINGLE = re.compile(
     re.DOTALL,
 )
 
+# Jakarta CDI: Scope-annotated class implements interface
+# @ApplicationScoped public class FooImpl implements FooService { ... }
+# Group(1) = impl class, group(2) = first interface (reversed pattern)
+_CDI_SCOPED_IMPL = re.compile(
+    r"@(?:ApplicationScoped|RequestScoped|SessionScoped|Dependent|Singleton)"
+    r"\b[^{]*?"
+    r"class\s+(\w+)\s+"                             # impl class name
+    r"(?:extends\s+\w+\s+)?"                        # optional extends clause
+    r"implements\s+(\w+)",                           # first interface
+    re.DOTALL,
+)
+
 # File extension -> regex patterns to apply
 _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ".java": [
@@ -172,6 +185,7 @@ _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
 _REVERSED_PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ".java": [
         (_GUICE_IMPLEMENTED_BY, 0.85),
+        (_CDI_SCOPED_IMPL, 0.85),
     ],
 }
 
