@@ -2646,3 +2646,184 @@ class TestTieredTokenBudget:
             f"but was underrepresented because its entrypoint had zero "
             f"frontier edges. Language-proportional seeding should fix this."
         )
+
+
+class TestCrossCuttingEdgeSeeding:
+    """Tests for cross-cutting edge endpoint seeding (INV-posun).
+
+    Compact mode must retain cross-cutting edge types (routes_to, http_calls,
+    dispatches_to, di_resolves, ffi_calls) by pre-seeding their endpoints
+    into the node selection.
+    """
+
+    def test_routes_to_edges_preserved(self):
+        """routes_to edges survive compact when endpoints are seeded."""
+        # High-centrality hub (will be selected by centrality)
+        hub = make_symbol("hub")
+        # Route node (zero in-degree, would be excluded by centrality)
+        route = make_symbol("route_get_users", kind="route")
+        # Handler that hub calls
+        handler = make_symbol("get_users_handler")
+
+        edges = [
+            make_edge(hub.id, handler.id),  # hub calls handler
+            make_edge(route.id, handler.id, edge_type="routes_to"),  # route → handler
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [hub, route, handler]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, [hub, route, handler], edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "routes_to" in edge_types, (
+            "routes_to edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_dispatches_to_edges_preserved(self):
+        """dispatches_to edges survive compact when endpoints are seeded."""
+        # Interface method (called by many → high centrality)
+        interface = make_symbol("IService_process", kind="method")
+        # Concrete implementations (low centrality individually)
+        impl_a = make_symbol("ConcreteA_process", kind="method")
+        impl_b = make_symbol("ConcreteB_process", kind="method")
+        # Callers to give interface high centrality
+        callers = [make_symbol(f"caller_{i}") for i in range(5)]
+
+        edges = [
+            *[make_edge(c.id, interface.id) for c in callers],
+            make_edge(interface.id, impl_a.id, edge_type="dispatches_to"),
+            make_edge(interface.id, impl_b.id, edge_type="dispatches_to"),
+        ]
+
+        all_symbols = [interface, impl_a, impl_b] + callers
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # Budget large enough for callers + interface + at least one impl
+        config = CompactConfig(min_symbols=5, max_symbols=8)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "dispatches_to" in edge_types, (
+            "dispatches_to edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_http_calls_edges_preserved(self):
+        """http_calls edges survive compact when endpoints are seeded."""
+        # Client function making HTTP call
+        client = make_symbol("fetch_users")
+        # Server handler
+        server = make_symbol("handle_users")
+        # Hub to anchor centrality
+        hub = make_symbol("main")
+
+        edges = [
+            make_edge(hub.id, client.id),
+            make_edge(hub.id, server.id),
+            make_edge(client.id, server.id, edge_type="http_calls"),
+        ]
+
+        all_symbols = [hub, client, server]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "http_calls" in edge_types, (
+            "http_calls edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_cross_cutting_seeds_capped(self):
+        """Cross-cutting seeds don't exceed 25% of max_symbols budget."""
+        from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
+
+        # Create many dispatch targets (more than budget allows)
+        interface = make_symbol("interface")
+        impls = [make_symbol(f"impl_{i}", path=f"src/impl_{i}.py") for i in range(50)]
+
+        edges = [
+            make_edge(interface.id, impl.id, edge_type="dispatches_to")
+            for impl in impls
+        ]
+        # Add a call so interface has centrality
+        caller = make_symbol("caller")
+        edges.append(make_edge(caller.id, interface.id))
+
+        all_symbols = [interface, caller] + impls
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # max_symbols=20, so cross-cutting cap = 20//4 = 5
+        config = CompactConfig(min_symbols=5, max_symbols=20)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        # Should have at most 20 nodes
+        assert len(result["nodes"]) <= 20
+
+    def test_cross_cutting_with_nonexistent_endpoint_ignored(self):
+        """Cross-cutting edges with endpoints not in symbols are ignored."""
+        hub = make_symbol("hub")
+        real = make_symbol("real_handler")
+        edges_list = [
+            make_edge(hub.id, real.id),
+            # Edge pointing to non-existent symbol
+            make_edge("phantom::nonexistent", real.id, edge_type="ffi_calls"),
+        ]
+
+        all_symbols = [hub, real]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges_list],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges_list, config,
+            force_include_entrypoints=False,
+        )
+
+        # Should not crash, should include real nodes
+        included_ids = {n["id"] for n in result["nodes"]}
+        assert real.id in included_ids
+
+    def test_cross_cutting_constant_values(self):
+        """CROSS_CUTTING_EDGE_TYPES contains the expected edge types."""
+        from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
+
+        assert "routes_to" in CROSS_CUTTING_EDGE_TYPES
+        assert "http_calls" in CROSS_CUTTING_EDGE_TYPES
+        assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
+        assert "di_resolves" in CROSS_CUTTING_EDGE_TYPES
+        assert "ffi_calls" in CROSS_CUTTING_EDGE_TYPES
+        # Regular edges should NOT be in the set
+        assert "calls" not in CROSS_CUTTING_EDGE_TYPES
+        assert "imports" not in CROSS_CUTTING_EDGE_TYPES

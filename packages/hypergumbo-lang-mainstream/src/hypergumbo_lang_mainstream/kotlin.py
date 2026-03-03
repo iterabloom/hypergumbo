@@ -1253,6 +1253,30 @@ def _extract_inheritance_edges(
     return edges
 
 
+# Standard JVM annotations that carry no architectural information.
+# Shared concept with Java's _STANDARD_JAVA_ANNOTATIONS — Kotlin uses the
+# same JVM annotation ecosystem.  Suppressed from unresolved decorated_by
+# edges to avoid dangling edges to nonexistent nodes (WI-divob).
+_STANDARD_JVM_ANNOTATIONS = frozenset({
+    # java.lang / kotlin.jvm
+    "Override", "Deprecated", "SuppressWarnings", "SafeVarargs",
+    "FunctionalInterface", "JvmStatic", "JvmOverloads", "JvmField",
+    "JvmName", "JvmSynthetic", "JvmDefault", "JvmRecord",
+    # java.lang.annotation
+    "Retention", "Target", "Documented", "Inherited", "Repeatable",
+    # javax.annotation / jakarta.annotation
+    "Nullable", "Nonnull", "NonNull", "CheckForNull",
+    "Generated", "PostConstruct", "PreDestroy", "Resource",
+    # Common testing annotations
+    "Test", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+    "ParameterizedTest", "RepeatedTest", "DisplayName", "Disabled",
+    "Nested", "Tag", "ExtendWith", "RunWith",
+    # Common quality/nullability annotations
+    "NotNull", "NotEmpty", "NotBlank", "Valid",
+    "VisibleForTesting", "Beta", "Internal",
+})
+
+
 def _extract_annotation_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -1306,8 +1330,10 @@ def _extract_annotation_edges(
                     evidence_type="ast_annotation",
                 )
                 edges.append(edge)
-            else:
-                # Unresolved edge for external annotations (e.g., @Service, @Entity)
+            elif dec_name not in _STANDARD_JVM_ANNOTATIONS:
+                # Only emit unresolved edges for non-standard annotations.
+                # Standard JVM annotations (@Override, @Deprecated, etc.) carry
+                # no architectural information and would create dangling edges.
                 dst_id = f"kotlin:unresolved:0-0:{dec_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,

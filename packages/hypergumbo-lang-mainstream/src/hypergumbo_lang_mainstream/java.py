@@ -1435,6 +1435,33 @@ def _extract_edges(
     return edges
 
 
+# Standard Java/JDK annotations that carry no architectural information.
+# Suppressed from unresolved decorated_by edges to avoid creating dangling
+# edges to nonexistent nodes (INV-miniz / WI-divob).
+_STANDARD_JAVA_ANNOTATIONS = frozenset({
+    # java.lang
+    "Override", "Deprecated", "SuppressWarnings", "SafeVarargs",
+    "FunctionalInterface",
+    # java.lang.annotation
+    "Retention", "Target", "Documented", "Inherited", "Repeatable",
+    # javax.annotation / jakarta.annotation
+    "Nullable", "Nonnull", "NonNull", "CheckForNull",
+    "Generated", "PostConstruct", "PreDestroy", "Resource",
+    # Common testing annotations (never architectural)
+    "Test", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+    "ParameterizedTest", "RepeatedTest", "DisplayName", "Disabled",
+    "Nested", "Tag", "ExtendWith", "RunWith",
+    # Common quality/nullability annotations
+    "NotNull", "NotEmpty", "NotBlank", "Valid",
+    "VisibleForTesting", "Beta", "Internal",
+    # Lombok (code generation, not architecture)
+    "Getter", "Setter", "Data", "Builder", "NoArgsConstructor",
+    "AllArgsConstructor", "RequiredArgsConstructor", "Value",
+    "ToString", "EqualsAndHashCode", "Slf4j", "Log", "Log4j",
+    "Log4j2", "CommonsLog",
+})
+
+
 def _extract_annotation_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -1490,9 +1517,12 @@ def _extract_annotation_edges(
                     evidence_type="ast_annotation",
                 )
                 edges.append(edge)
-            else:
-                # Emit unresolved edge for annotations we can't resolve
-                # This helps track framework annotations like @Service
+            elif dec_name not in _STANDARD_JAVA_ANNOTATIONS:
+                # Only emit unresolved edges for non-standard annotations
+                # (likely project or framework annotations like @Service).
+                # Standard annotations (@Override, @Deprecated, etc.) carry
+                # no architectural information and would create dangling edges
+                # to nonexistent nodes.
                 dst_id = f"java:unresolved:0-0:{dec_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,

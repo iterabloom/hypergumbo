@@ -78,6 +78,20 @@ __all__ = [
     "parse_tier_spec",
 ]
 
+# Edge types that represent cross-cutting concerns (linker-produced edges that
+# connect nodes across language, service, or abstraction boundaries).  These are
+# the primary value proposition of the linker pipeline.  Compact mode must
+# seed their endpoints into the node selection so that these edges survive the
+# induced-subgraph filter — without this, centrality-based selection drops the
+# peripheral nodes that are endpoints of these edges.
+CROSS_CUTTING_EDGE_TYPES = frozenset({
+    "routes_to",       # Web route → handler function
+    "http_calls",      # HTTP client call → server endpoint
+    "dispatches_to",   # Interface/abstract method → concrete implementation
+    "di_resolves",     # DI interface → bound implementation
+    "ffi_calls",       # Code → foreign language function
+})
+
 
 @dataclass
 class CompactConfig:
@@ -918,6 +932,40 @@ def format_compact_behavior_map(
             entrypoints_with_ids = sorted_eps[:max_forced]
 
         force_include_ids = {ep.get("symbol_id") for ep in entrypoints_with_ids}
+
+    # Seed cross-cutting edge endpoints so linker-produced edges survive
+    # the induced-subgraph filter.  Without this, centrality-based selection
+    # drops peripheral nodes (route definitions, dispatch targets, FFI endpoints)
+    # that are endpoints of these high-value edges.
+    symbol_id_set = {s.id for s in symbols}
+    cross_cutting_ids: set = set()
+    for e in behavior_map.get("edges", []):
+        # Edge dicts use "type" key (from Edge.to_dict()), not "edge_type"
+        if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
+            src, dst = e.get("src"), e.get("dst")
+            if src in symbol_id_set:
+                cross_cutting_ids.add(src)
+            if dst in symbol_id_set:
+                cross_cutting_ids.add(dst)
+
+    # Cap cross-cutting seeds to avoid dominating the budget.  Reserve at least
+    # 25% of max_symbols for centrality-ranked nodes.
+    max_cross_cutting = max(1, config.max_symbols // 4)
+    if len(cross_cutting_ids) > max_cross_cutting:
+        # Prefer endpoints with higher edge count (more cross-cutting connections)
+        cc_edge_count: Counter = Counter()
+        for e in behavior_map.get("edges", []):
+            if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
+                src, dst = e.get("src"), e.get("dst")
+                if src in cross_cutting_ids:
+                    cc_edge_count[src] += 1
+                if dst in cross_cutting_ids:
+                    cc_edge_count[dst] += 1
+        # Sort by edge count descending, then alphabetically for stability
+        ranked = sorted(cross_cutting_ids, key=lambda x: (-cc_edge_count[x], x))
+        cross_cutting_ids = set(ranked[:max_cross_cutting])
+
+    force_include_ids |= cross_cutting_ids
 
     if connectivity_aware:
         # Use connectivity-aware selection

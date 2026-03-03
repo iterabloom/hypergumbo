@@ -1199,6 +1199,31 @@ def _extract_edges_from_file(
     return edges
 
 
+# Standard .NET/C# attributes that carry no architectural information.
+# Suppressed from unresolved decorated_by edges to avoid dangling edges (WI-divob).
+_STANDARD_CSHARP_ATTRIBUTES = frozenset({
+    # System
+    "Obsolete", "Serializable", "NonSerialized", "Flags",
+    "CLSCompliant", "ThreadStatic", "MTAThread", "STAThread",
+    # System.Diagnostics
+    "Conditional", "DebuggerDisplay", "DebuggerStepThrough",
+    "DebuggerHidden", "DebuggerBrowsable",
+    # System.Runtime
+    "MethodImpl", "DllImport", "StructLayout", "MarshalAs",
+    # System.ComponentModel
+    "Description", "Category", "Browsable", "EditorBrowsable",
+    "DefaultValue",
+    # Testing
+    "Test", "TestFixture", "SetUp", "TearDown", "TestCase",
+    "Fact", "Theory", "InlineData", "ClassData",
+    # Code analysis
+    "SuppressMessage", "ExcludeFromCodeCoverage",
+    # Compiler
+    "CallerMemberName", "CallerFilePath", "CallerLineNumber",
+    "CompilerGenerated",
+})
+
+
 def _extract_attribute_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -1258,9 +1283,11 @@ def _extract_attribute_edges(
                     evidence_type="ast_attribute",
                 )
                 edges.append(edge)
-            else:
-                # Emit unresolved edge for attributes we can't resolve
-                # This helps track framework attributes like [ApiController]
+            elif attr_name not in _STANDARD_CSHARP_ATTRIBUTES:
+                # Only emit unresolved edges for non-standard attributes
+                # (likely framework attributes like [ApiController]).
+                # Standard attributes ([Obsolete], [Test], etc.) carry no
+                # architectural information and would create dangling edges.
                 dst_id = f"csharp:unresolved:0-0:{attr_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,

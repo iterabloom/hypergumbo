@@ -5,6 +5,8 @@ from textwrap import dedent
 
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
+    HttpClientCall,
+    _create_client_symbol,
     _extract_path_from_url,
     _find_source_files,
     _match_route_pattern,
@@ -1782,3 +1784,76 @@ class TestFindSourceFiles:
         assert "main.go" in found
         assert "client.rb" in found
         assert "Api.java" in found
+
+
+class TestCreateClientSymbolStableId:
+    """Tests for _create_client_symbol stable_id collision fix (INV-popop)."""
+
+    def test_different_urls_produce_different_stable_ids(self, tmp_path: Path):
+        """GET /users and GET /posts must not collide on stable_id."""
+        call_a = HttpClientCall(
+            method="GET", url="/api/users", line=10,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        call_b = HttpClientCall(
+            method="GET", url="/api/posts", line=20,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        sym_a = _create_client_symbol(call_a, tmp_path)
+        sym_b = _create_client_symbol(call_b, tmp_path)
+        assert sym_a.stable_id != sym_b.stable_id
+
+    def test_same_url_produces_same_stable_id(self, tmp_path: Path):
+        """Same method+URL from different lines should have the same stable_id."""
+        call_a = HttpClientCall(
+            method="GET", url="/api/users", line=10,
+            file_path=str(tmp_path / "a.py"), language="python",
+        )
+        call_b = HttpClientCall(
+            method="GET", url="/api/users", line=99,
+            file_path=str(tmp_path / "b.py"), language="python",
+        )
+        sym_a = _create_client_symbol(call_a, tmp_path)
+        sym_b = _create_client_symbol(call_b, tmp_path)
+        assert sym_a.stable_id == sym_b.stable_id
+
+    def test_stable_id_is_not_bare_method(self, tmp_path: Path):
+        """stable_id must not be a bare HTTP method string."""
+        call = HttpClientCall(
+            method="POST", url="/api/users", line=5,
+            file_path=str(tmp_path / "app.js"), language="javascript",
+        )
+        sym = _create_client_symbol(call, tmp_path)
+        assert sym.stable_id != "POST"
+        assert sym.stable_id != "post"
+        # Should be a hash digest (64 hex chars for sha256)
+        assert len(sym.stable_id) == 64
+
+    def test_different_methods_same_url_different_stable_ids(self, tmp_path: Path):
+        """GET /api/users and POST /api/users are distinct."""
+        call_get = HttpClientCall(
+            method="GET", url="/api/users", line=10,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        call_post = HttpClientCall(
+            method="POST", url="/api/users", line=11,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        sym_get = _create_client_symbol(call_get, tmp_path)
+        sym_post = _create_client_symbol(call_post, tmp_path)
+        assert sym_get.stable_id != sym_post.stable_id
+
+    def test_full_url_extracts_path(self, tmp_path: Path):
+        """Full URLs should have path extracted for stable_id."""
+        call_full = HttpClientCall(
+            method="GET", url="http://localhost:8080/api/users", line=10,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        call_path = HttpClientCall(
+            method="GET", url="/api/users", line=20,
+            file_path=str(tmp_path / "app.py"), language="python",
+        )
+        sym_full = _create_client_symbol(call_full, tmp_path)
+        sym_path = _create_client_symbol(call_path, tmp_path)
+        # Both should resolve to the same stable_id since paths match
+        assert sym_full.stable_id == sym_path.stable_id

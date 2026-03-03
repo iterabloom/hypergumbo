@@ -1909,7 +1909,7 @@ def _extract_go_routes(
     - Group prefix composition: r.Group("/api", func() { r.GET("/users", h) }) → /api/users
     - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
-    Creates symbols with stable_id = HTTP method for route discovery.
+    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     Returns:

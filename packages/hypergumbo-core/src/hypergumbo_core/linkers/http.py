@@ -90,6 +90,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
+from ..analyze.base import make_route_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -847,7 +848,9 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             end_col=0,
         ),
         language=call.language,
-        stable_id=call.method,
+        stable_id=make_route_stable_id(
+            call.method, _extract_path_from_url(call.url) or call.url
+        ),
         meta={
             "http_method": call.method,
             "url_path": _extract_path_from_url(call.url) or call.url,
