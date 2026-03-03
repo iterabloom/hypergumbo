@@ -17,7 +17,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Solidity call graph**: Inheritance, override, and emit edges. Visibility modifiers for entrypoint detection. `using Library for Type` resolution (`x.add(y)` → `SafeMath.add`).
 - **Rust**: `implements` edges from `impl Trait for Struct`. Turbofish/fully-qualified generic call resolution (`PublicParams::<E1,E2>::setup()`). Generic trait method blocklist (33 names like `.into()`, `.clone()`) to prevent false-positive in-degree. `#[cfg(test)]` module inheritance for correct production slice exclusion.
 - **Slicing**: `node_tiers` field propagates each node's supply chain tier into slice output, enabling tier-based filtering without the full behavior map.
-- **Formal methods**: `references` edges in Agda (pattern clause bodies) and Lean (def/theorem/lemma bodies).
+- **Formal methods**: `references` edges in Agda (pattern clause bodies and type signatures) and Lean (def/theorem/lemma bodies). Agda type signature scanning (confidence 0.75) connects types referenced only in signatures, reducing orphan rates. Record field extraction (kind=field) with type signatures.
+- **Stapler framework route synthesis**: `doXxx` → POST /xxx, `getXxx` → GET /xxx convention-based route_path and http_method metadata for Jenkins/Stapler handler methods.
+- **Jakarta CDI `@Produces` binding detection**: DI linker recognizes CDI producer methods for interface-to-implementation resolution.
 
 ### Fixed
 
@@ -28,6 +30,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test/utility classification**: `fv/`, `harnesses/` as test directories; `build.rs` as utility; `tests.rs`/`testonly.rs` as co-located test files; `bench/`/`benches/` excluded from production slices; dependency symbols classified as tier 3.
 - **Protobuf/gRPC codegen**: `.serde.rs`, `.pb.go`, `_pb2.py`, `_pb2_grpc.py` classified as derived (tier 4) and excluded from behavior maps. Reduces orphan rate inflation (penumbra: 5750 nodes removed, orphan rate 21% → ~9%).
 - **JSON output reproducibility**: All JSON output now uses sorted keys for deterministic ordering across runs.
+- **TOML symbol IDs**: Changed from opaque sha256 hashes (`toml:sha256:...`) to location-based format (`toml:path:start-end:name:kind`), making compact output node IDs resolvable by `slice --entry`.
 
 ### Changed
 
