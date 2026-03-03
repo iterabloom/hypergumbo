@@ -44,3 +44,18 @@
   nonce: '5007'  # 5007
   set:  # 5007
     status: violated  # 5007
+- op: update  # 3647
+  at: '2026-03-03T10:43:46Z'  # 3647
+  by: agent  # 3647
+  actor: jgstern_agent  # 3647
+  clock: 5  # 3647
+  nonce: '3647'  # 3647
+  set:  # 3647
+    status: holding  # 3647
+- op: discuss  # 32b8
+  at: '2026-03-03T10:43:46Z'  # 32b8
+  by: agent  # 32b8
+  actor: jgstern_agent  # 32b8
+  clock: 6  # 32b8
+  nonce: 32b8  # 32b8
+  message: "EXTERNAL_DEP_DEEP_PATTERNS already handles Go SDK naming conventions (*-sdk-go*, *-go-sdk, *-sdk-golang*, vendor-internal/). The broader issue (dangling edges to unresolved external calls) is addressed by boundary nodes (WI-sikur, PR #1682). Needs bakeoff revalidation to confirm."  # 32b8

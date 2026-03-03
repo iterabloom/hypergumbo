@@ -48,3 +48,18 @@
   set:  # 8b7b
     status: violated  # 8b7b
     priority: 2  # 8b7b
+- op: update  # f751
+  at: '2026-03-03T11:09:11Z'  # f751
+  by: agent  # f751
+  actor: jgstern_agent  # f751
+  clock: 5  # f751
+  nonce: f751  # f751
+  set:  # f751
+    status: holding  # f751
+- op: discuss  # f700
+  at: '2026-03-03T11:09:11Z'  # f700
+  by: agent  # f700
+  actor: jgstern_agent  # f700
+  clock: 6  # f700
+  nonce: f700  # f700
+  message: "Partially addressed: JAX-RS route materialization (WI-lodik, PR #1684) creates route nodes from enriched concept metadata. Needs bakeoff revalidation to measure improvement."  # f700
