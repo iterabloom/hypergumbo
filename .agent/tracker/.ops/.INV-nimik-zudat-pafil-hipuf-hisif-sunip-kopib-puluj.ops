@@ -32,3 +32,19 @@
   nonce: 8a82  # 8a82
   set:  # 8a82
     status: holding  # 8a82
+- op: discuss  # 527f
+  at: '2026-03-03T06:15:38Z'  # 527f
+  by: agent  # 527f
+  actor: jgstern_agent  # 527f
+  clock: 3  # 527f
+  nonce: 527f  # 527f
+  message: "External bakeoff (March 2026) confirms this invariant is violated for Java/JAX-RS. keycloak has 1,302 routes in routes.txt but ZERO kind=route nodes, ZERO routes_to edges in the behavior map. Byte-level scan of 280 MB hg.json confirmed.\n\nThe pipeline splits into three stages:\n1. Route annotation detection (works): @GET/@POST/@Path detected on methods/classes\n2. Route display (works): hypergumbo routes reads metadata, produces 1,302 entries\n3. Route graph materialization (missing): creating kind=route nodes with route_path/http_method fields and routes_to edges\n\nThe materialization gap exists because JAX-RS paths are distributed across class-level @Path + method-level @Path + subresource locator chains, requiring path reconstruction. Rails (centralized config/routes.rb) and Go (explicit r.GET(\"/path\", handler) calls) have this working end-to-end — gitlab produces 5,223 route nodes with 1,275 routes_to edges.\n\nThis INV should be bumped from P4 to at least P2 — Java web apps are a large share of enterprise codebases, and without routes_to edges, slice cannot trace HTTP request → handler → service chains.\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 527f
+- op: update  # 8b7b
+  at: '2026-03-03T06:15:38Z'  # 8b7b
+  by: agent  # 8b7b
+  actor: jgstern_agent  # 8b7b
+  clock: 4  # 8b7b
+  nonce: 8b7b  # 8b7b
+  set:  # 8b7b
+    status: violated  # 8b7b
+    priority: 2  # 8b7b

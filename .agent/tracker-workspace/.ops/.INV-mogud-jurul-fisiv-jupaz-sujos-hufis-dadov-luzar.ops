@@ -36,3 +36,11 @@
   clock: 3  # d0c9
   nonce: d0c9  # d0c9
   message: "Independent external bakeoff (March 2026) reveals this is far broader than vendored SDKs.\n\nVault analysis: 56.8% of all edges (75,958 of 133,742) have missing destination references. The dominant category is 50,701 calls edges pointing to go:*:unresolved IDs — Go stdlib and external packages: fmt.Errorf, os.Getenv, encoding/json.Marshal, go-metrics.IncrCounterWithLabels. An additional 24,564 missing imports edges follow the same pattern.\n\nPractical impact: forward slice from main() reaches only 13 nodes because 100% of frontier calls terminate at unresolved external IDs. Even the best HTTP route slice (ANY /v1/sys/in-flight-req) reaches only 9 nodes with 89% missing frontier targets. The Go call graph is structurally accurate for first-party code, but slice traversal stalls after 1-2 hops.\n\nThis INV is scoped to \"vendored Go SDKs in *-sdk-go/ and vendor-internal/ paths\" but the real invariant is: all Go external call targets (stdlib, third-party packages, vendored deps) need explicit boundary semantics — either tier-3 sink nodes or external-boundary markers that don't break traversal.\n\nThe vendored SDK classification fix (adding patterns to EXTERNAL_DEP_PATTERNS) only addresses tier classification. It doesn't fix the fundamental problem: calls to unresolved external functions create dangling edges that break slicing. This is the same structural issue seen in Lua (6,893 calls to lua:?:0-0:* builtins in Kong) and is better addressed by the new edge endpoint resolution invariant (see sibling INV).\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # d0c9
+- op: update  # 5007
+  at: '2026-03-02T23:48:52Z'  # 5007
+  by: agent  # 5007
+  actor: jgstern_agent  # 5007
+  clock: 4  # 5007
+  nonce: '5007'  # 5007
+  set:  # 5007
+    status: violated  # 5007
