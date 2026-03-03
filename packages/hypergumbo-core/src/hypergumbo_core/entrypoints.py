@@ -64,8 +64,47 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
+import re
+
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_utility_file
+
+
+# File path patterns that indicate frontend UI code (React, Vue, Angular, Svelte).
+# Symbols in these paths should not be classified as server-side HTTP routes.
+_FRONTEND_PATH_RE = re.compile(
+    r"(?:^|/)(?:components|views|pages|layouts|widgets|screens|ui)/"
+    r"|\.(?:tsx|jsx|vue|svelte)$",
+    re.IGNORECASE,
+)
+
+# Import patterns that indicate frontend framework code.
+# If a symbol's file imports from these, it's UI code not server routes.
+_FRONTEND_IMPORT_PREFIXES = frozenset({
+    "react", "react-dom", "@angular/core", "@angular/common",
+    "vue", "svelte", "@sveltejs", "solid-js", "preact",
+    "next/link", "next/router", "next/navigation",
+    "@remix-run/react", "gatsby",
+})
+
+
+def _is_frontend_file(sym: Symbol) -> bool:
+    """Check if a symbol is in a frontend UI file.
+
+    Uses file path patterns and import metadata to detect React, Vue,
+    Angular, and Svelte component files.  Used to suppress false-positive
+    http_route classification on frontend event handlers (WI-ronik).
+    """
+    if sym.path and _FRONTEND_PATH_RE.search(sym.path):
+        return True
+    # Check imports in symbol metadata
+    if sym.meta:
+        imports = sym.meta.get("imports", [])
+        for imp in imports:
+            mod = imp.get("module", "") if isinstance(imp, dict) else str(imp)
+            if any(mod.startswith(prefix) for prefix in _FRONTEND_IMPORT_PREFIXES):
+                return True
+    return False
 
 # Minimum confidence threshold for entrypoint inclusion.
 # Entries below this threshold are filtered from detect_entrypoints() results.
@@ -258,10 +297,17 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"HTTP route {path}"
                 else:
                     label = "HTTP route"
+                # Suppress false-positive route classification on frontend
+                # UI code (WI-ronik).  React/Vue/Angular component event
+                # handlers syntactically resemble Express route handlers
+                # but are not server-side routes.
+                confidence = 0.95
+                if _is_frontend_file(sym):
+                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
                 entrypoints.append(Entrypoint(
                     symbol_id=sym.id,
                     kind=EntrypointKind.HTTP_ROUTE,
-                    confidence=0.95,
+                    confidence=confidence,
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.HTTP_ROUTE)

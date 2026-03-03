@@ -1558,9 +1558,28 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
 
-    # Find matching symbols (case-insensitive exact match on name)
-    pattern = args.symbol.lower()
-    matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+    # Find matching symbols using priority-based matching (same rules as
+    # slice --entry for consistency — WI-gipop).
+    # Priority: exact ID → exact path → path suffix → exact name → partial name
+    spec = args.symbol
+    matches = [n for n in nodes if n.get("id") == spec]
+    if not matches:
+        matches = [n for n in nodes if n.get("path") == spec]
+    if not matches and ("/" in spec or "\\" in spec):
+        matches = [
+            n for n in nodes
+            if n.get("path", "").endswith(spec)
+            or n.get("path", "").endswith("/" + spec)
+        ]
+    if not matches:
+        matches = [n for n in nodes if n.get("name") == spec]
+    if not matches:
+        # Case-insensitive name match (original behavior)
+        pattern = spec.lower()
+        matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+    if not matches:
+        # Partial name match (contains)
+        matches = [n for n in nodes if spec in n.get("name", "")]
 
     if not matches:
         print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)

@@ -3,6 +3,7 @@ import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
+    _is_frontend_file,
     compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
@@ -3046,3 +3047,89 @@ class TestComputeEntrypointCap:
     def test_just_above_threshold(self) -> None:
         """At 5100 nodes, cap scales to 51."""
         assert compute_entrypoint_cap(5100) == 51
+
+
+class TestFrontendFileDetection:
+    """Tests for _is_frontend_file (WI-ronik)."""
+
+    def test_tsx_file_is_frontend(self) -> None:
+        """TSX files (React) are detected as frontend."""
+        sym = make_symbol("handleRemove", path="src/components/Settings.tsx")
+        assert _is_frontend_file(sym) is True
+
+    def test_jsx_file_is_frontend(self) -> None:
+        """JSX files (React) are detected as frontend."""
+        sym = make_symbol("onClick", path="app/components/Button.jsx")
+        assert _is_frontend_file(sym) is True
+
+    def test_vue_file_is_frontend(self) -> None:
+        """Vue files are detected as frontend."""
+        sym = make_symbol("handleClick", path="src/views/UserList.vue")
+        assert _is_frontend_file(sym) is True
+
+    def test_svelte_file_is_frontend(self) -> None:
+        """Svelte files are detected as frontend."""
+        sym = make_symbol("onMount", path="src/routes/Dashboard.svelte")
+        assert _is_frontend_file(sym) is True
+
+    def test_components_dir_is_frontend(self) -> None:
+        """Files in components/ directory are frontend."""
+        sym = make_symbol("render", path="src/components/Table.ts")
+        assert _is_frontend_file(sym) is True
+
+    def test_server_ts_not_frontend(self) -> None:
+        """Regular .ts files in non-frontend dirs are not frontend."""
+        sym = make_symbol("handleRequest", path="src/api/users.ts")
+        assert _is_frontend_file(sym) is False
+
+    def test_python_not_frontend(self) -> None:
+        """Python files are not frontend."""
+        sym = make_symbol("get_users", path="src/views.py")
+        assert _is_frontend_file(sym) is False
+
+    def test_react_import_is_frontend(self) -> None:
+        """Files importing React are detected via imports."""
+        sym = make_symbol(
+            "handler", path="src/utils/hooks.ts",
+            meta={"imports": [{"module": "react", "name": "useState"}]},
+        )
+        assert _is_frontend_file(sym) is True
+
+    def test_angular_import_is_frontend(self) -> None:
+        """Files importing Angular are detected via imports."""
+        sym = make_symbol(
+            "onClick", path="src/app.service.ts",
+            meta={"imports": [{"module": "@angular/core", "name": "Component"}]},
+        )
+        assert _is_frontend_file(sym) is True
+
+
+class TestFrontendRouteSupression:
+    """Tests for frontend route suppression in entrypoint detection (WI-ronik)."""
+
+    def test_frontend_route_gets_low_confidence(self) -> None:
+        """Route concept in a React component file gets near-zero confidence."""
+        sym = make_symbol(
+            "handleRemove", path="src/components/Settings.tsx",
+            language="typescript",
+            meta={"concepts": [{"concept": "route", "method": "DELETE", "path": "/:uid"}]},
+        )
+        eps = detect_entrypoints([sym], [])
+        route_eps = [e for e in eps if e.kind == EntrypointKind.HTTP_ROUTE]
+        # Should either be absent (below threshold) or have very low confidence
+        if route_eps:
+            assert route_eps[0].confidence <= 0.10, (
+                f"Frontend route should have confidence <= 0.10, got {route_eps[0].confidence}"
+            )
+
+    def test_backend_route_unaffected(self) -> None:
+        """Route concept in a backend file keeps normal confidence."""
+        sym = make_symbol(
+            "getUsers", path="src/api/users.ts",
+            language="typescript",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}]},
+        )
+        eps = detect_entrypoints([sym], [])
+        route_eps = [e for e in eps if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].confidence == 0.95
