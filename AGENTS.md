@@ -16,7 +16,6 @@
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely. Items with `needs_human_review` do NOT block stopping — use this for governance proposals or architectural questions that need human judgment.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
-  - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
   - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). Progress is measured by file changes in sentinel directories (configured in `.agent/tracker/config.yaml` under `stop_hook.progress_sentinel_dirs`), not by tracker updates. This means merging a PR, editing source files, or writing lab notebook entries all count as progress and reset the breaker. If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
@@ -246,7 +245,7 @@ git commit -s -m "feat: description"
 - **PR Pending Gate (auto-pr only):**
   - `auto-pr` creates `.git/PR_PENDING` while CI runs. It removes the file after merge.
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`
-  - If file exists, wait for `auto-pr` to complete before starting unrelated work.
+  - If file exists, wait for `auto-pr` to complete before starting new work.
   - Manual PRs do not create this gate; use `./scripts/ci-debug status` to check CI.
 - **vPR Queue (offline resilience):**
   - When remote is unavailable, `auto-pr` queues as a vPR (virtual PR) in `.git/PR_QUEUE`.
@@ -269,7 +268,7 @@ git commit -s -m "feat: description"
     - **Exit 0:** Success — PR merged or vPR queued. If vPR queued, run `./scripts/auto-pr flush` when remote is available.
     - **Exit 1:** Failure. Run `./scripts/ci-debug status` to diagnose, fix the issue, then either re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
     - **Exit 2:** Timeout (CI stuck or slow). Try `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600`, or if CI already passed, `./scripts/merge-pr <PR_NUM>` to merge immediately. If CI remains stuck, follow Scenario B.
-  - **Scenario B (CI stuck after timeout):** Do NOT accumulate more changes to git-tracked hypergumbo code. Work on untracked activities: lab notebooks, analysis scripts, or experiments in other repos. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge.
+  - **Scenario B (CI stuck after timeout):** Do NOT accumulate more changes to git-tracked hypergumbo code. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge. It is fine to wait.
 
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
@@ -499,21 +498,20 @@ Use DEEP mode when:
 - You're preparing for a release and want qualitative assessment
 
 
-**PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using bakeoff loops, as defined in the scripts. Keep refactoring and improving cross-language & cross-environment communication detection and other developer-centric features and behaviors.
+- **One thing at a time.** Finish your current task — including its PR merge — before starting the next one. Do not start coding a new feature while a bakeoff is running, while CI is pending, or while `auto-pr` is in flight. The editable install means your in-progress edits affect every `hypergumbo` invocation in the process, including background bakeoffs. Waiting for results is not wasted time — it produces better decisions about what to do next.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
 - **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
-- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. Once you begin experimenting, keep going until it gets boring or repetitive. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
+- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
 - **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
 - **Avoid premature timeouts in bakeoff:** Large, popular repos may take significant time to analyze. Do not use short timeouts that would cause false failures. If a repo genuinely takes too long, note it in the lab notebook and investigate optimization opportunities rather than masking the issue with aggressive timeouts.
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
-- **Adjust specs based on experiments:** If experiments reveal better approaches, update Spec A/B.
-- **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
-- **Don't stop until you've finished Spec B or you've become profoundly stuck.**
+- **Adjust specs based on experiments:** If experiments reveal better approaches, update `docs/hypergumbo-spec.md`.
+- **If you run out of items from the main spec, look at §20 Future Work for what to tackle next.**
 
 ### Priority Queues:
 Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`):
