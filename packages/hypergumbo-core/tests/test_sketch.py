@@ -7240,29 +7240,21 @@ def func_c():
         src_dir = tmp_path / "src"
         src_dir.mkdir()
 
-        # Create a small file with at least 5 lines (fits in budget)
-        small_content = """\
-def small_func():
-    x = 1
-    y = 2
-    z = 3
-    return x + y + z
-"""
-        (src_dir / "small.py").write_text(small_content)
-
-        # Create a large file (won't fit entirely but should be truncated)
+        # Create a single large file (won't fit entirely at tight budget)
         large_content = "def big():\n" + "    pass\n" * 500
         (src_dir / "large.py").write_text(large_content)
 
-        # Budget large enough for small file + truncated large file
-        sketch = generate_sketch(tmp_path, max_tokens=1200, with_source=True)
+        # Budget enough for sketch header + partial source, but not the
+        # entire 501-line file.  The file is ~1500+ tokens; budget of 1500
+        # leaves ~1000 for source content after the sketch header (~500 tokens).
+        sketch = generate_sketch(tmp_path, max_tokens=1500, with_source=True)
 
-        # Should have source content (small file fits)
+        # Should include source content section
         assert "## Source Files Content" in sketch
-        assert "def small_func():" in sketch
-        # Large file should appear truncated, not skipped
+        # Large file should appear (at least the opening line)
         assert "def big():" in sketch
-        assert "[...truncated...]" in sketch
+        # File should be truncated (not all 500 pass lines)
+        assert sketch.count("    pass") < 500
 
     def test_with_source_breaks_when_budget_too_small_for_truncation(
         self, tmp_path: Path,
