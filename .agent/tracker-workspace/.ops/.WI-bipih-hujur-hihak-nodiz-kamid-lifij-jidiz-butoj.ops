@@ -19,3 +19,18 @@
     pr_ref:  # b30a
     description: "Write a comprehensive lab notebook entry (notebookjournal_MMDDYYYY_HHMM.md) covering:\n\n1. Per-cohort verdict tables (initial vs revalidation, side by side)\n2. LLM score comparison (per-repo and per-cohort averages, initial vs revalidation)\n3. Top improvement themes from LLM reflect (ranked by frequency across repos)\n4. Regression analysis (any repos that got worse, with root cause hypothesis)\n5. Triage decisions from item 11 (which issues are being worked vs deferred vs accepted)\n6. Cross-reference with the initial-run notebook (notebookjournal_03012026_0706.md) and\n   the post-blocklist notebook (notebookjournal_03022026_0220.md)\n\nThis entry serves as the permanent record of the revalidation exercise."  # b30a
     fields: {}  # b30a
+- op: update  # 86d7
+  at: '2026-03-03T21:56:28Z'  # 86d7
+  by: agent  # 86d7
+  actor: jgstern_agent  # 86d7
+  clock: 2  # 86d7
+  nonce: 86d7  # 86d7
+  set:  # 86d7
+    status: done  # 86d7
+- op: discuss  # 3d3e
+  at: '2026-03-03T21:56:28Z'  # 3d3e
+  by: agent  # 3d3e
+  actor: jgstern_agent  # 3d3e
+  clock: 3  # 3d3e
+  nonce: 3d3e  # 3d3e
+  message: "Full analysis written in notebookjournal_03032026_2130.md. Key findings: orphan rate -17.38pp mean, Agda repos orphan halved (-65 to -88pp). 3 verdict upgrades, 3 SKIP regressions. 24 WARNs triaged: 19 benign, 15 language-specific, 13 structural."  # 3d3e
