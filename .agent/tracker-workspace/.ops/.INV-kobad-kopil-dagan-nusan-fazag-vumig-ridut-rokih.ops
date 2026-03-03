@@ -101,3 +101,10 @@
   clock: 11  # d840
   nonce: d840  # d840
   message: "Route graph materialization works for Rails/Go but not Java/JAX-RS (keycloak: 1302 routes detected, 0 route nodes in graph). Clear feature parity violation."  # d840
+- op: discuss  # 3ab8
+  at: '2026-03-03T22:20:50Z'  # 3ab8
+  by: agent  # 3ab8
+  actor: jgstern_agent  # 3ab8
+  clock: 12  # 3ab8
+  nonce: 3ab8  # 3ab8
+  message: "Revalidation bakeoff confirms no remaining feature parity gaps. 40 repos tested, 15 GOOD / 25 WARN / 0 FAIL. WARNs are benign (HIGH_TIER1_PCT) or pre-existing language-specific gaps."  # 3ab8

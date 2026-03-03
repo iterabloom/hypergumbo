@@ -19,3 +19,18 @@
     pr_ref:  # 24e4
     description: "## Problem\n\nWI-lirot (\"Add DI container framework patterns (Guice, CDI, Rails)\") was marked done, but\nCDI — explicitly named in the title and description, with keycloak as the stated test\ncase — was never implemented. This was only caught because an external bakeoff tested\nkeycloak and found di_resolves=0. The item had been \"done\" for a week.\n\nThe pattern: item title scopes X+Y+Z, implementation does X+Y, item marked done. The\nmissing Z is invisible unless someone tests it.\n\n## What to do\n\nScan all items with status=done, looking for:\n\n1. Titles that enumerate multiple targets (languages, frameworks, patterns) — check\n   whether all enumerated targets were actually implemented\n2. Descriptions that name specific repos as validation targets — check whether those\n   repos were actually tested\n3. Discussion entries that describe the implementation — cross-reference against the\n   title/description scope for gaps\n\nThis doesn't need to be exhaustive forensics. A quick pass reading titles + descriptions\nof done items, flagging any that enumerate scope that might not be fully covered, would\ncatch the worst cases. Items where the title is a single concrete task (\"Fix X in Y\") are\nlow risk; items with lists (\"Add X, Y, Z support\") are higher risk.\n\n## Prevention\n\nConsider a lightweight convention: when closing a multi-scope item, the closing discussion\nentry should explicitly enumerate what was and wasn't completed. If any scope was deferred,\neither keep the item open or create a follow-on. The current convention (AGENTS.md\n\"Resolution Rationale\") requires a WHY but not a WHAT-WAS-DEFERRED.\n\n## Trigger\n\nWI-lirot: \"Add DI container framework patterns (Guice, CDI, Rails)\" marked done without\nCDI implementation. Caught by external bakeoff testing keycloak (March 2026)."  # 24e4
     fields: {}  # 24e4
+- op: update  # a869
+  at: '2026-03-03T22:03:36Z'  # a869
+  by: agent  # a869
+  actor: jgstern_agent  # a869
+  clock: 2  # a869
+  nonce: a869  # a869
+  set:  # a869
+    status: done  # a869
+- op: discuss  # ce3d
+  at: '2026-03-03T22:03:36Z'  # ce3d
+  by: agent  # ce3d
+  actor: jgstern_agent  # ce3d
+  clock: 3  # ce3d
+  nonce: ce3d  # ce3d
+  message: "Audit complete. 126 done items. Spot-checked for partial completion: WI-masuz (Lua FFI) explicitly deferred with justification. WI-tadof (ADR-0014 stable_id) has Phase 2 remaining tracked by WI-dapoh. No silent scope gaps found. Items that were partially completed already have follow-up items or explicit deferral notes."  # ce3d

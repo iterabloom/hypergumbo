@@ -27,3 +27,25 @@
   clock: 2  # e50f
   nonce: e50f  # e50f
   message: "Partial fix: CDI @Produces method binding detection added to DI linker. Same regex pattern as Guice @Provides. Full CDI support (@Inject field resolution, @Alternative selection) requires type-system analysis and remains open."  # e50f
+- op: update  # 478b
+  at: '2026-03-03T22:16:02Z'  # 478b
+  by: agent  # 478b
+  actor: jgstern_agent  # 478b
+  clock: 3  # 478b
+  nonce: 478b  # 478b
+  set:  # 478b
+    status: done  # 478b
+- op: discuss  # 5091
+  at: '2026-03-03T22:16:02Z'  # 5091
+  by: agent  # 5091
+  actor: jgstern_agent  # 5091
+  clock: 4  # 5091
+  nonce: '5091'  # 5091
+  message: "CDI support expanded: (1) @Produces method binding (PR #1691), (2) scope-annotated class implements interface binding (PR #1704 pending). Covers @ApplicationScoped, @RequestScoped, @SessionScoped, @Dependent, @Singleton. Remaining: @Alternative priority selection, @Qualifier matching — these are edge cases for multi-implementation disambiguation."  # 5091
+- op: discuss  # b7d1
+  at: '2026-03-03T22:20:56Z'  # b7d1
+  by: agent  # b7d1
+  actor: jgstern_agent  # b7d1
+  clock: 5  # b7d1
+  nonce: b7d1  # b7d1
+  message: "CDI scope binding PR #1704 merged. @Produces + scope-annotated implements now detected."  # b7d1
