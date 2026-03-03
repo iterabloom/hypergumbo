@@ -1527,6 +1527,18 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
             method = (concept.get("method") or "").upper()
             path = concept.get("path") or ""
 
+            # Stapler convention: doXxx → POST /xxx, getXxx → GET /xxx
+            # When the YAML pattern matches method_name but doesn't set
+            # extract_method, we can derive method + path from the name.
+            if not method and sym.name:
+                short_name = sym.name.split(".")[-1]
+                if short_name.startswith("do") and len(short_name) > 2 and short_name[2].isupper():
+                    method = "POST"
+                    path = "/" + short_name[2].lower() + short_name[3:]
+                elif short_name.startswith("get") and len(short_name) > 3 and short_name[3].isupper():
+                    method = "GET"
+                    path = "/" + short_name[3].lower() + short_name[4:]
+
             # Need at least a method to create a meaningful route node
             if not method:
                 continue

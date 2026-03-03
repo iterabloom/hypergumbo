@@ -17865,3 +17865,45 @@ class TestMaterializeRouteSymbols:
         )
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
+
+    def test_stapler_doXxx_convention(self) -> None:
+        """Stapler doXxx methods get POST /xxx route (WI-fokok)."""
+        sym = Symbol(
+            id="java:Jenkins.java:100-120:Jenkins.doQuietDown:method",
+            name="Jenkins.doQuietDown", kind="method", language="java",
+            path="Jenkins.java",
+            span=Span(start_line=100, end_line=120, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 1
+        assert routes[0].name == "POST /quietDown"
+        assert routes[0].meta["http_method"] == "POST"
+        assert routes[0].meta["route_path"] == "/quietDown"
+
+    def test_stapler_getXxx_convention(self) -> None:
+        """Stapler getXxx methods get GET /xxx route (WI-fokok)."""
+        sym = Symbol(
+            id="java:Jenkins.java:50-70:Jenkins.getComputer:method",
+            name="Jenkins.getComputer", kind="method", language="java",
+            path="Jenkins.java",
+            span=Span(start_line=50, end_line=70, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 1
+        assert routes[0].name == "GET /computer"
+        assert routes[0].meta["http_method"] == "GET"
+        assert routes[0].meta["route_path"] == "/computer"
+
+    def test_stapler_non_convention_name_skipped(self) -> None:
+        """Route concept on non-doXxx/getXxx method with no method is skipped."""
+        sym = Symbol(
+            id="java:Api.java:10-20:Api.handle:method",
+            name="Api.handle", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
