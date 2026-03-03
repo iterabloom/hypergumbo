@@ -492,3 +492,151 @@ double (suc n) = suc (suc (double n))
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # Should have at least one reference edge
         assert len(ref_edges) >= 1
+
+    def test_type_signature_references(self, tmp_path: Path) -> None:
+        """Type signatures create reference edges to types (WI-kujuf)."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+
+double : Nat -> Nat
+double zero = zero
+double (suc n) = suc (suc (double n))
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        double_sym = next(s for s in result.symbols if s.name == "double")
+        nat_sym = next(s for s in result.symbols if s.name == "Nat")
+        # double's type signature references Nat
+        assert any(
+            e.src == double_sym.id and e.dst == nat_sym.id
+            for e in ref_edges
+        ), f"Expected double→Nat type-sig reference, got: {[(e.src, e.dst) for e in ref_edges]}"
+
+    def test_type_sig_refs_with_implicit_args(self, tmp_path: Path) -> None:
+        """Implicit argument types in signatures create reference edges."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+
+data Vec (A : Set) : Nat -> Set where
+  nil  : Vec A zero
+  cons : A -> Vec A Nat -> Vec A Nat
+
+vmap : {n : Nat} -> Vec Nat n -> Vec Nat n
+vmap nil = nil
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        vmap_sym = next(s for s in result.symbols if s.name == "vmap")
+        nat_sym = next(s for s in result.symbols if s.name == "Nat")
+        vec_sym = next(s for s in result.symbols if s.name == "Vec")
+        # vmap's type sig references both Nat and Vec
+        assert any(
+            e.src == vmap_sym.id and e.dst == nat_sym.id
+            for e in ref_edges
+        ), "Expected vmap→Nat type-sig reference"
+        assert any(
+            e.src == vmap_sym.id and e.dst == vec_sym.id
+            for e in ref_edges
+        ), "Expected vmap→Vec type-sig reference"
+
+    def test_constructor_type_sig_references(self, tmp_path: Path) -> None:
+        """Data constructor type signatures create reference edges."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        suc_sym = next(s for s in result.symbols if s.name == "suc")
+        nat_sym = next(s for s in result.symbols if s.name == "Nat")
+        # suc's type signature ": Nat -> Nat" references Nat
+        assert any(
+            e.src == suc_sym.id and e.dst == nat_sym.id
+            for e in ref_edges
+        ), "Expected suc→Nat constructor type-sig reference"
+
+    def test_type_sig_refs_confidence(self, tmp_path: Path) -> None:
+        """Type signature reference edges use confidence 0.75."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat -> Nat
+
+double : Nat -> Nat
+double zero = zero
+""")
+        result = analyze_agda(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        double_sym = next(s for s in result.symbols if s.name == "double")
+        nat_sym = next(s for s in result.symbols if s.name == "Nat")
+        # Find the type-sig reference edge
+        sig_edge = next(
+            (e for e in ref_edges
+             if e.src == double_sym.id and e.dst == nat_sym.id),
+            None,
+        )
+        assert sig_edge is not None
+        assert sig_edge.confidence == 0.75
+
+
+class TestAgdaRecordFieldExtraction:
+    """Tests for record field symbol extraction (WI-kujuf Phase 2)."""
+
+    def test_extract_record_fields(self, tmp_path: Path) -> None:
+        """Record fields are extracted as symbols."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+record Pair (A B : Set) : Set where
+  field
+    fst : A
+    snd : B
+""")
+        result = analyze_agda(tmp_path)
+        symbols = result.symbols
+        fst_sym = next((s for s in symbols if s.name == "fst"), None)
+        snd_sym = next((s for s in symbols if s.name == "snd"), None)
+        assert fst_sym is not None, f"Expected 'fst' field, got: {[s.name for s in symbols]}"
+        assert snd_sym is not None, f"Expected 'snd' field, got: {[s.name for s in symbols]}"
+        assert fst_sym.kind == "field"
+        assert snd_sym.kind == "field"
+
+    def test_record_field_signature(self, tmp_path: Path) -> None:
+        """Record fields carry their type signature."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Example.agda", """\
+module Example where
+
+record Pair : Set where
+  field
+    fst : Nat
+    snd : Bool
+""")
+        result = analyze_agda(tmp_path)
+        fst_sym = next((s for s in result.symbols if s.name == "fst"), None)
+        assert fst_sym is not None
+        assert fst_sym.signature == ": Nat"
