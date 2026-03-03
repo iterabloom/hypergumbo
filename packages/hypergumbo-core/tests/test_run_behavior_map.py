@@ -1,6 +1,9 @@
 import json
+from unittest.mock import patch
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.linkers.registry import LinkerResult
 from hypergumbo_core.schema import SCHEMA_VERSION
 
 
@@ -312,4 +315,46 @@ def test_run_behavior_map_budgets_invalid_spec_skipped(tmp_path):
     # Invalid budget file should NOT exist
     budget_invalid = tmp_path / "output.invalid_budget.json"
     assert not budget_invalid.exists(), "Invalid budget file should NOT be generated"
+
+
+def test_run_behavior_map_normalizes_linker_absolute_paths(tmp_path):
+    """Linker-produced symbols with absolute paths are normalized to relative."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    abs_path = str(repo_root / "linker_generated.py")
+    linker_sym = Symbol(
+        id="linker::generated",
+        name="generated",
+        kind="function",
+        language="python",
+        path=abs_path,
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+    )
+    fake_result = LinkerResult(symbols=[linker_sym], edges=[])
+
+    real_run_all_linkers = None
+
+    def patched_run_all_linkers(ctx):
+        results = real_run_all_linkers(ctx)
+        results.append(("fake_linker", fake_result))
+        return results
+
+    import hypergumbo_core.cli as cli_mod
+
+    real_run_all_linkers = cli_mod.run_all_linkers
+    with patch.object(cli_mod, "run_all_linkers", side_effect=patched_run_all_linkers):
+        out_path = tmp_path / "output.json"
+        run_behavior_map(
+            repo_root=repo_root,
+            out_path=out_path,
+            budgets="none",
+            include_sketch_precomputed=False,
+        )
+
+    data = json.loads(out_path.read_text())
+    linker_nodes = [n for n in data["nodes"] if n["id"] == "linker::generated"]
+    assert len(linker_nodes) == 1
+    assert linker_nodes[0]["path"] == "linker_generated.py"
 
