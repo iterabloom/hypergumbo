@@ -19,3 +19,18 @@
     pr_ref:  # 7e27
     description: "Run Cohort 5 of the OptAttest curriculum: Privacy Protocols + Attestation References.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos librustzcash,orchard,penumbra,private-proof-of-innocence,engine\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (5): librustzcash, orchard, penumbra, private-proof-of-innocence, engine\nLanguages: Rust (librustzcash, orchard, penumbra), TypeScript (PPOI, engine)\n\nInitial run results: 1 GOOD (librustzcash), 4 WARN (orchard, penumbra, PPOI, engine).\nLLM reflect: 1 USEFUL, 4 PARTIALLY_USEFUL.\npenumbra was later cherry-pick tested and improved WARN→GOOD after codegen-derived\npatterns fix (PR#1641: .serde.rs nodes reclassified tier1→tier4, orphan 21.4%→9.4%).\nPPOI is \"the closest existing system to OptAttest\" per the curriculum.\nTypeScript repos test cross-language analysis capability."  # 7e27
     fields: {}  # 7e27
+- op: update  # 9f8c
+  at: '2026-03-03T21:50:38Z'  # 9f8c
+  by: agent  # 9f8c
+  actor: jgstern_agent  # 9f8c
+  clock: 2  # 9f8c
+  nonce: 9f8c  # 9f8c
+  set:  # 9f8c
+    status: done  # 9f8c
+- op: discuss  # 84c2
+  at: '2026-03-03T21:50:38Z'  # 84c2
+  by: agent  # 84c2
+  actor: jgstern_agent  # 84c2
+  clock: 3  # 84c2
+  nonce: 84c2  # 84c2
+  message: "C5 completed (5 repos: librustzcash, orchard, penumbra, ppoi, engine). 2 GOOD, 3 WARN."  # 84c2

@@ -19,3 +19,18 @@
     pr_ref:  # bf39
     description: "Run Cohort 4 of the OptAttest curriculum: Commitments + Curves + Accumulators.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos curve25519-dalek,bulletproofs,pasta_curves,incrementalmerkletree,crypto-primitives,jmt\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (6): curve25519-dalek, bulletproofs, pasta_curves, incrementalmerkletree, crypto-primitives, jmt\nLanguages: Rust (all)\n\nInitial run results: 3 GOOD (bulletproofs, crypto-primitives, curve25519-dalek), 3 WARN (incrementalmerkletree, jmt, pasta_curves).\nLLM reflect: 0 USEFUL, 6 PARTIALLY_USEFUL.\nZERO repos from this cohort were re-validated after fixes — the entire cohort is stale.\nincrementalmerkletree is noted in the curriculum as \"probably the single most directly\nrelevant primitive repo\" for OptAttest. All pure Rust libraries that should benefit from\nthe generic trait blocklist and turbofish fixes."  # bf39
     fields: {}  # bf39
+- op: update  # 2792
+  at: '2026-03-03T21:50:38Z'  # 2792
+  by: agent  # 2792
+  actor: jgstern_agent  # 2792
+  clock: 2  # 2792
+  nonce: '2792'  # 2792
+  set:  # 2792
+    status: done  # 2792
+- op: discuss  # 0fc8
+  at: '2026-03-03T21:50:38Z'  # 0fc8
+  by: agent  # 0fc8
+  actor: jgstern_agent  # 0fc8
+  clock: 3  # 0fc8
+  nonce: 0fc8  # 0fc8
+  message: "C4 completed (6 repos). 3 GOOD, 4 WARN."  # 0fc8
