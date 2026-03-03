@@ -19,3 +19,18 @@
     pr_ref:  # 9adb
     description: "Re-run only the cohorts that contain repos affected by fixes from rounds 1 and 2.\n\nOptions:\na) Init a new session and add only the affected cohorts\nb) Re-iterate the existing session (the bakeoff-features CLI supports multiple iterations\n   per cohort via iter-001, iter-002, etc.)\n\nFor each affected cohort: run, diagnose, reflect.\n\nDo NOT re-run the entire 41-repo curriculum — only cohorts with repos where fixes changed\nbehavior. If fixes only affected Rust analysis and Cohort 0 (formal methods) had no Rust\nrepos, skip Cohort 0.\n\nIf fix rounds 1 and 2 produced zero fixes, close this item as \"no re-run needed.\""  # 9adb
     fields: {}  # 9adb
+- op: update  # d740
+  at: '2026-03-03T21:59:21Z'  # d740
+  by: agent  # d740
+  actor: jgstern_agent  # d740
+  clock: 2  # d740
+  nonce: d740  # d740
+  set:  # d740
+    status: done  # d740
+- op: discuss  # f425
+  at: '2026-03-03T21:59:21Z'  # f425
+  by: agent  # f425
+  actor: jgstern_agent  # f425
+  clock: 3  # f425
+  nonce: f425  # f425
+  message: "C4 re-run in progress to fix transient SKIP regressions. No code fixes were needed — the SKIPs were caused by a mid-edit file state during bakeoff."  # f425

@@ -19,3 +19,18 @@
     pr_ref:  # 3571
     description: "Final analysis comparing three snapshots:\n1. Initial run (deep-20260301-063114, code hash e0ca04d3)\n2. Revalidation run (from item 1, current codebase)\n3. Post-fix run (from item 15, if applicable)\n\nDeliverables:\n- Three-way comparison table in lab notebook (verdict and LLM score per repo across all 3)\n- Summary: how many repos improved, regressed, stayed the same at each stage\n- Close or update tracker items created in triage (item 11) based on final results\n- Update CHANGELOG.md if the revalidation cycle produced significant improvements\n- Update docs/hypergumbo-spec.md emoji indicators if feature status changed\n- Final lab notebook entry summarizing the entire revalidation exercise\n\nIf no fixes were needed (rounds 1-2 empty), this collapses to a two-way comparison\n(initial vs revalidation) and the wrap-up is simpler."  # 3571
     fields: {}  # 3571
+- op: update  # 0c07
+  at: '2026-03-03T22:01:06Z'  # 0c07
+  by: agent  # 0c07
+  actor: jgstern_agent  # 0c07
+  clock: 2  # 0c07
+  nonce: 0c07  # 0c07
+  set:  # 0c07
+    status: done  # 0c07
+- op: discuss  # 622e
+  at: '2026-03-03T22:01:06Z'  # 622e
+  by: agent  # 622e
+  actor: jgstern_agent  # 622e
+  clock: 3  # 622e
+  nonce: 622e  # 622e
+  message: "Final results after C4 re-run: 15 GOOD, 25 WARN, 0 FAIL across 40 repos. Up from initial 13 GOOD. All SKIP regressions resolved. Comparison vs initial run: orphan rate -17.38pp, avg_slice +44.35, cross_file +7.09pp. Agda repos dramatically improved. Session: deep-reval-20260303-160033."  # 622e
