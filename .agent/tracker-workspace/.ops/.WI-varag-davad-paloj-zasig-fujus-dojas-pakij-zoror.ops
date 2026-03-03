@@ -1,0 +1,21 @@
+- op: create  # 24e4
+  at: '2026-03-03T06:27:01Z'  # 24e4
+  by: agent  # 24e4
+  actor: jgstern_agent  # 24e4
+  clock: 1  # 24e4
+  nonce: '24e4'  # 24e4
+  data:  # 24e4
+    kind: work_item  # 24e4
+    title: "Audit 'done' tracker items for partially-completed scope"  # 24e4
+    status: todo_soft  # 24e4
+    priority: 2  # 24e4
+    parent:  # 24e4
+    tags:  # 24e4
+    - process  # 24e4
+    - tracker-hygiene  # 24e4
+    before: []  # 24e4
+    duplicate_of: []  # 24e4
+    not_duplicate_of: []  # 24e4
+    pr_ref:  # 24e4
+    description: "## Problem\n\nWI-lirot (\"Add DI container framework patterns (Guice, CDI, Rails)\") was marked done, but\nCDI — explicitly named in the title and description, with keycloak as the stated test\ncase — was never implemented. This was only caught because an external bakeoff tested\nkeycloak and found di_resolves=0. The item had been \"done\" for a week.\n\nThe pattern: item title scopes X+Y+Z, implementation does X+Y, item marked done. The\nmissing Z is invisible unless someone tests it.\n\n## What to do\n\nScan all items with status=done, looking for:\n\n1. Titles that enumerate multiple targets (languages, frameworks, patterns) — check\n   whether all enumerated targets were actually implemented\n2. Descriptions that name specific repos as validation targets — check whether those\n   repos were actually tested\n3. Discussion entries that describe the implementation — cross-reference against the\n   title/description scope for gaps\n\nThis doesn't need to be exhaustive forensics. A quick pass reading titles + descriptions\nof done items, flagging any that enumerate scope that might not be fully covered, would\ncatch the worst cases. Items where the title is a single concrete task (\"Fix X in Y\") are\nlow risk; items with lists (\"Add X, Y, Z support\") are higher risk.\n\n## Prevention\n\nConsider a lightweight convention: when closing a multi-scope item, the closing discussion\nentry should explicitly enumerate what was and wasn't completed. If any scope was deferred,\neither keep the item open or create a follow-on. The current convention (AGENTS.md\n\"Resolution Rationale\") requires a WHY but not a WHAT-WAS-DEFERRED.\n\n## Trigger\n\nWI-lirot: \"Add DI container framework patterns (Guice, CDI, Rails)\" marked done without\nCDI implementation. Caught by external bakeoff testing keycloak (March 2026)."  # 24e4
+    fields: {}  # 24e4
