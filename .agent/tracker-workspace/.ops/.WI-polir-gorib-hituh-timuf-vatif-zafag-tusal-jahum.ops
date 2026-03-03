@@ -1,0 +1,22 @@
+- op: create  # 2776
+  at: '2026-03-03T06:20:32Z'  # 2776
+  by: agent  # 2776
+  actor: jgstern_agent  # 2776
+  clock: 1  # 2776
+  nonce: '2776'  # 2776
+  data:  # 2776
+    kind: work_item  # 2776
+    title: "DI linker: add Jakarta CDI support (@Inject, @Produces, @Alternative)"  # 2776
+    status: todo_soft  # 2776
+    priority: 2  # 2776
+    parent:  # 2776
+    tags:  # 2776
+    - linker  # 2776
+    - java  # 2776
+    - external-bakeoff  # 2776
+    before: []  # 2776
+    duplicate_of: []  # 2776
+    not_duplicate_of: []  # 2776
+    pr_ref:  # 2776
+    description: "## Problem\n\nThe di_resolution.py linker (WI-tafaf, done) supports Guice bind().to(), Spring @Bean,\nC# AddScoped/AddTransient/AddSingleton, NestJS/Angular providers, Python injector, Kotlin\nKoin, and Java SPI — but NOT Jakarta CDI (Contexts and Dependency Injection), which is the\nstandard DI framework for Jakarta EE (formerly Java EE) applications.\n\nkeycloak uses CDI pervasively. External bakeoff (March 2026) confirmed di_resolves = 0\nfor keycloak despite it being the canonical CDI test case. The 10,812 dispatches_to edges\npartially compensate (interface→impl from static type analysis), but miss:\n- Container-managed lifecycle scoping (@RequestScoped, @ApplicationScoped)\n- Producer methods (@Produces) that create instances programmatically\n- Alternatives (@Alternative) that override default bindings\n- Qualifiers (@Named, custom qualifiers) that disambiguate injection points\n\n## CDI patterns to support\n\n1. @Inject injection points:\n   @Inject private UserService userService;  // field injection\n   @Inject public void setService(UserService s) { ... }  // setter injection\n   → di_resolves edge from injection point to implementing class\n\n2. @Produces producer methods:\n   @Produces public EntityManager createEM() { ... }\n   → di_resolves edge from @Inject EntityManager to the producer method\n\n3. @Alternative:\n   @Alternative @Priority(1) public class MockUserService implements UserService { ... }\n   → di_resolves edge with lower confidence (alternative binding)\n\n4. Qualifiers:\n   @Inject @Named(\"primary\") DataSource ds;\n   → di_resolves edge filtered by qualifier match\n\n## Related items\n\n- WI-tafaf (done): DI linker implementation — add CDI as another resolution strategy\n- WI-lirot (done): DI container framework patterns — CDI listed but not actually implemented\n- INV-posun (violated): Compact special edge retention — di_resolves edges need to survive compaction\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 2776
+    fields: {}  # 2776

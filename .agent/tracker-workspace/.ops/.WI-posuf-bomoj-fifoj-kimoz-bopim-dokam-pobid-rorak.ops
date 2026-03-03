@@ -1,0 +1,21 @@
+- op: create  # 9210
+  at: '2026-03-03T06:20:59Z'  # 9210
+  by: agent  # 9210
+  actor: jgstern_agent  # 9210
+  clock: 1  # 9210
+  nonce: '9210'  # 9210
+  data:  # 9210
+    kind: work_item  # 9210
+    title: "Compact output: hash-format node IDs are unresolvable by slice --entry"  # 9210
+    status: todo_hard  # 9210
+    priority: 2  # 9210
+    parent:  # 9210
+    tags:  # 9210
+    - compact  # 9210
+    - external-bakeoff  # 9210
+    before: []  # 9210
+    duplicate_of: []  # 9210
+    not_duplicate_of: []  # 9210
+    pr_ref:  # 9210
+    description: "## Problem\n\nThe compact representation (hg.compact.json) stores some node references as SHA-256 hashes\n(e.g., sha256:239e23c703d50e88) rather than language-prefixed stable_ids (e.g.,\ngo:pkg/api/render.go:18-123:HTTPServer.RenderHandler:method). When these hash IDs appear\nas endpoints of routes_to or other edges, the edges become unresolvable: slice --entry with\na hash ID returns 0 nodes and reports entry_nodes: (none).\n\nIn grafana's compact output, at least some routes_to edges had one or both endpoints in\nhash form, making it impossible to programmatically extract a route→handler pair and slice\naround it. Language-prefixed stable_ids in the same output work correctly.\n\n## Root cause hypothesis\n\nLikely related to the typed stable_id rollout (ADR-0014). If some node types don't yet have\ntyped stable_ids (e.g., route nodes synthesized by linkers rather than extracted by language\nanalyzers), they may fall back to hash-based IDs. Also possible: some analyzers haven't been\nmigrated to the new typed ID format and still produce location-based IDs that compact hashes.\n\n## Impact\n\nCompact is the primary artifact for LLM workflows. When compact edge endpoints use hash IDs,\nthe edges are opaque — a consumer can see \"there's a routes_to edge\" but can't act on it\n(can't slice from either endpoint, can't resolve the node to a file/function).\n\nThis compounds INV-posun (compact losing special edges): even when compact RETAINS a special\nedge, it may be unusable if the endpoints are hash IDs.\n\n## Proposed fix\n\nEnsure all nodes in compact output use language-prefixed stable_ids, or at minimum include a\nnodes lookup table mapping hash IDs to stable_ids. If some node types genuinely don't have\nstable_ids (synthesized route nodes), either assign them stable_ids or emit them with enough\nmetadata (file path, symbol name, kind) to be usable without an ID.\n\n## Related items\n\n- INV-posun (violated): Compact special edge retention — this is about edge endpoints, that's about edge presence\n- INV-popop (holding): Route stable_id collisions — route nodes may be the primary source of hash fallback IDs\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 9210
+    fields: {}  # 9210
