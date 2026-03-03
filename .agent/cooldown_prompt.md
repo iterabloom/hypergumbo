@@ -29,4 +29,3 @@ Spend at most 2-3 minutes:
 - What worked well in the last cycle? What wasted time?
 - Write any governance improvement ideas to `~/hypergumbo_lab_notebook/` tagged `[GOVERNANCE-IDEA]`
 
-Continue working — do not stop.
