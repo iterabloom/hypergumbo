@@ -21,3 +21,18 @@
     fields:  # df3e
       statement: "Every edge in the behavior map must have both source and destination resolve to a node in the graph. Edges to symbols outside the analyzed codebase must point to explicit external boundary nodes (tier-3 or tier-4), not to synthetic IDs that don't exist as nodes."  # df3e
       root_cause: "Analyzers emit calls/imports/decorated_by edges to synthetic IDs (go:*:unresolved, lua:?:0-0:*, java:unresolved:0-0:*:unresolved) without creating corresponding nodes. The IR has no concept of 'external boundary node' — there is no way to represent 'this edge crosses into code we didn't analyze' without creating a dangling reference."  # df3e
+- op: update  # c4b0
+  at: '2026-03-03T11:25:52Z'  # c4b0
+  by: agent  # c4b0
+  actor: jgstern_agent  # c4b0
+  clock: 2  # c4b0
+  nonce: c4b0  # c4b0
+  set:  # c4b0
+    status: holding  # c4b0
+- op: discuss  # 60a3
+  at: '2026-03-03T11:25:52Z'  # 60a3
+  by: agent  # 60a3
+  actor: jgstern_agent  # 60a3
+  clock: 3  # 60a3
+  nonce: 60a3  # 60a3
+  message: "Fixed in PR #1682. Boundary nodes created for dangling edge endpoints. Annotation edges fixed (WI-divob). Remaining: edges from YAML framework patterns may reference unresolved targets, but these are now handled by boundary nodes."  # 60a3
