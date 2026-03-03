@@ -38,6 +38,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -269,12 +270,20 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     continue
                 seen_pairs.add(pair)
 
+                # Apply confidence penalty for test-file overrides (WI-supok).
+                # Test overrides (e.g., TestImpl.method → base.method) inflate
+                # centrality and pollute reverse slices.  Penalty matches the
+                # precedent in ranking.py for test-tier downweighting.
+                confidence = 0.85
+                if override.path and is_test_file(override.path):
+                    confidence = 0.30
+
                 edge = Edge.create(
                     src=parent_method.id,
                     dst=override.id,
                     edge_type="dispatches_to",
                     line=parent_method.span.start_line if parent_method.span else 0,
-                    confidence=0.85,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",

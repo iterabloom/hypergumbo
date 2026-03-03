@@ -738,3 +738,93 @@ class TestLinkerRegistration:
         assert linker is not None
         assert linker.name == "type_hierarchy"
         assert "dispatch" in linker.description.lower() or "hierarchy" in linker.description.lower()
+
+
+class TestTestFileConfidencePenalty:
+    """Tests for test-file dispatches_to confidence penalty (WI-supok)."""
+
+    def test_production_override_full_confidence(self) -> None:
+        """Override in production code gets full 0.85 confidence."""
+        parent = Symbol(
+            id="java:/app/Service.java:1-5:Service:class",
+            name="Service", kind="class", language="java",
+            path="/app/Service.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        parent_method = Symbol(
+            id="java:/app/Service.java:2-4:Service.process:method",
+            name="Service.process", kind="method", language="java",
+            path="/app/Service.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        child = Symbol(
+            id="java:/app/ServiceImpl.java:1-5:ServiceImpl:class",
+            name="ServiceImpl", kind="class", language="java",
+            path="/app/ServiceImpl.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        child_method = Symbol(
+            id="java:/app/ServiceImpl.java:2-4:ServiceImpl.process:method",
+            name="ServiceImpl.process", kind="method", language="java",
+            path="/app/ServiceImpl.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        extends_edge = Edge.create(
+            src=child.id, dst=parent.id, edge_type="extends", line=1,
+        )
+        ctx = LinkerContext(
+            symbols=[parent, parent_method, child, child_method],
+            edges=[extends_edge], repo_root=None,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatch_edges) == 1
+        assert dispatch_edges[0].confidence == 0.85
+
+    def test_test_file_override_penalized(self) -> None:
+        """Override in test file gets reduced 0.30 confidence (WI-supok)."""
+        parent = Symbol(
+            id="java:/app/Service.java:1-5:Service:class",
+            name="Service", kind="class", language="java",
+            path="/app/Service.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        parent_method = Symbol(
+            id="java:/app/Service.java:2-4:Service.process:method",
+            name="Service.process", kind="method", language="java",
+            path="/app/Service.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        test_child = Symbol(
+            id="java:/test/ServiceTest.java:1-5:TestImpl:class",
+            name="TestImpl", kind="class", language="java",
+            path="/test/ServiceTest.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        test_method = Symbol(
+            id="java:/test/ServiceTest.java:2-4:TestImpl.process:method",
+            name="TestImpl.process", kind="method", language="java",
+            path="/test/ServiceTest.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        extends_edge = Edge.create(
+            src=test_child.id, dst=parent.id, edge_type="extends", line=1,
+        )
+        ctx = LinkerContext(
+            symbols=[parent, parent_method, test_child, test_method],
+            edges=[extends_edge], repo_root=None,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatch_edges) == 1
+        assert dispatch_edges[0].confidence == 0.30, (
+            "Test file override should get 0.30 confidence penalty"
+        )

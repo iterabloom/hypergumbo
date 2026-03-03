@@ -81,7 +81,7 @@ import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F
 import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
-from .ir import Symbol, Edge, deduplicate_edges
+from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -4095,6 +4095,14 @@ def run_behavior_map(
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     _log_memory("after linkers")
 
+    # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
+    # Edges to external functions (stdlib, npm packages, etc.) would otherwise
+    # break slice traversal by pointing to nonexistent nodes.
+    boundary = create_boundary_nodes(all_symbols, all_edges)
+    if boundary:
+        all_symbols.extend(boundary)
+    _log_memory("after boundary nodes")
+
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)
@@ -4129,7 +4137,15 @@ def run_behavior_map(
         # AND dst must not reference a node that was explicitly removed by
         # tier filtering. Edges whose dst is an unresolved external reference
         # (never in the node set) are kept — they represent real dependencies.
-        removed_symbol_ids = {s.id for s in all_symbols} - filtered_symbol_ids
+        # Exclude boundary nodes from "removed" set — they're synthetic
+        # endpoints for external references and should be treated as if they
+        # don't exist for tier filtering purposes (same as pre-boundary-node
+        # behavior where unresolved IDs simply weren't in the symbol set).
+        removed_symbol_ids = {
+            s.id for s in all_symbols
+            if s.id not in filtered_symbol_ids
+            and not (s.meta and s.meta.get("external_boundary"))
+        }
 
         def _is_valid_edge_src(src: str) -> bool:
             if src in filtered_symbol_ids:
@@ -4189,6 +4205,17 @@ def run_behavior_map(
     )
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
+
+    # Filter boundary nodes from output.  They exist in `all_symbols` to make
+    # edge endpoints resolvable for slice traversal, but shouldn't appear in
+    # the behavior map output — they're synthetic, have no source code, and
+    # would inflate node counts.  Edges pointing to boundary node IDs are
+    # retained (consumers can detect them by the "<external>" path or
+    # external_boundary meta flag).
+    ranked_symbols = [
+        s for s in ranked_symbols
+        if not (s.meta and s.meta.get("external_boundary"))
+    ]
 
     # Convert to dicts for output (in ranked order)
     all_nodes = [s.to_dict() for s in ranked_symbols]
