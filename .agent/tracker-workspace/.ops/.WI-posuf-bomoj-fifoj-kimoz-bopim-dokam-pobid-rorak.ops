@@ -48,3 +48,18 @@
   clock: 5  # 6d87
   nonce: 6d87  # 6d87
   message: "Code audit confirms route symbols use location-based id (not hash) for edge endpoints. routes_to edges reference route.id and handler.id correctly. Root cause was likely INV-popop (stable_id collisions) or missing route materialization (WI-lodik). Both fixed. Downgrading — needs revalidation to confirm."  # 6d87
+- op: update  # a7c1
+  at: '2026-03-03T22:25:25Z'  # a7c1
+  by: agent  # a7c1
+  actor: jgstern_agent  # a7c1
+  clock: 6  # a7c1
+  nonce: a7c1  # a7c1
+  set:  # a7c1
+    status: done  # a7c1
+- op: discuss  # 0f71
+  at: '2026-03-03T22:25:25Z'  # 0f71
+  by: agent  # 0f71
+  actor: jgstern_agent  # 0f71
+  clock: 7  # 0f71
+  nonce: 0f71  # 0f71
+  message: "Fixed in PR #1698. TOML sha256 → location-based IDs."  # 0f71

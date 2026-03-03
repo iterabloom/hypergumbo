@@ -20,3 +20,18 @@
     pr_ref:  # bdcb
     description: "## Problem\n\nStapler framework detection (WI-mokuv, done) correctly identifies 276 handler methods in\nJenkins (97.5% are doXxx convention methods). However, all 276 route nodes are kind=method\nwith zero carrying explicit http_method or route_path in their metadata. This means\nroutes_to=0 (no route-to-handler linking) and consumers cannot reason about URL surfaces.\n\n## Why this matters\n\nStapler's routing is convention-based: doQuietDown() handles POST /quietDown,\ngetComputer() handles GET /computer. The URL path is derivable from the method name and\nthe class hierarchy (each class in the Stapler object graph maps to a URL path segment).\nWithout synthesized path metadata, the behavior map shows \"these are web handlers\" but\ncan't answer \"what URL does this handler serve?\"\n\n## Proposed fix\n\nIn the Stapler framework pattern YAML or a Stapler-specific post-processing step:\n1. For doXxx methods: extract the path segment from the method name (doQuietDown → POST\n   /quietDown, doInstallPlugins → POST /installPlugins)\n2. For getXxx methods: extract the path segment (getComputer → GET /computer)\n3. Attach http_method and route_path to the symbol's metadata\n4. Optionally emit synthetic route nodes with routes_to edges pointing to the handler\n\nThe class-hierarchy-to-URL-path mapping (e.g., Jenkins.getComputer() → /computer, then\nComputer.doXxx() → /computer/doXxx) requires walking the Stapler object graph, which is\nharder. Phase 1 can just synthesize leaf-level paths from method names.\n\n## Related items\n\n- WI-mokuv (done): Stapler framework detection — handler identification works, this is\n  the follow-on for path metadata\n- INV-mahap (violated): Entrypoint utility bias — route nodes with path metadata would be\n  stronger entrypoint candidates\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-jenkins-kong-vault-20260302.md"  # bdcb
     fields: {}  # bdcb
+- op: update  # 29cb
+  at: '2026-03-03T22:25:25Z'  # 29cb
+  by: agent  # 29cb
+  actor: jgstern_agent  # 29cb
+  clock: 2  # 29cb
+  nonce: 29cb  # 29cb
+  set:  # 29cb
+    status: done  # 29cb
+- op: discuss  # 5ff5
+  at: '2026-03-03T22:25:25Z'  # 5ff5
+  by: agent  # 5ff5
+  actor: jgstern_agent  # 5ff5
+  clock: 3  # 5ff5
+  nonce: 5ff5  # 5ff5
+  message: "Implemented in PR #1693. doXxx→POST /xxx, getXxx→GET /xxx."  # 5ff5

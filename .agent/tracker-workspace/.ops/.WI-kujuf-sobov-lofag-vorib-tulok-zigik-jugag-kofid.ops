@@ -27,3 +27,18 @@
   clock: 2  # 8d69
   nonce: 8d69  # 8d69
   message: "Investigated. The tree-sitter-agda grammar represents type signatures as two separate function nodes: (1) bare name 'f' with no RHS, (2) type ': T -> T' with type in LHS, no RHS. Symbol extraction requires handling bare-name function nodes and associating them with their type signature sibling. Reference extraction needs to scan the type-sig LHS for qid nodes. More involved than Lean fix due to grammar structure differences."  # 8d69
+- op: update  # faad
+  at: '2026-03-03T22:25:25Z'  # faad
+  by: agent  # faad
+  actor: jgstern_agent  # faad
+  clock: 3  # faad
+  nonce: faad  # faad
+  set:  # faad
+    status: done  # faad
+- op: discuss  # 52e2
+  at: '2026-03-03T22:25:25Z'  # 52e2
+  by: agent  # 52e2
+  actor: jgstern_agent  # 52e2
+  clock: 4  # 52e2
+  nonce: '52e2'  # 52e2
+  message: "Phase 1+2 implemented in PR #1695."  # 52e2
