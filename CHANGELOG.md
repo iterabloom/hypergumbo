@@ -11,43 +11,23 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-#### Circom language support
-
-- New tree-sitter analyzer for `.circom` zero-knowledge circuit files. Extracts templates, functions, signals (with input/output visibility), and main component definitions. Creates call edges for template instantiation and function calls, import edges for include directives. Built from source via `build-source-grammars`.
-- Templates and functions detected as `library_export` entrypoints; `component main` detected as `main_function`. Enables slicing for both library repos (circomlib) and application repos.
-
-#### Solidity call graph
-
-- Inheritance (`extends`), override (`overrides`), and emit (`emits`) edges. Visibility modifiers (`public`/`external`) for entrypoint detection. `using Library for Type` resolution (`x.add(y)` → `SafeMath.add`).
-
-#### Rust
-
-- `implements` edges from `impl Trait for Struct` declarations. JNI linker support for `#[no_mangle] pub extern "C"` functions.
-- Turbofish/fully-qualified generic call resolution: `PublicParams::<E1,E2>::setup()` and `x.collect::<Vec<i32>>()` now produce call edges by unwrapping `generic_function` nodes and stripping type arguments from scoped names.
-- Generic trait method blocklist: 33 common trait/collection method names (`.into()`, `.clone()`, `.len()`, `.push()`, etc.) are blocked from short-name method resolution to prevent false-positive in-degree. Fully-scoped calls (`StatusRow::into()`) still resolve.
-- `#[cfg(test)]` module inheritance: functions, structs, and enums inside `#[cfg(test)] mod tests { ... }` blocks inherit the `cfg(test)` annotation, enabling correct production slice exclusion.
-
-#### Slicing
-
-- `node_tiers` field in slice output: each node's `supply_chain_tier` integer is now propagated into `SliceResult`, enabling tier-based filtering without the full behavior map.
-
-#### Formal methods
-
-- **Agda**: `references` edges from function pattern clause bodies to used symbols.
-- **Lean**: `references` edges from def/theorem/lemma bodies to used symbols.
+- **Circom language support**: Tree-sitter analyzer for `.circom` zero-knowledge circuit files (built from source). Extracts templates, functions, signals with visibility, and main components. Call edges for template instantiation, import edges for includes. Entrypoint detection for both library and application repos.
+- **`--max-file-bytes` CLI argument**: Skips files exceeding the specified size during `run`. Useful for skipping minified JS, huge HTML, and generated files that slow analysis.
+- **Sketch harmonic budget allocation**: `--with-source` now uses harmonic weighting (rank *i* gets budget·(1/*i*)/H_n tokens) instead of elbow+median truncation, giving top-ranked files proportionally more depth.
+- **Solidity call graph**: Inheritance, override, and emit edges. Visibility modifiers for entrypoint detection. `using Library for Type` resolution (`x.add(y)` → `SafeMath.add`).
+- **Rust**: `implements` edges from `impl Trait for Struct`. Turbofish/fully-qualified generic call resolution (`PublicParams::<E1,E2>::setup()`). Generic trait method blocklist (33 names like `.into()`, `.clone()`) to prevent false-positive in-degree. `#[cfg(test)]` module inheritance for correct production slice exclusion.
+- **Slicing**: `node_tiers` field propagates each node's supply chain tier into slice output, enabling tier-based filtering without the full behavior map.
+- **Formal methods**: `references` edges in Agda (pattern clause bodies) and Lean (def/theorem/lemma bodies).
 
 ### Fixed
 
-#### Call resolution
-
-- **Solidity**: `super.method()`, `this.method()`, typed member access (`IERC20(addr).transfer()`), and function overload resolution by position.
-- **Rust**: Same-module method preference via caller directory `path_hint` with `soft_hint` mode — single cross-crate candidates are kept with reduced confidence instead of being rejected. Derive-macro methods (`clone`, `into`, `default`, `fmt`, etc.) dampened in centrality ranking via qualified-name utility matching.
-
-#### Classification
-
-- Absolute symbol paths normalized to relative in `run_all_analyzers` and `run_behavior_map`. Fixes tier misclassification across Java, TypeScript, Kotlin, HTML, C, Objective-C, Swift, and three linkers.
-- `fv/`, `harnesses/` as test directories; `build.rs` as utility file; `tests.rs`/`testonly.rs` as Rust co-located test files; `bench/`/`benches/` excluded from production slices; `"."` skipped in Cargo workspace members; dependency symbols classified as tier 3.
-- Protobuf/gRPC codegen artifacts (`.serde.rs`, `.pb.go`, `_pb2.py`, `_pb2_grpc.py`) now classified as derived (tier 4) and excluded from behavior maps. Reduces orphan rate inflation from generated boilerplate (penumbra: 5750 serde nodes removed, orphan rate drops from 21% to ~9%).
+- **Solidity call resolution**: `super.method()`, `this.method()`, typed member access (`IERC20(addr).transfer()`), and function overload resolution by position.
+- **Rust call resolution**: Same-module method preference via `path_hint` with `soft_hint` mode — single cross-crate candidates kept with reduced confidence instead of rejected. Derive-macro methods dampened in centrality ranking.
+- **Utility directory false positives**: `dev/`, `utils/`, `tools/`, `bin/` now only match as utility at project root, not inside source roots (e.g., `src/dev/gates.rs` was incorrectly excluded from production slices).
+- **Absolute symbol paths**: Normalized to relative in analysis and behavior map output. Fixes tier misclassification across Java, TypeScript, Kotlin, HTML, C, Objective-C, Swift, and three linkers.
+- **Test/utility classification**: `fv/`, `harnesses/` as test directories; `build.rs` as utility; `tests.rs`/`testonly.rs` as co-located test files; `bench/`/`benches/` excluded from production slices; dependency symbols classified as tier 3.
+- **Protobuf/gRPC codegen**: `.serde.rs`, `.pb.go`, `_pb2.py`, `_pb2_grpc.py` classified as derived (tier 4) and excluded from behavior maps. Reduces orphan rate inflation (penumbra: 5750 nodes removed, orphan rate 21% → ~9%).
+- **JSON output reproducibility**: All JSON output now uses sorted keys for deterministic ordering across runs.
 
 ### Changed
 
