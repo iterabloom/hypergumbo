@@ -1,0 +1,21 @@
+- op: create  # 1deb
+  at: '2026-03-03T06:19:31Z'  # 1deb
+  by: agent  # 1deb
+  actor: jgstern_agent  # 1deb
+  clock: 1  # 1deb
+  nonce: 1deb  # 1deb
+  data:  # 1deb
+    kind: work_item  # 1deb
+    title: "Framework detection: false positive http_route classification on frontend component code"  # 1deb
+    status: todo_hard  # 1deb
+    priority: 2  # 1deb
+    parent:  # 1deb
+    tags:  # 1deb
+    - frameworks  # 1deb
+    - external-bakeoff  # 1deb
+    before: []  # 1deb
+    duplicate_of: []  # 1deb
+    not_duplicate_of: []  # 1deb
+    pr_ref:  # 1deb
+    description: "## Problem\n\ngrafana's entrypoint ranking classified a React component event handler (handleRemove in\nVariableStaticOptionsFormItems.tsx) as [http_route] HTTP DELETE /:uid with confidence 1.00.\nThis is a framework pattern false positive: the TypeScript route detection YAML patterns\nmatched frontend UI code that syntactically resembles server-side route handlers.\n\nThe likely mechanism: the component handles a \"delete\" action on a list item, and the\nsurrounding code contains patterns (HTTP method strings, path-like parameter names) that\ntrigger route detection heuristics. The detection logic doesn't distinguish between:\n- Server-side: app.delete('/:uid', handleRemove) — a real route registration\n- Client-side: a React component with onClick={handleRemove} that sends a DELETE request\n\n## Impact\n\nFalse-positive http_route entrypoints compete with real ones in the ranker. At confidence\n1.00, the false positive was selected over real backend route handlers. Its forward slice\nwas 3 nodes; reverse was 2 nodes — semantically useless compared to a real route handler.\n\nThis affects any polyglot repo with frontend + backend code (grafana, GitLab, etc.).\n\n## Proposed fixes (from analyst, in order of increasing sophistication)\n\n1. File-path heuristic: if the file imports React/Vue/Angular/Svelte component libraries,\n   or lives in a frontend-conventional directory (public/, app/, components/, pages/ under\n   a frontend package), downweight http_route classification.\n\n2. Require graph corroboration: only classify a method as http_route if a routes_to edge\n   points to it (i.e., it was independently identified by the route materialization pipeline).\n   This is self-correcting: false positives from pattern matching get filtered by the\n   absence of graph-level evidence.\n\n3. Import-context heuristic: check the file's imports — if it imports React.createElement,\n   @angular/core, vue, etc., it's frontend code and shouldn't get http_route classification.\n\n## Related items\n\n- INV-mahap (violated): Entrypoint utility bias — frontend false positives compound the\n  ranking problem\n- WI-supok: dispatches_to test exclusion — same class of issue (wrong code type in\n  production analysis), different edge type\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 1deb
+    fields: {}  # 1deb
