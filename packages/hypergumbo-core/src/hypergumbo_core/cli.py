@@ -4060,6 +4060,16 @@ def run_behavior_map(
     detected_frameworks = set(profile.frameworks)
     enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
+    # Materialize route symbols from enriched concept metadata (WI-lodik).
+    # Annotation-based frameworks (JAX-RS, Spring MVC, ASP.NET) tag handler
+    # methods with concept=route but don't create kind="route" IR nodes.
+    # This step creates those nodes so the route_handler linker can produce
+    # routes_to edges.
+    from .framework_patterns import materialize_route_symbols
+    materialized_routes = materialize_route_symbols(all_symbols)
+    if materialized_routes:
+        all_symbols.extend(materialized_routes)
+
     # Run cross-language linkers
     show_progress("Running linkers", 55)
     #

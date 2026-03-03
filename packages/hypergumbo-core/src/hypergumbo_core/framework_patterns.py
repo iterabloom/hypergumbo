@@ -1480,6 +1480,102 @@ def _extract_resolution_hints(ctx: UsageContext) -> dict[str, str | None]:
     return hints
 
 
+def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
+    """Create kind='route' symbols for enriched route handler methods.
+
+    After ``enrich_symbols()`` tags handler methods with ``concept: route``,
+    this function creates corresponding route IR nodes that the
+    ``route_handler`` linker can use to produce ``routes_to`` edges.
+
+    This is needed for annotation-based frameworks (JAX-RS, Spring MVC,
+    ASP.NET) where route info is distributed across class/method annotations
+    rather than centralized in a routing DSL.  Language analyzers for Go
+    and JS/TS already create route symbols directly; this function fills the
+    gap for frameworks that rely on YAML pattern enrichment.
+
+    Args:
+        symbols: All symbols (already enriched by ``enrich_symbols``).
+
+    Returns:
+        List of new route Symbol objects to extend the symbol list.
+        Does NOT modify the input list.
+    """
+    from .analyze.base import make_route_stable_id
+    from .ir import Span, Symbol as SymbolCls, make_pass_id
+
+    pass_id = make_pass_id("route-materializer")
+    new_route_symbols: list[SymbolCls] = []
+    seen_routes: set[str] = set()  # Dedupe by (method, path)
+
+    for sym in symbols:
+        if not sym.meta:
+            continue
+        concepts = sym.meta.get("concepts", [])
+        if not concepts:
+            continue
+
+        for concept in concepts:
+            if not isinstance(concept, dict):  # pragma: no cover
+                continue
+            if concept.get("concept") != "route":
+                continue
+
+            # Already has a kind="route" symbol (e.g., Go/JS analyzers created one)
+            if sym.kind == "route":
+                continue
+
+            method = (concept.get("method") or "").upper()
+            path = concept.get("path") or ""
+
+            # Need at least a method to create a meaningful route node
+            if not method:
+                continue
+
+            # Dedupe: same (method, path) pair already materialized
+            route_key = f"{method}:{path}"
+            if route_key in seen_routes:
+                continue
+            seen_routes.add(route_key)
+
+            # Build route name
+            if path:
+                route_name = f"{method} {path}"
+            else:
+                route_name = f"{method} route"
+
+            stable_id = make_route_stable_id(method, path) if path else None
+
+            # Create route symbol at the same location as the handler
+            route_id = (
+                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
+                f"{sym.span.end_line}:{route_name}:route"
+            )
+            route_sym = SymbolCls(
+                id=route_id,
+                name=route_name,
+                kind="route",
+                language=sym.language,
+                path=sym.path,
+                span=Span(
+                    start_line=sym.span.start_line,
+                    end_line=sym.span.end_line,
+                    start_col=sym.span.start_col,
+                    end_col=sym.span.end_col,
+                ),
+                origin=pass_id,
+                stable_id=stable_id,
+                meta={
+                    "route_path": path,
+                    "http_method": method,
+                    "handler_ref": sym.name,
+                    "materialized_from": sym.id,
+                },
+            )
+            new_route_symbols.append(route_sym)
+
+    return new_route_symbols
+
+
 def clear_pattern_cache() -> None:
     """Clear the pattern cache. For testing only."""
     _PATTERN_CACHE.clear()

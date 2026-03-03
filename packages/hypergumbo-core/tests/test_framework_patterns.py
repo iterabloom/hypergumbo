@@ -21,6 +21,7 @@ from hypergumbo_core.framework_patterns import (
     load_framework_patterns,
     match_patterns,
     match_usage_patterns,
+    materialize_route_symbols,
     resolve_deferred_symbol_refs,
 )
 from hypergumbo_core.ir import Span, Symbol, UsageContext
@@ -17760,3 +17761,107 @@ class TestStaplerPatterns:
         pattern_def = load_framework_patterns("jenkins")
         assert pattern_def is not None
         assert pattern_def.id == "stapler"
+
+
+class TestMaterializeRouteSymbols:
+    """Tests for materialize_route_symbols (WI-lodik)."""
+
+    def _make_handler(
+        self, name: str, method: str, path: str = "",
+        language: str = "java", file_path: str = "src/Api.java",
+    ) -> Symbol:
+        """Create a handler symbol with route concept metadata."""
+        return Symbol(
+            id=f"{language}:{file_path}:10-20:{name}:method",
+            name=name,
+            kind="method",
+            language=language,
+            path=file_path,
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": method, "path": path},
+                ],
+            },
+        )
+
+    def test_creates_route_symbol_from_enriched_handler(self) -> None:
+        """A handler method with concept=route gets a materialized route symbol."""
+        handler = self._make_handler("getUsers", "GET", "/api/users")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        route = routes[0]
+        assert route.kind == "route"
+        assert route.name == "GET /api/users"
+        assert route.meta["route_path"] == "/api/users"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta["handler_ref"] == "getUsers"
+        assert route.meta["materialized_from"] == handler.id
+
+    def test_stable_id_assigned(self) -> None:
+        """Materialized route has a collision-free stable_id."""
+        handler = self._make_handler("createUser", "POST", "/api/users")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].stable_id is not None
+        assert len(routes[0].stable_id) == 64  # sha256 hex
+
+    def test_no_path_still_creates_route(self) -> None:
+        """Route with method but no path still gets materialized."""
+        handler = self._make_handler("deleteItem", "DELETE")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].name == "DELETE route"
+        assert routes[0].stable_id is None  # No path → no stable_id
+
+    def test_no_method_skips(self) -> None:
+        """Route concept without a method is skipped."""
+        sym = Symbol(
+            id="java:Api.java:10-20:handler:method",
+            name="handler", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "path": "/api"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+    def test_existing_route_kind_skipped(self) -> None:
+        """Symbols already with kind='route' are not duplicated."""
+        sym = Symbol(
+            id="go:main.go:10-20:GET /users:route",
+            name="GET /users", kind="route", language="go",
+            path="main.go",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+    def test_deduplicates_same_method_path(self) -> None:
+        """Same (method, path) from different handlers produces one route."""
+        h1 = self._make_handler("getUsersV1", "GET", "/api/users", file_path="v1/Api.java")
+        h2 = self._make_handler("getUsersV2", "GET", "/api/users", file_path="v2/Api.java")
+        routes = materialize_route_symbols([h1, h2])
+        assert len(routes) == 1
+
+    def test_different_methods_same_path_are_distinct(self) -> None:
+        """GET /users and POST /users produce distinct route symbols."""
+        h1 = self._make_handler("getUsers", "GET", "/api/users")
+        h2 = self._make_handler("createUser", "POST", "/api/users")
+        routes = materialize_route_symbols([h1, h2])
+        assert len(routes) == 2
+        names = {r.name for r in routes}
+        assert "GET /api/users" in names
+        assert "POST /api/users" in names
+
+    def test_symbols_without_concepts_ignored(self) -> None:
+        """Symbols without concept metadata are ignored."""
+        sym = Symbol(
+            id="java:Main.java:1-5:main:method",
+            name="main", kind="method", language="java",
+            path="Main.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
