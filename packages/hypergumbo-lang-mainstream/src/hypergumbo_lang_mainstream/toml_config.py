@@ -38,6 +38,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     iter_tree,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -45,10 +46,16 @@ if TYPE_CHECKING:
     pass
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    """Generate a unique symbol ID."""
-    key = f"toml:{path}:{line}:{name}:{kind}"
-    return f"toml:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+def _make_toml_symbol_id(
+    path: str, start_line: int, end_line: int, name: str, kind: str,
+) -> str:
+    """Generate a location-based symbol ID for TOML symbols.
+
+    Uses the standard ``lang:path:start-end:name:kind`` format so that
+    symbol IDs are human-readable and resolvable by ``slice --entry``.
+    Previously used sha256 hashes, which made compact output IDs opaque.
+    """
+    return make_symbol_id("toml", path, start_line, end_line, name, kind)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -164,7 +171,7 @@ def _process_toml_tree(
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
             node_bytes = content[node.start_byte : node.end_byte].encode()
 
             symbols.append(
@@ -238,7 +245,7 @@ def _process_toml_tree(
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
             node_bytes = content[node.start_byte : node.end_byte].encode()
 
             # Build meta with path if present
@@ -410,7 +417,7 @@ def _extract_cargo_dependencies(
             if dep_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, dep_name, "dependency")
+                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 symbols.append(
@@ -480,8 +487,8 @@ def _extract_pyproject_dependencies(
 
                         start_line = elem.start_point[0] + 1
                         end_line = elem.end_point[0] + 1
-                        symbol_id = _make_symbol_id(
-                            rel_path, start_line, dep_name, "dependency"
+                        symbol_id = _make_toml_symbol_id(
+                            rel_path, start_line, end_line, dep_name, "dependency"
                         )
                         node_bytes = content[elem.start_byte : elem.end_byte].encode()
 
@@ -530,7 +537,7 @@ def _extract_pyproject_scripts(
             if script_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, script_name, "script")
+                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "script")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 meta: dict = {}
