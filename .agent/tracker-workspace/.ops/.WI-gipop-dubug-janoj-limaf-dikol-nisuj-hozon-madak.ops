@@ -19,3 +19,18 @@
     pr_ref:  # d4ec
     description: "## Problem\n\nhypergumbo explain with a full stable_id taken from slice --list-entries or entrypoints.txt\nreports \"No symbol found matching...\" while hypergumbo slice --entry with the identical\nstring successfully locates the node and produces a multi-node graph.\n\nConfirmed in keycloak: the stable_id\njava:/home/.../RoleContainerResource.java:147-231:RoleContainerResource.createRole:method\nworks with slice --entry (produces 31-node forward graph) but fails with explain.\n\n## Root cause hypothesis\n\nThe two commands use different symbol lookup mechanisms:\n- slice --entry matches against node IDs in the behavior map graph (exact/prefix match\n  on id or stable_id field)\n- explain uses a symbol search/matcher that applies different normalization (possibly\n  stripping path components, converting to display name, or matching against a different\n  index)\n\nThe ADR-0014 typed stable_id rollout (Phase 3) introduced per-language signature\nnormalization. If explain normalizes the input to a signature-based form while slice\nmatches on the location-based form, symbols with unusual path structures (common in Java\nwith deep package hierarchies) could fail in explain while succeeding in slice.\n\n## Impact\n\nBreaks a natural user workflow: slice --list-entries → copy ID → explain <ID> → \"not found.\"\nThe user discovers a valid entrypoint via slice but cannot get an explanation of it.\n\n## Proposed fix\n\nUnify the symbol resolution path: explain should use the same ID matching logic as slice,\nor at minimum fall back to it when the primary matcher fails. Both commands should accept\nany format that either currently accepts.\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # d4ec
     fields: {}  # d4ec
+- op: update  # afba
+  at: '2026-03-03T11:22:52Z'  # afba
+  by: agent  # afba
+  actor: jgstern_agent  # afba
+  clock: 2  # afba
+  nonce: afba  # afba
+  set:  # afba
+    status: done  # afba
+- op: discuss  # 2530
+  at: '2026-03-03T11:22:52Z'  # 2530
+  by: agent  # 2530
+  actor: jgstern_agent  # 2530
+  clock: 3  # 2530
+  nonce: '2530'  # 2530
+  message: "Fixed in PR #1682. explain now uses priority-based matching: exact ID → path → path suffix → name → partial."  # 2530

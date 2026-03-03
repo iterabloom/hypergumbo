@@ -59,3 +59,18 @@
   clock: 6  # bec0
   nonce: bec0  # bec0
   message: "Second independent external bakeoff (March 2026, gitlab/grafana/bun/keycloak) further confirms this violation.\n\n- grafana: auto-selects kinds/gen.go:main (code generator) over the actual Grafana server entrypoint. Forward slice = 19 codegen functions, reverse slice = empty. grafana has dozens of Go main() functions across devenv/, pkg/tsdb/*/standalone/, and subdirectories.\n- bun: auto-selects misctools/cold-jsc-start.cpp:main (JSC startup benchmark) over bun's actual Zig runtime entry. 310 total entrypoints, many C++ main() functions in misctools/scripts/src/bun.js/headergen/ drowning out the real entry.\n- keycloak: auto-selects DeviceEndpoint.handleDeviceRequest — this one is correct (real OIDC endpoint).\n- gitlab: auto-selects GraphqlController — also correct (core Rails controller).\n\nThe analyst notes the 50% utility-directory penalty is too weak: bun's misctools/cold-jsc-start.cpp scores 0.97 * 0.50 = 0.485, still higher than most candidates. Proposes additional signals: directory depth, file name patterns (*-tool.*, *gen.*, *helper.*), and the number of competing main() functions in the repo.\n\nAlso proposes graph-structural signals: forward slice size/diversity, special edge reachability from the entrypoint. An entrypoint whose forward slice traverses routes_to, http_calls, or dispatches_to edges is more likely to be a real application entry than one whose slice contains only calls edges.\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # bec0
+- op: update  # 4c6f
+  at: '2026-03-03T11:11:16Z'  # 4c6f
+  by: agent  # 4c6f
+  actor: jgstern_agent  # 4c6f
+  clock: 7  # 4c6f
+  nonce: 4c6f  # 4c6f
+  set:  # 4c6f
+    status: holding  # 4c6f
+- op: discuss  # 7d7c
+  at: '2026-03-03T11:11:16Z'  # 7d7c
+  by: agent  # 7d7c
+  actor: jgstern_agent  # 7d7c
+  clock: 8  # 7d7c
+  nonce: 7d7c  # 7d7c
+  message: "Partially addressed: frontend route suppression (WI-ronik, PR #1682) eliminates false-positive http_route entries. Needs bakeoff revalidation."  # 7d7c
