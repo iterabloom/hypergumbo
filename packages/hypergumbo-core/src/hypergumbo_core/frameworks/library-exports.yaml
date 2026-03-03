@@ -247,4 +247,29 @@ patterns:
     symbol_kind: "^function$"
     language: "^circom$"
 
+  # === Lean 4: Definition-based (all public defs are API surface) ===
+
+  # Lean 4 definitions (def, theorem, lemma) are public by default.
+  # In proof libraries like ArkLib, theorems ARE the library exports.
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^lean$"
+
+  # Lean 4 structures (equivalent to classes/records)
+  - concept: library_export
+    symbol_kind: "^(structure|inductive)$"
+    language: "^lean$"
+
+  # === Agda: Definition-based (public functions and data types) ===
+
+  # Agda functions (including theorems/lemmas) are public by default
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^agda$"
+
+  # Agda data types and records
+  - concept: library_export
+    symbol_kind: "^(data|record)$"
+    language: "^agda$"
+
 linkers: []
