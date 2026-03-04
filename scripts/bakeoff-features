@@ -1556,8 +1556,19 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             metrics.tier3_pct = tier_counts[3] / total_tiered * 100
             metrics.tier4_pct = tier_counts[4] / total_tiered * 100
 
-        # Analyze slice outputs
-        slice_files = [f for f in os.listdir(repo_out) if f.startswith("slice.") and f.endswith(".json")]
+        # Analyze slice outputs (both forward and reverse slices contribute
+        # to avg_slice_nodes).  Library repos often have small forward slices
+        # (entrypoints are utility scripts) but meaningful reverse slices
+        # (tracing callers of core functions).  Exclude .prod.json variants
+        # (production-only filtered copies) and tier-filtered slices.
+        slice_files = [
+            f for f in os.listdir(repo_out)
+            if (f.startswith("slice.") or f.startswith("rslice."))
+            and f.endswith(".json")
+            and ".prod." not in f
+            and ".tier" not in f
+            and f != "rslice_seeds.json"
+        ]
         slice_node_counts = []
         cross_file_edges = 0
         total_slice_edges = 0
