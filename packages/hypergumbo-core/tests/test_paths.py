@@ -391,6 +391,29 @@ class TestIsUtilityFile:
         assert is_utility_file("tools/build.py") is True
         assert is_utility_file("bin/run.sh") is True
 
+    def test_devenv_is_utility(self) -> None:
+        """devenv/ directories are dev environment code, not production."""
+        assert is_utility_file("devenv/docker/ha-test/listener.go") is True
+        assert is_utility_file("devenv/setup.py") is True
+        # Inside source root: still utility (devenv is unambiguous)
+        assert is_utility_file("src/devenv/main.go") is True
+
+    def test_codegen_go_filenames_are_utility(self) -> None:
+        """Go codegen scripts (gen.go, generate.go) are utility files."""
+        assert is_utility_file("kinds/gen.go") is True
+        assert is_utility_file("public/app/plugins/gen.go") is True
+        assert is_utility_file("cmd/generate.go") is True
+        # Suffix patterns
+        assert is_utility_file("api/types_gen.go") is True
+        assert is_utility_file("pkg/models_generate.go") is True
+        # NOT utility: regular Go files
+        assert is_utility_file("pkg/engine.go") is False
+        assert is_utility_file("cmd/main.go") is False
+        assert is_utility_file("internal/generic.go") is False
+        # NOT utility: non-Go gen files (too aggressive for other languages)
+        assert is_utility_file("src/gen.py") is False
+        assert is_utility_file("lib/gen.ts") is False
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False

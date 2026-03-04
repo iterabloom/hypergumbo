@@ -823,6 +823,23 @@ def detect_entrypoints(
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
 
+        # Penalty for Go main()s in deeply nested cmd/ directories (50%).
+        # In Go repos, top-level cmd/<name>/ holds the primary application
+        # binaries.  Deeply nested cmd/ (e.g., builtin/logical/consul/cmd/)
+        # holds plugin shims and tool binaries that should not outrank the
+        # actual server entrypoint.  Depth threshold: cmd/ preceded by 2+
+        # path components is considered "deeply nested".
+        if (
+            ep.kind == EntrypointKind.MAIN_FUNCTION
+            and sym.language == "go"
+            and sym.path
+        ):
+            parts = sym.path.split("/")
+            for i, part in enumerate(parts):
+                if part == "cmd" and i >= 2:
+                    ep.confidence *= 0.5
+                    break
+
     # Application demotion: when real semantic entrypoints exist (routes,
     # commands, main, controllers), library_export entries are just API
     # visibility markers, not developer-facing entrypoints.  Heavily demote

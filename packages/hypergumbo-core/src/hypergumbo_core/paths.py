@@ -174,6 +174,8 @@ def is_utility_file(path: str) -> bool:
         "vcbuild", "cmake",
         # Benchmarks
         "benchmarks", "benchmark", "benches", "bench", "perf",
+        # Dev environment (e.g., Grafana devenv/)
+        "devenv",
     }
 
     # Ambiguous names: at the project root these are tooling directories
@@ -201,6 +203,16 @@ def is_utility_file(path: str) -> bool:
     # Cargo's build.rs is a compile-time build script, not user-facing code.
     filename = path_parts[-1].lower() if path_parts else ""
     if filename == "build.rs":
+        return True
+
+    # Go codegen scripts: gen.go, generate.go, *_gen.go, *_generate.go
+    # These are code generation programs, not production application code.
+    # Scoped to .go files to avoid false positives in other languages.
+    if filename.endswith(".go") and (
+        filename in ("gen.go", "generate.go")
+        or filename.endswith("_gen.go")
+        or filename.endswith("_generate.go")
+    ):
         return True
 
     return False

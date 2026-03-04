@@ -2157,6 +2157,106 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[1].symbol_id == vendor_route.id
 
 
+class TestGoUtilityMainDemotion:
+    """Tests for Go utility main() demotion (INV-mahap).
+
+    In Go repos with many main() functions, deeply nested cmd/ directories
+    (plugin shims, tool binaries) should be demoted relative to top-level
+    cmd/ entries (the actual application binaries).
+    """
+
+    def test_deeply_nested_cmd_main_demoted(self) -> None:
+        """Main in builtin/logical/consul/cmd/ is demoted vs cmd/vault/."""
+        # Top-level cmd/ main (the actual server binary)
+        server_main = make_symbol(
+            "main",
+            path="cmd/vault/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Deeply nested cmd/ main (plugin shim binary)
+        plugin_main = make_symbol(
+            "main",
+            path="builtin/logical/consul/cmd/consul/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([server_main, plugin_main], [])
+
+        server_ep = next(e for e in entrypoints if "cmd/vault" in e.symbol_id)
+        plugin_ep = next(e for e in entrypoints if "builtin" in e.symbol_id)
+
+        # Server main should rank higher than plugin shim main
+        assert server_ep.confidence > plugin_ep.confidence
+
+    def test_pkg_cmd_not_demoted(self) -> None:
+        """Main in pkg/cmd/grafana/ is NOT demoted (standard Go layout)."""
+        grafana_main = make_symbol(
+            "main",
+            path="pkg/cmd/grafana/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([grafana_main], [])
+
+        assert len(entrypoints) == 1
+        # pkg/cmd/ is at depth 1 — should NOT be penalized
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_top_level_cmd_not_demoted(self) -> None:
+        """Main in cmd/prometheus/ is NOT demoted."""
+        prom_main = make_symbol(
+            "main",
+            path="cmd/prometheus/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([prom_main], [])
+
+        assert len(entrypoints) == 1
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_codegen_filename_demoted_via_utility(self) -> None:
+        """Main in gen.go files is demoted via utility file penalty."""
+        codegen_main = make_symbol(
+            "main",
+            path="kinds/gen.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        server_main = make_symbol(
+            "main",
+            path="cmd/server/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([codegen_main, server_main], [])
+
+        codegen_ep = next(e for e in entrypoints if "gen.go" in e.symbol_id)
+        server_ep = next(e for e in entrypoints if "cmd/server" in e.symbol_id)
+
+        # Codegen should be demoted below server
+        assert server_ep.confidence > codegen_ep.confidence
+        # Utility penalty: 0.80 * 0.5 = 0.40
+        assert codegen_ep.confidence == pytest.approx(0.40, rel=0.01)
+
+    def test_non_go_main_not_affected_by_nested_cmd(self) -> None:
+        """The nested-cmd penalty only applies to Go main_function entries."""
+        java_main = make_symbol(
+            "main",
+            path="module/submodule/cmd/tool/Main.java",
+            language="java",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([java_main], [])
+
+        assert len(entrypoints) == 1
+        # Java main should NOT get the nested-cmd penalty
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+
 class TestConnectivityFallback:
     """Tests for centrality-based entrypoint fallback (DEEP mode).
 
