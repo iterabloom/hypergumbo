@@ -1,0 +1,19 @@
+- op: create  # 8124
+  at: '2026-03-04T02:32:46Z'  # 8124
+  by: agent  # 8124
+  actor: jgstern_agent  # 8124
+  clock: 1  # 8124
+  nonce: '8124'  # 8124
+  data:  # 8124
+    kind: work_item  # 8124
+    title: "rslice seed selection picks test functions, producing empty production rslices"  # 8124
+    status: todo_hard  # 8124
+    priority: 1  # 8124
+    parent:  # 8124
+    tags: []  # 8124
+    before: []  # 8124
+    duplicate_of: []  # 8124
+    not_duplicate_of: []  # 8124
+    pr_ref:  # 8124
+    description: ""  # 8124
+    fields: {}  # 8124

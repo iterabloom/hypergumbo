@@ -17,3 +17,10 @@
     pr_ref:  # 766e
     description: ""  # 766e
     fields: {}  # 766e
+- op: discuss  # 633b
+  at: '2026-03-04T01:48:31Z'  # 633b
+  by: agent  # 633b
+  actor: jgstern_agent  # 633b
+  clock: 2  # 633b
+  nonce: 633b  # 633b
+  message: "When TOTAL_TODOS == 0 and all work is complete, stop.sh has no approve path. Path 1 is skipped (no TODOs), falling through to Path 2 (cooldown blocks) or Path 3 (reflection blocks). This caused ~50 wasted stop attempts in the 2026-03-03 session. Lab notebook entry notebookjournal_03032026_2300.md documents the fix: add a Path 1.5 that approves when TOTAL_TODOS == 0. This is a governance file change requiring human approval. Alternative: add circuit breaker check to Path 2/3 so it fires even without TODOs."  # 633b
