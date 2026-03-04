@@ -1011,6 +1011,10 @@ def _extract_edges_from_file(
                 impl_type_name = _extract_base_type_name(type_node, source)
                 if trait_name and impl_type_name:
                     trait_sym = local_symbols.get(trait_name) or global_symbols.get(trait_name)
+                    # Fallback: for qualified names like module::Trait, try short name
+                    if not trait_sym and "::" in trait_name:
+                        short_trait = trait_name.rsplit("::", 1)[-1]
+                        trait_sym = local_symbols.get(short_trait) or global_symbols.get(short_trait)
                     impl_sym = local_symbols.get(impl_type_name) or global_symbols.get(impl_type_name)
                     if trait_sym and impl_sym:
                         edges.append(Edge.create(

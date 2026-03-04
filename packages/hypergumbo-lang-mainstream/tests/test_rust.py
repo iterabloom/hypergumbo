@@ -2509,6 +2509,44 @@ class TestRustTraitImplEdges:
         assert square.id in srcs
 
 
+    def test_impl_qualified_trait_resolves_short_name(self, tmp_path: Path) -> None:
+        """impl module::Trait for Struct resolves to the short trait name.
+
+        gRPC/tonic pattern: impl service_server::MyService for Server.
+        The trait is defined as 'MyService' but referenced with a qualified
+        path. The implements edge should still be created.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "mod service_server {\n"
+            "    pub trait QueryService {\n"
+            "        fn query(&self);\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "struct Server;\n"
+            "\n"
+            "impl service_server::QueryService for Server {\n"
+            "    fn query(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+
+        struct_sym = next(s for s in result.symbols if s.name == "Server")
+        trait_sym = next(
+            s for s in result.symbols
+            if s.name == "QueryService" and s.kind == "trait"
+        )
+        assert impl_edges[0].src == struct_sym.id
+        assert impl_edges[0].dst == trait_sym.id
+
+
 class TestRustGenericTraitMethodBlocklist:
     """Tests for generic trait method blocklist (false-positive suppression).
 
