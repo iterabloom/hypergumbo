@@ -85,6 +85,14 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     import_aliases: dict[str, str] = field(default_factory=dict)
     node_for_symbol: dict[str, "tree_sitter.Node"] = field(default_factory=dict)
+    class_field_types: dict[str, dict[str, str]] = field(default_factory=dict)
+    """Maps class/struct name → {field_name → type_name}.
+
+    Populated by subclasses in ``extract_symbols_from_file()``.
+    Aggregated by ``analyze()`` into ``_field_type_registry`` for Pass 2.
+    Name-based (not Symbol-based) because the target type's Symbol
+    may not exist yet during Pass 1 (it might be in another file).
+    """
 
 
 @dataclass(frozen=True)
@@ -1009,6 +1017,14 @@ class TreeSitterAnalyzer:
     supports_max_files: bool = False
     """Whether analyze() should respect the max_files parameter."""
 
+    self_keywords: ClassVar[frozenset[str]] = frozenset({"self"})
+    """Tokens that refer to the current instance in this language.
+
+    Python/Ruby/Rust/Swift use ``self``, Java/C#/Kotlin use ``this``.
+    Subclasses override for their language.  Used by
+    ``resolve_receiver_type()`` to anchor field-chain resolution.
+    """
+
     # -- Template methods: grammar setup -----------------------------------
 
     def _check_grammar_available(self) -> bool:
@@ -1160,6 +1176,75 @@ class TreeSitterAnalyzer:
             List of UsageContext instances.
         """
         return []
+
+    # -- Field type resolution helpers --------------------------------------
+
+    def resolve_receiver_type(
+        self,
+        value_node: "tree_sitter.Node",
+        source: bytes,
+        enclosing_type: str | None,
+    ) -> str | None:
+        """Resolve a self.field receiver chain to its type name.
+
+        Uses ``_field_type_registry`` (set by ``analyze()`` before Pass 2).
+        Walks nested ``field_expression`` / ``member_expression`` nodes to
+        decompose a receiver chain like ``self.app`` into segments, then
+        iteratively resolves through the registry.
+
+        Only resolves chains rooted at a ``self_keywords`` token.
+        Non-self receivers return None.
+
+        Args:
+            value_node: The receiver node of a method call (e.g. the
+                ``self.app`` part of ``self.app.run()``).
+            source: Source bytes for extracting node text.
+            enclosing_type: The type that contains this method (e.g.
+                the impl target in Rust, the class name in Python).
+
+        Returns:
+            The resolved type name, or None if resolution fails at any step.
+        """
+        if enclosing_type is None:
+            return None
+
+        registry = getattr(self, "_field_type_registry", {})
+        if not registry:
+            return None
+
+        # Decompose the receiver chain into segments.
+        # e.g. self.inner.app → ["self", "inner", "app"]
+        segments: list[str] = []
+        node = value_node
+        while node.type in ("field_expression", "member_expression"):
+            field_node = node.child_by_field_name("field")
+            if field_node is None:
+                return None
+            segments.append(node_text(field_node, source))
+            node = node.child_by_field_name("value")
+            if node is None:
+                return None
+
+        # Root must be a self keyword
+        root_text = node_text(node, source)
+        if root_text not in self.self_keywords:
+            return None
+
+        # Segments were collected leaf-to-root; reverse to walk root-to-leaf.
+        segments.reverse()
+
+        # Walk the chain: start from enclosing_type, resolve each field step.
+        current_type = enclosing_type
+        for field_name in segments:
+            fields = registry.get(current_type)
+            if fields is None:
+                return None
+            next_type = fields.get(field_name)
+            if next_type is None:
+                return None
+            current_type = next_type
+
+        return current_type
 
     # -- Template methods: global symbol registry --------------------------
 
@@ -1631,6 +1716,18 @@ class TreeSitterAnalyzer:
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
 
+        # 4b. Aggregate class field types from all files for Pass 2.
+        # Subclasses populate FileAnalysis.class_field_types during Pass 1;
+        # here we merge them into a single registry keyed by class/struct name.
+        field_type_registry: dict[str, dict[str, str]] = {}
+        for analysis, _, _source in file_analyses.values():
+            for class_name, fields in analysis.class_field_types.items():
+                if class_name not in field_type_registry:
+                    field_type_registry[class_name] = {}
+                for fname, ftype in fields.items():
+                    field_type_registry[class_name].setdefault(fname, ftype)
+        self._field_type_registry = field_type_registry
+
         # 5. Pass 2: Extract edges and usage contexts
         # Reuses cached source bytes from Pass 1 to avoid re-reading files.
         all_symbols: list[Symbol] = []
@@ -1656,6 +1753,9 @@ class TreeSitterAnalyzer:
                 tree, source, source_file, analysis.symbol_by_name,
             )
             all_contexts.extend(contexts)
+
+        # Clear field type registry to avoid stale data across runs.
+        self._field_type_registry = {}
 
         # 7. Post-process
         all_symbols, all_edges, all_contexts = self.post_process(

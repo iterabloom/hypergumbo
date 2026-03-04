@@ -3237,3 +3237,479 @@ class TestRustCfgTestInheritance:
             f"helper inside #[cfg(test)] should be detected as test node, "
             f"meta={helper_fn.meta}"
         )
+
+
+class TestUnwrapDerefType:
+    """Tests for _unwrap_deref_type helper."""
+
+    @staticmethod
+    def _parse_field_type(source: bytes) -> str:
+        """Parse source and return unwrapped type of the first field_declaration."""
+        from hypergumbo_lang_mainstream.rust import _unwrap_deref_type
+        from hypergumbo_core.analyze.base import iter_tree
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "field_declaration":
+                type_node = node.child_by_field_name("type")
+                if type_node:
+                    return _unwrap_deref_type(type_node, source)
+        pytest.fail("No field_declaration found")
+
+    def test_simple_type(self) -> None:
+        """Plain type identifier returns as-is."""
+        assert self._parse_field_type(b"struct S { field: App }") == "App"
+
+    def test_box_unwrap(self) -> None:
+        """Box<App> unwraps to App."""
+        assert self._parse_field_type(b"struct S { field: Box<App> }") == "App"
+
+    def test_arc_unwrap(self) -> None:
+        """Arc<Client> unwraps to Client."""
+        assert self._parse_field_type(
+            b"struct S { field: Arc<Client> }",
+        ) == "Client"
+
+    def test_nested_wrapper(self) -> None:
+        """Arc<Mutex<App>> unwraps to App."""
+        assert self._parse_field_type(
+            b"struct S { field: Arc<Mutex<App>> }",
+        ) == "App"
+
+    def test_reference_unwrap(self) -> None:
+        """&App unwraps to App."""
+        assert self._parse_field_type(
+            b"struct S<'a> { field: &'a App }",
+        ) == "App"
+
+    def test_non_wrapper_generic(self) -> None:
+        """HashMap<String, i32> returns HashMap (not a Deref wrapper)."""
+        assert self._parse_field_type(
+            b"struct S { field: HashMap<String, i32> }",
+        ) == "HashMap"
+
+    def test_scoped_type_generic(self) -> None:
+        """Scoped wrapper type returns scoped name (not unwrapped)."""
+        # std::sync::Mutex is a scoped_type_identifier, not in
+        # _RUST_DEREF_WRAPPERS (which uses simple names).
+        assert self._parse_field_type(
+            b"struct S { field: std::sync::Mutex<App> }",
+        ) == "std::sync::Mutex"
+
+    def test_scoped_type_plain(self) -> None:
+        """Plain scoped type (no generics) returns full path."""
+        assert self._parse_field_type(
+            b"struct S { field: std::io::Error }",
+        ) == "std::io::Error"
+
+
+class TestExtractStructFieldTypes:
+    """Tests for _extract_struct_field_types helper."""
+
+    @staticmethod
+    def _parse(source: bytes) -> dict:
+        """Parse Rust source and return struct field types."""
+        from hypergumbo_lang_mainstream.rust import _extract_struct_field_types
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+        return _extract_struct_field_types(tree, source)
+
+    def test_simple_struct(self) -> None:
+        """Extracts field types from a simple struct."""
+        result = self._parse(b"""
+struct Server {
+    app: App,
+    db: Database,
+}
+""")
+        assert "Server" in result
+        assert result["Server"] == {"app": "App", "db": "Database"}
+
+    def test_box_field_unwrapped(self) -> None:
+        """Box<App> field type is unwrapped to App."""
+        result = self._parse(b"""
+struct Server {
+    app: Box<App>,
+    client: Arc<Client>,
+}
+""")
+        assert result["Server"]["app"] == "App"
+        assert result["Server"]["client"] == "Client"
+
+    def test_tuple_struct_skipped(self) -> None:
+        """Tuple structs (no named fields) are skipped."""
+        result = self._parse(b"struct Wrapper(App);")
+        assert "Wrapper" not in result
+
+    def test_multiple_structs(self) -> None:
+        """Extracts from multiple structs in one file."""
+        result = self._parse(b"""
+struct Server { app: App }
+struct App { handler: Handler }
+""")
+        assert len(result) == 2
+        assert result["Server"] == {"app": "App"}
+        assert result["App"] == {"handler": "Handler"}
+
+    def test_empty_struct(self) -> None:
+        """Struct with no fields produces no entry."""
+        result = self._parse(b"struct Empty {}")
+        assert "Empty" not in result
+
+
+class TestRustFieldTypePopulation:
+    """Tests that _extract_symbols_from_file populates class_field_types."""
+
+    def test_populates_class_field_types(self, tmp_path: Path) -> None:
+        """class_field_types is populated from struct declarations."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Server {
+    app: App,
+    db: Box<Database>,
+}
+
+struct App {
+    handler: Handler,
+}
+
+fn main() {}
+""")
+        # We verify indirectly — the full integration test below
+        # checks that edges are created. Here we verify the analyze
+        # function doesn't crash with field type population.
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+
+class TestRustStructFieldTypeResolution:
+    """Integration tests for self.field.method() → typed_field_call edges.
+
+    Tests Strategy 1.5 in _extract_edges_from_file: resolve self.field
+    receivers via the field type registry to create typed call edges.
+    """
+
+    def test_basic_field_call(self, tmp_path: Path) -> None:
+        """self.app.run() where app: App creates App::run edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+
+        # Verify source is Server::start
+        start_sym = next(s for s in result.symbols if s.name == "Server::start")
+        run_sym = next(s for s in result.symbols if s.name == "App::run")
+        assert edge.src == start_sym.id
+        assert edge.dst == run_sym.id
+        assert edge.confidence == 0.88
+        assert edge.edge_type == "calls"
+
+    def test_box_field_call(self, tmp_path: Path) -> None:
+        """self.app.run() where app: Box<App> unwraps to App::run."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: Box<App>,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].confidence == 0.88
+
+    def test_nested_field_chain(self, tmp_path: Path) -> None:
+        """self.inner.app.run() resolves through Outer→Inner→App."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Inner {
+    app: App,
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+impl Outer {
+    fn start(&self) {
+        self.inner.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        run_sym = next(s for s in result.symbols if s.name == "App::run")
+        assert typed_edges[0].dst == run_sym.id
+
+    def test_unknown_field_no_typed_edge(self, tmp_path: Path) -> None:
+        """self.unknown.run() with unknown field falls through gracefully."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.unknown.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_non_self_receiver_not_resolved(self, tmp_path: Path) -> None:
+        """other.app.run() is not resolved by Strategy 1.5."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self, other: Server) {
+        other.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        # other.app isn't rooted at self, so Strategy 1.5 doesn't fire
+        assert len(typed_edges) == 0
+
+    def test_blocklisted_method_resolves_with_type(self, tmp_path: Path) -> None:
+        """self.client.send() resolves even though 'send' is blocklisted.
+
+        Strategy 1.5 fires before the _RUST_GENERIC_TRAIT_METHODS check
+        because known receiver type makes it unambiguous.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Client {}
+
+impl Client {
+    fn send(&self) {}
+}
+
+struct Server {
+    client: Client,
+}
+
+impl Server {
+    fn dispatch(&self) {
+        self.client.send();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        send_sym = next(s for s in result.symbols if s.name == "Client::send")
+        assert typed_edges[0].dst == send_sym.id
+
+    def test_cross_file_field_resolution(self, tmp_path: Path) -> None:
+        """Field types from one file resolve methods defined in another."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "app.rs").write_text("""
+pub struct App {}
+
+impl App {
+    pub fn run(&self) {}
+}
+""")
+        (tmp_path / "server.rs").write_text("""
+use crate::app::App;
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) >= 1
+
+    def test_resolver_fallback_for_field_call(self) -> None:
+        """Strategy 1.5 uses resolver.lookup() when target not in symbols dicts.
+
+        Exercises the fallback path where typed_name (e.g. "App::run") is
+        absent from both local_symbols and global_symbols but found via
+        the resolver's suffix index.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+            RustAnalyzer,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source = b"""
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+"""
+        tree = parser.parse(source)
+
+        caller = Symbol(
+            id="rust:test.rs:2-4:Server::start:method",
+            name="Server::start", kind="method", language="rust",
+            path="test.rs",
+            span=Span(start_line=2, end_line=4, start_col=4, end_col=5),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:app.rs:1-5:App::run:method",
+            name="App::run", kind="method", language="rust",
+            path="app.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        local_symbols = {"Server::start": caller, "start": caller}
+        # Deliberately NOT including "App::run" in global_symbols
+        # so the resolver.lookup fallback path fires.
+        global_symbols = {"Server::start": caller}
+        resolver = NameResolver({"App::run": target})
+
+        analyzer = RustAnalyzer()
+        analyzer._field_type_registry = {
+            "Server": {"app": "App"},
+        }
+
+        method_syms = {"run": [target]}
+        mr = ListNameResolver(method_syms, ambiguity_threshold=3)
+
+        span_idx = {(2, 4): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source, "test.rs",
+            local_symbols, global_symbols,
+            "run", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+            field_type_registry=analyzer._field_type_registry,
+            analyzer=analyzer,
+        )
+
+        typed_edges = [e for e in edges if e.evidence_type == "typed_field_call"]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].dst == target.id
+        assert typed_edges[0].confidence == 0.88

@@ -17,8 +17,10 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations
-2. Pass 2: Extract call edges, use edges, and Axum usage contexts
+1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations;
+   extract struct field types for the base-class field type registry
+2. Pass 2: Extract call edges (including self.field.method() via Strategy 1.5),
+   use edges, and Axum usage contexts
 3. Post-process: Extract decorated_by edges from attribute metadata
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -62,6 +64,14 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("rust")
+
+# Standard library wrapper types that implement Deref to their inner type.
+# When resolving struct field types, these are unwrapped to expose the
+# effective dispatch type (e.g. Box<App> → App, Arc<Client> → Client).
+_RUST_DEREF_WRAPPERS: frozenset[str] = frozenset({
+    "Box", "Arc", "Rc", "Mutex", "RwLock", "RefCell", "Cell",
+    "Pin", "MutexGuard", "RwLockReadGuard", "RwLockWriteGuard",
+})
 
 # Axum HTTP method functions that define route handlers
 # Used by _extract_axum_usage_contexts for YAML pattern matching
@@ -409,6 +419,105 @@ def _is_inside_cfg_test(
     return False
 
 
+def _unwrap_deref_type(type_node: "tree_sitter.Node", source: bytes) -> str:
+    """Unwrap Deref-implementing wrapper types to get the inner type.
+
+    Recursively strips ``Box<Arc<T>>`` → ``T``.  When the outermost type
+    is not a known wrapper (or the node is a plain ``type_identifier``),
+    returns the type text as-is.  References (``&T``, ``&mut T``) are
+    also unwrapped.
+
+    Args:
+        type_node: A tree-sitter type node from a ``field_declaration``.
+        source: Source bytes for text extraction.
+
+    Returns:
+        The innermost non-wrapper type name string.
+    """
+    # Reference types: &T, &mut T → unwrap to inner type
+    if type_node.type == "reference_type":
+        inner = type_node.child_by_field_name("type")
+        if inner:
+            return _unwrap_deref_type(inner, source)
+        return node_text(type_node, source)  # pragma: no cover — defensive
+
+    # Generic type: Box<T>, Arc<Mutex<T>> → check if wrapper
+    if type_node.type == "generic_type":
+        base = type_node.child_by_field_name("type")
+        if base:
+            base_name = node_text(base, source)
+            if base_name in _RUST_DEREF_WRAPPERS:
+                # Find the type_arguments child and extract the first argument
+                args_node = find_child_by_type(type_node, "type_arguments")
+                if args_node:
+                    for child in args_node.children:
+                        if child.is_named:
+                            return _unwrap_deref_type(child, source)
+            return base_name
+        return node_text(type_node, source)  # pragma: no cover — defensive
+
+    # type_identifier: plain type name
+    if type_node.type == "type_identifier":
+        return node_text(type_node, source)
+
+    # scoped_type_identifier: e.g. std::sync::Mutex
+    if type_node.type == "scoped_type_identifier":
+        return node_text(type_node, source)
+
+    return node_text(type_node, source)
+
+
+def _extract_struct_field_types(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> dict[str, dict[str, str]]:
+    """Extract field name → type mappings from struct declarations.
+
+    Walks all ``struct_item`` nodes and their ``field_declaration_list``
+    children. Wrapper types (``Box``, ``Arc``, etc.) are unwrapped via
+    ``_unwrap_deref_type`` so the registry contains effective dispatch types.
+
+    Tuple structs (``struct Foo(Bar)``) are skipped — their fields are
+    positional, not named, so ``self.0.method()`` patterns don't apply.
+
+    Args:
+        tree: Parsed tree-sitter tree for a single file.
+        source: Source bytes for text extraction.
+
+    Returns:
+        Mapping of struct_name → {field_name → type_name}.
+    """
+    result: dict[str, dict[str, str]] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "struct_item":
+            continue
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            continue  # pragma: no cover — defensive; struct_item always has name
+        struct_name = node_text(name_node, source)
+
+        # Find the field_declaration_list (named struct, not tuple struct)
+        body = find_child_by_type(node, "field_declaration_list")
+        if not body:
+            continue
+
+        fields: dict[str, str] = {}
+        for child in body.children:
+            if child.type != "field_declaration":
+                continue
+            field_name_node = child.child_by_field_name("name")
+            field_type_node = child.child_by_field_name("type")
+            if field_name_node and field_type_node:
+                fname = node_text(field_name_node, source)
+                ftype = _unwrap_deref_type(field_type_node, source)
+                fields[fname] = ftype
+
+        if fields:
+            result[struct_name] = fields
+
+    return result
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -603,6 +712,11 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[trait_name] = symbol
+
+    # Extract struct field types for base-class field type registry.
+    # Deref wrappers (Box, Arc, etc.) are unwrapped during extraction
+    # so the registry contains effective dispatch types.
+    analysis.class_field_types = _extract_struct_field_types(tree, source)
 
     return analysis
 
@@ -867,6 +981,8 @@ def _extract_edges_from_file(
     use_aliases: dict[str, str],
     method_resolver: ListNameResolver | None = None,
     span_index: dict[tuple[int, int], Symbol] | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
+    analyzer: "RustAnalyzer | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -874,6 +990,8 @@ def _extract_edges_from_file(
 
     Args:
         use_aliases: Dict mapping local names to import paths for disambiguation.
+        field_type_registry: Aggregated struct field types for receiver resolution.
+        analyzer: RustAnalyzer instance for resolve_receiver_type() calls.
         method_resolver: Optional ListNameResolver with ambiguity_threshold for
             method-specific lookups.  When provided, used for method calls
             (``foo.bar()``) to guard against 3+ ambiguous candidates.
@@ -1026,6 +1144,48 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                     ))
                                     resolved = True
+
+                        # Strategy 1.5: Resolve self.field.method() via
+                        # field type registry.  Fires for method calls where
+                        # the receiver is a field_expression rooted at self.
+                        # Known receiver type makes even blocklisted methods
+                        # (e.g. Client::send) unambiguous.
+                        if (
+                            not resolved
+                            and is_method_call
+                            and analyzer is not None
+                            and field_type_registry
+                        ):
+                            value_node = inner.child_by_field_name("value")
+                            if value_node is not None:
+                                impl_target = _get_impl_target(
+                                    node, source,
+                                )
+                                receiver_type = analyzer.resolve_receiver_type(
+                                    value_node, source, impl_target,
+                                )
+                                if receiver_type is not None:
+                                    typed_name = f"{receiver_type}::{callee_name}"
+                                    target = (
+                                        local_symbols.get(typed_name)
+                                        or global_symbols.get(typed_name)
+                                    )
+                                    if target is None:
+                                        lookup = resolver.lookup(typed_name)
+                                        if lookup.found and lookup.symbol:
+                                            target = lookup.symbol
+                                    if target is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=target.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="typed_field_call",
+                                            confidence=0.88,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                        ))
+                                        resolved = True
 
                         # Strategy 2: Fall back to short name
                         if not resolved:
@@ -1338,6 +1498,8 @@ class RustAnalyzer(TreeSitterAnalyzer):
             run.execution_id, resolver, import_aliases,
             method_resolver=mr,
             span_index=span_idx,
+            field_type_registry=self._field_type_registry,
+            analyzer=self,
         )
 
     def extract_usage_contexts_from_file(
