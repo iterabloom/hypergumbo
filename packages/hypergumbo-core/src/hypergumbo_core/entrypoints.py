@@ -872,11 +872,24 @@ def detect_entrypoints(
         EntrypointKind.ANDROID_ACTIVITY,
         EntrypointKind.ANDROID_APPLICATION,
     })
-    has_semantic = any(ep.kind in _SEMANTIC_KINDS for ep in unique_entrypoints)
-    if has_semantic:
+    # Per-language demotion: only demote library_export entries when their
+    # own language has semantic entrypoints.  This prevents the ArkLib
+    # problem: 6 Python helper scripts (with main()) should NOT suppress
+    # 163 Lean library_export entries.  Lean exports ARE the right
+    # entrypoints for a Lean library — Python main() is incidental tooling.
+    langs_with_semantic: set[str] = set()
+    for ep in unique_entrypoints:
+        if ep.kind in _SEMANTIC_KINDS:
+            sym = symbol_lookup.get(ep.symbol_id)
+            if sym and sym.language:
+                langs_with_semantic.add(sym.language)
+    if langs_with_semantic:
         for ep in unique_entrypoints:
             if ep.kind == EntrypointKind.LIBRARY_EXPORT:
-                ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                sym = symbol_lookup.get(ep.symbol_id)
+                lang = sym.language if sym else None
+                if lang and lang in langs_with_semantic:
+                    ep.confidence *= 0.1  # 90% reduction, same as test penalty
 
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above

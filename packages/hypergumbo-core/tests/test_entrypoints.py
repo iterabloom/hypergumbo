@@ -2703,7 +2703,7 @@ class TestApplicationLibraryExportDemotion:
         assert len(export_eps) == 0
 
     def test_library_export_demoted_when_commands_exist(self) -> None:
-        """library_export filtered when CLI commands exist.
+        """library_export filtered when same-language CLI commands exist.
 
         Demotion (90%) drops from 0.80 to 0.08 < threshold.
         """
@@ -2713,8 +2713,8 @@ class TestApplicationLibraryExportDemotion:
             meta={"concepts": [{"concept": "command_by_name"}]},
         )
         export = make_symbol(
-            "Parse", path="lib/parse.go", kind="function",
-            language="go", start_line=10,
+            "Parse", path="lib/parse.c", kind="function",
+            language="c", start_line=10,
             meta={"concepts": [{"concept": "library_export"}]},
         )
         nodes = [command, export]
@@ -2798,11 +2798,11 @@ class TestApplicationLibraryExportDemotion:
         assert len(export_eps) == 1
         assert export_eps[0].confidence >= 0.70
 
-    def test_demotion_not_language_specific(self) -> None:
-        """Demotion applies regardless of language.
+    def test_same_language_demotion_works_in_polyglot(self) -> None:
+        """Same-language demotion applies in polyglot repos.
 
         A Python app with Flask routes and library_export entries should
-        also see the demotion. Exports at 0.08 are filtered out.
+        see the demotion. Exports at 0.08 are filtered out.
         """
         route = make_symbol(
             "get_users", path="src/api/routes.py", kind="function",
@@ -2820,6 +2820,55 @@ class TestApplicationLibraryExportDemotion:
 
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(export_eps) == 0
+
+    def test_dominant_lang_exports_not_demoted_by_minority_semantic(self) -> None:
+        """Dominant language library_export NOT demoted by minority language main().
+
+        ArkLib scenario: 95% Lean library (163 files) with 5% Python helper
+        scripts (6 files with main()). Python main() should NOT trigger
+        demotion of Lean library_export entries — Lean exports ARE the
+        real entrypoints for this repo.
+
+        Fix for WI-sirim: minority-language semantic entrypoints must not
+        suppress majority-language library exports.
+        """
+        # Lean is the dominant language (many symbols)
+        lean_exports = [
+            make_symbol(
+                f"LeanDef{i}", path=f"ArkLib/Def{i}.lean", kind="function",
+                language="lean", start_line=i,
+                meta={"concepts": [{"concept": "library_export"}]},
+            )
+            for i in range(20)
+        ]
+        # Python is the minority language (few symbols)
+        py_mains = [
+            make_symbol(
+                "main", path=f"scripts/helper{i}.py", kind="function",
+                language="python", start_line=1 + i,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(3)
+        ]
+        nodes = lean_exports + py_mains
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lean_eps = [
+            e for e in entrypoints
+            if e.kind == EntrypointKind.LIBRARY_EXPORT
+        ]
+        # Lean exports should survive — not demoted by Python main()
+        assert len(lean_eps) >= 10, (
+            f"Expected >= 10 Lean library_export entries to survive, "
+            f"got {len(lean_eps)}. Minority-language main() should not "
+            f"demote dominant-language library exports."
+        )
+        for ep in lean_eps:
+            assert ep.confidence >= 0.50, (
+                f"Lean export {ep.label} confidence {ep.confidence:.2f} "
+                f"too low — should not be demoted by Python main()"
+            )
 
     def test_forgejo_scale_scenario(self) -> None:
         """Simulate forgejo: 772 routes + 7474 library_exports.
