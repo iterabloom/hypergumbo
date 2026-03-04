@@ -2581,6 +2581,74 @@ class TestRustGenericTraitMethodBlocklist:
             f"{len(call_edges)}: {[e.dst for e in call_edges]}"
         )
 
+    def test_blocked_load_prevents_atomic_false_positives(self, tmp_path: Path) -> None:
+        """x.load() produces no edge — prevents AtomicU64.load() false positives.
+
+        WI-bakak: jolt's JoltDevice::load rslice had 22/29 false positive
+        depth=1 callers from AtomicU64.load(Ordering::Relaxed) conflated
+        with JoltDevice.load().
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")  # pragma: no cover
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = (
+            b"use std::sync::atomic::Ordering;\n"
+            b"fn caller() {\n"
+            b"    counter.load(Ordering::Relaxed);\n"
+            b"}\n"
+        )
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:counters.rs:2-4:caller:function",
+            name="caller", kind="function", language="rust",
+            path="counters.rs",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # JoltDevice::load — a domain-specific load fn that should NOT
+        # attract edges from AtomicU64.load() calls
+        jolt_load = Symbol(
+            id="rust:device.rs:1-10:JoltDevice::load:function",
+            name="JoltDevice::load", kind="function", language="rust",
+            path="device.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"JoltDevice::load": jolt_load}
+        method_reg: dict[str, list[Symbol]] = {"load": [jolt_load]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "counters.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .load() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
+
     def test_nonblocked_prove_still_resolves(self, tmp_path: Path) -> None:
         """x.prove() with candidates still resolves (not in blocklist)."""
         from hypergumbo_lang_mainstream.rust import (
@@ -2653,6 +2721,38 @@ class TestRustGenericTraitMethodBlocklist:
 
         # Serde
         for name in ("serialize", "deserialize"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Atomic / sync methods (WI-bakak: .load() false positives)
+        for name in ("load", "store", "fetch_add", "fetch_sub",
+                      "compare_exchange", "swap"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Iterator / Option / Result combinators
+        for name in ("map", "filter", "fold", "collect", "flat_map",
+                      "find", "any", "all", "for_each", "map_err",
+                      "and_then", "or_else", "unwrap_or", "unwrap_or_else",
+                      "ok", "err", "expect", "ok_or", "ok_or_else"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # IO traits
+        for name in ("read", "write", "flush"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Display / ToString
+        for name in ("to_string",):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Constructor / builder (new is ubiquitous)
+        for name in ("new", "build"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Channel / async
+        for name in ("send", "recv"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Extend trait
+        for name in ("extend",):
             assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
 
         # Domain-specific names should NOT be in the blocklist
@@ -2808,10 +2908,11 @@ class TestRustTurbofishCalls:
         assert call_edges[0].dst == target.id
 
     def test_method_turbofish_resolves(self, tmp_path: Path) -> None:
-        """x.collect::<Vec<i32>>() resolves to the collect method.
+        """x.prove::<E1>() resolves to the prove method.
 
         The generic_function wrapper around field_expression must be
         unwrapped so the method call is detected correctly.
+        Uses 'prove' (not in blocklist) to verify turbofish unwrapping.
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
@@ -2829,7 +2930,7 @@ class TestRustTurbofishCalls:
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
 
-        source_text = b"fn caller() {\n    x.collect::<Vec<i32>>();\n}\n"
+        source_text = b"fn caller() {\n    x.prove::<E1>();\n}\n"
         tree = parser.parse(source_text)
 
         caller = Symbol(
@@ -2841,15 +2942,15 @@ class TestRustTurbofishCalls:
         )
 
         target = Symbol(
-            id="rust:lib.rs:1-10:MyIter::collect:method",
-            name="MyIter::collect", kind="method", language="rust",
+            id="rust:lib.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
             path="lib.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
 
-        registry: dict[str, Symbol] = {"MyIter::collect": target}
-        method_reg: dict[str, list[Symbol]] = {"collect": [target]}
+        registry: dict[str, Symbol] = {"NIFS::prove": target}
+        method_reg: dict[str, list[Symbol]] = {"prove": [target]}
 
         resolver = NameResolver(registry)
         method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
@@ -2863,7 +2964,7 @@ class TestRustTurbofishCalls:
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1, (
-            f"Expected 1 call edge for x.collect::<Vec<i32>>() "
+            f"Expected 1 call edge for x.prove::<E1>() "
             f"but got {len(call_edges)}"
         )
         assert call_edges[0].dst == target.id

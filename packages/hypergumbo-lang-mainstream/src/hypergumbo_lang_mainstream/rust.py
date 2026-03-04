@@ -1138,8 +1138,8 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
 _RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
     # core::convert
     "into", "from", "try_into", "try_from",
-    # core::fmt
-    "fmt",
+    # core::fmt / Display / ToString
+    "fmt", "to_string",
     # core::default
     "default",
     # core::clone
@@ -1148,17 +1148,31 @@ _RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
     "eq", "ne", "partial_cmp", "cmp", "hash",
     # core::ops
     "deref", "deref_mut", "drop",
-    # core::iter
-    "next", "into_iter",
+    # core::iter — combinators are on Iterator, Option, Result
+    "next", "into_iter", "map", "filter", "fold", "collect", "flat_map",
+    "find", "any", "all", "for_each",
     # core::convert (ref)
     "as_ref", "as_mut",
     # std collection methods (ambiguous without receiver type)
     "len", "is_empty", "push", "pop", "get", "insert", "remove", "contains",
-    "iter", "iter_mut",
+    "iter", "iter_mut", "extend",
+    # Option / Result combinators
+    "and_then", "or_else", "map_err", "unwrap_or", "unwrap_or_else",
+    "ok", "err", "expect", "ok_or", "ok_or_else",
     # serde
     "serialize", "deserialize",
     # core::str / parsing
     "from_str", "parse", "unwrap",
+    # std::sync::atomic — .load()/.store() on AtomicU64, AtomicU8, etc.
+    # Without receiver type info, x.load() conflates AtomicU64.load()
+    # with domain-specific load() methods (WI-bakak: 22 false positives).
+    "load", "store", "fetch_add", "fetch_sub", "compare_exchange", "swap",
+    # std::io — Read/Write trait methods
+    "read", "write", "flush",
+    # Constructor / builder — ubiquitous across types
+    "new", "build",
+    # Channel / async
+    "send", "recv",
 })
 
 
