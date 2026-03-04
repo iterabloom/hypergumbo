@@ -76,3 +76,10 @@
   clock: 9  # f971
   nonce: f971  # f971
   message: "might an analogous issue affect other hypergumbo language analyzers besides the one for Rust?"  # f971
+- op: discuss  # 41dd
+  at: '2026-03-04T04:43:10Z'  # 41dd
+  by: agent  # 41dd
+  actor: jgstern_agent  # 41dd
+  clock: 10  # 41dd
+  nonce: 41dd  # 41dd
+  message: "Yes, analogous method-name ambiguity affects multiple language analyzers. Python: x.get() conflates dict.get()/Session.get()/etc. Java/Kotlin: method overloading (same name, different signatures/types). Go: interface methods (.Read(), .Write(), .Close(), .String()) are ubiquitous. C++: virtual methods and overloads. The Rust blocklist approach (blocking common trait/interface methods from short-name resolution) could be ported to these analyzers. Go and Java would benefit most: Go has .Error(), .String(), .Close() etc across many types; Java has .get(), .set(), .toString() etc. This is a cross-cutting concern that should be addressed language by language. The blocklist is pragmatic and effective without needing full type inference."  # 41dd

@@ -113,3 +113,10 @@
   nonce: 1cba  # 1cba
   set:  # 1cba
     status: violated  # 1cba
+- op: discuss  # 4af5
+  at: '2026-03-04T04:44:22Z'  # 4af5
+  by: agent  # 4af5
+  actor: jgstern_agent  # 4af5
+  clock: 14  # 4af5
+  nonce: 4af5  # 4af5
+  message: "Addressing the human's question: which issues have been fixed since the March 2 external bakeoffs?\n\nFixes applied post-March 2:\n1. PR #1721 (WI-sirim): Per-language library_export demotion — minority-language main() no longer suppresses dominant-language exports. Addresses the ArkLib issue and partially addresses repos where utility main()s outrank domain code.\n2. PR #1722 (WI-bakak): Expanded Rust method blocklist with 30 methods (.load(), .map(), .new(), .collect(), etc.). Reduces centrality inflation from common methods.\n3. PR #1723 (WI-hulak): Widened WARN thresholds (tier1_pct 95→98, avg_slice good_max 500→2000, slice_coverage good_max 10→20).\n4. PR #1720 (WI-kivah): Fixed _TEST_PATH_RE to catch path-initial test/, testonly/, .test.js, .spec.ts.\n5. PR #1716: Event sourcing linker skips test files.\n6. PR #1717: Lean reference scanner covers all declaration types.\n\nNOT yet addressed (still structural):\n- Connectivity boost doesn't use reachability (reach3 signal). Entrypoint scoring uses 1-hop transitive out-degree but not deeper BFS reach.\n- No symbol-level utility detection (Clock, Logger, Metrics name patterns).\n- No diversity/category cap on entrypoints.\n- Utility directory penalty (50%) too weak for codegen/benchmark main()s.\n\nAvailable repos for revalidation: keycloak, jenkins (in ~/repos/). vault, falco, bun, grafana, gitlab, kong are NOT in the local repo pool. Will run keycloak+jenkins bakeoff to validate fixes and report results."  # 4af5

@@ -46,3 +46,10 @@
   clock: 5  # c557
   nonce: c557  # c557
   message: "might an analogous issue affect other language analyzers in hypergumbo?"  # c557
+- op: discuss  # e59b
+  at: '2026-03-04T04:43:02Z'  # e59b
+  by: agent  # e59b
+  actor: jgstern_agent  # e59b
+  clock: 6  # e59b
+  nonce: e59b  # e59b
+  message: "Good question. Analogous method-name ambiguity could affect: (1) Python — method calls like x.get() could conflate dict.get() with custom .get() methods, though Python's dynamic dispatch makes this less impactful since most calls are correctly ambiguous anyway. (2) Java/Kotlin — method overloading means the same name can have different signatures; currently resolved by name alone. (3) Go — interface methods (e.g., .Read(), .Write(), .Close()) are ubiquitous across types. (4) C++ — virtual methods and overloads. The Rust blocklist approach could be ported to other analyzers. Created WI-ronoj to track Rust trait-aware resolution as a future improvement; the blocklist workaround is sufficient for now. See also WI-ronoj human message about cross-language applicability."  # e59b
