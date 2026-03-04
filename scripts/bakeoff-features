@@ -144,6 +144,42 @@ _TEST_PATH_RE = re.compile(
     r'|(?:^|/)testonly[/.]'                             # Rust: testonly/ dirs and testonly.rs
 )
 
+# Annotation names that indicate a test function/method.
+# Covers Rust (#[test], #[tokio::test], #[actix_rt::test], #[async_std::test]),
+# Java/Kotlin (@Test, @org.junit.Test), and C# ([TestMethod], [Fact], [Theory]).
+_TEST_ANNOTATION_NAMES = frozenset({
+    "test", "Test",
+    "tokio::test", "actix_rt::test", "async_std::test",
+    "org.junit.Test", "org.junit.jupiter.api.Test",
+    "TestMethod", "Fact", "Theory",
+})
+
+
+def _is_test_node(node: dict) -> bool:
+    """Check if a node is test code by path or annotation.
+
+    Extends file-path matching with annotation-based detection so that
+    Rust ``#[test]``/``#[cfg(test)]`` functions in non-test files (e.g.
+    ``src/lib.rs``) are correctly identified as test nodes.  This prevents
+    test functions from appearing as rslice seed candidates and ensures
+    edges from test functions don't inflate production in-degree.
+    """
+    if _TEST_PATH_RE.search(node.get("path", "")):
+        return True
+    meta = node.get("meta") or {}
+    for key in ("decorators", "annotations"):
+        for dec in (meta.get(key) or []):
+            name = dec.get("name", "")
+            if name in _TEST_ANNOTATION_NAMES:
+                return True
+            # Rust #[cfg(test)] — "cfg" with "test" in args
+            if name == "cfg":
+                for arg in (dec.get("args") or []):
+                    if isinstance(arg, str) and "test" in arg:
+                        return True
+    return False
+
+
 # Quality thresholds
 QUALITY_THRESHOLDS = {
     "avg_slice_nodes": {"good_min": 20, "good_max": 2000, "warn_min": 5, "warn_max": 5000},
@@ -654,12 +690,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     if not edges:
         return []
 
-    # Build node lookup and identify test nodes
+    # Build node lookup and identify test nodes (by path AND annotation).
+    # Annotation-based detection catches Rust #[test]/#[cfg(test)] functions
+    # in non-test files (e.g. src/lib.rs) that path-only regex misses.
     node_map = {n["id"]: n for n in nodes}
-    test_node_ids = {
-        n["id"] for n in nodes
-        if _TEST_PATH_RE.search(n.get("path", ""))
-    }
+    test_node_ids = {n["id"] for n in nodes if _is_test_node(n)}
 
     # Compute in-degree (prod-only and total) and out-degree per node.
     # prod_in_degree excludes edges from test nodes so that production
@@ -723,8 +758,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         kind = node.get("kind", "")
         if kind not in seed_kinds:
             continue
-        path = node.get("path", "")
-        if _TEST_PATH_RE.search(path):
+        if node_id in test_node_ids:
             continue
         name = node.get("name", "")
         entry = node.get("id", "")
@@ -839,8 +873,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         kind = node.get("kind", "")
         if kind not in seed_kinds:
             continue
-        path = node.get("path", "")
-        if _TEST_PATH_RE.search(path):
+        if node_id in test_node_ids:
             continue
         entry = node.get("id", "")
         if not entry:
@@ -1516,7 +1549,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         code_nodes = [
             n for n in nodes
             if n.get("kind") in _CODE_NODE_KINDS
-            and not _TEST_PATH_RE.search(n.get("path", ""))
+            and not _is_test_node(n)
         ]
         code_node_ids = {n.get("id") for n in code_nodes}
         connected_nodes = set()

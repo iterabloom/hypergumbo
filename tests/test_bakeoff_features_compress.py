@@ -476,6 +476,95 @@ class TestCompressedReadIntegration:
                 f"Expected prod_heavy first (prod_in=4), but got: {seeds}"
             )
 
+    def test_pick_reverse_slice_seeds_annotation_test_detection(self, tmp_path: Path) -> None:
+        """Test nodes identified by annotation (not just path) should be excluded.
+
+        A Rust function with #[cfg(test)] annotation in a non-test file path
+        (e.g., src/lib.rs) should be treated as a test node: it should not be
+        a candidate seed, and edges FROM it should not count as production
+        in-degree. This mirrors the core is_test_node() logic.
+        """
+        nodes = [
+            # prod_func: called 3 times from production code
+            {"id": "prod_func", "name": "prod_func", "kind": "function",
+             "path": "src/core.rs", "language": "rust"},
+            # test_annotated_func: has #[cfg(test)], called 0 times, but
+            # calls test_target 5 times (as a test helper). It's in src/,
+            # NOT in a tests/ directory — path-only detection misses it.
+            {"id": "test_annotated_func", "name": "test_helper", "kind": "function",
+             "path": "src/checking.rs", "language": "rust",
+             "meta": {"annotations": [{"name": "cfg", "args": ["test"]}]}},
+            # test_target: called 5 times from test_annotated_func + 1 from prod
+            # Without annotation detection, prod_in_degree=6 (all callers look prod).
+            # With annotation detection, prod_in_degree=1 (only caller1).
+            {"id": "test_target", "name": "test_target", "kind": "function",
+             "path": "src/lib.rs", "language": "rust"},
+            # test_attr_func: has #[test] attribute directly
+            {"id": "test_attr_func", "name": "test_something", "kind": "function",
+             "path": "src/lib.rs", "language": "rust",
+             "meta": {"annotations": [{"name": "test"}]}},
+            # Production callers
+            {"id": "caller1", "name": "caller1", "kind": "function",
+             "path": "src/main.rs", "language": "rust"},
+            {"id": "caller2", "name": "caller2", "kind": "function",
+             "path": "src/api.rs", "language": "rust"},
+            {"id": "caller3", "name": "caller3", "kind": "function",
+             "path": "src/handler.rs", "language": "rust"},
+            # Deps (for out-degree)
+            {"id": "dep1", "name": "dep1", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+            {"id": "dep2", "name": "dep2", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+            {"id": "dep3", "name": "dep3", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+        ]
+        edges = [
+            # prod_func: 3 production callers
+            {"src": "caller1", "dst": "prod_func", "type": "calls"},
+            {"src": "caller2", "dst": "prod_func", "type": "calls"},
+            {"src": "caller3", "dst": "prod_func", "type": "calls"},
+            # test_annotated_func calls test_target 5 times
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            # test_attr_func also calls test_target
+            {"src": "test_attr_func", "dst": "test_target", "type": "calls"},
+            # 1 production caller for test_target
+            {"src": "caller1", "dst": "test_target", "type": "calls"},
+            # Give candidates out-degree >= 3
+            {"src": "prod_func", "dst": "dep1", "type": "calls"},
+            {"src": "prod_func", "dst": "dep2", "type": "calls"},
+            {"src": "prod_func", "dst": "dep3", "type": "calls"},
+            {"src": "test_target", "dst": "dep1", "type": "calls"},
+            {"src": "test_target", "dst": "dep2", "type": "calls"},
+            {"src": "test_target", "dst": "dep3", "type": "calls"},
+            # Give test_annotated_func out-degree (shouldn't matter, it's a test)
+            {"src": "test_annotated_func", "dst": "dep1", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "dep2", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "dep3", "type": "calls"},
+        ]
+        data = {"nodes": nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "annot-test-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+
+        # prod_func (prod_in=3) should rank above test_target (prod_in=1)
+        # test_annotated_func and test_attr_func should NOT appear as seeds
+        assert "test_annotated_func" not in seeds, (
+            f"#[cfg(test)] function should not be a seed: {seeds}"
+        )
+        assert "test_attr_func" not in seeds, (
+            f"#[test] function should not be a seed: {seeds}"
+        )
+        # prod_func should be the top seed
+        assert len(seeds) >= 1
+        assert seeds[0] == "prod_func", (
+            f"Expected prod_func first (prod_in=3), got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)
