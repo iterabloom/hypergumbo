@@ -66,3 +66,10 @@
   clock: 7  # 6072
   nonce: '6072'  # 6072
   message: "Have the attempted fixes here and in WI-sikur been validated with a bakeoff to confirm they address the structural issue(s)?"  # 6072
+- op: discuss  # 130b
+  at: '2026-03-04T04:45:55Z'  # 130b
+  by: agent  # 130b
+  actor: jgstern_agent  # 130b
+  clock: 8  # 130b
+  nonce: 130b  # 130b
+  message: "The fix in WI-sikur has not been validated with a bakeoff. None of the recent bakeoff sessions included repos with Go vendored SDK code. The ~/repos/ pool has alertmanager and prometheus (Go projects) that may have vendored dependencies. Will include these in the revalidation bakeoff."  # 130b

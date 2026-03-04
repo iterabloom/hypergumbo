@@ -49,3 +49,25 @@
   clock: 5  # db95
   nonce: db95  # db95
   message: "please check whether the bakeoff results obtained here are sufficient to answer the questions highlighted in my other recent messages sent in the past 45 mins. Also, secondarily, please to spawn those 40 individual LLM agents. Maybe in batches of 10 -- don't try to boil the ocean -- but it seems like worthwhile analyses to do, right?"  # db95
+- op: discuss  # 0bc5
+  at: '2026-03-04T04:46:23Z'  # 0bc5
+  by: agent  # 0bc5
+  actor: jgstern_agent  # 0bc5
+  clock: 6  # 0bc5
+  nonce: 0bc5  # 0bc5
+  message: "Current state: 6/16 repos have LLM assessments. 10 remaining: VCV-io, gnark-lean-demo, ix, clean, plonky2, incrementalmerkletree, risc0-lean4, pasta_curves, ZeroKnowledgeProofs, proven-zk.\n\nRegarding the human's questions from other tracker items: the current deep-20260303 bakeoff ran on formal methods repos (ArkLib, openzeppelin, jolt, sp1, zksync-era, penumbra etc.) — none of the INV-mahap repos (vault, falco, jenkins, kong, bun, grafana, gitlab). For INV-nimik (keycloak) and INV-mogud (Go vendored SDK), I'll run targeted bakeoffs on the available repos (keycloak, jenkins, alertmanager, prometheus).\n\nFor the remaining 10 LLM reflect agents: will spawn them in a batch of 10 after generating the reflect prompts. These are smaller repos (formal methods / crypto) so assessments should be fast."  # 0bc5
+- op: update  # 192d
+  at: '2026-03-04T05:00:49Z'  # 192d
+  by: agent  # 192d
+  actor: jgstern_agent  # 192d
+  clock: 7  # 192d
+  nonce: 192d  # 192d
+  set:  # 192d
+    status: done  # 192d
+- op: discuss  # f3b6
+  at: '2026-03-04T05:00:50Z'  # f3b6
+  by: agent  # f3b6
+  actor: jgstern_agent  # f3b6
+  clock: 8  # f3b6
+  nonce: f3b6  # f3b6
+  message: "All 16 repos assessed across 3 cohorts. Cross-cohort results: 0 USEFUL, 8 PARTIALLY_USEFUL, 8 NOT_USEFUL. Mean scores: refactoring=31.2, new_feature=28.0, understanding=31.2. Key improvement themes: (1) Rust self.field.method() call resolution, (2) gRPC/tonic service detection, (3) tracing::instrument decorator conflation, (4) rslice seed selection needs prod_in_degree, (5) route deduplication. Full summaries in deep-20260303-203358/reflect/cohort-*/iter-001/summary.yaml."  # f3b6
