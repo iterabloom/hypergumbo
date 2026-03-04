@@ -16,7 +16,11 @@ Ranking uses multiple signals combined:
    — over pure *sinks* (e.g., exception classes, utility decorators) that
    have high in-degree but near-zero out-degree.  Extreme in-degree is
    saturated via ``hub_threshold`` to prevent infrastructure utilities
-   (error sentinels, loggers) from dominating rankings.
+   (error sentinels, loggers) from dominating rankings.  Cross-file edges
+   count as 1.0 while within-file edges are dampened (default 0.3x) to
+   prevent local variables referenced many times within a single file
+   (e.g., ``pSpec`` with 96 in-degree) from outranking architecturally
+   important symbols referenced across many files.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -141,6 +145,7 @@ def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
     hub_threshold: int | None = None,
+    within_file_weight: float = 1.0,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -167,6 +172,12 @@ def compute_centrality(
     happens *before* normalization, which is critical — post-normalization
     dampening cannot flip relative rankings.
 
+    When ``within_file_weight`` is less than 1.0, edges where source and
+    destination are in the same file contribute less to in-degree.  This
+    prevents local variables and helpers referenced many times within a
+    single file from outranking architecturally important symbols that are
+    referenced across many files.  Cross-file edges always contribute 1.0.
+
     Scores are normalized to 0-1 after computation.
 
     Args:
@@ -175,18 +186,33 @@ def compute_centrality(
         hub_threshold: In-degree above which saturation applies. None
             disables saturation.  Default None (off for backward compat).
             ``rank_symbols`` passes 100.
+        within_file_weight: Weight for within-file edges (0.0-1.0).
+            Cross-file edges always count as 1.0.  Default 1.0
+            (all edges equal, backward compatible).  ``rank_symbols``
+            passes 0.3 to dampen local-variable inflation.
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
     """
     symbol_ids = {s.id for s in symbols}
-    in_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+    in_degree: Dict[str, float] = dict.fromkeys(symbol_ids, 0.0)
     out_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+
+    # Build symbol-to-path lookup for cross-file detection
+    use_file_weighting = within_file_weight < 1.0
+    if use_file_weighting:
+        symbol_path: Dict[str, str] = {s.id: s.path for s in symbols}
 
     for edge in edges:
         target = edge.dst
         if target and target in in_degree:
-            in_degree[target] += 1
+            if use_file_weighting:
+                src_path = symbol_path.get(edge.src, "")
+                dst_path = symbol_path.get(target, "")
+                weight = within_file_weight if (src_path and src_path == dst_path) else 1.0
+                in_degree[target] += weight
+            else:
+                in_degree[target] += 1
         source = edge.src
         if source and source in out_degree:
             out_degree[source] += 1
@@ -736,8 +762,12 @@ def rank_symbols(
 
     # Compute centrality with hub saturation (threshold=100 dampens
     # infrastructure utilities like error sentinels and loggers).
+    # within_file_weight=0.3 dampens local-variable inflation: symbols
+    # referenced many times within one file rank lower than symbols
+    # referenced across many files.
     raw_centrality = compute_centrality(
-        symbols, filtered_edges, hub_threshold=100
+        symbols, filtered_edges, hub_threshold=100,
+        within_file_weight=0.3,
     )
 
     # Apply tier weighting if enabled

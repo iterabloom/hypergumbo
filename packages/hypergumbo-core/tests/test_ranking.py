@@ -237,6 +237,109 @@ class TestBidirectionalCentrality:
         assert max(result.values()) == pytest.approx(1.0)
 
 
+
+class TestCrossFileDegreeWeighting:
+    """Tests for within-file vs cross-file degree weighting in centrality.
+
+    Symbols referenced across many files are architecturally important.
+    Symbols referenced many times within one file may just be local variables.
+    The within_file_weight parameter lets callers dampen within-file edges.
+    """
+
+    def test_within_file_weight_reduces_same_file_edges(self):
+        """Within-file edges contribute less to in-degree when weight < 1.0."""
+        # Two symbols in the same file
+        callee = make_symbol("callee", path="src/utils.py")
+        caller = make_symbol("caller", path="src/utils.py")
+        edge = make_edge(caller.id, callee.id)
+
+        # Default (weight=1.0): full in-degree credit
+        full = compute_centrality([callee, caller], [edge])
+
+        # With within_file_weight=0.3: reduced credit
+        reduced = compute_centrality(
+            [callee, caller], [edge], within_file_weight=0.3
+        )
+
+        # Both should produce callee > 0 (it's the only node with in-degree)
+        # But the absolute scores differ only in normalization (both max→1.0)
+        # The key test is the next one: cross-file vs within-file comparison
+        assert full[callee.id] == 1.0
+        assert reduced[callee.id] == 1.0  # Still normalized to 1.0
+
+    def test_cross_file_outranks_within_file_heavy(self):
+        """A symbol with cross-file references outranks one with many within-file refs."""
+        # Symbol A: referenced 5 times from 5 different files (cross-file)
+        sym_a = make_symbol("ArchitecturalCore", path="src/core.py")
+        callers_a = [
+            make_symbol(f"caller{i}", path=f"src/mod{i}.py") for i in range(5)
+        ]
+        edges_a = [make_edge(c.id, sym_a.id) for c in callers_a]
+
+        # Symbol B: referenced 10 times from within the same file (within-file)
+        sym_b = make_symbol("LocalHelper", path="src/helpers.py")
+        callers_b = [
+            make_symbol(f"func{i}", path="src/helpers.py") for i in range(10)
+        ]
+        edges_b = [make_edge(c.id, sym_b.id) for c in callers_b]
+
+        all_symbols = [sym_a, sym_b] + callers_a + callers_b
+        all_edges = edges_a + edges_b
+
+        # Without weighting: B outranks A (10 > 5 in-degree)
+        default = compute_centrality(all_symbols, all_edges)
+        assert default[sym_b.id] > default[sym_a.id]
+
+        # With within_file_weight=0.3: A outranks B
+        # A: 5 * 1.0 = 5.0 effective in-degree
+        # B: 10 * 0.3 = 3.0 effective in-degree
+        weighted = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3
+        )
+        assert weighted[sym_a.id] > weighted[sym_b.id]
+
+    def test_within_file_weight_default_preserves_behavior(self):
+        """Default within_file_weight=1.0 gives same results as before."""
+        a = make_symbol("a", path="src/same.py")
+        b = make_symbol("b", path="src/same.py")
+        c = make_symbol("c", path="src/other.py")
+
+        edges = [
+            make_edge(a.id, b.id),  # within-file
+            make_edge(c.id, b.id),  # cross-file
+        ]
+
+        result_default = compute_centrality([a, b, c], edges)
+        result_explicit = compute_centrality(
+            [a, b, c], edges, within_file_weight=1.0
+        )
+
+        assert result_default == result_explicit
+
+    def test_within_file_weight_mixed_edges(self):
+        """Mixed within-file and cross-file edges are weighted correctly."""
+        target = make_symbol("target", path="src/core.py")
+        same_file = make_symbol("same", path="src/core.py")
+        other_file = make_symbol("other", path="src/utils.py")
+
+        edges = [
+            make_edge(same_file.id, target.id),   # within-file
+            make_edge(other_file.id, target.id),   # cross-file
+        ]
+
+        result = compute_centrality(
+            [target, same_file, other_file], edges,
+            within_file_weight=0.5,
+        )
+
+        # target effective in-degree = 1.0 (cross) + 0.5 (within) = 1.5
+        # same_file: 0 in-degree
+        # other_file: 0 in-degree
+        assert result[target.id] == 1.0  # Normalized max
+        assert result[same_file.id] == 0.0
+        assert result[other_file.id] == 0.0
+
+
 class TestApplyTierWeights:
     """Tests for apply_tier_weights function."""
 
