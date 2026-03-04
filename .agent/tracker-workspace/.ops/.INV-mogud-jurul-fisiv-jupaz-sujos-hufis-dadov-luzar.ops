@@ -80,3 +80,25 @@
   clock: 9  # ec31
   nonce: ec31  # ec31
   message: "ok lmk how it goes ty"  # ec31
+- op: discuss  # fdef
+  at: '2026-03-04T08:07:17Z'  # fdef
+  by: agent  # fdef
+  actor: jgstern_agent  # fdef
+  clock: 10  # fdef
+  nonce: fdef  # fdef
+  message: "Revalidation bakeoff (March 4) on prometheus:\n\nPrometheus uses Go modules (go.mod), not vendoring — it has no vendor/ directory. This makes it a poor test case for the original INV-mogud issue (vendored SDKs in *-sdk-go/ or vendor-internal/ paths). The one JS vendor file (jquery.flot.js in web/ui/react-app/src/vendor/flot/) is classified as tier-1, suggesting EXTERNAL_DEP_PATTERNS still miss vendor/ subdirectories in non-Go contexts.\n\nThe broader structural issue is present: 34,704 edges (61.7%) point to unresolved Go external destinations (stdlib like fmt.Errorf, third-party like github.com/stretchr/testify). These have no node representation in the graph.\n\nTo properly test the original INV-mogud issue (vendored Go SDKs), need to run on cluster-autoscaler (which has *-sdk-go/ paths). It's available in ~/whole_bunch_of_repos/cluster-autoscaler."  # fdef
+- op: discuss  # 5b32
+  at: '2026-03-04T08:15:55Z'  # 5b32
+  by: agent  # 5b32
+  actor: jgstern_agent  # 5b32
+  clock: 11  # 5b32
+  nonce: 5b32  # 5b32
+  message: "Revalidation on cluster-autoscaler (March 4, the original repo that exposed this issue):\n\nFULLY FIXED. Zero vendored SDK nodes misclassified as tier-1.\n\nBefore (original finding): 57% of nodes were vendored SDK code classified as tier-1.\nAfter: All 19,466 vendored nodes correctly classified as tier-3:\n- *-sdk-go* paths: 17,597 nodes → all tier-3\n- *-go-sdk* paths: 1,692 nodes → all tier-3\n- vendor-internal/: 851 nodes → all tier-3\n\nTier-1 now contains only first-party code (12,643 nodes, 0% contamination).\n\nThe original INV is resolved. The broader issue (Go external call targets having no node representation, affecting 61.7% of prometheus edges) is a separate concern — it's about edge endpoint resolution, not tier classification."  # 5b32
+- op: update  # 4d00
+  at: '2026-03-04T08:16:03Z'  # 4d00
+  by: agent  # 4d00
+  actor: jgstern_agent  # 4d00
+  clock: 12  # 4d00
+  nonce: 4d00  # 4d00
+  set:  # 4d00
+    status: holding  # 4d00

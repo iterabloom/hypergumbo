@@ -127,3 +127,17 @@
   clock: 15  # b939
   nonce: b939  # b939
   message: "I'm pretty sure there is a whole_bunch_of_repos folder in the home dir that contains vault, falco, bun, grafana, gitlab, kong"  # b939
+- op: discuss  # f38c
+  at: '2026-03-04T08:07:24Z'  # f38c
+  by: agent  # f38c
+  actor: jgstern_agent  # f38c
+  clock: 16  # f38c
+  nonce: f38c  # f38c
+  message: "Acknowledged — vault, falco, grafana, gitlab, kong found in ~/whole_bunch_of_repos/. Will run revalidation bakeoffs on those repos to complete the coverage. Bun is not present in that folder."  # f38c
+- op: discuss  # 7874
+  at: '2026-03-04T08:23:05Z'  # 7874
+  by: agent  # 7874
+  actor: jgstern_agent  # 7874
+  clock: 17  # 7874
+  nonce: '7874'  # 7874
+  message: "Revalidation complete (March 4) — vault and grafana results:\n\n**Vault (Go, 26,198 nodes):** PARTIAL FIX\n- stubmaker demoted from dominating to #147 (confidence 0.65) — that specific issue is fixed\n- BUT: 18 plugin CLI mains (builtin/logical/*/cmd/main.go) still rank #1-18 at confidence 1.0\n- vault/main.go (server entry) ranks #71 at confidence 0.925\n- HTTP routes (65 entries, confidence 1.0) rank below all main_function entries\n- Go external calls: 50,701 unresolved (58.6% of Go calls)\n\n**Grafana (Go+TS, 78,997 nodes):** NOT FIXED\n- kinds/gen.go:main still rank #4 (first main_function), confidence 1.0\n- pkg/cmd/grafana/main.go (actual server binary) ranks #366, confidence 0.9993\n- 17/20 main()s are utility/codegen tools, all scoring ~1.0\n- HTTP routes rank well (477 entries) but one false positive: React component as HTTP DELETE route\n\n**Summary across all 5 repos tested:**\n| Repo | Result | Top auto-selected entry | Domain-relevant? |\n|------|--------|------------------------|-----------------|\n| Jenkins (Java) | FIXED | CLIRegisterer.main | Yes |\n| Keycloak (Java) | GOOD | HTTP handlers | Yes |\n| Prometheus (Go) | PARTIAL | cmd/prometheus/main.go | Yes (but tied with utility mains) |\n| Vault (Go) | PARTIAL | Plugin CLI main | No — plugin shim, not vault server |\n| Grafana (Go+TS) | NOT FIXED | test_function/gen.go | No — codegen/test, not server |\n\n**Pattern:** Java repos are fixed. Go repos still have the utility-main problem because: (1) confidence model gives all main()s 1.0, (2) utility-directory penalty doesn't fire for paths like devenv/, builtin/logical/*/cmd/, kinds/, (3) no signal distinguishes cmd/<project-name>/main.go from codegen mains.\n\n**Remaining structural gap:** Need a 'primary entrypoint' heuristic — e.g., boost main()s in cmd/<project-name>/ or pkg/cmd/<project-name>/ paths, or use Dockerfile/Makefile build target references as a signal."  # 7874
