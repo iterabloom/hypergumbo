@@ -2547,6 +2547,73 @@ class TestRustTraitImplEdges:
         assert impl_edges[0].dst == trait_sym.id
 
 
+    def test_impl_unresolved_trait_creates_edge(self, tmp_path: Path) -> None:
+        """impl UnresolvedTrait for Struct creates an unresolved implements edge.
+
+        When a trait is imported from an external/generated module (e.g.,
+        tonic gRPC QueryService) and its definition file wasn't analyzed,
+        the trait symbol won't be in the registry. The analyzer should still
+        create an implements edge to an unresolved target at lower confidence,
+        so the relationship is captured in the behavior map.
+
+        This is critical for penumbra-style repos where tonic QueryService
+        traits are generated from .proto files and not directly analyzed.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # File 1: only has the struct and the impl, NOT the trait definition.
+        # The trait is imported from an external module (simulated by a use statement
+        # to a module that doesn't exist in the analyzed files).
+        (tmp_path / "server.rs").write_text(
+            "use external_proto::query_service_server::QueryService;\n"
+            "\n"
+            "pub struct Server;\n"
+            "\n"
+            "impl QueryService for Server {\n"
+            "    fn query(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Should have 1 unresolved implements edge
+        assert len(impl_edges) == 1, (
+            f"Expected 1 implements edge for unresolved trait, got {len(impl_edges)}"
+        )
+
+        struct_sym = next(s for s in result.symbols if s.name == "Server")
+        edge = impl_edges[0]
+        assert edge.src == struct_sym.id
+        # Dst should reference QueryService (unresolved)
+        assert "QueryService" in edge.dst
+        # Lower confidence for unresolved
+        assert edge.confidence < 0.95
+
+    def test_impl_std_trait_no_unresolved_edge(self, tmp_path: Path) -> None:
+        """impl Clone for Struct should NOT create an unresolved implements edge.
+
+        Standard library traits (Clone, Debug, Default, etc.) are ubiquitous
+        and not architecturally meaningful. Creating unresolved edges for them
+        would be pure noise.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyStruct;\n"
+            "\n"
+            "impl Clone for MyStruct {\n"
+            "    fn clone(&self) -> Self { MyStruct }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Clone is a std trait — no unresolved edge should be created
+        assert len(impl_edges) == 0
+
+
 class TestRustGenericTraitMethodBlocklist:
     """Tests for generic trait method blocklist (false-positive suppression).
 

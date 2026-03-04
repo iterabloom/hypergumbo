@@ -1027,6 +1027,26 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
+                    elif not trait_sym and impl_sym:
+                        # Unresolved trait: definition not in analyzed files
+                        # (e.g., tonic gRPC traits generated from .proto).
+                        # Create a lower-confidence edge so the relationship
+                        # is captured even when the trait source isn't available.
+                        short_name = trait_name.rsplit("::", 1)[-1] if "::" in trait_name else trait_name
+                        if short_name not in _RUST_STD_TRAIT_NAMES:
+                            unresolved_id = make_symbol_id(
+                                "rust", "unresolved", 0, 0, short_name, "trait",
+                            )
+                            edges.append(Edge.create(
+                                src=impl_sym.id,
+                                dst=unresolved_id,
+                                edge_type="implements",
+                                line=node.start_point[0] + 1,
+                                evidence_type="trait_impl_unresolved",
+                                confidence=0.70,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
 
         # Detect use statements
         elif node.type == "use_declaration":
@@ -1337,6 +1357,49 @@ _RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
     "new", "build",
     # Channel / async
     "send", "recv",
+})
+
+
+# Standard library trait names that should NOT generate unresolved implements
+# edges.  These are ubiquitous auto-derived or manually-impl'd traits whose
+# definitions are in std/core and won't be in the project's symbol registry.
+# Creating unresolved edges for them would be pure noise — a developer never
+# needs to know "MyStruct implements Clone" in the call graph.
+_RUST_STD_TRAIT_NAMES: frozenset[str] = frozenset({
+    # core::marker
+    "Copy", "Send", "Sync", "Sized", "Unpin",
+    # core::clone
+    "Clone",
+    # core::cmp
+    "PartialEq", "Eq", "PartialOrd", "Ord",
+    # core::fmt
+    "Debug", "Display",
+    # core::hash
+    "Hash",
+    # core::default
+    "Default",
+    # core::convert
+    "From", "Into", "TryFrom", "TryInto", "AsRef", "AsMut",
+    # core::ops
+    "Deref", "DerefMut", "Drop", "Add", "Sub", "Mul", "Div", "Rem",
+    "Neg", "Not", "BitAnd", "BitOr", "BitXor", "Shl", "Shr",
+    "Index", "IndexMut", "Fn", "FnMut", "FnOnce",
+    "AddAssign", "SubAssign", "MulAssign", "DivAssign",
+    # core::iter
+    "Iterator", "IntoIterator", "FromIterator", "ExactSizeIterator",
+    "DoubleEndedIterator",
+    # core::future
+    "Future",
+    # std::io
+    "Read", "Write", "Seek", "BufRead",
+    # std::error
+    "Error",
+    # serde (extremely common, not architectural)
+    "Serialize", "Deserialize", "Serializer", "Deserializer",
+    # std::string
+    "ToString",
+    # std::borrow
+    "Borrow", "BorrowMut", "ToOwned",
 })
 
 
