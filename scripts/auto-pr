@@ -245,13 +245,18 @@ Individual commits are preserved in the history."
 	git checkout "$tip_branch"
 
 	# Exclude tracker ops files from PR (they flow through tracker sync)
+	# IMPORTANT: Use index-only operations to avoid overwriting the working
+	# tree. `git checkout <base> -- <file>` would destroy locally-appended
+	# ops (status updates, discussion entries) that haven't synced yet.
 	local ops_files
 	ops_files=$(git diff --name-only "$base_branch"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
 		echo "🔧 Excluding tracker ops from flush PR (flows through tracker sync)..."
 		while IFS= read -r f; do
 			if git cat-file -e "$base_branch:$f" 2>/dev/null; then
-				git checkout "$base_branch" -- "$f"
+				# Restore base version in index only (working tree keeps local ops)
+				git show "$base_branch:$f" | git hash-object -w --stdin | \
+					xargs -I {} git update-index --cacheinfo 100644,{},"$f"
 			else
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
@@ -517,6 +522,9 @@ do_pr() {
 	fi
 
 	# Exclude tracker ops files from PR (they flow through tracker sync)
+	# IMPORTANT: Use index-only operations to avoid overwriting the working
+	# tree. `git checkout <base> -- <file>` would destroy locally-appended
+	# ops (status updates, discussion entries) that haven't synced yet.
 	local ops_files
 	ops_files=$(git diff --name-only "$BASE_BRANCH"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
@@ -524,7 +532,9 @@ do_pr() {
 		echo "🔧 Excluding tracker ops from PR (flows through tracker sync)..."
 		while IFS= read -r f; do
 			if git cat-file -e "$BASE_BRANCH:$f" 2>/dev/null; then
-				git checkout "$BASE_BRANCH" -- "$f"
+				# Restore base version in index only (working tree keeps local ops)
+				git show "$BASE_BRANCH:$f" | git hash-object -w --stdin | \
+					xargs -I {} git update-index --cacheinfo 100644,{},"$f"
 			else
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
