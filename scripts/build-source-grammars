@@ -63,9 +63,9 @@ install_from_wheels() {
     # Check if all wheels exist
     if ls $lean_wheel 1>/dev/null 2>&1 && ls $wolfram_wheel 1>/dev/null 2>&1 && ls $circom_wheel 1>/dev/null 2>&1; then
         echo "Installing from cached wheels..."
-        pip install "$WHEELS_DIR"/tree_sitter_lean-*.whl --quiet --no-cache-dir 2>&1
-        pip install "$WHEELS_DIR"/tree_sitter_wolfram-*.whl --quiet --no-cache-dir 2>&1
-        pip install "$WHEELS_DIR"/tree_sitter_circom-*.whl --quiet --no-cache-dir 2>&1
+        python3 -m pip install "$WHEELS_DIR"/tree_sitter_lean-*.whl --quiet --no-cache-dir 2>&1 || return 1
+        python3 -m pip install "$WHEELS_DIR"/tree_sitter_wolfram-*.whl --quiet --no-cache-dir 2>&1 || return 1
+        python3 -m pip install "$WHEELS_DIR"/tree_sitter_circom-*.whl --quiet --no-cache-dir 2>&1 || return 1
         echo "Successfully installed grammars from wheels"
         return 0
     fi
@@ -225,9 +225,9 @@ SETUPEOF
     # Build wheel if wheels directory is specified
     if [ -n "$WHEELS_DIR" ]; then
         echo "Building wheel..."
-        pip wheel "$pkg_dir" -w "$WHEELS_DIR" --quiet --no-cache-dir 2>&1
+        python3 -m pip wheel "$pkg_dir" -w "$WHEELS_DIR" --quiet --no-cache-dir 2>&1
         echo "Installing from wheel..."
-        pip install "$WHEELS_DIR"/tree_sitter_${name}-*.whl --quiet --no-cache-dir 2>&1
+        python3 -m pip install "$WHEELS_DIR"/tree_sitter_${name}-*.whl --quiet --no-cache-dir 2>&1
         echo "Successfully built and installed tree-sitter-$name"
         return 0
     fi
@@ -238,9 +238,9 @@ SETUPEOF
     local retry=0
     while [ $retry -lt $max_retries ]; do
         # Clear pip cache to free memory before each attempt
-        pip cache purge 2>/dev/null || true
+        python3 -m pip cache purge 2>/dev/null || true
 
-        if pip install "$pkg_dir" --quiet --no-cache-dir 2>&1; then
+        if python3 -m pip install "$pkg_dir" --quiet --no-cache-dir 2>&1; then
             echo "Successfully installed tree-sitter-$name"
             return 0
         fi

@@ -300,7 +300,7 @@ jobs:
       - name: Build grammar wheels
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          pip install --upgrade pip setuptools wheel
+          python3 -m pip install --upgrade pip setuptools wheel
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Verify wheels exist
         run: ls -la /tmp/grammar-wheels/*.whl || echo "No wheels (cache hit expected)"
