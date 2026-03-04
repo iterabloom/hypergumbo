@@ -74,3 +74,42 @@
   clock: 8  # 7d7c
   nonce: 7d7c  # 7d7c
   message: "Partially addressed: frontend route suppression (WI-ronik, PR #1682) eliminates false-positive http_route entries. Needs bakeoff revalidation."  # 7d7c
+- op: update  # 8202
+  at: '2026-03-04T03:42:43Z'  # 8202
+  by: human  # 8202
+  actor: jgstern  # 8202
+  clock: 9  # 8202
+  nonce: '8202'  # 8202
+  set:  # 8202
+    title: "Entrypoint Ranking Should Not Be Biased Toward Utility Symbols"  # 8202
+- op: update  # f72b
+  at: '2026-03-04T03:43:00Z'  # f72b
+  by: human  # f72b
+  actor: jgstern  # f72b
+  clock: 10  # f72b
+  nonce: f72b  # f72b
+  set:  # f72b
+    status: violated  # f72b
+- op: update  # bfc3
+  at: '2026-03-04T03:43:22Z'  # bfc3
+  by: human  # bfc3
+  actor: jgstern  # bfc3
+  clock: 11  # bfc3
+  nonce: bfc3  # bfc3
+  set:  # bfc3
+    status: holding  # bfc3
+- op: discuss  # 3273
+  at: '2026-03-04T03:48:38Z'  # 3273
+  by: human  # 3273
+  actor: jgstern  # 3273
+  clock: 12  # 3273
+  nonce: '3273'  # 3273
+  message: "This item's description and discussion pointed out a bunch of issues. To what extent have they been addressed? Does a sufficiently recent bakeoff exist to answer this question? Please check. If you find runs that have been done on the mentioned repos subsequent to the various changes addressing this item, then please analyze the results. If you don't, then please do the needed bakeoff. Also consult the lab notebook in case there are any pertinent results that would bear on this item. Until we have an explicit account of the situation, this item should be considered \"violated\"."  # 3273
+- op: update  # 1cba
+  at: '2026-03-04T03:50:33Z'  # 1cba
+  by: human  # 1cba
+  actor: jgstern  # 1cba
+  clock: 13  # 1cba
+  nonce: 1cba  # 1cba
+  set:  # 1cba
+    status: violated  # 1cba

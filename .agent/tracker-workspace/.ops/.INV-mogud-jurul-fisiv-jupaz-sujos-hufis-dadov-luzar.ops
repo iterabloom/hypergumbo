@@ -59,3 +59,10 @@
   clock: 6  # 32b8
   nonce: 32b8  # 32b8
   message: "EXTERNAL_DEP_DEEP_PATTERNS already handles Go SDK naming conventions (*-sdk-go*, *-go-sdk, *-sdk-golang*, vendor-internal/). The broader issue (dangling edges to unresolved external calls) is addressed by boundary nodes (WI-sikur, PR #1682). Needs bakeoff revalidation to confirm."  # 32b8
+- op: discuss  # 6072
+  at: '2026-03-04T03:57:05Z'  # 6072
+  by: human  # 6072
+  actor: jgstern  # 6072
+  clock: 7  # 6072
+  nonce: '6072'  # 6072
+  message: "Have the attempted fixes here and in WI-sikur been validated with a bakeoff to confirm they address the structural issue(s)?"  # 6072

@@ -24,3 +24,18 @@
   clock: 2  # 625b
   nonce: 625b  # 625b
   message: "DEEP bakeoff session deep-20260303-203358: 3/6 repos had test function seeds producing empty prod rslices. sp1: test_read_raf_sumcheck (57 in-edges, all from tests), jolt: test function (all test callers), openzeppelin: GovernorHelper (test/helpers/governance.js). Fix: use prod_in_degree (in-degree from non-test files only) for seed scoring. Nodes where all in-degree is from test files should be excluded from seed candidates."  # 625b
+- op: update  # fda2
+  at: '2026-03-04T02:49:11Z'  # fda2
+  by: agent  # fda2
+  actor: jgstern_agent  # fda2
+  clock: 3  # fda2
+  nonce: fda2  # fda2
+  set:  # fda2
+    status: done  # fda2
+- op: discuss  # 9466
+  at: '2026-03-04T02:49:11Z'  # 9466
+  by: agent  # 9466
+  actor: jgstern_agent  # 9466
+  clock: 4  # 9466
+  nonce: '9466'  # 9466
+  message: "Fixed in PR #1720. Improved _TEST_PATH_RE regex to catch: path-initial test/ dirs, Rust testonly/ dirs, JS/TS .test.js/.spec.ts files. Added 14 tests for the regex. Note: the sp1 docker.rs::test false positive is a name-resolution issue (WI-bakak), not a path-filtering issue."  # 9466

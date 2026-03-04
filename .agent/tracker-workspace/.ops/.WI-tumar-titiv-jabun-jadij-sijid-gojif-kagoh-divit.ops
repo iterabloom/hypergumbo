@@ -46,3 +46,18 @@
   clock: 5  # 708e
   nonce: 708e  # 708e
   message: "The latter: it was the former situation first, then the latter after code changes. At the time this work item was created, bakeoff-features-reflect aggregate lacked --all/--some. Commit d7a435f9 ('feat: add --all and --some flags to bakeoff-features-reflect') added them. My audit message confirmed the post-fix state. The description captures the original gap; the resolution is that it was fixed by that commit. Apologies for the confusing timeline."  # 708e
+- op: update  # 0c22
+  at: '2026-03-04T04:05:50Z'  # 0c22
+  by: human  # 0c22
+  actor: jgstern  # 0c22
+  clock: 6  # 0c22
+  nonce: 0c22  # 0c22
+  set:  # 0c22
+    status: todo_soft  # 0c22
+- op: discuss  # b4c4
+  at: '2026-03-04T04:06:15Z'  # b4c4
+  by: human  # b4c4
+  actor: jgstern  # b4c4
+  clock: 7  # b4c4
+  nonce: b4c4  # b4c4
+  message: "the above discussion is all about DEEP mode, right? what about BROAD mode?"  # b4c4

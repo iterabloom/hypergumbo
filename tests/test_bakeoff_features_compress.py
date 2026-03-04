@@ -484,3 +484,27 @@ class TestTestPathRegex:
     def test_keeps_attestation(self) -> None:
         """Files containing 'test' as substring in non-test context are kept."""
         assert not bf._TEST_PATH_RE.search("src/attestation.js")
+
+
+class TestQualityThresholds:
+    """Tests for QUALITY_THRESHOLDS values.
+
+    WI-hulak: 9 of 21 WARN repos were false positives from thresholds
+    set too tight for formal methods repos (pure first-party, small
+    focused, highly-connected). Human approved raising:
+    - tier1_pct good_max: 95 → 98 (pure first-party repos)
+    - slice_coverage_pct good_max: 10 → 20 (small focused repos)
+    - avg_slice_nodes good_max: 500 → 2000 (highly-connected repos)
+    """
+
+    def test_tier1_pct_good_max_accommodates_pure_first_party(self) -> None:
+        """tier1_pct good_max >= 98 to avoid flagging pure first-party repos."""
+        assert bf.QUALITY_THRESHOLDS["tier1_pct"]["good_max"] >= 98
+
+    def test_slice_coverage_good_max_accommodates_small_repos(self) -> None:
+        """slice_coverage_pct good_max >= 20 to avoid flagging small repos."""
+        assert bf.QUALITY_THRESHOLDS["slice_coverage_pct"]["good_max"] >= 20
+
+    def test_avg_slice_nodes_good_max_accommodates_connected_repos(self) -> None:
+        """avg_slice_nodes good_max >= 2000 for highly-connected repos."""
+        assert bf.QUALITY_THRESHOLDS["avg_slice_nodes"]["good_max"] >= 2000

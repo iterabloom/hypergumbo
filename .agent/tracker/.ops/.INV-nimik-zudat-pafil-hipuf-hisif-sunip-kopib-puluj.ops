@@ -63,3 +63,10 @@
   clock: 6  # f700
   nonce: f700  # f700
   message: "Partially addressed: JAX-RS route materialization (WI-lodik, PR #1684) creates route nodes from enriched concept metadata. Needs bakeoff revalidation to measure improvement."  # f700
+- op: discuss  # 09ea
+  at: '2026-03-04T03:38:06Z'  # 09ea
+  by: human  # 09ea
+  actor: jgstern  # 09ea
+  clock: 7  # 09ea
+  nonce: 09ea  # 09ea
+  message: "since your last message, has there been a bakeoff that included keycloak? if so, perhaps you would analyze the relevant parts of its output to determine whether the expected improvement happened? if not, it is ok to run a keycloak-only bakeoff to make the determination."  # 09ea

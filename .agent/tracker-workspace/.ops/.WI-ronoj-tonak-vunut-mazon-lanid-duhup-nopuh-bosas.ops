@@ -61,3 +61,18 @@
   clock: 7  # 4895
   nonce: '4895'  # 4895
   message: "Partially fixed in PRs #1635 (derive-macro dampening) and #1636 (same-module path hint for method resolution). PR #1635 dampens derive-generated methods (clone, into, default, fmt) that inflate centrality. PR #1636 passes caller directory as path_hint to ListNameResolver, preferring same-module candidates (e.g., nova/nifs.rs::NIFS::prove over neutron/nifs.rs::NIFS::prove when called from nova/mod.rs). Full receiver-type inference remains a future enhancement."  # 4895
+- op: update  # 8b1b
+  at: '2026-03-04T04:09:31Z'  # 8b1b
+  by: human  # 8b1b
+  actor: jgstern  # 8b1b
+  clock: 8  # 8b1b
+  nonce: 8b1b  # 8b1b
+  set:  # 8b1b
+    status: todo_soft  # 8b1b
+- op: discuss  # f971
+  at: '2026-03-04T04:10:08Z'  # f971
+  by: human  # f971
+  actor: jgstern  # f971
+  clock: 9  # f971
+  nonce: f971  # f971
+  message: "might an analogous issue affect other hypergumbo language analyzers besides the one for Rust?"  # f971

@@ -24,3 +24,18 @@
   clock: 2  # 8b24
   nonce: 8b24  # 8b24
   message: "DEEP bakeoff: ArkLib (163 Lean files, 6 Python scripts) generates all 5 forward slices from Python main() functions (confidence 0.47-0.53) instead of Lean library_export symbols (confidence 0.32-0.33). Fix: when one language constitutes >95% of files, boost its entrypoint scores proportionally. Or: guarantee at least 1 slice from the primary language regardless of absolute confidence."  # 8b24
+- op: update  # 8a58
+  at: '2026-03-04T03:15:45Z'  # 8a58
+  by: agent  # 8a58
+  actor: jgstern_agent  # 8a58
+  clock: 3  # 8a58
+  nonce: 8a58  # 8a58
+  set:  # 8a58
+    status: done  # 8a58
+- op: discuss  # f2fe
+  at: '2026-03-04T03:15:45Z'  # f2fe
+  by: agent  # f2fe
+  actor: jgstern_agent  # f2fe
+  clock: 4  # f2fe
+  nonce: f2fe  # f2fe
+  message: "Fixed in PR #1721. Per-language demotion: only demote library_export entries when their own language has semantic entrypoints. Prevents minority-language main() from suppressing dominant-language exports."  # f2fe

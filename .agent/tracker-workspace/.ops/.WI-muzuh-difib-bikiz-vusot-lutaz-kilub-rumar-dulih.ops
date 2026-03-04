@@ -34,3 +34,19 @@
   clock: 3  # ee84
   nonce: ee84  # ee84
   message: "Comparison complete: initial (e0ca04d3) vs revalidation (e62e1edd). Aggregate: orphan -17.38pp, avg_slice +44.35, cross_file +7.09pp. 3 verdict upgrades (Nova, algebra, penumbra → GOOD). Agda repos: orphan rate halved (-65 to -88pp). 3 repos now SKIP (plonky2, proof-systems, sonobe — no hg.json)."  # ee84
+- op: update  # 86cc
+  at: '2026-03-04T04:13:02Z'  # 86cc
+  by: human  # 86cc
+  actor: jgstern  # 86cc
+  clock: 4  # 86cc
+  nonce: 86cc  # 86cc
+  set:  # 86cc
+    status: todo_soft  # 86cc
+- op: update  # bd7c
+  at: '2026-03-04T04:15:47Z'  # bd7c
+  by: human  # bd7c
+  actor: jgstern  # bd7c
+  clock: 5  # bd7c
+  nonce: bd7c  # bd7c
+  set:  # bd7c
+    status: done  # bd7c
