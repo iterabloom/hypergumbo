@@ -31,3 +31,18 @@
   clock: 3  # 8ec4
   nonce: 8ec4  # 8ec4
   message: "Pros/cons analysis of CLI integration for module-level grouping:\n\n**Option A: New subcommand (hypergumbo modules)**\n+ Clean separation of concerns — dedicated command for module-level views\n+ Can have its own flags (--depth, --filter-language, --sort-by)\n+ Discoverable via hypergumbo --help\n- Another subcommand to learn\n- Module grouping needs the same graph data as slice/analyze, so it would re-parse hg.json\n\n**Option B: Flag on existing commands (hypergumbo slice --group-by-module)**\n+ No new subcommand to learn\n+ Naturally composes with existing slice options (--entry, --depth, --tier)\n+ Uses already-loaded graph data — no re-parsing\n- slice output format changes significantly (from flat symbol list to grouped tree)\n- May confuse users who expect flat output\n\n**Option C: Flag on analyze (hypergumbo analyze --module-view)**\n+ analyze already produces full-repo summaries\n+ Module grouping is a presentation concern, fits with analyze's role\n- analyze output is already complex; adding another dimension may overwhelm\n\n**Recommendation: Option B (flag on slice)** — module grouping is most useful when examining a specific slice ('what modules does this API call traverse?'). The grouping would show: module path → symbols → edges, with rollup counts. It composes naturally with --entry and --tier filters."  # 8ec4
+- op: update  # 8af3
+  at: '2026-03-04T05:47:29Z'  # 8af3
+  by: human  # 8af3
+  actor: jgstern  # 8af3
+  clock: 4  # 8af3
+  nonce: 8af3  # 8af3
+  set:  # 8af3
+    status: todo_soft  # 8af3
+- op: discuss  # 1ca5
+  at: '2026-03-04T05:47:32Z'  # 1ca5
+  by: human  # 1ca5
+  actor: jgstern  # 1ca5
+  clock: 5  # 1ca5
+  nonce: 1ca5  # 1ca5
+  message: "ok let's go with option B"  # 1ca5
