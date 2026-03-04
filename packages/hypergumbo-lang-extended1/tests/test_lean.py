@@ -141,6 +141,68 @@ def foo := 42
         targets = [e.dst for e in import_edges]
         assert any("Mathlib" in t for t in targets)
 
+    def test_intra_repo_import_resolves_to_file_id(self, tmp_path: Path) -> None:
+        """Import of an in-repo module resolves to the file node ID.
+
+        When file A imports module Foo.Bar and Foo/Bar.lean exists in the
+        repo, the import edge dst should use the file ID format
+        (lean:Foo/Bar.lean:1-1:file:file), NOT the module format
+        (lean:Foo.Bar:0-0:module:module). This fixes 440+ dangling edges
+        in repos like ArkLib where intra-repo imports were unreachable.
+        """
+        # Create two files: Lib/Utils.lean and Main.lean importing it
+        (tmp_path / "Lib").mkdir()
+        make_lean_file(tmp_path, "Lib/Utils.lean", """
+def helper := 42
+""")
+        make_lean_file(tmp_path, "Main.lean", """
+import Lib.Utils
+
+def main := helper
+""")
+
+        result = analyze_lean(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        # Should have at least one import edge from Main.lean → Lib/Utils.lean
+        assert len(import_edges) >= 1
+
+        main_imports = [e for e in import_edges
+                        if "Main.lean" in e.src]
+        assert len(main_imports) == 1, (
+            f"Expected 1 import from Main.lean, got {len(main_imports)}: "
+            f"{[e.dst for e in main_imports]}"
+        )
+        edge = main_imports[0]
+        # Must resolve to file ID, not module ID
+        assert edge.dst == "lean:Lib/Utils.lean:1-1:file:file", (
+            f"Expected file ID 'lean:Lib/Utils.lean:1-1:file:file', "
+            f"got '{edge.dst}'"
+        )
+
+    def test_external_import_keeps_module_id(self, tmp_path: Path) -> None:
+        """Import of an external module keeps the module ID format.
+
+        When the imported module doesn't correspond to a file in the repo
+        (e.g., Mathlib.Data.Nat.Basic), the edge dst should stay as a
+        module ID (lean:Mathlib.Data.Nat.Basic:0-0:module:module).
+        """
+        make_lean_file(tmp_path, "Example.lean", """
+import Mathlib.Data.Nat.Basic
+
+def foo := 42
+""")
+
+        result = analyze_lean(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
+        edge = import_edges[0]
+        # External import: keeps module ID format
+        assert edge.dst == "lean:Mathlib.Data.Nat.Basic:0-0:module:module", (
+            f"Expected module ID for external import, got '{edge.dst}'"
+        )
+
 
 class TestLeanAnalyzerWhenUnavailable:
     """Tests for graceful handling when tree-sitter-lean unavailable."""

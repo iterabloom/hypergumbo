@@ -283,6 +283,15 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _module_name_to_file_path(module_name: str) -> str:
+    """Convert a Lean module name to a relative file path.
+
+    Lean modules use dot-separated names that map to directory structure:
+    ``ArkLib.AGM.Basic`` → ``ArkLib/AGM/Basic.lean``.
+    """
+    return module_name.replace(".", "/") + ".lean"
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -290,11 +299,18 @@ def _extract_edges_from_file(
     file_symbols: list[Symbol],
     resolver: "NameResolver",
     run_id: str,
+    known_file_paths: frozenset[str] = frozenset(),
 ) -> list[Edge]:
     """Extract import edges from a parsed Lean file.
 
     Detects:
     - import: Import statements (import Module.Name)
+
+    When ``known_file_paths`` is provided, intra-repo imports are resolved
+    to file node IDs (``lean:path.lean:1-1:file:file``) instead of module
+    IDs (``lean:Module.Name:0-0:module:module``).  This ensures import
+    edges connect to actual file nodes in the graph, fixing hundreds of
+    dangling edges in repos like ArkLib.
     """
     edges: list[Edge] = []
     file_id = make_file_id("lean", file_path)
@@ -310,10 +326,16 @@ def _extract_edges_from_file(
                 # The identifier contains the full dotted path
                 module_name = node_text(id_node, source).strip()
                 if module_name:
-                    module_id = _make_module_id(module_name)
+                    # Resolve to file ID if the target file exists in-repo;
+                    # otherwise keep module ID for external deps.
+                    expected_path = _module_name_to_file_path(module_name)
+                    if expected_path in known_file_paths:
+                        target_id = make_file_id("lean", expected_path)
+                    else:
+                        target_id = _make_module_id(module_name)
                     edge = Edge.create(
                         src=file_id,
-                        dst=module_id,
+                        dst=target_id,
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         origin=PASS_ID,
@@ -417,8 +439,20 @@ class LeanAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract import edges from a Lean file."""
+        # Build set of known file paths from global symbols so intra-repo
+        # imports resolve to file node IDs instead of dangling module IDs.
+        # Keyed by run ID to avoid stale data across analyze() calls.
+        run_id = run.execution_id
+        if getattr(self, "_known_paths_run_id", None) != run_id:
+            paths: set[str] = set()
+            for sym in global_symbols.values():
+                if hasattr(sym, "path") and sym.path.endswith(".lean"):
+                    paths.add(sym.path)
+            self._known_lean_paths: frozenset[str] = frozenset(paths)
+            self._known_paths_run_id = run_id
         return _extract_edges_from_file(
             tree, source, rel_path, [], resolver, run.execution_id,
+            known_file_paths=self._known_lean_paths,
         )
 
 
