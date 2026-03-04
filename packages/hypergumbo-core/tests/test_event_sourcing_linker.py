@@ -811,3 +811,60 @@ class TestFindSourceFiles:
         found = [p.name for p in _find_source_files(tmp_path)]
         assert "admin.js" in found
         assert "minimum.ts" in found
+
+    def test_skips_test_files(self, tmp_path: Path):
+        """Test files are excluded from scanning.
+
+        Regression: openzeppelin-contracts had 535 orphan event_publisher
+        nodes from Hardhat/Chai test assertions like `expect(...).to.emit()`
+        matching the JS_EMIT_PATTERN regex. Test files should be skipped
+        because event patterns in tests are assertions, not real event wiring.
+        """
+        # Source file — should be included
+        src = tmp_path / "events.js"
+        src.write_text("emitter.emit('start');")
+
+        # Test files — should be excluded
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        test_file = test_dir / "events.test.js"
+        test_file.write_text("emitter.emit('start');")
+        spec_file = tmp_path / "events.spec.ts"
+        spec_file.write_text("emitter.emit('start');")
+        test_prefix = tmp_path / "test_events.py"
+        test_prefix.write_text("EventBus.publish('start', data)")
+
+        found = [str(p) for p in _find_source_files(tmp_path)]
+        found_names = [Path(p).name for p in found]
+
+        assert "events.js" in found_names
+        assert "events.test.js" not in found_names
+        assert "events.spec.ts" not in found_names
+        assert "test_events.py" not in found_names
+
+    def test_link_events_excludes_test_files(self, tmp_path: Path):
+        """link_events produces no symbols from test files.
+
+        End-to-end test: even if test files contain event patterns,
+        they should not generate event_publisher/event_subscriber symbols.
+        """
+        # Real source
+        src = tmp_path / "emitter.js"
+        src.write_text("emitter.emit('transfer', data);")
+
+        # Test file with Hardhat-style assertion
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        test_file = test_dir / "emitter.test.js"
+        test_file.write_text(
+            "await expect(tx).to.emit(contract, 'Transfer');\n"
+            "this.mock.emit('Transfer', from, to, amount);\n"
+        )
+
+        result = link_events(tmp_path)
+
+        # Only the source file's symbol should exist
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "event_publisher"
+        # The symbol should be from the source file, not the test dir
+        assert Path(result.symbols[0].path).name == "emitter.js"

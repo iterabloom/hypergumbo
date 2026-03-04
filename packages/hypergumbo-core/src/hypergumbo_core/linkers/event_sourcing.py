@@ -60,6 +60,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("event-sourcing-linker")
@@ -218,10 +219,17 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     Skips minified files (``*.min.js``, ``*.min.ts``) because minified
     libraries produce false-positive event publisher/subscriber symbols
     for generic names like ``start``, ``end``, ``error``.
+
+    Skips test files because event patterns in tests are assertions
+    (e.g. Hardhat/Chai ``expect(...).to.emit()``), not real event wiring.
+    Without this filter, repos like openzeppelin-contracts produce hundreds
+    of orphan ``event_publisher`` nodes from test assertions.
     """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
     for path in find_files(root, patterns):
         if path.stem.endswith(".min"):
+            continue
+        if is_test_file(str(path)):
             continue
         yield path
 
