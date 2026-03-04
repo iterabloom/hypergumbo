@@ -419,3 +419,53 @@ structure AppState where
             f"AppState should reference Config, "
             f"got refs from AppState: {[(e.src, e.dst) for e in ref_edges if e.src == appstate_sym.id]}"
         )
+
+    def test_cross_file_ref_requires_import(self, tmp_path: Path) -> None:
+        """References to symbols in non-imported files are suppressed.
+
+        When file A defines ``pSpec`` and file B uses the identifier ``pSpec``
+        without importing A, no reference edge should be created. This
+        prevents massive false-positive cross-file edges (e.g., pSpec with
+        119 false in-edges in ArkLib from name collisions with local vars).
+        """
+        (tmp_path / "Lib").mkdir()
+        make_lean_file(tmp_path, "Lib/Defs.lean", """\
+def pSpec := 42
+""")
+        # File that uses `pSpec` but does NOT import Lib.Defs
+        make_lean_file(tmp_path, "Other.lean", """\
+def caller := pSpec
+""")
+        # File that uses `pSpec` AND imports Lib.Defs
+        make_lean_file(tmp_path, "Good.lean", """\
+import Lib.Defs
+
+def user := pSpec
+""")
+
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        pspec_sym = next(
+            (s for s in result.symbols if s.name == "pSpec"), None
+        )
+        assert pspec_sym is not None, "pSpec should be detected"
+
+        # Other.lean → pSpec: should NOT have a reference edge (no import)
+        other_refs = [
+            e for e in ref_edges
+            if e.dst == pspec_sym.id and "Other.lean" in e.src
+        ]
+        assert len(other_refs) == 0, (
+            f"Other.lean should NOT reference pSpec (no import), "
+            f"but got {len(other_refs)} edges"
+        )
+
+        # Good.lean → pSpec: SHOULD have a reference edge (imports Lib.Defs)
+        good_refs = [
+            e for e in ref_edges
+            if e.dst == pspec_sym.id and "Good.lean" in e.src
+        ]
+        assert len(good_refs) >= 1, (
+            f"Good.lean should reference pSpec (imports Lib.Defs), "
+            f"but got {len(good_refs)} edges"
+        )

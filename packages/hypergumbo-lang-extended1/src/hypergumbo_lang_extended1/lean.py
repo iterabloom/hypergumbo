@@ -315,6 +315,11 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("lean", file_path)
 
+    # Track which file paths this file imports so we can filter reference
+    # edges to only symbols reachable through the import chain.  The
+    # current file is always included (same-file references are valid).
+    imported_file_paths: set[str] = {file_path}
+
     for node in iter_tree(tree.root_node):
         # Look for import statements at module level
         # Lean imports look like: import Mathlib.Data.Nat.Basic
@@ -331,6 +336,7 @@ def _extract_edges_from_file(
                     expected_path = _module_name_to_file_path(module_name)
                     if expected_path in known_file_paths:
                         target_id = make_file_id("lean", expected_path)
+                        imported_file_paths.add(expected_path)
                     else:
                         target_id = _make_module_id(module_name)
                     edge = Edge.create(
@@ -394,6 +400,14 @@ def _extract_edges_from_file(
 
                 ref_result = resolver.lookup(ref_name)
                 if ref_result.symbol:
+                    # Filter by import chain: only create cross-file reference
+                    # edges when the referenced symbol's file is imported by
+                    # this file.  This prevents false positives where a bare
+                    # name like ``pSpec`` resolves to a same-named symbol in
+                    # an unrelated file (ArkLib had 119 such false edges).
+                    ref_path = getattr(ref_result.symbol, "path", "")
+                    if ref_path and ref_path not in imported_file_paths:
+                        continue
                     pair = (decl_result.symbol.id, ref_result.symbol.id)
                     if pair not in seen_ref_pairs:
                         seen_ref_pairs.add(pair)
