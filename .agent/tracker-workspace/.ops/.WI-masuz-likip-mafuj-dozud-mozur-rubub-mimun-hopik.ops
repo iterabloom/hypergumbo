@@ -96,3 +96,18 @@
     status: todo_soft  # 7b5b
     priority: 4  # 7b5b
     description: "niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 7b5b
+- op: update  # 4041
+  at: '2026-03-04T10:22:11Z'  # 4041
+  by: agent  # 4041
+  actor: jgstern_agent  # 4041
+  clock: 13  # 4041
+  nonce: '4041'  # 4041
+  set:  # 4041
+    status: needs_human_review  # 4041
+- op: discuss  # e013
+  at: '2026-03-04T10:22:11Z'  # e013
+  by: agent  # e013
+  actor: jgstern_agent  # e013
+  clock: 14  # e013
+  nonce: e013  # e013
+  message: "Deferred: niche use case (LuaJIT FFI). Will implement when a DEEP bakeoff reveals a Lua+C polyglot repo. No known demand. Moving to needs_human_review so it doesn't block autonomous work."  # e013

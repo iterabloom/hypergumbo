@@ -97,3 +97,32 @@
   clock: 12  # 23fd
   nonce: 23fd  # 23fd
   message: "Good question. The cross-analyzer field-type-resolution infrastructure we just built (PR #1731) is exactly the kind of shared infrastructure that benefits multiple analyzers. The base class now provides: (1) FileAnalysis.class_field_types for subclasses to populate, (2) automatic aggregation into _field_type_registry between passes, (3) resolve_receiver_type() helper for walking self.field chains. This is already used by Rust and can be adopted by C#, C++, Swift (tracker items WI-pufaj, WI-puhod, WI-risan). For the remaining Rust-specific gap (trait-aware disambiguation for non-field method calls), the question is whether a shared trait resolution mechanism would benefit other analyzers. Likely not worth shared infrastructure — trait dispatch is Rust-specific (Go interfaces resolved differently, Java/C# interfaces already have type annotations). Recommendation: the field-type-registry infrastructure was worth building (cross-language benefit). Rust trait-aware resolution should stay Rust-specific (low cross-language benefit)."  # 23fd
+- op: discuss  # 0364
+  at: '2026-03-04T10:17:03Z'  # 0364
+  by: human  # 0364
+  actor: jgstern  # 0364
+  clock: 13  # 0364
+  nonce: '0364'  # 0364
+  message: "ok sounds good"  # 0364
+- op: discuss  # 9cd8
+  at: '2026-03-04T10:20:50Z'  # 9cd8
+  by: agent  # 9cd8
+  actor: jgstern_agent  # 9cd8
+  clock: 14  # 9cd8
+  nonce: 9cd8  # 9cd8
+  message: "Acknowledged. Rust trait-aware resolution stays Rust-specific. Field-type-registry infra (PR #1731) already serves cross-language needs. This item remains at P4 for future Rust-focused work."  # 9cd8
+- op: update  # 2aaf
+  at: '2026-03-04T10:22:11Z'  # 2aaf
+  by: agent  # 2aaf
+  actor: jgstern_agent  # 2aaf
+  clock: 15  # 2aaf
+  nonce: 2aaf  # 2aaf
+  set:  # 2aaf
+    status: needs_human_review  # 2aaf
+- op: discuss  # 5e1c
+  at: '2026-03-04T10:22:11Z'  # 5e1c
+  by: agent  # 5e1c
+  actor: jgstern_agent  # 5e1c
+  clock: 16  # 5e1c
+  nonce: 5e1c  # 5e1c
+  message: "Partially addressed by PRs #1635/#1636. Full receiver-type inference is a future Rust-specific enhancement. Moving to needs_human_review — human can decide when to prioritize a dedicated Rust session."  # 5e1c
