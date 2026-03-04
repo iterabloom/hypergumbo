@@ -253,13 +253,23 @@ def _extract_symbols_from_file(
                         if name:
                             add_symbol(child, name, "class")
 
-                elif child.type == "instance":  # pragma: no cover - instance detection
-                    # instance name : ...
+                elif child.type == "instance":
+                    # Named: instance myAdd : Add Nat where ...
+                    # Unnamed: instance : Add Nat where ...
                     id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
                             add_symbol(child, name, "instance")
+                    else:
+                        # Unnamed instance — use typeclass name from apply
+                        apply_node = find_child_by_type(child, "apply")
+                        if apply_node:
+                            tc_id = find_child_by_type(apply_node, "identifier")
+                            if tc_id:
+                                tc_name = node_text(tc_id, source).strip()
+                                if tc_name:
+                                    add_symbol(child, tc_name, "instance")
 
                 elif child.type == "abbrev":  # pragma: no cover - abbrev detection
                     # abbrev name ...
@@ -313,13 +323,18 @@ def _extract_edges_from_file(
                     )
                     edges.append(edge)
 
-    # Reference edges: scan def/theorem/lemma type signatures AND bodies
-    # for identifier references to defined symbols (WI-juviz).
-    # In dependently-typed languages like Lean, type signatures contain
-    # architecturally significant references (e.g., theorem dependencies).
+    # Reference edges: scan all declaration types for identifier references
+    # to defined symbols (WI-juviz).  Originally only def/theorem/lemma were
+    # scanned, leaving instance/structure/class/inductive/abbrev symbols as
+    # orphans.  In the clean repo this caused 204 Lean orphans (133 functions,
+    # 26 theorems, 23 instances, 22 structures).
+    _REF_SCAN_TYPES = (
+        "def", "theorem", "lemma",
+        "instance", "structure", "class", "inductive", "abbrev",
+    )
     seen_ref_pairs: set[tuple[str, str]] = set()
     for node in iter_tree(tree.root_node):
-        if node.type not in ("def", "theorem", "lemma"):
+        if node.type not in _REF_SCAN_TYPES:
             continue
         # Find the declaration name
         decl_name_node = find_child_by_type(node, "identifier")

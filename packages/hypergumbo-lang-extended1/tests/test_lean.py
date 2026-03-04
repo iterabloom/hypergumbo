@@ -270,3 +270,90 @@ theorem natId (x : MyNat) : MyNat :=
             f"Expected >= 2 references to MyNat from type signatures, "
             f"got {len(refs_to_mynat)}: {[(e.src, e.dst) for e in refs_to_mynat]}"
         )
+
+    def test_instance_creates_outgoing_references(self, tmp_path: Path) -> None:
+        """Instance declarations create outgoing reference edges.
+
+        Lean instance declarations like `instance myAdd : Add Nat` reference
+        symbols in their body. Without scanning instance nodes for references,
+        instance symbols become orphans.
+        In the clean repo, 23 instance symbols were orphaned.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+def double (n : Nat) : Nat :=
+  n + n
+
+instance myAdd : Add Nat where
+  add a b := double a
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        instance_syms = [s for s in result.symbols if s.kind == "instance"]
+        double_sym = next(
+            (s for s in result.symbols if s.name == "double"), None
+        )
+        assert double_sym is not None
+        # The instance should exist and have outgoing reference to double
+        assert len(instance_syms) >= 1, "Should detect instance symbol"
+        instance_ids = {s.id for s in instance_syms}
+        instance_refs = [
+            e for e in ref_edges if e.src in instance_ids
+        ]
+        assert len(instance_refs) >= 1, (
+            f"Instance should have outgoing references (e.g., to 'double'), "
+            f"got {len(instance_refs)} from instance IDs {instance_ids}"
+        )
+
+    def test_unnamed_instance_detected(self, tmp_path: Path) -> None:
+        """Unnamed instances (instance : Typeclass Type) are detected.
+
+        Lean allows unnamed instances where the compiler generates a name.
+        These should still be detected as symbols using the typeclass name.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+instance : Add Nat where
+  add a b := a
+""")
+        result = analyze_lean(tmp_path)
+        instance_syms = [s for s in result.symbols if s.kind == "instance"]
+        assert len(instance_syms) >= 1, (
+            f"Unnamed instance should be detected, got: "
+            f"{[s.kind + ':' + s.name for s in result.symbols]}"
+        )
+
+    def test_structure_creates_outgoing_references(self, tmp_path: Path) -> None:
+        """Structure declarations create outgoing reference edges.
+
+        When a structure's field types reference other defined symbols,
+        the structure symbol should have outgoing reference edges.
+        Without scanning structure nodes, structure symbols become orphans.
+        In the clean repo, 22 structure symbols were orphaned.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+structure Config where
+  name : String
+  value : Nat
+
+structure AppState where
+  config : Config
+  count : Nat
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        config_sym = next(
+            (s for s in result.symbols if s.name == "Config"), None
+        )
+        appstate_sym = next(
+            (s for s in result.symbols if s.name == "AppState"), None
+        )
+        assert config_sym is not None
+        assert appstate_sym is not None
+        # AppState should reference Config via its field type
+        appstate_refs = [
+            e for e in ref_edges
+            if e.src == appstate_sym.id and e.dst == config_sym.id
+        ]
+        assert len(appstate_refs) >= 1, (
+            f"AppState should reference Config, "
+            f"got refs from AppState: {[(e.src, e.dst) for e in ref_edges if e.src == appstate_sym.id]}"
+        )
