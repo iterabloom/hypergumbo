@@ -375,6 +375,35 @@ struct Foo {
             f"{[(e.src, e.dst) for e in decorated_by_edges]}"
         )
 
+    def test_tracing_instrument_skipped(self, tmp_path: Path) -> None:
+        """#[tracing::instrument] should produce no edge (ecosystem macro)."""
+        code = '''
+fn instrument() {}
+
+#[tracing::instrument]
+fn handle_request() {
+    println!("handling");
+}
+
+#[instrument]
+fn process() {
+    println!("processing");
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by"
+        ]
+        assert len(decorated_by_edges) == 0, (
+            f"#[tracing::instrument] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
+        )
+
 
 class TestRustAttributeEdgesDefensiveBranches:
     """Tests for defensive branches in Rust attribute edge extraction."""

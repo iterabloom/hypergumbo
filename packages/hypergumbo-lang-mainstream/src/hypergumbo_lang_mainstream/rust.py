@@ -1286,7 +1286,7 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
     # Runtime
     "panic_handler", "global_allocator", "windows_subsystem",
     # Common ecosystem proc-macro crate names (not user functions)
-    "serde", "tokio", "async_trait",
+    "serde", "tokio", "async_trait", "tracing", "instrument",
 })
 
 # Generic trait method names that create false-positive in-degree when resolved
@@ -1382,8 +1382,14 @@ def _extract_attribute_edges(
             # Built-in attributes must never resolve to user symbols.
             # Skip entirely — they have no user-space definition, and even
             # unresolved edges create noise (derive gets 175 in-edges).
+            # For qualified names like "tracing::instrument", check both
+            # the full name and the crate name (first path component).
             if attr_name in _BUILTIN_RUST_ATTRIBUTES:
                 continue
+            if "::" in attr_name:
+                crate_name = attr_name.split("::", 1)[0]
+                if crate_name in _BUILTIN_RUST_ATTRIBUTES:
+                    continue
 
             # Try to resolve the attribute to a symbol
             # For qualified names like "actix_web::get", try both full and short name
