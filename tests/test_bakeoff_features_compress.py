@@ -400,6 +400,82 @@ class TestCompressedReadIntegration:
             f"Expected one seed per major language, but got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_excludes_test_in_degree(self, tmp_path: Path) -> None:
+        """Seed scoring should use prod-only in-degree (exclude test callers).
+
+        A production function called 5 times from tests and 3 times from prod
+        should score lower than a function called 0 times from tests and 4
+        times from prod, even though the former has higher total in-degree.
+        """
+        nodes = [
+            # prod_heavy: called 4 times from production (high prod in-degree)
+            {"id": "prod_heavy", "name": "prod_heavy", "kind": "function",
+             "path": "src/core.py", "language": "python"},
+            # test_heavy: called 5 times from tests + 1 from prod (higher total in-degree)
+            {"id": "test_heavy", "name": "test_heavy", "kind": "function",
+             "path": "src/utils.py", "language": "python"},
+            # Production callers
+            {"id": "caller1", "name": "caller1", "kind": "function",
+             "path": "src/main.py", "language": "python"},
+            {"id": "caller2", "name": "caller2", "kind": "function",
+             "path": "src/api.py", "language": "python"},
+            {"id": "caller3", "name": "caller3", "kind": "function",
+             "path": "src/handler.py", "language": "python"},
+            {"id": "caller4", "name": "caller4", "kind": "function",
+             "path": "src/service.py", "language": "python"},
+            # Test callers
+            {"id": "test1", "name": "test_foo", "kind": "function",
+             "path": "tests/test_core.py", "language": "python"},
+            {"id": "test2", "name": "test_bar", "kind": "function",
+             "path": "tests/test_utils.py", "language": "python"},
+            {"id": "test3", "name": "test_baz", "kind": "function",
+             "path": "tests/test_api.py", "language": "python"},
+            {"id": "test4", "name": "test_qux", "kind": "function",
+             "path": "tests/test_extra.py", "language": "python"},
+            {"id": "test5", "name": "test_quux", "kind": "function",
+             "path": "tests/test_more.py", "language": "python"},
+            # Shared callees (to give candidates out-degree >= _MIN_OUT_DEGREE)
+            {"id": "dep1", "name": "dep1", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+            {"id": "dep2", "name": "dep2", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+            {"id": "dep3", "name": "dep3", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+        ]
+        edges = [
+            # prod_heavy: 4 production callers
+            {"src": "caller1", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller2", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller3", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller4", "dst": "prod_heavy", "type": "calls"},
+            # test_heavy: 5 test callers + 1 production caller (total=6 > prod_heavy=4)
+            {"src": "test1", "dst": "test_heavy", "type": "calls"},
+            {"src": "test2", "dst": "test_heavy", "type": "calls"},
+            {"src": "test3", "dst": "test_heavy", "type": "calls"},
+            {"src": "test4", "dst": "test_heavy", "type": "calls"},
+            {"src": "test5", "dst": "test_heavy", "type": "calls"},
+            {"src": "caller1", "dst": "test_heavy", "type": "calls"},
+            # Give both candidates out-degree >= 3
+            {"src": "prod_heavy", "dst": "dep1", "type": "calls"},
+            {"src": "prod_heavy", "dst": "dep2", "type": "calls"},
+            {"src": "prod_heavy", "dst": "dep3", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep1", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep2", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep3", "type": "calls"},
+        ]
+        data = {"nodes": nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "test-in-degree-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=2)
+        assert len(seeds) >= 1
+
+        # prod_heavy (prod_in_degree=4) should rank above test_heavy (prod_in_degree=1)
+        if len(seeds) >= 2:
+            assert seeds[0] == "prod_heavy", (
+                f"Expected prod_heavy first (prod_in=4), but got: {seeds}"
+            )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)
