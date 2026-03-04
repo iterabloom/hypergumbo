@@ -132,15 +132,16 @@ _CODE_NODE_KINDS = frozenset({
 # `/special_repos/` (the bakeoff pool path) matched, filtering out ALL
 # entrypoints and producing zero forward slices for every repo in the pool.
 _TEST_PATH_RE = re.compile(
-    r'/(tests?|spec|__tests__|test-|unittest)/'      # dirs that MUST end with /
-    r'|/(t)/'                                         # t/ (C/Perl convention)
-    r'|/test_[^/]'                                    # test_ prefix files
-    r'|/integration/'                                 # integration test dirs
-    r'|_test\.'                                       # Go: *_test.go
-    r'|/Test[A-Z][^/]*\.java'                         # JVM: TestFoo.java
-    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'    # JVM: FooIT.java, FooTest.java
-    r'|/tests\.rs$'                                   # Rust: co-located test module
-    r'|/testonly\.rs$'                                 # Rust: test-only helpers
+    r'(?:^|/)(tests?|spec|__tests__|test-|unittest)/' # dirs (incl. path-initial test/)
+    r'|(?:^|/)(t)/'                                   # t/ (C/Perl convention)
+    r'|(?:^|/)test_[^/]'                               # test_ prefix files
+    r'|(?:^|/)integration/'                            # integration test dirs
+    r'|_test\.'                                        # Go: *_test.go
+    r'|\.(?:test|spec)\.'                              # JS/TS: *.test.js, *.spec.ts
+    r'|/Test[A-Z][^/]*\.java'                          # JVM: TestFoo.java
+    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'     # JVM: FooIT.java, FooTest.java
+    r'|(?:^|/)tests\.rs$'                                # Rust: co-located test module
+    r'|(?:^|/)testonly[/.]'                             # Rust: testonly/ dirs and testonly.rs
 )
 
 # Quality thresholds

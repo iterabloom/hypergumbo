@@ -413,3 +413,74 @@ class TestCompressedReadIntegration:
         repo_out = tmp_path / "repo-c"
         repo_out.mkdir()
         assert bf._has_hg_json(str(repo_out)) is False
+
+
+class TestTestPathRegex:
+    """Tests for _TEST_PATH_RE test file detection.
+
+    Regression: DEEP bakeoff assessments showed rslice seed selection picking
+    test functions because paths like 'test/helpers/governance.js' (no leading
+    slash) and 'testonly/mock_evm.rs' slipped through the regex.
+    """
+
+    def test_filters_test_dir_path_initial(self) -> None:
+        """Path-initial test/ (no leading /) is filtered."""
+        assert bf._TEST_PATH_RE.search("test/helpers/governance.js")
+
+    def test_filters_test_dir_with_slash(self) -> None:
+        """Standard /test/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("src/test/helpers.js")
+
+    def test_filters_tests_dir(self) -> None:
+        """tests/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("tests/unit/test_foo.py")
+
+    def test_filters_spec_dir(self) -> None:
+        """spec/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("spec/models/user_spec.rb")
+
+    def test_filters_testonly_dir(self) -> None:
+        """Rust testonly/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search(
+            "core/lib/multivm/src/versions/testonly/mock_evm.rs"
+        )
+
+    def test_filters_testonly_rs(self) -> None:
+        """Rust testonly.rs file is filtered."""
+        assert bf._TEST_PATH_RE.search("src/testonly.rs")
+
+    def test_filters_dot_test_js(self) -> None:
+        """JS .test.js files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/module.test.js")
+
+    def test_filters_dot_spec_ts(self) -> None:
+        """TS .spec.ts files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/module.spec.ts")
+
+    def test_filters_go_test_file(self) -> None:
+        """Go *_test.go files are filtered."""
+        assert bf._TEST_PATH_RE.search("pkg/handler_test.go")
+
+    def test_filters_test_prefix(self) -> None:
+        """test_ prefixed files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/test_utils.py")
+
+    def test_filters_tests_rs(self) -> None:
+        """Rust tests.rs module is filtered."""
+        assert bf._TEST_PATH_RE.search("src/tests.rs")
+
+    def test_keeps_source_files(self) -> None:
+        """Source files are not filtered."""
+        assert not bf._TEST_PATH_RE.search("src/events.js")
+        assert not bf._TEST_PATH_RE.search("src/controller.py")
+        assert not bf._TEST_PATH_RE.search("crates/core/app/src/main.rs")
+
+    def test_keeps_non_test_docker_file(self) -> None:
+        """Files with test-like names but not in test paths are kept."""
+        assert not bf._TEST_PATH_RE.search(
+            "crates/recursion/gnark-ffi/src/ffi/docker.rs"
+        )
+
+    def test_keeps_attestation(self) -> None:
+        """Files containing 'test' as substring in non-test context are kept."""
+        assert not bf._TEST_PATH_RE.search("src/attestation.js")
