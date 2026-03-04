@@ -1080,6 +1080,89 @@ def _check_group_permissions(
     )
 
 
+def _check_shared_repository(root: Path, repo_root: Path | None) -> CheckResult:
+    """Check #12b: Ensure core.sharedRepository=group in shared-group setups.
+
+    When a two-user setup is active (shared gid detected on .ops dirs),
+    git must be told to create group-writable objects and refs.  Without
+    this, files written by one user (e.g. the agent during auto-sync) are
+    mode 0644/0600 and the other user cannot overwrite them, causing
+    'unable to create …/objects/…' errors on the next push or fetch.
+
+    Auto-fixes by writing the setting to local .git/config.  Falls back
+    to --global if the local config is not writable.
+    """
+    if repo_root is None:
+        return CheckResult(
+            name="shared_repository",
+            status="ok",
+            message="core.sharedRepository check skipped (no git repo)",
+        )
+
+    shared_gid = _detect_shared_group(root)
+    if shared_gid is None:
+        return CheckResult(
+            name="shared_repository",
+            status="ok",
+            message="core.sharedRepository check skipped (single-user setup)",
+        )
+
+    # Read current value
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "config", "--get", "core.sharedRepository"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=5,
+        )
+        current = result.stdout.strip().lower()
+    except (OSError, subprocess.TimeoutExpired):
+        return CheckResult(
+            name="shared_repository",
+            status="warn",
+            message="Could not read git config core.sharedRepository",
+        )
+
+    # "group", "1", and "true" are all equivalent to group-sharing
+    if current in ("group", "1", "true"):
+        return CheckResult(
+            name="shared_repository",
+            status="ok",
+            message="core.sharedRepository is set to 'group'",
+        )
+
+    # Auto-fix: try local config first, fall back to --global
+    for extra_args in ([], ["--global"]):
+        try:
+            subprocess.run(  # noqa: S603  # nosec B603, B607
+                ["git", "config", *extra_args, "core.sharedRepository", "group"],  # noqa: S607
+                capture_output=True,
+                text=True,
+                cwd=str(repo_root),
+                timeout=5,
+                check=True,
+            )
+            scope = "global" if extra_args else "local"
+            return CheckResult(
+                name="shared_repository",
+                status="fixed",
+                message=f"core.sharedRepository set to 'group' ({scope} config)",
+            )
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+            continue
+
+    return CheckResult(
+        name="shared_repository",
+        status="warn",
+        message="Could not set core.sharedRepository (permission denied)",
+        details=[
+            "Fix with: git config core.sharedRepository group",
+            "Or globally: git config --global core.sharedRepository group",
+            "This is required for auto-sync to work correctly in two-user setups.",
+        ],
+    )
+
 def _check_ops_writable(root: Path) -> CheckResult:
     """Check #12: Verify .ops/ directories are writable."""
     ops_dirs = [
@@ -1898,6 +1981,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_config_permissions(root))        # 10b
     results.append(_check_home_traversable(root, repo_root))  # 11
     results.append(_check_group_permissions(root, repo_root))  # 12
+    results.append(_check_shared_repository(root, repo_root))  # 12b
     results.append(_check_ops_writable(root))              # 13
     results.append(_check_textconv(root, repo_root))       # 14
     results.append(_check_existing_data(root))             # 15

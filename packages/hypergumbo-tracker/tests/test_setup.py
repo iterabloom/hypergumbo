@@ -39,6 +39,7 @@ from hypergumbo_tracker.setup import (
     _check_gitignore,
     _check_group_permissions,
     _check_home_traversable,
+    _check_shared_repository,
     _check_hooks_path,
     _check_ops_writable,
     _check_precommit_hook,
@@ -1948,6 +1949,165 @@ class TestCheckGroupPermissions:
 
 
 # ---------------------------------------------------------------------------
+# Check #12b: core.sharedRepository
+# ---------------------------------------------------------------------------
+
+
+class TestCheckSharedRepository:
+    """Tests for _check_shared_repository (check #12b)."""
+
+    def test_no_repo_root(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        result = _check_shared_repository(root, repo_root=None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_single_user_setup(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup._detect_shared_group", return_value=None
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "single-user" in result.message
+
+    def test_already_set_group(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="group\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "'group'" in result.message
+
+    def test_already_set_numeric_1(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="1\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_already_set_true(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="true\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_auto_fix_local(self, tmp_path: Path) -> None:
+        """Not set → auto-fix with local config succeeds."""
+        root = _make_full_agent_dir(tmp_path)
+        # First call: git config --get returns empty (not set)
+        # Second call: git config set succeeds
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get returns empty
+                    MagicMock(returncode=0),  # local set succeeds
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        assert "local" in result.message
+
+    def test_auto_fix_global_fallback(self, tmp_path: Path) -> None:
+        """Local config write fails → falls back to --global."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get: not set
+                    subprocess.CalledProcessError(1, "git"),  # local set fails
+                    MagicMock(returncode=0),  # global set succeeds
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        assert "global" in result.message
+
+    def test_both_fix_attempts_fail(self, tmp_path: Path) -> None:
+        """Both local and global set fail → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get: not set
+                    subprocess.CalledProcessError(1, "git"),  # local fails
+                    subprocess.CalledProcessError(1, "git"),  # global fails
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+        assert "permission denied" in result.message
+
+    def test_read_config_oserror(self, tmp_path: Path) -> None:
+        """OSError reading git config → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=OSError("git not found"),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+        assert "Could not read" in result.message
+
+    def test_read_config_timeout(self, tmp_path: Path) -> None:
+        """TimeoutExpired reading git config → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired("git", 5),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+
+
+# ---------------------------------------------------------------------------
 # Check #12: .ops/ writable
 # ---------------------------------------------------------------------------
 
@@ -2882,8 +3042,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (24 total, including sync prerequisites + hooks_path)
-        assert len(results) == 24
+        # Should have one result per check (25 total, including sync prerequisites + hooks_path)
+        assert len(results) == 25
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"
