@@ -1219,8 +1219,18 @@ def cmd_slice(args: argparse.Namespace) -> int:
     feature_dict = result.to_dict()
     feature_dict["node_ids"] = ranked_node_ids  # Replace with ranked order
 
-    # --flat implies --inline (need full objects for external tools)
-    use_inline = getattr(args, "inline", False) or getattr(args, "flat", False)
+    # --group-by-module validation and implied flags
+    group_by_module = getattr(args, "group_by_module", False)
+    if group_by_module and getattr(args, "flat", False):
+        print("Error: --group-by-module cannot be used with --flat", file=sys.stderr)
+        return 1
+
+    # --flat and --group-by-module both imply --inline
+    use_inline = (
+        getattr(args, "inline", False)
+        or getattr(args, "flat", False)
+        or group_by_module
+    )
 
     # If --inline (or --flat), include full node/edge objects for self-contained output
     if use_inline:
@@ -1237,12 +1247,57 @@ def cmd_slice(args: argparse.Namespace) -> int:
             if n.get("id") in node_ids_set
         ]
         inline_nodes.sort(key=lambda n: node_rank.get(n.get("id", ""), 999999))
-        feature_dict["nodes"] = inline_nodes
 
         feature_dict["edges"] = [
             e for e in behavior_map.get("edges", [])
             if e.get("id") in edge_ids_set
         ]
+
+        if group_by_module:
+            # Group nodes by file path
+            modules: dict[str, list[dict]] = {}
+            for node in inline_nodes:
+                path = node.get("path", "<unknown>")
+                modules.setdefault(path, []).append(node)
+
+            # Sort modules by best rank (module with highest-ranked node first)
+            sorted_modules = dict(sorted(
+                modules.items(),
+                key=lambda item: node_rank.get(item[1][0].get("id", ""), 999999),
+            ))
+
+            feature_dict["modules"] = {
+                path: {"node_count": len(mod_nodes), "nodes": mod_nodes}
+                for path, mod_nodes in sorted_modules.items()
+            }
+
+            # Build module-level edge summary (cross-file only)
+            node_to_module = {
+                n.get("id", ""): path
+                for path, mod_nodes in sorted_modules.items()
+                for n in mod_nodes
+            }
+            module_edge_counts: dict[tuple[str, str], dict] = {}
+            for e in feature_dict.get("edges", []):
+                src_mod = node_to_module.get(e.get("src", ""))
+                dst_mod = node_to_module.get(e.get("dst", ""))
+                if src_mod and dst_mod and src_mod != dst_mod:
+                    key = (src_mod, dst_mod)
+                    if key not in module_edge_counts:
+                        module_edge_counts[key] = {"count": 0, "types": set()}
+                    module_edge_counts[key]["count"] += 1
+                    module_edge_counts[key]["types"].add(e.get("type", ""))
+            feature_dict["module_edges"] = [
+                {
+                    "src_module": s,
+                    "dst_module": d,
+                    "count": info["count"],
+                    "types": sorted(info["types"]),
+                }
+                for (s, d), info in sorted(module_edge_counts.items())
+            ]
+        else:
+            feature_dict["nodes"] = inline_nodes
 
     # If --flat, output simple structure (nodes/edges at top level)
     # Otherwise, use standard wrapper structure
@@ -1267,6 +1322,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
     print(f"  entry: {entry}")
     print(f"  nodes: {len(result.node_ids)}")
     print(f"  edges: {len(result.edge_ids)}")
+    if group_by_module:
+        print(f"  modules: {len(feature_dict.get('modules', {}))}")
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
 
@@ -3300,6 +3357,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output flat structure with just nodes/edges arrays at top level. "
              "Useful for external tools expecting {nodes: [...], edges: [...]}. "
              "Implies --inline.",
+    )
+    p_slice.add_argument(
+        "--group-by-module",
+        action="store_true",
+        dest="group_by_module",
+        help="Group output nodes by file/module path. Implies --inline. "
+             "Adds 'modules' dict (path → nodes) and 'module_edges' summary.",
     )
     p_slice.add_argument(
         "--files",

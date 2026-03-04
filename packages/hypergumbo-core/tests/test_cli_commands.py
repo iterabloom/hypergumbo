@@ -1767,6 +1767,294 @@ def test_cmd_slice_flat_output(tmp_path: Path, capsys) -> None:
     assert "[hypergumbo slice]" in out
 
 
+def test_cmd_slice_group_by_module(tmp_path: Path, capsys) -> None:
+    """Test slice --group-by-module groups nodes by file path."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/main.py:10-15:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "calls:caller->callee",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "confidence": 0.9,
+            },
+            {
+                "id": "calls:caller->helper",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/main.py:10-15:helper:function",
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = True
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # Should have modules dict, NOT nodes list
+    assert "modules" in data["feature"]
+    assert "nodes" not in data["feature"]
+
+    modules = data["feature"]["modules"]
+    assert len(modules) == 2
+    assert "src/main.py" in modules
+    assert "src/utils.py" in modules
+
+    # Each module has node_count and nodes list
+    assert modules["src/main.py"]["node_count"] == 2
+    assert modules["src/utils.py"]["node_count"] == 1
+
+    # All 3 nodes accounted for
+    all_nodes = []
+    for mod in modules.values():
+        all_nodes.extend(mod["nodes"])
+    assert len(all_nodes) == 3
+
+    out, _ = capsys.readouterr()
+    assert "modules: 2" in out
+
+
+def test_cmd_slice_group_by_module_implies_inline(tmp_path: Path) -> None:
+    """Test --group-by-module implies --inline even when inline=False."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = False  # Not set, but group_by_module implies it
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # Should still have modules (inline was implied)
+    assert "modules" in data["feature"]
+    assert "src/main.py" in data["feature"]["modules"]
+
+
+def test_cmd_slice_group_by_module_edges(tmp_path: Path) -> None:
+    """Test module_edges summarizes cross-file edges only."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/main.py:10-15:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "calls:caller->callee",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "confidence": 0.9,
+            },
+            {
+                "id": "calls:caller->helper",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/main.py:10-15:helper:function",
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = True
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # module_edges should only have cross-file edges (not intra-file)
+    module_edges = data["feature"]["module_edges"]
+    assert len(module_edges) == 1
+
+    edge = module_edges[0]
+    assert edge["src_module"] == "src/main.py"
+    assert edge["dst_module"] == "src/utils.py"
+    assert edge["count"] == 1
+    assert "calls" in edge["types"]
+
+
+def test_cmd_slice_group_by_module_rejects_flat(tmp_path: Path, capsys) -> None:
+    """Test --flat + --group-by-module is an error."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = False
+    args.flat = True
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 1
+
+    _, err = capsys.readouterr()
+    assert "--group-by-module" in err
+    assert "--flat" in err
+
+
 def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
     """Test slice command handles ambiguous entry with helpful error message."""
     # Create behavior map with same symbol name in different files/languages
