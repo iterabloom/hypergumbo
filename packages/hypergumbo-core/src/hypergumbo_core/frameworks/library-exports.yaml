@@ -272,4 +272,16 @@ patterns:
     symbol_kind: "^(data|record)$"
     language: "^agda$"
 
+  # === Wolfram: Definition-based (all public definitions are API surface) ===
+
+  # Wolfram function definitions (SetDelayed :=) are public by default
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^wolfram$"
+
+  # Wolfram variable definitions (Set =) - package-level constants
+  - concept: library_export
+    symbol_kind: "^variable$"
+    language: "^wolfram$"
+
 linkers: []

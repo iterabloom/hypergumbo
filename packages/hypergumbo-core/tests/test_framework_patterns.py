@@ -17907,3 +17907,192 @@ class TestMaterializeRouteSymbols:
         )
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
+
+
+class TestLeanLibraryExportPatterns:
+    """Lean 4 definitions, structures, and inductives match library_export."""
+
+    def test_lean_function_matches_library_export(self) -> None:
+        """Lean 4 def/theorem/lemma (kind=function) matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Security.lean:10-15:soundness:function",
+            name="soundness",
+            kind="function",
+            language="lean",
+            path="ArkLib/Security.lean",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_lean_structure_matches_library_export(self) -> None:
+        """Lean 4 structure matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Types.lean:5-20:ProofSystem:structure",
+            name="ProofSystem",
+            kind="structure",
+            language="lean",
+            path="ArkLib/Types.lean",
+            span=Span(5, 20, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_lean_inductive_matches_library_export(self) -> None:
+        """Lean 4 inductive type matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Types.lean:25-30:Color:inductive",
+            name="Color",
+            kind="inductive",
+            language="lean",
+            path="ArkLib/Types.lean",
+            span=Span(25, 30, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestAgdaLibraryExportPatterns:
+    """Agda functions, data types, and records match library_export."""
+
+    def test_agda_function_matches_library_export(self) -> None:
+        """Agda function definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Proofs.agda:10-15:add-comm:function",
+            name="add-comm",
+            kind="function",
+            language="agda",
+            path="src/Proofs.agda",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_agda_data_matches_library_export(self) -> None:
+        """Agda data type definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Types.agda:5-10:Nat:data",
+            name="Nat",
+            kind="data",
+            language="agda",
+            path="src/Types.agda",
+            span=Span(5, 10, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_agda_record_matches_library_export(self) -> None:
+        """Agda record definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Algebra.agda:20-30:Monoid:record",
+            name="Monoid",
+            kind="record",
+            language="agda",
+            path="src/Algebra.agda",
+            span=Span(20, 30, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestWolframLibraryExportPatterns:
+    """Wolfram functions and variables should match library_export patterns.
+
+    Wolfram Language packages export public functions via BeginPackage/EndPackage.
+    Since the analyzer doesn't track package scoping, all top-level definitions
+    (SetDelayed := for functions, Set = for variables) are treated as library
+    exports, matching the same approach used for Lean/Agda/Circom.
+    """
+
+    def test_wolfram_function_matches_library_export(self) -> None:
+        """Wolfram function definitions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/ZKP.wl:10-15:GenerateProof:function",
+            name="GenerateProof",
+            kind="function",
+            language="wolfram",
+            path="Kernel/ZKP.wl",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_wolfram_variable_matches_library_export(self) -> None:
+        """Wolfram variable definitions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/Config.wl:5-5:DefaultOptions:variable",
+            name="DefaultOptions",
+            kind="variable",
+            language="wolfram",
+            path="Kernel/Config.wl",
+            span=Span(5, 5, 0, 40),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_wolfram_class_does_not_match_library_export(self) -> None:
+        """Wolfram symbols with unexpected kinds don't match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/ZKP.wl:1-50:ZKP:class",
+            name="ZKP",
+            kind="class",
+            language="wolfram",
+            path="Kernel/ZKP.wl",
+            span=Span(1, 50, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
