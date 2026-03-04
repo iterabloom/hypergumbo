@@ -68,3 +68,18 @@
   clock: 8  # 42e7
   nonce: '42e7'  # 42e7
   message: "You're right — the discussion focused on DEEP mode only. BROAD mode (scripts/bakeoff): Currently supports 'run' (current cohort), has no --all/--some flags for running multiple cohorts in batch. The BROAD workflow is typically single-cohort (run → diagnose → cycle). For consistency, BROAD should also support: (1) 'run --all' to process all unanalyzed cohorts, (2) 'run --some N' for batched processing, (3) 'diagnose --all/--some' for multi-cohort diagnostics. The BROAD 'status' command already shows per-cohort breakdown. Implementation would mirror DEEP's batch-processing loop."  # 42e7
+- op: update  # fc96
+  at: '2026-03-04T09:35:08Z'  # fc96
+  by: agent  # fc96
+  actor: jgstern_agent  # fc96
+  clock: 9  # fc96
+  nonce: fc96  # fc96
+  set:  # fc96
+    status: done  # fc96
+- op: discuss  # 5639
+  at: '2026-03-04T09:35:08Z'  # 5639
+  by: agent  # 5639
+  actor: jgstern_agent  # 5639
+  clock: 10  # 5639
+  nonce: '5639'  # 5639
+  message: "Fixed in PR #1737. Added --all and --some flags to BROAD mode bakeoff run, diagnose, and cycle subcommands. Extracted _diagnose_cohort helper and added _load_cohort_metadata for cohort discovery in batch mode. Both BROAD and DEEP mode now have consistent batch-processing interfaces."  # 5639
