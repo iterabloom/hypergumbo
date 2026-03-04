@@ -534,12 +534,17 @@ BROAD mode scripts:
 
 # Run hypergumbo on current cohort
 ./scripts/bakeoff run
+./scripts/bakeoff run --all          # All unanalyzed cohorts (batch)
+./scripts/bakeoff run --some 3       # Up to 3 unanalyzed cohorts
 
 # Diagnose and generate issue report
 ./scripts/bakeoff diagnose
+./scripts/bakeoff diagnose --all     # All cohorts in session
+./scripts/bakeoff diagnose --some 3  # Latest 3 cohorts
 
 # Full cycle: run + diagnose
 ./scripts/bakeoff cycle
+./scripts/bakeoff cycle --all        # Batch: run + diagnose all
 
 # Session introspection
 ./scripts/bakeoff status            # Convergence status and cohort breakdown
