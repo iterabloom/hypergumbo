@@ -1,0 +1,26 @@
+- op: create  # 40ab
+  at: '2026-03-04T01:45:32Z'  # 40ab
+  by: agent  # 40ab
+  actor: jgstern_agent  # 40ab
+  clock: 1  # 40ab
+  nonce: 40ab  # 40ab
+  data:  # 40ab
+    kind: work_item  # 40ab
+    title: "Tune bakeoff-features WARN thresholds for formal methods repos"  # 40ab
+    status: needs_human_review  # 40ab
+    priority: 3  # 40ab
+    parent:  # 40ab
+    tags: []  # 40ab
+    before: []  # 40ab
+    duplicate_of: []  # 40ab
+    not_duplicate_of: []  # 40ab
+    pr_ref:  # 40ab
+    description: ""  # 40ab
+    fields: {}  # 40ab
+- op: discuss  # 933b
+  at: '2026-03-04T01:45:37Z'  # 933b
+  by: agent  # 933b
+  actor: jgstern_agent  # 933b
+  clock: 2  # 933b
+  nonce: 933b  # 933b
+  message: "9 of 21 WARN repos are false positives from diagnostic thresholds. HIGH_TIER1_PCT (95%) flags pure first-party repos (ArkLib, circom, plonky2, ix). HIGH_SLICE_COVERAGE_PCT (10%) flags small focused repos (incrementalmerkletree, jmt, pasta_curves). HIGH_AVG_SLICE_NODES (500) flags highly-connected Agda repos (bft-consensus-agda, crypto-agda). Proposals: raise TIER1 to 98%, SLICE_COVERAGE to 20%, AVG_SLICE upper to 2000. Needs human review because these affect quality evaluation standards."  # 933b

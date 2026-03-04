@@ -1,0 +1,19 @@
+- op: create  # 766e
+  at: '2026-03-04T01:47:32Z'  # 766e
+  by: agent  # 766e
+  actor: jgstern_agent  # 766e
+  clock: 1  # 766e
+  nonce: 766e  # 766e
+  data:  # 766e
+    kind: work_item  # 766e
+    title: "Stop hook death spiral: no approve path when TOTAL_TODOS = 0"  # 766e
+    status: needs_human_review  # 766e
+    priority: 2  # 766e
+    parent:  # 766e
+    tags: []  # 766e
+    before: []  # 766e
+    duplicate_of: []  # 766e
+    not_duplicate_of: []  # 766e
+    pr_ref:  # 766e
+    description: ""  # 766e
+    fields: {}  # 766e
