@@ -1,0 +1,19 @@
+- op: create  # d81a
+  at: '2026-03-04T18:21:26Z'  # d81a
+  by: agent  # d81a
+  actor: jgstern_agent  # d81a
+  clock: 1  # d81a
+  nonce: d81a  # d81a
+  data:  # d81a
+    kind: work_item  # d81a
+    title: "Migrate existing analyzers to base-class field type pattern"  # d81a
+    status: todo_soft  # d81a
+    priority: 4  # d81a
+    parent:  # d81a
+    tags: []  # d81a
+    before: []  # d81a
+    duplicate_of: []  # d81a
+    not_duplicate_of: []  # d81a
+    pr_ref:  # d81a
+    description: "Python, Go, Ruby, Java, Kotlin all have independent field-type resolution. Migrate them to populate FileAnalysis.class_field_types and use resolve_receiver_type() from the base class (PR #1729) for consistency. Not urgent -- existing implementations work -- but reduces code duplication long-term. Python uses class_field_types in py.py, Go uses _extract_go_var_types(), Ruby uses _extract_ruby_var_types()."  # d81a
+    fields: {}  # d81a

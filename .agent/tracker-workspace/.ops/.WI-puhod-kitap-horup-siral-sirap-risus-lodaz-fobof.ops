@@ -1,0 +1,19 @@
+- op: create  # d668
+  at: '2026-03-04T18:21:26Z'  # d668
+  by: agent  # d668
+  actor: jgstern_agent  # d668
+  clock: 1  # d668
+  nonce: d668  # d668
+  data:  # d668
+    kind: work_item  # d668
+    title: "C++ field type resolution via base-class hook"  # d668
+    status: todo_soft  # d668
+    priority: 4  # d668
+    parent:  # d668
+    tags: []  # d668
+    before: []  # d668
+    duplicate_of: []  # d668
+    not_duplicate_of: []  # d668
+    pr_ref:  # d668
+    description: "Add this->field.method() resolution using the base-class field type hook from PR #1729. Requires new field type extraction in cpp.py. Set self_keywords to this. Uses resolve_receiver_type() and _field_type_registry from TreeSitterAnalyzer base class."  # d668
+    fields: {}  # d668
