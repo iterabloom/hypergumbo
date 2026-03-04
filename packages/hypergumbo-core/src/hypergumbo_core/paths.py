@@ -285,12 +285,15 @@ def is_test_file(path: str) -> bool:
         "fv", "harnesses",  # Formal verification / test harness directories
         "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories
     }
-    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks",
+    # and directories starting with "test-" (test-artifacts, test-fixtures, test-data).
     for part in path_parts:
         part_lower = part.lower()
         if part_lower in test_dirs:
             return True
         if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return True
+        if part_lower.startswith("test-"):
             return True
 
     # spec/ only matches as the first path component (Ruby RSpec convention).

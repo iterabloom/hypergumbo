@@ -287,6 +287,21 @@ class TestIsTestFile:
         assert is_test_file("benchmark/gcbench.d") is True
         assert is_test_file("crates/core/benches/prover_bench.rs") is True
 
+    def test_test_hyphen_prefix_directories(self) -> None:
+        """Directories starting with 'test-' are test directories.
+
+        Covers: test-artifacts/, test-fixtures/, test-data/, test-utils/, etc.
+        Real-world example: sp1 has crates/test-artifacts/programs/ with 80+ test
+        program main() functions that should be excluded from production analysis.
+        """
+        assert is_test_file("crates/test-artifacts/programs/main.rs") is True
+        assert is_test_file("test-fixtures/data/input.json") is True
+        assert is_test_file("test-data/sample.csv") is True
+        assert is_test_file("test-utils/helpers.py") is True
+        # Compound names that don't start with test- should NOT match
+        assert is_test_file("patch-testing/program/src/lib.rs") is False
+        assert is_test_file("latest-test/main.py") is False
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False
