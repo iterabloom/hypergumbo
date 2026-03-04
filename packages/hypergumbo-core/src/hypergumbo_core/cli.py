@@ -1458,6 +1458,30 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 continue
             routes.append(node)
 
+    # Deduplicate by (method, path) — materialized route symbols and
+    # concept-enriched handlers can both represent the same endpoint.
+    seen_route_keys: set[str] = set()
+    deduped_routes: list[dict] = []
+    for node in routes:
+        meta = node.get("meta") or {}
+        route_path = None
+        method = None
+        for concept in meta.get("concepts", []):
+            if isinstance(concept, dict) and concept.get("concept") == "route":
+                route_path = concept.get("path")
+                method = concept.get("method")
+                break
+        if route_path is None and node.get("kind") == "route":
+            route_path = meta.get("route_path")
+            method = method or meta.get("http_method")
+        if route_path and method:
+            key = f"{method.upper()}:{route_path}"
+            if key in seen_route_keys:
+                continue
+            seen_route_keys.add(key)
+        deduped_routes.append(node)
+    routes = deduped_routes
+
     if not routes:
         print("No API routes found in the behavior map.")
         cached_set = {input_path} if was_cached else set()

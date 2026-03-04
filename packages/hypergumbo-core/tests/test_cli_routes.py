@@ -797,3 +797,72 @@ def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> No
     # Test route should be excluded
     assert "test_get_user" not in out
     assert "Found 1 API route" in out
+
+
+def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
+    """Duplicate routes with same (method, path) are deduplicated.
+
+    Materialized route symbols and concept-enriched handlers can both
+    produce entries for the same HTTP endpoint. The output should show
+    each unique (method, path) only once.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:routes.go:10-15:GET /api/users:route",
+                "name": "GET /api/users",
+                "kind": "route",
+                "language": "go",
+                "path": "routes.go",
+                "span": {"start_line": 10, "end_line": 15},
+                "meta": {"route_path": "/api/users", "http_method": "GET"},
+            },
+            {
+                "id": "go:handlers.go:20-25:listUsers:function",
+                "name": "listUsers",
+                "kind": "function",
+                "language": "go",
+                "path": "handlers.go",
+                "span": {"start_line": 20, "end_line": 25},
+                "meta": {
+                    "concepts": [
+                        {"concept": "route", "path": "/api/users", "method": "GET"}
+                    ]
+                },
+            },
+            {
+                "id": "go:handlers.go:30-35:createUser:function",
+                "name": "createUser",
+                "kind": "function",
+                "language": "go",
+                "path": "handlers.go",
+                "span": {"start_line": 30, "end_line": 35},
+                "meta": {
+                    "concepts": [
+                        {"concept": "route", "path": "/api/users", "method": "POST"}
+                    ]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # GET /api/users appears in two nodes but should only show once
+    assert out.count("[GET] /api/users") == 1
+    # POST /api/users is unique, should appear once
+    assert out.count("[POST] /api/users") == 1
+    # Total should be 2 unique routes, not 3
+    assert "Found 2 API route" in out
