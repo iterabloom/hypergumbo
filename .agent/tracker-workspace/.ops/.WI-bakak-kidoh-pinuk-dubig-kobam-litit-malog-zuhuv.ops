@@ -17,3 +17,10 @@
     pr_ref:  # 6b57
     description: ""  # 6b57
     fields: {}  # 6b57
+- op: discuss  # 49e0
+  at: '2026-03-04T02:35:11Z'  # 49e0
+  by: agent  # 49e0
+  actor: jgstern_agent  # 49e0
+  clock: 2  # 49e0
+  nonce: '49e0'  # 49e0
+  message: "DEEP bakeoff: jolt rslice.1.prod for JoltDevice::load has 22/29 false positive depth=1 callers. All are AtomicU64.load(Ordering::Relaxed) and AtomicU8.load() calls in counters.rs conflated with JoltDevice.load(). sp1: test function has in-degree 157 because 131 test functions named generate_trace/fibonacci/etc. incorrectly linked to docker.rs::test. Root cause: Rust analyzer resolves method calls by name alone without receiver type discrimination."  # 49e0

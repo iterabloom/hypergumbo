@@ -1,0 +1,26 @@
+- op: create  # d1be
+  at: '2026-03-04T02:34:47Z'  # d1be
+  by: agent  # d1be
+  actor: jgstern_agent  # d1be
+  clock: 1  # d1be
+  nonce: d1be  # d1be
+  data:  # d1be
+    kind: work_item  # d1be
+    title: "Entrypoint ranking: minority-language scripts outrank majority-language symbols in library repos"  # d1be
+    status: todo_hard  # d1be
+    priority: 2  # d1be
+    parent:  # d1be
+    tags: []  # d1be
+    before: []  # d1be
+    duplicate_of: []  # d1be
+    not_duplicate_of: []  # d1be
+    pr_ref:  # d1be
+    description: ""  # d1be
+    fields: {}  # d1be
+- op: discuss  # 8b24
+  at: '2026-03-04T02:35:11Z'  # 8b24
+  by: agent  # 8b24
+  actor: jgstern_agent  # 8b24
+  clock: 2  # 8b24
+  nonce: 8b24  # 8b24
+  message: "DEEP bakeoff: ArkLib (163 Lean files, 6 Python scripts) generates all 5 forward slices from Python main() functions (confidence 0.47-0.53) instead of Lean library_export symbols (confidence 0.32-0.33). Fix: when one language constitutes >95% of files, boost its entrypoint scores proportionally. Or: guarantee at least 1 slice from the primary language regardless of absolute confidence."  # 8b24

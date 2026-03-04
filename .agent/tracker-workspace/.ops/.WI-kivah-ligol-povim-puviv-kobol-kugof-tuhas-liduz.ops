@@ -17,3 +17,10 @@
     pr_ref:  # 8124
     description: ""  # 8124
     fields: {}  # 8124
+- op: discuss  # 625b
+  at: '2026-03-04T02:35:10Z'  # 625b
+  by: agent  # 625b
+  actor: jgstern_agent  # 625b
+  clock: 2  # 625b
+  nonce: 625b  # 625b
+  message: "DEEP bakeoff session deep-20260303-203358: 3/6 repos had test function seeds producing empty prod rslices. sp1: test_read_raf_sumcheck (57 in-edges, all from tests), jolt: test function (all test callers), openzeppelin: GovernorHelper (test/helpers/governance.js). Fix: use prod_in_degree (in-degree from non-test files only) for seed scoring. Nodes where all in-degree is from test files should be excluded from seed candidates."  # 625b
