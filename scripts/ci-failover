@@ -374,58 +374,66 @@ cmd_disengage() {
 
 		if [[ "$mirror_converted" == "True" || "$mirror_converted" == "true" ]]; then
 			# Mirror was converted to regular repo during engage.
-			# Re-create it: delete the regular repo, then re-import as mirror.
+			# Safe restore: create mirror under temp name first, then swap.
 			echo ""
-			echo "   📋 Re-creating mirror on local Forgejo..."
-			echo "   (The repo was converted from mirror → regular during engage)"
+			echo "   📋 Restoring mirror on local Forgejo..."
 
-			# Determine the mirror source URL
 			local mirror_source="${original_mirror_url:-}"
 			if [[ -z "$mirror_source" ]]; then
-				# Fall back to the Codeberg remote URL
 				mirror_source=$(git remote get-url origin 2>/dev/null || echo "")
 			fi
 
 			if [[ -z "$mirror_source" ]]; then
 				warn "Could not determine mirror source URL."
-				warn "Re-create the mirror manually on local Forgejo:"
-				warn "  $local_url — migrate from Codeberg as a mirror repo"
+				warn "Re-create the mirror manually on local Forgejo."
 			else
-				# Extract owner and repo name from LOCAL_FORGEJO_REPO
 				local repo_owner repo_name
 				repo_owner="${local_repo%%/*}"
 				repo_name="${local_repo##*/}"
+				local temp_name="${repo_name}-mirror-restore"
 
-				# Step 1: Delete the current (regular) repo
-				echo "   Deleting regular repo on local Forgejo..."
-				if api_call DELETE "$api_url"; then
-					echo "   ✅ Regular repo deleted"
-
-					# Step 2: Re-create as mirror via migration API
-					echo "   Re-importing as mirror from: $mirror_source"
-					local migrate_payload
-					migrate_payload=$(python3 -c "
-import json, os
+				# Step 1: Create mirror under temp name
+				echo "   Creating mirror as '$temp_name'..."
+				local migrate_payload
+				migrate_payload=$(python3 -c "
+import json
 payload = {
     'clone_addr': '$mirror_source',
     'mirror': True,
     'mirror_interval': '10m',
-    'repo_name': '$repo_name',
+    'repo_name': '$temp_name',
     'repo_owner': '$repo_owner',
     'service': 'gitea'
 }
 print(json.dumps(payload))
 ")
-					if api_post "$local_url/api/v1/repos/migrate" "$migrate_payload"; then
-						echo "   ✅ Mirror repo re-created"
+				if api_post "$local_url/api/v1/repos/migrate" "$migrate_payload"; then
+					echo "   ✅ Mirror created as $repo_owner/$temp_name"
+
+					# Step 2: Delete the old regular repo
+					echo "   Deleting old regular repo ($repo_name)..."
+					if api_call DELETE "$api_url"; then
+						echo "   ✅ Old repo deleted"
+
+						# Step 3: Rename temp mirror to original name
+						echo "   Renaming $temp_name → $repo_name..."
+						if api_patch "$local_url/api/v1/repos/$repo_owner/$temp_name" \
+							"{\"name\": \"$repo_name\"}"; then
+							echo "   ✅ Mirror restored as $local_repo"
+						else
+							warn "Rename failed (HTTP $API_HTTP_CODE)"
+							echo "   Mirror exists as: $local_url/$repo_owner/$temp_name"
+							echo "   Rename it manually to '$repo_name' in the Forgejo web UI."
+						fi
 					else
-						warn "Mirror re-creation failed (HTTP $API_HTTP_CODE)"
-						echo "   👉 Re-create manually: $local_url — New Migration → mirror from:"
-						echo "      $mirror_source"
+						warn "Could not delete old repo (HTTP $API_HTTP_CODE)"
+						echo "   Mirror exists as: $local_url/$repo_owner/$temp_name"
+						echo "   Delete '$repo_name' and rename '$temp_name' manually."
 					fi
 				else
-					warn "Could not delete regular repo (HTTP $API_HTTP_CODE)"
-					warn "Re-create the mirror manually on local Forgejo"
+					warn "Mirror creation failed (HTTP $API_HTTP_CODE)"
+					echo "   The regular repo is untouched — nothing was lost."
+					echo "   Re-create the mirror manually when ready."
 				fi
 			fi
 		else
@@ -503,8 +511,7 @@ for pr in prs:
 	echo "   auto-pr, merge-pr, and ci-debug now target Codeberg"
 	if [[ "$mirror_converted" == "True" || "$mirror_converted" == "true" ]]; then
 		echo ""
-		echo "   📋 REMINDER: The local Forgejo repo mirror was re-created."
-		echo "   Verify it's syncing: $local_url/$local_repo"
+		echo "   📋 Verify mirror is syncing: $local_url/$local_repo"
 	fi
 }
 
