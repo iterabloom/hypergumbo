@@ -129,15 +129,64 @@ cmd_engage() {
 	local codeberg_dev_sha
 	codeberg_dev_sha=$(git rev-parse origin/dev 2>/dev/null || echo "unknown")
 
-	# Pause mirror sync on local Forgejo
-	echo "   Pausing mirror sync on local Forgejo..."
+	# Check if the local repo is a mirror and convert it
 	local api_url="$local_url/api/v1/repos/$repo"
 	local saved_token="${FORGEJO_TOKEN:-}"
 	export FORGEJO_TOKEN="${token:-$saved_token}"
-	if api_patch "$api_url" '{"mirror_interval":"0"}'; then
-		echo "   ✅ Mirror sync paused"
+	local is_mirror=false
+	local mirror_converted=false
+	local original_mirror_url=""
+
+	if api_get "$api_url"; then
+		is_mirror=$(echo "$API_RESPONSE" | json_field "mirror")
+		if [[ "$is_mirror" == "True" || "$is_mirror" == "true" ]]; then
+			# Save the original mirror source URL for re-creation on disengage
+			original_mirror_url=$(echo "$API_RESPONSE" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+# mirror_url is not always exposed; fall back to clone_url of origin
+print(data.get('original_url', data.get('clone_url', '')))
+" 2>/dev/null || echo "")
+
+			echo ""
+			echo "   📋 Local repo is a mirror (read-only). Converting to regular repo..."
+			echo "   ⚠️  This is required so auto-pr can push feature branches."
+			echo "   ⚠️  Disengage will re-create the mirror automatically."
+
+			# Try Forgejo v13+ API: POST /repos/{owner}/{repo}/convert
+			if api_post "$api_url/convert" ""; then
+				echo "   ✅ Mirror converted to regular repo via API"
+				mirror_converted=true
+			else
+				# API not available (pre-v13). Try PATCH with mirror=false.
+				if api_patch "$api_url" '{"mirror": false}'; then
+					# Verify it actually worked
+					if api_get "$api_url"; then
+						local still_mirror
+						still_mirror=$(echo "$API_RESPONSE" | json_field "mirror")
+						if [[ "$still_mirror" == "False" || "$still_mirror" == "false" ]]; then
+							echo "   ✅ Mirror converted to regular repo"
+							mirror_converted=true
+						fi
+					fi
+				fi
+
+				if [[ "$mirror_converted" != "true" ]]; then
+					echo ""
+					echo "   ❌ Could not convert mirror via API (Forgejo v13+ required)."
+					echo "   👉 Manual step needed: go to the local Forgejo web UI:"
+					echo "      $local_url/$repo/settings"
+					echo "      → Danger Zone → 'Convert to Regular Repository'"
+					echo "   Then re-run: ./scripts/ci-failover engage"
+					export FORGEJO_TOKEN="$saved_token"
+					exit 1
+				fi
+			fi
+		else
+			echo "   ℹ️  Local repo is already a regular repo (not a mirror)"
+		fi
 	else
-		warn "Could not pause mirror sync (HTTP $API_HTTP_CODE) — proceeding anyway"
+		warn "Could not query local repo status (HTTP $API_HTTP_CODE) — proceeding anyway"
 	fi
 	export FORGEJO_TOKEN="$saved_token"
 
@@ -146,7 +195,13 @@ cmd_engage() {
 	if git push local dev 2>/dev/null; then
 		echo "   ✅ Local dev is up to date"
 	else
-		warn "Push to local failed — local Forgejo may already be up to date"
+		# Try with credentials
+		local push_user="${LOCAL_FORGEJO_USER:-${FORGEJO_USER:-}}"
+		if git -c credential.helper="!f() { echo username=$push_user; echo password=$token; }; f" push local dev 2>/dev/null; then
+			echo "   ✅ Local dev is up to date"
+		else
+			warn "Push to local failed — local Forgejo may already be up to date"
+		fi
 	fi
 
 	# Warn about existing vPR queue
@@ -159,14 +214,16 @@ cmd_engage() {
 	# Write flag file
 	local ts
 	ts=$(date -Iseconds)
-	python3 -c "
-import json, sys
+	_FAILOVER_MIRROR_URL="$original_mirror_url" python3 -c "
+import json, os
 state = {
     'engaged_at': '$ts',
     'codeberg_dev_sha': '$codeberg_dev_sha',
     'local_forgejo_url': '$local_url',
     'local_forgejo_repo': '$repo',
-    'mirror_was_enabled': True,
+    'mirror_was_enabled': $( [[ "$is_mirror" == "True" || "$is_mirror" == "true" ]] && echo "True" || echo "False" ),
+    'mirror_converted': $( [[ "$mirror_converted" == "true" ]] && echo "True" || echo "False" ),
+    'original_mirror_url': os.environ.get('_FAILOVER_MIRROR_URL', ''),
     'prs_merged_locally': []
 }
 with open('$FAILOVER_FILE', 'w') as f:
@@ -177,6 +234,13 @@ with open('$FAILOVER_FILE', 'w') as f:
 	echo ""
 	echo "✅ CI failover engaged"
 	echo "   auto-pr, merge-pr, and ci-debug now target local Forgejo"
+	if [[ "$mirror_converted" == "true" ]]; then
+		echo ""
+		echo "   📋 REMINDER: The local repo was converted from a mirror to a regular repo."
+		echo "   When you disengage, the mirror will be re-created automatically by"
+		echo "   deleting and re-importing the repo as a mirror from Codeberg."
+	fi
+	echo ""
 	echo "   When Codeberg recovers: ./scripts/ci-failover disengage"
 }
 
@@ -285,34 +349,100 @@ cmd_disengage() {
 		fi
 	fi
 
-	# Re-enable mirror sync
+	# Restore local Forgejo mirror
 	local local_url local_repo local_token
 	local_url=$(failover_json_field "local_forgejo_url")
 	local_repo=$(failover_json_field "local_forgejo_repo")
 	local_token="${LOCAL_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+	local mirror_converted
+	mirror_converted=$(failover_json_field "mirror_converted")
+	local original_mirror_url
+	original_mirror_url=$(failover_json_field "original_mirror_url")
 
 	if [[ -n "$local_url" ]] && [[ -n "$local_repo" ]]; then
-		echo "   Re-enabling mirror sync on local Forgejo..."
 		local saved_token="${FORGEJO_TOKEN:-}"
 		export FORGEJO_TOKEN="$local_token"
 		local api_url="$local_url/api/v1/repos/$local_repo"
-		if api_patch "$api_url" '{"mirror_interval":"10m"}'; then
-			echo "   ✅ Mirror sync re-enabled (10m interval)"
-		else
-			warn "Could not re-enable mirror sync (HTTP $API_HTTP_CODE)"
-		fi
 
-		# Trigger immediate sync
-		if api_post "$api_url/mirror-sync" ""; then
-			echo "   ✅ Mirror sync triggered"
+		if [[ "$mirror_converted" == "True" || "$mirror_converted" == "true" ]]; then
+			# Mirror was converted to regular repo during engage.
+			# Re-create it: delete the regular repo, then re-import as mirror.
+			echo ""
+			echo "   📋 Re-creating mirror on local Forgejo..."
+			echo "   (The repo was converted from mirror → regular during engage)"
+
+			# Determine the mirror source URL
+			local mirror_source="${original_mirror_url:-}"
+			if [[ -z "$mirror_source" ]]; then
+				# Fall back to the Codeberg remote URL
+				mirror_source=$(git remote get-url origin 2>/dev/null || echo "")
+			fi
+
+			if [[ -z "$mirror_source" ]]; then
+				warn "Could not determine mirror source URL."
+				warn "Re-create the mirror manually on local Forgejo:"
+				warn "  $local_url — migrate from Codeberg as a mirror repo"
+			else
+				# Extract owner and repo name from LOCAL_FORGEJO_REPO
+				local repo_owner repo_name
+				repo_owner="${local_repo%%/*}"
+				repo_name="${local_repo##*/}"
+
+				# Step 1: Delete the current (regular) repo
+				echo "   Deleting regular repo on local Forgejo..."
+				if api_call DELETE "$api_url"; then
+					echo "   ✅ Regular repo deleted"
+
+					# Step 2: Re-create as mirror via migration API
+					echo "   Re-importing as mirror from: $mirror_source"
+					local migrate_payload
+					migrate_payload=$(python3 -c "
+import json, os
+payload = {
+    'clone_addr': '$mirror_source',
+    'mirror': True,
+    'mirror_interval': '10m',
+    'repo_name': '$repo_name',
+    'repo_owner': '$repo_owner',
+    'service': 'gitea'
+}
+print(json.dumps(payload))
+")
+					if api_post "$local_url/api/v1/repos/migrate" "$migrate_payload"; then
+						echo "   ✅ Mirror repo re-created"
+					else
+						warn "Mirror re-creation failed (HTTP $API_HTTP_CODE)"
+						echo "   👉 Re-create manually: $local_url — New Migration → mirror from:"
+						echo "      $mirror_source"
+					fi
+				else
+					warn "Could not delete regular repo (HTTP $API_HTTP_CODE)"
+					warn "Re-create the mirror manually on local Forgejo"
+				fi
+			fi
 		else
-			warn "Could not trigger immediate mirror sync"
+			# Repo was already a regular repo (or mirror wasn't converted).
+			# Just re-enable mirror sync if it was paused.
+			echo "   Re-enabling mirror sync on local Forgejo..."
+			if api_patch "$api_url" '{"mirror_interval":"10m"}'; then
+				echo "   ✅ Mirror sync re-enabled (10m interval)"
+			else
+				warn "Could not re-enable mirror sync (HTTP $API_HTTP_CODE)"
+			fi
+
+			# Trigger immediate sync
+			if api_post "$api_url/mirror-sync" ""; then
+				echo "   ✅ Mirror sync triggered"
+			else
+				warn "Could not trigger immediate mirror sync"
+			fi
 		fi
 		export FORGEJO_TOKEN="$saved_token"
 
-		# Clean up remote feature branches on local Forgejo
-		local prs_count
-		prs_count=$(python3 -c "
+		# Clean up remote feature branches on local Forgejo (skip if repo was just re-created)
+		if [[ "$mirror_converted" != "True" && "$mirror_converted" != "true" ]]; then
+			local prs_count
+			prs_count=$(python3 -c "
 import json
 data = json.load(open('$FAILOVER_FILE'))
 prs = data.get('prs_merged_locally', [])
@@ -321,16 +451,17 @@ for pr in prs:
     print(pr.get('branch', ''))
 " 2>/dev/null || echo "0")
 
-		local pr_total branch_list
-		pr_total=$(echo "$prs_count" | head -1)
-		branch_list=$(echo "$prs_count" | tail -n +2)
+			local pr_total branch_list
+			pr_total=$(echo "$prs_count" | head -1)
+			branch_list=$(echo "$prs_count" | tail -n +2)
 
-		if [[ "$pr_total" -gt 0 ]] && [[ -n "$branch_list" ]]; then
-			echo "   Cleaning up $pr_total feature branch(es) on local Forgejo..."
-			while IFS= read -r branch; do
-				[[ -z "$branch" ]] && continue
-				git push local --delete "$branch" 2>/dev/null || true
-			done <<<"$branch_list"
+			if [[ "$pr_total" -gt 0 ]] && [[ -n "$branch_list" ]]; then
+				echo "   Cleaning up $pr_total feature branch(es) on local Forgejo..."
+				while IFS= read -r branch; do
+					[[ -z "$branch" ]] && continue
+					git push local --delete "$branch" 2>/dev/null || true
+				done <<<"$branch_list"
+			fi
 		fi
 	fi
 
@@ -362,6 +493,11 @@ for pr in prs:
 	echo ""
 	echo "✅ CI failover disengaged"
 	echo "   auto-pr, merge-pr, and ci-debug now target Codeberg"
+	if [[ "$mirror_converted" == "True" || "$mirror_converted" == "true" ]]; then
+		echo ""
+		echo "   📋 REMINDER: The local Forgejo repo mirror was re-created."
+		echo "   Verify it's syncing: $local_url/$local_repo"
+	fi
 }
 
 # ------------------------------------------------------------------
