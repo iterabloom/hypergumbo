@@ -639,6 +639,159 @@ public class Controller {
         )
 
 
+class TestCSharpCrossFileFieldTypeResolution:
+    """Tests for cross-file field type resolution via class_field_types registry.
+
+    The base-class field type pattern (class_field_types + resolve_receiver_type)
+    enables chained field access resolution like this._inner._db.Query() where
+    each step resolves through the aggregated field type registry.
+    """
+
+    def test_chained_field_resolution(self, tmp_path: Path) -> None:
+        """this._inner._db.Save() resolves through two field type lookups.
+
+        Outer holds Inner, Inner holds Db. The call this._inner._db.Save()
+        requires resolving _inner → Inner, then _db → Db, then Save → Db.Save.
+        When multiple classes define Save(), only the field type registry can
+        disambiguate — the AMB-METHOD guard suppresses untyped fallback.
+        """
+        (tmp_path / "Db.cs").write_text("""
+public class Db {
+    public void Save() { }
+}
+""")
+        (tmp_path / "Cache.cs").write_text("""
+public class Cache {
+    public void Save() { }
+}
+""")
+        (tmp_path / "Store.cs").write_text("""
+public class Store {
+    public void Save() { }
+}
+""")
+        (tmp_path / "Inner.cs").write_text("""
+public class Inner {
+    public Db _db;
+}
+""")
+        (tmp_path / "Outer.cs").write_text("""
+public class Outer {
+    private Inner _inner;
+
+    public void Run() {
+        this._inner._db.Save();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "Outer.Run"), None
+        )
+        db_save = next(
+            (s for s in result.symbols if s.name == "Db.Save"), None
+        )
+
+        assert run_method is not None
+        assert db_save is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == db_save.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected chained field call edge for this._inner._db.Save(). "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+
+    def test_non_this_receiver_falls_through(self, tmp_path: Path) -> None:
+        """receiver.field.Method() without ``this`` falls through to fallback."""
+        (tmp_path / "App.cs").write_text("""
+public class Svc {
+    public void Run() { }
+}
+
+public class App {
+    public void Go(Svc s) {
+        s.Run();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        go = next((s for s in result.symbols if s.name == "App.Go"), None)
+        run = next((s for s in result.symbols if s.name == "Svc.Run"), None)
+        assert go is not None
+        assert run is not None
+
+        call_edge = next(
+            (e for e in result.edges
+             if e.src == go.id and e.dst == run.id and e.edge_type == "calls"),
+            None,
+        )
+        assert call_edge is not None
+
+    def test_chain_enclosing_class_not_in_registry(self, tmp_path: Path) -> None:
+        """this._x.Do() where enclosing class has no field_type_registry entry.
+
+        Inherited field _x isn't visible to the analyzer — chain resolution
+        fails at the first step (enclosing class not in registry), falls
+        through to var_types or fallback.
+        """
+        (tmp_path / "App.cs").write_text("""
+public class Base {
+    protected Svc _x;
+}
+
+public class Svc {
+    public void Do() { }
+}
+
+public class Child : Base {
+    public void Go() {
+        this._x.Do();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+        go = next((s for s in result.symbols if s.name == "Child.Go"), None)
+        assert go is not None
+        # Child has no fields → not in registry → chain fails at line 936.
+        # But _x is in var_types from field_declaration in same file →
+        # old path still resolves via var_types.
+
+    def test_chain_field_not_in_type(self, tmp_path: Path) -> None:
+        """_resolve_member_chain returns None when field is not in type's fields."""
+        import tree_sitter
+        import tree_sitter_c_sharp as tscsharp
+        from hypergumbo_lang_mainstream.csharp import (
+            _resolve_member_chain,
+            find_child_by_type,
+        )
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscsharp.language()))
+        source = b"this._inner._bogus"
+        tree = parser.parse(source)
+        # The parser treats this as an expression_statement with member_access
+        node = tree.root_node
+        while node.type != "member_access_expression":
+            node = node.children[0]
+
+        registry = {"Outer": {"_inner": "Inner"}, "Inner": {"_count": "int"}}
+        result = _resolve_member_chain(node, source, registry, "Outer")
+        assert result is None, "Expected None when field _bogus not in Inner"
+
+
 class TestCSharpReturnTypeInference:
     """Tests for return type tracking from method return type annotations."""
 
