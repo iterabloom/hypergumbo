@@ -118,10 +118,18 @@ cmd_engage() {
 	fi
 	echo "   ✅ Local Forgejo is reachable"
 
-	# Ensure 'local' git remote exists
+	# Ensure 'local' git remote exists with embedded credentials
+	local local_user="${LOCAL_FORGEJO_USER:-$FORGEJO_USER}"
+	local local_token="${LOCAL_FORGEJO_TOKEN:-}"
+	local authed_url
+	# Embed credentials in URL (same pattern as origin)
+	authed_url=$(echo "$local_url" | sed "s|://|://${local_user}:${local_token}@|")
 	if ! git remote get-url local >/dev/null 2>&1; then
 		echo "   Adding 'local' git remote..."
-		git remote add local "$local_url/$repo.git"
+		git remote add local "$authed_url/$repo.git"
+	else
+		# Update URL in case credentials changed
+		git remote set-url local "$authed_url/$repo.git"
 	fi
 
 	# Record origin/dev SHA
