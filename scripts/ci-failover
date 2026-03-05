@@ -665,10 +665,15 @@ cmd_disengage_cleanup() {
 
 	echo "   ✅ PR #$pr_num confirmed merged on Codeberg"
 
-	# Pull merged dev
-	echo "   Pulling merged dev from Codeberg..."
+	# Pull merged dev from Codeberg.
+	# The repatriation branch may have amended a commit (e.g., manifest
+	# regeneration), so local dev and origin/dev can diverge even though
+	# the content is identical. Use fetch+reset instead of pull to handle
+	# this cleanly — origin/dev is the canonical merged truth.
+	echo "   Syncing local dev with Codeberg..."
 	git checkout dev --quiet 2>/dev/null || true
-	git pull origin dev --quiet || warn "Could not pull origin/dev"
+	git fetch origin dev --quiet 2>/dev/null || warn "Could not fetch origin/dev"
+	git reset --hard origin/dev --quiet 2>/dev/null || warn "Could not reset to origin/dev"
 
 	# Delete repatriation branch locally
 	if [[ -n "$repatriation_branch" ]]; then
