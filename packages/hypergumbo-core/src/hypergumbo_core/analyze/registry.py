@@ -186,7 +186,8 @@ def run_analyzer(
     """
     analyzer = _ANALYZER_REGISTRY.get(name)
     if analyzer is None:
-        raise KeyError(f"Unknown analyzer: {name}")
+        available = ", ".join(sorted(_ANALYZER_REGISTRY)) or "none registered"
+        raise KeyError(f"Unknown analyzer: {name!r}. Available: {available}")
     return analyzer.get_func()(repo_root, **kwargs)
 
 
