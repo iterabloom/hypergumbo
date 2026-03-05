@@ -58,6 +58,7 @@ class PreflightResult:
         api_base: Forgejo API base URL for this repo.
         forgejo_user: Forgejo username from environment.
         forgejo_token: Forgejo API token from environment.
+        push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
     """
 
     ok: bool
@@ -69,6 +70,7 @@ class PreflightResult:
     api_base: str = ""
     forgejo_user: str = ""
     forgejo_token: str = ""
+    push_remote: str = "origin"
 
 
 @dataclass
@@ -124,6 +126,60 @@ def _load_env(repo_root: Path) -> dict[str, str]:
         result[key] = value
 
     return result
+
+
+@dataclass
+class _FailoverState:
+    """CI failover state parsed from ``.git/CI_FAILOVER_ACTIVE``."""
+
+    active: bool = False
+    api_base: str = ""
+    push_remote: str = "origin"
+    token: str = ""
+    user: str = ""
+
+
+def _detect_failover(git_dir: Path, env_vars: dict[str, str]) -> _FailoverState:
+    """Detect active CI failover and return override state.
+
+    Reads the ``.git/CI_FAILOVER_ACTIVE`` JSON flag file written by
+    ``ci-failover engage``. When active, overrides API base, credentials,
+    and push remote to target the self-hosted Forgejo instance.
+    """
+    flag_file = git_dir / "CI_FAILOVER_ACTIVE"
+    if not flag_file.is_file():
+        return _FailoverState()
+
+    try:
+        data = json.loads(flag_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return _FailoverState()
+
+    local_url = data.get("selfhosted_forgejo_url", "")
+    local_repo = data.get("selfhosted_forgejo_repo", "")
+    if not local_url or not local_repo:
+        return _FailoverState()
+
+    token = (
+        env_vars.get("SELFHOSTED_FORGEJO_TOKEN")
+        or os.environ.get("SELFHOSTED_FORGEJO_TOKEN", "")
+        or env_vars.get("FORGEJO_TOKEN")
+        or os.environ.get("FORGEJO_TOKEN", "")
+    )
+    user = (
+        env_vars.get("SELFHOSTED_FORGEJO_USER")
+        or os.environ.get("SELFHOSTED_FORGEJO_USER", "")
+        or env_vars.get("FORGEJO_USER")
+        or os.environ.get("FORGEJO_USER", "")
+    )
+
+    return _FailoverState(
+        active=True,
+        api_base=f"{local_url}/api/v1/repos/{local_repo}",
+        push_remote="selfh",
+        token=token,
+        user=user,
+    )
 
 
 def _detect_api_base(repo_root: Path) -> str:
@@ -630,6 +686,16 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     forgejo_user = env_vars.get("FORGEJO_USER") or os.environ.get(
         "FORGEJO_USER", ""
     )
+
+    # 6a. Failover detection — override credentials, API base, push remote
+    failover = _detect_failover(git_dir, env_vars)
+    push_remote = "origin"
+    if failover.active:
+        forgejo_token = failover.token
+        forgejo_user = failover.user
+        push_remote = failover.push_remote
+        _log("[SELF-HOSTED] Failover active — targeting self-hosted Forgejo")
+
     if not forgejo_token:
         return PreflightResult(
             ok=False,
@@ -650,14 +716,20 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         )
 
     # 8. Remote exists
-    remote_result = _git(repo_root, "remote", "get-url", "origin", check=False)
+    target_remote = push_remote
+    remote_result = _git(
+        repo_root, "remote", "get-url", target_remote, check=False,
+    )
     if remote_result.returncode != 0:
         return PreflightResult(
-            ok=False, error="no remote 'origin' configured"
+            ok=False, error=f"no remote '{target_remote}' configured",
         )
 
-    # 9. API base
-    api_base = _detect_api_base(repo_root)
+    # 9. API base — failover overrides origin-based detection
+    if failover.active:
+        api_base = failover.api_base
+    else:
+        api_base = _detect_api_base(repo_root)
     if not api_base:
         return PreflightResult(
             ok=False,
@@ -673,6 +745,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         api_base=api_base,
         forgejo_user=forgejo_user,
         forgejo_token=forgejo_token,
+        push_remote=push_remote,
     )
 
 
@@ -751,7 +824,7 @@ def do_sync(
             push_result = _git(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
-                "push", "origin", push_ref,
+                "push", preflight.push_remote, push_ref,
                 "-o", f"title={push_title}",
                 "-o", "description=Automated tracker data sync",
                 check=False,
@@ -840,9 +913,9 @@ def do_sync(
             )
 
         # Construct PR URL
-        host_match = re.match(r"https?://([^/]+)/", preflight.api_base)
-        host = host_match.group(1) if host_match else "codeberg.org"
-        pr_url = f"https://{host}/{repo_slug}/pulls/{pr_num}"
+        base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
+        base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
+        pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
         return SyncResult(
             success=True,
@@ -862,7 +935,7 @@ def do_sync(
         _git(repo_root, "checkout", preflight.original_branch, check=False)
 
         # Pull latest (non-fatal)
-        _git(repo_root, "pull", "origin", base_branch, check=False)
+        _git(repo_root, "pull", preflight.push_remote, base_branch, check=False)
 
         # Delete sync branch (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)
