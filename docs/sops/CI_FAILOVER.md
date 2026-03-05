@@ -2,6 +2,18 @@
 
 When Codeberg is down and you have a self-hosted Forgejo with a runner.
 
+## Quick Reference
+
+```
+CODEBERG DOWN                          CODEBERG BACK
+─────────────                          ─────────────
+./scripts/ci-failover engage           ./scripts/ci-failover disengage
+  ↓                                      ↓
+Work normally (auto-pr, etc.)          Review + merge PR on Codeberg
+PRs go to self-hosted Forgejo            ↓
+                                       ./scripts/ci-failover disengage-cleanup
+```
+
 ## Prerequisites
 
 In `.env`:
@@ -59,16 +71,10 @@ This will:
 - Restore the self-hosted Forgejo mirror
 - Remove the failover flag
 
-## Quick Reference
+## Status Check
 
-```
-CODEBERG DOWN                          CODEBERG BACK
-─────────────                          ─────────────
-./scripts/ci-failover engage           ./scripts/ci-failover disengage
-  ↓                                      ↓
-Work normally (auto-pr, etc.)          Review + merge PR on Codeberg
-PRs go to self-hosted Forgejo            ↓
-                                       ./scripts/ci-failover disengage-cleanup
+```bash
+./scripts/ci-failover status
 ```
 
 ## Troubleshooting
@@ -80,11 +86,3 @@ PRs go to self-hosted Forgejo            ↓
 | `engage` says "already engaged" | Run `./scripts/ci-failover status` to check state |
 | Push to selfh fails | Check credentials in `.env`, then `engage --force` to refresh remote URL |
 | Working tree not clean | Commit or stash changes first (agent state files are auto-committed) |
-
-## Status Check
-
-```bash
-./scripts/ci-failover status
-```
-
-Shows: engaged/disengaged, commits ahead, Codeberg reachability.
