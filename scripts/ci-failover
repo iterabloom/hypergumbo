@@ -517,6 +517,13 @@ cmd_status() {
 		echo "   Codeberg dev:   ${codeberg_sha:0:7} (at engage time)"
 		echo "   Local dev:      ${local_sha:0:7}"
 
+		# Show commit delta
+		local commits_ahead=0
+		if git rev-parse "$codeberg_sha" >/dev/null 2>&1; then
+			commits_ahead=$(git rev-list --count "$codeberg_sha..dev" 2>/dev/null || echo "?")
+		fi
+		echo "   Commits ahead:  $commits_ahead"
+
 		# Count PRs merged locally
 		local pr_count
 		pr_count=$(python3 -c "
