@@ -17,3 +17,11 @@
     pr_ref:  # e9ca
     description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, delete older."  # e9ca
     fields: {}  # e9ca
+- op: update  # 90ca
+  at: '2026-03-05T23:40:04Z'  # 90ca
+  by: human  # 90ca
+  actor: jgstern  # 90ca
+  clock: 2  # 90ca
+  nonce: 90ca  # 90ca
+  set:  # 90ca
+    description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, move older to \"older_guidance\" subdir"  # 90ca

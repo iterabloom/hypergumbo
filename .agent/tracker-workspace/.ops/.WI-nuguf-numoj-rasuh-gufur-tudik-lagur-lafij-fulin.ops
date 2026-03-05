@@ -74,3 +74,10 @@
   nonce: 86de  # 86de
   set:  # 86de
     description: "hook should detect running bakeoff processes and block any change to executable production code. Currently judgment-based, not mechanistically enforced. we might not be able to physically prevent the agent from modifying a given file, but we can use a git hook to refuse to commit a file that was modified in the midst of a bakeoff, and then yell at the agent and I guess make it revert the changes. NOTE that this doesn't mean no commits are allowed during a bakeoff. the docs can be changed; the tracker can be manipulated and synced as usual. but no changes to the code that is currently executing (or is eligible to execute as a result of running hypergumbo)"  # 86de
+- op: discuss  # cd25
+  at: '2026-03-05T23:39:02Z'  # cd25
+  by: human  # cd25
+  actor: jgstern  # cd25
+  clock: 9  # cd25
+  nonce: cd25  # cd25
+  message: "another important consideration: correct me if I am mistaken, but modifying production code \"on a feature branch\" is still a BAD IDEA because that branch must be active in order to make the edits, and as far as the python interpreter is concerned, whatever branch is active is the state of the file. the running bakeoff will not \"stay\" on the dev branch if you switch branches. perhaps there are some exotic git operations I am unaware of, but it's probably best to avoid those anyway because you might not understand them as well as you think you do. so really, I am thinking that bakeoff-concurrent work of ANY sort should be forbidden UNLESS one of the repos is 350 MB or larger. and in that scenario there ought to be some kind of background script that runs and yells an IMPORTANT REMINDER every 5 minutes or so into the context window, somehow."  # cd25

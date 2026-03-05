@@ -17,3 +17,18 @@
     pr_ref:  # fdce
     description: "Stop hook runs even when autonomous mode is OFF, wasting tokens on irrelevant guidance. Should exit 0 immediately when mode is OFF."  # fdce
     fields: {}  # fdce
+- op: discuss  # 9aa7
+  at: '2026-03-05T23:35:03Z'  # 9aa7
+  by: human  # 9aa7
+  actor: jgstern  # 9aa7
+  clock: 2  # 9aa7
+  nonce: 9aa7  # 9aa7
+  message: "Already implemented: all four vendor hooks (claude-code, cursor, gemini-cli, codex-cli) check AUTONOMOUS_MODE.txt and exit 0 immediately when OFF/FALSE/empty. stop_logic.sh is never sourced. No code change needed."  # 9aa7
+- op: update  # 149d
+  at: '2026-03-05T23:35:16Z'  # 149d
+  by: human  # 149d
+  actor: jgstern  # 149d
+  clock: 3  # 149d
+  nonce: 149d  # 149d
+  set:  # 149d
+    status: done  # 149d

@@ -17,3 +17,18 @@
     pr_ref:  # 38ef
     description: "C# already extracts field types (csharp.py lines 937-961) but never uses them for method chaining. Adopt the new base-class pattern from PR #1729: populate FileAnalysis.class_field_types from existing extraction, set self_keywords to this, use resolve_receiver_type() in edge extraction. Quick win since extraction already exists."  # 38ef
     fields: {}  # 38ef
+- op: discuss  # 1ca0
+  at: '2026-03-05T23:36:55Z'  # 1ca0
+  by: human  # 1ca0
+  actor: jgstern  # 1ca0
+  clock: 2  # 1ca0
+  nonce: 1ca0  # 1ca0
+  message: "Implemented in PR 1770. Pass 1 extracts class_field_types, analyze() aggregates into registry, Pass 2 uses _resolve_member_chain for this.field1.field2.Method() patterns."  # 1ca0
+- op: update  # 81db
+  at: '2026-03-05T23:37:23Z'  # 81db
+  by: human  # 81db
+  actor: jgstern  # 81db
+  clock: 3  # 81db
+  nonce: 81db  # 81db
+  set:  # 81db
+    status: done  # 81db
