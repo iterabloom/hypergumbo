@@ -319,7 +319,7 @@ class TestRunAnalyzer:
 
     def test_raises_for_unknown(self) -> None:
         """Raises KeyError for unregistered analyzer name."""
-        with pytest.raises(KeyError, match="Unknown analyzer: missing"):
+        with pytest.raises(KeyError, match=r"Unknown analyzer: 'missing'\. Available:"):
             run_analyzer("missing", Path("/test"))
 
 
