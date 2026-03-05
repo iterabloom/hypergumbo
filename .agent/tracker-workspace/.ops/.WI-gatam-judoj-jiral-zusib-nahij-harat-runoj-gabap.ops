@@ -32,3 +32,11 @@
   clock: 3  # 17bd
   nonce: 17bd  # 17bd
   message: "Recreating all items from analysis - this was F2 created in isolation before dependency chain"  # 17bd
+- op: update  # 1300
+  at: '2026-03-05T21:24:10Z'  # 1300
+  by: human  # 1300
+  actor: jgstern  # 1300
+  clock: 4  # 1300
+  nonce: '1300'  # 1300
+  set:  # 1300
+    description: "Stop hook should detect running bakeoff processes and either block stopping or warn. Agent in transcript correctly continued during bakeoff, but this was judgment-based, not enforced. Needs human input on whether hard-gate or advisory. duplicate/garbled version of WI-nuguf"  # 1300

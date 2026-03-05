@@ -17,3 +17,18 @@
     pr_ref:  # 4225
     description: "last_stop_check.json in .agent/ causes git noise. Move to ~/hypergumbo_lab_notebook/ or XDG_STATE_HOME. Requires updating stop hook, AGENTS.md, and recovery instructions."  # 4225
     fields: {}  # 4225
+- op: discuss  # 33df
+  at: '2026-03-05T20:59:22Z'  # 33df
+  by: human  # 33df
+  actor: jgstern  # 33df
+  clock: 2  # 33df
+  nonce: 33df  # 33df
+  message: "Move to ~/hypergumbo_lab_notebook/"  # 33df
+- op: update  # 94ed
+  at: '2026-03-05T20:59:32Z'  # 94ed
+  by: human  # 94ed
+  actor: jgstern  # 94ed
+  clock: 3  # 94ed
+  nonce: 94ed  # 94ed
+  set:  # 94ed
+    status: todo_soft  # 94ed

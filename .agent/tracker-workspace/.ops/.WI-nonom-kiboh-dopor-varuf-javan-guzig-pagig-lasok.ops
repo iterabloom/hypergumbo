@@ -18,3 +18,10 @@
     pr_ref:  # 0f85
     description: "Stop hook should check for open PRs and surface them in guidance. Agent was unaware of stale PRs until user asked. Needs design decision: which API, how to present, whether to auto-close."  # 0f85
     fields: {}  # 0f85
+- op: discuss  # 8fc7
+  at: '2026-03-05T21:00:26Z'  # 8fc7
+  by: human  # 8fc7
+  actor: jgstern  # 8fc7
+  clock: 2  # 8fc7
+  nonce: 8fc7  # 8fc7
+  message: "Say more on how this might work?"  # 8fc7

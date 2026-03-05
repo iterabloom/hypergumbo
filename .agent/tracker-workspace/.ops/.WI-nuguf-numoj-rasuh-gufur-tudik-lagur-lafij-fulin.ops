@@ -18,3 +18,59 @@
     pr_ref:  # 38fc
     description: "Stop hook should detect running bakeoff processes and block stopping or warn. Currently judgment-based, not enforced."  # 38fc
     fields: {}  # 38fc
+- op: update  # a481
+  at: '2026-03-05T21:01:46Z'  # a481
+  by: human  # a481
+  actor: jgstern  # a481
+  clock: 2  # a481
+  nonce: a481  # a481
+  set:  # a481
+    status: todo_soft  # a481
+- op: discuss  # be81
+  at: '2026-03-05T21:09:07Z'  # be81
+  by: human  # be81
+  actor: jgstern  # be81
+  clock: 3  # be81
+  nonce: be81  # be81
+  message: "I guess it does not need to be a hard gate but the agent must be warned against trying to juggle too many tasks concurrently that are very often interdependent and whose sequence can easily get jumbled due to unpredictable network conditions."  # be81
+- op: update  # d2d7
+  at: '2026-03-05T21:11:38Z'  # d2d7
+  by: human  # d2d7
+  actor: jgstern  # d2d7
+  clock: 4  # d2d7
+  nonce: d2d7  # d2d7
+  set:  # d2d7
+    title: "pre-commit hook: bakeoff-aware gating (don't modify production code mid-bakeoff)"  # d2d7
+    description: "Stop hook should detect running bakeoff processes and block. Currently judgment-based, not enforced."  # d2d7
+- op: discuss  # 24d5
+  at: '2026-03-05T21:15:26Z'  # 24d5
+  by: human  # 24d5
+  actor: jgstern  # 24d5
+  clock: 5  # 24d5
+  nonce: 24d5  # 24d5
+  message: "on second thought after remembering what the real issue here was: this should be a noisy and hard gate. the thing we must prevent is the agent modifying production code in the middle of a bakeoff. at the same time, if autonomous mode is active, it should *stay* active. the two are in tension to an extent, but the agent simply needs to either go to sleep or run some analyses that simply do not write to any executable production code files. this must be an editable python package so this is no joke."  # 24d5
+- op: update  # c8a2
+  at: '2026-03-05T21:19:02Z'  # c8a2
+  by: human  # c8a2
+  actor: jgstern  # c8a2
+  clock: 6  # c8a2
+  nonce: c8a2  # c8a2
+  set:  # c8a2
+    title: "prehook: bakeoff-aware gating (don't modify production code mid-bakeoff)"  # c8a2
+    description: "hook should detect running bakeoff processes and block any change to executable production code. Currently judgment-based, not mechanistically enforced. we might not be able to physically prevent the agent from modifying a given file, but we can use a git hook to refuse to commit a file that was modified in the midst of a bakeoff, and then yell at the agent and I guess make it revert the changes"  # c8a2
+- op: update  # 5c82
+  at: '2026-03-05T21:19:18Z'  # 5c82
+  by: human  # 5c82
+  actor: jgstern  # 5c82
+  clock: 7  # 5c82
+  nonce: 5c82  # 5c82
+  set:  # 5c82
+    title: "hook: bakeoff-aware gating (don't modify production code mid-bakeoff)"  # 5c82
+- op: update  # 86de
+  at: '2026-03-05T21:22:09Z'  # 86de
+  by: human  # 86de
+  actor: jgstern  # 86de
+  clock: 8  # 86de
+  nonce: 86de  # 86de
+  set:  # 86de
+    description: "hook should detect running bakeoff processes and block any change to executable production code. Currently judgment-based, not mechanistically enforced. we might not be able to physically prevent the agent from modifying a given file, but we can use a git hook to refuse to commit a file that was modified in the midst of a bakeoff, and then yell at the agent and I guess make it revert the changes. NOTE that this doesn't mean no commits are allowed during a bakeoff. the docs can be changed; the tracker can be manipulated and synced as usual. but no changes to the code that is currently executing (or is eligible to execute as a result of running hypergumbo)"  # 86de
