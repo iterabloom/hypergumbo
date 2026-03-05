@@ -1,0 +1,20 @@
+- op: create  # 0f85
+  at: '2026-03-04T21:48:57Z'  # 0f85
+  by: agent  # 0f85
+  actor: jgstern_agent  # 0f85
+  clock: 1  # 0f85
+  nonce: 0f85  # 0f85
+  data:  # 0f85
+    kind: work_item  # 0f85
+    title: "Stop hook: add stale-PR audit to reflection guidance"  # 0f85
+    status: needs_human_review  # 0f85
+    priority: 3  # 0f85
+    parent:  # 0f85
+    tags:  # 0f85
+    - ci_infrastructure  # 0f85
+    before: []  # 0f85
+    duplicate_of: []  # 0f85
+    not_duplicate_of: []  # 0f85
+    pr_ref:  # 0f85
+    description: "Stop hook should check for open PRs and surface them in guidance. Agent was unaware of stale PRs until user asked. Needs design decision: which API, how to present, whether to auto-close."  # 0f85
+    fields: {}  # 0f85

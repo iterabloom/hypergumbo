@@ -1,0 +1,20 @@
+- op: create  # b856
+  at: '2026-03-04T21:49:10Z'  # b856
+  by: agent  # b856
+  actor: jgstern_agent  # b856
+  clock: 1  # b856
+  nonce: b856  # b856
+  data:  # b856
+    kind: work_item  # b856
+    title: "Stop hook: tiered cooldown messaging based on elapsed time"  # b856
+    status: todo_soft  # b856
+    priority: 4  # b856
+    parent:  # b856
+    tags: []  # b856
+    before:  # b856
+    - WI-duzun-varod-pilaf-mavas-kuroz-sovut-gitan-zitav  # b856
+    duplicate_of: []  # b856
+    not_duplicate_of: []  # b856
+    pr_ref:  # b856
+    description: "Current cooldown is binary (30 min threshold). Could tier: <10min=terse, 10-30min=moderate, >30min=full reflection. Depends on template separation for clean implementation."  # b856
+    fields: {}  # b856

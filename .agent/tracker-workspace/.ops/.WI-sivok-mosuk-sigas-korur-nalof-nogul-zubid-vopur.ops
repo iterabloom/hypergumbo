@@ -1,0 +1,20 @@
+- op: create  # 7d35
+  at: '2026-03-04T21:48:57Z'  # 7d35
+  by: agent  # 7d35
+  actor: jgstern_agent  # 7d35
+  clock: 1  # 7d35
+  nonce: 7d35  # 7d35
+  data:  # 7d35
+    kind: work_item  # 7d35
+    title: "Add pre-commit hook blocking direct commits to dev/main"  # 7d35
+    status: todo_soft  # 7d35
+    priority: 1  # 7d35
+    parent:  # 7d35
+    tags:  # 7d35
+    - ci_infrastructure  # 7d35
+    before: []  # 7d35
+    duplicate_of: []  # 7d35
+    not_duplicate_of: []  # 7d35
+    pr_ref:  # 7d35
+    description: "Agent accidentally committed to dev (transcript line ~6000). A pre-commit hook checking branch name would catch this. Cheaper than post-hoc git reset."  # 7d35
+    fields: {}  # 7d35

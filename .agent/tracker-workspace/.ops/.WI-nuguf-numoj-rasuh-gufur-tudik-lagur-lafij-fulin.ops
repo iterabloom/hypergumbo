@@ -1,0 +1,20 @@
+- op: create  # 38fc
+  at: '2026-03-04T21:49:27Z'  # 38fc
+  by: agent  # 38fc
+  actor: jgstern_agent  # 38fc
+  clock: 1  # 38fc
+  nonce: 38fc  # 38fc
+  data:  # 38fc
+    kind: work_item  # 38fc
+    title: "Stop hook: bakeoff-aware gating (don't stop mid-bakeoff)"  # 38fc
+    status: needs_human_review  # 38fc
+    priority: 3  # 38fc
+    parent:  # 38fc
+    tags:  # 38fc
+    - bakeoff_infrastructure  # 38fc
+    before: []  # 38fc
+    duplicate_of: []  # 38fc
+    not_duplicate_of: []  # 38fc
+    pr_ref:  # 38fc
+    description: "Stop hook should detect running bakeoff processes and block stopping or warn. Currently judgment-based, not enforced."  # 38fc
+    fields: {}  # 38fc

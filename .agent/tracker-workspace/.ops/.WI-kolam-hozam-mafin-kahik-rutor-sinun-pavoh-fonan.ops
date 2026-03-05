@@ -1,0 +1,21 @@
+- op: create  # e5aa
+  at: '2026-03-04T21:48:46Z'  # e5aa
+  by: agent  # e5aa
+  actor: jgstern_agent  # e5aa
+  clock: 1  # e5aa
+  nonce: e5aa  # e5aa
+  data:  # e5aa
+    kind: work_item  # e5aa
+    title: "auto-pr: auto-close superseded PRs after cherry-pick"  # e5aa
+    status: todo_soft  # e5aa
+    priority: 2  # e5aa
+    parent:  # e5aa
+    tags:  # e5aa
+    - ci_infrastructure  # e5aa
+    before:  # e5aa
+    - WI-bimoj-hunuj-mapaz-jopoh-rujum-vofid-hazil-sufiv  # e5aa
+    duplicate_of: []  # e5aa
+    not_duplicate_of: []  # e5aa
+    pr_ref:  # e5aa
+    description: "When auto-pr cherry-picks to -v2 branch, close the original PR with a comment linking to the new one. Currently requires manual cleanup."  # e5aa
+    fields: {}  # e5aa

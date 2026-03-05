@@ -1,0 +1,20 @@
+- op: create  # 2faf
+  at: '2026-03-04T21:48:34Z'  # 2faf
+  by: agent  # 2faf
+  actor: jgstern_agent  # 2faf
+  clock: 1  # 2faf
+  nonce: 2faf  # 2faf
+  data:  # 2faf
+    kind: work_item  # 2faf
+    title: "auto-pr: auto-retry merge on HTTP 200 + merged:false"  # 2faf
+    status: todo_soft  # 2faf
+    priority: 2  # 2faf
+    parent:  # 2faf
+    tags:  # 2faf
+    - ci_infrastructure  # 2faf
+    before: []  # 2faf
+    duplicate_of: []  # 2faf
+    not_duplicate_of: []  # 2faf
+    pr_ref:  # 2faf
+    description: "Codeberg/Forgejo FF merge sometimes returns HTTP 200 but merged:false. auto-pr should retry (up to 3 with backoff) before cherry-pick fallback. Observed: PR #1757 required manual cherry-pick, ~15 min + 50 tool calls wasted."  # 2faf
+    fields: {}  # 2faf

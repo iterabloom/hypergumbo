@@ -1,0 +1,34 @@
+- op: create  # d036
+  at: '2026-03-04T21:46:59Z'  # d036
+  by: agent  # d036
+  actor: jgstern_agent  # d036
+  clock: 1  # d036
+  nonce: d036  # d036
+  data:  # d036
+    kind: work_item  # d036
+    title: "Stop hook: bakeoff-aware gating (don't stop mid-bakeoff)"  # d036
+    status: needs_human_review  # d036
+    priority: 3  # d036
+    parent:  # d036
+    tags: []  # d036
+    before: []  # d036
+    duplicate_of: []  # d036
+    not_duplicate_of: []  # d036
+    pr_ref:  # d036
+    description: "Stop hook should detect running bakeoff processes and either block stopping or warn. Agent in transcript correctly continued during bakeoff, but this was judgment-based, not enforced. Needs human input on whether hard-gate or advisory."  # d036
+    fields: {}  # d036
+- op: update  # 26c6
+  at: '2026-03-04T21:48:22Z'  # 26c6
+  by: agent  # 26c6
+  actor: jgstern_agent  # 26c6
+  clock: 2  # 26c6
+  nonce: 26c6  # 26c6
+  set:  # 26c6
+    status: wont_do  # 26c6
+- op: discuss  # 17bd
+  at: '2026-03-04T21:48:22Z'  # 17bd
+  by: agent  # 17bd
+  actor: jgstern_agent  # 17bd
+  clock: 3  # 17bd
+  nonce: 17bd  # 17bd
+  message: "Recreating all items from analysis - this was F2 created in isolation before dependency chain"  # 17bd

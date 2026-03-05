@@ -1,0 +1,20 @@
+- op: create  # 1a7d
+  at: '2026-03-04T21:48:34Z'  # 1a7d
+  by: agent  # 1a7d
+  actor: jgstern_agent  # 1a7d
+  clock: 1  # 1a7d
+  nonce: 1a7d  # 1a7d
+  data:  # 1a7d
+    kind: work_item  # 1a7d
+    title: "auto-pr: rebase merge fallback when fast-forward fails"  # 1a7d
+    status: todo_soft  # 1a7d
+    priority: 3  # 1a7d
+    parent:  # 1a7d
+    tags:  # 1a7d
+    - ci_infrastructure  # 1a7d
+    before: []  # 1a7d
+    duplicate_of: []  # 1a7d
+    not_duplicate_of: []  # 1a7d
+    pr_ref:  # 1a7d
+    description: "Add rebase merge attempt between FF retry and cherry-pick fallback. Less disruptive than cherry-pick since it preserves the original branch."  # 1a7d
+    fields: {}  # 1a7d

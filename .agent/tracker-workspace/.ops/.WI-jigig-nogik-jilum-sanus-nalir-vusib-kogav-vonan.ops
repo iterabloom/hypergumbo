@@ -1,0 +1,20 @@
+- op: create  # 3b79
+  at: '2026-03-04T21:49:26Z'  # 3b79
+  by: agent  # 3b79
+  actor: jgstern_agent  # 3b79
+  clock: 1  # 3b79
+  nonce: 3b79  # 3b79
+  data:  # 3b79
+    kind: work_item  # 3b79
+    title: "AGENTS.md: update last_stop_check notes more frequently"  # 3b79
+    status: todo_soft  # 3b79
+    priority: 3  # 3b79
+    parent:  # 3b79
+    tags: []  # 3b79
+    before:  # 3b79
+    - WI-bulif-gumam-dumog-kabab-ratid-muziv-liruj-nirov  # 3b79
+    duplicate_of: []  # 3b79
+    not_duplicate_of: []  # 3b79
+    pr_ref:  # 3b79
+    description: "Currently notes only updated at reflection time. Should also update after: PR merge, bakeoff completion, tracker item status change. Improves cross-compaction state recovery."  # 3b79
+    fields: {}  # 3b79

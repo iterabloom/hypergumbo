@@ -1,0 +1,20 @@
+- op: create  # 4eb3
+  at: '2026-03-04T21:48:46Z'  # 4eb3
+  by: agent  # 4eb3
+  actor: jgstern_agent  # 4eb3
+  clock: 1  # 4eb3
+  nonce: 4eb3  # 4eb3
+  data:  # 4eb3
+    kind: work_item  # 4eb3
+    title: "auto-pr: compact CI polling output"  # 4eb3
+    status: todo_soft  # 4eb3
+    priority: 2  # 4eb3
+    parent:  # 4eb3
+    tags:  # 4eb3
+    - ci_infrastructure  # 4eb3
+    before: []  # 4eb3
+    duplicate_of: []  # 4eb3
+    not_duplicate_of: []  # 4eb3
+    pr_ref:  # 4eb3
+    description: "auto-pr emits verbose polling lines that flood context. Compress to single-line updates or final summary. Observed: ~30 lines of CI polling consuming context window."  # 4eb3
+    fields: {}  # 4eb3

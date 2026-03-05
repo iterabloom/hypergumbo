@@ -1,0 +1,20 @@
+- op: create  # e6ab
+  at: '2026-03-04T21:50:26Z'  # e6ab
+  by: agent  # e6ab
+  actor: jgstern_agent  # e6ab
+  clock: 1  # e6ab
+  nonce: e6ab  # e6ab
+  data:  # e6ab
+    kind: work_item  # e6ab
+    title: "Tracker auto-sync: failed push should not discard local ops files"  # e6ab
+    status: todo_hard  # e6ab
+    priority: 1  # e6ab
+    parent:  # e6ab
+    tags:  # e6ab
+    - ci_infrastructure  # e6ab
+    before: []  # e6ab
+    duplicate_of: []  # e6ab
+    not_duplicate_of: []  # e6ab
+    pr_ref:  # e6ab
+    description: "When auto-sync threshold fires and push fails (e.g., remote outage), the sync appears to roll back locally committed ops files, causing data loss. Observed: 15 of 16 tracker items lost after auto-sync push failed 3 times during Codeberg outage. Expected: failed push should preserve local commits and retry on next mutation. Root cause needs investigation — may be a git reset during error recovery."  # e6ab
+    fields: {}  # e6ab

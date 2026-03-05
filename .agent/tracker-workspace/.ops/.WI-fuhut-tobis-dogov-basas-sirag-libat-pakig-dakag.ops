@@ -1,0 +1,20 @@
+- op: create  # 4b1c
+  at: '2026-03-04T21:48:46Z'  # 4b1c
+  by: agent  # 4b1c
+  actor: jgstern_agent  # 4b1c
+  clock: 1  # 4b1c
+  nonce: 4b1c  # 4b1c
+  data:  # 4b1c
+    kind: work_item  # 4b1c
+    title: "AGENTS.md: add TaskOutput guidance for background auto-pr"  # 4b1c
+    status: todo_soft  # 4b1c
+    priority: 3  # 4b1c
+    parent:  # 4b1c
+    tags:  # 4b1c
+    - developer_experience  # 4b1c
+    before: []  # 4b1c
+    duplicate_of: []  # 4b1c
+    not_duplicate_of: []  # 4b1c
+    pr_ref:  # 4b1c
+    description: "Document that agents should not block on TaskOutput for auto-pr. Use run_in_background and continue with other work."  # 4b1c
+    fields: {}  # 4b1c

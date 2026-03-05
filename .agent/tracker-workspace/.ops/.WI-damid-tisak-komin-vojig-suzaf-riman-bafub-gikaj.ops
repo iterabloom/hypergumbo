@@ -1,0 +1,20 @@
+- op: create  # 935f
+  at: '2026-03-04T21:49:10Z'  # 935f
+  by: agent  # 935f
+  actor: jgstern_agent  # 935f
+  clock: 1  # 935f
+  nonce: 935f  # 935f
+  data:  # 935f
+    kind: work_item  # 935f
+    title: "bakeoff: make convergence output more actionable in stop hook"  # 935f
+    status: todo_soft  # 935f
+    priority: 3  # 935f
+    parent:  # 935f
+    tags:  # 935f
+    - bakeoff_infrastructure  # 935f
+    before: []  # 935f
+    duplicate_of: []  # 935f
+    not_duplicate_of: []  # 935f
+    pr_ref:  # 935f
+    description: "Bakeoff convergence in stop hook shows metrics but doesn't suggest next actions. Should recommend: which repos to investigate, which signals are trending, whether to run another cohort."  # 935f
+    fields: {}  # 935f

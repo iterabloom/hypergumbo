@@ -1,0 +1,19 @@
+- op: create  # e9ca
+  at: '2026-03-04T21:49:10Z'  # e9ca
+  by: agent  # e9ca
+  actor: jgstern_agent  # e9ca
+  clock: 1  # e9ca
+  nonce: e9ca  # e9ca
+  data:  # e9ca
+    kind: work_item  # e9ca
+    title: "Stop hook: add guidance file cleanup policy"  # e9ca
+    status: todo_soft  # e9ca
+    priority: 4  # e9ca
+    parent:  # e9ca
+    tags: []  # e9ca
+    before: []  # e9ca
+    duplicate_of: []  # e9ca
+    not_duplicate_of: []  # e9ca
+    pr_ref:  # e9ca
+    description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, delete older."  # e9ca
+    fields: {}  # e9ca
