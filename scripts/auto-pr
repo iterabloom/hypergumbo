@@ -272,14 +272,14 @@ Individual commits are preserved in the history."
 	detect_api_base
 	apply_failover_overrides
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${LOCAL_FORGEJO_USER:-$USER}"
-		TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[LOCAL] Failover active — targeting local Forgejo"
+		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
+		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
+		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
 	fi
 
 	local push_remote="origin"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="local"
+		push_remote="selfh"
 	fi
 
 	local max_attempts=3
@@ -435,7 +435,7 @@ Individual commits are preserved in the history."
 	git checkout "$base_branch"
 	local flush_remote="origin"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		flush_remote="local"
+		flush_remote="selfh"
 	fi
 	git pull "$flush_remote" "$base_branch" || true
 
@@ -512,9 +512,9 @@ do_pr() {
 	detect_api_base
 	apply_failover_overrides
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${LOCAL_FORGEJO_USER:-$USER}"
-		TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[LOCAL] Failover active — targeting local Forgejo"
+		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
+		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
+		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
 	fi
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
@@ -616,7 +616,7 @@ do_pr() {
 
 	local push_remote="origin"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="local"
+		push_remote="selfh"
 	fi
 
 	while [[ $attempt -le $max_attempts ]]; do
@@ -784,7 +784,7 @@ cleanup_local() {
 	local base="$2"
 	local remote="origin"
 	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		remote="local"
+		remote="selfh"
 	fi
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
@@ -865,7 +865,7 @@ gov_cleanup() {
 
 	local token="${FORGEJO_TOKEN:-}"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		token="${LOCAL_FORGEJO_TOKEN:-$token}"
+		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
 	fi
 
 	# Verify PR is actually merged

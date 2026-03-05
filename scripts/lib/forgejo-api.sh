@@ -64,11 +64,11 @@ apply_failover_overrides() {
 	FAILOVER_ACTIVE=false
 	if [[ -f "$failover_file" ]]; then
 		FAILOVER_ACTIVE=true
-		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['local_forgejo_url'])")
-		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['local_forgejo_repo'])")
+		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_url'])")
+		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_repo'])")
 		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
 		REPO_SLUG="$FAILOVER_REPO"
-		export FORGEJO_TOKEN="${LOCAL_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
+		export FORGEJO_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
 	fi
 }
 

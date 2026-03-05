@@ -1,0 +1,19 @@
+- op: create  # fdce
+  at: '2026-03-04T21:48:57Z'  # fdce
+  by: agent  # fdce
+  actor: jgstern_agent  # fdce
+  clock: 1  # fdce
+  nonce: fdce  # fdce
+  data:  # fdce
+    kind: work_item  # fdce
+    title: "Stop hook: skip entirely when AUTONOMOUS_MODE is OFF"  # fdce
+    status: todo_soft  # fdce
+    priority: 3  # fdce
+    parent:  # fdce
+    tags: []  # fdce
+    before: []  # fdce
+    duplicate_of: []  # fdce
+    not_duplicate_of: []  # fdce
+    pr_ref:  # fdce
+    description: "Stop hook runs even when autonomous mode is OFF, wasting tokens on irrelevant guidance. Should exit 0 immediately when mode is OFF."  # fdce
+    fields: {}  # fdce

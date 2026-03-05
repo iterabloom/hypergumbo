@@ -1,0 +1,19 @@
+- op: create  # 4225
+  at: '2026-03-04T21:49:26Z'  # 4225
+  by: agent  # 4225
+  actor: jgstern_agent  # 4225
+  clock: 1  # 4225
+  nonce: '4225'  # 4225
+  data:  # 4225
+    kind: work_item  # 4225
+    title: "Move last_stop_check.json out of git tree"  # 4225
+    status: needs_human_review  # 4225
+    priority: 2  # 4225
+    parent:  # 4225
+    tags: []  # 4225
+    before: []  # 4225
+    duplicate_of: []  # 4225
+    not_duplicate_of: []  # 4225
+    pr_ref:  # 4225
+    description: "last_stop_check.json in .agent/ causes git noise. Move to ~/hypergumbo_lab_notebook/ or XDG_STATE_HOME. Requires updating stop hook, AGENTS.md, and recovery instructions."  # 4225
+    fields: {}  # 4225

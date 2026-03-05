@@ -28,8 +28,10 @@ import pytest
 from hypergumbo_tracker.sync import (
     PreflightResult,
     SyncResult,
+    _FailoverState,
     _api_call,
     _detect_api_base,
+    _detect_failover,
     _find_open_pr,
     _git,
     _load_env,
@@ -1221,6 +1223,57 @@ class TestPreflightCheck:
     @patch("hypergumbo_tracker.sync._git")
     @patch("hypergumbo_tracker.sync._load_env")
     @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_happy_path_with_failover(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Preflight detects failover and overrides credentials/remote."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        # Write failover flag file
+        (git_dir / "CI_FAILOVER_ACTIVE").write_text(json.dumps({
+            "selfhosted_forgejo_url": "http://10.85.0.10:3000",
+            "selfhosted_forgejo_repo": "admin-josh/hypergumbo",
+        }))
+        mock_env.return_value = {
+            "FORGEJO_TOKEN": "codeberg-tok",
+            "FORGEJO_USER": "codeberg-user",
+            "SELFHOSTED_FORGEJO_TOKEN": "local-tok",
+            "SELFHOSTED_FORGEJO_USER": "local-user",
+        }
+        mock_api_base.return_value = (
+            "https://codeberg.org/api/v1/repos/o/r"
+        )
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status
+            _make_completed_process(stdout="Test User\n"),  # user.name
+            _make_completed_process(stdout="test@test.com\n"),  # user.email
+            _make_completed_process(
+                stdout="http://10.85.0.10:3000/admin-josh/hypergumbo.git\n"
+            ),  # remote get-url local
+        ]
+        result = preflight_check(tmp_path)
+        assert result.ok
+        assert result.push_remote == "selfh"
+        assert result.forgejo_token == "local-tok"
+        assert result.forgejo_user == "local-user"
+        assert result.api_base == (
+            "http://10.85.0.10:3000/api/v1/repos/admin-josh/hypergumbo"
+        )
+        # _detect_api_base should NOT have been used for the final result
+        # (failover overrides it)
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
     def test_relative_git_dir(
         self,
         mock_api_base: MagicMock,
@@ -2305,3 +2358,72 @@ class TestSyncSetupCheck:
             )
 
         assert result.status == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Failover detection
+# ---------------------------------------------------------------------------
+
+
+class TestDetectFailover:
+    """Tests for _detect_failover — CI failover flag file parsing."""
+
+    def test_no_flag_file(self, tmp_path: Path) -> None:
+        """Returns inactive state when no flag file exists."""
+        result = _detect_failover(tmp_path, {})
+        assert result.active is False
+        assert result.push_remote == "origin"
+
+    def test_active_failover(self, tmp_path: Path) -> None:
+        """Parses flag file and returns override state."""
+        flag = tmp_path / "CI_FAILOVER_ACTIVE"
+        flag.write_text(json.dumps({
+            "selfhosted_forgejo_url": "http://10.85.0.10:3000",
+            "selfhosted_forgejo_repo": "admin-josh/hypergumbo",
+        }))
+        env_vars = {
+            "SELFHOSTED_FORGEJO_TOKEN": "local-tok",
+            "SELFHOSTED_FORGEJO_USER": "local-user",
+        }
+        result = _detect_failover(tmp_path, env_vars)
+        assert result.active is True
+        assert result.api_base == (
+            "http://10.85.0.10:3000/api/v1/repos/admin-josh/hypergumbo"
+        )
+        assert result.push_remote == "selfh"
+        assert result.token == "local-tok"
+        assert result.user == "local-user"
+
+    def test_falls_back_to_forgejo_credentials(self, tmp_path: Path) -> None:
+        """Falls back to FORGEJO_TOKEN/USER when LOCAL_ vars not set."""
+        flag = tmp_path / "CI_FAILOVER_ACTIVE"
+        flag.write_text(json.dumps({
+            "selfhosted_forgejo_url": "http://10.85.0.10:3000",
+            "selfhosted_forgejo_repo": "admin-josh/hypergumbo",
+        }))
+        env_vars = {"FORGEJO_TOKEN": "cb-tok", "FORGEJO_USER": "cb-user"}
+        result = _detect_failover(tmp_path, env_vars)
+        assert result.active is True
+        assert result.token == "cb-tok"
+        assert result.user == "cb-user"
+
+    def test_missing_url_returns_inactive(self, tmp_path: Path) -> None:
+        """Returns inactive when flag file lacks selfhosted_forgejo_url."""
+        flag = tmp_path / "CI_FAILOVER_ACTIVE"
+        flag.write_text(json.dumps({"selfhosted_forgejo_repo": "a/b"}))
+        result = _detect_failover(tmp_path, {})
+        assert result.active is False
+
+    def test_missing_repo_returns_inactive(self, tmp_path: Path) -> None:
+        """Returns inactive when flag file lacks selfhosted_forgejo_repo."""
+        flag = tmp_path / "CI_FAILOVER_ACTIVE"
+        flag.write_text(json.dumps({"selfhosted_forgejo_url": "http://x"}))
+        result = _detect_failover(tmp_path, {})
+        assert result.active is False
+
+    def test_invalid_json_returns_inactive(self, tmp_path: Path) -> None:
+        """Returns inactive on malformed JSON."""
+        flag = tmp_path / "CI_FAILOVER_ACTIVE"
+        flag.write_text("not json")
+        result = _detect_failover(tmp_path, {})
+        assert result.active is False

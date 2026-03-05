@@ -1,0 +1,19 @@
+- op: create  # ba45
+  at: '2026-03-04T21:49:09Z'  # ba45
+  by: agent  # ba45
+  actor: jgstern_agent  # ba45
+  clock: 1  # ba45
+  nonce: ba45  # ba45
+  data:  # ba45
+    kind: work_item  # ba45
+    title: "Stop hook: separate static template from dynamic data in guidance files"  # ba45
+    status: todo_soft  # ba45
+    priority: 4  # ba45
+    parent:  # ba45
+    tags: []  # ba45
+    before: []  # ba45
+    duplicate_of: []  # ba45
+    not_duplicate_of: []  # ba45
+    pr_ref:  # ba45
+    description: "Guidance files contain ~31 lines of static template repeated every time. Separate template from dynamic data to reduce token waste."  # ba45
+    fields: {}  # ba45

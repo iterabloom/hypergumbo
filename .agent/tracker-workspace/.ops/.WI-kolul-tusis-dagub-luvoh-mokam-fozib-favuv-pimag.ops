@@ -1,0 +1,20 @@
+- op: create  # 3fae
+  at: '2026-03-04T21:49:27Z'  # 3fae
+  by: agent  # 3fae
+  actor: jgstern_agent  # 3fae
+  clock: 1  # 3fae
+  nonce: 3fae  # 3fae
+  data:  # 3fae
+    kind: work_item  # 3fae
+    title: "Convention: structured research handoff format for Explore agents"  # 3fae
+    status: needs_human_review  # 3fae
+    priority: 4  # 3fae
+    parent:  # 3fae
+    tags:  # 3fae
+    - developer_experience  # 3fae
+    before: []  # 3fae
+    duplicate_of: []  # 3fae
+    not_duplicate_of: []  # 3fae
+    pr_ref:  # 3fae
+    description: "Explore agent results should follow structured format (findings, confidence, sources, open questions). Currently ad-hoc."  # 3fae
+    fields: {}  # 3fae
