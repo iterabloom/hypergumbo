@@ -20,8 +20,15 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 detect_api_base
+apply_failover_overrides
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+  echo "[LOCAL] Failover active — targeting local Forgejo"
+fi
 
 TOKEN="${FORGEJO_TOKEN:-}"
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+  TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
+fi
 if [[ -z "$TOKEN" ]]; then
   echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
   exit 1

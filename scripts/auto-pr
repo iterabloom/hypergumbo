@@ -7,10 +7,12 @@ set -euo pipefail
 # Usage:
 #   auto-pr [title] [description]   Push and create PR (queues as vPR on failure)
 #   auto-pr --squash                Force squash merge (discouraged)
+#   auto-pr --gov                   Push + CI, but don't auto-merge (human reviews)
 #   auto-pr --timeout SECS          CI polling timeout (default: 2400s = 40 min)
 #   auto-pr list                    Show queued vPRs
 #   auto-pr flush                   Flush all vPRs as single atomic PR
 #   auto-pr status                  Show queue status and next steps
+#   auto-pr gov-cleanup <PR_NUM>    Clean up after human merges --gov PR via web UI
 #   auto-pr --help                  Show help
 #
 # Exit codes:
@@ -39,6 +41,7 @@ load_env
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 FORCE_SQUASH=false
 CI_POLL_TIMEOUT=""
+GOVERNANCE_MODE=false
 
 # ------------------------------------------------------------------
 # Parse PR number from Forgejo push response
@@ -267,6 +270,17 @@ Individual commits are preserved in the history."
 	fi
 
 	detect_api_base
+	apply_failover_overrides
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		USER="${LOCAL_FORGEJO_USER:-$USER}"
+		TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
+		echo "[LOCAL] Failover active — targeting local Forgejo"
+	fi
+
+	local push_remote="origin"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		push_remote="local"
+	fi
 
 	local max_attempts=3
 	local attempt=1
@@ -292,7 +306,7 @@ Individual commits are preserved in the history."
 	local PUSH_OUTPUT=""
 	while [[ $attempt -le $max_attempts ]]; do
 		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-			push origin "HEAD:refs/for/$base_branch/$tip_branch" \
+			push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
 			-o title="$pr_title" \
 			-o description="$push_desc" \
 			-o force-push=true 2>&1) && push_success=true
@@ -355,7 +369,11 @@ Individual commits are preserved in the history."
 	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
-	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
+	else
+		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	fi
 
 	# Poll CI
 	echo "---------------------------------------------------"
@@ -415,7 +433,11 @@ Individual commits are preserved in the history."
 
 	# Switch to base and pull
 	git checkout "$base_branch"
-	git pull origin "$base_branch" || true
+	local flush_remote="origin"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		flush_remote="local"
+	fi
+	git pull "$flush_remote" "$base_branch" || true
 
 	# Delete local branches
 	for branch in "${branches_to_delete[@]}"; do
@@ -488,6 +510,12 @@ do_pr() {
 	fi
 
 	detect_api_base
+	apply_failover_overrides
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		USER="${LOCAL_FORGEJO_USER:-$USER}"
+		TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
+		echo "[LOCAL] Failover active — targeting local Forgejo"
+	fi
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
 	TITLE="${1:-$(git log -1 --pretty=%s)}"
@@ -586,9 +614,14 @@ do_pr() {
 	# Git push options can't contain newlines; escape for Forgejo to decode
 	local PUSH_DESC="${DESC//$'\n'/\\n}"
 
+	local push_remote="origin"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		push_remote="local"
+	fi
+
 	while [[ $attempt -le $max_attempts ]]; do
 		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-			push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
+			push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
 			-o title="$TITLE" \
 			-o description="$PUSH_DESC" \
 			-o force-push=true 2>&1) && push_success=true
@@ -658,7 +691,11 @@ do_pr() {
 	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Found PR #$PR_NUM"
-	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
+	else
+		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	fi
 
 	# Poll CI
 	echo "---------------------------------------------------"
@@ -681,6 +718,22 @@ do_pr() {
 		exit 2
 	fi
 
+	# Governance mode: stop after CI passes, don't auto-merge
+	if [[ "$GOVERNANCE_MODE" == "true" ]]; then
+		echo "---------------------------------------------------"
+		echo "🏛️  Governance mode: CI passed. PR #$PR_NUM is ready for human review."
+		echo "   PR will NOT be auto-merged."
+		echo ""
+		echo "   Review and merge via one of:"
+		echo "     ./scripts/merge-pr $PR_NUM                # merge + cleanup (recommended)"
+		echo "     Web UI merge, then: ./scripts/auto-pr gov-cleanup $PR_NUM   # cleanup only"
+		echo ""
+		echo "   PR_PENDING gate is active — no new auto-pr until this is resolved."
+		# Do NOT clear PR_PENDING — this blocks subsequent PRs until human acts
+		trap - EXIT
+		exit 0
+	fi
+
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
@@ -699,6 +752,25 @@ do_pr() {
 	# Clear the EXIT trap (merge succeeded)
 	trap - EXIT
 
+	# Record merged PR in failover state
+	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then
+		_FAILOVER_PR_TITLE="$TITLE" python3 -c "
+import json, os
+fpath = os.path.join('$REPO_ROOT', '.git', 'CI_FAILOVER_ACTIVE')
+with open(fpath) as f:
+    data = json.load(f)
+data.setdefault('prs_merged_locally', []).append({
+    'branch': '$BRANCH',
+    'pr_num': int('$PR_NUM'),
+    'sha': '$LOCAL_SHA',
+    'title': os.environ.get('_FAILOVER_PR_TITLE', '')
+})
+with open(fpath, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+" 2>/dev/null || true
+	fi
+
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
 	cleanup_local "$BRANCH" "$BASE_BRANCH"
@@ -710,6 +782,10 @@ do_pr() {
 cleanup_local() {
 	local branch="$1"
 	local base="$2"
+	local remote="origin"
+	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
+		remote="local"
+	fi
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
@@ -719,10 +795,10 @@ cleanup_local() {
 	local attempt=1
 
 	while [[ $attempt -le $max_attempts ]]; do
-		if git pull origin "$base"; then
+		if git pull "$remote" "$base"; then
 			git branch -d "$branch" 2>/dev/null || true
 			# Delete remote branch (keeps Lamport clock branch set small)
-			git push origin --delete "$branch" 2>/dev/null || true
+			git push "$remote" --delete "$branch" 2>/dev/null || true
 			return 0
 		fi
 
@@ -768,11 +844,51 @@ while [[ $# -gt 0 ]]; do
 		CI_POLL_TIMEOUT="$2"
 		shift 2
 		;;
+	--gov)
+		GOVERNANCE_MODE=true
+		shift
+		;;
 	*)
 		break
 		;;
 	esac
 done
+
+# ------------------------------------------------------------------
+# gov-cleanup: Verify PR is merged (by human via web UI), then clean up
+# ------------------------------------------------------------------
+gov_cleanup() {
+	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
+	load_env
+	detect_api_base
+	apply_failover_overrides
+
+	local token="${FORGEJO_TOKEN:-}"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		token="${LOCAL_FORGEJO_TOKEN:-$token}"
+	fi
+
+	# Verify PR is actually merged
+	if ! api_get "$API_BASE/pulls/$pr_num"; then
+		echo "❌ Failed to fetch PR #$pr_num (HTTP $API_HTTP_CODE)"
+		exit 1
+	fi
+
+	local merged branch base
+	merged=$(echo "$API_RESPONSE" | json_field "merged")
+	if [[ "$merged" != "true" && "$merged" != "True" ]]; then
+		echo "❌ PR #$pr_num is not yet merged. Merge it first, then re-run."
+		echo "   Or use: ./scripts/merge-pr $pr_num"
+		exit 1
+	fi
+
+	branch=$(echo "$API_RESPONSE" | json_field "head.ref")
+	base=$(echo "$API_RESPONSE" | json_field "base.ref")
+
+	echo "✅ PR #$pr_num confirmed merged."
+	cleanup_local "$branch" "$base"
+	echo "✅ Done. Ready for next auto-pr."
+}
 
 case "${1:-}" in
 list | queue)
@@ -784,6 +900,10 @@ flush)
 status)
 	show_status
 	;;
+gov-cleanup)
+	shift
+	gov_cleanup "$@"
+	;;
 help | --help | -h)
 	echo "auto-pr: Push PRs with offline resilience via vPR queue"
 	echo ""
@@ -793,12 +913,14 @@ help | --help | -h)
 	echo "  --squash        Force squash merge (discouraged; use only if fast-forward fails)"
 	echo "                  Commit body is preserved via git notes, subject includes [from <sha>]"
 	echo "  --timeout SECS  CI polling timeout in seconds (default: 2400 = 40 min)"
+	echo "  --gov           Governance mode: push + CI, but do NOT auto-merge (human reviews)"
 	echo ""
 	echo "Commands:"
-	echo "  (default)     Push branch as PR (uses fast-forward merge by default)"
-	echo "  list          Show queued vPRs"
-	echo "  flush         Push all vPRs as single atomic PR"
-	echo "  status        Show queue status and recommended next steps"
+	echo "  (default)       Push branch as PR (uses fast-forward merge by default)"
+	echo "  list            Show queued vPRs"
+	echo "  flush           Push all vPRs as single atomic PR"
+	echo "  status          Show queue status and recommended next steps"
+	echo "  gov-cleanup N   After human merges PR N via web UI, clean up local state"
 	echo ""
 	echo "Exit codes:"
 	echo "  0  Success (merged or vPR queued)"
@@ -809,6 +931,12 @@ help | --help | -h)
 	echo "  Default: fast-forward merge (preserves commit bodies and DCO sign-offs)"
 	echo "  If branch has diverged: you'll be prompted to rebase first"
 	echo "  --squash: emergency fallback (preserves body via git notes)"
+	echo ""
+	echo "Governance mode (--gov):"
+	echo "  Pushes branch, polls CI, but stops before merging."
+	echo "  Human reviews PR, then merges via:"
+	echo "    ./scripts/merge-pr <PR_NUM>                        # recommended"
+	echo "    Web UI merge + ./scripts/auto-pr gov-cleanup N     # alternative"
 	echo ""
 	echo "Arguments (for default command):"
 	echo "  [title]       PR title (default: last commit message)"

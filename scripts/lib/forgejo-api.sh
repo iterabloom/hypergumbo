@@ -55,6 +55,24 @@ detect_api_base() {
 }
 
 # ------------------------------------------------------------------
+# apply_failover_overrides: Override API_BASE / REPO_SLUG / FORGEJO_TOKEN
+# when CI failover is active. Call after detect_api_base().
+# Sets FAILOVER_ACTIVE=true/false for callers to check.
+# ------------------------------------------------------------------
+apply_failover_overrides() {
+	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
+	FAILOVER_ACTIVE=false
+	if [[ -f "$failover_file" ]]; then
+		FAILOVER_ACTIVE=true
+		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['local_forgejo_url'])")
+		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['local_forgejo_repo'])")
+		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
+		REPO_SLUG="$FAILOVER_REPO"
+		export FORGEJO_TOKEN="${LOCAL_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
+	fi
+}
+
+# ------------------------------------------------------------------
 # api_call METHOD URL [DATA]
 #   Safe HTTP wrapper. Sets $API_RESPONSE and $API_HTTP_CODE.
 #   Returns: 0 = 2xx, 1 = non-2xx, 2 = curl failure or non-JSON response

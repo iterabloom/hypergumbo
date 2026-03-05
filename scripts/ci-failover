@@ -1,0 +1,465 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# ci-failover: Switch CI targeting between Codeberg and local Forgejo
+#
+# When Codeberg is down, `engage` redirects auto-pr, merge-pr, and
+# ci-debug to use a local Forgejo mirror with its own runner. When
+# Codeberg recovers, `disengage` pushes all locally-merged work back
+# to Codeberg, re-enables mirror sync, and resumes normal operations.
+#
+# Usage:
+#   ci-failover engage [--local-url URL] [--force]
+#   ci-failover disengage [--skip-ci] [--force]
+#   ci-failover status
+#
+# Environment:
+#   LOCAL_FORGEJO_URL    Base URL of local Forgejo (e.g., http://forgejo-ci.internal:3000)
+#   LOCAL_FORGEJO_TOKEN  API token for local Forgejo
+#   LOCAL_FORGEJO_REPO   Repo slug on local Forgejo (e.g., user/hypergumbo)
+#   LOCAL_FORGEJO_USER   Username for local Forgejo (defaults to FORGEJO_USER)
+#
+# State file: .git/CI_FAILOVER_ACTIVE (JSON, not tracked)
+# ------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
+
+FAILOVER_FILE="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+die() {
+	echo "❌ $*" >&2
+	exit 1
+}
+
+warn() {
+	echo "⚠️  $*" >&2
+}
+
+codeberg_reachable() {
+	curl -sf --max-time 10 "https://codeberg.org/api/v1/version" >/dev/null 2>&1
+}
+
+local_forgejo_reachable() {
+	local url="${1:-${LOCAL_FORGEJO_URL:-}}"
+	[[ -n "$url" ]] && curl -sf --max-time 10 "$url/api/v1/version" >/dev/null 2>&1
+}
+
+failover_json_field() {
+	local field="$1"
+	python3 -c "import json; print(json.load(open('$FAILOVER_FILE')).get('$field', ''))" 2>/dev/null
+}
+
+# ------------------------------------------------------------------
+# engage: Switch to local Forgejo
+# ------------------------------------------------------------------
+cmd_engage() {
+	local force=false
+	local local_url="${LOCAL_FORGEJO_URL:-}"
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--local-url)
+			local_url="$2"
+			shift 2
+			;;
+		--force)
+			force=true
+			shift
+			;;
+		*)
+			die "Unknown option: $1"
+			;;
+		esac
+	done
+
+	# Precondition checks
+	if [[ -f "$FAILOVER_FILE" ]] && [[ "$force" != "true" ]]; then
+		die "Failover already engaged. Use 'status' to check, or 'engage --force' to re-engage."
+	fi
+
+	if [[ -f "$REPO_ROOT/.git/PR_PENDING" ]] && [[ "$force" != "true" ]]; then
+		die "PR is currently in flight (.git/PR_PENDING exists). Wait for it to complete first."
+	fi
+
+	if [[ "$force" != "true" ]]; then
+		if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+			die "Working tree is not clean. Commit or stash changes first."
+		fi
+	fi
+
+	local repo="${LOCAL_FORGEJO_REPO:-}"
+	local token="${LOCAL_FORGEJO_TOKEN:-}"
+	local user="${LOCAL_FORGEJO_USER:-${FORGEJO_USER:-}}"
+
+	if [[ -z "$local_url" ]]; then
+		die "LOCAL_FORGEJO_URL not set. Set it in .env or pass --local-url URL."
+	fi
+	if [[ -z "$repo" ]]; then
+		die "LOCAL_FORGEJO_REPO not set. Set it in .env (e.g., LOCAL_FORGEJO_REPO=user/hypergumbo)."
+	fi
+
+	echo "🔄 Engaging CI failover..."
+	echo "   Local Forgejo: $local_url"
+	echo "   Repository:    $repo"
+
+	# Check local Forgejo reachability
+	if ! local_forgejo_reachable "$local_url"; then
+		die "Local Forgejo at $local_url is not reachable."
+	fi
+	echo "   ✅ Local Forgejo is reachable"
+
+	# Ensure 'local' git remote exists
+	if ! git remote get-url local >/dev/null 2>&1; then
+		echo "   Adding 'local' git remote..."
+		git remote add local "$local_url/$repo.git"
+	fi
+
+	# Record origin/dev SHA
+	git fetch origin dev --quiet 2>/dev/null || warn "Could not fetch origin/dev (Codeberg may be down)"
+	local codeberg_dev_sha
+	codeberg_dev_sha=$(git rev-parse origin/dev 2>/dev/null || echo "unknown")
+
+	# Pause mirror sync on local Forgejo
+	echo "   Pausing mirror sync on local Forgejo..."
+	local api_url="$local_url/api/v1/repos/$repo"
+	local saved_token="${FORGEJO_TOKEN:-}"
+	export FORGEJO_TOKEN="${token:-$saved_token}"
+	if api_patch "$api_url" '{"mirror_interval":"0"}'; then
+		echo "   ✅ Mirror sync paused"
+	else
+		warn "Could not pause mirror sync (HTTP $API_HTTP_CODE) — proceeding anyway"
+	fi
+	export FORGEJO_TOKEN="$saved_token"
+
+	# Push dev to local Forgejo
+	echo "   Pushing dev to local Forgejo..."
+	if git push local dev 2>/dev/null; then
+		echo "   ✅ Local dev is up to date"
+	else
+		warn "Push to local failed — local Forgejo may already be up to date"
+	fi
+
+	# Warn about existing vPR queue
+	if [[ -f "$REPO_ROOT/.git/PR_QUEUE" ]] && [[ -s "$REPO_ROOT/.git/PR_QUEUE" ]]; then
+		local count
+		count=$(wc -l <"$REPO_ROOT/.git/PR_QUEUE" | tr -d ' ')
+		warn "vPR queue has $count item(s). These will flush to local Forgejo on next 'auto-pr flush'."
+	fi
+
+	# Write flag file
+	local ts
+	ts=$(date -Iseconds)
+	python3 -c "
+import json, sys
+state = {
+    'engaged_at': '$ts',
+    'codeberg_dev_sha': '$codeberg_dev_sha',
+    'local_forgejo_url': '$local_url',
+    'local_forgejo_repo': '$repo',
+    'mirror_was_enabled': True,
+    'prs_merged_locally': []
+}
+with open('$FAILOVER_FILE', 'w') as f:
+    json.dump(state, f, indent=2)
+    f.write('\n')
+"
+
+	echo ""
+	echo "✅ CI failover engaged"
+	echo "   auto-pr, merge-pr, and ci-debug now target local Forgejo"
+	echo "   When Codeberg recovers: ./scripts/ci-failover disengage"
+}
+
+# ------------------------------------------------------------------
+# disengage: Sync back to Codeberg and resume normal mode
+# ------------------------------------------------------------------
+cmd_disengage() {
+	local force=false
+	local skip_ci=false
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--skip-ci)
+			skip_ci=true
+			shift
+			;;
+		--force)
+			force=true
+			shift
+			;;
+		*)
+			die "Unknown option: $1"
+			;;
+		esac
+	done
+
+	if [[ ! -f "$FAILOVER_FILE" ]] && [[ "$force" != "true" ]]; then
+		die "Failover is not engaged. Nothing to disengage."
+	fi
+
+	if [[ -f "$REPO_ROOT/.git/PR_PENDING" ]] && [[ "$force" != "true" ]]; then
+		die "PR is currently in flight (.git/PR_PENDING exists). Wait for it to complete first."
+	fi
+
+	local current_branch
+	current_branch=$(git branch --show-current)
+	if [[ "$current_branch" != "dev" ]] && [[ "$force" != "true" ]]; then
+		die "Not on dev branch (on '$current_branch'). Switch to dev first."
+	fi
+
+	if [[ "$force" != "true" ]]; then
+		if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+			die "Working tree is not clean. Commit or stash changes first."
+		fi
+	fi
+
+	echo "🔄 Disengaging CI failover..."
+
+	# Check Codeberg reachability
+	if ! codeberg_reachable; then
+		if [[ "$force" != "true" ]]; then
+			die "Codeberg is not reachable. Wait for it to recover, or use --force."
+		fi
+		warn "Codeberg is not reachable — proceeding anyway (--force)"
+	else
+		echo "   ✅ Codeberg is reachable"
+	fi
+
+	# Fetch latest from Codeberg
+	echo "   Fetching origin/dev..."
+	git fetch origin dev --quiet 2>/dev/null || warn "Could not fetch origin/dev"
+
+	local origin_dev_sha codeberg_dev_sha local_dev_sha
+	origin_dev_sha=$(git rev-parse origin/dev 2>/dev/null || echo "unknown")
+	codeberg_dev_sha=$(failover_json_field "codeberg_dev_sha")
+	local_dev_sha=$(git rev-parse dev 2>/dev/null)
+
+	# Check fast-forward feasibility
+	if [[ "$origin_dev_sha" != "unknown" ]] && [[ "$codeberg_dev_sha" != "unknown" ]]; then
+		if [[ "$origin_dev_sha" != "$codeberg_dev_sha" ]]; then
+			# origin/dev has advanced — check if local dev is still a descendant
+			if ! git merge-base --is-ancestor "$origin_dev_sha" "$local_dev_sha" 2>/dev/null; then
+				die "origin/dev has diverged from local dev (someone pushed to Codeberg during the outage).
+   Rebase local dev onto origin/dev first:
+     git rebase origin/dev
+   Then re-run: ./scripts/ci-failover disengage"
+			fi
+			warn "origin/dev advanced during outage, but local dev is a fast-forward descendant — proceeding"
+		fi
+	fi
+
+	# Push dev to Codeberg
+	echo "   Pushing dev to Codeberg..."
+	if git push origin dev 2>/dev/null; then
+		echo "   ✅ Codeberg dev updated"
+	else
+		die "Failed to push dev to Codeberg. Check network and try again."
+	fi
+
+	# Optionally poll Codeberg CI
+	if [[ "$skip_ci" != "true" ]]; then
+		echo "   Checking Codeberg CI (warn-only)..."
+		detect_api_base
+		if api_get "$API_BASE/commits/$local_dev_sha/status" 2>/dev/null; then
+			local state
+			state=$(echo "$API_RESPONSE" | json_field "state")
+			if [[ "$state" == "success" ]]; then
+				echo "   ✅ Codeberg CI passed"
+			elif [[ "$state" == "pending" ]]; then
+				echo "   ⏳ Codeberg CI is pending (this is normal — CI will run on the pushed commits)"
+			elif [[ "$state" == "failure" || "$state" == "error" ]]; then
+				warn "Codeberg CI shows failure/error — investigate after disengage"
+			fi
+		else
+			warn "Could not check Codeberg CI status"
+		fi
+	fi
+
+	# Re-enable mirror sync
+	local local_url local_repo local_token
+	local_url=$(failover_json_field "local_forgejo_url")
+	local_repo=$(failover_json_field "local_forgejo_repo")
+	local_token="${LOCAL_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+
+	if [[ -n "$local_url" ]] && [[ -n "$local_repo" ]]; then
+		echo "   Re-enabling mirror sync on local Forgejo..."
+		local saved_token="${FORGEJO_TOKEN:-}"
+		export FORGEJO_TOKEN="$local_token"
+		local api_url="$local_url/api/v1/repos/$local_repo"
+		if api_patch "$api_url" '{"mirror_interval":"10m"}'; then
+			echo "   ✅ Mirror sync re-enabled (10m interval)"
+		else
+			warn "Could not re-enable mirror sync (HTTP $API_HTTP_CODE)"
+		fi
+
+		# Trigger immediate sync
+		if api_post "$api_url/mirror-sync" ""; then
+			echo "   ✅ Mirror sync triggered"
+		else
+			warn "Could not trigger immediate mirror sync"
+		fi
+		export FORGEJO_TOKEN="$saved_token"
+
+		# Clean up remote feature branches on local Forgejo
+		local prs_count
+		prs_count=$(python3 -c "
+import json
+data = json.load(open('$FAILOVER_FILE'))
+prs = data.get('prs_merged_locally', [])
+print(len(prs))
+for pr in prs:
+    print(pr.get('branch', ''))
+" 2>/dev/null || echo "0")
+
+		local pr_total branch_list
+		pr_total=$(echo "$prs_count" | head -1)
+		branch_list=$(echo "$prs_count" | tail -n +2)
+
+		if [[ "$pr_total" -gt 0 ]] && [[ -n "$branch_list" ]]; then
+			echo "   Cleaning up $pr_total feature branch(es) on local Forgejo..."
+			while IFS= read -r branch; do
+				[[ -z "$branch" ]] && continue
+				git push local --delete "$branch" 2>/dev/null || true
+			done <<<"$branch_list"
+		fi
+	fi
+
+	# Print summary
+	echo ""
+	echo "---------------------------------------------------"
+	local pr_total_display
+	pr_total_display=$(python3 -c "
+import json
+data = json.load(open('$FAILOVER_FILE'))
+prs = data.get('prs_merged_locally', [])
+print(len(prs))
+for pr in prs:
+    print(f\"  - PR #{pr.get('pr_num', '?')}: {pr.get('title', '(untitled)')}\")
+" 2>/dev/null || echo "0")
+
+	local count
+	count=$(echo "$pr_total_display" | head -1)
+	echo "📊 Summary:"
+	echo "   PRs merged locally: $count"
+	if [[ "$count" -gt 0 ]]; then
+		echo "$pr_total_display" | tail -n +2
+	fi
+	echo "   dev: ${codeberg_dev_sha:0:7} → ${local_dev_sha:0:7}"
+
+	# Remove flag file
+	rm -f "$FAILOVER_FILE"
+
+	echo ""
+	echo "✅ CI failover disengaged"
+	echo "   auto-pr, merge-pr, and ci-debug now target Codeberg"
+}
+
+# ------------------------------------------------------------------
+# status: Show current failover state
+# ------------------------------------------------------------------
+cmd_status() {
+	if [[ -f "$FAILOVER_FILE" ]]; then
+		local engaged_at local_url codeberg_sha local_sha prs_info
+		engaged_at=$(failover_json_field "engaged_at")
+		local_url=$(failover_json_field "local_forgejo_url")
+		codeberg_sha=$(failover_json_field "codeberg_dev_sha")
+		local_sha=$(git rev-parse dev 2>/dev/null || echo "unknown")
+
+		echo "🔴 CI Failover: ENGAGED"
+		echo "   Since:          $engaged_at"
+		echo "   Local Forgejo:  $local_url"
+		echo "   Codeberg dev:   ${codeberg_sha:0:7} (at engage time)"
+		echo "   Local dev:      ${local_sha:0:7}"
+
+		# Count PRs merged locally
+		local pr_count
+		pr_count=$(python3 -c "
+import json
+data = json.load(open('$FAILOVER_FILE'))
+prs = data.get('prs_merged_locally', [])
+print(len(prs))
+for pr in prs:
+    print(f\"  - PR #{pr.get('pr_num', '?')}: {pr.get('title', '(untitled)')}\")
+" 2>/dev/null || echo "0")
+		local count
+		count=$(echo "$pr_count" | head -1)
+		echo "   PRs merged:     $count"
+		if [[ "$count" -gt 0 ]]; then
+			echo "$pr_count" | tail -n +2
+		fi
+
+		echo ""
+		# Probe Codeberg
+		if codeberg_reachable; then
+			echo "   💡 Codeberg appears to be back — consider running: ./scripts/ci-failover disengage"
+		else
+			echo "   ℹ️  Codeberg is still unreachable"
+		fi
+	else
+		echo "🟢 CI Failover: Normal mode"
+		echo "   auto-pr targets Codeberg"
+		echo ""
+		# Health check
+		if codeberg_reachable; then
+			echo "   ✅ Codeberg is reachable"
+		else
+			echo "   ⚠️  Codeberg appears unreachable"
+			echo "   💡 Consider engaging failover: ./scripts/ci-failover engage"
+		fi
+	fi
+}
+
+# ------------------------------------------------------------------
+# Main dispatch
+# ------------------------------------------------------------------
+case "${1:-}" in
+engage)
+	shift
+	cmd_engage "$@"
+	;;
+disengage)
+	shift
+	cmd_disengage "$@"
+	;;
+status)
+	cmd_status
+	;;
+help | --help | -h)
+	echo "ci-failover: Switch CI targeting between Codeberg and local Forgejo"
+	echo ""
+	echo "Usage: ci-failover <command> [options]"
+	echo ""
+	echo "Commands:"
+	echo "  engage     Switch to local Forgejo for CI"
+	echo "  disengage  Sync back to Codeberg and resume normal mode"
+	echo "  status     Show current failover state"
+	echo ""
+	echo "Engage options:"
+	echo "  --local-url URL  Override LOCAL_FORGEJO_URL"
+	echo "  --force          Skip precondition checks"
+	echo ""
+	echo "Disengage options:"
+	echo "  --skip-ci        Don't check Codeberg CI after pushing"
+	echo "  --force          Skip precondition checks"
+	echo ""
+	echo "Environment (set in .env):"
+	echo "  LOCAL_FORGEJO_URL    Base URL of local Forgejo"
+	echo "  LOCAL_FORGEJO_TOKEN  API token for local Forgejo"
+	echo "  LOCAL_FORGEJO_REPO   Repo slug (e.g., user/hypergumbo)"
+	echo "  LOCAL_FORGEJO_USER   Username (defaults to FORGEJO_USER)"
+	;;
+*)
+	echo "Usage: ci-failover {engage|disengage|status|--help}"
+	exit 1
+	;;
+esac
