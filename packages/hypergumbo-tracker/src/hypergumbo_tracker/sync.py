@@ -778,6 +778,8 @@ def do_sync(
     sync_branch = f"tracker-sync/{timestamp}"
     gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
     file_count = len(preflight.changed_files)
+    committed = False  # Track whether ops were committed on sync branch
+    sync_succeeded = False
 
     try:
         # 1. Create branch
@@ -807,6 +809,7 @@ def do_sync(
                 error=f"commit failed: {commit_result.stderr.strip()}",
                 exit_code=1,
             )
+        committed = True
 
         # 4. Create gate file
         gate_file.write_text("sync\n")
@@ -917,6 +920,7 @@ def do_sync(
         base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
         pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
+        sync_succeeded = True
         return SyncResult(
             success=True,
             pr_number=pr_num,
@@ -933,6 +937,16 @@ def do_sync(
 
         # Restore original branch
         _git(repo_root, "checkout", preflight.original_branch, check=False)
+
+        # If sync failed but ops were committed on the sync branch,
+        # restore them to the working tree before deleting the branch.
+        # Without this, checking out the original branch discards the
+        # committed ops changes, and deleting the sync branch orphans
+        # the commit — causing data loss.
+        if committed and not sync_succeeded:
+            restore_args = ["checkout", sync_branch, "--"]
+            restore_args.extend(_TRACKER_PATHS)
+            _git(repo_root, *restore_args, check=False)
 
         # Pull latest (non-fatal)
         _git(repo_root, "pull", preflight.push_remote, base_branch, check=False)

@@ -1638,7 +1638,8 @@ class TestDoSync:
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
-            # cleanup
+            # cleanup: checkout original, restore ops, pull, branch -D
+            _make_completed_process(),
             _make_completed_process(),
             _make_completed_process(),
             _make_completed_process(),
@@ -1806,6 +1807,104 @@ class TestDoSync:
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert not result.success
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_push_failure_restores_ops_to_working_tree(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """When push fails, ops files must be restored to the working tree.
+
+        After commit on the sync branch and push failure, checkout back to
+        the original branch would discard the committed ops changes.  The
+        finally block must restore them from the sync branch before deleting
+        it.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+        sync_branch = "tracker-sync/20260218-120000"
+
+        mock_git.side_effect = [
+            _make_completed_process(),  # checkout -b
+            _make_completed_process(),  # add
+            _make_completed_process(),  # commit
+            # 3 push failures
+            _make_completed_process(returncode=1),
+            _make_completed_process(returncode=1),
+            _make_completed_process(returncode=1),
+            # cleanup: checkout original branch
+            _make_completed_process(),
+            # cleanup: restore ops from sync branch
+            _make_completed_process(),
+            # cleanup: pull
+            _make_completed_process(),
+            # cleanup: branch -D
+            _make_completed_process(),
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+        assert "push failed" in result.error
+
+        # Verify that ops files were restored from the sync branch
+        # before the branch was deleted.  The restore call should be
+        # `git checkout <sync_branch> -- .agent/tracker/.ops/ ...`
+        all_calls = mock_git.call_args_list
+        # Find the restore call (after checkout original, before branch -D)
+        restore_calls = [
+            c for c in all_calls
+            if len(c[0]) >= 4
+            and c[0][1] == "checkout"
+            and c[0][2] == sync_branch
+            and c[0][3] == "--"
+        ]
+        assert len(restore_calls) == 1, (
+            f"Expected exactly 1 ops-restore call, got {len(restore_calls)}. "
+            f"All calls: {[c[0] for c in all_calls]}"
+        )
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_commit_failure_skips_ops_restore(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """When commit fails, there's nothing on the sync branch to restore."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+        sync_branch = "tracker-sync/20260218-120000"
+
+        mock_git.side_effect = [
+            _make_completed_process(),  # checkout -b
+            _make_completed_process(),  # add
+            _make_completed_process(
+                returncode=1, stderr="nothing to commit"
+            ),  # commit fails
+            _make_completed_process(),  # cleanup: checkout
+            _make_completed_process(),  # cleanup: pull
+            _make_completed_process(),  # cleanup: branch -D
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+
+        # Should NOT have a restore call since commit never succeeded
+        all_calls = mock_git.call_args_list
+        restore_calls = [
+            c for c in all_calls
+            if len(c[0]) >= 4
+            and c[0][1] == "checkout"
+            and c[0][2] == sync_branch
+            and c[0][3] == "--"
+        ]
+        assert len(restore_calls) == 0
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
