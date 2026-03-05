@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------
-# ci-failover: Switch CI targeting between Codeberg and local Forgejo
+# ci-failover: Switch CI targeting between Codeberg and self-hosted Forgejo
 #
 # When Codeberg is down, `engage` redirects auto-pr, merge-pr, and
-# ci-debug to use a local Forgejo mirror with its own runner. When
+# ci-debug to use a self-hosted Forgejo mirror with its own runner. When
 # Codeberg recovers, `disengage` pushes all locally-merged work back
 # to Codeberg, re-enables mirror sync, and resumes normal operations.
 #
@@ -15,10 +15,10 @@ set -euo pipefail
 #   ci-failover status
 #
 # Environment:
-#   LOCAL_FORGEJO_URL    Base URL of local Forgejo (e.g., http://forgejo-ci.internal:3000)
-#   LOCAL_FORGEJO_TOKEN  API token for local Forgejo
-#   LOCAL_FORGEJO_REPO   Repo slug on local Forgejo (e.g., user/hypergumbo)
-#   LOCAL_FORGEJO_USER   Username for local Forgejo (defaults to FORGEJO_USER)
+#   SELFHOSTED_FORGEJO_URL    Base URL of self-hosted Forgejo (e.g., http://forgejo-ci.internal:3000)
+#   SELFHOSTED_FORGEJO_TOKEN  API token for self-hosted Forgejo
+#   SELFHOSTED_FORGEJO_REPO   Repo slug on self-hosted Forgejo (e.g., user/hypergumbo)
+#   SELFHOSTED_FORGEJO_USER   Username for self-hosted Forgejo (defaults to FORGEJO_USER)
 #
 # State file: .git/CI_FAILOVER_ACTIVE (JSON, not tracked)
 # ------------------------------------------------------------------
@@ -49,8 +49,8 @@ codeberg_reachable() {
 	curl -sf --max-time 10 "https://codeberg.org/api/v1/version" >/dev/null 2>&1
 }
 
-local_forgejo_reachable() {
-	local url="${1:-${LOCAL_FORGEJO_URL:-}}"
+selfhosted_forgejo_reachable() {
+	local url="${1:-${SELFHOSTED_FORGEJO_URL:-}}"
 	[[ -n "$url" ]] && curl -sf --max-time 10 "$url/api/v1/version" >/dev/null 2>&1
 }
 
@@ -60,11 +60,11 @@ failover_json_field() {
 }
 
 # ------------------------------------------------------------------
-# engage: Switch to local Forgejo
+# engage: Switch to self-hosted Forgejo
 # ------------------------------------------------------------------
 cmd_engage() {
 	local force=false
-	local local_url="${LOCAL_FORGEJO_URL:-}"
+	local local_url="${SELFHOSTED_FORGEJO_URL:-}"
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -91,45 +91,58 @@ cmd_engage() {
 		die "PR is currently in flight (.git/PR_PENDING exists). Wait for it to complete first."
 	fi
 
+	# Auto-commit operational state that's always dirty mid-session
+	if ! git diff --quiet -- '.agent/last_stop_check.json' 2>/dev/null; then
+		echo "   📋 Committing .agent/last_stop_check.json..."
+		git add .agent/last_stop_check.json
+		git commit -s -m "chore: update agent state before engage" --quiet
+	fi
+
+	# Flush pending tracker ops via its own sync mechanism
+	if ls .agent/tracker-workspace/.ops/.WI-*.ops >/dev/null 2>&1; then
+		echo "   📋 Syncing tracker ops..."
+		"$SCRIPT_DIR/tracker" sync || warn "Tracker sync failed (non-fatal)"
+	fi
+
 	if [[ "$force" != "true" ]]; then
 		if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
 			die "Working tree is not clean. Commit or stash changes first."
 		fi
 	fi
 
-	local repo="${LOCAL_FORGEJO_REPO:-}"
-	local token="${LOCAL_FORGEJO_TOKEN:-}"
-	local user="${LOCAL_FORGEJO_USER:-${FORGEJO_USER:-}}"
+	local repo="${SELFHOSTED_FORGEJO_REPO:-}"
+	local token="${SELFHOSTED_FORGEJO_TOKEN:-}"
+	local user="${SELFHOSTED_FORGEJO_USER:-${FORGEJO_USER:-}}"
 
 	if [[ -z "$local_url" ]]; then
-		die "LOCAL_FORGEJO_URL not set. Set it in .env or pass --local-url URL."
+		die "SELFHOSTED_FORGEJO_URL not set. Set it in .env or pass --local-url URL."
 	fi
 	if [[ -z "$repo" ]]; then
-		die "LOCAL_FORGEJO_REPO not set. Set it in .env (e.g., LOCAL_FORGEJO_REPO=user/hypergumbo)."
+		die "SELFHOSTED_FORGEJO_REPO not set. Set it in .env (e.g., SELFHOSTED_FORGEJO_REPO=user/hypergumbo)."
 	fi
 
 	echo "🔄 Engaging CI failover..."
-	echo "   Local Forgejo: $local_url"
+	echo "   Self-hosted Forgejo: $local_url"
 	echo "   Repository:    $repo"
 
-	# Check local Forgejo reachability
-	if ! local_forgejo_reachable "$local_url"; then
-		die "Local Forgejo at $local_url is not reachable."
+	# Check self-hosted Forgejo reachability
+	if ! selfhosted_forgejo_reachable "$local_url"; then
+		die "Self-hosted Forgejo at $local_url is not reachable."
 	fi
-	echo "   ✅ Local Forgejo is reachable"
+	echo "   ✅ Self-hosted Forgejo is reachable"
 
 	# Ensure 'local' git remote exists with embedded credentials
-	local local_user="${LOCAL_FORGEJO_USER:-$FORGEJO_USER}"
-	local local_token="${LOCAL_FORGEJO_TOKEN:-}"
+	local local_user="${SELFHOSTED_FORGEJO_USER:-$FORGEJO_USER}"
+	local local_token="${SELFHOSTED_FORGEJO_TOKEN:-}"
 	local authed_url
 	# Embed credentials in URL (same pattern as origin)
 	authed_url=$(echo "$local_url" | sed "s|://|://${local_user}:${local_token}@|")
-	if ! git remote get-url local >/dev/null 2>&1; then
+	if ! git remote get-url selfh >/dev/null 2>&1; then
 		echo "   Adding 'local' git remote..."
-		git remote add local "$authed_url/$repo.git"
+		git remote add selfh "$authed_url/$repo.git"
 	else
 		# Update URL in case credentials changed
-		git remote set-url local "$authed_url/$repo.git"
+		git remote set-url selfh "$authed_url/$repo.git"
 	fi
 
 	# Record origin/dev SHA
@@ -182,7 +195,7 @@ print(data.get('original_url', data.get('clone_url', '')))
 				if [[ "$mirror_converted" != "true" ]]; then
 					echo ""
 					echo "   ❌ Could not convert mirror via API (Forgejo v13+ required)."
-					echo "   👉 Manual step needed: go to the local Forgejo web UI:"
+					echo "   👉 Manual step needed: go to the self-hosted Forgejo web UI:"
 					echo "      $local_url/$repo/settings"
 					echo "      → Danger Zone → 'Convert to Regular Repository'"
 					echo "   Then re-run: ./scripts/ci-failover engage"
@@ -198,17 +211,17 @@ print(data.get('original_url', data.get('clone_url', '')))
 	fi
 	export FORGEJO_TOKEN="$saved_token"
 
-	# Push dev to local Forgejo
-	echo "   Pushing dev to local Forgejo..."
-	if git push local dev 2>/dev/null; then
+	# Push dev to self-hosted Forgejo
+	echo "   Pushing dev to self-hosted Forgejo..."
+	if git push selfh dev 2>/dev/null; then
 		echo "   ✅ Local dev is up to date"
 	else
 		# Try with credentials
-		local push_user="${LOCAL_FORGEJO_USER:-${FORGEJO_USER:-}}"
+		local push_user="${SELFHOSTED_FORGEJO_USER:-${FORGEJO_USER:-}}"
 		if git -c credential.helper="!f() { echo username=$push_user; echo password=$token; }; f" push local dev 2>/dev/null; then
 			echo "   ✅ Local dev is up to date"
 		else
-			warn "Push to local failed — local Forgejo may already be up to date"
+			warn "Push to local failed — self-hosted Forgejo may already be up to date"
 		fi
 	fi
 
@@ -216,7 +229,7 @@ print(data.get('original_url', data.get('clone_url', '')))
 	if [[ -f "$REPO_ROOT/.git/PR_QUEUE" ]] && [[ -s "$REPO_ROOT/.git/PR_QUEUE" ]]; then
 		local count
 		count=$(wc -l <"$REPO_ROOT/.git/PR_QUEUE" | tr -d ' ')
-		warn "vPR queue has $count item(s). These will flush to local Forgejo on next 'auto-pr flush'."
+		warn "vPR queue has $count item(s). These will flush to self-hosted Forgejo on next 'auto-pr flush'."
 	fi
 
 	# Write flag file
@@ -227,8 +240,8 @@ import json, os
 state = {
     'engaged_at': '$ts',
     'codeberg_dev_sha': '$codeberg_dev_sha',
-    'local_forgejo_url': '$local_url',
-    'local_forgejo_repo': '$repo',
+    'selfhosted_forgejo_url': '$local_url',
+    'selfhosted_forgejo_repo': '$repo',
     'mirror_was_enabled': $( [[ "$is_mirror" == "True" || "$is_mirror" == "true" ]] && echo "True" || echo "False" ),
     'mirror_converted': $( [[ "$mirror_converted" == "true" ]] && echo "True" || echo "False" ),
     'original_mirror_url': os.environ.get('_FAILOVER_MIRROR_URL', ''),
@@ -241,7 +254,7 @@ with open('$FAILOVER_FILE', 'w') as f:
 
 	echo ""
 	echo "✅ CI failover engaged"
-	echo "   auto-pr, merge-pr, and ci-debug now target local Forgejo"
+	echo "   auto-pr, merge-pr, and ci-debug now target self-hosted Forgejo"
 	if [[ "$mirror_converted" == "true" ]]; then
 		echo ""
 		echo "   📋 REMINDER: The local repo was converted from a mirror to a regular repo."
@@ -287,6 +300,19 @@ cmd_disengage() {
 	current_branch=$(git branch --show-current)
 	if [[ "$current_branch" != "dev" ]] && [[ "$force" != "true" ]]; then
 		die "Not on dev branch (on '$current_branch'). Switch to dev first."
+	fi
+
+	# Auto-commit operational state that's always dirty mid-session
+	if ! git diff --quiet -- '.agent/last_stop_check.json' 2>/dev/null; then
+		echo "   📋 Committing .agent/last_stop_check.json..."
+		git add .agent/last_stop_check.json
+		git commit -s -m "chore: update agent state before disengage" --quiet
+	fi
+
+	# Flush pending tracker ops via its own sync mechanism
+	if ls .agent/tracker-workspace/.ops/.WI-*.ops >/dev/null 2>&1; then
+		echo "   📋 Syncing tracker ops..."
+		"$SCRIPT_DIR/tracker" sync || warn "Tracker sync failed (non-fatal)"
 	fi
 
 	if [[ "$force" != "true" ]]; then
@@ -357,11 +383,11 @@ cmd_disengage() {
 		fi
 	fi
 
-	# Restore local Forgejo mirror
+	# Restore self-hosted Forgejo mirror
 	local local_url local_repo local_token
-	local_url=$(failover_json_field "local_forgejo_url")
-	local_repo=$(failover_json_field "local_forgejo_repo")
-	local_token="${LOCAL_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+	local_url=$(failover_json_field "selfhosted_forgejo_url")
+	local_repo=$(failover_json_field "selfhosted_forgejo_repo")
+	local_token="${SELFHOSTED_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
 	local mirror_converted
 	mirror_converted=$(failover_json_field "mirror_converted")
 	local original_mirror_url
@@ -376,7 +402,7 @@ cmd_disengage() {
 			# Mirror was converted to regular repo during engage.
 			# Safe restore: create mirror under temp name first, then swap.
 			echo ""
-			echo "   📋 Restoring mirror on local Forgejo..."
+			echo "   📋 Restoring mirror on self-hosted Forgejo..."
 
 			local mirror_source="${original_mirror_url:-}"
 			if [[ -z "$mirror_source" ]]; then
@@ -385,7 +411,7 @@ cmd_disengage() {
 
 			if [[ -z "$mirror_source" ]]; then
 				warn "Could not determine mirror source URL."
-				warn "Re-create the mirror manually on local Forgejo."
+				warn "Re-create the mirror manually on self-hosted Forgejo."
 			else
 				local repo_owner repo_name
 				repo_owner="${local_repo%%/*}"
@@ -439,7 +465,7 @@ print(json.dumps(payload))
 		else
 			# Repo was already a regular repo (or mirror wasn't converted).
 			# Just re-enable mirror sync if it was paused.
-			echo "   Re-enabling mirror sync on local Forgejo..."
+			echo "   Re-enabling mirror sync on self-hosted Forgejo..."
 			if api_patch "$api_url" '{"mirror_interval":"10m"}'; then
 				echo "   ✅ Mirror sync re-enabled (10m interval)"
 			else
@@ -455,7 +481,7 @@ print(json.dumps(payload))
 		fi
 		export FORGEJO_TOKEN="$saved_token"
 
-		# Clean up remote feature branches on local Forgejo (skip if repo was just re-created)
+		# Clean up remote feature branches on self-hosted Forgejo (skip if repo was just re-created)
 		if [[ "$mirror_converted" != "True" && "$mirror_converted" != "true" ]]; then
 			local prs_count
 			prs_count=$(python3 -c "
@@ -472,10 +498,10 @@ for pr in prs:
 			branch_list=$(echo "$prs_count" | tail -n +2)
 
 			if [[ "$pr_total" -gt 0 ]] && [[ -n "$branch_list" ]]; then
-				echo "   Cleaning up $pr_total feature branch(es) on local Forgejo..."
+				echo "   Cleaning up $pr_total feature branch(es) on self-hosted Forgejo..."
 				while IFS= read -r branch; do
 					[[ -z "$branch" ]] && continue
-					git push local --delete "$branch" 2>/dev/null || true
+					git push selfh --delete "$branch" 2>/dev/null || true
 				done <<<"$branch_list"
 			fi
 		fi
@@ -522,13 +548,13 @@ cmd_status() {
 	if [[ -f "$FAILOVER_FILE" ]]; then
 		local engaged_at local_url codeberg_sha local_sha prs_info
 		engaged_at=$(failover_json_field "engaged_at")
-		local_url=$(failover_json_field "local_forgejo_url")
+		local_url=$(failover_json_field "selfhosted_forgejo_url")
 		codeberg_sha=$(failover_json_field "codeberg_dev_sha")
 		local_sha=$(git rev-parse dev 2>/dev/null || echo "unknown")
 
 		echo "🔴 CI Failover: ENGAGED"
 		echo "   Since:          $engaged_at"
-		echo "   Local Forgejo:  $local_url"
+		echo "   Self-hosted Forgejo:  $local_url"
 		echo "   Codeberg dev:   ${codeberg_sha:0:7} (at engage time)"
 		echo "   Local dev:      ${local_sha:0:7}"
 
@@ -593,17 +619,17 @@ status)
 	cmd_status
 	;;
 help | --help | -h)
-	echo "ci-failover: Switch CI targeting between Codeberg and local Forgejo"
+	echo "ci-failover: Switch CI targeting between Codeberg and self-hosted Forgejo"
 	echo ""
 	echo "Usage: ci-failover <command> [options]"
 	echo ""
 	echo "Commands:"
-	echo "  engage     Switch to local Forgejo for CI"
+	echo "  engage     Switch to self-hosted Forgejo for CI"
 	echo "  disengage  Sync back to Codeberg and resume normal mode"
 	echo "  status     Show current failover state"
 	echo ""
 	echo "Engage options:"
-	echo "  --local-url URL  Override LOCAL_FORGEJO_URL"
+	echo "  --local-url URL  Override SELFHOSTED_FORGEJO_URL"
 	echo "  --force          Skip precondition checks"
 	echo ""
 	echo "Disengage options:"
@@ -611,10 +637,10 @@ help | --help | -h)
 	echo "  --force          Skip precondition checks"
 	echo ""
 	echo "Environment (set in .env):"
-	echo "  LOCAL_FORGEJO_URL    Base URL of local Forgejo"
-	echo "  LOCAL_FORGEJO_TOKEN  API token for local Forgejo"
-	echo "  LOCAL_FORGEJO_REPO   Repo slug (e.g., user/hypergumbo)"
-	echo "  LOCAL_FORGEJO_USER   Username (defaults to FORGEJO_USER)"
+	echo "  SELFHOSTED_FORGEJO_URL    Base URL of self-hosted Forgejo"
+	echo "  SELFHOSTED_FORGEJO_TOKEN  API token for self-hosted Forgejo"
+	echo "  SELFHOSTED_FORGEJO_REPO   Repo slug (e.g., user/hypergumbo)"
+	echo "  SELFHOSTED_FORGEJO_USER   Username (defaults to FORGEJO_USER)"
 	;;
 *)
 	echo "Usage: ci-failover {engage|disengage|status|--help}"

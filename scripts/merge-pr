@@ -28,7 +28,7 @@ load_env
 detect_api_base
 apply_failover_overrides
 if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	echo "[LOCAL] Failover active — targeting local Forgejo"
+	echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
 fi
 
 # ------------------------------------------------------------------
@@ -97,7 +97,7 @@ fi
 # ------------------------------------------------------------------
 TOKEN="${FORGEJO_TOKEN:-}"
 if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	TOKEN="${LOCAL_FORGEJO_TOKEN:-$TOKEN}"
+	TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
 fi
 if [[ -z "$TOKEN" ]]; then
 	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
@@ -247,7 +247,7 @@ rm -f "$REPO_ROOT/.git/PR_PENDING"
 # Try to update local branch
 pull_remote="origin"
 if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	pull_remote="local"
+	pull_remote="selfh"
 fi
 if git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
 	git checkout "$BASE_BRANCH" 2>/dev/null || true
