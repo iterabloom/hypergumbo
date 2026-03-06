@@ -1,0 +1,19 @@
+- op: create  # 6724
+  at: '2026-03-06T09:00:33Z'  # 6724
+  by: agent  # 6724
+  actor: jgstern_agent  # 6724
+  clock: 1  # 6724
+  nonce: '6724'  # 6724
+  data:  # 6724
+    kind: work_item  # 6724
+    title: "Tier classification missing for Cargo workspaces and Maven projects"  # 6724
+    status: todo_soft  # 6724
+    priority: 2  # 6724
+    parent:  # 6724
+    tags: []  # 6724
+    before: []  # 6724
+    duplicate_of: []  # 6724
+    not_duplicate_of: []  # 6724
+    pr_ref:  # 6724
+    description: "All Rust nodes tier unknown (no Cargo.toml workspace parsing). All Java nodes tier None (no pom.xml parsing). Tier-filtered slices provide no filtering value. TDD: test that workspace member crate symbols get tier 1, external crate deps get tier 3. See notebookjournal_03062026_0900.md."  # 6724
+    fields: {}  # 6724
