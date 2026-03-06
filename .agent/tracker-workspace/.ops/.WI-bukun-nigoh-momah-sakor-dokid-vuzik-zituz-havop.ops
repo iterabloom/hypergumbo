@@ -70,3 +70,18 @@
   clock: 8  # 6e97
   nonce: '6e97'  # 6e97
   message: "Fixed in PR #1789. Root cause: tracker auto-sync created its branch from HEAD (feature branch), causing the sync PR to include feature branch code. Fix uses git plumbing (read-tree/write-tree/commit-tree) with a temporary index to build the commit on top of origin/dev without checkout."  # 6e97
+- op: update  # 5367
+  at: '2026-03-06T05:59:51Z'  # 5367
+  by: human  # 5367
+  actor: jgstern  # 5367
+  clock: 9  # 5367
+  nonce: '5367'  # 5367
+  set:  # 5367
+    status: todo_soft  # 5367
+- op: discuss  # 4162
+  at: '2026-03-06T05:59:54Z'  # 4162
+  by: human  # 4162
+  actor: jgstern  # 4162
+  clock: 10  # 4162
+  nonce: '4162'  # 4162
+  message: "is this method explained sufficiently in docs and/or inline comments? please check and improve explanation/documentation as needed."  # 4162

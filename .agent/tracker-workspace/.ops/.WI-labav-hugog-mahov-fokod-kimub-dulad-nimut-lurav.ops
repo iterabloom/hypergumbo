@@ -40,3 +40,10 @@
   clock: 4  # 8408
   nonce: '8408'  # 8408
   message: "Governance file (.agent/hooks or guidance_log). Proposed: add age-based cleanup of old guidance files in ~/hypergumbo_lab_notebook/guidance_log/ to prevent unbounded growth. Requesting approval."  # 8408
+- op: discuss  # 99a7
+  at: '2026-03-06T05:56:11Z'  # 99a7
+  by: human  # 99a7
+  actor: jgstern  # 99a7
+  clock: 5  # 99a7
+  nonce: 99a7  # 99a7
+  message: "Improving organization by moving older files to an \"older_guidance\" folder is fine. however, you must not build something that would delete such files. do you understand?"  # 99a7

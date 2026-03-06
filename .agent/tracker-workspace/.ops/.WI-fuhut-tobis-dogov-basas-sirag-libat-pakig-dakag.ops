@@ -33,3 +33,10 @@
   clock: 3  # fb59
   nonce: fb59  # fb59
   message: "Governance file (AGENTS.md). Proposed change: add guidance that agents should use run_in_background for auto-pr and not block on TaskOutput. Requesting approval."  # fb59
+- op: discuss  # 50cc
+  at: '2026-03-06T05:50:01Z'  # 50cc
+  by: human  # 50cc
+  actor: jgstern  # 50cc
+  clock: 4  # 50cc
+  nonce: 50cc  # 50cc
+  message: "what's the benefit of this? does it outweigh the risk of starting a new feature branch off of a trunk with the unmerged PR and then having git struggles?"  # 50cc

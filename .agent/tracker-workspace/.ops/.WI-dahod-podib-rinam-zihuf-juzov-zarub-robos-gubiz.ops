@@ -71,3 +71,18 @@
   clock: 8  # 4eba
   nonce: 4eba  # 4eba
   message: "Fixed in PR #1787 (compact polling output) and PR #1788 (sort job names for deterministic output). PR #1788 pending human review (governance file)."  # 4eba
+- op: discuss  # 36d0
+  at: '2026-03-06T06:09:24Z'  # 36d0
+  by: human  # 36d0
+  actor: jgstern  # 36d0
+  clock: 9  # 36d0
+  nonce: 36d0  # 36d0
+  message: "you made a PR that was expecting my manual intervention, but you were in autonomous mode so you kept going and now that pr (1788) is open and outdated. you must not do this where you leave a PR open expecting I will approve it before it gets outdated; ain't gonna happen in autonomous mode. if you want more approval from me, use the needs_human_review status on a tracker item and do not create a PR. I thought we explained this already in AGENTS.md. I approve whatever changes are needed to governance files to make this behavior stick, and for you the merge any unmerged work stemming from the present WI-dahod."  # 36d0
+- op: update  # 6c7e
+  at: '2026-03-06T06:09:54Z'  # 6c7e
+  by: human  # 6c7e
+  actor: jgstern  # 6c7e
+  clock: 10  # 6c7e
+  nonce: 6c7e  # 6c7e
+  set:  # 6c7e
+    status: todo_soft  # 6c7e
