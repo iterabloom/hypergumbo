@@ -81,3 +81,10 @@
   clock: 9  # cd25
   nonce: cd25  # cd25
   message: "another important consideration: correct me if I am mistaken, but modifying production code \"on a feature branch\" is still a BAD IDEA because that branch must be active in order to make the edits, and as far as the python interpreter is concerned, whatever branch is active is the state of the file. the running bakeoff will not \"stay\" on the dev branch if you switch branches. perhaps there are some exotic git operations I am unaware of, but it's probably best to avoid those anyway because you might not understand them as well as you think you do. so really, I am thinking that bakeoff-concurrent work of ANY sort should be forbidden UNLESS one of the repos is 350 MB or larger. and in that scenario there ought to be some kind of background script that runs and yells an IMPORTANT REMINDER every 5 minutes or so into the context window, somehow."  # cd25
+- op: discuss  # 169b
+  at: '2026-03-05T23:46:01Z'  # 169b
+  by: agent  # 169b
+  actor: jgstern_agent  # 169b
+  clock: 10  # 169b
+  nonce: 169b  # 169b
+  message: "Acknowledged the three messages. Key takeaways: (1) Hard gate, not soft warning. (2) Branch switching during bakeoff is fundamentally unsafe because editable install means the Python interpreter sees whatever branch is checked out. (3) Bakeoff-concurrent work of ANY sort should be forbidden unless a repo is 350+ MB (and even then, with periodic reminders). Will implement as a pre-commit hook or wrapper that checks if a bakeoff process is running and blocks code file modifications."  # 169b

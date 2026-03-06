@@ -32,3 +32,10 @@
   nonce: 149d  # 149d
   set:  # 149d
     status: done  # 149d
+- op: discuss  # cb07
+  at: '2026-03-05T23:45:46Z'  # cb07
+  by: agent  # cb07
+  actor: jgstern_agent  # cb07
+  clock: 4  # cb07
+  nonce: cb07  # cb07
+  message: "Confirmed — all vendor hooks check AUTONOMOUS_MODE.txt and exit 0 when OFF/FALSE/empty. No further changes needed."  # cb07
