@@ -18,3 +18,18 @@
     pr_ref:  # 7d35
     description: "Agent accidentally committed to dev (transcript line ~6000). A pre-commit hook checking branch name would catch this. Cheaper than post-hoc git reset."  # 7d35
     fields: {}  # 7d35
+- op: update  # a2a2
+  at: '2026-03-06T00:24:39Z'  # a2a2
+  by: agent  # a2a2
+  actor: jgstern_agent  # a2a2
+  clock: 2  # a2a2
+  nonce: a2a2  # a2a2
+  set:  # a2a2
+    status: needs_human_review  # a2a2
+- op: discuss  # bc2e
+  at: '2026-03-06T00:24:40Z'  # bc2e
+  by: agent  # bc2e
+  actor: jgstern_agent  # bc2e
+  clock: 3  # bc2e
+  nonce: bc2e  # bc2e
+  message: "PR #1774 created. Governance file change (.githooks/pre-commit) requires human approval."  # bc2e

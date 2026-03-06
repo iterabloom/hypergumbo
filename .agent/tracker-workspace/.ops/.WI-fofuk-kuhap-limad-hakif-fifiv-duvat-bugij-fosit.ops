@@ -1,0 +1,27 @@
+- op: create  # f855
+  at: '2026-03-06T00:34:07Z'  # f855
+  by: agent  # f855
+  actor: jgstern_agent  # f855
+  clock: 1  # f855
+  nonce: f855  # f855
+  data:  # f855
+    kind: work_item  # f855
+    title: "AGENTS.md: governance PRs should use needs_human_review, not manual PRs"  # f855
+    status: needs_human_review  # f855
+    priority: 2  # f855
+    parent:  # f855
+    tags:  # f855
+    - ci_infrastructure  # f855
+    before: []  # f855
+    duplicate_of: []  # f855
+    not_duplicate_of: []  # f855
+    pr_ref:  # f855
+    description: "When autonomous mode is active and a change touches governance files requiring human approval, the agent should NOT create a manual PR and let it sit. Instead: (1) update the tracker item to needs_human_review, (2) add a discussion message requesting explicit approval, (3) only create the PR via auto-pr after receiving approval. This prevents orphaned PRs. Requires adding guidance to AGENTS.md governance section."  # f855
+    fields: {}  # f855
+- op: discuss  # e96e
+  at: '2026-03-06T00:34:13Z'  # e96e
+  by: agent  # e96e
+  actor: jgstern_agent  # e96e
+  clock: 2  # e96e
+  nonce: e96e  # e96e
+  message: "Requesting human approval to add this guidance to AGENTS.md. Proposed text for the Governance Files section: 'When a task requires changes to governance files, do NOT create a PR preemptively. Instead, set the tracker item to needs_human_review with a discussion message explaining the proposed change and requesting explicit approval. Only proceed with implementation (via auto-pr) after human approval is received.' This is itself a governance file change."  # e96e
