@@ -17,6 +17,25 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+# Block direct commits to protected branches (dev, main)
+current_branch=$(git branch --show-current 2>/dev/null || true)
+if [[ "$current_branch" == "dev" || "$current_branch" == "main" ]]; then
+    echo ""
+    echo -e "${RED}========================================================${NC}"
+    echo -e "${RED}  BLOCKED: Direct commit to protected branch '$current_branch'${NC}"
+    echo -e "${RED}========================================================${NC}"
+    echo ""
+    echo -e "${YELLOW}  Create a feature branch first:${NC}"
+    echo ""
+    echo "    git stash"
+    echo "    git checkout -b <author>/feat/<description>"
+    echo "    git stash pop"
+    echo ""
+    echo "  To bypass (not recommended): git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
 echo "🔍 Running pre-commit checks..."
 
 # Require ruff

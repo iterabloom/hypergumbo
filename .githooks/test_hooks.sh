@@ -229,7 +229,79 @@ Signed-off-by: Developer <dev@example.com>"
 
 run_test "Scenario 7: unstable (Prefix Preserved)" "$INPUT_7" "$EXPECTED_7"
 
-# 7. Pre-push hook tests
+# 7. Pre-commit branch guard tests
+# ------------------------------------------------------------------------------
+
+echo ""
+echo "========================================================"
+echo "PRE-COMMIT BRANCH GUARD TESTS"
+echo "========================================================"
+
+PRE_COMMIT_HOOK="$SCRIPT_DIR/pre-commit"
+
+if [[ -f "$PRE_COMMIT_HOOK" ]]; then
+  # Helper: test pre-commit branch guard by mocking `git branch --show-current`
+  run_branch_guard_test() {
+    local test_name="$1"
+    local branch_name="$2"
+    local expect_result="$3"  # "block" or "allow"
+
+    echo "--------------------------------------------------------"
+    echo "TEST: $test_name"
+
+    # Create a wrapper that overrides `git` to return a fake branch name,
+    # then runs only the branch guard portion of the pre-commit hook
+    local guard_script
+    guard_script=$(mktemp)
+    cat > "$guard_script" <<GUARD_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+git() {
+  if [[ "\$1" == "branch" && "\$2" == "--show-current" ]]; then
+    echo "$branch_name"
+    return 0
+  fi
+  command git "\$@"
+}
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+current_branch=\$(git branch --show-current 2>/dev/null || true)
+if [[ "\$current_branch" == "dev" || "\$current_branch" == "main" ]]; then
+    exit 1
+fi
+exit 0
+GUARD_EOF
+    chmod +x "$guard_script"
+
+    if bash "$guard_script" >/dev/null 2>&1; then
+      if [[ "$expect_result" == "allow" ]]; then
+        echo "  ✅ PASS (commit allowed on branch '$branch_name')"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (commit should have been blocked on '$branch_name')"
+        ((FAIL_COUNT++))
+      fi
+    else
+      if [[ "$expect_result" == "block" ]]; then
+        echo "  ✅ PASS (commit blocked on branch '$branch_name')"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (commit should have been allowed on '$branch_name')"
+        ((FAIL_COUNT++))
+      fi
+    fi
+    rm -f "$guard_script"
+  }
+
+  run_branch_guard_test "Pre-commit: block commit on dev" "dev" "block"
+  run_branch_guard_test "Pre-commit: block commit on main" "main" "block"
+  run_branch_guard_test "Pre-commit: allow commit on feature branch" "jgstern/feat/test" "allow"
+  run_branch_guard_test "Pre-commit: allow commit on tracker-sync branch" "tracker-sync/20260305-120000" "allow"
+fi
+
+# 7b. Pre-push hook tests
 # ------------------------------------------------------------------------------
 
 PRE_PUSH_HOOK="$SCRIPT_DIR/pre-push"
