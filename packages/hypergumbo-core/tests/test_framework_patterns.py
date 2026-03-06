@@ -18096,3 +18096,53 @@ class TestWolframLibraryExportPatterns:
         results = match_patterns(symbol, [pattern_def])
         lib_exports = [r for r in results if r["concept"] == "library_export"]
         assert len(lib_exports) == 0
+
+
+class TestConceptDeduplication:
+    """Tests that duplicate concepts are not added when both definition-based
+    and usage-based matching produce the same concept for a symbol.
+
+    This happens with Go web routes where the handler is matched by both
+    decorator patterns (Phase 1) and UsageContext patterns (Phase 3),
+    producing duplicate {concept: route, path: /status} entries.
+    """
+
+    def test_usage_phase_deduplicates_concepts(self) -> None:
+        """Usage-based matching does not duplicate concepts already present."""
+        handler = Symbol(
+            id="go:handler.go:1-10:deprecationHandler:function",
+            name="deprecationHandler",
+            kind="function",
+            language="go",
+            path="handler.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "framework": "go-web",
+                     "method": "GET", "path": "/status"},
+                ],
+            },
+        )
+
+        # Create a usage context that would produce the same concept
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="router.GET",
+            position="args[last]",
+            symbol_ref=handler.id,
+            metadata={"route_path": "/status", "http_method": "GET"},
+            path="routes.go",
+            span=Span(42, 42, 0, 40),
+        )
+
+        enriched = enrich_symbols([handler], {"go-web"}, usage_contexts=[ctx])
+        concepts = enriched[0].meta["concepts"]
+
+        # Count route concepts for /status — should be exactly 1
+        status_routes = [
+            c for c in concepts
+            if c.get("concept") == "route" and c.get("path") == "/status"
+        ]
+        assert len(status_routes) == 1, (
+            f"Expected 1 route concept for /status, got {len(status_routes)}: {concepts}"
+        )

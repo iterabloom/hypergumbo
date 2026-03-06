@@ -1300,9 +1300,19 @@ def enrich_symbols(
                 if symbol.meta is None:
                     symbol.meta = {}
 
-                # Append to existing concepts or create new list
+                # Append to existing concepts, deduplicating.
+                # Both definition-based (Phase 1) and usage-based (Phase 3)
+                # can produce the same concept (e.g., Go route handlers
+                # matched by both decorator and UsageContext patterns).
                 existing = symbol.meta.get("concepts", [])
-                symbol.meta["concepts"] = existing + matches
+                existing_keys = {
+                    tuple(sorted(c.items())) for c in existing
+                }
+                for m in matches:
+                    if tuple(sorted(m.items())) not in existing_keys:
+                        existing.append(m)
+                        existing_keys.add(tuple(sorted(m.items())))
+                symbol.meta["concepts"] = existing
 
     return symbols
 
