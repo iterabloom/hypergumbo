@@ -3749,11 +3749,12 @@ func handler() {
                 f"got '{edge.evidence_type}'"
             )
 
-    def test_selector_operand_ambiguous(self, tmp_path: Path) -> None:
-        """resp.Body.Close() with 3+ types → unresolved edge.
+    def test_selector_operand_resolved_via_field_chain(self, tmp_path: Path) -> None:
+        """resp.Body.Close() with known field type → typed_field_call edge.
 
-        When the operand is a nested selector expression (field access),
-        the receiver type cannot be inferred. The guard should still fire.
+        When the operand is a nested selector expression (field access)
+        and the field type registry can resolve the chain, a typed_field_call
+        edge is created instead of an ambiguous_method_call.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -3787,15 +3788,13 @@ func process(resp Response) {
             f"process should have a call edge for Close(), found: {process_calls}"
         )
 
-        # Should be unresolved — NOT resolved to any specific type
+        # Field chain resolves: resp → Response → Body → Server → Server.Close
         for edge in close_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
-                f"Selector operand Close() with 3+ candidates should be "
-                f"ambiguous_method_call, got '{edge.evidence_type}'"
+            assert edge.evidence_type == "typed_field_call", (
+                f"resp.Body.Close() should resolve via field chain, "
+                f"got '{edge.evidence_type}'"
             )
-            assert "Server.Close" not in edge.dst
-            assert "Client.Close" not in edge.dst
-            assert "Worker.Close" not in edge.dst
+            assert "Server.Close" in edge.dst
 
     def test_index_operand_ambiguous(self, tmp_path: Path) -> None:
         """items[0].Close() with 3+ types → unresolved edge.
@@ -5261,3 +5260,262 @@ type Config struct {
 }
 """)
         assert "Config" not in result.class_field_types
+
+
+class TestGoTypedFieldCallEdges:
+    """Tests for chained field access resolution via class_field_types.
+
+    When a Go method calls r.integration.Notify(), where r's type has a field
+    ``integration`` of type ``Integration``, the edge should resolve to
+    ``Integration.Notify`` with evidence_type "typed_field_call".
+    """
+
+    def test_chained_field_call(self, tmp_path: Path) -> None:
+        """r.integration.Notify() resolves to Integration.Notify."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Integration struct{}
+
+func (i *Integration) Notify() {}
+
+type RetryStage struct {
+    integration Integration
+}
+
+func (r *RetryStage) exec() {
+    r.integration.Notify()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+
+        exec_sym = next(s for s in result.symbols if s.name == "RetryStage.exec")
+        notify_sym = next(s for s in result.symbols if s.name == "Integration.Notify")
+        assert edge.src == exec_sym.id
+        assert edge.dst == notify_sym.id
+        assert edge.confidence == 0.88
+        assert edge.edge_type == "calls"
+
+    def test_pointer_field_call(self, tmp_path: Path) -> None:
+        """r.metrics.Record() where metrics is *Metrics resolves correctly."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Metrics struct{}
+
+func (m *Metrics) Record() {}
+
+type Server struct {
+    metrics *Metrics
+}
+
+func (s *Server) handle() {
+    s.metrics.Record()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].confidence == 0.88
+
+    def test_cross_file_field_call(self, tmp_path: Path) -> None:
+        """Chained field call resolves via global symbols across files."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""\
+package main
+
+type Cache struct{}
+
+func (c *Cache) Get() {}
+""")
+        (tmp_path / "main.go").write_text("""\
+package main
+
+type App struct {
+    cache Cache
+}
+
+func (a *App) handle() {
+    a.cache.Get()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+        assert "Cache.Get" in edge.dst
+
+    def test_call_root_chain_no_edge(self, tmp_path: Path) -> None:
+        """getX().field.Method() — chain root is call, not identifier.
+
+        Exercises _resolve_field_chain: root is call_expression → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+type Holder struct {
+    foo Foo
+}
+
+func getHolder() Holder { return Holder{} }
+
+func run() {
+    getHolder().foo.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        # getHolder().foo.Bar() — root is call, not resolvable
+        assert len(typed_edges) == 0
+
+    def test_unresolvable_root_type_no_edge(self, tmp_path: Path) -> None:
+        """Chained call with unknown root type → no typed_field_call.
+
+        Exercises _resolve_field_chain: var_types.get(root_name) → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+type Other struct {
+    foo Foo
+}
+
+func run() {
+    // unknown is not a typed variable — it's a package-level var
+    // with no type annotation visible to var_types extraction.
+    unknown.foo.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_type_not_in_registry_no_edge(self, tmp_path: Path) -> None:
+        """Chained call where root type has no fields in registry → no typed_field_call.
+
+        Exercises _resolve_field_chain: field_type_registry.get(current_type) → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+// Other has fields so field_type_registry is non-empty
+type Other struct {
+    foo Foo
+}
+
+// Container has only builtin fields → NOT in field_type_registry
+type Container struct {
+    name string
+}
+
+func run(c Container) {
+    c.name.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_field_not_in_type_no_edge(self, tmp_path: Path) -> None:
+        """Chained call where field is not in type's registry → no typed_field_call.
+
+        Exercises _resolve_field_chain: fields.get(field_name) → None.
+        The struct is in the registry but the accessed field isn't (e.g.,
+        a method return field accessed via syntax Go wouldn't actually compile).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+// Holder has field 'foo' (registered) but NOT 'missing'
+type Holder struct {
+    foo Foo
+}
+
+func (h *Holder) run() {
+    // h.missing doesn't exist in Holder's field types
+    h.missing.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0

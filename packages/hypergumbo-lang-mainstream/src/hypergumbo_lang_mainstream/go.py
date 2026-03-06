@@ -1490,6 +1490,59 @@ def _extract_function_reference_edges(
                     ))
 
 
+def _resolve_field_chain(
+    operand_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+    field_type_registry: dict[str, dict[str, str]],
+) -> str | None:
+    """Resolve a chained selector expression to a field type.
+
+    Given the operand of a call like ``r.integration.Notify()``, walks
+    the selector chain to resolve the receiver type:
+
+    1. Decompose ``r.integration`` into segments ``["r", "integration"]``
+    2. Look up root ``r`` in ``var_types`` → ``RetryStage``
+    3. Walk ``field_type_registry["RetryStage"]["integration"]`` → ``Integration``
+
+    Returns the resolved type name (e.g., ``"Integration"``) or ``None``
+    if any step fails.
+    """
+    # Decompose nested selector_expression into segments from leaf to root.
+    # r.integration → ["r", "integration"]
+    # r.inner.field → ["r", "inner", "field"]
+    segments: list[str] = []
+    current = operand_node
+    while current is not None and current.type == "selector_expression":
+        field = find_child_by_field(current, "field")
+        if field is None:  # pragma: no cover — Go AST always has field
+            return None
+        segments.append(node_text(field, source))
+        current = find_child_by_field(current, "operand")
+
+    if current is None or current.type != "identifier":
+        return None
+
+    root_name = node_text(current, source)
+    segments.reverse()  # Now ["r", "integration"] for r.integration
+
+    # Resolve root variable to its type
+    current_type = var_types.get(root_name)
+    if current_type is None:
+        return None
+
+    # Walk through field chain using the registry
+    for field_name in segments:
+        fields = field_type_registry.get(current_type)
+        if fields is None:
+            return None
+        current_type = fields.get(field_name)
+        if current_type is None:
+            return None
+
+    return current_type
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -1499,6 +1552,7 @@ def _extract_edges_from_file(
     import_aliases: dict[str, str] | None = None,
     resolver: ListNameResolver | None = None,
     module_path: str | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1506,6 +1560,11 @@ def _extract_edges_from_file(
     Uses import_aliases to disambiguate when multiple files define the same symbol.
     Tracks variable types from assignments and parameters to disambiguate
     method calls when multiple types define the same method name.
+
+    When ``field_type_registry`` is provided (aggregated from Pass 1), chained
+    field access calls like ``r.integration.Notify()`` are resolved through the
+    registry: r's type → field "integration" → type "Integration" → symbol
+    "Integration.Notify".
 
     When ``module_path`` is provided (from go.mod), import path hints are
     transformed by stripping the module prefix so that suffix matching in
@@ -1516,6 +1575,8 @@ def _extract_edges_from_file(
         import_aliases = {}
     if resolver is None:
         resolver = ListNameResolver(global_symbols, ambiguity_threshold=3)
+    if field_type_registry is None:
+        field_type_registry = {}
 
     try:
         source = file_path.read_bytes()
@@ -1636,6 +1697,39 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
+                        # Chained field access: r.integration.Notify()
+                        # Walk selector chain through field_type_registry
+                        # to resolve the receiver type.
+                        elif (
+                            operand_node
+                            and operand_node.type == "selector_expression"
+                            and callee_name
+                            and current_function
+                            and field_type_registry
+                        ):
+                            resolved_type = _resolve_field_chain(
+                                operand_node, source, var_types,
+                                field_type_registry,
+                            )
+                            if resolved_type:
+                                qualified_name = f"{resolved_type}.{callee_name}"
+                                target = local_symbols.get(qualified_name)
+                                if target is None and qualified_name in global_symbols:
+                                    candidates = global_symbols[qualified_name]
+                                    if candidates:
+                                        target = candidates[0]
+                                if target is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=target.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="typed_field_call",
+                                        confidence=0.88,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                                    callee_name = None  # Already resolved
                         # Chained call: pkg.Func(args).Method()
                         # e.g. json.NewEncoder(w).Encode(data) — propagate
                         # the import path from the inner call's package prefix
@@ -2678,6 +2772,16 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                     global_symbols[symbol.name] = []
                 global_symbols[symbol.name].append(symbol)
 
+    # Aggregate field type registry from all files for chained field
+    # access resolution (e.g., r.integration.Notify() → Integration.Notify).
+    field_type_registry: dict[str, dict[str, str]] = {}
+    for analysis in file_analyses.values():
+        for class_name, fields in analysis.class_field_types.items():
+            if class_name not in field_type_registry:
+                field_type_registry[class_name] = {}
+            for fname, ftype in fields.items():
+                field_type_registry[class_name].setdefault(fname, ftype)
+
     # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -2689,6 +2793,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         edges = _extract_edges_from_file(
             go_file, parser, analysis.symbol_by_name, global_symbols, run,
             analysis.import_aliases, module_path=go_module_path,
+            field_type_registry=field_type_registry,
         )
         all_edges.extend(edges)
 
