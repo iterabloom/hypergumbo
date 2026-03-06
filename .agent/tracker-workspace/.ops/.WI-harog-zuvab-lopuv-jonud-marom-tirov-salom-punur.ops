@@ -17,3 +17,18 @@
     pr_ref:  # 6724
     description: "All Rust nodes tier unknown (no Cargo.toml workspace parsing). All Java nodes tier None (no pom.xml parsing). Tier-filtered slices provide no filtering value. TDD: test that workspace member crate symbols get tier 1, external crate deps get tier 3. See notebookjournal_03062026_0900.md."  # 6724
     fields: {}  # 6724
+- op: update  # a440
+  at: '2026-03-06T09:52:13Z'  # a440
+  by: agent  # a440
+  actor: jgstern_agent  # a440
+  clock: 2  # a440
+  nonce: a440  # a440
+  set:  # a440
+    priority: 4  # a440
+- op: discuss  # 4456
+  at: '2026-03-06T09:52:13Z'  # 4456
+  by: agent  # 4456
+  actor: jgstern_agent  # 4456
+  clock: 3  # 4456
+  nonce: '4456'  # 4456
+  message: "Confirmed real but large scope. All Rust/Java nodes have tier=None. Deprioritized to P4."  # 4456

@@ -26,3 +26,18 @@
   set: {}  # f77a
   add:  # f77a
     not_duplicate_of: [INV-posun-jovup-pusug-fuhuj-dotuh-sojum-sorom-kutug]  # f77a
+- op: update  # 6ef7
+  at: '2026-03-06T09:52:12Z'  # 6ef7
+  by: agent  # 6ef7
+  actor: jgstern_agent  # 6ef7
+  clock: 3  # 6ef7
+  nonce: 6ef7  # 6ef7
+  set:  # 6ef7
+    status: done  # 6ef7
+- op: discuss  # e3c3
+  at: '2026-03-06T09:52:12Z'  # e3c3
+  by: agent  # e3c3
+  actor: jgstern_agent  # e3c3
+  clock: 4  # e3c3
+  nonce: e3c3  # e3c3
+  message: "Fixed in PR #1838: build-target linker connects Cargo/npm entrypoints to main()."  # e3c3
