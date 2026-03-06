@@ -1987,62 +1987,55 @@ class TestForwardSliceInheritanceEdges:
         # Parent's dependency should NOT be reached
         assert auth_svc.id not in result.node_ids
 
-    def test_forward_slice_skips_dispatches_to_edge(self) -> None:
-        """Forward slice should not follow dispatches_to edges.
+    def test_forward_slice_follows_dispatches_to_edge(self) -> None:
+        """Forward slice follows dispatches_to edges to implementations.
 
         dispatches_to edges represent polymorphic dispatch: InterfaceMethod
-        might dispatch to any implementation at runtime.  Following these in
-        a forward slice causes fan-out to ALL sibling implementations of the
-        same interface, inflating the slice.
-
-        Example: slicing from S3FileIO.create should not pull in GCSFileIO.create
-        and ADLSFileIO.create via the shared OutputFile.create interface.
+        dispatches to concrete implementations at runtime. Forward slices
+        should traverse these so the slice doesn't dead-end at interface
+        call sites. Hub_threshold handles fan-out for interfaces with
+        many implementations.
         """
-        # Implementation method we're slicing from
-        s3_create = make_symbol(
-            "S3FileIO.create", kind="method",
-            path="src/s3.java", start_line=1, end_line=20, language="java",
+        # Caller that invokes the interface method
+        caller = make_symbol(
+            "main", kind="function",
+            path="src/main.java", start_line=1, end_line=20, language="java",
         )
         # Interface method
         iface_create = make_symbol(
             "OutputFile.create", kind="method",
             path="src/output.java", start_line=1, end_line=5, language="java",
         )
-        # Sibling implementation that should NOT be pulled in
+        # Two implementations
+        s3_create = make_symbol(
+            "S3FileIO.create", kind="method",
+            path="src/s3.java", start_line=1, end_line=20, language="java",
+        )
         gcs_create = make_symbol(
             "GCSFileIO.create", kind="method",
             path="src/gcs.java", start_line=1, end_line=20, language="java",
         )
-        # Direct call dependency that SHOULD be found
-        s3_client = make_symbol(
-            "S3Client.putObject", kind="method",
-            path="src/s3client.java", start_line=1, end_line=10, language="java",
-        )
 
         edges = [
-            # s3 impl calls s3 client (real dependency)
-            make_edge(s3_create, s3_client, "calls"),
+            # caller calls the interface method
+            make_edge(caller, iface_create, "calls"),
             # interface dispatches_to both implementations
             make_edge(iface_create, s3_create, "dispatches_to"),
             make_edge(iface_create, gcs_create, "dispatches_to"),
-            # s3 impl calls the interface method
-            make_edge(s3_create, iface_create, "calls"),
         ]
 
-        query = SliceQuery(entrypoint="S3FileIO.create", max_hops=3)
+        query = SliceQuery(entrypoint="main", max_hops=3)
         result = slice_graph(
-            [s3_create, iface_create, gcs_create, s3_client], edges, query,
+            [caller, iface_create, s3_create, gcs_create], edges, query,
         )
 
-        # Direct call dependency is reachable
-        assert s3_client.id in result.node_ids
-        # Interface method reachable via the calls edge s3_create -> iface_create
+        # Interface method reachable via calls edge
         assert iface_create.id in result.node_ids
-        # Sibling implementation should NOT be reachable (dispatches_to skipped)
-        assert gcs_create.id not in result.node_ids, (
-            "Forward slice should not follow dispatches_to edges to sibling "
-            "implementations — this inflates slices with unrelated code"
+        # Both implementations reachable via dispatches_to
+        assert s3_create.id in result.node_ids, (
+            "Forward slice should follow dispatches_to to reach implementations"
         )
+        assert gcs_create.id in result.node_ids
 
     def test_reverse_slice_still_follows_dispatches_to(self) -> None:
         """Reverse slice should follow dispatches_to edges.

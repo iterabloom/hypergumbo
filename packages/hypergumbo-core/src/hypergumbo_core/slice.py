@@ -75,20 +75,21 @@ from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
 # Structural edges excluded from forward slice BFS traversal.
-# These cause BFS explosion through shared ancestors, containment, or
-# polymorphic dispatch:
+# These cause BFS explosion through shared ancestors or containment:
 # - extends/implements: forward-slicing from VoiceController would follow
 #   "extends" to ApplicationController, then fan out to ALL other controllers.
 # - contains: reaching a class via forward BFS would fan out to ALL member
 #   methods, even siblings unrelated to the slice entry point.
-# - dispatches_to: reaching an interface method would fan out to ALL
-#   implementations (e.g., OutputFile.create → S3FileIO, GCSFileIO, ADLS…).
-# Reverse slices still follow these (useful for "who inherits from this?",
-# "who contains this?", and "which interface does this implement?").
+# dispatches_to is NOT excluded: forward slices should traverse from
+# interface methods to concrete implementations. Without this, forward
+# slices dead-end at every interface call site. The hub_threshold
+# parameter handles fan-out for interfaces with many implementations.
+# Reverse slices still follow extends/implements (useful for "who inherits
+# from this?" and "which interface does this implement?").
 # When the entry point IS a container type, forward slice class expansion
 # seeds the BFS with member methods so they are still reachable.
 _STRUCTURAL_EDGE_TYPES = frozenset({
-    "extends", "implements", "contains", "dispatches_to",
+    "extends", "implements", "contains",
 })
 
 
