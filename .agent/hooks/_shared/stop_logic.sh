@@ -273,6 +273,81 @@ if [[ "$ELAPSED_MIN" -ge 30 ]]; then
   } > "$GUIDANCE_FILE_REFLECTION"
 fi
 
+# --- Stale-PR audit: surface open PRs older than 6 hours ---
+# Queries Forgejo for open PRs. Any PR created more than 6 hours ago is
+# flagged in the active guidance file. This catches PRs orphaned by context
+# compaction, remote timeouts, or failed CI that the agent forgot about.
+# Non-fatal: if the API call fails, we silently skip the audit.
+STALE_PR_SECTION=""
+if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+  _stale_pr_audit() {
+    # Source the Forgejo API library
+    local api_lib="$REPO_ROOT/scripts/lib/forgejo-api.sh"
+    [[ -f "$api_lib" ]] || return 0
+    # shellcheck disable=SC1090
+    source "$api_lib"
+    load_env 2>/dev/null || return 0
+    detect_api_base 2>/dev/null || return 0
+
+    # Fetch open PRs (silently fail if no connectivity)
+    if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate&limit=50" 2>/dev/null; then
+      return 0
+    fi
+
+    local now_epoch
+    now_epoch=$(date +%s)
+    local threshold=$((6 * 3600))  # 6 hours in seconds
+
+    # Parse PRs: filter to those older than 6 hours
+    local stale_prs
+    stale_prs=$(python3 -c "
+import json, sys, datetime
+now = $now_epoch
+threshold = $threshold
+prs = json.loads(sys.stdin.read())
+if not isinstance(prs, list):
+    sys.exit(0)
+for pr in prs:
+    created = pr.get('created_at', '')
+    if not created:
+        continue
+    # Parse ISO 8601 timestamp
+    try:
+        dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
+        age_s = now - int(dt.timestamp())
+    except (ValueError, TypeError):
+        continue
+    if age_s > threshold:
+        num = pr.get('number', '?')
+        title = pr.get('title', '?')[:60]
+        age_h = age_s // 3600
+        branch = pr.get('head', {}).get('ref', '?')
+        mergeable = pr.get('mergeable', None)
+        ci_note = ''
+        if mergeable is False:
+            ci_note = ' [NOT MERGEABLE]'
+        elif mergeable is True:
+            ci_note = ' [mergeable]'
+        print(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
+        print(f'  Branch: {branch}')
+" <<< "$API_RESPONSE" 2>/dev/null) || return 0
+
+    if [[ -n "$stale_prs" ]]; then
+      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\nThe following open PRs are older than 6 hours. Consider: merge (if CI green),\nrebase + re-push (if out of date), fix (if CI failed), or close (if superseded).\n\n%s\n' "$stale_prs")
+    fi
+  }
+  _stale_pr_audit
+fi
+
+# Append stale-PR section to the active guidance file (whichever was generated)
+if [[ -n "$STALE_PR_SECTION" ]]; then
+  for _gf in "$GUIDANCE_FILE" "$GUIDANCE_FILE_COOLDOWN" "$GUIDANCE_FILE_REFLECTION"; do
+    if [[ -n "$_gf" && -f "$_gf" ]]; then
+      printf '%s' "$STALE_PR_SECTION" >> "$_gf"
+    fi
+  done
+fi
+
 # --- Guidance file organization: move older files to subfolder ---
 # Keep the 10 most recent guidance files in the main directory for quick
 # access. Move everything else to older_guidance/ for archival. NEVER
