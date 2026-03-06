@@ -4900,3 +4900,107 @@ type Config struct {
         result = analyze_go(tmp_path)
         config = next(s for s in result.symbols if s.name == "Config")
         assert config.lines_of_code == 5
+
+
+class TestGoStructuralInterfaceMatching:
+    """Tests for structural interface satisfaction detection.
+
+    Go uses structural typing: a struct satisfies an interface if it has
+    all the interface's methods, WITHOUT needing an explicit assertion like
+    ``var _ Interface = &Struct{}``. The analyzer should detect this
+    automatically by comparing interface method sets with struct method sets.
+    """
+
+    def test_struct_satisfies_interface_without_assertion(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct with matching methods gets base_classes for interface."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+}
+
+type EmailNotifier struct{}
+
+func (e *EmailNotifier) Notify(msg string) error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next(
+            (s for s in result.symbols if s.name == "EmailNotifier"), None
+        )
+        assert struct_sym is not None, "Should find EmailNotifier struct"
+        assert struct_sym.meta is not None, (
+            "EmailNotifier should have meta with base_classes"
+        )
+        assert "base_classes" in struct_sym.meta, (
+            f"Should have base_classes, got: {struct_sym.meta}"
+        )
+        assert "Notifier" in struct_sym.meta["base_classes"]
+
+    def test_struct_missing_method_does_not_match(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct missing an interface method should NOT get base_classes."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type ReadWriter interface {
+    Read(p []byte) (int, error)
+    Write(p []byte) (int, error)
+}
+
+type OnlyReader struct{}
+
+func (r *OnlyReader) Read(p []byte) (int, error) {
+    return 0, nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next(
+            (s for s in result.symbols if s.name == "OnlyReader"), None
+        )
+        assert struct_sym is not None
+        # Should NOT have ReadWriter in base_classes
+        if struct_sym.meta and "base_classes" in struct_sym.meta:
+            assert "ReadWriter" not in struct_sym.meta["base_classes"]
+
+    def test_multiple_structs_satisfy_same_interface(
+        self, tmp_path: Path
+    ) -> None:
+        """Multiple structs can satisfy the same interface."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type Stringer interface {
+    String() string
+}
+
+type Foo struct{}
+func (f Foo) String() string { return "foo" }
+
+type Bar struct{}
+func (b *Bar) String() string { return "bar" }
+""")
+
+        result = analyze_go(tmp_path)
+
+        foo = next((s for s in result.symbols if s.name == "Foo"), None)
+        bar = next((s for s in result.symbols if s.name == "Bar"), None)
+        assert foo is not None
+        assert bar is not None
+        assert foo.meta and "Stringer" in foo.meta.get("base_classes", [])
+        assert bar.meta and "Stringer" in bar.meta.get("base_classes", [])

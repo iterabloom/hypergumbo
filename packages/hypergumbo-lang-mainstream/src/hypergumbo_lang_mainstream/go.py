@@ -418,6 +418,37 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _extract_interface_methods(
+    interface_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Extract method names from a Go interface definition.
+
+    Go interfaces list method specifications (name + signature) in their body.
+    This function extracts just the method names, used for structural interface
+    matching: a struct satisfies an interface if it has all the interface's
+    methods.
+
+    Example::
+
+        type Notifier interface {
+            Notify(msg string) error    // → {"Notify"}
+            Close() error               // → {"Notify", "Close"}
+        }
+
+    Embedded interfaces (e.g., ``io.Reader`` inside another interface) are
+    skipped — we only match on explicitly declared methods in this interface.
+    """
+    methods: set[str] = set()
+    for child in interface_type_node.children:
+        if child.type == "method_elem":
+            # method_elem has a field_identifier child for the method name
+            name_node = find_child_by_type(child, "field_identifier")
+            if name_node:
+                methods.add(node_text(name_node, source))
+    return methods
+
+
 def _extract_struct_embeddings(
     struct_type_node: "tree_sitter.Node",
     source: bytes,
@@ -718,6 +749,12 @@ def _extract_symbols_from_file(
     # Populated during tree walk, applied to struct symbols after extraction.
     impl_assertions: dict[str, list[str]] = {}
 
+    # For structural interface matching (Go implicit satisfaction):
+    # interface_name -> set of method names defined in the interface body
+    interface_method_sets: dict[str, set[str]] = {}
+    # struct_name -> set of method names from method_declaration receivers
+    struct_method_sets: dict[str, set[str]] = {}
+
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
         if node.type == "function_declaration":
@@ -810,6 +847,12 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
+                # Track struct method sets for structural interface matching
+                if receiver_type:
+                    if receiver_type not in struct_method_sets:
+                        struct_method_sets[receiver_type] = set()
+                    struct_method_sets[receiver_type].add(method_name)
+
         # Type declaration (struct or interface)
         elif node.type == "type_declaration":
             for child in node.children:
@@ -826,6 +869,14 @@ def _extract_symbols_from_file(
                             kind = "struct"
                         elif type_node.type == "interface_type":
                             kind = "interface"
+                            # Extract method names for structural matching.
+                            # Skip empty interfaces (interface{}) — they
+                            # would match every struct.
+                            iface_methods = _extract_interface_methods(
+                                type_node, source,
+                            )
+                            if iface_methods:
+                                interface_method_sets[type_name] = iface_methods
                         else:
                             kind = "type"
 
@@ -921,6 +972,30 @@ def _extract_symbols_from_file(
             sym.meta.setdefault("base_classes", []).extend(
                 impl_assertions[sym.name]
             )
+
+    # Structural interface matching: Go implicit satisfaction.
+    # A struct satisfies an interface if its method set is a superset of
+    # the interface's method set (same method names).
+    if interface_method_sets and struct_method_sets:
+        for struct_name, struct_methods in struct_method_sets.items():
+            for iface_name, iface_methods in interface_method_sets.items():
+                if not iface_methods.issubset(struct_methods):
+                    continue
+                # Check not already added via explicit assertion
+                struct_sym = next(
+                    (s for s in analysis.symbols
+                     if s.kind == "struct" and s.name == struct_name),
+                    None,
+                )
+                if struct_sym is None:
+                    continue  # pragma: no cover
+                if struct_sym.meta is None:
+                    struct_sym.meta = {}
+                existing = struct_sym.meta.get("base_classes", [])
+                if iface_name not in existing:
+                    struct_sym.meta.setdefault("base_classes", []).append(
+                        iface_name,
+                    )
 
     return analysis
 
