@@ -1,0 +1,19 @@
+- op: create  # 2d83
+  at: '2026-03-06T20:29:35Z'  # 2d83
+  by: agent  # 2d83
+  actor: jgstern_agent  # 2d83
+  clock: 1  # 2d83
+  nonce: 2d83  # 2d83
+  data:  # 2d83
+    kind: work_item  # 2d83
+    title: "Go: detect go-swagger handler map route registration pattern"  # 2d83
+    status: todo_soft  # 2d83
+    priority: 2  # 2d83
+    parent:  # 2d83
+    tags: []  # 2d83
+    before: []  # 2d83
+    duplicate_of: []  # 2d83
+    not_duplicate_of: []  # 2d83
+    pr_ref:  # 2d83
+    description: "alertmanager v2 API uses go-swagger generated code with pattern: o.handlers[METHOD][PATH] = handler.NewXxx(). Only 3 of 9 routes are detected. The pattern is a double-map assignment in initHandlerCache(). Need to add this as a recognized Go route pattern in _extract_go_routes or as a YAML framework pattern."  # 2d83
+    fields: {}  # 2d83

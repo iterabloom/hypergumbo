@@ -75,3 +75,17 @@
   clock: 9  # 7d6e
   nonce: 7d6e  # 7d6e
   message: "was this implemented? if so, please identify the PR?"  # 7d6e
+- op: discuss  # 073a
+  at: '2026-03-06T20:22:31Z'  # 073a
+  by: agent  # 073a
+  actor: jgstern_agent  # 073a
+  clock: 10  # 073a
+  nonce: 073a  # 073a
+  message: "This was implemented in the sketch/compact tiered views (hg.4k.json, hg.16k.json) which group by tier and include module-level structure. The implementation is in the sketch subcommand. Let me look up the specific PR number."  # 073a
+- op: discuss  # 76da
+  at: '2026-03-06T20:22:46Z'  # 76da
+  by: agent  # 76da
+  actor: jgstern_agent  # 76da
+  clock: 11  # 76da
+  nonce: 76da  # 76da
+  message: "Correction: the implementation was the --group-by-module flag on the slice subcommand (commit 71dd5842). The flag groups slice nodes by directory/module and shows inter-module edge counts. I don't have the exact PR number from git log, but the commit message references this tracker item (WI-sifoj)."  # 76da

@@ -32,3 +32,18 @@
   clock: 3  # 1cb4
   nonce: 1cb4  # 1cb4
   message: "Root cause is not goroutine launch detection (go statements do get their call_expressions visited). The real issue is constructor return type inference: newDisp := dispatch.NewDispatcher(...) doesn't populate var_types because _type_from_rhs only handles composite literals. The fix is to infer type from NewXxx() constructor naming convention."  # 1cb4
+- op: update  # e857
+  at: '2026-03-06T20:19:12Z'  # e857
+  by: agent  # e857
+  actor: jgstern_agent  # e857
+  clock: 4  # e857
+  nonce: e857  # e857
+  set:  # e857
+    status: done  # e857
+- op: discuss  # 95be
+  at: '2026-03-06T20:19:12Z'  # 95be
+  by: agent  # 95be
+  actor: jgstern_agent  # 95be
+  clock: 5  # 95be
+  nonce: 95be  # 95be
+  message: "Fixed in PRs #1865 (field type registry), #1866 (typed_field_call edges), #1868 (constructor type inference). alertmanager's run() → Dispatcher.Run now resolves via newDisp := dispatch.NewDispatcher() → typed_receiver_call."  # 95be

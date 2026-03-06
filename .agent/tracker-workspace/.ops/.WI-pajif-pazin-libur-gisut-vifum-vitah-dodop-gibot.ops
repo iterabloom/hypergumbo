@@ -46,3 +46,10 @@
   clock: 5  # f3b4
   nonce: f3b4  # f3b4
   message: "ok, so we've got 5 language analyzers that do not use the base-class pattern, and at least 2 language analyzers that **do** use the base-class pattern. But there are over 100 language analyzers in hypergumbo. What's the deal with field-type resolution in those 93+ language analyzers? Is it not applicable? Is it implemented but not mentioned above? Is it applicable but not implemented? Those answers are consequential for how to think about the work contemplated above."  # f3b4
+- op: discuss  # e99b
+  at: '2026-03-06T20:22:59Z'  # e99b
+  by: agent  # e99b
+  actor: jgstern_agent  # e99b
+  clock: 6  # e99b
+  nonce: e99b  # e99b
+  message: "Field-type resolution (class_field_types → typed_field_call/method_call_field_chain edges) is applicable to languages with struct/class field access patterns and method dispatch on those fields (self.field.method()). Currently implemented: Rust, C++, C#, Go (4 languages). Most of the 100+ other analyzers fall into categories where it's not applicable: (1) Languages without struct/class fields (Bash, SQL, YAML, JSON, Makefile, etc.), (2) Dynamic languages where field types aren't statically declared (Python, Ruby, JS — these have class_field_types but fields are discovered dynamically), (3) Functional languages without OOP field access (Haskell, OCaml, Elm, etc.), (4) Config/markup languages (HTML, CSS, TOML, etc.). The remaining candidates where it would be applicable but isn't yet implemented: Java, Kotlin, Swift, Scala, Dart — these have statically-typed fields and could benefit from chained field access resolution. However, these languages already have better type inference from explicit type annotations on variables, so the impact would be smaller than for Go (where types are often inferred from constructors)."  # e99b
