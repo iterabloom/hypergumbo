@@ -223,6 +223,7 @@ poll_ci() {
 	# Track how long ci-complete has been the sole holdout (Scenario A)
 	local ci_complete_sole_holdout_since=0
 	local poll_count=0
+	local prev_summary=""
 
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
@@ -374,11 +375,14 @@ except Exception:
 			ci_complete_sole_holdout_since=0
 		fi
 
-		# Telemetry: every 3rd pass, print job summary (reuses API_RESPONSE,
+		# Telemetry: only print when job statuses change (reuses API_RESPONSE,
 		# no extra API call — be considerate of Codeberg as a community resource)
-		if (( poll_count % 3 == 0 )); then
+		local cur_summary
+		cur_summary=$(ci_job_summary)
+		if [[ "$cur_summary" != "$prev_summary" ]]; then
 			echo ""
-			echo "  [${elapsed}s] $(ci_job_summary)"
+			echo "  [${elapsed}s] $cur_summary"
+			prev_summary="$cur_summary"
 		else
 			printf "."
 		fi
@@ -398,14 +402,28 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     statuses = data.get('statuses', [])
-    parts = []
+    done = 0
+    pending = []
+    failed = []
     for s in statuses:
         ctx = s.get('context', '?')
         name = ctx.split(' / ')[-1].split(' (')[0] if ' / ' in ctx else ctx
         st = s.get('state', '?')
-        marker = '✅' if st == 'success' else '❌' if st in ('failure', 'error') else '⏳'
-        parts.append(f'{marker}{name}')
-    print(' '.join(parts) if parts else '(no jobs yet)')
+        if st == 'success':
+            done += 1
+        elif st in ('failure', 'error'):
+            failed.append(name)
+        else:
+            pending.append(name)
+    total = len(statuses)
+    parts = []
+    if done:
+        parts.append(f'{done}/{total} passed')
+    if pending:
+        parts.append(f'waiting: {\" \".join(pending)}')
+    if failed:
+        parts.append(f'failed: {\" \".join(failed)}')
+    print(', '.join(parts) if parts else '(no jobs yet)')
 except Exception:
     print('(unavailable)')
 " 2>/dev/null || echo "(unavailable)"
