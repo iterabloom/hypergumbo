@@ -497,6 +497,38 @@ def _is_cross_package(file_path: Path, target_path: str) -> bool:
 # not calls to user-defined functions.  Skip these during call resolution
 # to prevent false-positive edges to user-defined components that shadow
 # built-in names (e.g., a React component named `Number`).
+# Built-in method names that should not be resolved via the method name
+# fallback (Case 4).  These are methods on Array, Map, Set, Object, etc.
+# that appear on virtually every JS object.  Without this blocklist,
+# `items.forEach(cb)` resolves to a user-defined class that happens to
+# define `forEach`, inflating its in-degree and corrupting centrality.
+# Analogous to Rust's _RUST_GENERIC_TRAIT_METHODS blocklist.
+JS_BUILTIN_METHODS: frozenset[str] = frozenset({
+    # Array methods
+    "push", "pop", "shift", "unshift", "splice", "slice",
+    "concat", "join", "reverse", "sort", "indexOf", "lastIndexOf",
+    "find", "findIndex", "includes", "every", "some",
+    "filter", "map", "reduce", "reduceRight", "flat", "flatMap",
+    "fill", "copyWithin", "entries", "keys", "values",
+    "forEach", "at",
+    # Map/Set methods
+    "get", "set", "has", "delete", "clear",
+    # Object methods
+    "hasOwnProperty", "toString", "valueOf", "toJSON",
+    "toLocaleString",
+    # Promise methods
+    "then", "catch", "finally",
+    # EventEmitter (handled by event sourcing linker)
+    "emit", "on", "once", "off", "addListener", "removeListener",
+    "addEventListener", "removeEventListener",
+    # String methods
+    "trim", "split", "replace", "match", "search", "startsWith",
+    "endsWith", "padStart", "padEnd", "repeat", "substring",
+    "charAt", "charCodeAt", "normalize",
+    # Iterator / generator
+    "next", "return", "throw",
+})
+
 JS_BUILTIN_NAMES: set[str] = {
     # Primitives / wrapper constructors
     "Number", "String", "Boolean", "Symbol", "BigInt",
@@ -2909,7 +2941,10 @@ def _extract_edges(
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout where
                         # every class with the same method name gets linked.
-                        if not edge_added:
+                        # Skip built-in method names (get, set, forEach, etc.)
+                        # that exist on Array/Map/Set/Object — resolving these
+                        # to user-defined classes inflates in-degree.
+                        if not edge_added and method_name not in JS_BUILTIN_METHODS:
                             lookup_result = method_resolver.lookup(method_name)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: low-confidence method

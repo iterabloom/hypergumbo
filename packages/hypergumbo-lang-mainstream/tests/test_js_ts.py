@@ -1865,6 +1865,52 @@ function handler(unknown) {
         if inferred_calls:
             assert "create" in inferred_calls[0].dst
 
+    def test_builtin_methods_not_resolved_to_user_classes(self, tmp_path: Path) -> None:
+        """Built-in method names (get, set, forEach, push, etc.) should not
+        resolve to user-defined class methods via the fallback path.
+
+        Without this blocklist, `myArray.forEach(cb)` would create a false
+        edge to `TTLMap.forEach` if TTLMap is the only class defining forEach.
+        This inflates TTLMap's in-degree and corrupts centrality rankings.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+class TTLMap {
+    get(key) { return this.data[key]; }
+    set(key, val) { this.data[key] = val; }
+    has(key) { return key in this.data; }
+    forEach(cb) { Object.keys(this.data).forEach(cb); }
+    delete(key) { delete this.data[key]; }
+}
+
+function processItems(items, cache) {
+    items.forEach(item => {
+        if (cache.has(item.id)) {
+            const val = cache.get(item.id);
+            cache.set(item.id, val + 1);
+        }
+        items.push(item);
+    });
+    cache.delete("expired");
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_calls = [
+            e for e in call_edges if e.evidence_type == "ast_method_inferred"
+        ]
+        # Built-in methods should NOT create edges to TTLMap
+        ttlmap_edges = [e for e in inferred_calls if "TTLMap" in e.dst]
+        assert len(ttlmap_edges) == 0, (
+            f"Built-in method calls should not resolve to TTLMap, "
+            f"found {len(ttlmap_edges)} edges: "
+            f"{[e.dst for e in ttlmap_edges]}"
+        )
+
     def test_new_class_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
