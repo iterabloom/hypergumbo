@@ -48,3 +48,10 @@
   clock: 5  # e124
   nonce: e124  # e124
   message: "Is the bug that was identified here something that might be unaddressed for any other hypergumbo-supported languages?"  # e124
+- op: discuss  # dadb
+  at: '2026-03-06T19:48:57Z'  # dadb
+  by: agent  # dadb
+  actor: jgstern_agent  # dadb
+  clock: 6  # dadb
+  nonce: dadb  # dadb
+  message: "The same pattern (build target → main function disconnected) could affect: (1) Python: pyproject.toml console_scripts/gui_scripts entry points → __main__.py or main() functions, (2) Java/Kotlin: Maven pom.xml <mainClass> or Gradle application { mainClass } → main() methods, (3) C#: .csproj <StartupObject> → Program.Main(). Go is not affected (package main + func main() is direct, no build manifest indirection). Currently only Cargo [[bin]] (Rust) and npm bin (JS/TS) emit defines_target edges. The others would need similar support in their config file analyzers."  # dadb
