@@ -187,6 +187,19 @@ This file records: current branch (should be `dev` after a clean merge), last PR
 
 If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
 
+**Keep notes fresh:** Update `last_stop_check.json` notes after key milestones, not just at reflection time. This ensures context survives compaction:
+- After a PR merge: record what was merged and what's next
+- After a bakeoff completes: record findings and next steps
+- After tracker item status changes: record what was resolved and why
+- After hitting an obstacle: record what's blocked and alternative approaches
+
+```bash
+# Update notes (uses jq to modify in-place)
+jq --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
+  '. + {notes: $n}' ~/hypergumbo_lab_notebook/last_stop_check.json \
+  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/last_stop_check.json
+```
+
 Also check for pending work items:
 ```bash
 ./scripts/tracker ready
