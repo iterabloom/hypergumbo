@@ -1,0 +1,19 @@
+- op: create  # 32e1
+  at: '2026-03-06T08:58:40Z'  # 32e1
+  by: agent  # 32e1
+  actor: jgstern_agent  # 32e1
+  clock: 1  # 32e1
+  nonce: '32e1'  # 32e1
+  data:  # 32e1
+    kind: work_item  # 32e1
+    title: "Rust cross-file call resolution: analyzer only detects intra-file calls"  # 32e1
+    status: todo_soft  # 32e1
+    priority: 1  # 32e1
+    parent:  # 32e1
+    tags: []  # 32e1
+    before: []  # 32e1
+    duplicate_of: []  # 32e1
+    not_duplicate_of: []  # 32e1
+    pr_ref:  # 32e1
+    description: "Deep bakeoff (23 repos, 2026-03-06) identified this as the #1 gap. 8+ Rust repos show no cross-file call edges. Need to resolve cross-file function calls by mapping use statements to file paths or building a workspace-level symbol index. TDD: write test with two Rust files where file A calls function in file B, assert cross-file edge exists. See notebookjournal_03062026_0900.md."  # 32e1
+    fields: {}  # 32e1
