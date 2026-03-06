@@ -81,7 +81,7 @@ import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F
 import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 import hypergumbo_core.linkers.build_target as _build_target_linker  # noqa: F401
-from .entrypoints import detect_entrypoints
+from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
@@ -1153,15 +1153,29 @@ def cmd_slice(args: argparse.Namespace) -> int:
         for e in edges:
             edge_src_counts[e.src] = edge_src_counts.get(e.src, 0) + 1
 
+        # Main functions are canonical application roots and should be
+        # preferred over route handlers that may have more edges but
+        # lead to dead ends (e.g., V1DeprecationRouter.deprecationHandler
+        # in alertmanager had 7 route-node edges but 0 useful call edges).
+        _MAIN_KINDS = frozenset({
+            EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.CLI_MAIN,
+        })
+
         def entry_score(ep: Any) -> float:
-            """Score = confidence * connectivity_boost.
+            """Score = confidence * connectivity_boost * kind_boost.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
-            This favors well-connected entries while still respecting confidence.
+            kind_boost = 2.0 for main functions, 1.0 otherwise
+
+            Main functions get a 2x boost because they are the canonical
+            application root.  Route handlers with more edges often point
+            to dead-end route nodes rather than useful call chains.
             """
             out_edges = edge_src_counts.get(ep.symbol_id, 0)
             connectivity_boost = 1 + math.log(1 + out_edges)
-            return ep.confidence * connectivity_boost
+            kind_boost = 2.0 if ep.kind in _MAIN_KINDS else 1.0
+            return ep.confidence * connectivity_boost * kind_boost
 
         best = max(entrypoints, key=entry_score)
         entry = best.symbol_id

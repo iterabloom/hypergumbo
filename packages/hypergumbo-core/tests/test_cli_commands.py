@@ -3621,3 +3621,100 @@ def test_cmd_slice_auto_entry_max_tier_filter(tmp_path: Path, capsys) -> None:
     # Must select tier-1 entry, not tier-3
     assert "src/app.py" in out
     assert "vendor/lib.py" not in out
+
+
+def test_cmd_slice_auto_entry_prefers_main_over_route(
+    tmp_path: Path, capsys,
+) -> None:
+    """--entry auto prefers main() over route handlers with more edges.
+
+    Reproduces the alertmanager issue: V1DeprecationRouter.deprecationHandler
+    (7 out-edges, all to dead-end route nodes) was selected over main()
+    (2 out-edges but actually the application root). Main functions should
+    get a boost because they are the canonical application entrypoint.
+    """
+    main_node = {
+        "id": "go:cmd/app/main.go:1-50:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "go",
+        "path": "cmd/app/main.go",
+        "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    handler_node = {
+        "id": "go:api/handler.go:1-20:Handler.serve:method",
+        "name": "Handler.serve",
+        "kind": "method",
+        "language": "go",
+        "path": "api/handler.go",
+        "span": {"start_line": 1, "end_line": 20, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "route", "path": "/status"}]},
+    }
+    # main has 2 outgoing edges
+    helpers = [
+        {
+            "id": f"go:pkg/svc{i}.go:1-5:svc{i}:function",
+            "name": f"svc{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"pkg/svc{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        }
+        for i in range(2)
+    ]
+    # handler has 7 outgoing edges (to dead-end route nodes)
+    route_nodes = [
+        {
+            "id": f"go:api/handler.go:{10+i}-{10+i}:route{i}:route",
+            "name": f"GET /route{i}",
+            "kind": "route",
+            "language": "go",
+            "path": "api/handler.go",
+            "span": {
+                "start_line": 10 + i, "end_line": 10 + i,
+                "start_col": 0, "end_col": 1,
+            },
+        }
+        for i in range(7)
+    ]
+    edges = [
+        {"id": f"e-m-{i}", "src": main_node["id"], "dst": h["id"], "type": "calls"}
+        for i, h in enumerate(helpers)
+    ] + [
+        {"id": f"e-h-{i}", "src": handler_node["id"], "dst": r["id"], "type": "calls"}
+        for i, r in enumerate(route_nodes)
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [main_node, handler_node] + helpers + route_nodes,
+        "edges": edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # main() should be selected over the route handler despite fewer edges
+    assert "cmd/app/main.go" in out, (
+        "main() should be preferred over route handlers: "
+        "main functions are canonical application roots"
+    )
