@@ -55,3 +55,11 @@
   nonce: c73b  # c73b
   set:  # c73b
     status: wont_do  # c73b
+- op: lock  # 2bf1
+  at: '2026-03-06T07:59:57Z'  # 2bf1
+  by: human  # 2bf1
+  actor: jgstern  # 2bf1
+  clock: 7  # 2bf1
+  nonce: 2bf1  # 2bf1
+  lock:  # 2bf1
+  - status  # 2bf1
