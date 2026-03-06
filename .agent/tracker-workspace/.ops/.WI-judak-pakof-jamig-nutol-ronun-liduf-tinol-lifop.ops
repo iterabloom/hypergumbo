@@ -18,3 +18,18 @@
     pr_ref:  # b856
     description: "Current cooldown is binary (30 min threshold). Could tier: <10min=terse, 10-30min=moderate, >30min=full reflection. Depends on template separation for clean implementation."  # b856
     fields: {}  # b856
+- op: update  # b977
+  at: '2026-03-06T05:46:20Z'  # b977
+  by: agent  # b977
+  actor: jgstern_agent  # b977
+  clock: 2  # b977
+  nonce: b977  # b977
+  set:  # b977
+    status: needs_human_review  # b977
+- op: discuss  # 80cf
+  at: '2026-03-06T05:46:20Z'  # 80cf
+  by: agent  # 80cf
+  actor: jgstern_agent  # 80cf
+  clock: 3  # 80cf
+  nonce: 80cf  # 80cf
+  message: "Governance file (.agent/hooks). Proposed: variable cooldown messaging in stop hook based on elapsed time since last approved stop (short: gentle, long: more insistent). Requesting approval."  # 80cf
