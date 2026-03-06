@@ -18,3 +18,18 @@
     pr_ref:  # d3ba
     description: "When auto-pr rebases and force-pushes, the new commit SHA triggers a fresh CI run. If a tracker auto-sync also merges around the same time, its pending statuses can block the real PR. Observed with PR #1774: original SHA 53de7318 passed CI, but rebase produced 95ccf0e3 which triggered new CI run 4615 that never completed, blocking merge. The tracker sync PR also triggered ci.yml (not just tracker-ci.yml) because the commit contained both ops and code files. Root cause: rebased commits lose their CI status, and concurrent tracker syncs can interfere."  # d3ba
     fields: {}  # d3ba
+- op: update  # b95e
+  at: '2026-03-06T00:49:14Z'  # b95e
+  by: agent  # b95e
+  actor: jgstern_agent  # b95e
+  clock: 2  # b95e
+  nonce: b95e  # b95e
+  set:  # b95e
+    status: needs_human_review  # b95e
+- op: discuss  # 6435
+  at: '2026-03-06T00:49:14Z'  # 6435
+  by: agent  # 6435
+  actor: jgstern_agent  # 6435
+  clock: 3  # 6435
+  nonce: '6435'  # 6435
+  message: "Root cause analysis complete. Fix would require changes to scripts/auto-pr (governance file). The fix: auto-pr should not force-push rebased commits to existing PRs when a tracker sync may be in flight. Instead, it should check for TRACKER_SYNC_PENDING before rebasing. Requesting approval to modify scripts/auto-pr."  # 6435

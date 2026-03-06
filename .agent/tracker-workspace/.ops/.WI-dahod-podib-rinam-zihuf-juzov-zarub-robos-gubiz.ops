@@ -18,3 +18,18 @@
     pr_ref:  # 4eb3
     description: "auto-pr emits verbose polling lines that flood context. Compress to single-line updates or final summary. Observed: ~30 lines of CI polling consuming context window."  # 4eb3
     fields: {}  # 4eb3
+- op: update  # f53e
+  at: '2026-03-06T00:50:13Z'  # f53e
+  by: agent  # f53e
+  actor: jgstern_agent  # f53e
+  clock: 2  # f53e
+  nonce: f53e  # f53e
+  set:  # f53e
+    status: needs_human_review  # f53e
+- op: discuss  # 532b
+  at: '2026-03-06T00:50:13Z'  # 532b
+  by: agent  # 532b
+  actor: jgstern_agent  # 532b
+  clock: 3  # 532b
+  nonce: 532b  # 532b
+  message: "Requires modifying scripts/auto-pr (governance file). Proposed change: replace per-poll line output with a single final summary line showing elapsed time and job count. Requesting approval."  # 532b

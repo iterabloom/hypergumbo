@@ -39,3 +39,18 @@
   clock: 4  # 2847
   nonce: '2847'  # 2847
   message: "Acknowledged — will move to ~/hypergumbo_lab_notebook/last_stop_check.json. This requires updating: stop_logic.sh, AGENTS.md post-compaction recovery section, and the test_hooks.sh sandbox setup."  # 2847
+- op: update  # 77ca
+  at: '2026-03-06T00:48:43Z'  # 77ca
+  by: agent  # 77ca
+  actor: jgstern_agent  # 77ca
+  clock: 5  # 77ca
+  nonce: 77ca  # 77ca
+  set:  # 77ca
+    status: needs_human_review  # 77ca
+- op: discuss  # 38d0
+  at: '2026-03-06T00:48:43Z'  # 38d0
+  by: agent  # 38d0
+  actor: jgstern_agent  # 38d0
+  clock: 6  # 38d0
+  nonce: 38d0  # 38d0
+  message: "Implementation requires changing .agent/hooks/_shared/stop_logic.sh (governance file). Changes: update STATE_FILE and STATE_FILE_FOR_GF paths from $REPO_ROOT/.agent/last_stop_check.json to ~/hypergumbo_lab_notebook/last_stop_check.json. Also update AGENTS.md post-compaction recovery section. Requesting human approval before proceeding."  # 38d0
