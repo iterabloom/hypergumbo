@@ -2249,6 +2249,39 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("main")
         assert not is_utility_symbol("checkout")
 
+    def test_fp_primitives_are_utility(self):
+        """Functional programming primitives are utility symbols.
+
+        Generic names like map, filter, reduce from UI frameworks (Elm,
+        React) have high fan-in but low architectural relevance.
+        """
+        assert is_utility_symbol("map")
+        assert is_utility_symbol("filter")
+        assert is_utility_symbol("reduce")
+        assert is_utility_symbol("forEach")
+        assert is_utility_symbol("flatMap")
+        assert is_utility_symbol("fold")
+        assert is_utility_symbol("foldl")
+        assert is_utility_symbol("foldr")
+        assert is_utility_symbol("zip")
+        assert is_utility_symbol("concat")
+        assert is_utility_symbol("apply")
+
+    def test_fp_names_in_qualified_context_are_utility(self):
+        """FP primitives dampened even when qualified (Utils.Api.map)."""
+        assert is_utility_symbol("Utils.Api.map")
+        assert is_utility_symbol("Array.filter")
+        assert is_utility_symbol("List.reduce")
+
+    def test_fp_compound_names_not_utility(self):
+        """Compound names containing FP primitives should NOT be dampened."""
+        assert not is_utility_symbol("mapToEntity")
+        assert not is_utility_symbol("filterConfig")
+        assert not is_utility_symbol("applyChanges")
+        assert not is_utility_symbol("SourceMap")
+        assert not is_utility_symbol("FilterBar")
+        assert not is_utility_symbol("MapView")
+
 
 class TestApplyUtilitySymbolWeights:
     """Tests for apply_utility_symbol_weights function.

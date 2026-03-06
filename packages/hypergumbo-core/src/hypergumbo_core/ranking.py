@@ -401,6 +401,10 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # Rust derive-generated methods: Clone, Default, Debug, Hash, PartialEq, Into/From.
     # These have high in-degree from derive macros but low architectural relevance.
     re.compile(r"^(?:fmt|default|into|from|as_ref|deref|drop|unwrap)$"),
+    # Functional programming primitives: generic collection operations with
+    # high fan-in but no architectural relevance.  Elm's map/filter/reduce
+    # and JS Array methods dominate rankings in polyglot repos.
+    re.compile(r"^(?:map|filter|reduce|forEach|flatMap|fold|foldl|foldr|zip|concat|apply)$"),
 ]
 
 
