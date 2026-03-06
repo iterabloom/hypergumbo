@@ -1169,6 +1169,47 @@ def _extract_edges_from_file(
                                     ))
                                     resolved = True
 
+                                # Strategy 1b: Strip module prefixes from
+                                # the scoped name.  For
+                                # codex_agent::CodexAgent::new, try
+                                # "CodexAgent::new" before falling back to
+                                # bare "new" (which has many ambiguous
+                                # candidates).
+                                if not resolved:
+                                    parts = full_scoped_name.split("::")
+                                    for i in range(1, len(parts) - 1):
+                                        suffix = "::".join(parts[i:])
+                                        if suffix in local_symbols:
+                                            callee = local_symbols[suffix]
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=callee.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="function_call",
+                                                confidence=0.85,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                                            resolved = True
+                                            break
+                                        lr = resolver.lookup(
+                                            suffix, path_hint=import_hint,
+                                        )
+                                        if lr.found and lr.symbol is not None:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=lr.symbol.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="function_call",
+                                                confidence=0.80 * lr.confidence,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                                            resolved = True
+                                            break
+
                         # Strategy 1.5: Resolve self.field.method() via
                         # field type registry.  Fires for method calls where
                         # the receiver is a field_expression rooted at self.

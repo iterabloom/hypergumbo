@@ -1905,13 +1905,25 @@ class TestRustScopedIdentifierResolution:
         self, source_text: bytes,
         local_symbols: dict, global_symbols: dict,
         use_aliases: dict | None = None,
+        *,
+        with_method_resolver: bool = False,
     ) -> list:
-        """Helper: parse Rust source and extract edges."""
+        """Helper: parse Rust source and extract edges.
+
+        Args:
+            with_method_resolver: If True, build a ListNameResolver with
+                ambiguity_threshold=3 (matching real analysis flow).
+                Required for tests that exercise ambiguous short names
+                (e.g., multiple ::new methods).
+        """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.symbol_resolution import NameResolver
+        from hypergumbo_core.symbol_resolution import (
+            ListNameResolver,
+            NameResolver,
+        )
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -1925,9 +1937,19 @@ class TestRustScopedIdentifierResolution:
 
         resolver = NameResolver(global_symbols)
 
+        mr = None
+        if with_method_resolver:
+            global_methods: dict[str, list] = {}
+            for sym in global_symbols.values():
+                if sym.kind in ("method", "function"):
+                    short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
+                    global_methods.setdefault(short, []).append(sym)
+            mr = ListNameResolver(global_methods, ambiguity_threshold=3)
+
         return _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, global_symbols,
             "run", resolver, use_aliases or {},
+            method_resolver=mr,
         )
 
     def _make_rust_symbol(self, name: str, kind: str = "method"):
@@ -2090,6 +2112,205 @@ class TestRustScopedIdentifierResolution:
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].dst == target.id
+
+    def test_module_qualified_call_strips_module_prefix(self, tmp_path: Path) -> None:
+        """mod_name::Type::method() resolves by stripping the module prefix.
+
+        When code calls codex_agent::CodexAgent::new(), the full scoped name
+        is "codex_agent::CodexAgent::new" but the registry has "CodexAgent::new".
+        The analyzer should try stripping module prefixes from the scoped name.
+
+        This test includes multiple ::new symbols to trigger the ambiguity guard
+        on the bare "new" fallback, ensuring the module-stripped "CodexAgent::new"
+        path is what actually resolves.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:run_main:function",
+            name="run_main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:codex_agent.rs:1-10:CodexAgent::new:method",
+            name="CodexAgent::new", kind="method", language="rust",
+            path="codex_agent.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::new symbols to trigger ambiguity guard on bare "new"
+        other1 = Symbol(
+            id="rust:thread.rs:1-10:Thread::new:method",
+            name="Thread::new", kind="method", language="rust",
+            path="thread.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:spawner.rs:1-10:Spawner::new:method",
+            name="Spawner::new", kind="method", language="rust",
+            path="spawner.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:client.rs:1-10:Client::new:method",
+            name="Client::new", kind="method", language="rust",
+            path="client.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn run_main() {\n    codex_agent::CodexAgent::new(config);\n}\n"
+        global_symbols = {
+            "CodexAgent::new": target,
+            "Thread::new": other1,
+            "Spawner::new": other2,
+            "Client::new": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"run_main": caller}, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for module-qualified call, got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_deeply_module_qualified_call(self, tmp_path: Path) -> None:
+        """a::b::Type::method() resolves by stripping module prefixes.
+
+        Tests that even with multiple module segments (a::b::Type::method),
+        the analyzer can resolve to Type::method in the registry.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:config.rs:1-10:Config::load:method",
+            name="Config::load", kind="method", language="rust",
+            path="config.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::load symbols to trigger ambiguity guard
+        other1 = Symbol(
+            id="rust:other.rs:1-10:Other::load:method",
+            name="Other::load", kind="method", language="rust",
+            path="other.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:db.rs:1-10:Db::load:method",
+            name="Db::load", kind="method", language="rust",
+            path="db.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:cache.rs:1-10:Cache::load:method",
+            name="Cache::load", kind="method", language="rust",
+            path="cache.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    codex_core::config::Config::load();\n}\n"
+        global_symbols = {
+            "Config::load": target,
+            "Other::load": other1,
+            "Db::load": other2,
+            "Cache::load": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for deeply qualified call, got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_module_qualified_call_via_local_symbols(self, tmp_path: Path) -> None:
+        """mod::Type::method() resolves via local_symbols when target is local.
+
+        Exercises the local_symbols lookup path in Strategy 1b (module prefix
+        stripping). When the target is in the same file's local_symbols dict,
+        it should resolve without needing the global resolver.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:run_main:function",
+            name="run_main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:test.rs:10-20:Agent::init:method",
+            name="Agent::init", kind="method", language="rust",
+            path="test.rs",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::init symbols to trigger ambiguity
+        other1 = Symbol(
+            id="rust:a.rs:1-10:Server::init:method",
+            name="Server::init", kind="method", language="rust",
+            path="a.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:b.rs:1-10:Client::init:method",
+            name="Client::init", kind="method", language="rust",
+            path="b.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:c.rs:1-10:Db::init:method",
+            name="Db::init", kind="method", language="rust",
+            path="c.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn run_main() {\n    my_mod::Agent::init();\n}\n"
+        local_symbols = {"run_main": caller, "Agent::init": target}
+        global_symbols = {
+            "Agent::init": target,
+            "Server::init": other1,
+            "Client::init": other2,
+            "Db::init": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, local_symbols, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+        # local_symbols path should give confidence 0.85
+        assert call_edges[0].confidence == 0.85
 
 
 class TestRustEnclosingFunctionQualified:
