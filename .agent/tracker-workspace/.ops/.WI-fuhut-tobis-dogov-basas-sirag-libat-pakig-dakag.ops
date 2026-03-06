@@ -40,3 +40,10 @@
   clock: 4  # 50cc
   nonce: 50cc  # 50cc
   message: "what's the benefit of this? does it outweigh the risk of starting a new feature branch off of a trunk with the unmerged PR and then having git struggles?"  # 50cc
+- op: discuss  # 237b
+  at: '2026-03-06T07:34:28Z'  # 237b
+  by: agent  # 237b
+  actor: jgstern_agent  # 237b
+  clock: 5  # 237b
+  nonce: 237b  # 237b
+  message: "Good question. The benefit is marginal — it avoids idle blocking while CI runs. But you're right, the risk of starting work off a trunk with unmerged PR is real (git conflicts, divergence). The safer approach is the current one: wait for auto-pr to finish. Recommending we close this as wontfix since the current behavior (block until merge) is safer."  # 237b
