@@ -25,3 +25,18 @@
   nonce: 90ca  # 90ca
   set:  # 90ca
     description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, move older to \"older_guidance\" subdir"  # 90ca
+- op: update  # 7387
+  at: '2026-03-06T05:47:08Z'  # 7387
+  by: agent  # 7387
+  actor: jgstern_agent  # 7387
+  clock: 3  # 7387
+  nonce: '7387'  # 7387
+  set:  # 7387
+    status: needs_human_review  # 7387
+- op: discuss  # 8408
+  at: '2026-03-06T05:47:08Z'  # 8408
+  by: agent  # 8408
+  actor: jgstern_agent  # 8408
+  clock: 4  # 8408
+  nonce: '8408'  # 8408
+  message: "Governance file (.agent/hooks or guidance_log). Proposed: add age-based cleanup of old guidance files in ~/hypergumbo_lab_notebook/guidance_log/ to prevent unbounded growth. Requesting approval."  # 8408
