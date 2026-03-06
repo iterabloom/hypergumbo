@@ -46,10 +46,12 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 Slice Quality:
 | Metric              | Good Range  | Warning       |
 |---------------------|-------------|---------------|
-| avg_slice_nodes     | 20-2000     | <5 or >5000   |
+| avg_slice_nodes     | 20-2000*    | <5 or >5000   |
 | slice_coverage_pct  | 0.1-20%     | <0.01% or >50%|
 | limit_hit_frequency | <50%        | >80%          |
 | cross_file_ratio    | >20%        | <5%           |
+
+*avg_slice_nodes good_min scales to max(5, total_nodes*0.1) for repos <200 nodes.
 
 Supply Chain:
 | Metric     | Good Range | Warning        |
@@ -635,14 +637,25 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
 _COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
 
 
-def assess_metric(name: str, value: float) -> tuple:
-    """Assess a metric against thresholds. Returns (status, message)."""
+def assess_metric(name: str, value: float, *, total_nodes: int | None = None) -> tuple:
+    """Assess a metric against thresholds. Returns (status, message).
+
+    For ``avg_slice_nodes``, the ``good_min`` threshold scales down for small
+    repos (< 200 nodes) using ``max(warn_min, total_nodes * 0.1)``.  A repo
+    with 72 nodes cannot realistically average 20 nodes per slice.
+    """
     thresholds = QUALITY_THRESHOLDS.get(name, {})
     unit = "" if name in _COUNT_METRICS else "%"
 
     # Check good range
     good_min = thresholds.get("good_min")
     good_max = thresholds.get("good_max")
+
+    # Scale avg_slice_nodes threshold for small repos
+    if name == "avg_slice_nodes" and good_min is not None and total_nodes is not None:
+        floor = thresholds.get("warn_min", 5)
+        scaled = max(floor, total_nodes * 0.1)
+        good_min = min(good_min, scaled)
 
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
@@ -1691,7 +1704,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
 
         verdict_status = "GOOD"
         for metric_name, value in metric_assessments:
-            status, msg = assess_metric(metric_name, value)
+            status, msg = assess_metric(metric_name, value, total_nodes=metrics.total_nodes)
             if status == "FAIL":
                 verdict_status = "FAIL"
                 if msg:

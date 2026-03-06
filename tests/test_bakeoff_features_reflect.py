@@ -754,6 +754,23 @@ class TestCmdCheck:
         assert (reflect_dir / "summary.yaml").exists()
 
 
+def _make_aggregate_args(workdir, *, iteration=None, use_all=False, use_some=None,
+                         ingest=False):
+    """Create args namespace for cmd_aggregate with explicit attribute defaults.
+
+    Using mock.Mock() without spec causes getattr(args, "all", False) to return
+    a truthy Mock, accidentally hitting the multi-cohort path.
+    """
+    args = mock.Mock()
+    args.workdir = str(workdir)
+    args.iteration = iteration
+    # These control single-cohort vs multi-cohort path
+    setattr(args, "all", use_all)
+    args.some = use_some
+    args.ingest = ingest
+    return args
+
+
 class TestCmdAggregate:
     """Test the full aggregate command."""
 
@@ -792,9 +809,7 @@ class TestCmdAggregate:
             json.dumps({"developer_assessment": a2})
         )
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
+        args = _make_aggregate_args(session_dir)
 
         result = bakeoff_features_reflect.cmd_aggregate(args)
         assert result == 0
@@ -811,9 +826,7 @@ class TestCmdAggregate:
         reflect_dir = session_dir / "reflect" / "cohort-002" / "iter-001"
         reflect_dir.mkdir(parents=True)
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
+        args = _make_aggregate_args(session_dir)
 
         result = bakeoff_features_reflect.cmd_aggregate(args)
         assert result == 1
@@ -837,9 +850,7 @@ class TestCmdAggregate:
             json.dumps({"developer_assessment": a2})
         )
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
+        args = _make_aggregate_args(session_dir)
 
         result = bakeoff_features_reflect.cmd_aggregate(args)
         assert result == 0
@@ -902,9 +913,7 @@ class TestCmdAggregate:
             json.dumps({"developer_assessment": a2})
         )
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
+        args = _make_aggregate_args(session_dir)
 
         result = bakeoff_features_reflect.cmd_aggregate(args)
         assert result == 0
@@ -1200,10 +1209,7 @@ class TestAggregateWithIngest:
             json.dumps({"developer_assessment": a2})
         )
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
-        args.ingest = True
+        args = _make_aggregate_args(session_dir, ingest=True)
 
         with mock.patch.object(
             bakeoff_features_reflect,
@@ -1232,10 +1238,7 @@ class TestAggregateWithIngest:
             json.dumps({"developer_assessment": a1})
         )
 
-        args = mock.Mock()
-        args.workdir = str(session_dir)
-        args.iteration = None
-        args.ingest = False
+        args = _make_aggregate_args(session_dir)
 
         with mock.patch.object(
             bakeoff_features_reflect,
