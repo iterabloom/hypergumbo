@@ -877,6 +877,46 @@ def _extract_symbols_from_file(
                             )
                             if iface_methods:
                                 interface_method_sets[type_name] = iface_methods
+
+                            # Create method symbols for each interface method.
+                            # Named InterfaceName.MethodName so the containment
+                            # linker connects interface→method and the type
+                            # hierarchy linker creates dispatches_to edges.
+                            for iface_child in type_node.children:
+                                if iface_child.type != "method_elem":
+                                    continue
+                                mname_node = find_child_by_type(
+                                    iface_child, "field_identifier",
+                                )
+                                if not mname_node:
+                                    continue  # pragma: no cover
+                                mname = node_text(mname_node, source)
+                                qualified = f"{type_name}.{mname}"
+                                m_start = iface_child.start_point[0] + 1
+                                m_end = iface_child.end_point[0] + 1
+                                m_modifiers = _go_visibility_modifiers(qualified)
+                                m_sym = Symbol(
+                                    id=make_symbol_id(
+                                        "go", str(file_path),
+                                        m_start, m_end, qualified, "method",
+                                    ),
+                                    name=qualified,
+                                    kind="method",
+                                    language="go",
+                                    path=str(file_path),
+                                    span=Span(
+                                        start_line=m_start,
+                                        end_line=m_end,
+                                        start_col=iface_child.start_point[1],
+                                        end_col=iface_child.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    modifiers=m_modifiers,
+                                    lines_of_code=1,
+                                )
+                                analysis.symbols.append(m_sym)
+                                analysis.symbol_by_name[qualified] = m_sym
                         else:
                             kind = "type"
 

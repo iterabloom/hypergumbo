@@ -5004,3 +5004,131 @@ func (b *Bar) String() string { return "bar" }
         assert bar is not None
         assert foo.meta and "Stringer" in foo.meta.get("base_classes", [])
         assert bar.meta and "Stringer" in bar.meta.get("base_classes", [])
+
+
+class TestGoInterfaceMethodSymbols:
+    """Tests for extracting method symbols from Go interface definitions.
+
+    Go interfaces define method signatures that need to be extracted as
+    Symbol objects (kind=method, name=InterfaceName.MethodName) so that
+    the type hierarchy linker can create dispatches_to edges from
+    interface methods to concrete struct methods.
+    """
+
+    def test_interface_methods_extracted_as_symbols(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface methods become method symbols named InterfaceName.MethodName."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "iface.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+    Close() error
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Interface itself should exist
+        iface = next(
+            (s for s in result.symbols if s.name == "Notifier" and s.kind == "interface"),
+            None,
+        )
+        assert iface is not None, "Should find Notifier interface"
+
+        # Each interface method should be a symbol
+        notify_method = next(
+            (s for s in result.symbols
+             if s.name == "Notifier.Notify" and s.kind == "method"),
+            None,
+        )
+        assert notify_method is not None, (
+            "Should find Notifier.Notify method symbol; "
+            f"got: {[s.name for s in result.symbols if s.kind == 'method']}"
+        )
+        assert notify_method.language == "go"
+        assert notify_method.path == str(tmp_path / "iface.go")
+
+        close_method = next(
+            (s for s in result.symbols
+             if s.name == "Notifier.Close" and s.kind == "method"),
+            None,
+        )
+        assert close_method is not None, "Should find Notifier.Close method symbol"
+
+    def test_empty_interface_no_method_symbols(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty interfaces (interface{}) produce no method symbols."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "empty.go").write_text("""package main
+
+type Any interface{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # No method symbols should exist for empty interface
+        iface_methods = [
+            s for s in result.symbols
+            if s.kind == "method" and s.name.startswith("Any.")
+        ]
+        assert len(iface_methods) == 0
+
+    def test_interface_method_symbols_enable_dispatches_to(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface method symbols + struct methods enable dispatches_to via linkers.
+
+        Validates the full pipeline: Go analyzer extracts interface method symbols,
+        containment linker connects interface→method, type hierarchy linker creates
+        dispatches_to edges from interface method to struct method.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+        from hypergumbo_core.linkers.containment import link_containment
+        from hypergumbo_core.linkers.type_hierarchy import link_type_hierarchy
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "dispatch.go").write_text("""package main
+
+type Handler interface {
+    Handle(req string) string
+}
+
+type EchoHandler struct{}
+
+func (h *EchoHandler) Handle(req string) string {
+    return req
+}
+""")
+
+        result = analyze_go(tmp_path)
+        symbols = list(result.symbols)
+        edges = list(result.edges)
+
+        # Step 1: Run containment linker to create interface→method contains edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        containment_result = link_containment(ctx)
+        edges.extend(containment_result.edges)
+
+        # Step 2: Run inheritance linker to create implements edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        inheritance_result = link_inheritance(ctx)
+        edges.extend(inheritance_result.edges)
+
+        # Step 3: Run type hierarchy linker to create dispatches_to edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        hierarchy_result = link_type_hierarchy(ctx)
+
+        dispatches = [e for e in hierarchy_result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatches) >= 1, (
+            f"Should have dispatches_to edge from Handler.Handle to EchoHandler.Handle; "
+            f"got edges: {[(e.src, e.dst, e.edge_type) for e in hierarchy_result.edges]}"
+        )
