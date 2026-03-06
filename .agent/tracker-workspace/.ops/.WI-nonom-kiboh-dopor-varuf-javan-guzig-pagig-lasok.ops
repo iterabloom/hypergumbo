@@ -32,3 +32,10 @@
   clock: 3  # 7c4f
   nonce: 7c4f  # 7c4f
   message: "The stale-PR audit would work like this: during stop reflection, the hook queries Forgejo for open PRs on the repo (via scripts/ci-debug or a lightweight API call). Any PR older than 24h or with failed CI gets flagged in the guidance file as 'stale PR #NNN: created X hours ago, CI status: Y'. The agent would then either merge (if CI green), fix (if CI failed), or close (if superseded). This catches PRs that got orphaned due to context compaction or remote timeouts. Implementation: add a stale_pr_audit() function to stop_logic.sh that calls the Forgejo API (already allowlisted) and appends results to the guidance file."  # 7c4f
+- op: discuss  # 3791
+  at: '2026-03-06T06:18:16Z'  # 3791
+  by: human  # 3791
+  actor: jgstern  # 3791
+  clock: 4  # 3791
+  nonce: '3791'  # 3791
+  message: "I would say this should apply for any PR created more than 6 hours ago, and leave CI status out of the filter, for simplicity. the way we determine whether CI has passed, failed, is pending, or has gone off the reservation and invented a new genre of young adult Magic Schoolbus fan fiction, is delicate and nuanced so be careful. rebasing probably will be needed here because the repo is set up to not allow merges of PRs that are out-of-date."  # 3791
