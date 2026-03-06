@@ -2330,6 +2330,11 @@ class TestIsUtilitySymbol:
         assert is_utility_symbol("Array.filter")
         assert is_utility_symbol("List.reduce")
 
+    def test_time_accessor_now_is_utility(self):
+        """now() is a time accessor utility (e.g., Log.now in alertmanager)."""
+        assert is_utility_symbol("now")
+        assert is_utility_symbol("Log.now")
+
     def test_fp_compound_names_not_utility(self):
         """Compound names containing FP primitives should NOT be dampened."""
         assert not is_utility_symbol("mapToEntity")
@@ -2338,6 +2343,28 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("SourceMap")
         assert not is_utility_symbol("FilterBar")
         assert not is_utility_symbol("MapView")
+
+
+class TestIsHelperFile:
+    """Tests for _is_helper_file function."""
+
+    def test_helpers_file(self):
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("web/api/v1/openapi_helpers.go")
+        assert _is_helper_file("src/string_utils.py")
+        assert _is_helper_file("lib/config_util.rb")
+        assert _is_helper_file("helpers.ts")
+        assert _is_helper_file("utils.py")
+        assert _is_helper_file("util.go")
+
+    def test_non_helper_file(self):
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert not _is_helper_file("src/api.go")
+        assert not _is_helper_file("web/router.py")
+        assert not _is_helper_file("lib/helper_factory.rb")
+        assert not _is_helper_file("")
 
 
 class TestApplyUtilitySymbolWeights:
@@ -2375,6 +2402,26 @@ class TestApplyUtilitySymbolWeights:
         centrality = {svc.id: 0.5}
         result = apply_utility_symbol_weights(centrality, [svc])
         assert result[svc.id] == 0.5
+
+    def test_helper_file_symbol_dampened(self):
+        """Symbols from *_helpers, *_utils files are dampened."""
+        helper = make_symbol(
+            "createYAMLNode",
+            path="web/api/v1/openapi_helpers.go",
+            language="go",
+        )
+        normal = make_symbol(
+            "Dispatcher.Run",
+            path="dispatch/dispatch.go",
+            language="go",
+        )
+        centrality = {helper.id: 0.9, normal.id: 0.5}
+        result = apply_utility_symbol_weights(
+            centrality, [helper, normal],
+        )
+        assert result[helper.id] < result[normal.id]
+        assert result[helper.id] == pytest.approx(0.09)
+        assert result[normal.id] == 0.5
 
     def test_rank_symbols_integrates_utility_weights(self):
         """rank_symbols should demote utility symbols below domain symbols.

@@ -409,6 +409,7 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # information, debugger, traceback, warningLevel, fatalError, ErrorHandler.
     re.compile(r"(?i)^(?:log|warn|error|debug|info|trace|fatal|print)(?:f|ln)?$"),
     re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
+    re.compile(r"^now$"),                 # now() time accessor (e.g., Log.now)
     re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
     re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
     # Exception/error classes: thrown/caught infrastructure, not domain logic.
@@ -459,6 +460,26 @@ def is_utility_symbol(name: str) -> bool:
     return False
 
 
+def _is_helper_file(path: str) -> bool:
+    """Check if the file basename suggests a helper/utility module.
+
+    Files named ``*_helpers.*``, ``*_utils.*``, ``*_util.*``, ``helpers.*``,
+    ``utils.*``, ``util.*`` are infrastructure plumbing whose symbols should
+    be dampened in rankings.  E.g. ``openapi_helpers.go`` whose
+    ``createYAMLNode``, ``responsesWithErrorExamples`` dominate rankings in
+    prometheus despite being schema-generation boilerplate.
+    """
+    if not path:
+        return False
+    basename = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    return (
+        basename.endswith("_helpers")
+        or basename.endswith("_utils")
+        or basename.endswith("_util")
+        or basename in ("helpers", "utils", "util")
+    )
+
+
 # Concepts from framework YAML patterns that indicate infrastructure logging.
 # Symbols enriched with these concepts by logging-conventions.yaml get dampened.
 _LOGGING_CONCEPTS: frozenset[str] = frozenset({"logging", "logger"})
@@ -506,7 +527,12 @@ def apply_utility_symbol_weights(
     for sid, score in centrality.items():
         sym = symbol_lookup.get(sid)
         name = sym.name if sym else ""
-        if is_utility_symbol(name) or _has_logging_concept(sym):
+        path = sym.path if sym else ""
+        if (
+            is_utility_symbol(name)
+            or _has_logging_concept(sym)
+            or _is_helper_file(path)
+        ):
             weighted[sid] = score * utility_weight
         else:
             weighted[sid] = score
