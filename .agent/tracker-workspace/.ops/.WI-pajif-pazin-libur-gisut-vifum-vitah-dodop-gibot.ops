@@ -39,3 +39,10 @@
   clock: 4  # 25e9
   nonce: '25e9'  # 25e9
   message: "Closing as wont_do. Each analyzer's chain resolution is ~30-50 lines of language-specific code that works correctly. Migrating to the base class pattern would save ~150 lines total across 5 languages but requires touching every analyzer's test suite and risks introducing regressions. The base class pattern is available for NEW analyzers (C++, C# already use it). Existing implementations should be left alone unless they need modification for other reasons — DRY refactoring for its own sake doesn't justify the risk."  # 25e9
+- op: discuss  # f3b4
+  at: '2026-03-06T18:01:09Z'  # f3b4
+  by: human  # f3b4
+  actor: jgstern  # f3b4
+  clock: 5  # f3b4
+  nonce: f3b4  # f3b4
+  message: "ok, so we've got 5 language analyzers that do not use the base-class pattern, and at least 2 language analyzers that **do** use the base-class pattern. But there are over 100 language analyzers in hypergumbo. What's the deal with field-type resolution in those 93+ language analyzers? Is it not applicable? Is it implemented but not mentioned above? Is it applicable but not implemented? Those answers are consequential for how to think about the work contemplated above."  # f3b4

@@ -41,3 +41,10 @@
   clock: 4  # e3c3
   nonce: e3c3  # e3c3
   message: "Fixed in PR #1838: build-target linker connects Cargo/npm entrypoints to main()."  # e3c3
+- op: discuss  # e124
+  at: '2026-03-06T18:14:39Z'  # e124
+  by: human  # e124
+  actor: jgstern  # e124
+  clock: 5  # e124
+  nonce: e124  # e124
+  message: "Is the bug that was identified here something that might be unaddressed for any other hypergumbo-supported languages?"  # e124

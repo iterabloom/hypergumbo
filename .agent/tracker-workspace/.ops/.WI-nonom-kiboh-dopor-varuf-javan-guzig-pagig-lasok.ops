@@ -46,3 +46,40 @@
   clock: 5  # e6f9
   nonce: e6f9  # e6f9
   message: "Understood. Filter: any PR older than 6 hours, regardless of CI status. Rebase will be needed since repo requires up-to-date PRs. Will be careful with CI status detection — keep it simple."  # e6f9
+- op: discuss  # b259
+  at: '2026-03-06T15:14:18Z'  # b259
+  by: human  # b259
+  actor: jgstern  # b259
+  clock: 6  # b259
+  nonce: b259  # b259
+  message: "keep the initial pass of deciding which PRs might be stale simple. but you can add as many nuances as you like to your decisionmaking in a second pass performed on the results of the first. I'm not saying \"don't be sophisticated\". Rather I'm saying \"be aware of the risks that come with being too clever, so manage your cleverness with structural safeguards and an appreciation of the stakes (fucking up CI fucks up everything and moreover the feedback loops are drawn out because it is CI)\". I approve you working on this item."  # b259
+- op: update  # 02db
+  at: '2026-03-06T15:17:05Z'  # 02db
+  by: human  # 02db
+  actor: jgstern  # 02db
+  clock: 7  # 02db
+  nonce: 02db  # 02db
+  set:  # 02db
+    status: todo_soft  # 02db
+- op: update  # acae
+  at: '2026-03-06T16:12:47Z'  # acae
+  by: agent  # acae
+  actor: jgstern_agent  # acae
+  clock: 8  # acae
+  nonce: acae  # acae
+  set:  # acae
+    status: done  # acae
+- op: discuss  # 2da0
+  at: '2026-03-06T16:12:47Z'  # 2da0
+  by: agent  # 2da0
+  actor: jgstern_agent  # 2da0
+  clock: 9  # 2da0
+  nonce: 2da0  # 2da0
+  message: "Implemented in PR #1856. Stop hook now queries Forgejo for open PRs older than 6 hours and appends findings to guidance files. Non-fatal (skips silently on connectivity failure). Tested manually against 4 stale tracker sync PRs."  # 2da0
+- op: discuss  # cc3d
+  at: '2026-03-06T16:12:54Z'  # cc3d
+  by: agent  # cc3d
+  actor: jgstern_agent  # cc3d
+  clock: 10  # cc3d
+  nonce: cc3d  # cc3d
+  message: "Done in PR #1856. Implementation: simple first-pass filter (all open PRs >6h), then the guidance text gives the agent nuanced options (merge/rebase/fix/close) as a second pass. Kept CI status detection simple — just includes the 'mergeable' flag from the API response, no custom CI polling logic. The audit is non-fatal: if the API call fails (no connectivity, bad token), it silently skips. Tested manually: found 4 stale tracker-sync PRs."  # cc3d
