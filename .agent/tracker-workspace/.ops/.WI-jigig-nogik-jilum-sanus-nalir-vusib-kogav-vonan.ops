@@ -18,3 +18,18 @@
     pr_ref:  # 3b79
     description: "Currently notes only updated at reflection time. Should also update after: PR merge, bakeoff completion, tracker item status change. Improves cross-compaction state recovery."  # 3b79
     fields: {}  # 3b79
+- op: update  # cf4a
+  at: '2026-03-06T05:42:18Z'  # cf4a
+  by: agent  # cf4a
+  actor: jgstern_agent  # cf4a
+  clock: 2  # cf4a
+  nonce: cf4a  # cf4a
+  set:  # cf4a
+    status: needs_human_review  # cf4a
+- op: discuss  # d5ed
+  at: '2026-03-06T05:42:18Z'  # d5ed
+  by: agent  # d5ed
+  actor: jgstern_agent  # d5ed
+  clock: 3  # d5ed
+  nonce: d5ed  # d5ed
+  message: "Governance file (AGENTS.md). Proposed change: update last_stop_check.json notes after PR merge, bakeoff completion, and tracker status changes (not just at reflection). Requesting approval."  # d5ed
