@@ -18,3 +18,18 @@
     pr_ref:  # 2faf
     description: "Codeberg/Forgejo FF merge sometimes returns HTTP 200 but merged:false. auto-pr should retry (up to 3 with backoff) before cherry-pick fallback. Observed: PR #1757 required manual cherry-pick, ~15 min + 50 tool calls wasted."  # 2faf
     fields: {}  # 2faf
+- op: update  # d9c8
+  at: '2026-03-06T00:52:20Z'  # d9c8
+  by: agent  # d9c8
+  actor: jgstern_agent  # d9c8
+  clock: 2  # d9c8
+  nonce: d9c8  # d9c8
+  set:  # d9c8
+    status: needs_human_review  # d9c8
+- op: discuss  # e4e6
+  at: '2026-03-06T00:52:20Z'  # e4e6
+  by: agent  # e4e6
+  actor: jgstern_agent  # e4e6
+  clock: 3  # e4e6
+  nonce: e4e6  # e4e6
+  message: "Requires modifying scripts/auto-pr or scripts/merge-pr (governance files). Requesting approval."  # e4e6

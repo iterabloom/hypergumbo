@@ -19,3 +19,18 @@
     pr_ref:  # e5aa
     description: "When auto-pr cherry-picks to -v2 branch, close the original PR with a comment linking to the new one. Currently requires manual cleanup."  # e5aa
     fields: {}  # e5aa
+- op: update  # 57d1
+  at: '2026-03-06T00:52:20Z'  # 57d1
+  by: agent  # 57d1
+  actor: jgstern_agent  # 57d1
+  clock: 2  # 57d1
+  nonce: 57d1  # 57d1
+  set:  # 57d1
+    status: needs_human_review  # 57d1
+- op: discuss  # cc6e
+  at: '2026-03-06T00:52:20Z'  # cc6e
+  by: agent  # cc6e
+  actor: jgstern_agent  # cc6e
+  clock: 3  # cc6e
+  nonce: cc6e  # cc6e
+  message: "Requires modifying scripts/auto-pr (governance file). Requesting approval."  # cc6e

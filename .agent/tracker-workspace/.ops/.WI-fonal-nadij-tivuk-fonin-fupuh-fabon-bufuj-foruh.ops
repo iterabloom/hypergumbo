@@ -18,3 +18,18 @@
     pr_ref:  # 1a7d
     description: "Add rebase merge attempt between FF retry and cherry-pick fallback. Less disruptive than cherry-pick since it preserves the original branch."  # 1a7d
     fields: {}  # 1a7d
+- op: update  # b475
+  at: '2026-03-06T00:52:20Z'  # b475
+  by: agent  # b475
+  actor: jgstern_agent  # b475
+  clock: 2  # b475
+  nonce: b475  # b475
+  set:  # b475
+    status: needs_human_review  # b475
+- op: discuss  # aba4
+  at: '2026-03-06T00:52:20Z'  # aba4
+  by: agent  # aba4
+  actor: jgstern_agent  # aba4
+  clock: 3  # aba4
+  nonce: aba4  # aba4
+  message: "Requires modifying scripts/auto-pr (governance file). Requesting approval."  # aba4
