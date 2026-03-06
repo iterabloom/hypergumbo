@@ -147,12 +147,28 @@ except Exception:
     pass
 " 2>/dev/null || true)
 
+    # Determine session type (broad vs deep) from directory name
+    _SESSION_DIR=$(dirname "$LATEST_STATE")
+    _SESSION_NAME=$(basename "$_SESSION_DIR")
+    _SESSION_TYPE="broad"
+    if [[ "$_SESSION_NAME" == deep-* ]]; then
+      _SESSION_TYPE="deep"
+    fi
+
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session is CONVERGED — no critical/high issues. Running another bakeoff on the same cohort would be redundant. Consider: selecting a new cohort, mining existing artifacts, or moving to other work items.'
+      if [[ "$_SESSION_TYPE" == "broad" ]]; then
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff cohort --count 5\n  - Mine existing artifacts: ./scripts/bakeoff issues --format json\n  - Run LLM assessment: ./scripts/bakeoff-reflect\n  - Or move to other work items (tracker ready)'
+      else
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff-features cohort --count 4\n  - Compare sessions: ./scripts/bakeoff-features compare <A> <B>\n  - Run LLM assessment: ./scripts/bakeoff-features-reflect\n  - Or move to other work items (tracker ready)'
+      fi
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session has outstanding issues. Consider investigating these before starting new work.'
+      if [[ "$_SESSION_TYPE" == "broad" ]]; then
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  - View issues: ./scripts/bakeoff issues --format json\n  - Diagnose latest: ./scripts/bakeoff diagnose\n  - Check status: ./scripts/bakeoff status\n  - Re-run after fixes: ./scripts/bakeoff cycle'
+      else
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  - Check status: ./scripts/bakeoff-features status\n  - Diagnose repos: ./scripts/bakeoff-features diagnose\n  - Re-run after fixes: ./scripts/bakeoff-features run\n  - View questions: ./scripts/bakeoff-features questions'
+      fi
     fi
   fi
 fi
