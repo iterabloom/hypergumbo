@@ -1,0 +1,19 @@
+- op: create  # 0dc9
+  at: '2026-03-06T08:59:47Z'  # 0dc9
+  by: agent  # 0dc9
+  actor: jgstern_agent  # 0dc9
+  clock: 1  # 0dc9
+  nonce: 0dc9  # 0dc9
+  data:  # 0dc9
+    kind: work_item  # 0dc9
+    title: "Cargo/npm entrypoint nodes have no edge to main(): forward slices dead ends"  # 0dc9
+    status: todo_soft  # 0dc9
+    priority: 1  # 0dc9
+    parent:  # 0dc9
+    tags: []  # 0dc9
+    before: []  # 0dc9
+    duplicate_of: []  # 0dc9
+    not_duplicate_of: []  # 0dc9
+    pr_ref:  # 0dc9
+    description: "Cargo binary entrypoints and npm bin fields create nodes but no edges to main(). Forward slices from top entrypoints contain 1-2 nodes. Need edge from cargo:binary:X to rust:src/main.rs:main, and npm bin dist/ resolution through tsconfig to src/. TDD: test that cargo binary entrypoint has edge to main(). See notebookjournal_03062026_0900.md."  # 0dc9
+    fields: {}  # 0dc9
