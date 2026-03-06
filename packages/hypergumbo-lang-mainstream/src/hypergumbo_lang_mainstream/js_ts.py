@@ -1458,7 +1458,7 @@ def _extract_library_export_contexts(
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
-            elif child.type == "class_declaration":
+            elif child.type in ("class_declaration", "abstract_class_declaration"):
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
@@ -1856,7 +1856,7 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     """
     current = node.parent
     while current is not None:
-        if current.type == "class_declaration":
+        if current.type in ("class_declaration", "abstract_class_declaration"):
             name = _find_name_in_children(current, source)
             if name:
                 return name
@@ -2001,15 +2001,42 @@ def _extract_decorators(
     return decorators
 
 
+def _unwrap_paren_extends(
+    paren_node: "tree_sitter.Node", source: bytes,
+) -> str:
+    """Extract the base class name from a parenthesized extends expression.
+
+    TypeScript allows cast expressions in extends clauses::
+
+        class Room extends (EventEmitter as new () => TypedEmitter<Callbacks>) {}
+
+    The AST is: parenthesized_expression > as_expression > identifier.
+    This function walks down to find the first identifier, which is the
+    actual base class being extended.
+    """
+    for child in paren_node.children:
+        if child.type in ("identifier", "type_identifier"):
+            return _node_text(child, source)  # pragma: no cover — bare (Foo) not seen in practice
+        if child.type == "as_expression":
+            # as_expression: first child is the value being cast
+            for as_child in child.children:
+                if as_child.type in ("identifier", "type_identifier"):
+                    return _node_text(as_child, source)
+                if as_child.type == "member_expression":  # pragma: no cover
+                    return _node_text(as_child, source)
+    return ""  # pragma: no cover
+
+
 def _extract_base_classes(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
-    """Extract base classes from a class_declaration node.
+    """Extract base classes from a class_declaration or abstract_class_declaration node.
 
     Handles:
     - extends clause: class Foo extends Bar
     - implements clause: class Foo implements IBar, IBaz
     - generic types: class Foo extends Bar<T>
+    - parenthesized cast: class Foo extends (Bar as new () => Baz<T>)
 
     Supports both TypeScript (nested extends_clause) and JavaScript (flat) grammars.
 
@@ -2035,6 +2062,10 @@ def _extract_base_classes(
                         elif extends_child.type == "generic_type":
                             # Explicit generic type like Repository<User>
                             base_name = _node_text(extends_child, source)  # pragma: no cover
+                        elif extends_child.type == "parenthesized_expression":
+                            # Cast expression: (EventEmitter as new () => TypedEmitter<T>)
+                            # Unwrap to find the first identifier (the actual base class)
+                            base_name = _unwrap_paren_extends(extends_child, source)
                         elif extends_child.type == "type_arguments":
                             # Separate type arguments like <User>
                             type_args = _node_text(extends_child, source)
@@ -2235,8 +2266,8 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
 
-        # Class declarations
-        elif node.type == "class_declaration":
+        # Class declarations (including abstract classes)
+        elif node.type in ("class_declaration", "abstract_class_declaration"):
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(

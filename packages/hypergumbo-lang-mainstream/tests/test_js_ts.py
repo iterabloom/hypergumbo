@@ -5807,6 +5807,127 @@ class MyComponent extends React.Component {
         )
 
 
+class TestAbstractClassDeclaration:
+    """Tests for TypeScript abstract class support.
+
+    TypeScript abstract classes produce ``abstract_class_declaration`` in tree-sitter,
+    which is a different node type than ``class_declaration``. The analyzer must handle
+    both to extract symbols, methods, and inheritance edges from abstract classes.
+    """
+
+    def test_abstract_class_extracted_as_symbol(self, tmp_path: Path) -> None:
+        """Abstract class should be extracted as a class symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "track.ts").write_text(
+            "export default abstract class LocalTrack<\n"
+            "  TrackKind extends string = string,\n"
+            "> {\n"
+            "    protected sender: any;\n"
+            "    abstract restart(): Promise<void>;\n"
+            "    stop() { console.log('stop'); }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+        names = [s.name for s in classes]
+        assert "LocalTrack" in names, (
+            f"Abstract class LocalTrack not found in symbols. Classes: {names}"
+        )
+
+    def test_abstract_class_methods_qualified(self, tmp_path: Path) -> None:
+        """Methods inside abstract classes should have qualified names."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "base.ts").write_text(
+            "abstract class BaseHandler {\n"
+            "    abstract process(data: any): void;\n"
+            "    log(msg: string) { console.log(msg); }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "BaseHandler.log" in method_names, (
+            f"Method log inside abstract class should be qualified as "
+            f"BaseHandler.log, got: {method_names}"
+        )
+
+    def test_abstract_class_extends_creates_edge(self, tmp_path: Path) -> None:
+        """Concrete class extending abstract class should create extends edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "base.ts").write_text(
+            "export abstract class Track {\n"
+            "    stop() {}\n"
+            "}\n"
+        )
+        (tmp_path / "local.ts").write_text(
+            "import { Track } from './base';\n"
+            "\n"
+            "export class LocalTrack extends Track {\n"
+            "    start() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        local_extends = [e for e in extends_edges if "LocalTrack" in e.src]
+        assert len(local_extends) == 1, (
+            f"Expected 1 extends edge from LocalTrack, got {len(local_extends)}: "
+            f"{[(e.src, e.dst) for e in extends_edges]}"
+        )
+        assert "Track" in local_extends[0].dst
+
+    def test_abstract_class_exported_detected(self, tmp_path: Path) -> None:
+        """Export of abstract class should be tracked."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "widget.ts").write_text(
+            "export abstract class Widget {\n"
+            "    abstract render(): void;\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class" and s.name == "Widget"]
+        assert len(classes) == 1
+
+    def test_parenthesized_extends_expression(self, tmp_path: Path) -> None:
+        """Class extending a parenthesized cast expression should extract base class.
+
+        Pattern: class Room extends (EventEmitter as new () => TypedEmitter<Callbacks>) {}
+        Should extract EventEmitter as the base class.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "emitter.ts").write_text(
+            "export class EventEmitter {\n"
+            "    emit(event: string) {}\n"
+            "}\n"
+        )
+        (tmp_path / "room.ts").write_text(
+            "import { EventEmitter } from './emitter';\n"
+            "\n"
+            "interface RoomCallbacks { connected: () => void; }\n"
+            "type TypedEmitter<T> = EventEmitter;\n"
+            "\n"
+            "class Room extends (EventEmitter as new () => TypedEmitter<RoomCallbacks>) {\n"
+            "    connect() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        room = next((s for s in result.symbols if s.name == "Room" and s.kind == "class"), None)
+        assert room is not None
+        base_classes = room.meta.get("base_classes", []) if room.meta else []
+        assert any("EventEmitter" in b for b in base_classes), (
+            f"Room should have EventEmitter as base class, got: {base_classes}"
+        )
+
+
 class TestJsTsAmbiguousMethodGuard:
     """Tests for AMB-METHOD invariant in JavaScript/TypeScript.
 
