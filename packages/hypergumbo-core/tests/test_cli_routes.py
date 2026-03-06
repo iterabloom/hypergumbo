@@ -866,3 +866,206 @@ def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
     assert out.count("[POST] /api/users") == 1
     # Total should be 2 unique routes, not 3
     assert "Found 2 API route" in out
+
+
+def test_cmd_routes_keeps_same_method_path_from_different_files(
+    tmp_path: Path, capsys
+) -> None:
+    """Route symbols with same (method, path) from different files are NOT deduped.
+
+    The go-swagger handler cache pattern creates kind=route nodes in
+    api/v2/restapi/operations/alertmanager_api.go while the v1 deprecation
+    router creates kind=route nodes in api/v1_deprecation_router.go.
+    Both register GET /alerts but they are different API versions and
+    should both appear in the output.
+
+    Deduplication only applies when a materialized route symbol and a
+    concept-enriched handler node represent the same registration.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:v1_deprecation_router.go:48-48:GET /alerts:route",
+                "name": "dr.deprecationHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "api/v1_deprecation_router.go",
+                "span": {"start_line": 48, "end_line": 48},
+                "meta": {"route_path": "/alerts", "http_method": "GET"},
+            },
+            {
+                "id": "go:alertmanager_api.go:377-377:GET /alerts:route",
+                "name": "alert.NewGetAlerts",
+                "kind": "route",
+                "language": "go",
+                "path": "api/v2/restapi/operations/alertmanager_api.go",
+                "span": {"start_line": 377, "end_line": 377},
+                "meta": {"route_path": "/alerts", "http_method": "GET"},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Both routes should appear — they are different API versions
+    assert out.count("[GET] /alerts") == 2
+    assert "Found 2 API route" in out
+
+
+def test_cmd_routes_dedup_duplicate_concept_routes(
+    tmp_path: Path, capsys
+) -> None:
+    """Two concept-enriched handlers with same (method, path) are deduped."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:a.go:10-15:handlerA:function",
+                "name": "handlerA",
+                "kind": "function",
+                "language": "go",
+                "path": "a.go",
+                "span": {"start_line": 10, "end_line": 15},
+                "meta": {
+                    "concepts": [
+                        {"concept": "route", "path": "/api/users", "method": "GET"}
+                    ]
+                },
+            },
+            {
+                "id": "go:b.go:20-25:handlerB:function",
+                "name": "handlerB",
+                "kind": "function",
+                "language": "go",
+                "path": "b.go",
+                "span": {"start_line": 20, "end_line": 25},
+                "meta": {
+                    "concepts": [
+                        {"concept": "route", "path": "/api/users", "method": "GET"}
+                    ]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert out.count("[GET] /api/users") == 1
+    assert "Found 1 API route" in out
+
+
+def test_cmd_routes_dedup_same_route_same_file(
+    tmp_path: Path, capsys
+) -> None:
+    """Two kind=route nodes with same (method, path, file) are deduped."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:routes.go:10-10:GET /x:route",
+                "name": "handler1",
+                "kind": "route",
+                "language": "go",
+                "path": "routes.go",
+                "span": {"start_line": 10, "end_line": 10},
+                "meta": {"route_path": "/x", "http_method": "GET"},
+            },
+            {
+                "id": "go:routes.go:20-20:GET /x:route",
+                "name": "handler2",
+                "kind": "route",
+                "language": "go",
+                "path": "routes.go",
+                "span": {"start_line": 20, "end_line": 20},
+                "meta": {"route_path": "/x", "http_method": "GET"},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert out.count("[GET] /x") == 1
+    assert "Found 1 API route" in out
+
+
+def test_cmd_routes_concept_before_materialized_dedup(
+    tmp_path: Path, capsys
+) -> None:
+    """Concept-enriched route seen first prevents duplicate materialized route."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:handlers.go:10-15:listUsers:function",
+                "name": "listUsers",
+                "kind": "function",
+                "language": "go",
+                "path": "handlers.go",
+                "span": {"start_line": 10, "end_line": 15},
+                "meta": {
+                    "concepts": [
+                        {"concept": "route", "path": "/api/users", "method": "GET"}
+                    ]
+                },
+            },
+            {
+                "id": "go:routes.go:20-20:GET /api/users:route",
+                "name": "GET /api/users",
+                "kind": "route",
+                "language": "go",
+                "path": "routes.go",
+                "span": {"start_line": 20, "end_line": 20},
+                "meta": {"route_path": "/api/users", "http_method": "GET"},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert out.count("[GET] /api/users") == 1
+    assert "Found 1 API route" in out

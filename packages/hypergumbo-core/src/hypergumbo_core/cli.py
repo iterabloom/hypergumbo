@@ -1474,27 +1474,50 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 continue
             routes.append(node)
 
-    # Deduplicate by (method, path) — materialized route symbols and
-    # concept-enriched handlers can both represent the same endpoint.
-    seen_route_keys: set[str] = set()
+    # Deduplicate routes: concept-enriched handlers dedup against
+    # materialized route symbols by (method, path).  Two kind=route
+    # nodes from different files are kept — they represent different
+    # registrations (e.g. v1 deprecation vs v2 go-swagger handlers).
+    seen_concept_mp: set[str] = set()
+    seen_route_mpf: set[str] = set()
     deduped_routes: list[dict] = []
     for node in routes:
         meta = node.get("meta") or {}
         route_path = None
         method = None
+        is_concept_route = False
         for concept in meta.get("concepts", []):
             if isinstance(concept, dict) and concept.get("concept") == "route":
                 route_path = concept.get("path")
                 method = concept.get("method")
+                is_concept_route = True
                 break
         if route_path is None and node.get("kind") == "route":
             route_path = meta.get("route_path")
             method = method or meta.get("http_method")
         if route_path and method:
-            key = f"{method.upper()}:{route_path}"
-            if key in seen_route_keys:
-                continue
-            seen_route_keys.add(key)
+            mp_key = f"{method.upper()}:{route_path}"
+            if is_concept_route:
+                # Concept-enriched: dedup by (method, path) against all
+                if mp_key in seen_concept_mp:
+                    continue
+                # Also skip if a materialized route already covers this
+                has_route = any(
+                    k.startswith(mp_key + ":") for k in seen_route_mpf
+                )
+                if has_route:
+                    continue
+                seen_concept_mp.add(mp_key)
+            else:
+                # Materialized route: dedup by (method, path, file) so
+                # different files are kept.  Skip if concept-enriched
+                # already covers this (method, path).
+                mpf_key = f"{mp_key}:{node.get('path', '')}"
+                if mpf_key in seen_route_mpf:
+                    continue
+                if mp_key in seen_concept_mp:
+                    continue
+                seen_route_mpf.add(mpf_key)
         deduped_routes.append(node)
     routes = deduped_routes
 
