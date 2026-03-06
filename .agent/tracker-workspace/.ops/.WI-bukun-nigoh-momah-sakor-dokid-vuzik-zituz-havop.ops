@@ -33,3 +33,18 @@
   clock: 3  # 6435
   nonce: '6435'  # 6435
   message: "Root cause analysis complete. Fix would require changes to scripts/auto-pr (governance file). The fix: auto-pr should not force-push rebased commits to existing PRs when a tracker sync may be in flight. Instead, it should check for TRACKER_SYNC_PENDING before rebasing. Requesting approval to modify scripts/auto-pr."  # 6435
+- op: discuss  # 1ef4
+  at: '2026-03-06T01:01:00Z'  # 1ef4
+  by: human  # 1ef4
+  actor: jgstern  # 1ef4
+  clock: 4  # 1ef4
+  nonce: 1ef4  # 1ef4
+  message: "I am mystified as to why we are still getting tracker ops mixed with code changes in the same PR. I thought we fixed this. Maybe we only fixed it recently or some weird branch changes happened at the wrong time. idk. In any case I approve you making the changes needed to address this item, including to governance files."  # 1ef4
+- op: update  # d29e
+  at: '2026-03-06T01:01:16Z'  # d29e
+  by: human  # d29e
+  actor: jgstern  # d29e
+  clock: 5  # d29e
+  nonce: d29e  # d29e
+  set:  # d29e
+    status: todo_soft  # d29e
