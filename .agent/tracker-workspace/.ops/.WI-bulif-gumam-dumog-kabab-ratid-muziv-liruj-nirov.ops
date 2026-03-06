@@ -32,3 +32,10 @@
   nonce: 94ed  # 94ed
   set:  # 94ed
     status: todo_soft  # 94ed
+- op: discuss  # 2847
+  at: '2026-03-06T00:47:29Z'  # 2847
+  by: agent  # 2847
+  actor: jgstern_agent  # 2847
+  clock: 4  # 2847
+  nonce: '2847'  # 2847
+  message: "Acknowledged — will move to ~/hypergumbo_lab_notebook/last_stop_check.json. This requires updating: stop_logic.sh, AGENTS.md post-compaction recovery section, and the test_hooks.sh sandbox setup."  # 2847

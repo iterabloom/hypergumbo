@@ -1,0 +1,20 @@
+- op: create  # d3ba
+  at: '2026-03-06T00:47:15Z'  # d3ba
+  by: agent  # d3ba
+  actor: jgstern_agent  # d3ba
+  clock: 1  # d3ba
+  nonce: d3ba  # d3ba
+  data:  # d3ba
+    kind: work_item  # d3ba
+    title: "auto-pr: force-push after rebase creates new CI run that blocks merge"  # d3ba
+    status: todo_hard  # d3ba
+    priority: 2  # d3ba
+    parent:  # d3ba
+    tags:  # d3ba
+    - ci_infrastructure  # d3ba
+    before: []  # d3ba
+    duplicate_of: []  # d3ba
+    not_duplicate_of: []  # d3ba
+    pr_ref:  # d3ba
+    description: "When auto-pr rebases and force-pushes, the new commit SHA triggers a fresh CI run. If a tracker auto-sync also merges around the same time, its pending statuses can block the real PR. Observed with PR #1774: original SHA 53de7318 passed CI, but rebase produced 95ccf0e3 which triggered new CI run 4615 that never completed, blocking merge. The tracker sync PR also triggered ci.yml (not just tracker-ci.yml) because the commit contained both ops and code files. Root cause: rebased commits lose their CI status, and concurrent tracker syncs can interfere."  # d3ba
+    fields: {}  # d3ba

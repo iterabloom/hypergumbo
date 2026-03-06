@@ -33,3 +33,18 @@
   clock: 3  # bc2e
   nonce: bc2e  # bc2e
   message: "PR #1774 created. Governance file change (.githooks/pre-commit) requires human approval."  # bc2e
+- op: update  # 01b3
+  at: '2026-03-06T00:47:22Z'  # 01b3
+  by: agent  # 01b3
+  actor: jgstern_agent  # 01b3
+  clock: 4  # 01b3
+  nonce: 01b3  # 01b3
+  set:  # 01b3
+    status: done  # 01b3
+- op: discuss  # 71cd
+  at: '2026-03-06T00:47:22Z'  # 71cd
+  by: agent  # 71cd
+  actor: jgstern_agent  # 71cd
+  clock: 5  # 71cd
+  nonce: 71cd  # 71cd
+  message: "Merged in PR #1774 (manually by human after CI confusion). Pre-commit hook now blocks direct commits to dev/main with stash+branch instructions."  # 71cd
