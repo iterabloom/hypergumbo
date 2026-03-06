@@ -268,6 +268,7 @@ def _process_bin(
     rel_path: str,
     symbols: list[Symbol],
     pkg_name: Optional[str],
+    edges: Optional[list[Edge]] = None,
 ) -> None:
     """Extract npm bin entries from a bin object or string.
 
@@ -276,6 +277,8 @@ def _process_bin(
     - Object: {"my-cli": "./bin/cli.js", ...}
 
     These define CLI entry points - executables that npm installs globally.
+    Each bin entry also creates a ``defines_target`` edge pointing to the
+    target file path, mirroring Cargo ``[[bin]]`` behavior.
     """
     if bin_node.type == "string":
         # String form: single binary using package name
@@ -305,6 +308,18 @@ def _process_bin(
                 meta={"path": bin_path},
             )
             symbols.append(sym)
+            if edges is not None:
+                target = bin_path.lstrip("./")
+                edges.append(
+                    Edge.create(
+                        src=symbol_id,
+                        dst=target,
+                        edge_type="defines_target",
+                        line=start_line,
+                        confidence=1.0,
+                        origin=PASS_ID,
+                    )
+                )
         return
 
     if bin_node.type != "object":
@@ -348,6 +363,18 @@ def _process_bin(
                     meta=meta,
                 )
                 symbols.append(sym)
+                if edges is not None and bin_path:
+                    target = bin_path.lstrip("./")
+                    edges.append(
+                        Edge.create(
+                            src=symbol_id,
+                            dst=target,
+                            edge_type="defines_target",
+                            line=start_line,
+                            confidence=1.0,
+                            origin=PASS_ID,
+                        )
+                    )
 
 
 def _process_package_json(
@@ -429,7 +456,7 @@ def _process_package_json(
     # Process bin entries (CLI executables)
     bin_node = _find_object_key(obj_node, source, "bin")
     if bin_node:
-        _process_bin(bin_node, source, rel_path, symbols, pkg_name)
+        _process_bin(bin_node, source, rel_path, symbols, pkg_name, edges)
 
 
 def _process_tsconfig(

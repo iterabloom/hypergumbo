@@ -134,6 +134,43 @@ def test_analyze_package_json_bin_string_form(tmp_path):
     assert my_tool.meta is not None
     assert my_tool.meta.get("path") == "./bin/main.js"
 
+def test_bin_creates_defines_target_edge(tmp_path):
+    """npm bin entries should create defines_target edges.
+
+    This mirrors Cargo [[bin]] behavior: the bin symbol should have a
+    defines_target edge pointing to the target file path, enabling the
+    build-target linker to connect it to main().
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-cli",
+  "bin": {
+    "my-cli": "./bin/cli.js"
+  }
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(target_edges) >= 1
+    assert target_edges[0].dst == "bin/cli.js"
+
+
+def test_bin_string_creates_defines_target_edge(tmp_path):
+    """npm bin string form should also create defines_target edge."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-tool",
+  "bin": "./src/main.js"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(target_edges) >= 1
+    assert target_edges[0].dst == "src/main.js"
+
+
 def test_analyze_package_json_dependency_edges(tmp_path):
     """Test that dependency edges are created."""
     pkg_file = tmp_path / "package.json"
