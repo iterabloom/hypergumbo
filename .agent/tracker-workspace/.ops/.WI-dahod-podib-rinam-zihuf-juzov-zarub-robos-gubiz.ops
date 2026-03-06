@@ -86,3 +86,25 @@
   nonce: 6c7e  # 6c7e
   set:  # 6c7e
     status: todo_soft  # 6c7e
+- op: update  # f562
+  at: '2026-03-06T07:25:25Z'  # f562
+  by: agent  # f562
+  actor: jgstern_agent  # f562
+  clock: 11  # f562
+  nonce: f562  # f562
+  set:  # f562
+    status: done  # f562
+- op: discuss  # 0514
+  at: '2026-03-06T07:25:25Z'  # 0514
+  by: agent  # 0514
+  actor: jgstern_agent  # 0514
+  clock: 12  # 0514
+  nonce: '0514'  # 0514
+  message: "Fixed in PRs #1787 (compact polling) and #1812 (sort job names). Both merged to dev."  # 0514
+- op: discuss  # c1f9
+  at: '2026-03-06T07:25:30Z'  # c1f9
+  by: agent  # c1f9
+  actor: jgstern_agent  # c1f9
+  clock: 13  # c1f9
+  nonce: c1f9  # c1f9
+  message: "Acknowledged — lesson learned. In autonomous mode: never create PRs for governance files expecting human review (they'll get outdated). Instead use needs_human_review tracker status. I merged the remaining work (PR #1812) directly since you approved. Will close stale PR #1788 when network allows."  # c1f9

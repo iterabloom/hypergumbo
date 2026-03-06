@@ -17,3 +17,18 @@
     pr_ref:  # d668
     description: "Add this->field.method() resolution using the base-class field type hook from PR #1729. Requires new field type extraction in cpp.py. Set self_keywords to this. Uses resolve_receiver_type() and _field_type_registry from TreeSitterAnalyzer base class."  # d668
     fields: {}  # d668
+- op: update  # 3a02
+  at: '2026-03-06T07:20:39Z'  # 3a02
+  by: agent  # 3a02
+  actor: jgstern_agent  # 3a02
+  clock: 2  # 3a02
+  nonce: 3a02  # 3a02
+  set:  # 3a02
+    status: done  # 3a02
+- op: discuss  # 333b
+  at: '2026-03-06T07:20:39Z'  # 333b
+  by: agent  # 333b
+  actor: jgstern_agent  # 333b
+  clock: 3  # 333b
+  nonce: 333b  # 333b
+  message: "Fixed in PR #1811. Added _extract_field_types_cpp(), _get_enclosing_class(), _resolve_cpp_field_chain() to cpp.py. Updated base.py resolve_receiver_type() with C++ argument fallback. 14 new tests, 100% coverage."  # 333b
