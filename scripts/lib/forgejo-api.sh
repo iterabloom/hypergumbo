@@ -545,7 +545,8 @@ if best:
 
 # ------------------------------------------------------------------
 # do_merge PR_NUM TITLE DESC ORIG_SHA [--squash]
-#   Merge helper: tries fast-forward, falls back to squash if requested.
+#   Merge helper: tries fast-forward, falls back to rebase on divergence,
+#   or squash if --squash is explicitly requested.
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
@@ -615,12 +616,25 @@ do_merge() {
 		local merge_http_code="$API_HTTP_CODE"
 		local merge_response="$API_RESPONSE"
 
-		# Check if it's a divergence error (not retryable)
+		# Check if it's a divergence error (not retryable with FF)
 		if echo "$merge_response" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
 			echo ""
-			echo "❌ Fast-forward not possible: branch has diverged"
+			echo "⚠️  Fast-forward not possible: branch has diverged"
+			echo "   Trying rebase merge (preserves individual commits)..."
+
+			local rebase_payload='{"do": "rebase", "delete_branch_after_merge": true}'
+			if api_post "$API_BASE/pulls/$pr_num/merge" "$rebase_payload"; then
+				if _check_pr_merged "$pr_num"; then
+					echo "✅ Rebase merged! (commits rebased onto $BASE_BRANCH)"
+					rm -f "$tmp_file"
+					return 0
+				fi
+			fi
+
+			# Rebase merge also failed — give up with recovery instructions
+			echo "❌ Rebase merge also failed"
 			echo ""
-			echo "Please rebase and retry:"
+			echo "Please rebase locally and retry:"
 			echo "  git fetch origin dev"
 			echo "  git rebase origin/dev"
 			echo "  ./scripts/auto-pr"
