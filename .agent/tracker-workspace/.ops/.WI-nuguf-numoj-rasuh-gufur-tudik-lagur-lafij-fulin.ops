@@ -119,3 +119,18 @@
   set:  # 5d8d
     status: todo_soft  # 5d8d
     priority: 2  # 5d8d
+- op: update  # bbb2
+  at: '2026-03-06T07:47:16Z'  # bbb2
+  by: agent  # bbb2
+  actor: jgstern_agent  # bbb2
+  clock: 15  # bbb2
+  nonce: bbb2  # bbb2
+  set:  # bbb2
+    status: done  # bbb2
+- op: discuss  # 0457
+  at: '2026-03-06T07:47:16Z'  # 0457
+  by: agent  # 0457
+  actor: jgstern_agent  # 0457
+  clock: 16  # 0457
+  nonce: '0457'  # 0457
+  message: "Fixed in PR #1820. Pre-commit hook now blocks production code commits (packages/*/src/**, scripts/*) when a bakeoff process is running. Uses pgrep with character-class trick to detect scripts/bakeoff processes. Non-production files (docs, tests, tracker, .ci) always allowed."  # 0457

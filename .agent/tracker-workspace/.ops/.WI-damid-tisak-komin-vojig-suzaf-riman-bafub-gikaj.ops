@@ -48,3 +48,18 @@
   nonce: 47a8  # 47a8
   set:  # 47a8
     status: todo_soft  # 47a8
+- op: update  # e75e
+  at: '2026-03-06T07:52:11Z'  # e75e
+  by: agent  # e75e
+  actor: jgstern_agent  # e75e
+  clock: 6  # e75e
+  nonce: e75e  # e75e
+  set:  # e75e
+    status: done  # e75e
+- op: discuss  # 14f0
+  at: '2026-03-06T07:52:11Z'  # 14f0
+  by: agent  # 14f0
+  actor: jgstern_agent  # 14f0
+  clock: 7  # 14f0
+  nonce: 14f0  # 14f0
+  message: "Fixed in PR #1821. Stop hook now detects session type (broad-*/deep-*) from directory name and provides specific next-step commands: CONVERGED gets cohort/reflect/mine suggestions, NEEDS_WORK gets diagnose/status/re-run suggestions."  # 14f0

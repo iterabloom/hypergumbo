@@ -48,3 +48,18 @@
   nonce: 20a8  # 20a8
   set:  # 20a8
     status: todo_soft  # 20a8
+- op: update  # 05fc
+  at: '2026-03-06T07:57:11Z'  # 05fc
+  by: agent  # 05fc
+  actor: jgstern_agent  # 05fc
+  clock: 6  # 05fc
+  nonce: 05fc  # 05fc
+  set:  # 05fc
+    status: done  # 05fc
+- op: discuss  # e12b
+  at: '2026-03-06T07:57:11Z'  # e12b
+  by: agent  # e12b
+  actor: jgstern_agent  # e12b
+  clock: 7  # e12b
+  nonce: e12b  # e12b
+  message: "Fixed in PR #1822. Added section to AGENTS.md Post-Compaction State Recovery with guidance to update last_stop_check.json notes after PR merges, bakeoff completions, tracker changes, and obstacles. Includes jq recipe."  # e12b
