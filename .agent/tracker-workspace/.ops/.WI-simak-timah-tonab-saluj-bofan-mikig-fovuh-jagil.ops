@@ -17,3 +17,12 @@
     pr_ref:  # 0dc9
     description: "Cargo binary entrypoints and npm bin fields create nodes but no edges to main(). Forward slices from top entrypoints contain 1-2 nodes. Need edge from cargo:binary:X to rust:src/main.rs:main, and npm bin dist/ resolution through tsconfig to src/. TDD: test that cargo binary entrypoint has edge to main(). See notebookjournal_03062026_0900.md."  # 0dc9
     fields: {}  # 0dc9
+- op: update  # f77a
+  at: '2026-03-06T09:02:42Z'  # f77a
+  by: agent  # f77a
+  actor: jgstern_agent  # f77a
+  clock: 2  # f77a
+  nonce: f77a  # f77a
+  set: {}  # f77a
+  add:  # f77a
+    not_duplicate_of: [INV-posun-jovup-pusug-fuhuj-dotuh-sojum-sorom-kutug]  # f77a
