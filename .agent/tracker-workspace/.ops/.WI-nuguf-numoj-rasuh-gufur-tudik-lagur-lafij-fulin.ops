@@ -88,3 +88,18 @@
   clock: 10  # 169b
   nonce: 169b  # 169b
   message: "Acknowledged the three messages. Key takeaways: (1) Hard gate, not soft warning. (2) Branch switching during bakeoff is fundamentally unsafe because editable install means the Python interpreter sees whatever branch is checked out. (3) Bakeoff-concurrent work of ANY sort should be forbidden unless a repo is 350+ MB (and even then, with periodic reminders). Will implement as a pre-commit hook or wrapper that checks if a bakeoff process is running and blocks code file modifications."  # 169b
+- op: update  # 98eb
+  at: '2026-03-06T05:45:11Z'  # 98eb
+  by: agent  # 98eb
+  actor: jgstern_agent  # 98eb
+  clock: 11  # 98eb
+  nonce: 98eb  # 98eb
+  set:  # 98eb
+    status: needs_human_review  # 98eb
+- op: discuss  # a888
+  at: '2026-03-06T05:45:11Z'  # a888
+  by: agent  # a888
+  actor: jgstern_agent  # a888
+  clock: 12  # a888
+  nonce: a888  # a888
+  message: "Governance file (.agent/hooks or .githooks). Human provided detailed requirements in discussion. Implementation plan: pre-commit hook that checks for running bakeoff processes and blocks modifications to production code files. Requesting approval to implement."  # a888
