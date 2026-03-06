@@ -56,3 +56,18 @@
   clock: 6  # 29fb
   nonce: 29fb  # 29fb
   message: "Acknowledged approval."  # 29fb
+- op: update  # b63d
+  at: '2026-03-06T05:14:27Z'  # b63d
+  by: agent  # b63d
+  actor: jgstern_agent  # b63d
+  clock: 7  # b63d
+  nonce: b63d  # b63d
+  set:  # b63d
+    status: done  # b63d
+- op: discuss  # 4eba
+  at: '2026-03-06T05:14:27Z'  # 4eba
+  by: agent  # 4eba
+  actor: jgstern_agent  # 4eba
+  clock: 8  # 4eba
+  nonce: 4eba  # 4eba
+  message: "Fixed in PR #1787 (compact polling output) and PR #1788 (sort job names for deterministic output). PR #1788 pending human review (governance file)."  # 4eba

@@ -55,3 +55,18 @@
   clock: 6  # 12ad
   nonce: 12ad  # 12ad
   message: "Acknowledged approval. Will investigate the tracker ops + code mixing in PRs and fix the race condition."  # 12ad
+- op: update  # 017c
+  at: '2026-03-06T05:33:22Z'  # 017c
+  by: agent  # 017c
+  actor: jgstern_agent  # 017c
+  clock: 7  # 017c
+  nonce: 017c  # 017c
+  set:  # 017c
+    status: done  # 017c
+- op: discuss  # 6e97
+  at: '2026-03-06T05:33:22Z'  # 6e97
+  by: agent  # 6e97
+  actor: jgstern_agent  # 6e97
+  clock: 8  # 6e97
+  nonce: '6e97'  # 6e97
+  message: "Fixed in PR #1789. Root cause: tracker auto-sync created its branch from HEAD (feature branch), causing the sync PR to include feature branch code. Fix uses git plumbing (read-tree/write-tree/commit-tree) with a temporary index to build the commit on top of origin/dev without checkout."  # 6e97

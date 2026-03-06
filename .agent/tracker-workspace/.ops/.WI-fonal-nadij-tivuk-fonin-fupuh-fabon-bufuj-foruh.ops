@@ -55,3 +55,18 @@
   clock: 6  # a533
   nonce: a533  # a533
   message: "Acknowledged approval."  # a533
+- op: update  # 075c
+  at: '2026-03-06T05:39:24Z'  # 075c
+  by: agent  # 075c
+  actor: jgstern_agent  # 075c
+  clock: 7  # 075c
+  nonce: 075c  # 075c
+  set:  # 075c
+    status: done  # 075c
+- op: discuss  # 1444
+  at: '2026-03-06T05:39:24Z'  # 1444
+  by: agent  # 1444
+  actor: jgstern_agent  # 1444
+  clock: 8  # 1444
+  nonce: '1444'  # 1444
+  message: "Fixed in PR #1790. Added rebase merge fallback in do_merge() between fast-forward retry and manual recovery instructions."  # 1444
