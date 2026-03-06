@@ -416,6 +416,8 @@ try:
         else:
             pending.append(name)
     total = len(statuses)
+    pending.sort()
+    failed.sort()
     parts = []
     if done:
         parts.append(f'{done}/{total} passed')
