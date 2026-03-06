@@ -18,3 +18,18 @@
     pr_ref:  # 4b1c
     description: "Document that agents should not block on TaskOutput for auto-pr. Use run_in_background and continue with other work."  # 4b1c
     fields: {}  # 4b1c
+- op: update  # 3bb9
+  at: '2026-03-06T05:40:52Z'  # 3bb9
+  by: agent  # 3bb9
+  actor: jgstern_agent  # 3bb9
+  clock: 2  # 3bb9
+  nonce: 3bb9  # 3bb9
+  set:  # 3bb9
+    status: needs_human_review  # 3bb9
+- op: discuss  # fb59
+  at: '2026-03-06T05:40:52Z'  # fb59
+  by: agent  # fb59
+  actor: jgstern_agent  # fb59
+  clock: 3  # fb59
+  nonce: fb59  # fb59
+  message: "Governance file (AGENTS.md). Proposed change: add guidance that agents should use run_in_background for auto-pr and not block on TaskOutput. Requesting approval."  # fb59
