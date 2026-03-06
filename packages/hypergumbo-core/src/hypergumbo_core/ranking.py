@@ -146,6 +146,7 @@ def compute_centrality(
     edges: List[Edge],
     hub_threshold: int | None = None,
     within_file_weight: float = 1.0,
+    max_per_file_in: int | None = None,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -178,6 +179,11 @@ def compute_centrality(
     single file from outranking architecturally important symbols that are
     referenced across many files.  Cross-file edges always contribute 1.0.
 
+    When ``max_per_file_in`` is set, each unique source file can contribute
+    at most this many edges worth of in-degree to any target symbol.  This
+    prevents a utility function called 50 times from 2 files from outranking
+    an architecturally important function called 15 times from 15 files.
+
     Scores are normalized to 0-1 after computation.
 
     Args:
@@ -190,6 +196,8 @@ def compute_centrality(
             Cross-file edges always count as 1.0.  Default 1.0
             (all edges equal, backward compatible).  ``rank_symbols``
             passes 0.3 to dampen local-variable inflation.
+        max_per_file_in: Maximum in-degree contribution from any single
+            source file. None disables capping. ``rank_symbols`` passes 5.
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
@@ -198,10 +206,14 @@ def compute_centrality(
     in_degree: Dict[str, float] = dict.fromkeys(symbol_ids, 0.0)
     out_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
 
-    # Build symbol-to-path lookup for cross-file detection
-    use_file_weighting = within_file_weight < 1.0
+    # Build symbol-to-path lookup for cross-file detection and per-file capping
+    use_file_weighting = within_file_weight < 1.0 or max_per_file_in is not None
     if use_file_weighting:
         symbol_path: Dict[str, str] = {s.id: s.path for s in symbols}
+
+    if max_per_file_in is not None:
+        # Track per-(target, source_file) edge counts for capping
+        per_file_counts: Dict[str, Dict[str, int]] = {}
 
     for edge in edges:
         target = edge.dst
@@ -210,6 +222,16 @@ def compute_centrality(
                 src_path = symbol_path.get(edge.src, "")
                 dst_path = symbol_path.get(target, "")
                 weight = within_file_weight if (src_path and src_path == dst_path) else 1.0
+
+                # Per-file in-degree capping
+                if max_per_file_in is not None and src_path:
+                    file_counts = per_file_counts.setdefault(target, {})
+                    count = file_counts.get(src_path, 0)
+                    if count >= max_per_file_in:
+                        weight = 0.0  # Capped — don't count this edge
+                    else:
+                        file_counts[src_path] = count + 1
+
                 in_degree[target] += weight
             else:
                 in_degree[target] += 1
@@ -772,9 +794,13 @@ def rank_symbols(
     # within_file_weight=0.3 dampens local-variable inflation: symbols
     # referenced many times within one file rank lower than symbols
     # referenced across many files.
+    # max_per_file_in=5 caps per-source-file in-degree contribution,
+    # preventing utility functions called many times from few files
+    # (e.g., createYAMLNode with 46 calls from 1 file) from outranking
+    # architecturally important symbols called from many files.
     raw_centrality = compute_centrality(
         symbols, filtered_edges, hub_threshold=100,
-        within_file_weight=0.3,
+        within_file_weight=0.3, max_per_file_in=5,
     )
 
     # Apply tier weighting if enabled

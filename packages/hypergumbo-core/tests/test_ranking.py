@@ -340,6 +340,63 @@ class TestCrossFileDegreeWeighting:
         assert result[other_file.id] == 0.0
 
 
+    def test_max_per_file_in_caps_concentrated_callers(self):
+        """Per-file in-degree cap prevents a single file from dominating.
+
+        createYAMLNode scenario: 58 callers from 3 files (46 + 4 + 8).
+        Without cap: in-degree = 55.2 (with within_file_weight=0.3).
+        With cap of 5: in-degree = 5 + 1.2 + 5 = 11.2.
+        """
+        target = make_symbol("createYAMLNode", path="web/api/v1/openapi_helpers.go")
+        diversely_called = make_symbol("ImportantAPI", path="web/api/v1/api.go")
+
+        # createYAMLNode: 46 callers from one file, 4 same-file, 8 from another
+        concentrated_callers = [
+            make_symbol(f"ex{i}", path="web/api/v1/openapi_examples.go")
+            for i in range(46)
+        ]
+        same_file_callers = [
+            make_symbol(f"helper{i}", path="web/api/v1/openapi_helpers.go")
+            for i in range(4)
+        ]
+        other_callers = [
+            make_symbol(f"schema{i}", path="web/api/v1/openapi_schemas.go")
+            for i in range(8)
+        ]
+        edges_concentrated = (
+            [make_edge(c.id, target.id) for c in concentrated_callers]
+            + [make_edge(c.id, target.id) for c in same_file_callers]
+            + [make_edge(c.id, target.id) for c in other_callers]
+        )
+
+        # ImportantAPI: 15 callers from 15 different files
+        diverse_callers = [
+            make_symbol(f"handler{i}", path=f"pkg/mod{i}.go")
+            for i in range(15)
+        ]
+        edges_diverse = [make_edge(c.id, diversely_called.id) for c in diverse_callers]
+
+        all_symbols = (
+            [target, diversely_called]
+            + concentrated_callers + same_file_callers + other_callers
+            + diverse_callers
+        )
+        all_edges = edges_concentrated + edges_diverse
+
+        # Without cap: target has higher raw in-degree (55.2 vs 15)
+        uncapped = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3,
+        )
+        assert uncapped[target.id] > uncapped[diversely_called.id]
+
+        # With max_per_file_in=5: target capped (11.2 vs 15)
+        capped = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3,
+            max_per_file_in=5,
+        )
+        assert capped[diversely_called.id] > capped[target.id]
+
+
 class TestApplyTierWeights:
     """Tests for apply_tier_weights function."""
 
