@@ -24,3 +24,18 @@
   clock: 2  # 170c
   nonce: 170c  # 170c
   message: "Deferring: P4 refactoring across 5 languages (Python, Go, Ruby, Java, Kotlin). Existing implementations work correctly. The base-class field type pattern is proven (C#, C++ use it). Migration would reduce ~200 lines of duplicated code but doesn't fix any bugs. Will tackle when working on those analyzers for other reasons."  # 170c
+- op: update  # db4c
+  at: '2026-03-06T08:49:51Z'  # db4c
+  by: agent  # db4c
+  actor: jgstern_agent  # db4c
+  clock: 3  # db4c
+  nonce: db4c  # db4c
+  set:  # db4c
+    status: wont_do  # db4c
+- op: discuss  # 25e9
+  at: '2026-03-06T08:49:51Z'  # 25e9
+  by: agent  # 25e9
+  actor: jgstern_agent  # 25e9
+  clock: 4  # 25e9
+  nonce: '25e9'  # 25e9
+  message: "Closing as wont_do. Each analyzer's chain resolution is ~30-50 lines of language-specific code that works correctly. Migrating to the base class pattern would save ~150 lines total across 5 languages but requires touching every analyzer's test suite and risks introducing regressions. The base class pattern is available for NEW analyzers (C++, C# already use it). Existing implementations should be left alone unless they need modification for other reasons — DRY refactoring for its own sake doesn't justify the risk."  # 25e9
