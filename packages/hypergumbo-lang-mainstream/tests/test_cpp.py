@@ -8,6 +8,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hypergumbo_lang_mainstream.cpp import (
+    _extract_field_types_cpp,
+    _get_enclosing_class,
+    _resolve_cpp_field_chain,
     analyze_cpp,
     find_cpp_files,
     is_cpp_tree_sitter_available,
@@ -1611,4 +1614,370 @@ class TestCallbackArgDetection:
             if e.evidence_type == "function_pointer_arg"
         ]
         assert len(cb_edges) == 0
+
+
+@pytest.mark.skipif(
+    not is_cpp_tree_sitter_available(),
+    reason="tree-sitter-cpp not available",
+)
+class TestCppFieldTypeResolution:
+    """Tests for this->field->method() resolution via class_field_types."""
+
+    def test_extract_field_types_basic(self, tmp_path: Path) -> None:
+        """Extract field types from a class body."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Controller {
+    Repo* _repo;
+    Cache _cache;
+    int _count;
+};
+"""
+        tree = parser.parse(code)
+        class_node = tree.root_node.children[0]
+        fields = _extract_field_types_cpp(class_node, code)
+        assert fields == {"_repo": "Repo", "_cache": "Cache"}
+        assert "_count" not in fields  # primitives skipped
+
+    def test_extract_field_types_template(self, tmp_path: Path) -> None:
+        """Template types extract the inner type argument."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Ctrl {
+    std::unique_ptr<Db> _db;
+    std::vector<Item> _items;
+};
+"""
+        tree = parser.parse(code)
+        class_node = tree.root_node.children[0]
+        fields = _extract_field_types_cpp(class_node, code)
+        assert fields["_db"] == "Db"
+        assert fields["_items"] == "Item"
+
+    def test_this_field_method_call(self, tmp_path: Path) -> None:
+        """this->_repo->save() resolves through field type registry."""
+        (tmp_path / "main.cpp").write_text(
+            "class Repo {\n"
+            "public:\n"
+            "    void save() {}\n"
+            "};\n"
+            "\n"
+            "class Service {\n"
+            "public:\n"
+            "    void save() {}\n"
+            "};\n"
+            "\n"
+            "class Controller {\n"
+            "    Repo* _repo;\n"
+            "public:\n"
+            "    void run() {\n"
+            "        this->_repo->save();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+
+        # Should resolve this->_repo->save() to Repo::save, not Service::save
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "method_call_field_chain"
+        ]
+        assert len(chain_edges) == 1
+        assert "save" in chain_edges[0].dst
+
+    def test_chained_field_resolution(self, tmp_path: Path) -> None:
+        """this->_inner->_db->query() resolves through multiple field hops."""
+        (tmp_path / "main.cpp").write_text(
+            "class Db {\n"
+            "public:\n"
+            "    void query() {}\n"
+            "};\n"
+            "\n"
+            "class Inner {\n"
+            "    Db* _db;\n"
+            "};\n"
+            "\n"
+            "class Outer {\n"
+            "    Inner* _inner;\n"
+            "public:\n"
+            "    void run() {\n"
+            "        this->_inner->_db->query();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "method_call_field_chain"
+        ]
+        assert len(chain_edges) == 1
+        assert "query" in chain_edges[0].dst
+
+    def test_non_this_receiver_falls_through(self, tmp_path: Path) -> None:
+        """Non-this receivers use normal resolution, not field chain."""
+        (tmp_path / "main.cpp").write_text(
+            "class Svc {\n"
+            "public:\n"
+            "    void run() {}\n"
+            "};\n"
+            "\n"
+            "void doStuff(Svc* s) {\n"
+            "    s->run();\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "method_call_field_chain"
+        ]
+        assert len(chain_edges) == 0
+
+    def test_class_field_types_populated(self, tmp_path: Path) -> None:
+        """CppAnalyzer populates class_field_types in Pass 1."""
+        (tmp_path / "main.cpp").write_text(
+            "class Repo {\n"
+            "public:\n"
+            "    void save() {}\n"
+            "};\n"
+            "\n"
+            "class Controller {\n"
+            "    Repo* _repo;\n"
+            "    int _count;\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+
+        # Verify symbols were extracted
+        ctrl = next((s for s in result.symbols if s.name == "Controller"), None)
+        assert ctrl is not None
+
+    def test_self_keywords_is_this(self) -> None:
+        """CppAnalyzer uses 'this' as self keyword."""
+        from hypergumbo_lang_mainstream.cpp import CppAnalyzer
+        assert "this" in CppAnalyzer.self_keywords
+
+    def test_struct_field_types(self, tmp_path: Path) -> None:
+        """Field types are extracted from structs too."""
+        (tmp_path / "main.cpp").write_text(
+            "struct Db {\n"
+            "    void query() {}\n"
+            "};\n"
+            "\n"
+            "struct App {\n"
+            "    Db* _db;\n"
+            "    void run() {\n"
+            "        this->_db->query();\n"
+            "    }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "method_call_field_chain"
+        ]
+        assert len(chain_edges) == 1
+        assert "query" in chain_edges[0].dst
+
+    def test_extract_field_types_qualified_no_template(self, tmp_path: Path) -> None:
+        """Qualified type without template args uses last type_identifier."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Ctrl {
+    MyNs::MyClass _obj;
+};
+"""
+        tree = parser.parse(code)
+        class_node = tree.root_node.children[0]
+        fields = _extract_field_types_cpp(class_node, code)
+        # MyNs::MyClass has a type_identifier "MyClass" as direct child
+        # of the qualified_identifier — exercises lines 180-183.
+        assert "_obj" in fields
+        assert fields["_obj"] == "MyClass"
+
+    def test_resolve_chain_no_enclosing_class(self, tmp_path: Path) -> None:
+        """_resolve_cpp_field_chain returns None when no enclosing class."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+void freeFunc() {
+    this->_x->foo();
+}
+"""
+        tree = parser.parse(code)
+        # Find the field_expression inside the call
+        func_def = tree.root_node.children[0]
+        # Navigate: function_definition > compound_statement > expression_statement
+        #           > call_expression > field_expression > field_expression (receiver)
+        body = func_def.child_by_field_name("body")
+        assert body is not None
+        expr_stmt = body.children[1]  # skip '{'
+        call = expr_stmt.children[0]
+        top_field = call.child_by_field_name("function")
+        assert top_field is not None and top_field.type == "field_expression"
+        receiver = top_field.child_by_field_name("argument")
+        assert receiver is not None
+
+        result = _resolve_cpp_field_chain(
+            receiver, code, {"SomeClass": {"_x": "Foo"}}, call,
+        )
+        assert result is None  # no enclosing class
+
+    def test_resolve_chain_root_not_this(self, tmp_path: Path) -> None:
+        """_resolve_cpp_field_chain returns None when root is not 'this'."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Ctrl {
+    void run() {
+        obj->_x->foo();
+    }
+};
+"""
+        tree = parser.parse(code)
+        # Navigate to the receiver field_expression
+        class_node = tree.root_node.children[0]
+        body_node = None
+        for child in class_node.children:
+            if child.type == "field_declaration_list":
+                body_node = child
+                break
+        assert body_node is not None
+        func_def = None
+        for child in body_node.children:
+            if child.type == "function_definition":
+                func_def = child
+                break
+        assert func_def is not None
+        compound = func_def.child_by_field_name("body")
+        assert compound is not None
+        expr_stmt = compound.children[1]
+        call = expr_stmt.children[0]
+        top_field = call.child_by_field_name("function")
+        assert top_field is not None
+        receiver = top_field.child_by_field_name("argument")
+        assert receiver is not None
+
+        result = _resolve_cpp_field_chain(
+            receiver, code, {"Ctrl": {"_x": "Foo"}}, call,
+        )
+        assert result is None  # root is "obj", not "this"
+
+    def test_resolve_chain_unknown_class_in_registry(
+        self, tmp_path: Path,
+    ) -> None:
+        """_resolve_cpp_field_chain returns None for unknown class."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Ctrl {
+    void run() {
+        this->_x->foo();
+    }
+};
+"""
+        tree = parser.parse(code)
+        class_node = tree.root_node.children[0]
+        body_node = None
+        for child in class_node.children:
+            if child.type == "field_declaration_list":
+                body_node = child
+                break
+        assert body_node is not None
+        func_def = None
+        for child in body_node.children:
+            if child.type == "function_definition":
+                func_def = child
+                break
+        assert func_def is not None
+        compound = func_def.child_by_field_name("body")
+        assert compound is not None
+        expr_stmt = compound.children[1]
+        call = expr_stmt.children[0]
+        top_field = call.child_by_field_name("function")
+        assert top_field is not None
+        receiver = top_field.child_by_field_name("argument")
+        assert receiver is not None
+
+        # Empty registry — Ctrl not found
+        result = _resolve_cpp_field_chain(receiver, code, {}, call)
+        assert result is None
+
+    def test_resolve_chain_unknown_field_in_registry(
+        self, tmp_path: Path,
+    ) -> None:
+        """_resolve_cpp_field_chain returns None for unknown field."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"""
+class Ctrl {
+    void run() {
+        this->_x->foo();
+    }
+};
+"""
+        tree = parser.parse(code)
+        class_node = tree.root_node.children[0]
+        body_node = None
+        for child in class_node.children:
+            if child.type == "field_declaration_list":
+                body_node = child
+                break
+        assert body_node is not None
+        func_def = None
+        for child in body_node.children:
+            if child.type == "function_definition":
+                func_def = child
+                break
+        assert func_def is not None
+        compound = func_def.child_by_field_name("body")
+        assert compound is not None
+        expr_stmt = compound.children[1]
+        call = expr_stmt.children[0]
+        top_field = call.child_by_field_name("function")
+        assert top_field is not None
+        receiver = top_field.child_by_field_name("argument")
+        assert receiver is not None
+
+        # Ctrl exists but _x field not registered
+        result = _resolve_cpp_field_chain(
+            receiver, code, {"Ctrl": {"_y": "Other"}}, call,
+        )
+        assert result is None
+
+    def test_get_enclosing_class_returns_none_for_free_function(
+        self,
+    ) -> None:
+        """_get_enclosing_class returns None for free functions."""
+        import tree_sitter
+        import tree_sitter_cpp as tscpp
+
+        parser = tree_sitter.Parser(tree_sitter.Language(tscpp.language()))
+        code = b"void freeFunc() { int x = 1; }"
+        tree = parser.parse(code)
+        # The function body statement node has no class ancestor
+        func_def = tree.root_node.children[0]
+        body = func_def.child_by_field_name("body")
+        assert body is not None
+        result = _get_enclosing_class(body, code)
+        assert result is None
 

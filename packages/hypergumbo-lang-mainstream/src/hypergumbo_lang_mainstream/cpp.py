@@ -130,6 +130,80 @@ def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[s
     return base_classes
 
 
+def _extract_field_types_cpp(
+    class_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract field name → type name mappings from a class/struct body.
+
+    Parses ``field_declaration`` nodes inside a ``field_declaration_list``.
+    For pointer/reference types (``Repo* _repo``), extracts the base type
+    (``Repo``).  For template types (``unique_ptr<Db>``), extracts the
+    template argument type (``Db``) since that's what chained member access
+    resolves through.  Skips primitive types (``int``, ``float``, etc.)
+    since they don't have member methods.
+    """
+    fields: dict[str, str] = {}
+    body = _find_child_by_type(class_node, "field_declaration_list")
+    if body is None:
+        return fields
+
+    for field_decl in body.children:
+        if field_decl.type != "field_declaration":
+            continue
+
+        # Extract type name — prefer type_identifier, fall back to
+        # qualified_identifier.  Skip primitive types.
+        type_name: str | None = None
+        type_node = _find_child_by_type(field_decl, "type_identifier")
+        if type_node:
+            type_name = _node_text(type_node, source)
+        else:
+            qual_node = _find_child_by_type(field_decl, "qualified_identifier")
+            if qual_node:
+                # For qualified types like std::unique_ptr<Db>, extract the
+                # template argument if present; otherwise use the last
+                # type_identifier in the qualified name.
+                tmpl = _find_child_by_type(qual_node, "template_type")
+                if tmpl:
+                    # Template: extract first type argument (e.g. Db from
+                    # unique_ptr<Db>).
+                    arg_list = _find_child_by_type(tmpl, "template_argument_list")
+                    if arg_list:
+                        desc = _find_child_by_type(arg_list, "type_descriptor")
+                        if desc:
+                            inner = _find_child_by_type(desc, "type_identifier")
+                            if inner:
+                                type_name = _node_text(inner, source)
+                if type_name is None:
+                    # No template — use last type_identifier
+                    for c in reversed(qual_node.children):
+                        if c.type == "type_identifier":
+                            type_name = _node_text(c, source)
+                            break
+
+        if type_name is None:
+            continue
+
+        # Extract field name — either direct field_identifier or inside
+        # pointer_declarator / reference_declarator.
+        field_name: str | None = None
+        for child in field_decl.children:
+            if child.type == "field_identifier":
+                field_name = _node_text(child, source)
+                break
+            if child.type in ("pointer_declarator", "reference_declarator"):
+                fid = _find_child_by_type(child, "field_identifier")
+                if fid:
+                    field_name = _node_text(fid, source)
+                    break
+
+        if field_name:
+            fields[field_name] = type_name
+
+    return fields
+
+
 def _extract_cpp_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -278,6 +352,11 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
 
+                # Extract field types for chained member resolution
+                field_types = _extract_field_types_cpp(node, source)
+                if field_types:
+                    analysis.class_field_types[name] = field_types
+
         # Struct definition (with body only — skip references and
         # forward declarations like ``struct Foo;``)
         elif node.type == "struct_specifier":
@@ -310,6 +389,11 @@ def _extract_symbols_from_tree(
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
+
+                # Extract field types for chained member resolution
+                field_types = _extract_field_types_cpp(node, source)
+                if field_types:
+                    analysis.class_field_types[name] = field_types
 
         # Enum definition (with body only — skip references and
         # forward declarations)
@@ -473,6 +557,68 @@ def _try_instantiation_edge(
             ))
 
 
+def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """Walk up the AST to find the enclosing class/struct name."""
+    parent = node.parent
+    while parent is not None:
+        if parent.type in ("class_specifier", "struct_specifier"):
+            name_node = _find_child_by_type(parent, "type_identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        parent = parent.parent
+    return None
+
+
+def _resolve_cpp_field_chain(
+    receiver_node: "tree_sitter.Node",
+    source: bytes,
+    registry: dict[str, dict[str, str]],
+    call_node: "tree_sitter.Node",
+) -> str | None:
+    """Walk a ``this->field->field`` chain and resolve to the final type.
+
+    Decomposes nested ``field_expression`` nodes leaf-to-root, validates
+    the root is ``this``, then walks root-to-leaf through the registry.
+    The enclosing class is found by walking up the AST from the call node.
+    """
+    # Determine enclosing class from AST
+    enclosing_type = _get_enclosing_class(call_node, source)
+    if enclosing_type is None:
+        return None
+
+    # Decompose: walk field_expression chain leaf-to-root
+    segments: list[str] = []
+    node = receiver_node
+    while node.type == "field_expression":
+        field_node = node.child_by_field_name("field")
+        if field_node is None:  # pragma: no cover — tree-sitter guarantees field
+            return None
+        segments.append(_node_text(field_node, source))
+        node = node.child_by_field_name("argument")
+        if node is None:  # pragma: no cover — tree-sitter guarantees argument
+            return None
+
+    # Root must be "this"
+    if node.type != "this":
+        return None
+
+    # Reverse to walk root-to-leaf
+    segments.reverse()
+
+    # Walk through registry
+    current_type = enclosing_type
+    for field_name in segments:
+        fields = registry.get(current_type)
+        if fields is None:
+            return None
+        next_type = fields.get(field_name)
+        if next_type is None:
+            return None
+        current_type = next_type
+
+    return current_type
+
+
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -483,6 +629,7 @@ def _extract_edges_from_tree(
     run: AnalysisRun,
     resolver: NameResolver,
     namespace_aliases: dict[str, str] | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -490,6 +637,7 @@ def _extract_edges_from_tree(
 
     Args:
         namespace_aliases: Mapping of alias -> qualified_namespace for path_hint (ADR-0007)
+        field_type_registry: Class field types for chained ``this->`` resolution.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -607,23 +755,53 @@ def _extract_edges_from_tree(
             if current_function is not None:
                 callee_name = get_callee_name(node)
                 if callee_name:
-                    # Try to resolve: look for short name first
-                    short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
+                    # Try field chain resolution (this->field->method())
+                    chain_resolved = False
+                    if field_type_registry:
+                        top_field = _find_child_by_type(node, "field_expression")
+                        if top_field:
+                            # Walk inner field_expression chain to find receiver
+                            receiver = top_field.child_by_field_name("argument")
+                            if receiver and receiver.type == "field_expression":
+                                resolved_type = _resolve_cpp_field_chain(
+                                    receiver, source, field_type_registry,
+                                    node,
+                                )
+                                if resolved_type:
+                                    lookup = resolver.lookup(callee_name, path_hint=resolved_type)
+                                    if lookup.found and lookup.symbol is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=lookup.symbol.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="method_call_field_chain",
+                                            confidence=0.85,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                        ))
+                                        chain_resolved = True
 
-                    # Extract namespace prefix for path_hint (ADR-0007)
-                    path_hint = None
-                    if "::" in callee_name:
-                        ns_prefix = callee_name.split("::")[0]
-                        # Check if namespace prefix is an alias
-                        if ns_prefix in namespace_aliases:
-                            # Resolve alias: fs::func -> std::filesystem as path_hint
-                            path_hint = namespace_aliases[ns_prefix]
-                        else:
-                            # Use explicit namespace as path_hint
-                            path_hint = ns_prefix
+                    if chain_resolved:
+                        pass  # Skip normal resolution
+                    else:
+                        # Try to resolve: look for short name first
+                        short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
 
-                    # Check local symbols first
-                    if short_name in local_symbols:
+                        # Extract namespace prefix for path_hint (ADR-0007)
+                        path_hint = None
+                        if "::" in callee_name:
+                            ns_prefix = callee_name.split("::")[0]
+                            # Check if namespace prefix is an alias
+                            if ns_prefix in namespace_aliases:
+                                # Resolve alias: fs::func -> std::filesystem as path_hint
+                                path_hint = namespace_aliases[ns_prefix]
+                            else:
+                                # Use explicit namespace as path_hint
+                                path_hint = ns_prefix
+
+                    # Check local symbols first (skip if chain already resolved)
+                    if not chain_resolved and short_name in local_symbols:
                         callee = local_symbols[short_name]
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -636,7 +814,7 @@ def _extract_edges_from_tree(
                             origin_run_id=run.execution_id,
                         ))
                     # Check global symbols via resolver
-                    else:
+                    elif not chain_resolved:
                         lookup_result = resolver.lookup(short_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
@@ -922,6 +1100,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
     lang = "cpp"
     file_patterns: ClassVar[list[str]] = ["*.cpp", "*.cc", "*.cxx", "*.h", "*.hpp", "*.hxx"]
     grammar_module = "tree_sitter_cpp"
+    self_keywords: ClassVar[frozenset[str]] = frozenset({"this"})
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
@@ -978,6 +1157,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             tree, source, file_path, rel_path,
             local_symbols, global_symbols, run, resolver,
             namespace_aliases=import_aliases,
+            field_type_registry=getattr(self, "_field_type_registry", None),
         )
 
     def get_import_aliases(

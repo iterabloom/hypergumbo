@@ -1214,6 +1214,7 @@ class TreeSitterAnalyzer:
 
         # Decompose the receiver chain into segments.
         # e.g. self.inner.app → ["self", "inner", "app"]
+        # C++: this->inner->app (field_expression uses "argument" not "value")
         segments: list[str] = []
         node = value_node
         while node.type in ("field_expression", "member_expression"):
@@ -1221,7 +1222,10 @@ class TreeSitterAnalyzer:
             if field_node is None:
                 return None
             segments.append(node_text(field_node, source))
-            node = node.child_by_field_name("value")
+            node = (
+                node.child_by_field_name("value")
+                or node.child_by_field_name("argument")
+            )
             if node is None:
                 return None
 
