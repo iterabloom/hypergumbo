@@ -2512,8 +2512,11 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     ir_symbols = [Symbol.from_dict(n) for n in nodes]
     ir_edges = [Edge.from_dict(e) for e in edges_raw]
 
-    # Get canonical ranking from rank_symbols()
-    ranked = rank_symbols(ir_symbols, ir_edges)
+    # Get canonical ranking from rank_symbols().
+    # min_edge_confidence=0.5 excludes low-confidence inferred edges
+    # (ast_method_inferred) that inflate in-degree for common method
+    # names via name-collision false positives (e.g. .labels(), .rules()).
+    ranked = rank_symbols(ir_symbols, ir_edges, min_edge_confidence=0.5)
     rank_by_id: dict[str, int] = {rs.symbol.id: rs.rank for rs in ranked}
 
     # Minimum edge confidence for degree *display* counts.
