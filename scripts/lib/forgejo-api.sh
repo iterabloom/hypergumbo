@@ -563,42 +563,75 @@ do_merge() {
 		return 1
 	fi
 
-	# Default: try fast-forward merge
+	# Default: try fast-forward merge with retry on transient failures
 	echo "🚀 Attempting fast-forward merge (preserves commit bodies)..."
 
 	local merge_payload='{"do": "fast-forward-only", "delete_branch_after_merge": true}'
+	local max_retries=3
+	local attempt
 
-	if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
-		echo "✅ Fast-forward merged! (commit bodies preserved)"
-		rm -f "$tmp_file"
-		return 0
-	fi
+	for attempt in $(seq 1 $max_retries); do
+		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
+			# HTTP 2xx — verify the PR was actually merged (Forgejo sometimes
+			# returns 200 with merged:false when branch protection blocks it)
+			if _check_pr_merged "$pr_num"; then
+				echo "✅ Fast-forward merged! (commit bodies preserved)"
+				rm -f "$tmp_file"
+				return 0
+			fi
+			# HTTP 200 but not merged — likely branch protection race condition
+			if [[ $attempt -lt $max_retries ]]; then
+				echo "⚠️  Merge returned success but PR not yet merged (attempt $attempt/$max_retries)"
+				sleep $((attempt * 5))
+				continue
+			fi
+			echo "❌ Merge returned HTTP 200 but PR was not merged after $max_retries attempts"
+			echo "   This usually means branch protection is blocking (e.g., a failed status check)."
+			echo ""
+			echo "Recovery: ./scripts/merge-pr $pr_num"
+			rm -f "$tmp_file"
+			return 1
+		fi
 
-	# Check if it's a divergence error
-	if echo "$API_RESPONSE" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
-		echo ""
-		echo "❌ Fast-forward not possible: branch has diverged"
-		echo ""
-		echo "Please rebase and retry:"
-		echo "  git fetch origin dev"
-		echo "  git rebase origin/dev"
-		echo "  ./scripts/auto-pr"
-		echo ""
-		echo "Or, if you must squash (loses commit body details):"
-		echo "  ./scripts/auto-pr --squash"
-		rm -f "$tmp_file"
-		return 1
-	fi
+		# Save merge error before _check_pr_merged overwrites globals
+		local merge_http_code="$API_HTTP_CODE"
+		local merge_response="$API_RESPONSE"
 
-	# Check if PR was actually merged despite error code
-	if _check_pr_merged "$pr_num"; then
-		echo "✅ Verified: PR was successfully merged!"
-		rm -f "$tmp_file"
-		return 0
-	fi
+		# Check if it's a divergence error (not retryable)
+		if echo "$merge_response" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
+			echo ""
+			echo "❌ Fast-forward not possible: branch has diverged"
+			echo ""
+			echo "Please rebase and retry:"
+			echo "  git fetch origin dev"
+			echo "  git rebase origin/dev"
+			echo "  ./scripts/auto-pr"
+			echo ""
+			echo "Or, if you must squash (loses commit body details):"
+			echo "  ./scripts/auto-pr --squash"
+			rm -f "$tmp_file"
+			return 1
+		fi
 
-	echo "❌ Merge failed (HTTP $API_HTTP_CODE)"
-	echo "Response: $API_RESPONSE"
+		# Check if PR was actually merged despite error code
+		if _check_pr_merged "$pr_num"; then
+			echo "✅ Verified: PR was successfully merged!"
+			rm -f "$tmp_file"
+			return 0
+		fi
+
+		# Transient failure — retry with backoff
+		if [[ $attempt -lt $max_retries ]]; then
+			echo "⚠️  Merge failed (HTTP $merge_http_code, attempt $attempt/$max_retries) — retrying in $((attempt * 5))s..."
+			sleep $((attempt * 5))
+		else
+			echo "❌ Merge failed after $max_retries attempts (last HTTP $merge_http_code)"
+			echo "Response: $merge_response"
+			rm -f "$tmp_file"
+			return 1
+		fi
+	done
+
 	rm -f "$tmp_file"
 	return 1
 }
