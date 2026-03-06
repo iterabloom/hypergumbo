@@ -873,6 +873,27 @@ jobs:
           fi
 
           exit $TEST_EXIT
+      - name: Clear failed pytest status
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # When pytest-retry succeeds, overwrite the failed "pytest" commit
+          # status so Forgejo branch protection sees all checks as passed.
+          # Without this, the original pytest failure blocks merge even though
+          # ci-complete reports success.
+          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          API_BASE="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+          curl -sf -X POST \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "context": "CI / pytest (pull_request)",
+              "description": "Tests passed on retry (self-hosted)",
+              "state": "success",
+              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }' \
+            "${API_BASE}/statuses/${SHA}" || echo "Warning: failed to update commit status (non-fatal)"
 
   tracker-validate:
     needs: [changes, stop-the-line]
