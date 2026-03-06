@@ -17,3 +17,10 @@
     pr_ref:  # d81a
     description: "Python, Go, Ruby, Java, Kotlin all have independent field-type resolution. Migrate them to populate FileAnalysis.class_field_types and use resolve_receiver_type() from the base class (PR #1729) for consistency. Not urgent -- existing implementations work -- but reduces code duplication long-term. Python uses class_field_types in py.py, Go uses _extract_go_var_types(), Ruby uses _extract_ruby_var_types()."  # d81a
     fields: {}  # d81a
+- op: discuss  # 170c
+  at: '2026-03-06T08:47:27Z'  # 170c
+  by: agent  # 170c
+  actor: jgstern_agent  # 170c
+  clock: 2  # 170c
+  nonce: 170c  # 170c
+  message: "Deferring: P4 refactoring across 5 languages (Python, Go, Ruby, Java, Kotlin). Existing implementations work correctly. The base-class field type pattern is proven (C#, C++ use it). Migration would reduce ~200 lines of duplicated code but doesn't fix any bugs. Will tackle when working on those analyzers for other reasons."  # 170c

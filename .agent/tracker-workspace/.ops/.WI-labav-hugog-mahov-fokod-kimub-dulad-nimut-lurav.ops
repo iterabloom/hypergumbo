@@ -69,3 +69,18 @@
   nonce: '2842'  # 2842
   set:  # 2842
     status: todo_soft  # 2842
+- op: update  # 0f12
+  at: '2026-03-06T08:12:45Z'  # 0f12
+  by: agent  # 0f12
+  actor: jgstern_agent  # 0f12
+  clock: 9  # 0f12
+  nonce: 0f12  # 0f12
+  set:  # 0f12
+    status: done  # 0f12
+- op: discuss  # abde
+  at: '2026-03-06T08:12:45Z'  # abde
+  by: agent  # abde
+  actor: jgstern_agent  # abde
+  clock: 10  # abde
+  nonce: abde  # abde
+  message: "Fixed in PR #1825. Stop hook now moves guidance files older than the 10 most recent to guidance_log/older_guidance/ subfolder. Move-only policy, never deletes."  # abde
