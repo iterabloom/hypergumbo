@@ -1,0 +1,41 @@
+- op: create  # 8f17
+  at: '2026-03-06T12:23:35Z'  # 8f17
+  by: agent  # 8f17
+  actor: jgstern_agent  # 8f17
+  clock: 1  # 8f17
+  nonce: 8f17  # 8f17
+  data:  # 8f17
+    kind: work_item  # 8f17
+    title: "JS/TS event subscriber edge detection (.on/.addEventListener)"  # 8f17
+    status: todo_soft  # 8f17
+    priority: 2  # 8f17
+    parent:  # 8f17
+    tags: []  # 8f17
+    before: []  # 8f17
+    duplicate_of: []  # 8f17
+    not_duplicate_of: []  # 8f17
+    pr_ref:  # 8f17
+    description: ""  # 8f17
+    fields: {}  # 8f17
+- op: discuss  # 8dbb
+  at: '2026-03-06T12:23:39Z'  # 8dbb
+  by: agent  # 8dbb
+  actor: jgstern_agent  # 8dbb
+  clock: 2  # 8dbb
+  nonce: 8dbb  # 8dbb
+  message: "Bakeoff P3: livekit has 85 event_publishes but 0 event_subscribes edges. .on('event', handler), .addEventListener(), and .once() patterns not detected in JS/TS analyzer."  # 8dbb
+- op: update  # 26c9
+  at: '2026-03-06T12:24:54Z'  # 26c9
+  by: agent  # 26c9
+  actor: jgstern_agent  # 26c9
+  clock: 3  # 26c9
+  nonce: 26c9  # 26c9
+  set:  # 26c9
+    status: done  # 26c9
+- op: discuss  # 8270
+  at: '2026-03-06T12:24:54Z'  # 8270
+  by: agent  # 8270
+  actor: jgstern_agent  # 8270
+  clock: 4  # 8270
+  nonce: '8270'  # 8270
+  message: "Investigation: the event sourcing linker already detects .on()/.addEventListener()/.once() patterns correctly. livekit client-sdk-js has 171 publishers, 97 subscribers, and 85 event_publishes edges. The bakeoff assessment claim was incorrect — subscriber detection works. No code change needed."  # 8270
