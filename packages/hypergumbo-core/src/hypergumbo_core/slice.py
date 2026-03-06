@@ -469,10 +469,18 @@ def slice_graph(
             if edge.confidence < query.min_confidence:
                 continue
 
-            # Skip structural IS-A edges in forward slices to prevent
-            # BFS explosion through shared ancestors (e.g., all controllers
-            # sharing ApplicationController as a base class).
+            # Skip structural edges to prevent BFS explosion:
+            # - Forward: all structural edges (extends, implements, contains,
+            #   dispatches_to) are excluded to prevent fan-out through shared
+            #   ancestors (e.g., all controllers sharing ApplicationController).
+            # - Reverse: 'contains' edges are excluded to prevent false positives.
+            #   Without this, reverse slice from method M would traverse
+            #   M → Class (via contains) → unrelated callers of Class.
+            #   extends/implements are kept in reverse (useful for "who
+            #   inherits from this?" queries).
             if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+                continue
+            if query.reverse and edge.edge_type == "contains":
                 continue
 
             # Skip import edges when exclude_imports is set.

@@ -2245,7 +2245,9 @@ class TestForwardSliceContainsEdges:
             make_edge(caller, get_pet, "calls"),
         ]
 
-        # Reverse slice from getPet should still see the class via contains
+        # Reverse slice from getPet should find caller (via calls edge)
+        # but NOT the class (contains edges are excluded from reverse BFS
+        # to prevent false positives from class-level callers).
         query = SliceQuery(entrypoint="Owner.getPet", max_hops=3, reverse=True)
         result = slice_graph(
             [owner_class, get_pet, caller], edges, query,
@@ -2253,8 +2255,53 @@ class TestForwardSliceContainsEdges:
 
         # caller should be found (calls edge reversed)
         assert caller.id in result.node_ids
-        # owner_class should be found (contains edge reversed)
-        assert owner_class.id in result.node_ids
+        # owner_class should NOT be found — contains edges are excluded
+        # from reverse BFS to prevent fan-out to unrelated class callers
+        assert owner_class.id not in result.node_ids
+
+    def test_reverse_slice_contains_does_not_cause_false_positives(self) -> None:
+        """Reverse slice should not reach unrelated callers via contains edges.
+
+        Scenario: method M is contained in class C. Another function F calls C
+        (the class itself) but never calls M. Without filtering contains edges,
+        reverse slice from M would go: M → C (via contains) → F (via calls C).
+        F is a false positive — it doesn't call M.
+        """
+        owner_class = make_symbol(
+            "Owner", kind="class",
+            path="src/owner.py", start_line=1, end_line=100, language="python",
+        )
+        get_pet = make_symbol(
+            "Owner.getPet", kind="method",
+            path="src/owner.py", start_line=10, end_line=20, language="python",
+        )
+        # Calls getPet directly — should be in reverse slice
+        direct_caller = make_symbol(
+            "show_owner", kind="function",
+            path="src/views.py", start_line=1, end_line=10, language="python",
+        )
+        # Calls the Owner class (instantiation) but NOT getPet — false positive
+        class_instantiator = make_symbol(
+            "create_owner", kind="function",
+            path="src/factory.py", start_line=1, end_line=10, language="python",
+        )
+
+        edges = [
+            make_edge(owner_class, get_pet, "contains"),
+            make_edge(direct_caller, get_pet, "calls"),
+            make_edge(class_instantiator, owner_class, "calls"),
+        ]
+
+        query = SliceQuery(entrypoint="Owner.getPet", max_hops=3, reverse=True)
+        result = slice_graph(
+            [owner_class, get_pet, direct_caller, class_instantiator],
+            edges, query,
+        )
+
+        # direct_caller should be found (directly calls getPet)
+        assert direct_caller.id in result.node_ids
+        # class_instantiator should NOT be found (only calls the class, not the method)
+        assert class_instantiator.id not in result.node_ids
 
 
 class TestExcludeImports:
