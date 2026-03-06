@@ -2,7 +2,7 @@
 """Streamlined PR workflow for tracker-only changes.
 
 Provides ``htrac sync`` — a purpose-built command that pushes tracker ops
-files via a lightweight PR workflow: branch → commit → push → poll CI →
+files via a lightweight PR workflow: plumbing commit → push → poll CI →
 merge → cleanup.  Completes in ~45-60 seconds vs ~3.5 minutes for the
 general-purpose ``auto-pr`` script.
 
@@ -12,12 +12,21 @@ configurable threshold of accumulated changes.
 
 Design:
 - All git calls go through ``_git()`` for testability (single mock point).
+  ``_git()`` accepts an optional ``env`` dict for plumbing calls that need
+  custom environment variables (e.g. ``GIT_INDEX_FILE``).
 - All Forgejo API calls go through ``_api_call()`` using only stdlib
   ``urllib.request`` (no ``requests`` dependency).
 - Gate files (``.git/TRACKER_SYNC_PENDING``) provide mutual exclusion with
   ``auto-pr`` (which uses ``.git/PR_PENDING``).
 - Preflight checks fail fast on the first problem (sequential, short-circuit).
-- ``do_sync()`` uses try/finally for gate file and branch cleanup.
+- ``do_sync()`` uses git plumbing (read-tree/write-tree/commit-tree) with a
+  temporary index file to build the sync commit on top of ``origin/dev``
+  *without* checking out a branch.  This is critical: the editable install
+  means the Python interpreter uses whatever branch is checked out, so
+  switching branches during a running bakeoff or test would break things.
+  The plumbing approach builds the commit in a separate index, creates a
+  branch ref with ``update-ref``, pushes, then cleans up — the working tree
+  never changes.  try/finally ensures gate file and temp index cleanup.
 
 See the plan document for the full design specification.
 """
