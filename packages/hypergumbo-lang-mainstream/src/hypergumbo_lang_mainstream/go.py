@@ -1348,9 +1348,14 @@ def _type_from_rhs(
     """Extract a type name from the right side of a short var declaration.
 
     Handles:
-    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal``
+    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal / call_expression``
     - ``&Server{}`` → unary_expression(&, composite_literal(type_identifier=Server))
     - ``Server{}`` → composite_literal(type_identifier=Server)
+    - ``NewServer()`` → call_expression(identifier("NewServer")) → type "Server"
+    - ``pkg.NewFoo()`` → call_expression(selector_expression("pkg.NewFoo")) → type "Foo"
+
+    Constructor inference follows Go naming convention: ``NewXxx()`` returns
+    ``*Xxx``.  Only simple ``New`` prefix is stripped; ``NewXxxYyy`` → ``XxxYyy``.
 
     Returns the type name string or None.
     """
@@ -1358,7 +1363,9 @@ def _type_from_rhs(
     # Unwrap expression_list
     if node.type == "expression_list":
         for child in node.children:
-            if child.type in ("unary_expression", "composite_literal"):
+            if child.type in (
+                "unary_expression", "composite_literal", "call_expression",
+            ):
                 node = child
                 break
         else:
@@ -1378,7 +1385,45 @@ def _type_from_rhs(
         for child in node.children:
             if child.type == "type_identifier":
                 return node_text(child, source)
-    return None  # pragma: no cover - defensive for non-composite literal RHS
+
+    # NewFoo() or pkg.NewFoo() → constructor return type inference
+    if node.type == "call_expression":
+        return _type_from_constructor_call(node, source)
+
+    return None  # pragma: no cover - defensive for unrecognized RHS
+
+
+def _type_from_constructor_call(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Infer return type from Go constructor naming convention.
+
+    Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
+    package-qualified calls: ``pkg.NewFoo()`` → ``Foo``.
+
+    Only matches when the suffix after ``New`` starts with an uppercase letter
+    (Go exported type convention).
+    """
+    func_node = find_child_by_field(call_node, "function")
+    if func_node is None:
+        return None  # pragma: no cover
+
+    # NewFoo() → identifier "NewFoo"
+    if func_node.type == "identifier":
+        name = node_text(func_node, source)
+        if name.startswith("New") and len(name) > 3 and name[3].isupper():
+            return name[3:]
+
+    # pkg.NewFoo() → selector_expression with field_identifier "NewFoo"
+    elif func_node.type == "selector_expression":
+        field = find_child_by_field(func_node, "field")
+        if field is not None:
+            name = node_text(field, source)
+            if name.startswith("New") and len(name) > 3 and name[3].isupper():
+                return name[3:]
+
+    return None
 
 
 def _type_identifier_from_node(

@@ -5519,3 +5519,70 @@ func main() {}
             if e.evidence_type == "typed_field_call"
         ]
         assert len(typed_edges) == 0
+
+
+class TestGoConstructorTypeInference:
+    """Tests for NewXxx() constructor return type inference in var_types.
+
+    Go convention: NewFoo() returns *Foo. When we see x := NewFoo(...),
+    we infer x has type Foo, enabling typed_receiver_call edges.
+    """
+
+    def test_local_constructor_infers_type(self, tmp_path: Path) -> None:
+        """x := NewServer(...) → x has type Server."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Server struct{}
+
+func NewServer() *Server { return &Server{} }
+
+func (s *Server) Run() {}
+
+func main() {
+    s := NewServer()
+    s.Run()
+}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_calls = [
+            e for e in result.edges
+            if e.evidence_type == "typed_receiver_call"
+            and "Server.Run" in e.dst
+        ]
+        assert len(typed_calls) == 1
+
+    def test_package_constructor_infers_type(self, tmp_path: Path) -> None:
+        """d := dispatch.NewDispatcher(...) → d has type Dispatcher."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "dispatcher.go").write_text("""\
+package main
+
+type Dispatcher struct{}
+
+func NewDispatcher() *Dispatcher { return &Dispatcher{} }
+
+func (d *Dispatcher) Run() {}
+""")
+        (tmp_path / "main.go").write_text("""\
+package main
+
+func main() {
+    d := NewDispatcher()
+    go d.Run()
+}
+""")
+        result = analyze_go(tmp_path)
+
+        run_calls = [
+            e for e in result.edges
+            if "Dispatcher.Run" in e.dst
+            and e.edge_type == "calls"
+        ]
+        assert len(run_calls) >= 1
+        assert any(e.evidence_type == "typed_receiver_call" for e in run_calls)
