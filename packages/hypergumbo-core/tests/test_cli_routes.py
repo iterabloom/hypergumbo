@@ -799,12 +799,11 @@ def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> No
     assert "Found 1 API route" in out
 
 
-def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
-    """Duplicate routes with same (method, path) are deduplicated.
+def test_cmd_routes_deduplicates_within_same_file(tmp_path: Path, capsys) -> None:
+    """Route symbols with same (method, path, file) are deduplicated.
 
-    Materialized route symbols and concept-enriched handlers can both
-    produce entries for the same HTTP endpoint. The output should show
-    each unique (method, path) only once.
+    When a materialized route symbol and a concept-enriched handler both
+    exist in the same file for the same endpoint, only the first is shown.
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -819,11 +818,11 @@ def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
                 "meta": {"route_path": "/api/users", "http_method": "GET"},
             },
             {
-                "id": "go:handlers.go:20-25:listUsers:function",
+                "id": "go:routes.go:20-25:listUsers:function",
                 "name": "listUsers",
                 "kind": "function",
                 "language": "go",
-                "path": "handlers.go",
+                "path": "routes.go",
                 "span": {"start_line": 20, "end_line": 25},
                 "meta": {
                     "concepts": [
@@ -832,11 +831,11 @@ def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
                 },
             },
             {
-                "id": "go:handlers.go:30-35:createUser:function",
+                "id": "go:routes.go:30-35:createUser:function",
                 "name": "createUser",
                 "kind": "function",
                 "language": "go",
-                "path": "handlers.go",
+                "path": "routes.go",
                 "span": {"start_line": 30, "end_line": 35},
                 "meta": {
                     "concepts": [
@@ -860,7 +859,7 @@ def test_cmd_routes_deduplicates_by_method_path(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # GET /api/users appears in two nodes but should only show once
+    # GET /api/users appears in two nodes in the same file, show once
     assert out.count("[GET] /api/users") == 1
     # POST /api/users is unique, should appear once
     assert out.count("[POST] /api/users") == 1
@@ -924,19 +923,19 @@ def test_cmd_routes_keeps_same_method_path_from_different_files(
     assert "Found 2 API route" in out
 
 
-def test_cmd_routes_dedup_duplicate_concept_routes(
+def test_cmd_routes_dedup_duplicate_concept_routes_same_file(
     tmp_path: Path, capsys
 ) -> None:
-    """Two concept-enriched handlers with same (method, path) are deduped."""
+    """Two concept-enriched handlers in same file with same (method, path) are deduped."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
-                "id": "go:a.go:10-15:handlerA:function",
+                "id": "go:routes.go:10-15:handlerA:function",
                 "name": "handlerA",
                 "kind": "function",
                 "language": "go",
-                "path": "a.go",
+                "path": "routes.go",
                 "span": {"start_line": 10, "end_line": 15},
                 "meta": {
                     "concepts": [
@@ -945,11 +944,11 @@ def test_cmd_routes_dedup_duplicate_concept_routes(
                 },
             },
             {
-                "id": "go:b.go:20-25:handlerB:function",
+                "id": "go:routes.go:20-25:handlerB:function",
                 "name": "handlerB",
                 "kind": "function",
                 "language": "go",
-                "path": "b.go",
+                "path": "routes.go",
                 "span": {"start_line": 20, "end_line": 25},
                 "meta": {
                     "concepts": [
@@ -1022,19 +1021,19 @@ def test_cmd_routes_dedup_same_route_same_file(
     assert "Found 1 API route" in out
 
 
-def test_cmd_routes_concept_before_materialized_dedup(
+def test_cmd_routes_concept_before_materialized_same_file_dedup(
     tmp_path: Path, capsys
 ) -> None:
-    """Concept-enriched route seen first prevents duplicate materialized route."""
+    """Concept-enriched route and materialized route in same file are deduped."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
             {
-                "id": "go:handlers.go:10-15:listUsers:function",
+                "id": "go:routes.go:10-15:listUsers:function",
                 "name": "listUsers",
                 "kind": "function",
                 "language": "go",
-                "path": "handlers.go",
+                "path": "routes.go",
                 "span": {"start_line": 10, "end_line": 15},
                 "meta": {
                     "concepts": [
