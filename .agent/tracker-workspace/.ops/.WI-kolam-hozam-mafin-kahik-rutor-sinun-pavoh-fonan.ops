@@ -56,3 +56,18 @@
   clock: 6  # fae6
   nonce: fae6  # fae6
   message: "Acknowledged approval."  # fae6
+- op: update  # f65d
+  at: '2026-03-06T05:02:01Z'  # f65d
+  by: agent  # f65d
+  actor: jgstern_agent  # f65d
+  clock: 7  # f65d
+  nonce: f65d  # f65d
+  set:  # f65d
+    status: wont_do  # f65d
+- op: discuss  # 30a2
+  at: '2026-03-06T05:02:01Z'  # 30a2
+  by: agent  # 30a2
+  actor: jgstern_agent  # 30a2
+  clock: 8  # 30a2
+  nonce: 30a2  # 30a2
+  message: "Cherry-pick flow doesn't exist in auto-pr — it was a manual workaround. Merge retry logic (PR #1784) greatly reduces the need. Reopen if cherry-pick failures recur."  # 30a2

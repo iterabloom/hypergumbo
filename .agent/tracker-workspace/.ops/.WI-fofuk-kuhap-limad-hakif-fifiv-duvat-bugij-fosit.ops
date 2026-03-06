@@ -47,3 +47,18 @@
   clock: 5  # 80db
   nonce: 80db  # 80db
   message: "Acknowledged approval. Will add AGENTS.md guidance for governance PR workflow."  # 80db
+- op: update  # 6728
+  at: '2026-03-06T03:43:18Z'  # 6728
+  by: agent  # 6728
+  actor: jgstern_agent  # 6728
+  clock: 6  # 6728
+  nonce: '6728'  # 6728
+  set:  # 6728
+    status: done  # 6728
+- op: discuss  # 5ca7
+  at: '2026-03-06T03:43:18Z'  # 5ca7
+  by: agent  # 5ca7
+  actor: jgstern_agent  # 5ca7
+  clock: 7  # 5ca7
+  nonce: 5ca7  # 5ca7
+  message: "Implemented in PR #1785 (awaiting merge due to CI runner issue). AGENTS.md updated with governance approval workflow."  # 5ca7

@@ -55,3 +55,18 @@
   clock: 6  # 907d
   nonce: 907d  # 907d
   message: "Acknowledged approval. Will implement auto-retry merge cascade on HTTP 200 + merged:false."  # 907d
+- op: update  # 2680
+  at: '2026-03-06T03:02:10Z'  # 2680
+  by: agent  # 2680
+  actor: jgstern_agent  # 2680
+  clock: 7  # 2680
+  nonce: '2680'  # 2680
+  set:  # 2680
+    status: done  # 2680
+- op: discuss  # b913
+  at: '2026-03-06T03:02:10Z'  # b913
+  by: agent  # b913
+  actor: jgstern_agent  # b913
+  clock: 8  # b913
+  nonce: b913  # b913
+  message: "Fixed in PR #1784. Added 3-attempt retry with backoff for HTTP 200 + merged:false. Also fixed misleading error reporting where _check_pr_merged overwrote API globals."  # b913
