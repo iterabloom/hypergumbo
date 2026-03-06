@@ -905,3 +905,70 @@ class TestEnclosureLinker:
         # Only the linker result, no enclosure edges created
         assert len(results) == 1
         assert results[0][0] == "no-enclosing-test"
+
+
+class TestLinkerPipelineAccumulation:
+    """Tests that linker outputs are accumulated into ctx for subsequent linkers.
+
+    Linkers run in priority order. Earlier linkers may produce edges and symbols
+    that later linkers depend on. For example, the inheritance linker (priority 15)
+    creates implements edges from base_classes metadata, and the type_hierarchy
+    linker (priority 60) needs those edges to create dispatches_to edges.
+    """
+
+    def test_later_linker_sees_earlier_linker_edges(self):
+        """Edges produced by earlier linkers are visible in ctx.edges for later ones."""
+        from hypergumbo_core.ir import Edge
+
+        observed_edges: list[list[Edge]] = []
+
+        @register_linker("accum-early", priority=10)
+        def link_early(ctx: LinkerContext) -> LinkerResult:
+            observed_edges.append(list(ctx.edges))
+            new_edge = Edge.create(
+                src="a", dst="b", edge_type="implements",
+                line=1, confidence=1.0,
+            )
+            return LinkerResult(edges=[new_edge])
+
+        @register_linker("accum-late", priority=50)
+        def link_late(ctx: LinkerContext) -> LinkerResult:
+            observed_edges.append(list(ctx.edges))
+            return LinkerResult()
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        run_all_linkers(ctx)
+
+        # Early linker sees empty edges
+        assert len(observed_edges[0]) == 0
+        # Late linker should see the edge produced by early linker
+        assert len(observed_edges[1]) == 1
+        assert observed_edges[1][0].edge_type == "implements"
+
+    def test_later_linker_sees_earlier_linker_symbols(self):
+        """Symbols produced by earlier linkers are visible in ctx.symbols for later ones."""
+        from hypergumbo_core.ir import Symbol
+
+        observed_symbols: list[list[Symbol]] = []
+
+        @register_linker("sym-early", priority=10)
+        def link_sym_early(ctx: LinkerContext) -> LinkerResult:
+            observed_symbols.append(list(ctx.symbols))
+            new_sym = Symbol(
+                id="iface:method", name="IFace.Method",
+                kind="method", language="go", path="f.go",
+                span=None,
+            )
+            return LinkerResult(symbols=[new_sym])
+
+        @register_linker("sym-late", priority=50)
+        def link_sym_late(ctx: LinkerContext) -> LinkerResult:
+            observed_symbols.append(list(ctx.symbols))
+            return LinkerResult()
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        run_all_linkers(ctx)
+
+        assert len(observed_symbols[0]) == 0
+        assert len(observed_symbols[1]) == 1
+        assert observed_symbols[1][0].name == "IFace.Method"

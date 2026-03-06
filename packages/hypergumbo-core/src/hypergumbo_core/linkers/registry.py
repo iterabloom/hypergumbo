@@ -507,6 +507,11 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     results = []
     all_linker_symbols: list[Symbol] = []
 
+    # Build accumulating lists that include original + linker-produced data.
+    # We copy so that extending these doesn't mutate the caller's lists.
+    accum_symbols = list(ctx.symbols)
+    accum_edges = list(ctx.edges)
+
     # Run linkers that pass activation check
     for linker in get_all_linkers():
         # Check if linker should run based on detected frameworks/languages
@@ -515,12 +520,38 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
         ):
             continue  # Skip inactive linkers
 
-        result = linker.func(ctx)
+        # Build a fresh context with accumulated data so each linker
+        # sees edges/symbols from all prior linkers.  E.g., inheritance
+        # linker (priority 15) creates implements edges that
+        # type_hierarchy linker (priority 60) needs for dispatches_to.
+        running_ctx = LinkerContext(
+            repo_root=ctx.repo_root,
+            symbols=accum_symbols,
+            edges=accum_edges,
+            captured_symbols=ctx.captured_symbols,
+            detected_frameworks=ctx.detected_frameworks,
+            detected_languages=ctx.detected_languages,
+        )
+        result = linker.func(running_ctx)
         results.append((linker.name, result))
         all_linker_symbols.extend(result.symbols)
 
+        # Accumulate results for subsequent linkers
+        if result.edges:
+            accum_edges.extend(result.edges)
+        if result.symbols:
+            accum_symbols.extend(result.symbols)
+
     # Post-process: connect synthetic nodes to enclosing functions
-    enclosure_edges = _connect_synthetic_to_enclosing(ctx, all_linker_symbols)
+    enclosure_ctx = LinkerContext(
+        repo_root=ctx.repo_root,
+        symbols=accum_symbols,
+        edges=accum_edges,
+        captured_symbols=ctx.captured_symbols,
+        detected_frameworks=ctx.detected_frameworks,
+        detected_languages=ctx.detected_languages,
+    )
+    enclosure_edges = _connect_synthetic_to_enclosing(enclosure_ctx, all_linker_symbols)
     if enclosure_edges:
         from ..ir import PASS_VERSION, AnalysisRun, make_pass_id
         run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
