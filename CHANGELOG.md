@@ -27,6 +27,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Tiered view boundary node exclusion**: Compact/tiered views (hg.4k.json, hg.16k.json) now exclude boundary nodes (external_symbol, tier=3) that exist in all_symbols for slice traversal but should not appear in output. Previously, when no high-confidence entrypoints existed, boundary nodes with high in-degree from imports dominated the selection, producing tiered views with only external_symbol nodes and no first-party code.
 - **Lean import resolution**: Intra-repo import edges now resolve to file node IDs (`lean:Lib/Utils.lean:1-1:file:file`) instead of dangling module IDs (`lean:Lib.Utils:0-0:module:module`). Fixes 440+ disconnected import edges in repos like ArkLib where all intra-repo imports were unreachable.
 - **Solidity call resolution**: `super.method()`, `this.method()`, typed member access (`IERC20(addr).transfer()`), and function overload resolution by position.
 - **Rust call resolution**: Same-module method preference via `path_hint` with `soft_hint` mode — single cross-crate candidates kept with reduced confidence instead of rejected. Derive-macro methods dampened in centrality ranking. Module-qualified calls (`mod::Type::method()`) now resolve by stripping module prefixes — previously blocked by ambiguity guard when multiple types shared a method name like `new`.

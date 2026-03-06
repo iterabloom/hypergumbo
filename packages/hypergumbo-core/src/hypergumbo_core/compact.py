@@ -1302,12 +1302,16 @@ def format_tiered_behavior_map(
     max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
 
     # Filter symbols the same way select_by_tokens does: exclude tests,
-    # non-code, and example paths so they don't pollute the tiered view.
+    # non-code, example paths, and boundary nodes so they don't pollute
+    # the tiered view.  Boundary nodes (external_symbol, path=<external>)
+    # exist in all_symbols for slice traversal but are filtered from the
+    # full behavior_map["nodes"] output — the tiered view must match.
     eligible_symbols = [
         s for s in symbols
         if s.kind not in EXCLUDED_KINDS
         and not _is_test_path(s.path)
         and not _is_example_path(s.path)
+        and not (s.meta and s.meta.get("external_boundary"))
     ]
 
     # Language-proportional seeding: inject seeds for dominant languages

@@ -2648,6 +2648,70 @@ class TestTieredTokenBudget:
         )
 
 
+    def test_tiered_excludes_boundary_nodes(self):
+        """Boundary nodes (external_symbol) should not appear in tiered output.
+
+        Boundary nodes exist in all_symbols for slice traversal but are filtered
+        from the full behavior_map["nodes"]. The tiered view should also exclude
+        them. Without this fix, when no high-confidence entrypoints exist, the
+        connectivity selection picks boundary nodes (high in-degree from imports)
+        instead of first-party code nodes.
+        """
+        # First-party function nodes
+        func_a = make_symbol("processData", path="src/process.js", language="javascript")
+        func_b = make_symbol("loadConfig", path="src/config.js", language="javascript")
+
+        # Boundary node: unresolved external import target
+        boundary = Symbol(
+            id="javascript:lodash:0-0:module:module",
+            name="module",
+            kind="external_symbol",
+            language="javascript",
+            path="<external>",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            meta={"external_boundary": True},
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
+        )
+
+        # Edges: both functions import the boundary node (high in-degree)
+        edge_a = make_edge(func_a.id, boundary.id, edge_type="imports")
+        edge_b = make_edge(func_b.id, boundary.id, edge_type="imports")
+        edge_ab = make_edge(func_a.id, func_b.id, edge_type="calls")
+
+        all_symbols = [func_a, func_b, boundary]
+        all_edges = [edge_a, edge_b, edge_ab]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [func_a, func_b]],  # Full view excludes boundary
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        result_nodes = result["nodes"]
+        # No boundary nodes in output
+        boundary_in_output = [
+            n for n in result_nodes
+            if n.get("kind") == "external_symbol"
+            or (n.get("meta") or {}).get("external_boundary")
+        ]
+        assert len(boundary_in_output) == 0, (
+            f"Boundary nodes should be excluded from tiered output, "
+            f"found {len(boundary_in_output)}: "
+            f"{[n.get('name') for n in boundary_in_output]}"
+        )
+
+        # First-party nodes should be present
+        first_party = [n for n in result_nodes if n.get("supply_chain", {}).get("tier") == 1]
+        assert len(first_party) >= 1, "At least one first-party node should be in tiered output"
+
+
 class TestCrossCuttingEdgeSeeding:
     """Tests for cross-cutting edge endpoint seeding (INV-posun).
 
