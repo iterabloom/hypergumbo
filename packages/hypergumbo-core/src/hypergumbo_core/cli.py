@@ -94,6 +94,7 @@ from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
+from .paths import is_test_node as _is_test_node
 from .compact import (
     CompactConfig,
     format_compact_behavior_map,
@@ -1089,8 +1090,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
             if sym is None:
                 continue  # pragma: no cover - symbol should exist
 
-            # Filter out test files if --exclude-tests
-            if exclude_tests and sym.path and _is_test_path(sym.path):
+            # Filter out test code if --exclude-tests (checks both path and annotations)
+            if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
                 continue
 
             # Filter out entries with tier > max_tier if --max-tier set
@@ -1134,7 +1135,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 sym = symbol_lookup.get(ep.symbol_id)
                 if sym is None:
                     continue  # pragma: no cover
-                if exclude_tests and sym.path and _is_test_path(sym.path):
+                if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
                     continue
                 if max_tier is not None and sym.supply_chain_tier > max_tier:
                     continue

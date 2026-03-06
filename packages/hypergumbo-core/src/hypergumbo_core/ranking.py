@@ -91,7 +91,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .ir import Symbol, Edge
-from .paths import is_test_file
+from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
 
 logger = logging.getLogger(__name__)
@@ -693,11 +693,14 @@ def filter_edges_for_ranking(
     _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
 
     if exclude_test_edges:
-        symbol_path_by_id = {s.id: s.path for s in symbols}
+        symbol_by_id = {s.id: s for s in symbols}
         filtered = [
             e for e in edges
             if e.edge_type in _STRUCTURAL_EDGE_TYPES
-            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
+            or not is_test_node(
+                (symbol_by_id[e.src].path if e.src in symbol_by_id else ''),
+                (symbol_by_id[e.src].meta if e.src in symbol_by_id else None),
+            )
         ]
     else:
         filtered = list(edges)

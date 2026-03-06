@@ -54,9 +54,10 @@ from .ranking import compute_centrality, apply_tier_weights
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,
-    is_test_path as _is_test_path,
+    is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
 )
+from .paths import is_test_node as _is_test_node
 from .selection.language_proportional import (
     allocate_language_budget,
     find_underrepresented_language_seeds,
@@ -1089,7 +1090,10 @@ def select_by_tokens(
     if exclude_non_code:
         eligible_symbols = [s for s in eligible_symbols if s.kind not in EXCLUDED_KINDS]
     if exclude_tests:
-        eligible_symbols = [s for s in eligible_symbols if not _is_test_path(s.path)]
+        eligible_symbols = [
+            s for s in eligible_symbols
+            if not _is_test_node(s.path, s.meta)
+        ]
     if exclude_examples:
         eligible_symbols = [s for s in eligible_symbols if not _is_example_path(s.path)]
 
@@ -1309,7 +1313,7 @@ def format_tiered_behavior_map(
     eligible_symbols = [
         s for s in symbols
         if s.kind not in EXCLUDED_KINDS
-        and not _is_test_path(s.path)
+        and not _is_test_node(s.path, s.meta)
         and not _is_example_path(s.path)
         and not (s.meta and s.meta.get("external_boundary"))
     ]

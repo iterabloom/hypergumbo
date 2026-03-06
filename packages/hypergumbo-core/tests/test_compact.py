@@ -2711,6 +2711,96 @@ class TestTieredTokenBudget:
         first_party = [n for n in result_nodes if n.get("supply_chain", {}).get("tier") == 1]
         assert len(first_party) >= 1, "At least one first-party node should be in tiered output"
 
+    def test_tiered_excludes_cfg_test_annotated_nodes(self):
+        """Symbols with cfg(test) annotation should be excluded from tiered output.
+
+        Rust idiomatically puts test code inside ``#[cfg(test)] mod tests { ... }``
+        within source files (not test files). The Rust analyzer annotates these
+        symbols with cfg(test) in their metadata. The compact view must use
+        ``is_test_node(path, meta)`` (which checks both path and annotations)
+        rather than ``is_test_path(path)`` (path-only), so test infrastructure
+        like ``StubClient::new`` doesn't dominate centrality rankings.
+        """
+        # Production symbols
+        prod_a = make_symbol("CodexAgent::new", path="src/agent.rs", language="rust", kind="method")
+        prod_b = make_symbol("setup", path="src/thread.rs", language="rust", kind="function")
+
+        # Test infrastructure: cfg(test) annotated but in a production file path
+        test_stub = Symbol(
+            id="rust:src/thread.rs:3692-3696:StubClient::new:method",
+            name="StubClient::new",
+            kind="method",
+            language="rust",
+            path="src/thread.rs",
+            span=Span(start_line=3692, end_line=3696, start_col=0, end_col=1),
+            meta={"annotations": [{"name": "cfg", "args": ["test"], "kwargs": {}}]},
+            supply_chain_tier=1,
+        )
+
+        # StubClient::new has high in-degree (called from many tests)
+        edges = [
+            make_edge(f"test_{i}", test_stub.id) for i in range(20)
+        ] + [
+            make_edge(prod_a.id, prod_b.id),
+        ]
+
+        all_symbols = [prod_a, prod_b, test_stub]
+        all_edges = edges
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        result_names = [n["name"] for n in result["nodes"]]
+        # Test stub should NOT appear in output despite high in-degree
+        assert "StubClient::new" not in result_names, (
+            f"cfg(test)-annotated StubClient::new should be excluded from "
+            f"tiered output, but found in: {result_names}"
+        )
+        # Production nodes should be present
+        assert "CodexAgent::new" in result_names or "setup" in result_names, (
+            f"At least one production node should be in tiered output, got: {result_names}"
+        )
+
+    def test_select_by_tokens_excludes_cfg_test_annotated(self):
+        """select_by_tokens should exclude cfg(test) annotated symbols when exclude_tests=True."""
+        prod = make_symbol("handle_request", path="src/server.rs", language="rust")
+        test_helper = Symbol(
+            id="rust:src/server.rs:500-510:make_stub:function",
+            name="make_stub",
+            kind="function",
+            language="rust",
+            path="src/server.rs",  # NOT a test path
+            span=Span(start_line=500, end_line=510, start_col=0, end_col=1),
+            meta={"annotations": [{"name": "cfg", "args": ["test"], "kwargs": {}}]},
+            supply_chain_tier=1,
+        )
+
+        symbols = [prod, test_helper]
+        edges = [make_edge("caller", test_helper.id) for _ in range(10)]
+
+        result = select_by_tokens(
+            symbols, edges,
+            target_tokens=4000,
+            exclude_tests=True,
+            exclude_examples=True,
+            exclude_non_code=True,
+        )
+
+        selected_names = [s.name for s in result.included.symbols]
+        assert "make_stub" not in selected_names, (
+            f"cfg(test)-annotated make_stub should be excluded, got: {selected_names}"
+        )
+        assert "handle_request" in selected_names
+
 
 class TestCrossCuttingEdgeSeeding:
     """Tests for cross-cutting edge endpoint seeding (INV-posun).
