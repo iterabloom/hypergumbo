@@ -2561,12 +2561,26 @@ def _extract_go_routes(
             # Extract handler from the RHS call expression
             right = find_child_by_field(n, "right")
             handler_name: str | None = None
+            handler_field: str | None = None
             if right is not None:
                 for child in right.children:
                     if child.type == "call_expression":
                         func_node = find_child_by_field(child, "function")
                         if func_node:
                             handler_name = node_text(func_node, source)
+                        # Extract handler_field from constructor args:
+                        # alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+                        # The last selector_expression arg whose field ends
+                        # with "Handler" is the handler interface field.
+                        call_args = find_child_by_field(child, "arguments")
+                        if call_args:
+                            for arg in call_args.children:
+                                if arg.type == "selector_expression":
+                                    fld = find_child_by_field(arg, "field")
+                                    if fld:
+                                        fld_text = node_text(fld, source)
+                                        if fld_text.endswith("Handler"):
+                                            handler_field = fld_text
                         break
                     elif child.type in ("identifier", "selector_expression"):
                         handler_name = node_text(child, source)
@@ -2578,6 +2592,14 @@ def _extract_go_routes(
             normalized_method = method_str.upper()
             start_line = n.start_point[0] + 1
             end_line = n.end_point[0] + 1
+
+            meta: dict[str, str] = {
+                "route_path": route_path,
+                "http_method": normalized_method,
+                "handler_name": handler_name,
+            }
+            if handler_field:
+                meta["handler_field"] = handler_field
 
             route_sym = Symbol(
                 id=make_symbol_id(
@@ -2597,15 +2619,103 @@ def _extract_go_routes(
                 ),
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                meta={
-                    "route_path": route_path,
-                    "http_method": normalized_method,
-                    "handler_name": handler_name,
-                },
+                meta=meta,
             )
             routes.append(route_sym)
 
     return (routes, mount_edges)
+
+
+def _extract_go_swagger_wiring(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract go-swagger handler wiring from assignment statements.
+
+    Detects the pattern where a go-swagger typed handler interface field is
+    assigned a HandlerFunc wrapper around the actual implementation method::
+
+        openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    AST structure::
+
+        assignment_statement
+          left: expression_list
+            selector_expression     <- openAPI.AlertGetAlertsHandler
+          right: expression_list
+            call_expression         <- alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    The call's function name must end with ``HandlerFunc`` to match.  The
+    first non-context argument to the call is the actual handler implementation.
+
+    Returns:
+        Mapping from handler field name (e.g. ``AlertGetAlertsHandler``) to
+        the actual handler implementation name (e.g. ``api.getAlertsHandler``).
+    """
+    wiring: dict[str, str] = {}
+
+    for n in iter_tree(node):
+        if n.type != "assignment_statement":
+            continue
+
+        # LHS: selector_expression with field ending in "Handler"
+        left = find_child_by_field(n, "left")
+        if left is None:  # pragma: no cover - tree-sitter guarantees left field
+            continue
+
+        lhs_selector = None
+        for child in left.children:
+            if child.type == "selector_expression":
+                lhs_selector = child
+                break
+        if lhs_selector is None:
+            continue
+
+        lhs_field = find_child_by_field(lhs_selector, "field")
+        if lhs_field is None:  # pragma: no cover - structural
+            continue
+        field_name = node_text(lhs_field, source)
+        if not field_name.endswith("Handler"):
+            continue
+
+        # RHS: call_expression whose function ends with "HandlerFunc"
+        right = find_child_by_field(n, "right")
+        if right is None:  # pragma: no cover - tree-sitter guarantees right field
+            continue
+
+        call_expr = None
+        for child in right.children:
+            if child.type == "call_expression":
+                call_expr = child
+                break
+        if call_expr is None:  # pragma: no cover - structural
+            continue
+
+        func_node = find_child_by_field(call_expr, "function")
+        if func_node is None:  # pragma: no cover - structural
+            continue
+        func_name = node_text(func_node, source)
+        if not func_name.endswith("HandlerFunc"):
+            continue
+
+        # Extract the actual handler from the call args — last non-literal
+        # argument (skip context params which are typically identifiers
+        # matching "ctx" or "context").
+        call_args = find_child_by_field(call_expr, "arguments")
+        if call_args is None:  # pragma: no cover - structural
+            continue
+
+        impl_name: str | None = None
+        for arg in call_args.children:
+            if arg.type in ("(", ")", ","):
+                continue
+            if arg.type in ("selector_expression", "identifier"):
+                impl_name = node_text(arg, source)
+
+        if impl_name:
+            wiring[field_name] = impl_name
+
+    return wiring
 
 
 def _extract_go_usage_contexts(
@@ -2831,6 +2941,9 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
+    all_route_syms: list[Symbol] = []
+    # go-swagger handler wiring: field name -> impl name (cross-file)
+    handler_wiring: dict[str, str] = {}
 
     for go_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -2850,8 +2963,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                 tree.root_node, source, go_file, run,
                 local_symbols=analysis.symbol_by_name,
             )
-            all_symbols.extend(route_syms)
+            all_route_syms.extend(route_syms)
             all_edges.extend(route_mount_edges)
+
+            # Extract go-swagger handler wiring (field -> implementation)
+            wiring = _extract_go_swagger_wiring(tree.root_node, source)
+            handler_wiring.update(wiring)
 
             # Extract usage contexts for YAML pattern matching (v1.1.x)
             usage_contexts = _extract_go_usage_contexts(
@@ -2860,6 +2977,19 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
+
+    # Post-process: resolve go-swagger handler wiring across files.
+    # Routes from the handler cache have handler_field metadata (e.g.
+    # "AlertGetAlertsHandler").  The wiring mapping connects those field
+    # names to actual implementation methods (e.g. "api.getAlertsHandler").
+    if handler_wiring:
+        for route in all_route_syms:
+            field = (route.meta or {}).get("handler_field")
+            if field and field in handler_wiring:
+                route.meta["handler_name"] = handler_wiring[field]
+                route.name = handler_wiring[field]
+
+    all_symbols.extend(all_route_syms)
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped

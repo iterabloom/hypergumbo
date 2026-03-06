@@ -1723,6 +1723,126 @@ func (o *API) initHandlerCache() {
         assert len(routes) == 0
 
 
+class TestGoSwaggerHandlerWiring:
+    """Tests for go-swagger handler wiring pattern detection.
+
+    go-swagger generates handler wiring in a separate file from route registration.
+    The wiring pattern assigns typed handler funcs to handler interface fields:
+        openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    When the handler cache route has a handler_field matching the wiring's field name,
+    the route's handler_name should be updated to the actual implementation.
+    """
+
+    def test_handler_cache_extracts_handler_field(self, tmp_path: Path) -> None:
+        """Handler cache extraction stores handler_field from constructor args."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta.get("handler_field") == "AlertGetAlertsHandler"
+
+    def test_handler_wiring_resolves_handler_name(self, tmp_path: Path) -> None:
+        """Handler wiring in separate file updates route handler_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: handler cache (route registration)
+        ops_dir = tmp_path / "operations"
+        ops_dir.mkdir()
+        (ops_dir / "api.go").write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+    o.handlers["POST"]["/alerts"] = alert.NewPostAlerts(o.context, o.AlertPostAlertsHandler)
+}
+""")
+
+        # File 2: handler wiring (connects interface field to implementation)
+        (tmp_path / "api.go").write_text("""
+package api
+
+func NewAPI(openAPI *operations.API) *API {
+    api := &API{}
+    openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+    openAPI.AlertPostAlertsHandler = alert_ops.PostAlertsHandlerFunc(api.postAlertsHandler)
+    return api
+}
+
+func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Responder {
+    return nil
+}
+
+func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.Responder {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 2
+
+        get_alerts = next(r for r in routes if r.meta["http_method"] == "GET")
+        post_alerts = next(r for r in routes if r.meta["http_method"] == "POST")
+
+        # handler_name should be updated to actual implementation
+        assert get_alerts.meta["handler_name"] == "api.getAlertsHandler"
+        assert post_alerts.meta["handler_name"] == "api.postAlertsHandler"
+
+    def test_handler_wiring_no_match_keeps_original(self, tmp_path: Path) -> None:
+        """Routes without matching wiring keep their original handler_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/health"] = NewHealthCheck(o.context, o.HealthHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        # No wiring pattern in this file, so handler_name stays as constructor
+        assert routes[0].meta["handler_name"] == "NewHealthCheck"
+
+    def test_handler_wiring_ignores_non_handler_func_assignments(self, tmp_path: Path) -> None:
+        """Assignments that don't match HandlerFunc pattern are ignored."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package api
+
+func setup(o *API) {
+    o.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+    o.SomeField = someValue
+    o.Config = loadConfig()
+    o.ErrorHandler = errors.NewErrorProcessor(api.handleError)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        # No routes should be created from wiring-only code
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+
 class TestGoSignatureExtraction:
     """Tests for extracting function signatures from Go code."""
 

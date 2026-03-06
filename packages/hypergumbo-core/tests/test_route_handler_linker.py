@@ -1439,6 +1439,49 @@ class TestGoRouteHandlerLinking:
         assert edge.src == route.id
         assert edge.dst == handler.id
 
+    def test_go_swagger_wired_handler_linking(self) -> None:
+        """Go-swagger route with wired handler_name resolves via suffix match.
+
+        After go-swagger handler wiring, routes have handler_name like
+        "api.getAlertsHandler" which should resolve to "API.getAlertsHandler"
+        method symbols via suffix matching on ".getAlertsHandler".
+        """
+        route = Symbol(
+            id="go:/api/v2/restapi/operations/api.go:377-377:GET /alerts:route",
+            name="api.getAlertsHandler",
+            kind="route",
+            language="go",
+            path="/api/v2/restapi/operations/api.go",
+            span=Span(start_line=377, end_line=377, start_col=0, end_col=80),
+            meta={
+                "http_method": "GET",
+                "route_path": "/alerts",
+                "handler_name": "api.getAlertsHandler",
+                "handler_field": "AlertGetAlertsHandler",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="go:/api/v2/api.go:150-165:API.getAlertsHandler:method",
+            name="API.getAlertsHandler",
+            kind="method",
+            language="go",
+            path="/api/v2/api.go",
+            span=Span(start_line=150, end_line=165, start_col=0, end_col=1),
+            meta={"class": "API"},
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == route.id
+        assert result.edges[0].dst == handler.id
+        assert result.edges[0].edge_type == "routes_to"
+
     def test_go_handler_no_match(self) -> None:
         """Go routes with handler_name that doesn't match any function."""
         route = Symbol(
