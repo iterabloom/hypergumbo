@@ -39,3 +39,10 @@
   clock: 4  # 3791
   nonce: '3791'  # 3791
   message: "I would say this should apply for any PR created more than 6 hours ago, and leave CI status out of the filter, for simplicity. the way we determine whether CI has passed, failed, is pending, or has gone off the reservation and invented a new genre of young adult Magic Schoolbus fan fiction, is delicate and nuanced so be careful. rebasing probably will be needed here because the repo is set up to not allow merges of PRs that are out-of-date."  # 3791
+- op: discuss  # e6f9
+  at: '2026-03-06T07:36:18Z'  # e6f9
+  by: agent  # e6f9
+  actor: jgstern_agent  # e6f9
+  clock: 5  # e6f9
+  nonce: e6f9  # e6f9
+  message: "Understood. Filter: any PR older than 6 hours, regardless of CI status. Rebase will be needed since repo requires up-to-date PRs. Will be careful with CI status detection — keep it simple."  # e6f9
