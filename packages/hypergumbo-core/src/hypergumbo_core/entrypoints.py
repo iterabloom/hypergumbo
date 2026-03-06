@@ -899,6 +899,13 @@ def detect_entrypoints(
         if ep.kind in _SEMANTIC_KINDS:
             sym = symbol_lookup.get(ep.symbol_id)
             if sym and sym.language:
+                # Skip entrypoints from example/utility files — these are
+                # demonstration code, not real application entrypoints that
+                # should trigger library_export demotion.  Fixes the
+                # "livekit problem": example HTTP routes in examples/rpc/
+                # were demoting core library exports like Room.
+                if sym.path and is_utility_file(sym.path):
+                    continue
                 langs_with_semantic.add(sym.language)
     if langs_with_semantic:
         for ep in unique_entrypoints:

@@ -3004,6 +3004,40 @@ class TestApplicationLibraryExportDemotion:
             )
 
 
+    def test_example_routes_dont_trigger_library_export_demotion(self) -> None:
+        """Routes from example/ directories should not trigger library_export demotion.
+
+        Library repos like livekit client-sdk-js have example code with HTTP
+        routes (e.g., examples/rpc/api.ts) that are NOT real application
+        entrypoints. These example routes should not cause library_export
+        entries (e.g., Room class) to be demoted.
+        """
+        # Library export: the core class
+        lib_export = make_symbol(
+            "Room", path="src/room/Room.ts", kind="class",
+            language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # Example route: exists in examples/ directory
+        example_route = make_symbol(
+            "getToken", path="examples/rpc/api.ts", kind="function",
+            language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/api/get-token", "method": "POST"}]},
+        )
+        nodes = [lib_export, example_route]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) >= 1, (
+            "Library export should survive when only example routes exist"
+        )
+        assert export_eps[0].confidence >= 0.50, (
+            f"Library export confidence {export_eps[0].confidence:.2f} too low — "
+            f"example routes should not trigger demotion"
+        )
+
+
 class TestDeclarationDedup:
     """Tests for deduplication of declaration vs definition entrypoints."""
 
