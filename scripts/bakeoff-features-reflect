@@ -183,6 +183,13 @@ developer_assessment:
   confidence: HIGH | MEDIUM | LOW
   trajectory: IMPROVING | STABLE | REGRESSING | FIRST_ASSESSMENT
 
+  dimension_scores:
+    slice_quality: <1-5>
+    reverse_slice_quality: <1-5>
+    tier_classification: <1-5>
+    entrypoint_detection: <1-5>
+    symbol_ranking: <1-5>
+
   improvement_ideas:
     - "specific, actionable suggestion 1"
     - "specific, actionable suggestion 2"
@@ -193,6 +200,18 @@ developer_assessment:
 
 Be specific and concrete. Reference actual files and functions from the repo.
 Focus on practical utility, not theoretical correctness.
+
+## IMPORTANT: Verify Negative Claims
+
+Before claiming "X is missing" or "no Y edges exist", verify by examining the hg.json
+data directly. Common false claims from prior assessments include:
+- "No cross-file call edges" — Check edge counts by comparing src/dst file paths
+- "No trait/interface implementation edges" — Search for edge type "implements"
+- "No tier classification" — Check node.supply_chain.tier (NOT node.supply_chain_tier)
+- "Forward slice is empty" — Verify the slice file has 0 edges, not just few
+
+Do NOT make absolute claims ("X doesn't exist") based on sampling a few artifacts.
+If you didn't check hg.json, say "I didn't verify this in the full graph."
 """
 
 PRIOR_CONTEXT_TEMPLATE = """
