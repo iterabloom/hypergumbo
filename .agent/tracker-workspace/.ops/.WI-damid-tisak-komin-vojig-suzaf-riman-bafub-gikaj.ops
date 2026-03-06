@@ -18,3 +18,18 @@
     pr_ref:  # 935f
     description: "Bakeoff convergence in stop hook shows metrics but doesn't suggest next actions. Should recommend: which repos to investigate, which signals are trending, whether to run another cohort."  # 935f
     fields: {}  # 935f
+- op: update  # 2a6a
+  at: '2026-03-06T05:44:27Z'  # 2a6a
+  by: agent  # 2a6a
+  actor: jgstern_agent  # 2a6a
+  clock: 2  # 2a6a
+  nonce: 2a6a  # 2a6a
+  set:  # 2a6a
+    status: needs_human_review  # 2a6a
+- op: discuss  # d38f
+  at: '2026-03-06T05:44:27Z'  # d38f
+  by: agent  # d38f
+  actor: jgstern_agent  # d38f
+  clock: 3  # d38f
+  nonce: d38f  # d38f
+  message: "Governance file (.agent/hooks/_shared/stop_logic.sh). Proposed change: when bakeoff convergence shows NEEDS_WORK, include specific next-step commands (diagnose, issues, run, reflect) differentiated by BROAD vs DEEP session type. Current output just says 'Consider investigating'. Requesting approval."  # d38f
