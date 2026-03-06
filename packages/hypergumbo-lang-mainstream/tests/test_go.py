@@ -5132,3 +5132,132 @@ func (h *EchoHandler) Handle(req string) string {
             f"Should have dispatches_to edge from Handler.Handle to EchoHandler.Handle; "
             f"got edges: {[(e.src, e.dst, e.edge_type) for e in hierarchy_result.edges]}"
         )
+
+
+class TestGoStructFieldTypePopulation:
+    """Tests that Go struct analysis populates class_field_types."""
+
+    @staticmethod
+    def _parse_file(tmp_path: Path, source: str):
+        from hypergumbo_lang_mainstream.go import (
+            _extract_symbols_from_file,
+            is_go_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        if not is_go_tree_sitter_available():
+            pytest.skip("tree-sitter-go not available")
+
+        import tree_sitter_go
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_go.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text(source)
+        return _extract_symbols_from_file(go_file, parser, run)
+
+    def test_populates_class_field_types_basic(self, tmp_path: Path) -> None:
+        """Named struct fields produce class_field_types entries."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Integration struct {
+    Name string
+}
+
+type RetryStage struct {
+    integration Integration
+    metrics     *Metrics
+}
+
+type Metrics struct {
+    counter int
+}
+""")
+        # RetryStage should have integration→Integration and metrics→Metrics
+        assert "RetryStage" in result.class_field_types
+        fields = result.class_field_types["RetryStage"]
+        assert fields["integration"] == "Integration"
+        assert fields["metrics"] == "Metrics"
+
+    def test_excludes_builtin_types(self, tmp_path: Path) -> None:
+        """Built-in types (string, int, bool, error) are excluded."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Config struct {
+    name    string
+    count   int
+    enabled bool
+    err     error
+    handler Handler
+}
+
+type Handler struct{}
+""")
+        fields = result.class_field_types.get("Config", {})
+        # Only handler should be present (non-builtin)
+        assert fields == {"handler": "Handler"}
+
+    def test_qualified_type_uses_unqualified_name(self, tmp_path: Path) -> None:
+        """pkg.Type fields use the unqualified type name."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+import "net/http"
+
+type Server struct {
+    client http.Client
+}
+""")
+        fields = result.class_field_types.get("Server", {})
+        assert fields.get("client") == "Client"
+
+    def test_pointer_to_qualified_type(self, tmp_path: Path) -> None:
+        """*pkg.Type fields unwrap pointer and extract unqualified name."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+import "net/http"
+
+type Server struct {
+    client *http.Client
+}
+""")
+        fields = result.class_field_types.get("Server", {})
+        assert fields.get("client") == "Client"
+
+    def test_embedding_excluded(self, tmp_path: Path) -> None:
+        """Embedded types (no field name) are not included in class_field_types."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Base struct{}
+
+type Child struct {
+    Base
+    handler Handler
+}
+
+type Handler struct{}
+""")
+        fields = result.class_field_types.get("Child", {})
+        # Base is embedded (no name), should not appear; handler should
+        assert "Base" not in fields
+        assert fields == {"handler": "Handler"}
+
+    def test_only_builtins_produces_empty(self, tmp_path: Path) -> None:
+        """Struct with only builtin-typed fields produces no class_field_types entry."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Config struct {
+    name    string
+    count   int
+    enabled bool
+}
+""")
+        assert "Config" not in result.class_field_types

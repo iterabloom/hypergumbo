@@ -500,6 +500,74 @@ def _extract_struct_embeddings(
     return embedded
 
 
+def _extract_struct_field_types(
+    struct_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract named field-to-type mappings from a Go struct definition.
+
+    Scans field_declaration children for named fields (those with an explicit
+    field name, excluding embeddings).  Returns ``{field_name: type_name}``.
+
+    Recognised type forms::
+
+        integration Integration      → integration: Integration
+        metrics     *Metrics         → metrics: Metrics
+        cache       pkg.Cache        → cache: Cache (unqualified)
+        data        map[string]int   → (skipped, not a named type)
+
+    Built-in types (string, int, bool, error, etc.) are excluded because
+    they don't correspond to user-defined methods and would create noise
+    in chained-access resolution.
+    """
+    _GO_BUILTINS = frozenset({
+        "string", "int", "int8", "int16", "int32", "int64",
+        "uint", "uint8", "uint16", "uint32", "uint64",
+        "float32", "float64", "complex64", "complex128",
+        "bool", "byte", "rune", "error", "any",
+    })
+    field_types: dict[str, str] = {}
+    field_list = find_child_by_type(struct_type_node, "field_declaration_list")
+    if field_list is None:  # pragma: no cover
+        return field_types
+
+    for field in field_list.children:
+        if field.type != "field_declaration":
+            continue
+
+        name_node = find_child_by_field(field, "name")
+        type_child = find_child_by_field(field, "type")
+        if name_node is None or type_child is None:
+            continue
+
+        field_name = node_text(name_node, source)
+
+        # Unwrap pointer types: *Metrics → Metrics
+        actual_type = type_child
+        if actual_type.type == "pointer_type":
+            inner = find_child_by_type(actual_type, "type_identifier")
+            if inner is None:
+                # *pkg.Type or *map[...]... — try qualified_type
+                inner = find_child_by_type(actual_type, "qualified_type")
+            if inner is not None:
+                actual_type = inner
+
+        # Extract type name from type_identifier or qualified_type
+        if actual_type.type == "type_identifier":
+            type_name = node_text(actual_type, source)
+            if type_name not in _GO_BUILTINS:
+                field_types[field_name] = type_name
+        elif actual_type.type == "qualified_type":
+            # pkg.Type → use the unqualified type name
+            tid = find_child_by_type(actual_type, "type_identifier")
+            if tid:
+                type_name = node_text(tid, source)
+                if type_name not in _GO_BUILTINS:
+                    field_types[field_name] = type_name
+
+    return field_types
+
+
 def _extract_embedding_type_name(
     type_node: "tree_sitter.Node",
     source: bytes,
@@ -926,6 +994,14 @@ def _extract_symbols_from_file(
                             embedded_types = _extract_struct_embeddings(
                                 type_node, source,
                             )
+                            # Extract field name→type mappings for chained
+                            # field access resolution (e.g., r.integration.Notify()
+                            # → Integration.Notify when integration is type Integration).
+                            field_types = _extract_struct_field_types(
+                                type_node, source,
+                            )
+                            if field_types:
+                                analysis.class_field_types[type_name] = field_types
 
                         symbol = Symbol(
                             id=make_symbol_id("go", str(file_path), start_line, end_line, type_name, kind),
