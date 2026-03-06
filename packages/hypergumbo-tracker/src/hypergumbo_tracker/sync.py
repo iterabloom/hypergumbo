@@ -218,6 +218,7 @@ def _git(
     repo_root: Path,
     *args: str,
     check: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command and return the result.
 
@@ -227,16 +228,21 @@ def _git(
         repo_root: Working directory for the git command.
         *args: Git subcommand and arguments.
         check: If True, raise CalledProcessError on non-zero exit.
+        env: Extra environment variables merged with os.environ.
 
     Returns:
         CompletedProcess with stdout/stderr captured as text.
     """
+    run_env = None
+    if env is not None:
+        run_env = {**os.environ, **env}
     return subprocess.run(  # noqa: S603  # nosec B603, B607
         ["git", *args],  # noqa: S607
         capture_output=True,
         text=True,
         cwd=str(repo_root),
         check=check,
+        env=run_env,
     )
 
 
@@ -756,10 +762,12 @@ def do_sync(
     ci_poll_interval: int = 10,
     ci_timeout: int = 300,
 ) -> SyncResult:
-    """Execute the full sync workflow: branch → commit → push → poll → merge.
+    """Execute the full sync workflow: commit → push → poll → merge.
 
-    Uses try/finally to ensure gate file cleanup and branch restoration
-    regardless of errors or timeouts.
+    Uses git plumbing (read-tree/write-tree/commit-tree) with a temporary
+    index to build the sync commit on top of origin/dev without checking
+    out a branch.  This prevents feature branch code from leaking into the
+    tracker sync PR.  try/finally ensures gate file and temp index cleanup.
 
     Args:
         repo_root: Git repository root.
@@ -778,44 +786,107 @@ def do_sync(
     sync_branch = f"tracker-sync/{timestamp}"
     gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
     file_count = len(preflight.changed_files)
-    committed = False  # Track whether ops were committed on sync branch
-    sync_succeeded = False
+
+    # Temporary index file for plumbing — avoids checkout, keeps working
+    # tree on the feature branch.  Build the commit on top of origin/dev
+    # so the PR diff contains *only* tracker ops, not feature branch code.
+    tmp_index = str(preflight.git_dir / "tmp-sync-index")
+    idx_env = {"GIT_INDEX_FILE": tmp_index}
 
     try:
-        # 1. Create branch
-        result = _git(repo_root, "checkout", "-b", sync_branch, check=False)
-        if result.returncode != 0:
+        # 0. Fetch latest base branch (non-fatal if offline — we'll use
+        #    the local ref which may be slightly stale but still correct).
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
+
+        # 1. Resolve base ref
+        base_ref = f"{preflight.push_remote}/{base_branch}"
+        rev_result = _git(
+            repo_root, "rev-parse", base_ref, check=False,
+        )
+        if rev_result.returncode != 0:
             return SyncResult(
                 success=False,
-                error=f"failed to create branch {sync_branch}: {result.stderr.strip()}",
+                error=f"cannot resolve {base_ref}: {rev_result.stderr.strip()}",
+                exit_code=1,
+            )
+        base_sha = rev_result.stdout.strip()
+
+        # 2. Populate temporary index from base tree
+        read_result = _git(
+            repo_root, "read-tree", base_sha,
+            check=False, env=idx_env,
+        )
+        if read_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"read-tree failed: {read_result.stderr.strip()}",
                 exit_code=1,
             )
 
-        # 2. Stage tracker files
+        # 3. Stage tracker ops into the temporary index
         stage_args = ["add", "--"]
         stage_args.extend(_TRACKER_PATHS)
-        _git(repo_root, *stage_args, check=False)
+        _git(repo_root, *stage_args, check=False, env=idx_env)
 
-        # 3. Commit with sign-off (disable GPG signing — tracker commits
-        # are machine-generated metadata, not code changes)
-        commit_msg = f"tracker: sync {file_count} file(s)"
+        # 4. Write tree from the temporary index
+        write_result = _git(
+            repo_root, "write-tree",
+            check=False, env=idx_env,
+        )
+        if write_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"write-tree failed: {write_result.stderr.strip()}",
+                exit_code=1,
+            )
+        tree_sha = write_result.stdout.strip()
+
+        # 5. Build sign-off trailer (mirrors git commit -s)
+        name_r = _git(repo_root, "config", "user.name", check=False)
+        email_r = _git(repo_root, "config", "user.email", check=False)
+        signoff = ""
+        if name_r.returncode == 0 and email_r.returncode == 0:
+            signoff = (
+                f"\n\nSigned-off-by: "
+                f"{name_r.stdout.strip()} <{email_r.stdout.strip()}>"
+            )
+
+        # 6. Create commit object (parent = base_sha)
+        commit_msg = f"tracker: sync {file_count} file(s){signoff}"
         commit_result = _git(
-            repo_root, "-c", "commit.gpgSign=false",
-            "commit", "-s", "-m", commit_msg, check=False
+            repo_root,
+            "-c", "commit.gpgSign=false",
+            "commit-tree", tree_sha, "-p", base_sha, "-m", commit_msg,
+            check=False,
         )
         if commit_result.returncode != 0:
             return SyncResult(
                 success=False,
-                error=f"commit failed: {commit_result.stderr.strip()}",
+                error=f"commit-tree failed: {commit_result.stderr.strip()}",
                 exit_code=1,
             )
-        committed = True
+        commit_sha = commit_result.stdout.strip()
+        # 7. Create branch ref pointing to the new commit
+        ref_name = f"refs/heads/{sync_branch}"
+        ref_result = _git(
+            repo_root, "update-ref", ref_name, commit_sha,
+            check=False,
+        )
+        if ref_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"update-ref failed: {ref_result.stderr.strip()}",
+                exit_code=1,
+            )
 
-        # 4. Create gate file
+        # 8. Create gate file
         gate_file.write_text("sync\n")
 
-        # 5. Push with retries
-        push_ref = f"HEAD:refs/for/{base_branch}/{sync_branch}"
+        # 9. Push with retries
+        push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
         push_title = f"tracker: sync {file_count} file(s)"
         push_success = False
         cred_helper = (
@@ -845,7 +916,7 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 6. Find PR (with brief initial delay)
+        # 10. Find PR (with brief initial delay)
         time.sleep(2)
         pr_info = _find_open_pr(
             preflight.api_base,
@@ -861,10 +932,10 @@ def do_sync(
             )
         pr_num, head_sha = pr_info
 
-        # 7. Update gate file with PR number
+        # 11. Update gate file with PR number
         gate_file.write_text(f"{pr_num}\n")
 
-        # 8. Poll CI
+        # 12. Poll CI
         ci_result = _poll_ci(
             preflight.api_base,
             preflight.forgejo_token,
@@ -887,7 +958,7 @@ def do_sync(
                 exit_code=2,
             )
 
-        # 9. Merge PR (with retries for status check propagation)
+        # 13. Merge PR (with retries for status check propagation)
         # After CI passes, the required commit status may take a few
         # seconds to propagate.  Retry the merge cascade on 405 responses.
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
@@ -920,7 +991,6 @@ def do_sync(
         base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
         pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
-        sync_succeeded = True
         return SyncResult(
             success=True,
             pr_number=pr_num,
@@ -930,26 +1000,19 @@ def do_sync(
         )
 
     finally:
-        # 10. Cleanup
+        # Cleanup — plumbing approach never leaves the original branch,
+        # so ops files remain in the working tree regardless of outcome.
         # Remove gate file
         if gate_file.exists():
             gate_file.unlink()
 
-        # Restore original branch
-        _git(repo_root, "checkout", preflight.original_branch, check=False)
-
-        # If sync failed but ops were committed on the sync branch,
-        # restore them to the working tree before deleting the branch.
-        # Without this, checking out the original branch discards the
-        # committed ops changes, and deleting the sync branch orphans
-        # the commit — causing data loss.
-        if committed and not sync_succeeded:
-            restore_args = ["checkout", sync_branch, "--"]
-            restore_args.extend(_TRACKER_PATHS)
-            _git(repo_root, *restore_args, check=False)
+        # Remove temporary index file
+        tmp_index_path = Path(tmp_index)
+        if tmp_index_path.exists():
+            tmp_index_path.unlink()
 
         # Pull latest (non-fatal)
         _git(repo_root, "pull", preflight.push_remote, base_branch, check=False)
 
-        # Delete sync branch (non-fatal)
+        # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)

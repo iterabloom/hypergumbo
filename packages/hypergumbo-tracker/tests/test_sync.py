@@ -121,6 +121,15 @@ class TestGit:
         # tmp_path is not a git repo, so this fails
         assert result.returncode != 0
 
+    def test_git_with_env(self, tmp_path: Path) -> None:
+        """Verify env parameter merges with os.environ."""
+        result = _git(
+            tmp_path, "version", check=False,
+            env={"MY_TEST_VAR": "hello"},
+        )
+        assert result.returncode == 0
+        assert "git version" in result.stdout
+
 
 # ---------------------------------------------------------------------------
 # TestLoadEnv
@@ -1494,7 +1503,36 @@ class TestPreflightCheck:
 
 
 class TestDoSync:
-    """Tests for do_sync — full workflow with all externals mocked."""
+    """Tests for do_sync — full workflow with all externals mocked.
+
+    The plumbing call sequence is:
+      fetch, rev-parse, read-tree, add, write-tree,
+      config user.name, config user.email, commit-tree, update-ref,
+      push, ..., pull, branch -D
+    """
+
+    @staticmethod
+    def _plumbing_setup() -> list[Any]:
+        """Return git mock side_effect entries for the 9 plumbing setup calls."""
+        return [
+            _make_completed_process(),                       # fetch
+            _make_completed_process(stdout="abc123\n"),       # rev-parse
+            _make_completed_process(),                       # read-tree
+            _make_completed_process(),                       # add
+            _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(stdout="Test User\n"),    # config user.name
+            _make_completed_process(stdout="t@e.com\n"),      # config user.email
+            _make_completed_process(stdout="commit789\n"),    # commit-tree
+            _make_completed_process(),                       # update-ref
+        ]
+
+    @staticmethod
+    def _cleanup() -> list[Any]:
+        """Return git mock side_effect entries for the 2 cleanup calls."""
+        return [
+            _make_completed_process(),  # pull
+            _make_completed_process(),  # branch -D
+        ]
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -1514,8 +1552,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        # Git calls: checkout -b, add, commit, push, checkout, pull, branch -D
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "success"
         mock_merge.return_value = True
@@ -1530,6 +1571,8 @@ class TestDoSync:
 
         # Gate file should be cleaned up
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()
+        # Temp index should be cleaned up
+        assert not (tmp_path / ".git" / "tmp-sync-index").exists()
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -1550,7 +1593,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "success"
         mock_merge.return_value = True
@@ -1558,16 +1605,16 @@ class TestDoSync:
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert result.success
 
-        # Find the commit call (3rd git call: checkout -b, add, commit)
-        commit_call = mock_git.call_args_list[2]
+        # Find the commit-tree call (8th git call, index 7)
+        commit_call = mock_git.call_args_list[7]
         commit_args = commit_call[0]  # positional args
-        # Should include -c commit.gpgSign=false before "commit"
+        # Should include -c commit.gpgSign=false before "commit-tree"
         assert "-c" in commit_args
         assert "commit.gpgSign=false" in commit_args
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
-    def test_branch_creation_failure(
+    def test_rev_parse_failure(
         self,
         mock_git: MagicMock,
         mock_time: MagicMock,
@@ -1577,23 +1624,21 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        # checkout -b fails, then cleanup calls
         mock_git.side_effect = [
+            _make_completed_process(),  # fetch
             _make_completed_process(
-                returncode=1, stderr="branch exists"
-            ),  # checkout -b
-            _make_completed_process(),  # cleanup: checkout original
-            _make_completed_process(),  # cleanup: pull
-            _make_completed_process(),  # cleanup: branch -D
+                returncode=1, stderr="unknown revision"
+            ),  # rev-parse fails
+            *self._cleanup(),
         ]
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert not result.success
-        assert "branch" in result.error.lower()
+        assert "cannot resolve" in result.error
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
-    def test_commit_failure(
+    def test_commit_tree_failure(
         self,
         mock_git: MagicMock,
         mock_time: MagicMock,
@@ -1604,19 +1649,22 @@ class TestDoSync:
         pre = _make_preflight(tmp_path)
 
         mock_git.side_effect = [
-            _make_completed_process(),  # checkout -b
-            _make_completed_process(),  # add
+            _make_completed_process(),                       # fetch
+            _make_completed_process(stdout="abc123\n"),       # rev-parse
+            _make_completed_process(),                       # read-tree
+            _make_completed_process(),                       # add
+            _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(stdout="Test User\n"),    # config user.name
+            _make_completed_process(stdout="t@e.com\n"),      # config user.email
             _make_completed_process(
-                returncode=1, stderr="nothing to commit"
-            ),  # commit
-            _make_completed_process(),  # cleanup: checkout
-            _make_completed_process(),  # cleanup: pull
-            _make_completed_process(),  # cleanup: branch -D
+                returncode=1, stderr="bad tree object"
+            ),  # commit-tree fails
+            *self._cleanup(),
         ]
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert not result.success
-        assert "commit failed" in result.error
+        assert "commit-tree failed" in result.error
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
@@ -1631,18 +1679,12 @@ class TestDoSync:
         pre = _make_preflight(tmp_path)
 
         mock_git.side_effect = [
-            _make_completed_process(),  # checkout -b
-            _make_completed_process(),  # add
-            _make_completed_process(),  # commit
+            *self._plumbing_setup(),
             # 3 push failures
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
-            # cleanup: checkout original, restore ops, pull, branch -D
-            _make_completed_process(),
-            _make_completed_process(),
-            _make_completed_process(),
-            _make_completed_process(),
+            *self._cleanup(),
         ]
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
@@ -1663,7 +1705,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = None
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
@@ -1686,7 +1732,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "failure"
 
@@ -1711,7 +1761,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "timeout"
 
@@ -1740,7 +1794,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "success"
         mock_merge.return_value = False
@@ -1770,7 +1828,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "success"
         # Fail twice, succeed on third attempt
@@ -1800,7 +1862,11 @@ class TestDoSync:
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
 
-        mock_git.return_value = _make_completed_process()
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "failure"
 
@@ -1810,101 +1876,44 @@ class TestDoSync:
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
-    def test_push_failure_restores_ops_to_working_tree(
+    def test_push_failure_no_branch_restore_needed(
         self,
         mock_git: MagicMock,
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """When push fails, ops files must be restored to the working tree.
+        """With plumbing approach, push failure needs no ops restore.
 
-        After commit on the sync branch and push failure, checkout back to
-        the original branch would discard the committed ops changes.  The
-        finally block must restore them from the sync branch before deleting
-        it.
+        Unlike the old checkout-based approach, the plumbing approach never
+        leaves the original branch, so ops files remain in the working tree.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
-        sync_branch = "tracker-sync/20260218-120000"
 
         mock_git.side_effect = [
-            _make_completed_process(),  # checkout -b
-            _make_completed_process(),  # add
-            _make_completed_process(),  # commit
+            *self._plumbing_setup(),
             # 3 push failures
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
             _make_completed_process(returncode=1),
-            # cleanup: checkout original branch
-            _make_completed_process(),
-            # cleanup: restore ops from sync branch
-            _make_completed_process(),
-            # cleanup: pull
-            _make_completed_process(),
-            # cleanup: branch -D
-            _make_completed_process(),
+            *self._cleanup(),
         ]
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert not result.success
         assert "push failed" in result.error
 
-        # Verify that ops files were restored from the sync branch
-        # before the branch was deleted.  The restore call should be
-        # `git checkout <sync_branch> -- .agent/tracker/.ops/ ...`
+        # Verify no checkout calls (plumbing never switches branches)
         all_calls = mock_git.call_args_list
-        # Find the restore call (after checkout original, before branch -D)
-        restore_calls = [
+        checkout_calls = [
             c for c in all_calls
-            if len(c[0]) >= 4
-            and c[0][1] == "checkout"
-            and c[0][2] == sync_branch
-            and c[0][3] == "--"
+            if len(c[0]) >= 2 and c[0][1] == "checkout"
         ]
-        assert len(restore_calls) == 1, (
-            f"Expected exactly 1 ops-restore call, got {len(restore_calls)}. "
+        assert len(checkout_calls) == 0, (
+            f"Expected no checkout calls, got {len(checkout_calls)}. "
             f"All calls: {[c[0] for c in all_calls]}"
         )
-
-    @patch("hypergumbo_tracker.sync.time")
-    @patch("hypergumbo_tracker.sync._git")
-    def test_commit_failure_skips_ops_restore(
-        self,
-        mock_git: MagicMock,
-        mock_time: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """When commit fails, there's nothing on the sync branch to restore."""
-        mock_time.strftime.return_value = "20260218-120000"
-        mock_time.sleep = MagicMock()
-        pre = _make_preflight(tmp_path)
-        sync_branch = "tracker-sync/20260218-120000"
-
-        mock_git.side_effect = [
-            _make_completed_process(),  # checkout -b
-            _make_completed_process(),  # add
-            _make_completed_process(
-                returncode=1, stderr="nothing to commit"
-            ),  # commit fails
-            _make_completed_process(),  # cleanup: checkout
-            _make_completed_process(),  # cleanup: pull
-            _make_completed_process(),  # cleanup: branch -D
-        ]
-
-        result = do_sync(repo_root=tmp_path, preflight=pre)
-        assert not result.success
-
-        # Should NOT have a restore call since commit never succeeded
-        all_calls = mock_git.call_args_list
-        restore_calls = [
-            c for c in all_calls
-            if len(c[0]) >= 4
-            and c[0][1] == "checkout"
-            and c[0][2] == sync_branch
-            and c[0][3] == "--"
-        ]
-        assert len(restore_calls) == 0
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
@@ -1925,15 +1934,10 @@ class TestDoSync:
             patch("hypergumbo_tracker.sync._merge_pr") as mock_merge,
         ):
             mock_git.side_effect = [
-                _make_completed_process(),  # checkout -b
-                _make_completed_process(),  # add
-                _make_completed_process(),  # commit
-                _make_completed_process(returncode=1),  # push attempt 1 fails
+                *self._plumbing_setup(),
+                _make_completed_process(returncode=1),  # push attempt 1
                 _make_completed_process(),  # push attempt 2 succeeds
-                # cleanup
-                _make_completed_process(),
-                _make_completed_process(),
-                _make_completed_process(),
+                *self._cleanup(),
             ]
             mock_find.return_value = (42, "sha123")
             mock_poll.return_value = "success"
@@ -1941,6 +1945,177 @@ class TestDoSync:
 
             result = do_sync(repo_root=tmp_path, preflight=pre)
             assert result.success
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_sync_branches_from_origin_dev(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Sync commit is parented on origin/dev, not the current branch.
+
+        This is the core fix: tracker sync PRs must only contain ops diffs,
+        not feature branch code.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+        # Verify commit-tree uses origin/dev SHA as parent
+        commit_tree_call = mock_git.call_args_list[7]
+        args = commit_tree_call[0]
+        assert "commit-tree" in args
+        assert "-p" in args
+        p_idx = args.index("-p")
+        assert args[p_idx + 1] == "abc123"  # base SHA from rev-parse
+
+        # Verify push uses explicit ref, not HEAD
+        push_call = mock_git.call_args_list[9]
+        push_args = push_call[0]
+        push_ref = [
+            a for a in push_args
+            if isinstance(a, str) and "refs/heads/" in a and "refs/for/" in a
+        ]
+        assert len(push_ref) == 1, f"Expected explicit push ref, got: {push_args}"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_read_tree_failure(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            _make_completed_process(),                   # fetch
+            _make_completed_process(stdout="abc123\n"),   # rev-parse
+            _make_completed_process(
+                returncode=1, stderr="not a tree"
+            ),  # read-tree fails
+            *self._cleanup(),
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+        assert "read-tree failed" in result.error
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_write_tree_failure(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            _make_completed_process(),                   # fetch
+            _make_completed_process(stdout="abc123\n"),   # rev-parse
+            _make_completed_process(),                   # read-tree
+            _make_completed_process(),                   # add
+            _make_completed_process(
+                returncode=1, stderr="cannot write"
+            ),  # write-tree fails
+            *self._cleanup(),
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+        assert "write-tree failed" in result.error
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_update_ref_failure(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            _make_completed_process(),                       # fetch
+            _make_completed_process(stdout="abc123\n"),       # rev-parse
+            _make_completed_process(),                       # read-tree
+            _make_completed_process(),                       # add
+            _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(stdout="Test User\n"),    # config user.name
+            _make_completed_process(stdout="t@e.com\n"),      # config user.email
+            _make_completed_process(stdout="commit789\n"),    # commit-tree
+            _make_completed_process(
+                returncode=1, stderr="ref locked"
+            ),  # update-ref fails
+            *self._cleanup(),
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+        assert "update-ref failed" in result.error
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_tmp_index_cleanup(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Temporary index file is cleaned up after sync."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        # Create the temp index file to verify cleanup
+        tmp_index = tmp_path / ".git" / "tmp-sync-index"
+        tmp_index.write_text("fake index")
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+        assert not tmp_index.exists()
 
 
 # ---------------------------------------------------------------------------
