@@ -2928,9 +2928,16 @@ class TestCheckReflectionState:
         assert result.status == "ok"
         assert "skipped" in result.message
 
+    def _write_state(self, tmp_path: Path, content: str) -> None:
+        """Write state to the primary (lab notebook) location within tmp_path."""
+        nb_dir = tmp_path / "hypergumbo_lab_notebook"
+        nb_dir.mkdir(exist_ok=True)
+        (nb_dir / "last_stop_check.json").write_text(content)
+
     def test_no_state_file(self, tmp_path: Path) -> None:
         (tmp_path / ".agent").mkdir()
-        result = _check_reflection_state(tmp_path)
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "ok"
         assert "no reflection state" in result.message.lower()
 
@@ -2938,8 +2945,7 @@ class TestCheckReflectionState:
         """A valid state file with a recent timestamp should be ok."""
         from datetime import datetime, timezone
 
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         state = {
             "last_completed_utc": now,
@@ -2950,14 +2956,35 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
+        assert result.status == "ok"
+
+    def test_fallback_to_agent_dir(self, tmp_path: Path) -> None:
+        """Falls back to .agent/last_stop_check.json when primary doesn't exist."""
+        from datetime import datetime, timezone
+
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state = {
+            "last_completed_utc": now,
+            "branch": "dev",
+            "last_pr": 0,
+            "last_pr_state": "none",
+            "pending_hard_todos": 0,
+            "pending_soft_todos": 0,
+            "notes": "",
+        }
         (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "ok"
 
     def test_stale_state(self, tmp_path: Path) -> None:
         """A state file > 7 days old should warn."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "2020-01-01T00:00:00Z",
             "branch": "dev",
@@ -2967,52 +2994,50 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "stale" in result.message.lower()
 
     def test_unparseable_json(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        (agent_dir / "last_stop_check.json").write_text("not json{{{")
-        result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, "not json{{{")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "parse" in result.message.lower() or "invalid" in result.message.lower()
 
     def test_non_dict_json(self, tmp_path: Path) -> None:
         """JSON file that parses but isn't an object (e.g., a list)."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        (agent_dir / "last_stop_check.json").write_text("[1, 2, 3]")
-        result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, "[1, 2, 3]")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "not a json object" in result.message.lower()
 
     def test_missing_required_keys(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {"branch": "dev"}  # missing last_completed_utc
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "missing" in result.message.lower() or "key" in result.message.lower()
 
     def test_permission_denied(self, tmp_path: Path) -> None:
         """OSError when reading state file should degrade gracefully."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        state_file = agent_dir / "last_stop_check.json"
-        state_file.write_text('{"branch": "dev"}')
-        # Mock read_text to raise PermissionError (chmod 0o000 doesn't work as root in CI)
-        with patch.object(type(state_file), "read_text", side_effect=PermissionError("Permission denied")):
-            result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, '{"branch": "dev"}')
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            with patch("pathlib.Path.read_text", side_effect=PermissionError("Permission denied")):
+                result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "permission" in result.message.lower()
 
     def test_unparseable_timestamp(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "not-a-date",
             "branch": "dev",
@@ -3022,8 +3047,9 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "timestamp" in result.message.lower() or "parse" in result.message.lower()
 

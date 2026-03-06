@@ -30,6 +30,7 @@ slice.json
 AUTONOMOUS_MODE.txt
 .agent/LOOP
 .agent/disabled.LOOP
+.agent/last_stop_check.json
 
 # Coverage
 .coverage

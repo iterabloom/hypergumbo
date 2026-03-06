@@ -109,7 +109,7 @@ pending_soft_todos = tracker_count('--soft')
 
 # Preserve guidance_file from previous stop hook run if present
 existing_state = {}
-state_path = pathlib.Path('.agent/last_stop_check.json')
+state_path = pathlib.Path.home() / 'hypergumbo_lab_notebook' / 'last_stop_check.json'
 if state_path.exists():
     try:
         existing_state = json.loads(state_path.read_text())
@@ -127,7 +127,7 @@ state = {
 }
 if 'guidance_file' in existing_state:
     state['guidance_file'] = existing_state['guidance_file']
-pathlib.Path('.agent/last_stop_check.json').write_text(json.dumps(state, indent=2) + '\n')
+state_path.write_text(json.dumps(state, indent=2) + '\n')
   "
   ```
   **Important:** Before running, update `last_pr` and `notes` in the script with actual values. The `notes` field is critical — it gets injected into the cooldown prompt so the next cycle knows what to implement. Write specific, actionable implementation tasks, not vague observations.

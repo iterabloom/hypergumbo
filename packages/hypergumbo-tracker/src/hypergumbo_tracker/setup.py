@@ -1777,7 +1777,11 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
             message="Reflection state check skipped (no git repo)",
         )
 
-    state_file = repo_root / ".agent" / "last_stop_check.json"
+    # Primary location: ~/hypergumbo_lab_notebook/ (outside git tree)
+    state_file = Path.home() / "hypergumbo_lab_notebook" / "last_stop_check.json"
+    # Backward compat: fall back to old in-repo location
+    if not state_file.exists():
+        state_file = repo_root / ".agent" / "last_stop_check.json"
     if not state_file.exists():
         return CheckResult(
             name="reflection_state",

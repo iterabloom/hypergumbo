@@ -65,7 +65,6 @@ Python (91%), Markdown (4%), Yaml (3%)
 ` ` `
 hypergumbo/
 ├── .agent
-│   ├── last_stop_check.json
 │   └── [and 6 other items]
 ├── .gitea
 │   ├── SQUASH_TEMPLATE.md

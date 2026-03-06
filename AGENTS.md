@@ -180,7 +180,7 @@ When context has been compressed, you may have lost awareness of in-progress wor
 
 **Recover state:**
 ```bash
-cat .agent/last_stop_check.json 2>/dev/null
+cat ~/hypergumbo_lab_notebook/last_stop_check.json 2>/dev/null
 ```
 This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), and free-text notes about what to do next. Use it to orient yourself before starting new work.
 
