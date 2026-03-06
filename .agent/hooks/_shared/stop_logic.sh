@@ -272,3 +272,22 @@ if [[ "$ELAPSED_MIN" -ge 30 ]]; then
     fi
   } > "$GUIDANCE_FILE_REFLECTION"
 fi
+
+# --- Guidance file organization: move older files to subfolder ---
+# Keep the 10 most recent guidance files in the main directory for quick
+# access. Move everything else to older_guidance/ for archival. NEVER
+# deletes guidance files — move-only policy.
+if [[ -d "$GUIDANCE_LOG_DIR" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+  OLDER_DIR="$GUIDANCE_LOG_DIR/older_guidance"
+  # Count guidance files (stop_guidance_*.md pattern)
+  GUIDANCE_COUNT=$(find "$GUIDANCE_LOG_DIR" -maxdepth 1 -name 'stop_guidance_*.md' -type f 2>/dev/null | wc -l)
+  if [[ "$GUIDANCE_COUNT" -gt 10 ]]; then
+    mkdir -p "$OLDER_DIR"
+    # Move all but the 10 most recent (by modification time)
+    find "$GUIDANCE_LOG_DIR" -maxdepth 1 -name 'stop_guidance_*.md' -type f -printf '%T@ %p\n' 2>/dev/null \
+      | sort -rn | tail -n +"11" | cut -d' ' -f2- \
+      | while IFS= read -r f; do
+          mv "$f" "$OLDER_DIR/" 2>/dev/null || true
+        done
+  fi
+fi
