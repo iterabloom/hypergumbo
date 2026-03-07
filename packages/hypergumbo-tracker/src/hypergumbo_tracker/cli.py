@@ -270,15 +270,65 @@ def _cmd_ready(args: argparse.Namespace, ts: TrackerSet) -> int:
     limit = getattr(args, "limit", None)
     if limit:
         items = items[:limit]
+
+    # Scan all items for unread human messages (regardless of status)
+    unread_items = _collect_unread_human_messages(ts)
+
     if args.json:
-        print(json.dumps([_item_to_dict(i) for i in items], indent=2))
+        result: dict[str, Any] = {
+            "ready": [_item_to_dict(i) for i in items],
+        }
+        if unread_items:
+            result["items_with_unread_messages"] = [
+                {"id": item.id, "title": item.title, "status": item.status,
+                 "priority": item.priority, "unread_count": count}
+                for item, count in unread_items
+            ]
+        print(json.dumps(result, indent=2))
     else:
         if not items:
             print("(no ready items)")
         else:
             for idx, item in enumerate(items):
                 print(_format_item_short(item, idx))
+        if unread_items:
+            print()
+            print(f"--- {len(unread_items)} item(s) with unread human message(s) ---")
+            for item, count in unread_items:
+                print(f"  {item.id}  [{item.status}]  {item.title}  "
+                      f"({count} unread)")
+            print()
+            print("  View:  scripts/tracker show <ID>")
+            print("  Reply: scripts/tracker discuss <ID> \"your reply\"")
     return EXIT_SUCCESS
+
+
+def _collect_unread_human_messages(
+    ts: TrackerSet,
+) -> list[tuple[CompiledItem, int]]:
+    """Collect items with unread human messages across all tiers.
+
+    Returns a list of (item, unread_count) tuples sorted by priority then ID.
+    Scans all tiers based on tracker config scope, checking each item's
+    discussion for trailing human-authored messages (indicating the agent
+    hasn't replied yet).
+    """
+    tiers_to_check: list[Tier]
+    if ts.config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+
+    results: list[tuple[CompiledItem, int]] = []
+    for t in tiers_to_check:
+        store = ts._tier_stores[t]
+        for item in store._compile_all():
+            if has_unread_human_messages(item):
+                msgs = unread_human_messages(item)
+                results.append((item, len(msgs)))
+
+    results.sort(key=lambda r: (r[0].priority, r[0].id))
+    return results
 
 
 def _cmd_log(args: argparse.Namespace, ts: TrackerSet) -> int:

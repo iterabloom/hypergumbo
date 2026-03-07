@@ -390,7 +390,9 @@ class TestReadCommands:
             main(["--tracker-root", str(tracker_root), "--json", "ready"])
         assert exc.value.code == EXIT_SUCCESS
         data = json.loads(capsys.readouterr().out)
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "ready" in data
+        assert isinstance(data["ready"], list)
 
     def test_ready_with_limit(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                               mock_agent_uid: None) -> None:
@@ -400,6 +402,145 @@ class TestReadCommands:
         with pytest.raises(SystemExit) as exc:
             main(["--tracker-root", str(tracker_root), "ready", "--limit", "1"])
         assert exc.value.code == EXIT_SUCCESS
+
+    def test_ready_shows_unread_human_messages(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """ready should show a notice for items with unread human messages."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker" / ".ops"
+        # A ready item (no messages)
+        _add_item(ops_dir, "WI-a", status="todo_hard")
+        # A done item with unread human message (not ready, but has message)
+        _add_item_with_discussion(
+            ops_dir, "WI-b",
+            discussion_ops=[
+                {"at": "2026-01-02T00:00:00Z", "by": "human",
+                 "actor": "alice", "message": "please review this"},
+            ],
+            status="done",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "ready"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # Should show the ready item
+        assert "WI-a" in out
+        # Should show unread message notice for WI-b
+        assert "WI-b" in out
+        assert "unread human message" in out.lower()
+        # Should show usage hint
+        assert "tracker show" in out
+        assert "tracker discuss" in out
+
+    def test_ready_no_unread_notice_when_none(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """ready should not show unread section when no items have messages."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a")
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "ready"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread" not in out.lower()
+
+    def test_ready_json_includes_unread_messages(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """ready --json should include unread_messages field."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker" / ".ops"
+        _add_item(ops_dir, "WI-a", status="todo_hard")
+        _add_item_with_discussion(
+            ops_dir, "WI-b",
+            discussion_ops=[
+                {"at": "2026-01-02T00:00:00Z", "by": "human",
+                 "actor": "alice", "message": "check this"},
+            ],
+            status="holding",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "--json", "ready"])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        # JSON output should have items_with_unread_messages key
+        assert "items_with_unread_messages" in data
+        unread_items = data["items_with_unread_messages"]
+        assert len(unread_items) == 1
+        assert unread_items[0]["id"] == "WI-b"
+
+    def test_ready_unread_workspace_scope(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Workspace scope should only show unread from workspace/stealth tiers."""
+        import yaml
+        tracker_root = _setup_tracker(tmp_path)
+        # Human message in canonical tier (should be excluded)
+        _add_item_with_discussion(
+            tracker_root / "tracker" / ".ops", "WI-can",
+            discussion_ops=[
+                {"at": "2026-01-02T00:00:00Z", "by": "human",
+                 "actor": "alice", "message": "canonical msg"},
+            ],
+            status="done",
+        )
+        # Human message in workspace tier (should be included)
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-ws",
+            discussion_ops=[
+                {"at": "2026-01-02T00:00:00Z", "by": "human",
+                 "actor": "alice", "message": "workspace msg"},
+            ],
+            status="done",
+        )
+        config_data = {
+            "kinds": {"work_item": {"prefix": "WI"}},
+            "statuses": [
+                "todo_hard", "todo_soft", "in_progress",
+                "needs_human_review", "done", "wont_do",
+            ],
+            "stop_hook": {
+                "blocking_statuses": ["todo_hard", "todo_soft"],
+                "resolved_statuses": ["done", "wont_do"],
+                "scope": "workspace",
+            },
+        }
+        (tracker_root / "tracker" / "config.yaml").write_text(
+            yaml.dump(config_data))
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "ready"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "WI-ws" in out
+        assert "WI-can" not in out
+
+    def test_ready_unread_excludes_agent_replied(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Items where the agent already replied should not show as unread."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            ops_dir, "WI-c",
+            discussion_ops=[
+                {"at": "2026-01-02T00:00:00Z", "by": "human",
+                 "actor": "alice", "message": "question?"},
+                {"at": "2026-01-02T01:00:00Z", "by": "agent",
+                 "actor": "bot", "message": "answer."},
+            ],
+            status="done",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "ready"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread" not in out.lower()
 
     def test_show(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                   mock_agent_uid: None) -> None:
