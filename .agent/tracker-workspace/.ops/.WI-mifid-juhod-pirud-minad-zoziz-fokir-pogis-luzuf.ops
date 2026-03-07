@@ -128,3 +128,19 @@
   clock: 16  # 653f
   nonce: 653f  # 653f
   message: "Completed high-value languages: Python (pyproject.toml, PR #1907) and Java/Maven (pom.xml mainClass, PR #1908). Remaining 11 languages (Gradle, C#, Dart, Swift, Haskell, Elixir, Ruby, Scala, OCaml, Zig, Nim) each need new infrastructure and are low priority. The build-target linker is now generic enough to handle any new defines_target edges added in the future."  # 653f
+- op: update  # 8222
+  at: '2026-03-07T22:04:09Z'  # 8222
+  by: human  # 8222
+  actor: jgstern  # 8222
+  clock: 17  # 8222
+  nonce: '8222'  # 8222
+  set:  # 8222
+    status: todo_soft  # 8222
+    priority: 3  # 8222
+- op: discuss  # 15e9
+  at: '2026-03-07T22:04:14Z'  # 15e9
+  by: human  # 15e9
+  actor: jgstern  # 15e9
+  clock: 18  # 15e9
+  nonce: '15e9'  # 15e9
+  message: "Please complete the remaining 11 languages. Remember DRY."  # 15e9

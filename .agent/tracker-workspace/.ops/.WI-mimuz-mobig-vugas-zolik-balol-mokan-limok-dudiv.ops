@@ -1,0 +1,19 @@
+- op: create  # d0cb
+  at: '2026-03-07T22:16:59Z'  # d0cb
+  by: agent  # d0cb
+  actor: jgstern_agent  # d0cb
+  clock: 1  # d0cb
+  nonce: d0cb  # d0cb
+  data:  # d0cb
+    kind: work_item  # d0cb
+    title: "TypeScript structural interface matching for implements edges"  # d0cb
+    status: todo_soft  # d0cb
+    priority: 3  # d0cb
+    parent:  # d0cb
+    tags: []  # d0cb
+    before: []  # d0cb
+    duplicate_of: []  # d0cb
+    not_duplicate_of: []  # d0cb
+    pr_ref:  # d0cb
+    description: "Analogous to Go WI-hadav. TypeScript uses structural typing — a class satisfying an interface shape is compatible without explicit implements keyword. Currently only detecting explicit implements/extends clauses."  # d0cb
+    fields: {}  # d0cb

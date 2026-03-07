@@ -32,3 +32,17 @@
   clock: 3  # 3560
   nonce: '3560'  # 3560
   message: "Fixed in PR #1889. Added cross-file structural interface matching in Go analyzer. Per-file matching only found implements edges when interface and struct were in same file. Now aggregates interface_method_sets and struct_method_sets across all files in _analyze_go_impl() and matches after Pass 2."  # 3560
+- op: discuss  # 4ad8
+  at: '2026-03-07T22:00:23Z'  # 4ad8
+  by: human  # 4ad8
+  actor: jgstern  # 4ad8
+  clock: 4  # 4ad8
+  nonce: 4ad8  # 4ad8
+  message: "Might an analogous issue affect other hypergumbo-supported languages?"  # 4ad8
+- op: discuss  # 6809
+  at: '2026-03-07T22:16:40Z'  # 6809
+  by: agent  # 6809
+  actor: jgstern_agent  # 6809
+  clock: 5  # 6809
+  nonce: '6809'  # 6809
+  message: "Yes, structural interface/protocol matching could affect other languages. Java/Kotlin have nominal typing (explicit implements), so they're fine. But TypeScript uses structural typing like Go — a class satisfying an interface's shape is compatible without explicit implements. Rust traits require explicit impl blocks, so they're covered. Python protocols (typing.Protocol) are structural — similar gap possible. Swift protocols require explicit conformance. Ruby duck-typing is implicit but we don't track implements edges for Ruby. Net: TypeScript and Python Protocol are the two analogous gaps. Will create tracker items."  # 6809
