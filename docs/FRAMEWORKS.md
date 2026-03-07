@@ -51,6 +51,9 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 ### C++
 - Qt
 
+### AI Agent / Protocol
+- MCP (Model Context Protocol) - TypeScript (@modelcontextprotocol/sdk) and Python (mcp, FastMCP)
+
 ### Cross-language
 - CLI patterns (Python, Go, JS, Ruby, Rust), GraphQL, Library Exports
 

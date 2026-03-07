@@ -118,6 +118,8 @@ PYTHON_FRAMEWORKS = {
     # LLM APIs
     "openai": ["openai"],
     "anthropic": ["anthropic"],
+    # MCP (Model Context Protocol)
+    "mcp-python": ["mcp", "fastmcp"],
     # GraphQL
     "graphql": ["graphql-core"],
     "graphql-python": ["strawberry-graphql", "ariadne", "graphene"],
@@ -178,6 +180,8 @@ JS_FRAMEWORKS = {
     "viem": ["viem"],
     # CLI
     "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
+    # MCP (Model Context Protocol)
+    "mcp": ["@modelcontextprotocol/sdk"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)

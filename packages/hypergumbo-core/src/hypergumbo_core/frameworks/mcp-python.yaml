@@ -1,0 +1,48 @@
+# MCP (Model Context Protocol) Python framework patterns (ADR-0003)
+#
+# Patterns for Python MCP servers and clients:
+# - FastMCP (mcp.server.fastmcp)
+# - Low-level mcp.server.Server
+# - anthropic MCP integration
+#
+# Python MCP servers commonly use decorator-based tool registration
+# via FastMCP, similar to Flask/FastAPI route decorators.
+
+id: mcp-python
+language: python
+
+patterns:
+  # FastMCP tool decorator - @mcp.tool() or @server.tool()
+  - concept: tool_handler
+    decorator: "^(mcp|server|app)\\.tool$"
+
+  # FastMCP resource decorator - @mcp.resource()
+  - concept: resource_handler
+    decorator: "^(mcp|server|app)\\.resource$"
+
+  # FastMCP prompt decorator - @mcp.prompt()
+  - concept: prompt_handler
+    decorator: "^(mcp|server|app)\\.prompt$"
+
+  # MCP Server base classes
+  - concept: mcp_server
+    base_class: "^(FastMCP|Server)$"
+
+  # MCP request handlers
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.list_tools$"
+
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.call_tool$"
+
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.list_resources$"
+
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.read_resource$"
+
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.list_prompts$"
+
+  - concept: protocol_handler
+    decorator: "^(server|app)\\.get_prompt$"
