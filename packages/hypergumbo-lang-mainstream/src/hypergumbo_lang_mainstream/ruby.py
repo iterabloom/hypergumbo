@@ -768,6 +768,45 @@ def _extract_on_keyword(args_node: "tree_sitter.Node", source: bytes) -> str | N
     return None
 
 
+def _extract_resource_action_filter(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str | None, set[str]]:
+    """Extract ``only:`` or ``except:`` action filter from resource call args.
+
+    Rails resources support filtering generated routes::
+
+        resources :users, except: [:destroy]
+        resources :posts, only: [:index, :show]
+
+    Returns (filter_type, actions) where filter_type is "only", "except",
+    or None if no filter found.  Actions is a set of action name strings.
+    """
+    for arg in args_node.children:
+        if arg.type == "pair":
+            children = list(arg.children)
+            if len(children) < 3:  # pragma: no cover
+                continue
+            key_child = children[0]
+            val_child = children[-1]
+            if key_child.type != "hash_key_symbol":  # pragma: no cover
+                continue
+            key_text = node_text(key_child, source).strip(":")
+            if key_text not in ("only", "except"):
+                continue  # Skip other kwargs like path:, controller:, etc.
+            actions: set[str] = set()
+            if val_child.type == "array":
+                for el in val_child.children:
+                    if el.type == "simple_symbol":
+                        actions.add(node_text(el, source).strip(":"))
+            elif val_child.type == "simple_symbol":
+                # Single action: only: :index
+                actions.add(node_text(val_child, source).strip(":"))
+            if actions:
+                return key_text, actions
+    return None, set()
+
+
 def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1008,6 +1047,11 @@ def _extract_rails_routes(
         # This enables route detection and entrypoint detection for Rails apps
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
 
+        # Extract only:/except: action filter for resources/resource
+        filter_type, filter_actions = _extract_resource_action_filter(
+            args_node, source,
+        ) if method_name in ("resources", "resource") else (None, set())
+
         # For resources/resource, expand into all RESTful routes
         # This enables route-handler linking for all controller actions
         if method_name == "resources":
@@ -1021,6 +1065,11 @@ def _extract_rails_routes(
                 ("PATCH", f"{normalized_path}/:id", "update"),  # PATCH /users/:id
                 ("DELETE", f"{normalized_path}/:id", "destroy"),  # DELETE /users/:id
             ]
+            # Apply only:/except: filter
+            if filter_type == "only":
+                restful_routes = [r for r in restful_routes if r[2] in filter_actions]
+            elif filter_type == "except":
+                restful_routes = [r for r in restful_routes if r[2] not in filter_actions]
             # Controller name from resource with namespace prefix
             # e.g., namespace :admin do resources :users end → admin/users
             assert resource_name is not None
@@ -1063,6 +1112,11 @@ def _extract_rails_routes(
                 ("PATCH", normalized_path, "update"),  # PATCH /profile
                 ("DELETE", normalized_path, "destroy"),  # DELETE /profile
             ]
+            # Apply only:/except: filter
+            if filter_type == "only":
+                restful_routes = [r for r in restful_routes if r[2] in filter_actions]
+            elif filter_type == "except":
+                restful_routes = [r for r in restful_routes if r[2] not in filter_actions]
             # Rails convention: resource :profile → ProfilesController (pluralized)
             # Don't double the 's' if name already ends in 's' (audit_logs, settings)
             assert resource_name is not None
