@@ -16,6 +16,7 @@ from hypergumbo_core.linkers.decorator_dispatch import (
     DISPATCH_DECORATOR_PATTERNS,
     _find_decorated_symbols,
     _find_dispatch_sites,
+    _is_test_path,
     link_decorator_dispatch,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
@@ -124,6 +125,42 @@ class TestFindDispatchSites:
         result = _find_dispatch_sites([sym], DISPATCH_DECORATOR_PATTERNS)
         assert len(result) == 0
 
+    def test_deduplicates_same_name_dispatch_sites(self) -> None:
+        """When multiple symbols share a dispatch name, keep only the shortest path."""
+        canonical = _sym("run_all_analyzers", path="core/registry.py")
+        wrapper = _sym("run_all_analyzers", path="core/analyze/all_analyzers.py")
+        result = _find_dispatch_sites([canonical, wrapper], DISPATCH_DECORATOR_PATTERNS)
+        assert len(result) == 1
+        assert result[0][0].path == "core/registry.py"  # shorter path wins
+
+
+class TestIsTestPath:
+    """Test _is_test_path detection."""
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "tests/test_foo.py",
+            "packages/core/tests/test_registry.py",
+            "test_something.py",
+            "src/testing/helpers.py",
+            "foo/bar_test.py",
+        ],
+    )
+    def test_detects_test_paths(self, path: str) -> None:
+        assert _is_test_path(path) is True
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "src/registry.py",
+            "packages/lang/go.py",
+            "core/analyze/all_analyzers.py",
+        ],
+    )
+    def test_rejects_non_test_paths(self, path: str) -> None:
+        assert _is_test_path(path) is False
+
 
 class TestLinkDecoratorDispatch:
     """Test the full linker integration."""
@@ -219,6 +256,51 @@ class TestLinkDecoratorDispatch:
         # Only one edge: analyzer dispatch → analyze_go (not link_grpc)
         assert len(result.edges) == 1
         assert result.edges[0].dst == analyzer_handler.id
+
+    def test_excludes_test_handlers(self) -> None:
+        """Dispatch edges should not target test stubs."""
+        dispatch_site = _sym("run_all_analyzers", path="core/registry.py")
+        prod_handler = _sym(
+            "analyze_go",
+            path="lang/go.py",
+            decorators=[{"name": "register_analyzer", "args": ["go"], "kwargs": {}}],
+        )
+        test_handler = _sym(
+            "fake_analyzer",
+            path="tests/test_registry.py",
+            decorators=[{"name": "register_analyzer", "args": ["fake"], "kwargs": {}}],
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[dispatch_site, prod_handler, test_handler],
+            edges=[],
+        )
+        result = link_decorator_dispatch(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == prod_handler.id
+
+    def test_deduplicates_dispatch_sites_with_same_name(self) -> None:
+        """Only the canonical dispatch site creates edges, not wrappers."""
+        canonical = _sym("run_all_analyzers", path="core/registry.py")
+        wrapper = _sym("run_all_analyzers", path="core/analyze/all_analyzers.py")
+        handler = _sym(
+            "analyze_go",
+            path="lang/go.py",
+            decorators=[{"name": "register_analyzer", "args": ["go"], "kwargs": {}}],
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[canonical, wrapper, handler],
+            edges=[],
+        )
+        result = link_decorator_dispatch(ctx)
+
+        # Only 1 edge (from canonical), not 2 (from both)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == canonical.id
 
     def test_result_has_analysis_run(self) -> None:
         """LinkerResult should include an AnalysisRun."""
