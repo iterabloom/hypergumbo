@@ -83,3 +83,12 @@
   clock: 10  # b926
   nonce: b926  # b926
   message: "Good point. The build-target-to-main edge logic lives in the build_target linker (linkers/build_target.py), which runs post-analysis across all languages. The per-language analyzers just need to emit build-target symbols with the right metadata (entry_point flag, build system references). The commonality is in the linker, not in a base class — it already handles Cargo, npm, pip, Go modules generically. The dozen-plus languages from WI-mifid are about adding build-target symbol extraction to those analyzers (detecting their package manifests), which then automatically get linked by the existing linker. No new base class needed — just consistent metadata emission."  # b926
+- op: update  # 7b10
+  at: '2026-03-07T06:42:00Z'  # 7b10
+  by: human  # 7b10
+  actor: jgstern  # 7b10
+  clock: 11  # 7b10
+  nonce: 7b10  # 7b10
+  set: {}  # 7b10
+  add:  # 7b10
+    before: [WI-mifid-juhod-pirud-minad-zoziz-fokir-pogis-luzuf]  # 7b10

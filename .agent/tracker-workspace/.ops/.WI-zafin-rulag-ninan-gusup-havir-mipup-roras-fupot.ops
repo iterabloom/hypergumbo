@@ -47,3 +47,18 @@
   nonce: 393d  # 393d
   set:  # 393d
     status: in_progress  # 393d
+- op: update  # ac55
+  at: '2026-03-07T05:11:36Z'  # ac55
+  by: agent  # ac55
+  actor: jgstern_agent  # ac55
+  clock: 6  # ac55
+  nonce: ac55  # ac55
+  set:  # ac55
+    status: done  # ac55
+- op: discuss  # 7a27
+  at: '2026-03-07T05:11:36Z'  # 7a27
+  by: agent  # 7a27
+  actor: jgstern_agent  # 7a27
+  clock: 7  # 7a27
+  nonce: 7a27  # 7a27
+  message: "Fixed in PR #1901. Dead PID re-claim now works: when stored PID doesn't exist in /proc, the new session re-claims ownership instead of being treated as interactive."  # 7a27
