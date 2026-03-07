@@ -461,17 +461,21 @@ def is_utility_symbol(name: str) -> bool:
 
 
 def _is_helper_file(path: str) -> bool:
-    """Check if the file basename suggests a helper/utility module.
+    """Check if the file path or basename suggests a helper/utility module.
 
     Files named ``*_helpers.*``, ``*_utils.*``, ``*_util.*``, ``helpers.*``,
-    ``utils.*``, ``util.*`` are infrastructure plumbing whose symbols should
-    be dampened in rankings.  E.g. ``openapi_helpers.go`` whose
-    ``createYAMLNode``, ``responsesWithErrorExamples`` dominate rankings in
-    prometheus despite being schema-generation boilerplate.
+    ``utils.*``, ``util.*``, or located in ``utils/`` or ``helpers/``
+    directories are infrastructure plumbing whose symbols should be dampened
+    in rankings.  E.g. ``openapi_helpers.go`` whose ``createYAMLNode``,
+    ``responsesWithErrorExamples`` dominate rankings in prometheus, or Elm
+    ``Utils/Api.elm`` whose ``map`` dominated rankings in alertmanager.
     """
     if not path:
         return False
-    basename = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    path_lower = path.lower()
+    if "/utils/" in path_lower or "/helpers/" in path_lower:
+        return True
+    basename = path_lower.rsplit("/", 1)[-1].rsplit(".", 1)[0]
     return (
         basename.endswith("_helpers")
         or basename.endswith("_utils")

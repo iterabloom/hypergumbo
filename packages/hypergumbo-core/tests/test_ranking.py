@@ -2358,6 +2358,15 @@ class TestIsHelperFile:
         assert _is_helper_file("utils.py")
         assert _is_helper_file("util.go")
 
+    def test_utils_directory(self):
+        """Files in utils/ or helpers/ directories are helper files."""
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("ui/app/src/Utils/Api.elm")
+        assert _is_helper_file("src/helpers/format.ts")
+        assert _is_helper_file("lib/utils/string.py")
+        assert _is_helper_file("app/helpers/application_helper.rb")
+
     def test_non_helper_file(self):
         from hypergumbo_core.ranking import _is_helper_file
 
