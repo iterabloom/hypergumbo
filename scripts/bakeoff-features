@@ -763,6 +763,28 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # with low out-degree.  A 1.5x boost compensates.
     _ROUTE_BOOST = 1.5
 
+    # API handler boost: symbols targeted by routes_to edges are API handler
+    # implementations (e.g., API.getAlertsHandler, API.postAlertsHandler).
+    # These have low in-degree (called only from route registration) but
+    # high out-degree (they implement the API by calling many domain
+    # functions).  For seed selection, their out-degree is the valuable
+    # signal — reverse-slicing from a handler shows "what does this API
+    # endpoint touch?".
+    #
+    # The boost replaces the pure in-degree base with a bidirectional
+    # formula: max(capped_in, out_deg / 2) * out_factor.  This lets
+    # postAlertsHandler (in=3, out=23) compete with Integration.Notify
+    # (in=18, out=12).
+    _API_HANDLER_BOOST = 1.5
+
+    # Identify API handler targets: nodes that are dst of routes_to edges.
+    api_handler_ids: set = set()
+    for e in edges:
+        if e.get("type") == "routes_to":
+            dst = e.get("dst") or e.get("target")
+            if dst:
+                api_handler_ids.add(dst)
+
     candidates = []
     for node_id, in_deg in in_degree.items():
         node = node_map.get(node_id)
@@ -785,7 +807,13 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         # don't indicate architectural importance.
         prod_in = prod_in_degree.get(node_id, 0)
         capped_in = min(prod_in, _IN_DEGREE_CAP)
-        base_score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
+
+        # API handlers get a bidirectional base score that rewards their
+        # high out-degree (they call many domain functions).
+        if node_id in api_handler_ids:
+            base_score = max(capped_in, out_deg / 2) * min(1.0, out_deg / _OUT_THRESHOLD) * _API_HANDLER_BOOST
+        else:
+            base_score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
 
         # Language-dominance weight: dominant language = 1.0, others proportional.
         lang = node.get("language", "unknown")
@@ -809,8 +837,17 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # Sort by score descending, then prod in-degree descending, name for stability
     candidates.sort(key=lambda x: (-x[0], -x[1], x[3]))
 
+    # Name-based deduplication: allow at most 1 seed per method name.
+    # Without this, 19 Notifier.Notify variants crowd out other
+    # architectural axes (API handlers, dispatchers, etc.).
     result = []
-    for score, in_deg, entry, name in candidates[:count]:
+    seen_names: set = set()
+    for score, in_deg, entry, name in candidates:
+        if len(result) >= count:
+            break
+        if name in seen_names:
+            continue
+        seen_names.add(name)
         result.append(entry)
 
     # Language-diversity guarantee: ensure each major language (≥10% of
