@@ -1444,7 +1444,9 @@ public class UserResource {
         route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
         assert len(route_concepts) == 1
         assert route_concepts[0]["method"] == "GET"
-        # JAX-RS path is extracted from @Path annotation via resource_path concept
+        # Route path combines class @Path("/users") + method @Path("/{id}")
+        assert route_concepts[0].get("path") == "/users/{id}"
+        # Method's own resource_path concept retains just the method-level path
         path_concept = next(
             (c for c in method.meta["concepts"] if c.get("concept") == "resource_path"),
             None
@@ -1535,6 +1537,14 @@ public class AccountResource {
         )
         assert method_path is not None
         assert method_path.get("path") == "/{id}"
+
+        # Route concept combines class + method paths
+        route_concept = next(
+            (c for c in method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        assert route_concept.get("path") == "/JaxrsResource.ACCOUNTS_PATH/{id}"
 
 
 class TestJavaModifiersCapture:

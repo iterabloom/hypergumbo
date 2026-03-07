@@ -3039,11 +3039,11 @@ class UsersService {
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # No controller, just method path (no prefix_from_parent combination)
+        # No controller, method path normalized with leading slash
         concepts = handler.meta.get("concepts", [])
         route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
         assert route_concept is not None
-        assert route_concept["path"] == "users"
+        assert route_concept["path"] == "/users"
 
     def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
         """Non-exported class with @Controller - decorator as child of class_declaration."""

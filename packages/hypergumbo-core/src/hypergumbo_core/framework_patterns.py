@@ -1119,12 +1119,12 @@ def _apply_subresource_locator_paths(
                         # If stripping left nothing but method has its own
                         # @Path, Phase 3 only prepended parent path — we need
                         # to re-attach the method's own path segment.
-                        if not method_segment and method_own_path is not None:
+                        if not method_segment and method_own_path is not None:  # pragma: no cover - Phase 2 now includes method @Path
                             method_segment = method_own_path
                         c["path"] = _combine_route_paths(
                             full_class_prefix, method_segment,
                         )
-                    elif method_own_path is not None:
+                    elif method_own_path is not None:  # pragma: no cover - Phase 2 now sets path from method @Path
                         # Route has no path but method has @Path annotation
                         c["path"] = _combine_route_paths(
                             full_class_prefix, method_own_path,
@@ -1260,11 +1260,23 @@ def enrich_symbols(
                 #   @Controller() + @Get('test') -> /test
                 #   @Controller('users') + @Get() -> /users
                 method_path = concept.get("path")
+                # JAX-RS: route concept from @GET has no path, but the method
+                # may have its own @Path("/{id}") producing a resource_path
+                # concept.  Combine: class @Path + method @Path + @GET.
+                if not method_path and matched_pattern.prefix_from_parent:
+                    own_resource_path = _get_concept_path_from_symbol(
+                        symbol, matched_pattern.prefix_from_parent
+                    )
+                    if own_resource_path:
+                        method_path = own_resource_path
                 # Only skip if parent_path is None (no concept) vs "" (empty concept)
                 if parent_path is not None:
                     combined_path = _combine_route_paths(parent_path, method_path)
                     if combined_path:
                         concept["path"] = combined_path
+                elif method_path:
+                    # No parent class path, but method has its own @Path
+                    concept["path"] = _combine_route_paths(None, method_path)
 
     # Phase 2b: JAX-RS subresource locator path chaining
     # Methods with @Path (resource_path concept) and a return_type that matches
