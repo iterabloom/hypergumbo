@@ -546,6 +546,9 @@ BROAD mode scripts:
 # Select next cohort (5 smallest unused repos)
 ./scripts/bakeoff cohort --count 5
 
+# Or select cohort — explicit repos (for curriculum-based workflows)
+./scripts/bakeoff cohort --repos repo-a,repo-b,repo-c
+
 # Run hypergumbo on current cohort
 ./scripts/bakeoff run
 ./scripts/bakeoff run --all          # All unanalyzed cohorts (batch)

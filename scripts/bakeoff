@@ -420,81 +420,114 @@ def cmd_cohort(args):
 
     pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
 
-    # Scan pool for available repos
-    print(f"Scanning pool: {pool_path}")
-    available = []
+    explicit_repos = getattr(args, "repos", None)
+    if explicit_repos:
+        # Explicit repo selection: bypass size filters and auto-selection
+        repo_names = [n.strip() for n in explicit_repos.split(",") if n.strip()]
+        print(f"Pool: {pool_path}")
+        print(f"  Explicit repos: {', '.join(repo_names)}")
+        print()
 
-    for entry in os.scandir(pool_path):
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith("."):
-            continue
-        if entry.name in state.tested_repos:
-            continue
+        cohort = []
+        missing = []
+        for name in repo_names:
+            repo_path = os.path.join(pool_path, name)
+            if not os.path.isdir(repo_path):
+                missing.append(name)
+                continue
+            size_bytes = get_dir_size(repo_path)
+            size_mb = size_bytes / (1024 * 1024)
+            cohort.append(RepoInfo(
+                name=name,
+                path=repo_path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                languages=detect_languages(repo_path),
+            ))
 
-        size_bytes = get_dir_size(entry.path)
-        size_mb = size_bytes / (1024 * 1024)
+        if missing:
+            print(f"Error: repos not found in pool: {', '.join(missing)}", file=sys.stderr)
+            return 1
 
-        if size_mb > MAX_REPO_SIZE_MB:
-            continue
+        if not cohort:
+            print("Error: no repos specified", file=sys.stderr)
+            return 1
+    else:
+        # Auto-selection: scan pool and pick by size/language diversity
+        print(f"Scanning pool: {pool_path}")
+        available = []
 
-        available.append(RepoInfo(
-            name=entry.name,
-            path=entry.path,
-            size_bytes=size_bytes,
-            size_mb=size_mb,
-            languages=detect_languages(entry.path),
-        ))
+        for entry in os.scandir(pool_path):
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("."):
+                continue
+            if entry.name in state.tested_repos:
+                continue
 
-    # Sort by size (smallest first)
-    available.sort(key=lambda r: r.size_bytes)
+            size_bytes = get_dir_size(entry.path)
+            size_mb = size_bytes / (1024 * 1024)
 
-    # Strategic selection: try to get language diversity within size constraints
-    count = args.count or DEFAULT_COHORT_SIZE
-    cohort = []
-    seen_langs = set()
-    size_limit_mb = 20  # Start with small repos
+            if size_mb > MAX_REPO_SIZE_MB:
+                continue
 
-    # Phase 1: Pick repos that add new languages
-    for r in available:
-        if len(cohort) >= count:
-            break
-        if r.size_mb > size_limit_mb:
-            continue
+            available.append(RepoInfo(
+                name=entry.name,
+                path=entry.path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                languages=detect_languages(entry.path),
+            ))
 
-        primary_lang = r.languages[0] if r.languages else None
-        if primary_lang and primary_lang not in seen_langs:
-            cohort.append(r)
-            seen_langs.add(primary_lang)
+        # Sort by size (smallest first)
+        available.sort(key=lambda r: r.size_bytes)
 
-    # Phase 2: Fill remaining slots with smallest remaining repos
-    if len(cohort) < count:
+        # Strategic selection: try to get language diversity within size constraints
+        count = args.count or DEFAULT_COHORT_SIZE
+        cohort = []
+        seen_langs = set()
+        size_limit_mb = 20  # Start with small repos
+
+        # Phase 1: Pick repos that add new languages
         for r in available:
             if len(cohort) >= count:
                 break
-            if r not in cohort and r.size_mb <= size_limit_mb:
-                cohort.append(r)
+            if r.size_mb > size_limit_mb:
+                continue
 
-    # Phase 3: If still not enough, expand size limit
-    if len(cohort) < count:
-        size_limit_mb = 50
-        for r in available:
-            if len(cohort) >= count:
-                break
-            if r not in cohort and r.size_mb <= size_limit_mb:
+            primary_lang = r.languages[0] if r.languages else None
+            if primary_lang and primary_lang not in seen_langs:
                 cohort.append(r)
+                seen_langs.add(primary_lang)
 
-    # Phase 4: Take whatever's left
-    if len(cohort) < count:
-        for r in available:
-            if len(cohort) >= count:
-                break
-            if r not in cohort:
-                cohort.append(r)
+        # Phase 2: Fill remaining slots with smallest remaining repos
+        if len(cohort) < count:
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort and r.size_mb <= size_limit_mb:
+                    cohort.append(r)
 
-    if not cohort:
-        print("No more repos available in pool!")
-        return 1
+        # Phase 3: If still not enough, expand size limit
+        if len(cohort) < count:
+            size_limit_mb = 50
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort and r.size_mb <= size_limit_mb:
+                    cohort.append(r)
+
+        # Phase 4: Take whatever's left
+        if len(cohort) < count:
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort:
+                    cohort.append(r)
+
+        if not cohort:
+            print("No more repos available in pool!")
+            return 1
 
     # Update state
     state.cohort_number += 1
@@ -520,8 +553,9 @@ def cmd_cohort(args):
         langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
         print(f"  {r.name:40s} {r.size_mb:6.1f}MB  [{langs}]")
 
-    print()
-    print(f"Remaining in pool: {len(available) - len(cohort)}")
+    if not explicit_repos:
+        print()
+        print(f"Remaining in pool: {len(available) - len(cohort)}")
     print()
     print("Next: Run `bakeoff run` to analyze these repos")
     return 0
@@ -1344,6 +1378,7 @@ def main():
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
     p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
+    p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection and size filter)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run
