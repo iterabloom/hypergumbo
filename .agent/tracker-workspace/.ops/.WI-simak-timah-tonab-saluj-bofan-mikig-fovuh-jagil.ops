@@ -62,3 +62,10 @@
   clock: 7  # 5209
   nonce: '5209'  # 5209
   message: "Hypergumbo supports over 100 languages. Are you sure those three plus rust are the only ones implicated by this pattern?"  # 5209
+- op: discuss  # 9773
+  at: '2026-03-07T00:50:56Z'  # 9773
+  by: agent  # 9773
+  actor: jgstern_agent  # 9773
+  clock: 8  # 9773
+  nonce: '9773'  # 9773
+  message: "You're right, I was too narrow. Beyond Rust (Cargo) and JS/TS (npm), the build-target-to-main-function pattern applies to any language with a build manifest that declares an executable entry point. A more thorough enumeration:\n\nAlready supported: Rust (Cargo [[bin]]), JS/TS (npm bin).\n\nLikely affected (have build manifests with entry point declarations):\n- Python: pyproject.toml [project.scripts]/[project.gui-scripts], setup.py console_scripts\n- Java: Maven pom.xml <mainClass>, Gradle application { mainClass }\n- Kotlin: Gradle application { mainClass } (same as Java)\n- C#: .csproj <StartupObject> or <OutputType>Exe</OutputType>\n- Dart: pubspec.yaml executables\n- Swift: Package.swift .executableTarget\n- Haskell: .cabal executable stanzas (main-is field)\n- Elixir: mix.exs escript[:main_module]\n- Ruby: gemspec executables/bindir\n- Scala: build.sbt mainClass\n- OCaml: dune (executable) stanzas\n- Zig: build.zig b.addExecutable\n- Nim: .nimble bin field\n\nNot affected (entry point is implicit/direct, no manifest indirection):\n- Go: package main + func main() — direct, no manifest indirection\n- C/C++: Makefile/CMakeLists.txt targets, but main() is by convention\n- PHP: No build manifest concept for CLI entry points\n- Shell/Bash: Direct execution, no manifest\n\nI haven't checked which of these hypergumbo currently parses config files for. Creating a scope expansion tracker item for the full set."  # 9773

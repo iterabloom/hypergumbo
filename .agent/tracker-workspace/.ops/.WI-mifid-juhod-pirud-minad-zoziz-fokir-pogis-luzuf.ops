@@ -1,0 +1,34 @@
+- op: create  # 8732
+  at: '2026-03-07T00:51:22Z'  # 8732
+  by: agent  # 8732
+  actor: jgstern_agent  # 8732
+  clock: 1  # 8732
+  nonce: '8732'  # 8732
+  data:  # 8732
+    kind: work_item  # 8732
+    title: "Scope expansion: build-target-to-main edges for additional languages"  # 8732
+    status: todo_soft  # 8732
+    priority: 3  # 8732
+    parent:  # 8732
+    tags: []  # 8732
+    before: []  # 8732
+    duplicate_of: []  # 8732
+    not_duplicate_of: []  # 8732
+    pr_ref:  # 8732
+    description: "Build-target linker currently connects Cargo [[bin]] and npm bin to main(). The same pattern applies to 13+ other languages with build manifest entry points: Python (pyproject.toml scripts), Java/Kotlin (Maven/Gradle mainClass), C# (.csproj StartupObject), Dart (pubspec.yaml executables), Swift (Package.swift executableTarget), Haskell (.cabal main-is), Elixir (mix.exs escript), Ruby (gemspec executables), Scala (build.sbt mainClass), OCaml (dune executable), Zig (build.zig addExecutable), Nim (.nimble bin). See WI-simak discussion for full analysis."  # 8732
+    fields: {}  # 8732
+- op: update  # 89b0
+  at: '2026-03-07T01:23:43Z'  # 89b0
+  by: agent  # 89b0
+  actor: jgstern_agent  # 89b0
+  clock: 2  # 89b0
+  nonce: 89b0  # 89b0
+  set:  # 89b0
+    priority: 4  # 89b0
+- op: discuss  # 08cb
+  at: '2026-03-07T01:23:43Z'  # 08cb
+  by: agent  # 08cb
+  actor: jgstern_agent  # 08cb
+  clock: 3  # 08cb
+  nonce: 08cb  # 08cb
+  message: "Deprioritized to P4: requires per-language config file analyzer work (13+ languages). Each language needs its own build manifest parser. Not blocking any current bakeoff signal — alertmanager/prometheus orphan rate is from Elm/Jsonnet/Go-types, not missing build-target edges."  # 08cb
