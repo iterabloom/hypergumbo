@@ -527,6 +527,9 @@ JS_BUILTIN_METHODS: frozenset[str] = frozenset({
     "charAt", "charCodeAt", "normalize",
     # Iterator / generator
     "next", "return", "throw",
+    # Console / logging — ubiquitous methods that resolve to wrong targets
+    # (e.g., this.logger.warn() → test file's warn:method)
+    "log", "warn", "error", "info", "debug", "trace",
 })
 
 JS_BUILTIN_NAMES: set[str] = {

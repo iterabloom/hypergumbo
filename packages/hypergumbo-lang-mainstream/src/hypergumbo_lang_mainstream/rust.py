@@ -1398,6 +1398,10 @@ _RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
     "new", "build",
     # Channel / async
     "send", "recv",
+    # Command — .output() conflates with test utilities (ripgrep bakeoff)
+    "output", "status", "spawn",
+    # Logging — ubiquitous across log/tracing crates
+    "warn", "error", "info", "debug", "trace",
 })
 
 
