@@ -94,6 +94,20 @@ class FileAnalysis:
     may not exist yet during Pass 1 (it might be in another file).
     """
 
+    interface_method_sets: dict[str, set[str]] = field(default_factory=dict)
+    """Maps interface name → set of method names (Go structural typing).
+
+    Used for cross-file structural interface matching: a struct satisfies
+    an interface if its method set is a superset of the interface's.
+    """
+
+    struct_method_sets: dict[str, set[str]] = field(default_factory=dict)
+    """Maps struct name → set of method names from receiver declarations.
+
+    Used alongside ``interface_method_sets`` for cross-file structural
+    interface matching in Go.
+    """
+
 
 @dataclass(frozen=True)
 class ArityFlags:

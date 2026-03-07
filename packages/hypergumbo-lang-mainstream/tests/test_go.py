@@ -5124,6 +5124,47 @@ func (b *Bar) String() string { return "bar" }
         assert foo.meta and "Stringer" in foo.meta.get("base_classes", [])
         assert bar.meta and "Stringer" in bar.meta.get("base_classes", [])
 
+    def test_cross_file_structural_matching(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct in one file should match interface in another file."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        # Interface in interface.go
+        (tmp_path / "interface.go").write_text("""package main
+
+type Queryable interface {
+    Querier() Querier
+}
+""")
+        # Struct in db.go that implements Queryable
+        (tmp_path / "db.go").write_text("""package main
+
+type DB struct{}
+
+func (db *DB) Querier() Querier {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        db_sym = next(
+            (s for s in result.symbols if s.name == "DB" and s.kind == "struct"),
+            None,
+        )
+        assert db_sym is not None, "Should find DB struct"
+        assert db_sym.meta is not None, (
+            "DB should have meta with base_classes from cross-file matching"
+        )
+        assert "base_classes" in db_sym.meta, (
+            f"DB should have base_classes, got: {db_sym.meta}"
+        )
+        assert "Queryable" in db_sym.meta["base_classes"], (
+            f"DB should implement Queryable, got: {db_sym.meta['base_classes']}"
+        )
+
 
 class TestGoInterfaceMethodSymbols:
     """Tests for extracting method symbols from Go interface definitions.

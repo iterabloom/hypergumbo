@@ -1089,7 +1089,7 @@ def _extract_symbols_from_file(
                 impl_assertions[sym.name]
             )
 
-    # Structural interface matching: Go implicit satisfaction.
+    # Per-file structural interface matching: Go implicit satisfaction.
     # A struct satisfies an interface if its method set is a superset of
     # the interface's method set (same method names).
     if interface_method_sets and struct_method_sets:
@@ -1112,6 +1112,10 @@ def _extract_symbols_from_file(
                     struct_sym.meta.setdefault("base_classes", []).append(
                         iface_name,
                     )
+
+    # Store method sets for cross-file structural matching in _analyze_go_impl
+    analysis.interface_method_sets = interface_method_sets
+    analysis.struct_method_sets = struct_method_sets
 
     return analysis
 
@@ -2990,6 +2994,48 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                 route.name = handler_wiring[field]
 
     all_symbols.extend(all_route_syms)
+
+    # Cross-file structural interface matching: aggregate method sets from
+    # all files and match structs to interfaces defined in other files.
+    # Per-file matching already happened in _extract_symbols_from_file;
+    # this pass catches cross-file relationships (e.g., interface in one
+    # file, implementing struct in another).
+    global_iface_methods: dict[str, set[str]] = {}
+    global_struct_methods: dict[str, set[str]] = {}
+    for analysis in file_analyses.values():
+        for iname, imethods in analysis.interface_method_sets.items():
+            # First definition wins (interfaces with same name in different
+            # packages would need package qualification, which is out of scope)
+            if iname not in global_iface_methods:
+                global_iface_methods[iname] = imethods
+        for sname, smethods in analysis.struct_method_sets.items():
+            # Merge method sets: methods can be defined across multiple files
+            if sname in global_struct_methods:
+                global_struct_methods[sname] = global_struct_methods[sname] | smethods
+            else:
+                global_struct_methods[sname] = set(smethods)
+
+    if global_iface_methods and global_struct_methods:
+        # Build a lookup of struct symbols for efficient updates
+        struct_syms: dict[str, Symbol] = {}
+        for sym in all_symbols:
+            if sym.kind == "struct" and sym.name not in struct_syms:
+                struct_syms[sym.name] = sym
+
+        for struct_name, struct_methods in global_struct_methods.items():
+            struct_sym = struct_syms.get(struct_name)
+            if struct_sym is None:
+                continue  # pragma: no cover
+            for iface_name, iface_methods in global_iface_methods.items():
+                if not iface_methods.issubset(struct_methods):
+                    continue
+                if struct_sym.meta is None:
+                    struct_sym.meta = {}
+                existing = struct_sym.meta.get("base_classes", [])
+                if iface_name not in existing:
+                    struct_sym.meta.setdefault("base_classes", []).append(
+                        iface_name,
+                    )
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
