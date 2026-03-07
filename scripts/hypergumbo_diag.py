@@ -196,21 +196,24 @@ def node_lang(n: dict) -> str:
 
 
 def is_route_node(n: dict) -> bool:
-    """Check if a node represents an HTTP route."""
+    """Check if a node represents an HTTP route definition.
+
+    Returns True for actual route symbols (kind=route) and nodes with explicit
+    http_method+route_path metadata. Does NOT return True for handler functions
+    that merely have a 'route' concept — those are the targets of routes_to
+    edges, not route definitions themselves.
+    """
+    # Explicit route kind
+    if n.get("kind") == "route":
+        return True
+
+    # Direct http fields on the node or its metadata
     meta = n.get("meta") or {}
-    concepts = meta.get("concepts") or []
-    
-    for c in concepts:
-        if isinstance(c, dict):
-            if c.get("concept") == "route" or c.get("name") == "route":
-                return True
-    
-    # Fallback: direct http fields
     if meta.get("http_method") and meta.get("route_path"):
         return True
     if n.get("http_method") and n.get("route_path"):
         return True
-    
+
     return False
 
 
@@ -347,14 +350,19 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
                     if pu != pv:
                         calls_crossfile += 1
     
-    # Route → handler linking
-    route_has_nonroute_edge = set()
+    # Route → handler linking: count routes with routes_to edges or outgoing
+    # edges to non-route nodes (routes_to is the primary signal)
+    route_has_handler = set()
     for e in edges:
         u, v = edge_src(e), edge_dst(e)
-        if u in route_nodes and v in idx and v not in route_nodes:
-            route_has_nonroute_edge.add(u)
-    
-    route_link_pct = pct(len(route_has_nonroute_edge), len(route_nodes))
+        t = e.get("type", "")
+        if u in route_nodes:
+            if t == "routes_to":
+                route_has_handler.add(u)
+            elif v in idx and v not in route_nodes:
+                route_has_handler.add(u)
+
+    route_link_pct = pct(len(route_has_handler), len(route_nodes))
     
     # Analyze entrypoints
     ep_rows = []
