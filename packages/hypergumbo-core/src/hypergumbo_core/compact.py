@@ -919,11 +919,19 @@ def format_compact_behavior_map(
             if sid and sid in symbol_ids:
                 entrypoints_with_ids.append(ep)
 
-        # Cap entrypoints to leave room for bridge nodes in connectivity mode
-        # Without this cap, repos with many entrypoints (e.g., 158 main() functions)
-        # leave no room for nodes that connect them, resulting in 0 edges.
-        # Use at least 1 to handle edge case where max_symbols is very small.
-        max_forced = max(1, config.max_symbols // 2)
+        # Cap entrypoints to leave room for bridge nodes in connectivity mode.
+        # Without this cap, repos with many entrypoints (e.g., keycloak with
+        # 500 JAX-RS handlers) consume most of the node budget, leaving
+        # insufficient room for frontier expansion.  This causes fragmentation:
+        # keycloak had 30 components and 19 singletons in 100-node compact.
+        #
+        # Use adaptive cap: when entrypoints exceed max_symbols (indicating a
+        # large repo with many entry points), cap aggressively (1/3) to leave
+        # room for bridging.  Otherwise use the gentler 1/2 cap.
+        if len(entrypoints_with_ids) > config.max_symbols:
+            max_forced = max(1, config.max_symbols // 3)
+        else:
+            max_forced = max(1, config.max_symbols // 2)
         if len(entrypoints_with_ids) > max_forced:
             # Sort by confidence (descending) and take top entries
             sorted_eps = sorted(
@@ -949,10 +957,11 @@ def format_compact_behavior_map(
             if dst in symbol_id_set:
                 cross_cutting_ids.add(dst)
 
-    # Cap cross-cutting seeds to avoid dominating the budget.  Reserve at least
-    # 25% of max_symbols for centrality-ranked nodes.
-    max_cross_cutting = max(1, config.max_symbols // 4)
-    if len(cross_cutting_ids) > max_cross_cutting:
+    # Cap cross-cutting seeds to avoid dominating the budget.  The combined
+    # total of entrypoints + cross-cutting seeds must leave at least half of
+    # max_symbols for frontier expansion.
+    remaining_seed_budget = max(0, config.max_symbols // 2 - len(force_include_ids))
+    if len(cross_cutting_ids) > remaining_seed_budget:
         # Prefer endpoints with higher edge count (more cross-cutting connections)
         cc_edge_count: Counter = Counter()
         for e in behavior_map.get("edges", []):
@@ -964,7 +973,7 @@ def format_compact_behavior_map(
                     cc_edge_count[dst] += 1
         # Sort by edge count descending, then alphabetically for stability
         ranked = sorted(cross_cutting_ids, key=lambda x: (-cc_edge_count[x], x))
-        cross_cutting_ids = set(ranked[:max_cross_cutting])
+        cross_cutting_ids = set(ranked[:remaining_seed_budget])
 
     force_include_ids |= cross_cutting_ids
 

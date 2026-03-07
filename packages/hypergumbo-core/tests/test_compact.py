@@ -1404,12 +1404,13 @@ class TestForceIncludeEntrypoints:
             assert ep_sym.id in included_ids, f"Entrypoint {ep_sym.name} should be included"
 
     def test_entrypoints_capped_when_exceeding_budget(self):
-        """When entrypoints exceed max_symbols/2, they are capped to leave room for bridges."""
+        """When entrypoints far exceed max_symbols, they are capped aggressively
+        to leave room for bridge nodes."""
         # Create 20 entrypoint symbols (simulating many main() functions)
         entrypoint_syms = [make_symbol(f"main_{i}") for i in range(20)]
         helper_syms = [make_symbol(f"helper_{i}") for i in range(30)]
 
-        # Set confidence so main_0 through main_4 have highest confidence
+        # Set confidence so main_0 through main_2 have highest confidence
         behavior_map = {
             "nodes": [s.to_dict() for s in entrypoint_syms + helper_syms],
             "edges": [],
@@ -1419,8 +1420,8 @@ class TestForceIncludeEntrypoints:
             ],
         }
 
-        # With max_symbols=10, only 5 entrypoints (max_symbols // 2) should be forced
-        # This leaves room for 5 bridge/helper nodes
+        # With max_symbols=10 and 20 entrypoints (> max_symbols), adaptive cap
+        # kicks in: max_symbols // 3 = 3 forced entrypoints.
         config = CompactConfig(min_symbols=10, max_symbols=10)
         result = format_compact_behavior_map(
             behavior_map,
@@ -1433,13 +1434,14 @@ class TestForceIncludeEntrypoints:
         included_ids = {n["id"] for n in result["nodes"]}
         entrypoints_included = [s for s in entrypoint_syms if s.id in included_ids]
 
-        # Should have capped entrypoints to 5 (max_symbols // 2)
+        # Should have capped entrypoints to 3 (max_symbols // 3) since
+        # 20 entrypoints > max_symbols (10)
         assert len(entrypoints_included) <= 5, (
             f"Expected at most 5 entrypoints, got {len(entrypoints_included)}"
         )
 
-        # The highest-confidence entrypoints should be included (main_0 through main_4)
-        for i in range(5):
+        # The highest-confidence entrypoints should be included (main_0 through main_2)
+        for i in range(3):
             assert entrypoint_syms[i].id in included_ids, (
                 f"Entrypoint main_{i} (high confidence) should be included"
             )
@@ -2981,3 +2983,142 @@ class TestCrossCuttingEdgeSeeding:
         # Regular edges should NOT be in the set
         assert "calls" not in CROSS_CUTTING_EDGE_TYPES
         assert "imports" not in CROSS_CUTTING_EDGE_TYPES
+
+
+class TestCompactSeedBudget:
+    """Tests for seed budget management in compact mode.
+
+    Large repos (keycloak: 79k nodes, 500 entrypoints) produce fragmented
+    compact output when forced seeds consume most of the node budget, leaving
+    insufficient room for bridge nodes.  The fix caps total forced seeds
+    (entrypoints + cross-cutting endpoints) to at most 1/3 of max_symbols,
+    reserving 2/3 for frontier expansion.
+    """
+
+    def test_many_entrypoints_limited_for_bridging(self):
+        """With many isolated entrypoints, compact mode caps forced seeds
+        to leave room for bridge nodes that reduce singletons."""
+        from hypergumbo_core.compact import (
+            format_compact_behavior_map,
+            CompactConfig,
+        )
+
+        # Simulate keycloak-like: 200 isolated entrypoints, each with its
+        # own private helper.  Only every 10th helper connects to core.
+        all_symbols = []
+        edges = []
+        for i in range(200):
+            ep = make_symbol(f"Resource{i}", kind="method",
+                             path=f"src/r{i}.java", language="java")
+            helper = make_symbol(f"Helper{i}", kind="function",
+                                 path=f"src/h{i}.java", language="java")
+            all_symbols.extend([ep, helper])
+            edges.append(make_edge(ep.id, helper.id))
+
+        core = make_symbol("SessionManager", kind="class",
+                           path="src/core.java", language="java")
+        all_symbols.append(core)
+        for i in range(0, 200, 10):
+            edges.append(make_edge(all_symbols[i * 2 + 1].id, core.id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": all_symbols[i * 2].id,
+                 "kind": "route_handler", "confidence": 0.9}
+                for i in range(200)
+            ],
+        }
+
+        config = CompactConfig(max_symbols=100)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=True,
+            connectivity_aware=True,
+        )
+
+        nodes = result["nodes"]
+        result_edges = result["edges"]
+
+        # Count singletons (nodes with 0 edges in the induced subgraph)
+        adj: dict = {n["id"]: set() for n in nodes}
+        for e in result_edges:
+            src, dst = e["src"], e["dst"]
+            if src in adj and dst in adj:
+                adj[src].add(dst)
+                adj[dst].add(src)
+        singletons = sum(1 for nid in adj if not adj[nid])
+
+        # Key assertion: zero singletons.  With proper seed budget, every
+        # forced entrypoint has room for its helper to be pulled in by
+        # the frontier, so no node is disconnected.
+        assert singletons == 0, (
+            f"Singletons: {singletons}/{len(nodes)} = "
+            f"{singletons / len(nodes):.0%}. "
+            f"Every forced seed should have at least one edge."
+        )
+
+    def test_total_forced_seeds_capped(self):
+        """Total forced seeds (entrypoints + cross-cutting) don't exceed
+        1/3 of max_symbols, leaving 2/3 for frontier expansion."""
+        from hypergumbo_core.compact import (
+            format_compact_behavior_map,
+            CompactConfig,
+        )
+
+        # 100 entrypoints + 60 cross-cutting edge endpoints
+        entrypoint_syms = [
+            make_symbol(f"Ep{i}", kind="method",
+                        path=f"src/ep{i}.java", language="java")
+            for i in range(100)
+        ]
+        handler_syms = [
+            make_symbol(f"Handler{i}", kind="function",
+                        path=f"src/h{i}.java", language="java")
+            for i in range(60)
+        ]
+        bridge_syms = [
+            make_symbol(f"Bridge{i}", kind="class",
+                        path=f"src/b{i}.java", language="java")
+            for i in range(40)
+        ]
+        all_symbols = entrypoint_syms + handler_syms + bridge_syms
+
+        edges = []
+        # Cross-cutting edges: routes_to from entrypoints to handlers
+        for i, ep in enumerate(entrypoint_syms[:60]):
+            edges.append(make_edge(ep.id, handler_syms[i].id,
+                                   edge_type="routes_to"))
+        # Bridge edges: handlers call bridges
+        for i, h in enumerate(handler_syms):
+            edges.append(make_edge(h.id, bridge_syms[i % len(bridge_syms)].id))
+        # Bridge chain
+        for i in range(len(bridge_syms) - 1):
+            edges.append(make_edge(bridge_syms[i].id, bridge_syms[i + 1].id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": ep.id, "kind": "route_handler",
+                 "confidence": 0.9}
+                for ep in entrypoint_syms
+            ],
+        }
+
+        config = CompactConfig(max_symbols=100)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=True,
+            connectivity_aware=True,
+        )
+
+        nodes = result["nodes"]
+        included_ids = {n["id"] for n in nodes}
+
+        # At least some bridge nodes should be included (frontier expansion)
+        bridge_count = sum(1 for b in bridge_syms if b.id in included_ids)
+        assert bridge_count > 0, (
+            "No bridge nodes included — forced seeds consumed all budget"
+        )
