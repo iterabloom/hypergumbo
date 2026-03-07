@@ -46,10 +46,15 @@ _is_pid_ancestor() {
 }
 
 if [[ -n "$_STORED_PID" ]]; then
-  # PID stored: check if it's an ancestor of this process
-  if ! _is_pid_ancestor "$_STORED_PID"; then
+  if _is_pid_ancestor "$_STORED_PID"; then
+    : # This is the autonomous agent — proceed to blocking logic
+  elif [[ -d "/proc/$_STORED_PID" ]]; then
+    # Stored PID is alive but not our ancestor — we're a different session
     echo '{"decision": "approve", "reason": "Interactive session (PID does not match autonomous agent)"}'
     exit 0
+  else
+    # Stored PID is dead (crash/restart) — re-claim ownership
+    echo "$MODE pid=$PPID" > "$REPO_ROOT/AUTONOMOUS_MODE.txt"
   fi
 else
   # No PID stored: claim ownership using $PPID (the agent process)
