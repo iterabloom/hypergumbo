@@ -24,3 +24,18 @@
   clock: 2  # 46e1
   nonce: '46e1'  # 46e1
   message: "Agent tool dispatch tables are the defining architectural pattern of AI CLI agents (codex, gemini-cli, toad, claude-agent-acp). Add YAML patterns for: tool handler registration arrays/objects, generate-call-observe agent loops, tool result handling. Lower priority than MCP since these patterns are less standardized across projects."  # 46e1
+- op: update  # d187
+  at: '2026-03-07T11:51:45Z'  # d187
+  by: agent  # d187
+  actor: jgstern_agent  # d187
+  clock: 3  # d187
+  nonce: d187  # d187
+  set:  # d187
+    status: wont_do  # d187
+- op: discuss  # 9016
+  at: '2026-03-07T11:51:45Z'  # 9016
+  by: agent  # 9016
+  actor: jgstern_agent  # 9016
+  clock: 4  # 9016
+  nonce: '9016'  # 9016
+  message: "Already closed as wont_do. Re-applying after context compaction. Each AI agent uses ad-hoc dispatch (Rust enums, TS Maps, switch statements). No shared patterns to codify."  # 9016

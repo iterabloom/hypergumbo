@@ -1,0 +1,19 @@
+- op: create  # 496e
+  at: '2026-03-07T14:22:59Z'  # 496e
+  by: agent  # 496e
+  actor: jgstern_agent  # 496e
+  clock: 1  # 496e
+  nonce: 496e  # 496e
+  data:  # 496e
+    kind: work_item  # 496e
+    title: "FastAPI APIRouter prefix composition missing from route paths"  # 496e
+    status: todo_soft  # 496e
+    priority: 3  # 496e
+    parent:  # 496e
+    tags: []  # 496e
+    before: []  # 496e
+    duplicate_of: []  # 496e
+    not_duplicate_of: []  # 496e
+    pr_ref:  # 496e
+    description: "kserve: V2 routes (prefix=/v2), V1 routes (prefix from constant), and OpenAI routes (prefix from env var) are all invisible because APIRouter(prefix=X) + add_api_route(/path) does not compose X+/path. All 3 kserve instances use imported constants, not literals, so simple literal detection will not help. Requires constant propagation or import tracing. See spec §20 Future Work."  # 496e
+    fields: {}  # 496e

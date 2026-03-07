@@ -24,3 +24,18 @@
   clock: 2  # 328e
   nonce: 328e  # 328e
   message: "Bakeoff assessment: gemini-cli, codex, claude-agent-acp all use MCP but it's not detected. Add YAML patterns for @modelcontextprotocol/sdk (TS), mcp-python, MCP server/client setup, tool registration. Patterns should detect: McpServer/McpClient instantiation, server.tool() registration, client.callTool(), transport setup."  # 328e
+- op: update  # 1983
+  at: '2026-03-07T11:51:45Z'  # 1983
+  by: agent  # 1983
+  actor: jgstern_agent  # 1983
+  clock: 3  # 1983
+  nonce: '1983'  # 1983
+  set:  # 1983
+    status: done  # 1983
+- op: discuss  # 1642
+  at: '2026-03-07T11:51:45Z'  # 1642
+  by: agent  # 1642
+  actor: jgstern_agent  # 1642
+  clock: 4  # 1642
+  nonce: '1642'  # 1642
+  message: "Already done in PR #1917. Re-applying after context compaction lost the update."  # 1642
