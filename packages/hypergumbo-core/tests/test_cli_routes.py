@@ -1068,3 +1068,72 @@ def test_cmd_routes_concept_before_materialized_same_file_dedup(
     out, _ = capsys.readouterr()
     assert out.count("[GET] /api/users") == 1
     assert "Found 1 API route" in out
+
+
+def test_cmd_routes_route_node_with_wrong_concept_method(
+    tmp_path: Path, capsys
+) -> None:
+    """Route symbols use meta.http_method for dedup, not concept method.
+
+    When a handler is used for both GET and POST routes, Phase 3 attaches both
+    concepts to each route symbol. The dedup key must use meta.http_method (the
+    actual registration method) to avoid collisions. Without this fix, two route
+    symbols for GET and POST on the same path would collide because the first
+    concept on the POST route has method=GET.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:web.go:97-97:GET /debug/*subpath:route",
+                "name": "debugHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "web.go",
+                "span": {"start_line": 97, "end_line": 97},
+                "meta": {"route_path": "/debug/*subpath", "http_method": "GET"},
+            },
+            {
+                "id": "go:web.go:98-98:POST /debug/*subpath:route",
+                "name": "debugHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "web.go",
+                "span": {"start_line": 98, "end_line": 98},
+                "meta": {
+                    "route_path": "/debug/*subpath",
+                    "http_method": "POST",
+                    "concepts": [
+                        {
+                            "concept": "route",
+                            "method": "GET",
+                            "path": "/debug/*subpath",
+                        },
+                        {
+                            "concept": "route",
+                            "method": "POST",
+                            "path": "/debug/*subpath",
+                        },
+                    ],
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Both GET and POST routes must appear — they are different registrations
+    assert "[GET] /debug/*subpath" in out
+    assert "[POST] /debug/*subpath" in out
+    assert "Found 2 API route" in out

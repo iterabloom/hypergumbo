@@ -1093,7 +1093,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
             # Filter out test code if --exclude-tests (checks both path and annotations)
             if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
-                continue
+                continue  # pragma: no cover - test penalty in detect_entrypoints filters first
 
             # Filter out entries with tier > max_tier if --max-tier set
             if max_tier is not None and sym.supply_chain_tier > max_tier:
@@ -1137,7 +1137,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 if sym is None:
                     continue  # pragma: no cover
                 if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
-                    continue
+                    continue  # pragma: no cover - test penalty in detect_entrypoints filters first
                 if max_tier is not None and sym.supply_chain_tier > max_tier:
                     continue
                 filtered.append(ep)
@@ -1486,14 +1486,20 @@ def cmd_routes(args: argparse.Namespace) -> int:
         meta = node.get("meta") or {}
         route_path = None
         method = None
-        for concept in meta.get("concepts", []):
-            if isinstance(concept, dict) and concept.get("concept") == "route":
-                route_path = concept.get("path")
-                method = concept.get("method")
-                break
-        if route_path is None and node.get("kind") == "route":
+        # For kind="route" symbols, always use meta.route_path/http_method.
+        # These are the authoritative values from the analyzer.  Concept
+        # enrichment (Phase 3) can attach multiple concepts with different
+        # methods when a handler is reused across GET/POST — using the
+        # concept method would cause dedup collisions.
+        if node.get("kind") == "route":
             route_path = meta.get("route_path")
-            method = method or meta.get("http_method")
+            method = meta.get("http_method")
+        if route_path is None:
+            for concept in meta.get("concepts", []):
+                if isinstance(concept, dict) and concept.get("concept") == "route":
+                    route_path = concept.get("path")
+                    method = concept.get("method")
+                    break
         if route_path and method:
             key = f"{method.upper()}:{route_path}:{node.get('path', '')}"
             if key in seen_route_keys:
@@ -1532,23 +1538,25 @@ def cmd_routes(args: argparse.Namespace) -> int:
             line = span.get("start_line", 0)
             meta = route.get("meta", {}) or {}
 
-            # Extract route info from concept metadata (YAML pattern enrichment)
-            # or from direct meta fields (kind="route" symbols from analyzers)
+            # Extract route info from direct meta fields (kind="route" symbols
+            # from analyzers) or concept metadata (YAML pattern enrichment).
+            # kind="route" symbols use meta.route_path/http_method as the
+            # authoritative source — concept methods can be wrong when a
+            # handler is shared across multiple HTTP methods.
             route_path = None
             method = None
             controller_action = None
-            concepts = meta.get("concepts", [])
-            for concept in concepts:
-                if isinstance(concept, dict) and concept.get("concept") == "route":
-                    route_path = concept.get("path")
-                    method = concept.get("method")
-                    controller_action = concept.get("controller_action")
-                    break
-
-            # Fallback: kind="route" symbols store route info in meta directly
-            if route_path is None and route.get("kind") == "route":
+            if route.get("kind") == "route":
                 route_path = meta.get("route_path")
-                method = method or meta.get("http_method")
+                method = meta.get("http_method")
+            if route_path is None:
+                concepts = meta.get("concepts", [])
+                for concept in concepts:
+                    if isinstance(concept, dict) and concept.get("concept") == "route":
+                        route_path = concept.get("path")
+                        method = concept.get("method")
+                        controller_action = concept.get("controller_action")
+                        break
             # controller_action may also be in top-level meta (Rails routes)
             if controller_action is None:
                 controller_action = meta.get("controller_action")
