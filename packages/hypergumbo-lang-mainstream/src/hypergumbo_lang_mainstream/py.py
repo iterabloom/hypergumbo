@@ -1899,9 +1899,8 @@ def _extract_file_analysis(
     django_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
     usage_contexts.extend(django_contexts)
     # router_prefixes already computed above (before the symbol extraction loop)
-    usage_contexts.extend(
-        _extract_flask_usage_contexts(tree, str(py_file), symbol_by_name, router_prefixes)
-    )
+    flask_contexts = _extract_flask_usage_contexts(tree, str(py_file), symbol_by_name, router_prefixes)
+    usage_contexts.extend(flask_contexts)
 
     # Create route symbols from Django usage contexts.
     for ctx in django_contexts:
@@ -1919,6 +1918,32 @@ def _extract_file_analysis(
                 "route_path": route_path,
                 "http_method": "GET",
                 "view_name": view_name,
+            },
+        )
+        symbols.append(symbol)
+
+    # Create route symbols from Flask-RESTful add_resource usage contexts.
+    # add_resource registers all HTTP methods the Resource class defines,
+    # but we don't know which methods at static analysis time, so we use
+    # ANY as the method.
+    for ctx in flask_contexts:
+        if ctx.position != "resource_class":
+            continue
+        route_path = ctx.metadata.get("route_path", "")
+        view_name = ctx.metadata.get("view_name")
+        symbol = Symbol(
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            name=f"{view_name or 'unknown'}",
+            kind="route",
+            language="python",
+            path=str(py_file),
+            span=ctx.span,
+            stable_id=make_route_stable_id("ANY", route_path),
+            meta={
+                "route_path": route_path,
+                "http_method": "ANY",
+                "view_name": view_name,
+                "handler_ref": ctx.symbol_ref,
             },
         )
         symbols.append(symbol)

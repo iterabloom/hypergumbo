@@ -1065,6 +1065,13 @@ def test_flask_restful_add_resource_usage_context(tmp_path: Path) -> None:
     assert "TodoList" in ctx_names
     assert "Todo" in ctx_names
 
+    # Route symbols should be created for each add_resource call
+    route_syms = [s for s in result.symbols if s.kind == "route"]
+    assert len(route_syms) >= 2
+    route_paths = {s.meta.get("route_path") for s in route_syms}
+    assert "/todos" in route_paths
+    assert "/todos/<string:todo_id>" in route_paths
+
 
 def test_flask_restful_add_resource_attribute_class(tmp_path: Path) -> None:
     """Flask-RESTful add_resource with attribute class (views.TodoList)."""
