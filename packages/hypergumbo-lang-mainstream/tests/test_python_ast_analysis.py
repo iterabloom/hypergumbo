@@ -1118,6 +1118,197 @@ def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
     assert ctx["metadata"]["methods"] == ["GET"]  # default
 
 
+def test_fastapi_apirouter_prefix_composition_literal(tmp_path: Path) -> None:
+    """APIRouter(prefix='/v2') composes prefix with add_api_route paths."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "v2_endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "def health():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter(tags=['V2'], prefix='/v2')\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+        "v2_router.add_api_route('/health/ready', health, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 2
+    paths = {ctx["metadata"]["route_path"] for ctx in usage_contexts}
+    assert "/v2/models/{model_name}/infer" in paths
+    assert "/v2/health/ready" in paths
+
+
+def test_fastapi_apirouter_prefix_composition_same_file_constant(tmp_path: Path) -> None:
+    """APIRouter(prefix=CONST) resolves same-file string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "V2_PREFIX = '/v2'\n"
+        "\n"
+        "def list_models():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=V2_PREFIX)\n"
+        "router.add_api_route('/models', list_models, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/v2/models"
+
+
+def test_fastapi_apirouter_prefix_composition_imported_constant(tmp_path: Path) -> None:
+    """APIRouter(prefix=IMPORTED_CONST) resolves cross-file string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    # Create the constants module
+    pkg_dir = tmp_path / "myapp"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "constants.py").write_text("V2_ROUTE_PREFIX = '/v2'\n")
+
+    # Create the endpoints file that imports the constant
+    (pkg_dir / "endpoints.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from myapp.constants import V2_ROUTE_PREFIX\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter(prefix=V2_ROUTE_PREFIX)\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Find usage contexts from the endpoints file
+    usage_contexts = [
+        uc.to_dict()
+        for uc in result.usage_contexts
+        if "endpoints.py" in uc.path
+    ]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/v2/models/{model_name}/infer"
+
+
+def test_fastapi_apirouter_prefix_decorator_route(tmp_path: Path) -> None:
+    """APIRouter prefix composes with @router.get decorator routes."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "v2_router = APIRouter(prefix='/v2')\n"
+        "\n"
+        "@v2_router.get('/models')\n"
+        "def list_models():\n"
+        "    return []\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # The function symbol should have router_prefix in metadata
+    func = next(
+        (s for s in result.symbols if s.name == "list_models"),
+        None,
+    )
+    assert func is not None
+    assert func.meta is not None
+    assert func.meta.get("router_prefix") == "/v2"
+
+
+def test_fastapi_apirouter_prefix_unresolvable_import(tmp_path: Path) -> None:
+    """APIRouter(prefix=IMPORTED_CONST) with unresolvable import leaves paths unchanged."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "from nonexistent.module import MISSING_PREFIX\n"
+        "\n"
+        "def handler():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=MISSING_PREFIX)\n"
+        "router.add_api_route('/items', handler, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    # Prefix couldn't be resolved, so path stays unchanged
+    assert ctx["metadata"]["route_path"] == "/items"
+
+
+def test_fastapi_apirouter_prefix_class_method(tmp_path: Path) -> None:
+    """APIRouter prefix is attached to class methods with prefixed router decorators."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "v2_router = APIRouter(prefix='/v2')\n"
+        "\n"
+        "class Endpoints:\n"
+        "    @v2_router.get('/models')\n"
+        "    def list_models(self):\n"
+        "        return []\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Find the method symbol
+    method = next(
+        (s for s in result.symbols if s.name == "Endpoints.list_models"),
+        None,
+    )
+    assert method is not None
+    assert method.meta is not None
+    assert method.meta.get("router_prefix") == "/v2"
+
+
+def test_fastapi_apirouter_no_prefix_unchanged(tmp_path: Path) -> None:
+    """APIRouter() without prefix leaves route paths unchanged."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def root():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/health', root, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/health"
+
+
 # ============================================================================
 # Django/DRF Decorator Metadata Tests
 # ============================================================================

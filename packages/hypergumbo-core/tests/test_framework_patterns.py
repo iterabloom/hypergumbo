@@ -881,6 +881,46 @@ patterns:
         assert "concepts" in enriched[0].meta
         assert enriched[0].meta["concepts"][0]["concept"] == "route"
 
+    def test_router_prefix_composes_with_route_path(self, tmp_path: Path) -> None:
+        """Phase 1.5: router_prefix in symbol meta composes with route path."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: test_fw
+language: python
+patterns:
+  - concept: route
+    decorator: "^\\\\w+_router\\\\.get$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+"""
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="list_models",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [{"name": "v2_router.get", "args": ["/models"], "kwargs": {}}],
+                "router_prefix": "/v2",
+            },
+        )
+
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            enriched = enrich_symbols([symbol], {"test_fw"})
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta["concepts"]
+        route_concept = next(c for c in concepts if c["concept"] == "route")
+        assert route_concept["path"] == "/v2/models"
+
     def test_no_enrichment_for_unknown_frameworks(self) -> None:
         """Skips enrichment when no patterns found for framework."""
         clear_pattern_cache()

@@ -735,10 +735,147 @@ def _extract_django_usage_contexts(
     return contexts
 
 
+def _scan_router_prefixes(
+    tree: ast.Module,
+    repo_root: Path | None,
+) -> dict[str, str]:
+    """Scan for FastAPI APIRouter(prefix=X) assignments and resolve prefixes.
+
+    Finds assignments like ``v2_router = APIRouter(prefix="/v2")`` and builds
+    a mapping from variable name to prefix string.  Handles three cases:
+
+    1. Literal string: ``APIRouter(prefix="/v2")``
+    2. Same-file constant: ``PREFIX = "/v2"; APIRouter(prefix=PREFIX)``
+    3. Imported constant: ``from pkg.constants import PREFIX; APIRouter(prefix=PREFIX)``
+       (requires ``repo_root`` to find the source file)
+
+    Returns:
+        Dict mapping variable name (e.g. "v2_router") to prefix string (e.g. "/v2").
+    """
+    # First, collect module-level string constants (NAME = "literal")
+    local_constants: dict[str, str] = {}
+    for node in ast.iter_child_nodes(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            local_constants[node.targets[0].id] = node.value.value
+
+    # Collect imports for cross-file constant resolution
+    imports: dict[str, tuple[str, str]] = {}  # local_name -> (module, original_name)
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                local_name = alias.asname or alias.name
+                imports[local_name] = (node.module, alias.name)
+
+    prefixes: dict[str, str] = {}
+
+    for node in ast.walk(tree):
+        # Match: var = APIRouter(prefix=X)
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
+        # Check the call is APIRouter(...)
+        call = node.value
+        func_name = None
+        if isinstance(call.func, ast.Name):
+            func_name = call.func.id
+        elif isinstance(call.func, ast.Attribute):
+            func_name = call.func.attr
+        if func_name != "APIRouter":
+            continue
+
+        # Extract prefix= keyword argument
+        prefix_value: str | None = None
+        for kw in call.keywords:
+            if kw.arg != "prefix":
+                continue
+            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                # Case 1: literal string
+                prefix_value = kw.value.value
+            elif isinstance(kw.value, ast.Name):
+                const_name = kw.value.id
+                # Case 2: same-file constant
+                if const_name in local_constants:
+                    prefix_value = local_constants[const_name]
+                # Case 3: imported constant
+                elif const_name in imports and repo_root is not None:
+                    prefix_value = _resolve_imported_string_constant(
+                        imports[const_name], repo_root
+                    )
+            break
+
+        if prefix_value is not None:
+            var_name = node.targets[0].id
+            prefixes[var_name] = prefix_value
+
+    return prefixes
+
+
+def _resolve_imported_string_constant(
+    import_info: tuple[str, str],
+    repo_root: Path,
+) -> str | None:
+    """Resolve a cross-file imported string constant.
+
+    Given an import like ``from pkg.constants import V2_PREFIX``, finds the
+    source file and extracts the value of ``V2_PREFIX = "/v2"``.
+
+    Only resolves simple module-level string literal assignments to keep
+    the implementation lightweight and predictable.
+
+    Args:
+        import_info: Tuple of (module_path, original_name) from the import.
+        repo_root: Repository root for finding source files.
+
+    Returns:
+        The string value if found, or None.
+    """
+    module_path, original_name = import_info
+    # Convert dotted module path to file path candidates
+    parts = module_path.split(".")
+    # Try both direct and src-layout paths
+    candidates = [
+        repo_root / Path(*parts).with_suffix(".py"),
+        repo_root / "src" / Path(*parts).with_suffix(".py"),
+    ]
+    # Also try as package/__init__.py
+    candidates.append(repo_root / Path(*parts) / "__init__.py")
+    candidates.append(repo_root / "src" / Path(*parts) / "__init__.py")
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            source = candidate.read_text()
+            mod = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover
+            continue
+        for node in ast.iter_child_nodes(mod):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == original_name
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                return node.value.value
+    return None
+
+
 def _extract_flask_usage_contexts(
     tree: ast.Module,
     file_path: str,
     symbol_by_name: dict[str, Symbol],
+    router_prefixes: dict[str, str] | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
@@ -753,15 +890,22 @@ def _extract_flask_usage_contexts(
     - router.add_api_route('/path', handler, methods=['GET'])
     - router.add_api_route('/path', handler, response_model=Model)
 
+    When ``router_prefixes`` is provided (from ``_scan_router_prefixes``),
+    routes registered on a prefixed APIRouter have the prefix composed with
+    the route path.
+
     Args:
         tree: The parsed AST module
         file_path: Path to the source file
         symbol_by_name: Lookup table for symbols defined in this file
+        router_prefixes: Optional mapping of router variable names to their
+            APIRouter prefix strings.
 
     Returns:
         List of UsageContext records for Flask URL patterns.
     """
     contexts: list[UsageContext] = []
+    _prefixes = router_prefixes or {}
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -852,8 +996,11 @@ def _extract_flask_usage_contexts(
             else:  # pragma: no cover
                 args_values.append("<expr>")
 
-        # Normalize route path
+        # Normalize route path and compose with APIRouter prefix if present
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        if receiver_name and receiver_name in _prefixes:
+            prefix = _prefixes[receiver_name].rstrip("/")
+            normalized_path = prefix + normalized_path
 
         span = Span(
             start_line=node.lineno,
@@ -1446,6 +1593,9 @@ def _extract_file_analysis(
     # Key: (start_line, name) tuple
     processed_functions: set[tuple[int, str]] = set()
 
+    # Scan for APIRouter prefix assignments (for route path composition)
+    router_prefixes = _scan_router_prefixes(tree, repo_root)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -1536,6 +1686,16 @@ def _extract_file_analysis(
                         method_meta["decorators"] = [
                             _extract_decorator_info(dec) for dec in item.decorator_list
                         ]
+                        # Check if any decorator references a prefixed APIRouter
+                        if router_prefixes:
+                            for dec_info in method_meta["decorators"]:
+                                dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                                dot_idx = dec_name.find(".")
+                                if dot_idx > 0:
+                                    receiver = dec_name[:dot_idx]
+                                    if receiver in router_prefixes:
+                                        method_meta["router_prefix"] = router_prefixes[receiver]
+                                        break
 
                     # Extract structured parameters (excluding self/cls)
                     params = _extract_parameters_info(item.args, exclude_self=True)
@@ -1603,6 +1763,16 @@ def _extract_file_analysis(
                     func_meta["decorators"] = [
                         _extract_decorator_info(dec) for dec in node.decorator_list
                     ]
+                    # Check if any decorator references a prefixed APIRouter
+                    if router_prefixes:
+                        for dec_info in func_meta["decorators"]:
+                            dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                            dot_idx = dec_name.find(".")
+                            if dot_idx > 0:
+                                receiver = dec_name[:dot_idx]
+                                if receiver in router_prefixes:
+                                    func_meta["router_prefix"] = router_prefixes[receiver]
+                                    break
 
                 # Extract structured parameters
                 params = _extract_parameters_info(node.args, exclude_self=False)
@@ -1651,7 +1821,10 @@ def _extract_file_analysis(
     usage_contexts: list[UsageContext] = []
     django_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
     usage_contexts.extend(django_contexts)
-    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
+    # router_prefixes already computed above (before the symbol extraction loop)
+    usage_contexts.extend(
+        _extract_flask_usage_contexts(tree, str(py_file), symbol_by_name, router_prefixes)
+    )
 
     # Create route symbols from Django usage contexts.
     for ctx in django_contexts:

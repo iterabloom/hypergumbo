@@ -1224,6 +1224,21 @@ def enrich_symbols(
                 symbol.meta = {}
             symbol.meta["concepts"] = matches
 
+    # Phase 1.5: APIRouter prefix composition
+    # When a Python function has router_prefix in its metadata (from a prefixed
+    # APIRouter), compose the prefix with any route concept paths extracted from
+    # its decorators (e.g., @v2_router.get("/models") with prefix="/v2"
+    # becomes path="/v2/models").
+    for symbol in symbols:
+        if not symbol.meta:
+            continue
+        router_prefix = symbol.meta.get("router_prefix")
+        if not router_prefix or "concepts" not in symbol.meta:
+            continue
+        for concept in symbol.meta["concepts"]:
+            if concept.get("concept") == "route" and "path" in concept:
+                concept["path"] = _combine_route_paths(router_prefix, concept["path"])
+
     # Phase 2: Parent path inheritance (v1.3.x prefix_from_parent)
     # After all symbols have their concepts, resolve parent prefixes
     if patterns_with_prefix:
