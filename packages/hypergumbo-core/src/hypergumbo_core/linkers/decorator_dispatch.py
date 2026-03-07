@@ -63,9 +63,9 @@ def _is_test_path(path: str) -> bool:
 # Each entry defines a "registry family": handlers registered with the
 # decorator are connected to the dispatch site functions.
 # When multiple symbols share the same dispatch function name (e.g.,
-# run_all_analyzers in both all_analyzers.py and registry.py), the
-# linker deduplicates by keeping only one dispatch site per family —
-# preferring shorter paths (closer to the canonical registry module).
+# run_all_analyzers in both all_analyzers.py and registry.py), ALL
+# instances get dispatches_to edges. Different call graph paths may
+# reach different instances, so every dispatch site needs edges.
 DISPATCH_DECORATOR_PATTERNS: dict[str, list[str]] = {
     "register_analyzer": ["run_all_analyzers"],
     "register_linker": ["run_all_linkers"],
@@ -99,10 +99,10 @@ def _find_dispatch_sites(
 ) -> list[tuple[Symbol, str]]:
     """Find dispatch site functions that iterate a registry.
 
-    When multiple symbols share the same dispatch function name (e.g.,
-    ``run_all_analyzers`` in both ``all_analyzers.py`` and ``registry.py``),
-    keeps only one per (name, family) — the one with the shortest path,
-    which is typically the canonical registry module.
+    All symbols whose name matches a dispatch function name are returned.
+    When multiple symbols share the same name (e.g., ``run_all_analyzers``
+    in both ``all_analyzers.py`` and ``registry.py``), all are included
+    because different call graph paths may reach different instances.
 
     Returns:
         List of (symbol, decorator_name) tuples. The decorator_name
@@ -114,22 +114,11 @@ def _find_dispatch_sites(
         for fn_name in dispatch_names:
             dispatch_to_decorator[fn_name] = dec_name
 
-    # Collect all candidates, then deduplicate per (name, family)
-    candidates: dict[str, list[tuple[Symbol, str]]] = {}
+    results: list[tuple[Symbol, str]] = []
     for sym in symbols:
         if sym.name in dispatch_to_decorator:
             family = dispatch_to_decorator[sym.name]
-            key = f"{sym.name}:{family}"
-            candidates.setdefault(key, []).append((sym, family))
-
-    results: list[tuple[Symbol, str]] = []
-    for group in candidates.values():
-        if len(group) == 1:
-            results.append(group[0])
-        else:
-            # Pick the one with the shortest path (canonical registry module)
-            best = min(group, key=lambda g: len(g[0].path))
-            results.append(best)
+            results.append((sym, family))
     return results
 
 

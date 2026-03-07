@@ -125,13 +125,19 @@ class TestFindDispatchSites:
         result = _find_dispatch_sites([sym], DISPATCH_DECORATOR_PATTERNS)
         assert len(result) == 0
 
-    def test_deduplicates_same_name_dispatch_sites(self) -> None:
-        """When multiple symbols share a dispatch name, keep only the shortest path."""
+    def test_returns_all_same_name_dispatch_sites(self) -> None:
+        """When multiple symbols share a dispatch name, all are returned.
+
+        Both the registry module and the wrapper module may be called from
+        different parts of the call graph, so both need dispatches_to edges.
+        """
         canonical = _sym("run_all_analyzers", path="core/registry.py")
         wrapper = _sym("run_all_analyzers", path="core/analyze/all_analyzers.py")
         result = _find_dispatch_sites([canonical, wrapper], DISPATCH_DECORATOR_PATTERNS)
-        assert len(result) == 1
-        assert result[0][0].path == "core/registry.py"  # shorter path wins
+        assert len(result) == 2
+        paths = {r[0].path for r in result}
+        assert "core/registry.py" in paths
+        assert "core/analyze/all_analyzers.py" in paths
 
 
 class TestIsTestPath:
@@ -281,8 +287,13 @@ class TestLinkDecoratorDispatch:
         assert len(result.edges) == 1
         assert result.edges[0].dst == prod_handler.id
 
-    def test_deduplicates_dispatch_sites_with_same_name(self) -> None:
-        """Only the canonical dispatch site creates edges, not wrappers."""
+    def test_all_dispatch_sites_get_edges(self) -> None:
+        """All dispatch sites with the same name get edges to handlers.
+
+        Both the registry module and wrapper may be reachable from different
+        parts of the call graph. Each needs its own dispatches_to edges so
+        the slicer can follow them regardless of which path it takes.
+        """
         canonical = _sym("run_all_analyzers", path="core/registry.py")
         wrapper = _sym("run_all_analyzers", path="core/analyze/all_analyzers.py")
         handler = _sym(
@@ -298,9 +309,13 @@ class TestLinkDecoratorDispatch:
         )
         result = link_decorator_dispatch(ctx)
 
-        # Only 1 edge (from canonical), not 2 (from both)
-        assert len(result.edges) == 1
-        assert result.edges[0].src == canonical.id
+        # 2 edges: one from canonical, one from wrapper, both to handler
+        assert len(result.edges) == 2
+        srcs = {e.src for e in result.edges}
+        assert canonical.id in srcs
+        assert wrapper.id in srcs
+        for e in result.edges:
+            assert e.dst == handler.id
 
     def test_result_has_analysis_run(self) -> None:
         """LinkerResult should include an AnalysisRun."""
