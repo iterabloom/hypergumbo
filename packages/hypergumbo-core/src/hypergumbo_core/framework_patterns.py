@@ -1022,7 +1022,13 @@ def _apply_subresource_locator_paths(
 
         if has_resource_path and not has_route:
             return_type = sym.meta.get("return_type")
-            if return_type:
+            # When return type is generic (Object), use inferred type from
+            # "return new X(...)" in the method body.  Common in JAX-RS
+            # subresource locators (keycloak: token() returns Object but
+            # body constructs TokenEndpoint).
+            if return_type == "Object":
+                return_type = sym.meta.get("inferred_return_type", return_type)
+            if return_type and return_type != "Object":
                 # Get parent class's resource_path
                 parent_name = _get_parent_class_name(sym)
                 if parent_name:

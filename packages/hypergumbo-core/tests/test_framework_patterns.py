@@ -6758,6 +6758,70 @@ class TestJaxRsPatterns:
 
 
 
+    def test_jaxrs_subresource_object_return_with_inferred_type(self) -> None:
+        """Subresource locator returning Object uses inferred_return_type.
+
+        Keycloak pattern: token() returns Object but body constructs
+        TokenEndpoint.  The inferred_return_type enables path composition.
+        """
+        clear_pattern_cache()
+
+        # Parent class with @Path("/protocol/openid-connect")
+        parent = Symbol(
+            id="test:OIDCService.java:1-100:OIDCService:class",
+            name="OIDCService", kind="class", language="java",
+            path="OIDCService.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/protocol/openid-connect"], "kwargs": {}}]},
+        )
+
+        # Subresource locator: @Path("token") public Object token()
+        # return_type is Object, inferred_return_type is TokenEndpoint
+        locator = Symbol(
+            id="test:OIDCService.java:20-30:OIDCService.token:method",
+            name="OIDCService.token", kind="method", language="java",
+            path="OIDCService.java", span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["token"], "kwargs": {}}],
+                "return_type": "Object",
+                "inferred_return_type": "TokenEndpoint",
+            },
+        )
+
+        # Target class: TokenEndpoint (no class-level @Path)
+        target_class = Symbol(
+            id="test:TokenEndpoint.java:1-100:TokenEndpoint:class",
+            name="TokenEndpoint", kind="class", language="java",
+            path="TokenEndpoint.java", span=Span(1, 100, 0, 0),
+            meta={},
+        )
+
+        # Route method on target: @POST
+        grant_method = Symbol(
+            id="test:TokenEndpoint.java:20-30:TokenEndpoint.processGrant:method",
+            name="TokenEndpoint.processGrant", kind="method", language="java",
+            path="TokenEndpoint.java", span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [{"name": "POST", "args": [], "kwargs": {}}],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent, locator, target_class, grant_method],
+            {"jax-rs"},
+        )
+
+        grant = enriched[3]
+        route = next(
+            (c for c in grant.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None, "Expected route concept on POST method"
+        # Full path: /protocol/openid-connect/token (from parent + locator)
+        assert route["path"] == "/protocol/openid-connect/token", (
+            f"Expected /protocol/openid-connect/token, got: {route.get('path')}"
+        )
+
+
 class TestMicronautPatterns:
     """Tests for Micronaut framework pattern matching."""
 

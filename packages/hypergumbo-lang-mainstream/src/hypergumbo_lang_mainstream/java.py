@@ -268,6 +268,70 @@ def _extract_java_return_type_name(signature: str | None) -> str | None:
     return None
 
 
+def _infer_return_type_from_body(
+    method_node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Infer concrete return type from 'return new X(...)' in a method body.
+
+    When a Java method declares return type Object but always returns a specific
+    type via 'return new TokenEndpoint(...)', infer 'TokenEndpoint' as the
+    concrete type.  This enables JAX-RS subresource locator path chaining for
+    methods like keycloak's OIDCLoginProtocolService.token() which returns
+    Object but constructs a TokenEndpoint.
+
+    Only infers when ALL return statements in the method body return the same
+    concrete type via 'new X(...)'.  Returns None if there are multiple
+    different types or non-new returns.
+    """
+    body = method_node.child_by_field_name("body")
+    if body is None:
+        return None
+
+    inferred_type: str | None = None
+    for child in _walk_tree(body):
+        if child.type != "return_statement":
+            continue
+        # return_statement children: "return" keyword, then the expression
+        expr = None
+        for rc in child.children:
+            if rc.type not in ("return", ";"):
+                expr = rc
+                break
+        if expr is None:
+            # Bare "return;" — can't infer
+            return None
+        if expr.type == "object_creation_expression":
+            # "new X(...)" — extract X
+            type_node = expr.child_by_field_name("type")
+            if type_node is None:  # pragma: no cover
+                return None
+            type_name = _node_text(type_node, source)
+            if inferred_type is None:
+                inferred_type = type_name
+            elif inferred_type != type_name:
+                # Multiple different types — can't infer a single one
+                return None
+        else:
+            # Non-new return (e.g., return someVariable;) — can't infer
+            return None
+
+    return inferred_type
+
+
+def _walk_tree(node: "tree_sitter.Node"):
+    """Yield all descendant nodes (depth-first) without recursion.
+
+    Used by _infer_return_type_from_body to find return statements in a
+    method body without deep recursion on large ASTs.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        # Reverse children so left-to-right order is preserved
+        stack.extend(reversed(current.children))
+
+
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
@@ -806,6 +870,15 @@ def _extract_symbols(
                     if meta is None:
                         meta = {}
                     meta["return_type"] = ret_type_name
+
+                    # When return type is Object, infer concrete type from
+                    # "return new X(...)" in the method body.  Common in JAX-RS
+                    # subresource locators (keycloak: token() returns Object but
+                    # body is "return new TokenEndpoint(...)").
+                    if ret_type_name == "Object":
+                        inferred = _infer_return_type_from_body(node, source)
+                        if inferred:
+                            meta["inferred_return_type"] = inferred
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_java_signature(signature)

@@ -25,6 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Formal methods**: `references` edges in Agda (pattern clause bodies and type signatures) and Lean (def/theorem/lemma bodies). Agda type signature scanning (confidence 0.75) connects types referenced only in signatures, reducing orphan rates. Record field extraction (kind=field) with type signatures.
 - **Stapler framework route synthesis**: `doXxx` → POST /xxx, `getXxx` → GET /xxx convention-based route_path and http_method metadata for Jenkins/Stapler handler methods.
 - **Jakarta CDI `@Produces` binding detection**: DI linker recognizes CDI producer methods for interface-to-implementation resolution.
+- **Java inferred return type for Object-returning methods**: When a Java method declares `Object` as its return type but the body only contains `return new X(...)` statements (all the same concrete type), the analyzer infers the concrete return type and stores it as `inferred_return_type` in symbol metadata. This enables JAX-RS subresource locator path composition for methods like keycloak's `OIDCLoginProtocolService.token()` which returns `Object` but constructs `TokenEndpoint`.
 
 ### Fixed
 

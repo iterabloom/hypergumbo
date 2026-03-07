@@ -3590,3 +3590,164 @@ public class Orchestrator {
                 assert "Worker.process" not in edge.dst, (
                     f"Should not resolve to Worker.process: {edge.dst}"
                 )
+
+
+class TestJavaInferredReturnType:
+    """Tests for inferring concrete return types from method bodies.
+
+    When a Java method declares return type Object but the body only contains
+    'return new TokenEndpoint(...)', the concrete type 'TokenEndpoint' should
+    be inferred and stored as 'inferred_return_type' in symbol metadata.
+    This enables JAX-RS subresource locator path chaining for methods that
+    return Object (common in keycloak/jersey projects).
+    """
+
+    def test_infer_return_type_from_new_expression(self, tmp_path: Path) -> None:
+        """When return type is Object, infer concrete type from return new X()."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "ProtocolService.java"
+        java_file.write_text("""
+import javax.ws.rs.*;
+
+@Path("/protocol")
+public class ProtocolService {
+    @Path("token")
+    public Object token() {
+        return new TokenEndpoint(session, tokenManager);
+    }
+
+    @Path("auth")
+    public Object auth() {
+        return new AuthorizationEndpoint(session, event);
+    }
+
+    @GET
+    @Path("status")
+    public Response getStatus() {
+        return Response.ok().build();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find the token() method
+        token_method = next(
+            (s for s in result.symbols if "token" in s.name and s.kind == "method"),
+            None,
+        )
+        assert token_method is not None, "Expected token method"
+        assert token_method.meta is not None
+
+        # Should have inferred_return_type = "TokenEndpoint"
+        assert token_method.meta.get("inferred_return_type") == "TokenEndpoint", (
+            f"Expected inferred_return_type='TokenEndpoint', got "
+            f"{token_method.meta.get('inferred_return_type')}"
+        )
+
+        # auth() should also have inferred return type
+        auth_method = next(
+            (s for s in result.symbols if "auth" in s.name and s.kind == "method"),
+            None,
+        )
+        assert auth_method is not None
+        assert auth_method.meta.get("inferred_return_type") == "AuthorizationEndpoint"
+
+        # getStatus() returns Response (concrete), should NOT have inferred_return_type
+        status_method = next(
+            (s for s in result.symbols if "getStatus" in s.name and s.kind == "method"),
+            None,
+        )
+        assert status_method is not None
+        assert "inferred_return_type" not in (status_method.meta or {})
+
+    def test_no_infer_for_abstract_method(self, tmp_path: Path) -> None:
+        """Abstract methods have no body, so inference returns None."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "AbstractService.java"
+        java_file.write_text("""
+public abstract class AbstractService {
+    @javax.ws.rs.Path("sub")
+    public abstract Object getSub();
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_bare_return(self, tmp_path: Path) -> None:
+        """Bare 'return;' in an Object method should not infer a type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub() {
+        return;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_variable_return(self, tmp_path: Path) -> None:
+        """When method returns a variable (not new X()), don't infer type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub() {
+        Object result = createEndpoint();
+        return result;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_multiple_different_types(self, tmp_path: Path) -> None:
+        """When method returns different types, don't infer."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub(boolean flag) {
+        if (flag) {
+            return new EndpointA();
+        }
+        return new EndpointB();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
