@@ -550,10 +550,7 @@ def _extract_annotation_info(
             name = _node_text(child, source)
         elif child.type == "annotation_argument_list":
             for arg_child in child.children:
-                if arg_child.type == "string_literal":
-                    # Simple string argument: @Annotation("value")
-                    args.append(_java_value_to_python(arg_child, source))
-                elif arg_child.type == "element_value_pair":
+                if arg_child.type == "element_value_pair":
                     # Named argument: @Annotation(key = value)
                     key = None
                     value = None
@@ -567,6 +564,10 @@ def _extract_annotation_info(
                                 value = _java_value_to_python(pair_child, source)
                     if key and value is not None:
                         kwargs[key] = value
+                elif arg_child.type not in ("(", ")", ","):
+                    # Positional argument: @Annotation("value"),
+                    # @Annotation(CONSTANT), @Annotation("a" + "b")
+                    args.append(_java_value_to_python(arg_child, source))
 
     return {"name": name, "args": args, "kwargs": kwargs}
 

@@ -1496,6 +1496,46 @@ public class ResourceController {
         assert len(methods_with_routes) == 5
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
 
+    def test_jaxrs_path_with_constant_reference(self, tmp_path: Path) -> None:
+        """JAX-RS @Path with constant reference extracts the reference as path."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
+
+        java_file = tmp_path / "AccountResource.java"
+        java_file.write_text("""
+@Path(JaxrsResource.ACCOUNTS_PATH)
+public class AccountResource {
+    @GET
+    @Path("/{id}")
+    public void getById() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
+
+        # Class should have resource_path with constant reference
+        cls = next((s for s in enriched if s.kind == "class"), None)
+        assert cls is not None
+        path_concept = next(
+            (c for c in cls.meta.get("concepts", []) if c.get("concept") == "resource_path"),
+            None,
+        )
+        assert path_concept is not None
+        assert path_concept.get("path") == "JaxrsResource.ACCOUNTS_PATH"
+
+        # Method should have resource_path with /{id}
+        method = next((s for s in enriched if s.kind == "method"), None)
+        assert method is not None
+        method_path = next(
+            (c for c in method.meta.get("concepts", []) if c.get("concept") == "resource_path"),
+            None,
+        )
+        assert method_path is not None
+        assert method_path.get("path") == "/{id}"
+
 
 class TestJavaModifiersCapture:
     """Tests for Java method modifier capture in the modifiers field."""
@@ -2543,6 +2583,53 @@ public class User {
         assert decorators[0]["name"] == "JsonIgnoreProperties"
         # Check kwargs has ignoreUnknown
         assert "ignoreUnknown" in decorators[0]["kwargs"]
+
+    def test_annotation_with_constant_ref_arg(self, tmp_path: Path) -> None:
+        """Extracts annotation with constant reference as positional argument."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "AccountResource.java").write_text("""
+@Path(JaxrsResource.ACCOUNTS_PATH)
+public class AccountResource {
+    @GET
+    @Path("/{id}")
+    public void getById() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        path_dec = next((d for d in decorators if d["name"] == "Path"), None)
+        assert path_dec is not None
+        # Constant reference captured as positional arg
+        assert path_dec["args"] == ["JaxrsResource.ACCOUNTS_PATH"]
+
+    def test_annotation_with_concatenation_arg(self, tmp_path: Path) -> None:
+        """Extracts annotation with string concatenation as positional argument."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Resource.java").write_text("""
+public class Resource {
+    @Path("/{accountId:" + UUID_PATTERN + "}")
+    public void getAccount() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        path_dec = next((d for d in decorators if d["name"] == "Path"), None)
+        assert path_dec is not None
+        # Concatenation captured as raw text
+        assert len(path_dec["args"]) == 1
+        assert "accountId" in str(path_dec["args"][0])
 
     def test_interface_annotation(self, tmp_path: Path) -> None:
         """Extracts annotation from interface."""
