@@ -60,12 +60,26 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
         target_path = edge.dst
         candidates = symbols_by_path.get(target_path, [])
 
-        # Prefer main() function; fall back to any function named main
+        # Check for target_function in edge meta (Python entry points
+        # specify the function name, e.g., "run_app" from "pkg.cli:run_app")
+        target_func_name = (
+            edge.meta.get("target_function") if edge.meta else None
+        )
+
+        # Find the target function: prefer target_function if specified,
+        # fall back to main()
         main_fn = None
-        for sym in candidates:
-            if sym.name == "main" and sym.kind in ("function", "method"):
-                main_fn = sym
-                break
+        if target_func_name:
+            for sym in candidates:
+                if sym.name == target_func_name and sym.kind in ("function", "method"):
+                    main_fn = sym
+                    break
+        if main_fn is None:
+            # Fall back to main() regardless of target_function
+            for sym in candidates:
+                if sym.name == "main" and sym.kind in ("function", "method"):
+                    main_fn = sym
+                    break
 
         if main_fn is None:
             continue

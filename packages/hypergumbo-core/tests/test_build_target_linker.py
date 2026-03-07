@@ -32,11 +32,13 @@ def _make_symbol(
 
 def _make_edge(
     src: str, dst: str, edge_type: str, line: int = 1,
+    meta: dict | None = None,
 ) -> Edge:
     """Create a test edge."""
     return Edge.create(
         src=src, dst=dst, edge_type=edge_type, line=line,
         confidence=1.0, origin=make_pass_id("test"),
+        meta=meta,
     )
 
 
@@ -70,6 +72,20 @@ class TestBuildTargetLinker:
             repo_root=Path("/fake"),
             symbols=[main_sym],
             edges=[],
+        )
+        result = link_build_targets(ctx)
+        assert len(result.edges) == 0
+
+    def test_skips_non_defines_target_edges(self) -> None:
+        """Non-defines_target edges are ignored."""
+        main_sym = _make_symbol("rust", "src/main.rs", 1, 10, "main", "function")
+        other_sym = _make_symbol("rust", "src/lib.rs", 1, 5, "helper", "function")
+        calls_edge = _make_edge(main_sym.id, other_sym.id, "calls")
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[main_sym, other_sym],
+            edges=[calls_edge],
         )
         result = link_build_targets(ctx)
         assert len(result.edges) == 0
@@ -165,3 +181,53 @@ class TestBuildTargetLinker:
         )
         result = link_build_targets(ctx)
         assert len(result.edges) == 1
+
+    def test_python_script_target_function(self) -> None:
+        """Python script with target_function meta links to named function."""
+        script = _make_symbol("toml", "pyproject.toml", 5, 5, "my-cli", "script")
+        # The entry point is mypackage.cli:run_app (not main)
+        run_app = _make_symbol(
+            "python", "mypackage/cli.py", 10, 30, "run_app", "function",
+        )
+        main_fn = _make_symbol(
+            "python", "mypackage/cli.py", 1, 5, "main", "function",
+        )
+
+        defines_edge = _make_edge(
+            script.id, "mypackage/cli.py", "defines_target",
+            meta={"target_function": "run_app"},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[script, run_app, main_fn],
+            edges=[defines_edge],
+        )
+        result = link_build_targets(ctx)
+
+        # Should link to run_app (specified in meta), NOT main
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == run_app.id
+
+    def test_python_script_falls_back_to_main(self) -> None:
+        """Python script with target_function but no match falls back to main()."""
+        script = _make_symbol("toml", "pyproject.toml", 5, 5, "my-cli", "script")
+        main_fn = _make_symbol(
+            "python", "mypackage/cli.py", 1, 10, "main", "function",
+        )
+
+        defines_edge = _make_edge(
+            script.id, "mypackage/cli.py", "defines_target",
+            meta={"target_function": "nonexistent"},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[script, main_fn],
+            edges=[defines_edge],
+        )
+        result = link_build_targets(ctx)
+
+        # Falls back to main() when target_function not found
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == main_fn.id

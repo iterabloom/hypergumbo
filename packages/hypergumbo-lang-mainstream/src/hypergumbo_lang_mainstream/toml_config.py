@@ -206,9 +206,11 @@ def _process_toml_tree(
                 _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
             elif is_pyproject and table_name == "project":
                 _extract_pyproject_dependencies(node, rel_path, symbols, content)
-            # Process pyproject.toml [project.scripts] - CLI entry points
-            elif is_pyproject and table_name == "project.scripts":
-                _extract_pyproject_scripts(node, rel_path, symbols, content)
+            # Process pyproject.toml [project.scripts] and [project.gui-scripts]
+            elif is_pyproject and table_name in (
+                "project.scripts", "project.gui-scripts",
+            ):
+                _extract_pyproject_scripts(node, rel_path, symbols, edges, content)
 
         elif node.type == "table_array_element":
             table_name = _extract_table_name(node)
@@ -514,15 +516,37 @@ def _extract_pyproject_dependencies(
                         )
 
 
+def _python_entry_point_to_path(entry_point: str) -> tuple[str, str] | None:
+    """Convert a Python entry point string to (file_path, function_name).
+
+    Entry point format: ``module.path:function_name``
+    e.g. ``mypackage.cli:main`` → ``("mypackage/cli.py", "main")``
+
+    Returns None if the format is not recognized.
+    """
+    if ":" not in entry_point:
+        return None
+    module_part, func_name = entry_point.rsplit(":", 1)
+    if not module_part or not func_name:
+        return None
+    file_path = module_part.replace(".", "/") + ".py"
+    return file_path, func_name
+
+
 def _extract_pyproject_scripts(
-    table_node, rel_path: str, symbols: list[Symbol], content: str
+    table_node, rel_path: str, symbols: list[Symbol],
+    edges: list[Edge], content: str,
 ):
-    """Extract CLI entry points from a pyproject.toml [project.scripts] table.
+    """Extract CLI entry points from a pyproject.toml scripts table.
 
-    The [project.scripts] table defines console script entry points:
-    - my-cli = "mypackage.cli:main"
+    Handles both ``[project.scripts]`` (console scripts) and
+    ``[project.gui-scripts]`` (GUI scripts). Each entry like
+    ``my-cli = "mypackage.cli:main"`` produces:
 
-    These become executable commands when the package is installed.
+    1. A ``script`` symbol for the CLI command
+    2. A ``defines_target`` edge pointing to the resolved file path
+       (``mypackage/cli.py``), with ``target_function`` in meta so the
+       build-target linker can find the specific function
     """
     for child in table_node.children:
         if child.type == "pair":
@@ -565,3 +589,20 @@ def _extract_pyproject_scripts(
                         meta=meta,
                     )
                 )
+
+                # Create defines_target edge for build-target linker
+                if entry_point:
+                    parsed = _python_entry_point_to_path(entry_point)
+                    if parsed:
+                        target_path, target_func = parsed
+                        edges.append(
+                            Edge.create(
+                                src=symbol_id,
+                                dst=target_path,
+                                edge_type="defines_target",
+                                line=start_line,
+                                confidence=1.0,
+                                origin=PASS_ID,
+                                meta={"target_function": target_func},
+                            )
+                        )
