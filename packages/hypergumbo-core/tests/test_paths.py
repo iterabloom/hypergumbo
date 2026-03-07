@@ -9,6 +9,7 @@ from hypergumbo_core.paths import (
     paths_match,
     path_ends_with,
     get_filename,
+    is_infrastructure_path,
     is_under_directory,
     is_test_file,
     is_test_node,
@@ -510,3 +511,48 @@ class TestIsTestNode:
         """Java @org.junit.Test annotation makes node a test node."""
         meta = {"decorators": [{"name": "org.junit.Test", "args": [], "kwargs": {}}]}
         assert is_test_node("src/main/java/Foo.java", meta) is True
+
+
+class TestIsInfrastructurePath:
+    """Tests for is_infrastructure_path function."""
+
+    def test_telemetry_directory(self) -> None:
+        """Files in telemetry/ directories are infrastructure."""
+        assert is_infrastructure_path("packages/core/src/telemetry/logger.ts")
+        assert is_infrastructure_path("src/telemetry/clearcut-logger.ts")
+
+    def test_metrics_directory(self) -> None:
+        """Files in metrics/ directories are infrastructure."""
+        assert is_infrastructure_path("src/metrics/counter.py")
+
+    def test_logging_directory(self) -> None:
+        """Files in logging/ directories are infrastructure."""
+        assert is_infrastructure_path("lib/logging/handler.py")
+
+    def test_tracing_directory(self) -> None:
+        """Files in tracing/ directories are infrastructure."""
+        assert is_infrastructure_path("src/tracing/span.ts")
+
+    def test_internal_directory(self) -> None:
+        """Files in internal/ directories are infrastructure."""
+        assert is_infrastructure_path("src/internal/cache.go")
+
+    def test_instrumentation_directory(self) -> None:
+        """Files in instrumentation/ directories are infrastructure."""
+        assert is_infrastructure_path("src/instrumentation/profiler.py")
+
+    def test_normal_source_not_infrastructure(self) -> None:
+        """Normal source files are not infrastructure."""
+        assert not is_infrastructure_path("src/mcp/client.ts")
+        assert not is_infrastructure_path("packages/core/src/agent.ts")
+        assert not is_infrastructure_path("src/main.py")
+
+    def test_filename_not_matched(self) -> None:
+        """Files named telemetry.ts (not in telemetry/ dir) are not infrastructure."""
+        assert not is_infrastructure_path("src/telemetry.ts")
+        assert not is_infrastructure_path("telemetry.py")
+
+    def test_case_insensitive(self) -> None:
+        """Directory matching is case-insensitive."""
+        assert is_infrastructure_path("src/Telemetry/Logger.ts")
+        assert is_infrastructure_path("src/METRICS/counter.py")

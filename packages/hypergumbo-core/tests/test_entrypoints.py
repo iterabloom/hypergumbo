@@ -3086,6 +3086,96 @@ class TestApplicationLibraryExportDemotion:
             f"example routes should not trigger demotion"
         )
 
+    def test_infrastructure_exports_dampened_more_than_api_exports(self) -> None:
+        """Library exports from infrastructure paths (telemetry/, metrics/, logging/)
+        should be dampened more aggressively than API exports.
+
+        In gemini-cli, 77 of 111 entrypoints were telemetry exports from
+        packages/core/src/telemetry/*.ts. With connectivity boost, these
+        survive the standard 0.1x demotion at ~0.14 confidence. Infrastructure-
+        path exports get an additional dampening, dropping them below threshold.
+        """
+        route = make_symbol(
+            "handle_mcp", path="src/server.ts", kind="function",
+            language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "route", "path": "/mcp", "method": "POST"}]},
+        )
+        # Infrastructure export: telemetry plumbing
+        telemetry_export = make_symbol(
+            "ClearcutLogger", path="packages/core/src/telemetry/clearcut-logger.ts",
+            kind="class", language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # API export: developer-facing class
+        api_export = make_symbol(
+            "McpClient", path="packages/core/src/mcp/client.ts",
+            kind="class", language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # Helpers called by exports (for connectivity boost)
+        helper1 = make_symbol("helper1", path="src/utils.ts", start_line=50, language="typescript")
+        helper2 = make_symbol("helper2", path="src/utils.ts", start_line=60, language="typescript")
+        nodes = [route, telemetry_export, api_export, helper1, helper2]
+
+        # Give both exports outgoing edges so they get connectivity boost
+        # (without boost, 0.80 * 0.1 = 0.08 < threshold and both are filtered)
+        edges = [
+            Edge.create(src=telemetry_export.id, dst=helper1.id, edge_type="calls", line=1),
+            Edge.create(src=telemetry_export.id, dst=helper2.id, edge_type="calls", line=2),
+            Edge.create(src=api_export.id, dst=helper1.id, edge_type="calls", line=1),
+            Edge.create(src=api_export.id, dst=helper2.id, edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        export_eps = {
+            ep.symbol_id: ep
+            for ep in entrypoints if ep.kind == EntrypointKind.LIBRARY_EXPORT
+        }
+
+        assert len(route_eps) == 1
+
+        # Both exports get standard demotion (0.1x) from semantic entrypoints.
+        # With connectivity boost, base 0.80 + boost -> ~1.0+, * 0.1 -> ~0.10+
+        # API export should survive, infra export should be dampened further.
+        api_ep = export_eps.get(api_export.id)
+        telemetry_ep = export_eps.get(telemetry_export.id)
+
+        # API export survives
+        assert api_ep is not None, "API export should survive demotion"
+
+        # Telemetry export should be filtered out (below MIN_ENTRYPOINT_CONFIDENCE)
+        assert telemetry_ep is None, (
+            f"Telemetry export should be filtered out, but has confidence "
+            f"{telemetry_ep.confidence:.3f}" if telemetry_ep else ""
+        )
+
+    def test_infrastructure_exports_not_dampened_without_semantic_entrypoints(self) -> None:
+        """In a pure library, infrastructure exports should NOT be dampened.
+
+        If there are no routes/commands/main, the repo is a library and ALL
+        exports are meaningful, even from telemetry/ paths.
+        """
+        telemetry_export = make_symbol(
+            "Logger", path="src/telemetry/logger.ts",
+            kind="class", language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        api_export = make_symbol(
+            "Client", path="src/client.ts",
+            kind="class", language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [telemetry_export, api_export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 2, (
+            "Both exports should survive in a pure library (no semantic demotion)"
+        )
+
 
 class TestDeclarationDedup:
     """Tests for deduplication of declaration vs definition entrypoints."""

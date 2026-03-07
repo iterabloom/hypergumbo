@@ -67,7 +67,7 @@ from typing import List
 import re
 
 from .ir import Symbol, Edge
-from .paths import is_test_file, is_utility_file
+from .paths import is_infrastructure_path, is_test_file, is_utility_file
 
 
 # File path patterns that indicate frontend UI code (React, Vue, Angular, Svelte).
@@ -936,6 +936,7 @@ def detect_entrypoints(
                 if sym.path and is_utility_file(sym.path):
                     continue
                 langs_with_semantic.add(sym.language)
+    infra_export_ids: set[str] = set()
     if langs_with_semantic:
         for ep in unique_entrypoints:
             if ep.kind == EntrypointKind.LIBRARY_EXPORT:
@@ -943,6 +944,11 @@ def detect_entrypoints(
                 lang = sym.language if sym else None
                 if lang and lang in langs_with_semantic:
                     ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                    # Infrastructure-path exports (telemetry/, metrics/, logging/)
+                    # are internal plumbing, not developer-facing API.  Track
+                    # them so connectivity boost skips them (like tests).
+                    if sym and sym.path and is_infrastructure_path(sym.path):
+                        infra_export_ids.add(ep.symbol_id)
 
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above
@@ -1003,6 +1009,13 @@ def detect_entrypoints(
             continue
         sym = symbol_lookup.get(ep.symbol_id)
         if sym and sym.path and is_test_file(sym.path):
+            continue
+        # Skip connectivity boost for infrastructure-path library exports
+        # (telemetry/, metrics/, logging/).  Like test functions, these are
+        # already demoted and the additive boost would bring them back above
+        # the confidence threshold.  In gemini-cli, 77 telemetry exports
+        # survived at ~0.14 confidence via connectivity boost.
+        if ep.symbol_id in infra_export_ids:
             continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         if effective_edges > 0:

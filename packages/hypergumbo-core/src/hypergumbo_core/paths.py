@@ -218,6 +218,37 @@ def is_utility_file(path: str) -> bool:
     return False
 
 
+# Infrastructure directory names that indicate internal plumbing, not
+# developer-facing API.  Exports from these paths are dampened in
+# entrypoint ranking when semantic entrypoints (routes, commands) exist.
+_INFRASTRUCTURE_DIRS = frozenset({
+    "telemetry", "metrics", "instrumentation",
+    "logging", "logger", "loggers",
+    "tracing", "observability",
+    "internal",
+})
+
+
+def is_infrastructure_path(path: str) -> bool:
+    """Check if a path is in an infrastructure directory.
+
+    Infrastructure directories contain internal plumbing (telemetry, logging,
+    metrics, tracing) that is production code but not developer-facing API.
+    In gemini-cli, 77 of 111 entrypoints were telemetry exports from
+    packages/core/src/telemetry/*.ts — internal infrastructure that dominated
+    the entrypoint list over actual API classes.
+
+    Args:
+        path: File path to check
+
+    Returns:
+        True if any directory component matches an infrastructure pattern
+    """
+    normalized = normalize_path(path)
+    parts = normalized.split("/")
+    return any(part.lower() in _INFRASTRUCTURE_DIRS for part in parts[:-1])
+
+
 def is_test_file(path: str) -> bool:
     """Check if a path looks like a test file.
 
