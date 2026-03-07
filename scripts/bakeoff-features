@@ -191,7 +191,10 @@ QUALITY_THRESHOLDS = {
     "tier1_pct": {"good_min": 40, "good_max": 98, "warn_min": 20, "warn_max": 99.5},
     "tier4_pct": {"good_max": 5, "warn_max": 10},
     "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
-    "orphan_rate": {"good_max": 15, "warn_max": 35},
+    # Polyglot repos have a structural orphan floor from languages without
+    # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
+    # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
+    "orphan_rate": {"good_max": 20, "warn_max": 35},
 }
 
 # Recommended larger repos for feature testing (diverse languages)
