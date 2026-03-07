@@ -1493,11 +1493,19 @@ class TestConnectivityBasedRanking:
 
     def test_entrypoints_sorted_by_connectivity(self) -> None:
         """Entrypoints with edges rank higher than those without."""
-        # Create three route handlers with same base confidence
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_a = make_symbol("route_a", path="a.py", language="python", meta=route_concepts)
-        route_b = make_symbol("route_b", path="b.py", language="python", meta=route_concepts)
-        route_c = make_symbol("route_c", path="c.py", language="python", meta=route_concepts)
+        # Create three route handlers with same base confidence (distinct paths)
+        route_a = make_symbol(
+            "route_a", path="a.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/a"}]},
+        )
+        route_b = make_symbol(
+            "route_b", path="b.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/b"}]},
+        )
+        route_c = make_symbol(
+            "route_c", path="c.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/c"}]},
+        )
 
         # Create helper functions that route_b and route_c call
         helper1 = make_symbol("helper1", path="helpers.py", language="python")
@@ -1532,9 +1540,14 @@ class TestConnectivityBasedRanking:
 
     def test_connectivity_boost_increases_confidence(self) -> None:
         """Entrypoints with more edges should have higher confidence scores."""
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_isolated = make_symbol("route_isolated", path="isolated.py", language="python", meta=route_concepts)
-        route_connected = make_symbol("route_connected", path="connected.py", language="python", meta=route_concepts)
+        route_isolated = make_symbol(
+            "route_isolated", path="isolated.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/isolated"}]},
+        )
+        route_connected = make_symbol(
+            "route_connected", path="connected.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/connected"}]},
+        )
         helper = make_symbol("helper", path="helper.py", language="python")
 
         nodes = [route_isolated, route_connected, helper]
@@ -1554,10 +1567,12 @@ class TestConnectivityBasedRanking:
 
     def test_all_entrypoints_still_returned(self) -> None:
         """Connectivity ranking should not filter out any entrypoints."""
-        # Create many route handlers with concept metadata
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        # Create many route handlers with concept metadata (distinct paths)
         routes = [
-            make_symbol(f"route_{i}", path=f"file{i}.py", language="python", start_line=i, meta=route_concepts)
+            make_symbol(
+                f"route_{i}", path=f"file{i}.py", language="python", start_line=i,
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/test/{i}"}]},
+            )
             for i in range(10)
         ]
         helper = make_symbol("helper", path="helper.py", language="python")
@@ -1575,9 +1590,14 @@ class TestConnectivityBasedRanking:
 
     def test_incoming_edges_not_counted(self) -> None:
         """Only outgoing edges should affect ranking, not incoming edges."""
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_caller = make_symbol("route_caller", path="caller.py", language="python", meta=route_concepts)
-        route_callee = make_symbol("route_callee", path="callee.py", language="python", meta=route_concepts)
+        route_caller = make_symbol(
+            "route_caller", path="caller.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/caller"}]},
+        )
+        route_callee = make_symbol(
+            "route_callee", path="callee.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/callee"}]},
+        )
         other = make_symbol("other", path="other.py", language="python")
 
         nodes = [route_caller, route_callee, other]
@@ -3081,6 +3101,79 @@ class TestDeclarationDedup:
         assert len(cmd_add_eps) == 1
 
 
+class TestRouteLabelDedup:
+    """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
+
+    def test_same_route_from_multiple_symbols_deduplicated(self) -> None:
+        """Multiple symbols producing HTTP POST /-/quit should yield one entry."""
+        # Route symbol from route registration
+        route_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Handler method symbol with route concept
+        handler_sym = make_symbol(
+            "Handler.quit", path="web/web.go", kind="method",
+            language="go", start_line=923,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Another route registration at a different line
+        route_sym2 = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=574,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([route_sym, handler_sym, route_sym2], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label and "POST" in ep.label]
+        assert len(quit_eps) == 1, (
+            f"Expected 1 POST /-/quit entrypoint, got {len(quit_eps)}: "
+            f"{[ep.label for ep in quit_eps]}"
+        )
+
+    def test_different_methods_same_path_not_deduplicated(self) -> None:
+        """POST /-/quit and PUT /-/quit are different entrypoints."""
+        post_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        put_sym = make_symbol(
+            "PUT /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=566,
+            meta={"concepts": [{"concept": "route", "method": "PUT", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([post_sym, put_sym], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label]
+        assert len(quit_eps) == 2
+
+    def test_route_dedup_keeps_highest_confidence(self) -> None:
+        """When deduplicating routes, the highest confidence entry is kept."""
+        # Non-test file route (high confidence)
+        prod_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Test file route (will get confidence penalty)
+        test_sym = make_symbol(
+            "POST /-/quit", path="web/web_test.go", kind="route",
+            language="go", start_line=100,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([prod_sym, test_sym], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label and "POST" in ep.label]
+        assert len(quit_eps) == 1
+        # Should keep the production one (higher confidence)
+        assert quit_eps[0].symbol_id == prod_sym.id
+
+
 class TestEntrypointConfidenceFiltering:
     """Tests for minimum confidence threshold and count cap.
 
@@ -3136,7 +3229,7 @@ class TestEntrypointConfidenceFiltering:
             nodes.append(make_symbol(
                 f"route_{i}", path=f"src/routes_{i}.py",
                 start_line=1,
-                meta={"concepts": [{"concept": "route"}]},
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/r/{i}"}]},
             ))
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -3154,7 +3247,7 @@ class TestEntrypointConfidenceFiltering:
             nodes.append(make_symbol(
                 f"route_{i}", path=f"src/routes_{i}.py",
                 start_line=1,
-                meta={"concepts": [{"concept": "route"}]},
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/api/{i}"}]},
             ))
         for i in range(19800):
             nodes.append(make_symbol(

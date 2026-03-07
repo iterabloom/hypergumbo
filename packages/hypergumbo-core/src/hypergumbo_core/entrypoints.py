@@ -787,6 +787,35 @@ def detect_entrypoints(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
+    # Route-label deduplication: multiple symbols (route symbol, handler
+    # method, different registration sites) can produce HTTP_ROUTE entrypoints
+    # with the same (method, path).  In prometheus, POST /-/quit appears 14x.
+    # Group by label and keep the highest-confidence entry per unique label.
+    _ROUTE_KINDS = frozenset({
+        EntrypointKind.HTTP_ROUTE,
+        EntrypointKind.EXPRESS_ROUTE,
+        EntrypointKind.SINATRA_ROUTE,
+        EntrypointKind.KTOR_ROUTE,
+        EntrypointKind.VAPOR_ROUTE,
+        EntrypointKind.PLUG_ROUTE,
+        EntrypointKind.HAPI_ROUTE,
+        EntrypointKind.FASTIFY_ROUTE,
+        EntrypointKind.KOA_ROUTE,
+        EntrypointKind.SLIM_ROUTE,
+        EntrypointKind.RUST_HANDLER,
+    })
+    route_label_groups: dict[str, list[Entrypoint]] = defaultdict(list)
+    non_route_eps: list[Entrypoint] = []
+    for ep in unique_entrypoints:
+        if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
+            route_label_groups[ep.label].append(ep)
+        else:
+            non_route_eps.append(ep)
+    for _label, eps in route_label_groups.items():
+        eps.sort(key=lambda e: e.confidence, reverse=True)
+        non_route_eps.append(eps[0])
+    unique_entrypoints = non_route_eps
+
     # Connectivity-based fallback: when no concept-based entrypoints found,
     # select the most-connected callable symbols as pseudo-entrypoints.
     # This ensures --entry auto never hard-fails, even for repos with no
