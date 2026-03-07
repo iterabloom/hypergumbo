@@ -12,6 +12,7 @@ from hypergumbo_core.ranking import (
     apply_test_weights,
     apply_utility_symbol_weights,
     apply_common_method_name_weights,
+    apply_sibling_impl_weights,
     group_symbols_by_file,
     compute_file_scores,
     filter_edges_for_ranking,
@@ -3072,6 +3073,138 @@ class TestApplyCommonMethodNameWeights:
 
         for s in id_syms:
             assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"
+
+
+class TestApplySiblingImplWeights:
+    """Tests for apply_sibling_impl_weights.
+
+    When many methods share the same name (interface implementations like
+    19 Notifier.Notify variants in alertmanager), they flood the top
+    rankings even after common-method-name dampening. Sibling impl
+    dampening keeps the top K within each name group at full weight
+    and steeply dampens the rest, so users see 2-3 representative
+    implementations instead of 19.
+    """
+
+    def test_top_k_kept_rest_dampened(self):
+        """Within a name group, top K symbols keep full weight, rest are dampened."""
+        # 19 methods named "Notifier.Notify" with varying scores
+        notify_syms = [
+            make_symbol(
+                "Notifier.Notify",
+                path=f"notify/impl{i}/impl.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(19)
+        ]
+        # Give them decreasing scores
+        centrality = {
+            s.id: 100.0 - i for i, s in enumerate(notify_syms)
+        }
+
+        result = apply_sibling_impl_weights(centrality, notify_syms, top_k=3)
+
+        # Sort by original score descending
+        sorted_ids = sorted(centrality.keys(), key=lambda k: -centrality[k])
+
+        # Top 3 should be unchanged
+        for sid in sorted_ids[:3]:
+            assert result[sid] == centrality[sid], (
+                f"Top-K symbol {sid} should keep full weight"
+            )
+        # Symbols 4+ should be dampened
+        for sid in sorted_ids[3:]:
+            assert result[sid] < centrality[sid], (
+                f"Below-top-K symbol {sid} should be dampened"
+            )
+
+    def test_small_group_not_dampened(self):
+        """Groups smaller than min_group_size are not affected."""
+        # 3 methods named "Handler.Process" — below default min_group_size
+        syms = [
+            make_symbol(
+                "Handler.Process",
+                path=f"handlers/h{i}.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(3)
+        ]
+        centrality = {s.id: 10.0 for s in syms}
+
+        result = apply_sibling_impl_weights(centrality, syms)
+
+        for s in syms:
+            assert result[s.id] == 10.0, "Small groups should not be dampened"
+
+    def test_non_method_excluded(self):
+        """Only method/function kinds are grouped — classes are excluded."""
+        # 10 classes named "Controller" — should not trigger dampening
+        syms = [
+            make_symbol(
+                "Controller",
+                path=f"controllers/c{i}.py",
+                kind="class",
+            )
+            for i in range(10)
+        ]
+        centrality = {s.id: 5.0 for s in syms}
+
+        result = apply_sibling_impl_weights(centrality, syms)
+
+        for s in syms:
+            assert result[s.id] == 5.0, "Class-kind symbols should not be grouped"
+
+    def test_integration_with_rank_symbols(self):
+        """Sibling impl dampening is applied in the rank_symbols pipeline."""
+        # 15 methods named "Notifier.Notify" all with same in-degree from
+        # shared callers, plus one unique high-value symbol
+        notify_syms = [
+            make_symbol(
+                "Notifier.Notify",
+                path=f"notify/ch{i}/ch.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(15)
+        ]
+        unique_sym = make_symbol(
+            "API.getAlertsHandler",
+            path="api/api.go",
+            kind="method",
+            language="go",
+        )
+        callers = [
+            make_symbol(f"caller_{i}", path=f"src/c{i}.go", kind="function", language="go")
+            for i in range(18)
+        ]
+
+        all_syms = notify_syms + [unique_sym] + callers
+
+        # Each caller calls all Notify impls and the unique sym
+        edges = []
+        for caller in callers:
+            for ns in notify_syms:
+                edges.append(make_edge(caller.id, ns.id))
+            edges.append(make_edge(caller.id, unique_sym.id))
+
+        # Give Notify impls some out-edges too
+        target = make_symbol("send", path="net/send.go", kind="function", language="go")
+        all_syms.append(target)
+        for ns in notify_syms:
+            edges.append(make_edge(ns.id, target.id))
+
+        result = rank_symbols(all_syms, edges)
+
+        # Find how many Notifier.Notify in top 5
+        top5_names = [r.symbol.name for r in result[:5]]
+        notify_in_top5 = sum(1 for n in top5_names if n == "Notifier.Notify")
+
+        assert notify_in_top5 <= 3, (
+            f"At most 3 Notifier.Notify should appear in top 5, "
+            f"got {notify_in_top5}: {top5_names}"
+        )
 
 
 class TestComputeTruncationElbow:

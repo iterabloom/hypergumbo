@@ -50,7 +50,15 @@ Ranking uses multiple signals combined:
    CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
    rankings despite being plumbing.
 
-6. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+6. **Sibling Implementation Dampening**: When many methods share the same
+   name (e.g., 19 ``Notifier.Notify`` variants — one per notification
+   channel in alertmanager), they flood top rankings even after common
+   method name dampening.  Within each name group of 6+ methods, the top 3
+   by score keep full weight; the rest get a 0.15x multiplier.  This
+   ensures users see 2-3 representative implementations, not 19 variants
+   of the same interface method.
+
+7. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
    method calls with confidence <0.5) are excluded from centrality
    computation. This prevents method name collisions from inflating
    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
@@ -690,6 +698,73 @@ def apply_common_method_name_weights(
     return weighted
 
 
+def apply_sibling_impl_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    top_k: int = 3,
+    min_group_size: int = 6,
+    tail_factor: float = 0.15,
+) -> Dict[str, float]:
+    """Dampen centrality for excess interface implementation siblings.
+
+    When many methods share the same name (e.g., 19 Notifier.Notify variants
+    in alertmanager — one per notification channel), they flood top rankings
+    even after common-method-name dampening.  This function groups same-name
+    methods, keeps the top K by score at full weight, and steeply dampens
+    the rest.
+
+    Bakeoff finding: alertmanager cohort-008 iter-003 had 19 Notifier.Notify
+    implementations occupying positions 1-20.  After common-method-name
+    dampening (0.53x), they still dominated because all had similar raw
+    scores (in=18 from shared interface callers).
+
+    Detection:
+    - Group callable symbols (function/method) by name
+    - Only apply to groups with >= min_group_size members
+    - Sort each group by centrality score (descending)
+    - Top K keep their score; remainder get tail_factor multiplier
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for name grouping).
+        top_k: Number of highest-scored members to keep at full weight
+            within each name group. Default 3.
+        min_group_size: Minimum group size to trigger dampening. Default 6.
+        tail_factor: Multiplier for symbols beyond top K. Default 0.15.
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    _CALLABLE_KINDS = {"function", "method"}
+
+    # Group callable symbols by name
+    name_groups: Dict[str, list[str]] = {}
+    symbol_lookup: Dict[str, Symbol] = {}
+    for s in symbols:
+        symbol_lookup[s.id] = s
+        if s.kind in _CALLABLE_KINDS:
+            name_groups.setdefault(s.name, []).append(s.id)
+
+    # Identify which symbol IDs need dampening
+    dampened_ids: set[str] = set()
+    for _name, sids in name_groups.items():
+        if len(sids) < min_group_size:
+            continue
+        # Sort by centrality descending, dampen beyond top_k
+        ranked = sorted(sids, key=lambda sid: -centrality.get(sid, 0))
+        for sid in ranked[top_k:]:
+            dampened_ids.add(sid)
+
+    weighted = {}
+    for sid, score in centrality.items():
+        if sid in dampened_ids:
+            weighted[sid] = score * tail_factor
+        else:
+            weighted[sid] = score
+
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -863,6 +938,12 @@ def rank_symbols(
 
     # De-weight common method names (execute, call, perform, etc.)
     weighted_centrality = apply_common_method_name_weights(
+        weighted_centrality, symbols,
+    )
+
+    # De-weight excess interface implementation siblings (e.g., 19
+    # Notifier.Notify variants — keep top 3, dampen the rest)
+    weighted_centrality = apply_sibling_impl_weights(
         weighted_centrality, symbols,
     )
 
