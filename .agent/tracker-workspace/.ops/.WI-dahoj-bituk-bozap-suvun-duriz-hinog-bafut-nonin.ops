@@ -1,0 +1,19 @@
+- op: create  # 84ee
+  at: '2026-03-07T22:18:12Z'  # 84ee
+  by: agent  # 84ee
+  actor: jgstern_agent  # 84ee
+  clock: 1  # 84ee
+  nonce: 84ee  # 84ee
+  data:  # 84ee
+    kind: work_item  # 84ee
+    title: "Python Protocol structural matching for implements edges"  # 84ee
+    status: todo_soft  # 84ee
+    priority: 3  # 84ee
+    parent:  # 84ee
+    tags: []  # 84ee
+    before: []  # 84ee
+    duplicate_of: []  # 84ee
+    not_duplicate_of: []  # 84ee
+    pr_ref:  # 84ee
+    description: "Analogous to Go WI-hadav. Python typing.Protocol uses structural subtyping — classes satisfying a Protocol method signatures are compatible without explicit subclassing."  # 84ee
+    fields: {}  # 84ee
