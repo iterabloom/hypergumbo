@@ -17,3 +17,10 @@
     pr_ref:  # 291e
     description: ""  # 291e
     fields: {}  # 291e
+- op: discuss  # 46e1
+  at: '2026-03-07T09:59:17Z'  # 46e1
+  by: agent  # 46e1
+  actor: jgstern_agent  # 46e1
+  clock: 2  # 46e1
+  nonce: '46e1'  # 46e1
+  message: "Agent tool dispatch tables are the defining architectural pattern of AI CLI agents (codex, gemini-cli, toad, claude-agent-acp). Add YAML patterns for: tool handler registration arrays/objects, generate-call-observe agent loops, tool result handling. Lower priority than MCP since these patterns are less standardized across projects."  # 46e1
