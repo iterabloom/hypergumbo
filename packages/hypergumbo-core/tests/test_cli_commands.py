@@ -1021,9 +1021,9 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     input_file.write_text(json.dumps(behavior_map))
 
     # First test WITHOUT --exclude-tests: test_main with main_function concept
-    # has confidence 0.80 * 0.1 (test penalty) = 0.08, but the connectivity
-    # boost from one outgoing edge pushes it above MIN_ENTRYPOINT_CONFIDENCE
-    # (0.10). Both get_user and test_main should appear.
+    # has confidence 0.80 * 0.1 (test penalty) = 0.08.  Connectivity boost
+    # is skipped for test-file entrypoints, so it stays at 0.08 — below
+    # MIN_ENTRYPOINT_CONFIDENCE (0.10) and is filtered out.
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "auto"
@@ -1043,10 +1043,10 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # Non-test route should be present
     assert "get_user" in out or "api.py" in out
-    # Test main_function passes confidence threshold (0.10 >= 0.10)
-    assert "test_main" in out
+    # Test-file main is filtered by confidence threshold (0.08 < 0.10)
+    assert "test_main" not in out
 
-    # With --exclude-tests: test_main is filtered by the exclude-tests flag
+    # With --exclude-tests: test_main would also be filtered by the flag
     args.exclude_tests = True
 
     result = cmd_slice(args)

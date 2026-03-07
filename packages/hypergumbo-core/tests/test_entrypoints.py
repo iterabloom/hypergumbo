@@ -2104,15 +2104,19 @@ class TestEntrypointRankingPenalties:
         assert source_ep.confidence > derived_ep.confidence
         assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
 
-    def test_connectivity_boost_still_applies_after_penalty(self) -> None:
-        """Connectivity boost is applied after penalties."""
-        # Test file main with high connectivity
+    def test_test_file_main_no_connectivity_boost(self) -> None:
+        """MAIN_FUNCTION in test files skips connectivity boost.
+
+        Without the fix, a test-file main with 10 outgoing edges would get
+        0.80 * 0.1 (test penalty) = 0.08 base + ~0.24 boost = 0.32,
+        passing the MIN_ENTRYPOINT_CONFIDENCE (0.10) filter.  With the fix,
+        the boost is skipped and 0.08 is below the threshold.
+        """
         test_main = make_symbol(
             "main",
             path="tests/test_main.py",
             meta={"concepts": [{"concept": "main_function"}]},
         )
-        # Create edges to give it connectivity
         edges = [
             Edge.create(
                 src=test_main.id,
@@ -2122,20 +2126,45 @@ class TestEntrypointRankingPenalties:
                 origin="test",
                 origin_run_id="test",
             )
-            for i in range(10)  # 10 outgoing edges
+            for i in range(10)
         ]
-        nodes = [test_main]
 
-        entrypoints = detect_entrypoints(nodes, edges)
+        entrypoints = detect_entrypoints([test_main], edges)
 
-        assert len(entrypoints) == 1
-        ep = entrypoints[0]
+        # Filtered out: 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10)
+        assert len(entrypoints) == 0
 
-        # Base 0.80 * 0.1 (test penalty) = 0.08
-        # Plus connectivity boost: min(0.25, log(1 + 10) / 10) ≈ 0.24
-        # Total: 0.08 + 0.24 = 0.32
-        assert ep.confidence > 0.08  # Should be boosted
-        assert ep.confidence < 0.50  # But still well below production
+    def test_test_function_no_connectivity_boost(self) -> None:
+        """TEST_FUNCTION entrypoints skip the connectivity boost.
+
+        Test functions are entrypoints for test runners, not architectural
+        entrypoints. Their connectivity should not lift them above the
+        confidence threshold. Without this fix, a test function with
+        0.80 * 0.1 = 0.08 base + 0.25 boost = 0.33 would pass the
+        MIN_ENTRYPOINT_CONFIDENCE filter, flooding entries.txt with
+        hundreds of test functions.
+        """
+        sym = make_symbol(
+            "test_user_login", kind="function", path="tests/test_auth.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+        edges = [
+            Edge.create(
+                src=sym.id,
+                dst=f"python:tests/helper.py:{i}-{i+1}:func{i}:function",
+                edge_type="calls",
+                line=i,
+                origin="test",
+                origin_run_id="test",
+            )
+            for i in range(50)  # 50 outgoing edges — max boost
+        ]
+
+        entrypoints = detect_entrypoints([sym], edges)
+
+        # Should be filtered out — TEST_FUNCTION skips connectivity boost,
+        # so 0.80 * 0.1 = 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10)
+        assert len(entrypoints) == 0
 
     def test_ranking_order_respects_penalties(self) -> None:
         """Final ranking correctly orders by penalized confidence.

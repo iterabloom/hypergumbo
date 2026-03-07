@@ -994,6 +994,16 @@ def detect_entrypoints(
         # boosting again would double-count connectivity.
         if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
             continue
+        # Skip connectivity boost for TEST_FUNCTION entrypoints and any
+        # entrypoint in a test file.  Without this, a test function with
+        # 0.80 * 0.1 (test penalty) = 0.08 gets boosted to 0.33 by
+        # connectivity, passing the MIN_ENTRYPOINT_CONFIDENCE filter and
+        # flooding entries.txt with hundreds of test functions.
+        if ep.kind == EntrypointKind.TEST_FUNCTION:
+            continue
+        sym = symbol_lookup.get(ep.symbol_id)
+        if sym and sym.path and is_test_file(sym.path):
+            continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
