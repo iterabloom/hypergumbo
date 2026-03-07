@@ -309,7 +309,7 @@ def is_test_file(path: str) -> bool:
     path_parts = normalized.split("/")
     test_dirs = {
         "tests", "test", "t", "__tests__",  # Test directories
-        "testing",  # Go convention (e.g., harbor src/testing/, argo-cd utils/testing/)
+        "testing", "testsuite",  # Go/Java convention (e.g., keycloak testsuite/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils", "testutil",  # Test support directories
         "testhelper", "testhelpers",  # Test helper directories
@@ -317,14 +317,15 @@ def is_test_file(path: str) -> bool:
         "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories
     }
     # Also match compound names like "transportfakes" that end with "fakes"/"mocks",
-    # and directories starting with "test-" (test-artifacts, test-fixtures, test-data).
+    # directories starting with "test-" (test-artifacts, test-fixtures, test-data),
+    # and directories starting with "testsuite" (testsuite-providers, etc.).
     for part in path_parts:
         part_lower = part.lower()
         if part_lower in test_dirs:
             return True
         if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
             return True
-        if part_lower.startswith("test-"):
+        if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
             return True
 
     # spec/ only matches as the first path component (Ruby RSpec convention).

@@ -303,6 +303,14 @@ class TestIsTestFile:
         assert is_test_file("patch-testing/program/src/lib.rs") is False
         assert is_test_file("latest-test/main.py") is False
 
+    def test_testsuite_directory(self) -> None:
+        """Directories named 'testsuite*' are test directories.
+
+        Common in Java projects (keycloak has testsuite/ and test-framework/).
+        """
+        assert is_test_file("testsuite/providers/src/main/java/TestProvider.java") is True
+        assert is_test_file("testsuite-providers/src/main/java/LdapEndpoint.java") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False
