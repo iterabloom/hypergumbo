@@ -2923,10 +2923,52 @@ class TestTrivialSinkDampening:
 
         # sink: out=0, loc=1 → dampened
         assert result[sink.id] == pytest.approx(0.1)
-        # big: out=0, loc=50 → NOT dampened (body too long)
+        # big: out=0, loc=50 → NOT dampened (body too long for pure sink tier too)
         assert result[big.id] == pytest.approx(0.8)
         # caller: out=2, loc=3 → NOT dampened (out_degree > 1)
         assert result[caller.id] == pytest.approx(0.5)
+
+    def test_pure_sink_with_docstring_dampened(self):
+        """Pure sinks (out=0) with moderate LOC are dampened.
+
+        Utility helpers like node_text (in=496, out=0, LoC=11 including
+        docstring) and find_child_by_type (in=291, out=0, LoC=16) should
+        be dampened despite exceeding the strict max_loc=5 threshold.
+        Pure sinks call nothing — they're definitively leaf helpers.
+        """
+        from hypergumbo_core.ranking import apply_trivial_sink_weights
+
+        # Utility helper with docstring (11 lines including docstring)
+        helper = self._make_short_symbol("node_text", "base.py", loc=11)
+        # Larger helper (16 lines)
+        helper2 = self._make_short_symbol("find_child", "base.py", loc=16)
+        # Too large to be a trivial pure sink (50 lines)
+        big_leaf = self._make_short_symbol("process", "engine.py", loc=50)
+        # Near-sink with 1 outgoing edge, loc=11 → NOT dampened
+        near_sink = self._make_short_symbol("validate", "check.py", loc=11)
+
+        symbols = [helper, helper2, big_leaf, near_sink]
+        edges = [
+            # near_sink has 1 outgoing edge
+            make_edge(near_sink.id, "some_target"),
+        ]
+        centrality = {
+            helper.id: 1.0,
+            helper2.id: 0.8,
+            big_leaf.id: 0.6,
+            near_sink.id: 0.5,
+        }
+
+        result = apply_trivial_sink_weights(centrality, symbols, edges)
+
+        # helper: out=0, loc=11 → dampened (pure sink tier, loc <= 20)
+        assert result[helper.id] == pytest.approx(0.1)
+        # helper2: out=0, loc=16 → dampened (pure sink tier)
+        assert result[helper2.id] == pytest.approx(0.08)
+        # big_leaf: out=0, loc=50 → NOT dampened (exceeds pure_sink_max_loc=20)
+        assert result[big_leaf.id] == pytest.approx(0.6)
+        # near_sink: out=1, loc=11 → NOT dampened (out>0 and loc>5)
+        assert result[near_sink.id] == pytest.approx(0.5)
 
 
 class TestApplyCommonMethodNameWeights:
@@ -3189,11 +3231,29 @@ class TestApplySiblingImplWeights:
                 edges.append(make_edge(caller.id, ns.id))
             edges.append(make_edge(caller.id, unique_sym.id))
 
-        # Give Notify impls some out-edges too
-        target = make_symbol("send", path="net/send.go", kind="function", language="go")
+        # Give Notify impls some out-edges too.
+        # target is a substantial function (loc=30) that also calls another
+        # function, making it a connector rather than a trivial sink.
+        target = Symbol(
+            id="go:net/send.go:1-30:function:send",
+            name="send", kind="function", language="go",
+            path="net/send.go",
+            span=Span(start_line=1, end_line=30, start_col=0, end_col=0),
+        )
+        target.supply_chain_tier = 1
+        target.supply_chain_reason = "tier_1"
+        target.lines_of_code = 30
         all_syms.append(target)
         for ns in notify_syms:
             edges.append(make_edge(ns.id, target.id))
+
+        # Give unique_sym outgoing edges (realistic: API handlers call services)
+        svc = make_symbol("alertService", path="svc/alert.go", kind="function", language="go")
+        all_syms.append(svc)
+        edges.append(make_edge(unique_sym.id, svc.id))
+        edges.append(make_edge(unique_sym.id, target.id))
+        # Give target an out-edge so it's not a pure sink
+        edges.append(make_edge(target.id, svc.id))
 
         result = rank_symbols(all_syms, edges)
 

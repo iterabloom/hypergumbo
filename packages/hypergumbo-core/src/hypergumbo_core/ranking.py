@@ -574,6 +574,7 @@ def apply_trivial_sink_weights(
     sink_weight: float = 0.1,
     max_out_degree: int = 1,
     max_loc: int = 5,
+    pure_sink_max_loc: int = 20,
 ) -> Dict[str, float]:
     """Dampen centrality for trivial sinks — short-bodied symbols with near-zero out-degree.
 
@@ -588,14 +589,16 @@ def apply_trivial_sink_weights(
       - noopMetric.Inc (in=109, out=0, LoC=1) — null object stub
       - CheckError (in=195, out=1, LoC=3) — error-handling wrapper
       - syncTask.name (in=109, out=0, LoC=2) — trivial accessor
+      - node_text (in=496, out=0, LoC=11) — tree-sitter helper with docstring
+      - find_child_by_type (in=291, out=0, LoC=16) — utility with docstring
 
-    Detection criteria (all must hold):
-      1. out_degree <= max_out_degree (default 1)
-      2. lines_of_code <= max_loc (default 5)
-
-    This is conservative: most architectural functions have out_degree > 1
-    OR non-trivial body size.  The conjunction prevents false dampening of
-    genuinely important short leaf functions.
+    Two tiers of detection:
+      1. Near-sinks (out_degree <= 1, loc <= max_loc=5): strict, catches
+         accessors/stubs regardless of whether they have 0 or 1 edge out.
+      2. Pure sinks (out_degree == 0, loc <= pure_sink_max_loc=20): relaxed
+         LOC for truly zero-out-degree functions.  These call nothing — even
+         with docstrings making them 10-20 lines, they're leaf helpers, not
+         architectural functions.
 
     Args:
         centrality: Centrality scores to weight.
@@ -603,7 +606,12 @@ def apply_trivial_sink_weights(
         edges: Edge list (used to compute out-degree).
         sink_weight: Multiplier for trivial sinks (default 0.1).
         max_out_degree: Maximum out-degree to qualify as sink (default 1).
-        max_loc: Maximum lines of code to qualify as trivial (default 5).
+        max_loc: Maximum lines of code for near-sinks (default 5).
+        pure_sink_max_loc: Maximum lines of code for pure sinks with
+            out_degree == 0 (default 20).  Higher than max_loc because
+            pure sinks are definitively non-architectural — they call
+            nothing.  The higher threshold catches utility helpers whose
+            spans include docstrings (e.g., node_text at 11 lines).
 
     Returns:
         Dictionary mapping symbol ID to dampened centrality score.
@@ -627,6 +635,8 @@ def apply_trivial_sink_weights(
         outd = out_degree.get(sid, 0)
         loc = symbol_loc.get(sid, 0)
         if outd <= max_out_degree and loc <= max_loc:
+            weighted[sid] = score * sink_weight
+        elif outd == 0 and loc <= pure_sink_max_loc:
             weighted[sid] = score * sink_weight
         else:
             weighted[sid] = score
