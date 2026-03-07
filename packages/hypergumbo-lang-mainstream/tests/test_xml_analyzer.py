@@ -108,6 +108,71 @@ def test_analyze_maven_dependency_edges(tmp_path):
     edges = [e for e in result.edges if e.edge_type == "depends_on"]
     assert len(edges) >= 1
 
+def test_maven_main_class_defines_target(tmp_path):
+    """Maven <mainClass> in plugin config should emit defines_target edge."""
+    pom_file = tmp_path / "pom.xml"
+    pom_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <groupId>com.example</groupId>
+    <artifactId>my-app</artifactId>
+    <version>1.0.0</version>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.example.Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+""")
+    result = analyze_xml_files(tmp_path)
+
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) >= 1, f"Expected defines_target edge for mainClass, got {len(dt_edges)}"
+
+    # The target path should be the Java file path derived from the class name
+    edge = dt_edges[0]
+    assert edge.dst == "com/example/Main.java", f"Expected com/example/Main.java, got {edge.dst}"
+
+
+def test_maven_exec_main_class_defines_target(tmp_path):
+    """Maven exec-maven-plugin <mainClass> should emit defines_target edge."""
+    pom_file = tmp_path / "pom.xml"
+    pom_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <groupId>com.example</groupId>
+    <artifactId>my-app</artifactId>
+    <version>1.0.0</version>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.App</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+""")
+    result = analyze_xml_files(tmp_path)
+
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) >= 1
+    assert any(e.dst == "com/example/App.java" for e in dt_edges)
+
+
 def test_analyze_android_manifest_activities(tmp_path):
     """Test parsing Android manifest with activities."""
     manifest = tmp_path / "AndroidManifest.xml"
