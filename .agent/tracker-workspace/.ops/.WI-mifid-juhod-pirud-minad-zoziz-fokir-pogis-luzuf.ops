@@ -32,3 +32,18 @@
   clock: 3  # 08cb
   nonce: 08cb  # 08cb
   message: "Deprioritized to P4: requires per-language config file analyzer work (13+ languages). Each language needs its own build manifest parser. Not blocking any current bakeoff signal — alertmanager/prometheus orphan rate is from Elm/Jsonnet/Go-types, not missing build-target edges."  # 08cb
+- op: update  # ffeb
+  at: '2026-03-07T01:25:38Z'  # ffeb
+  by: agent  # ffeb
+  actor: jgstern_agent  # ffeb
+  clock: 4  # ffeb
+  nonce: ffeb  # ffeb
+  set:  # ffeb
+    status: needs_human_review  # ffeb
+- op: discuss  # 3a56
+  at: '2026-03-07T01:25:38Z'  # 3a56
+  by: agent  # 3a56
+  actor: jgstern_agent  # 3a56
+  clock: 5  # 3a56
+  nonce: 3a56  # 3a56
+  message: "Moved to needs_human_review: this scope expansion covers 13+ languages and requires incremental per-language config file parser work. Not blocking any bakeoff signal. Human should triage priority and decide which languages to tackle first."  # 3a56
