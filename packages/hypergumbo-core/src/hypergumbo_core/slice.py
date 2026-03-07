@@ -455,15 +455,30 @@ def slice_graph(
         # Entry nodes and their immediate neighbors (depth ≤ 1) are exempt.
         # This prevents the common "main → run()" pattern from producing
         # nearly-empty slices when run() is a large orchestrator function.
+        # dispatches_to edges are exempt from the count: they represent
+        # intentional architectural fan-out (registry dispatch), not noisy
+        # utility calls. Without this exemption, dispatch sites like
+        # run_all_analyzers (100+ handlers) get hub-pruned and the slice
+        # misses all registered handlers.
         if (
             query.hub_threshold is not None
-            and len(relevant_edges) > query.hub_threshold
             and current_id not in entry_node_ids
             and hop >= 2
         ):
-            if "hub_pruned" not in limits_hit:
-                limits_hit.append("hub_pruned")
-            continue
+            non_dispatch_edges = [
+                e for e in relevant_edges
+                if e.edge_type != "dispatches_to"
+            ]
+            if len(non_dispatch_edges) > query.hub_threshold:
+                if "hub_pruned" not in limits_hit:
+                    limits_hit.append("hub_pruned")
+                # Still follow dispatches_to edges even when hub-pruned
+                relevant_edges = [
+                    e for e in relevant_edges
+                    if e.edge_type == "dispatches_to"
+                ]
+                if not relevant_edges:
+                    continue
 
         for edge in relevant_edges:
             # Filter by confidence
@@ -471,9 +486,10 @@ def slice_graph(
                 continue
 
             # Skip structural edges to prevent BFS explosion:
-            # - Forward: all structural edges (extends, implements, contains,
-            #   dispatches_to) are excluded to prevent fan-out through shared
-            #   ancestors (e.g., all controllers sharing ApplicationController).
+            # - Forward: structural edges (extends, implements, contains)
+            #   are excluded to prevent fan-out through shared ancestors
+            #   (e.g., all controllers sharing ApplicationController).
+            #   Note: dispatches_to is NOT structural — it IS followed.
             # - Reverse: 'contains' edges are excluded to prevent false positives.
             #   Without this, reverse slice from method M would traverse
             #   M → Class (via contains) → unrelated callers of Class.

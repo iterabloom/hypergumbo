@@ -1793,16 +1793,17 @@ class TestReverseSliceClassExpansion:
 
 
 class TestForwardSliceInheritanceEdges:
-    """Forward slices should NOT traverse structural/polymorphic edges.
+    """Forward slices should NOT traverse structural edges, but DO follow dispatches_to.
 
-    These edges cause BFS explosion through shared ancestors, containment,
-    or polymorphic dispatch:
+    Structural edges (extends, implements, contains) cause BFS explosion:
     - extends/implements: VoiceController → ApplicationController fans out
       to ALL sibling controllers
     - contains: reaching a class fans out to ALL member methods
-    - dispatches_to: reaching an interface method fans out to ALL implementations
 
-    Behavioral dependencies are captured by calls edges only in forward slices.
+    dispatches_to edges ARE followed in forward slices — they represent
+    intentional registry dispatch (run_all_analyzers → each analyzer).
+    Hub pruning exempts dispatches_to from its edge count so dispatch
+    sites with many handlers aren't pruned.
     """
 
     def test_forward_slice_skips_extends_edge(self) -> None:
@@ -2068,6 +2069,166 @@ class TestForwardSliceInheritanceEdges:
 
         # Interface method should be found (dispatches_to reversed)
         assert iface_method.id in result.node_ids
+
+    def test_dispatches_to_exempt_from_hub_pruning(self) -> None:
+        """Hub pruning should not count dispatches_to edges toward threshold.
+
+        Registry dispatch sites like run_all_analyzers fan out to many
+        handlers via dispatches_to edges. This is intentional architectural
+        fan-out, not noisy utility calls. If these edges count toward
+        hub_threshold, the dispatch site gets pruned at depth >= 2 and
+        the slice misses all registered handlers.
+        """
+        # entry -> bridge -> dispatch_site -> {handler_0..59} via dispatches_to
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        dispatch = make_symbol(
+            "run_all_analyzers", path="src/registry.py",
+            start_line=10, end_line=20,
+        )
+        handlers = [
+            make_symbol(
+                f"analyze_{i}", path=f"src/lang_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(60)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, dispatch),
+        ]
+        for handler in handlers:
+            edges_list.append(
+                make_edge(dispatch, handler, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, dispatch] + handlers
+
+        # dispatch_site is at depth 2 with 60 outgoing dispatches_to edges.
+        # With hub_threshold=50, naive counting would prune it.
+        # But dispatches_to edges should be exempt from hub counting.
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # All handlers should be reachable despite exceeding hub_threshold
+        assert dispatch.id in result.node_ids
+        reachable_handlers = [h for h in handlers if h.id in result.node_ids]
+        assert len(reachable_handlers) == 60, (
+            f"Expected 60 handlers reachable via dispatches_to, got {len(reachable_handlers)}. "
+            f"Hub pruning should not count dispatches_to edges."
+        )
+
+    def test_mixed_calls_and_dispatches_to_below_threshold(self) -> None:
+        """Hub pruning counts only non-dispatch edges toward threshold.
+
+        A node with 10 calls edges + 60 dispatches_to edges should NOT be
+        pruned when hub_threshold=50 (only 10 non-dispatch edges < 50).
+        """
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        mixed_node = make_symbol(
+            "orchestrator", path="src/orchestrator.py",
+            start_line=10, end_line=20,
+        )
+        call_targets = [
+            make_symbol(
+                f"util_{i}", path=f"src/util_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(10)
+        ]
+        dispatch_targets = [
+            make_symbol(
+                f"handler_{i}", path=f"src/handler_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(60)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, mixed_node),
+        ]
+        for t in call_targets:
+            edges_list.append(make_edge(mixed_node, t, edge_type="calls"))
+        for t in dispatch_targets:
+            edges_list.append(
+                make_edge(mixed_node, t, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, mixed_node] + call_targets + dispatch_targets
+
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # All targets reachable — only 10 non-dispatch edges < 50
+        reachable_calls = [t for t in call_targets if t.id in result.node_ids]
+        reachable_dispatch = [t for t in dispatch_targets if t.id in result.node_ids]
+        assert len(reachable_calls) == 10
+        assert len(reachable_dispatch) == 60
+
+    def test_hub_pruned_node_still_follows_dispatches_to(self) -> None:
+        """When a node IS hub-pruned (calls > threshold), dispatches_to still followed.
+
+        A node with 55 calls edges + 5 dispatches_to edges should be
+        hub-pruned for calls (55 > 50), but its dispatches_to targets
+        should still be reachable.
+        """
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        hub = make_symbol(
+            "big_orchestrator", path="src/big.py",
+            start_line=10, end_line=20,
+        )
+        call_targets = [
+            make_symbol(
+                f"callee_{i}", path=f"src/callee_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(55)
+        ]
+        dispatch_targets = [
+            make_symbol(
+                f"dispatch_{i}", path=f"src/dispatch_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(5)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, hub),
+        ]
+        for t in call_targets:
+            edges_list.append(make_edge(hub, t, edge_type="calls"))
+        for t in dispatch_targets:
+            edges_list.append(
+                make_edge(hub, t, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, hub] + call_targets + dispatch_targets
+
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # Hub should be hub-pruned (55 calls > 50)
+        assert "hub_pruned" in result.limits_hit
+        # Calls targets should NOT be reachable (hub-pruned)
+        reachable_calls = [t for t in call_targets if t.id in result.node_ids]
+        assert len(reachable_calls) == 0
+        # But dispatches_to targets SHOULD still be reachable
+        reachable_dispatch = [t for t in dispatch_targets if t.id in result.node_ids]
+        assert len(reachable_dispatch) == 5
 
 
 class TestForwardSliceContainsEdges:
