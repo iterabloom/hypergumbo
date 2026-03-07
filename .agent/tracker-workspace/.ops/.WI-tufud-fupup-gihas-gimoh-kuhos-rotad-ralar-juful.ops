@@ -1,0 +1,19 @@
+- op: create  # 291e
+  at: '2026-03-07T09:58:24Z'  # 291e
+  by: agent  # 291e
+  actor: jgstern_agent  # 291e
+  clock: 1  # 291e
+  nonce: 291e  # 291e
+  data:  # 291e
+    kind: work_item  # 291e
+    title: "Add AI agent tool dispatch framework patterns"  # 291e
+    status: todo_soft  # 291e
+    priority: 3  # 291e
+    parent:  # 291e
+    tags: []  # 291e
+    before: []  # 291e
+    duplicate_of: []  # 291e
+    not_duplicate_of: []  # 291e
+    pr_ref:  # 291e
+    description: ""  # 291e
+    fields: {}  # 291e

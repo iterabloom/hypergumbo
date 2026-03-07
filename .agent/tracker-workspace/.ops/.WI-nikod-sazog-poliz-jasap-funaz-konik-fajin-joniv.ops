@@ -1,0 +1,26 @@
+- op: create  # c384
+  at: '2026-03-07T09:58:13Z'  # c384
+  by: agent  # c384
+  actor: jgstern_agent  # c384
+  clock: 1  # c384
+  nonce: c384  # c384
+  data:  # c384
+    kind: work_item  # c384
+    title: "Add MCP framework patterns (client/server setup, tool registration)"  # c384
+    status: todo_soft  # c384
+    priority: 2  # c384
+    parent:  # c384
+    tags: []  # c384
+    before: []  # c384
+    duplicate_of: []  # c384
+    not_duplicate_of: []  # c384
+    pr_ref:  # c384
+    description: ""  # c384
+    fields: {}  # c384
+- op: discuss  # 328e
+  at: '2026-03-07T09:58:19Z'  # 328e
+  by: agent  # 328e
+  actor: jgstern_agent  # 328e
+  clock: 2  # 328e
+  nonce: 328e  # 328e
+  message: "Bakeoff assessment: gemini-cli, codex, claude-agent-acp all use MCP but it's not detected. Add YAML patterns for @modelcontextprotocol/sdk (TS), mcp-python, MCP server/client setup, tool registration. Patterns should detect: McpServer/McpClient instantiation, server.tool() registration, client.callTool(), transport setup."  # 328e
