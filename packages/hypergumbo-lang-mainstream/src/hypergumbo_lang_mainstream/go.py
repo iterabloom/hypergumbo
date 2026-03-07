@@ -2231,6 +2231,79 @@ def _get_go_route_prefix(
     return "".join(prefixes)
 
 
+def _build_group_prefix_map(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Build a mapping of variable names to router group path prefixes.
+
+    Scans for Gin/Echo/Fiber-style variable-based group patterns::
+
+        api := r.Group("/api")
+        v1 := api.Group("/v1")
+
+    Returns a dict like ``{"api": "/api", "v1": "/api/v1"}``.
+
+    This complements ``_get_go_route_prefix`` which handles closure-based
+    groups (Macaron/Chi).  Gin, Echo, and Fiber assign groups to variables
+    instead of using closures.
+    """
+    prefix_map: dict[str, str] = {}
+
+    for n in iter_tree(node):
+        # Match: varName := receiver.Group("/path")
+        if n.type != "short_var_declaration":
+            continue
+
+        left = find_child_by_field(n, "left")
+        right = find_child_by_field(n, "right")
+        if left is None or right is None:  # pragma: no cover
+            continue
+
+        # Left side: expression_list with a single identifier
+        left_ids = [c for c in left.children if c.type == "identifier"]
+        if len(left_ids) != 1:  # pragma: no cover
+            continue
+        var_name = node_text(left_ids[0], source)
+
+        # Right side: expression_list with a call_expression
+        right_calls = [c for c in right.children if c.type == "call_expression"]
+        if len(right_calls) != 1:
+            continue
+        call_node = right_calls[0]
+
+        func_node = find_child_by_field(call_node, "function")
+        if func_node is None or func_node.type != "selector_expression":
+            continue
+
+        field_node = find_child_by_field(func_node, "field")
+        if field_node is None:  # pragma: no cover
+            continue
+
+        method = node_text(field_node, source)
+        if method not in _GO_GROUP_METHODS:
+            continue
+
+        # Extract the group prefix string from the call arguments
+        args_node = find_child_by_field(call_node, "arguments")
+        if args_node is None:  # pragma: no cover
+            continue
+        group_path = _extract_first_string_arg(args_node, source)
+        if not group_path:  # pragma: no cover
+            continue
+
+        # Check if the receiver is itself a group variable (nested groups)
+        operand_node = find_child_by_field(func_node, "operand")
+        receiver_prefix = ""
+        if operand_node is not None and operand_node.type == "identifier":
+            receiver_name = node_text(operand_node, source)
+            receiver_prefix = prefix_map.get(receiver_name, "")
+
+        prefix_map[var_name] = receiver_prefix + group_path
+
+    return prefix_map
+
+
 def _extract_go_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -2245,7 +2318,8 @@ def _extract_go_routes(
     - Fiber: app.Get("/path", handler) (lowercase methods)
     - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
     - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
-    - Group prefix composition: r.Group("/api", func() { r.GET("/users", h) }) → /api/users
+    - Group prefix composition (closure): r.Group("/api", func() { r.GET("/users", h) }) → /api/users
+    - Group prefix composition (variable): api := r.Group("/api"); api.GET("/users", h) → /api/users
     - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
     Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
@@ -2256,6 +2330,9 @@ def _extract_go_routes(
     """
     routes: list[Symbol] = []
     mount_edges: list[Edge] = []
+
+    # Pre-pass: build variable-to-prefix map for Gin/Echo/Fiber groups
+    group_prefix_map = _build_group_prefix_map(node, source)
 
     for n in iter_tree(node):
         # Look for call_expression with selector_expression function
@@ -2307,6 +2384,13 @@ def _extract_go_routes(
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
+                                # Variable-based group prefix (Gin/Echo/Fiber)
+                                if not prefix:
+                                    operand = find_child_by_field(func_node, "operand")
+                                    if operand is not None and operand.type == "identifier":
+                                        prefix = group_prefix_map.get(
+                                            node_text(operand, source), "",
+                                        )
                                 route_path = prefix + route_path
                                 normalized_method = _GO_METHOD_ALIASES.get(
                                     method_name, method_name.upper(),
@@ -2371,6 +2455,12 @@ def _extract_go_routes(
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
+                                if not prefix:
+                                    operand = find_child_by_field(func_node, "operand")
+                                    if operand is not None and operand.type == "identifier":
+                                        prefix = group_prefix_map.get(
+                                            node_text(operand, source), "",
+                                        )
                                 route_path = prefix + route_path
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
@@ -2409,6 +2499,12 @@ def _extract_go_routes(
 
                         if route_path and handler_name:
                             prefix = _get_go_route_prefix(n, source)
+                            if not prefix:  # pragma: no cover - gorilla chains have call operands
+                                operand = find_child_by_field(func_node, "operand")
+                                if operand is not None and operand.type == "identifier":
+                                    prefix = group_prefix_map.get(
+                                        node_text(operand, source), "",
+                                    )
                             route_path = prefix + route_path
                             normalized_method = http_method or "ANY"
                             start_line = n.start_point[0] + 1
@@ -2772,6 +2868,7 @@ def _extract_go_usage_contexts(
         List of UsageContext records for Go route patterns.
     """
     contexts: list[UsageContext] = []
+    group_prefix_map = _build_group_prefix_map(node, source)
 
     for n in iter_tree(node):
         if n.type != "call_expression":
@@ -2842,8 +2939,12 @@ def _extract_go_usage_contexts(
         if handler_name and handler_name in symbol_by_name:
             handler_ref = symbol_by_name[handler_name].id
 
-        # Prepend Group/Route prefix if nested in a closure
+        # Prepend Group/Route prefix (closure-based or variable-based)
         prefix = _get_go_route_prefix(n, source)
+        if not prefix and operand_node is not None and operand_node.type == "identifier":
+            prefix = group_prefix_map.get(
+                node_text(operand_node, source), "",
+            )
         route_path = prefix + route_path
 
         # Normalize method name (handles aliases like Del → DELETE)

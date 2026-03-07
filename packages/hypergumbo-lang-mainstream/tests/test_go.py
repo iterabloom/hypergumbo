@@ -1506,6 +1506,45 @@ func main() {
         assert "/Authorization" not in ctx_paths
 
 
+    def test_gin_group_variable_prefix_composition(self, tmp_path: Path) -> None:
+        """Gin-style variable-based router groups compose full route paths.
+
+        Pattern: api := r.Group("/api"); api.GET("/users", handler)
+        should produce route path /api/users. Nested groups should also
+        compose: v1 := api.Group("/v1"); v1.GET("/items", handler) → /api/v1/items.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    api := r.Group("/api")
+    api.GET("/users", listUsers)
+    api.POST("/users", createUser)
+
+    v1 := api.Group("/v1")
+    v1.GET("/items", listItems)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+
+        assert "/api/users" in route_paths, f"Expected /api/users, got {route_paths}"
+        assert "/api/v1/items" in route_paths, f"Expected /api/v1/items, got {route_paths}"
+
+        # Also check usage contexts have the composed prefix
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+        assert "/api/users" in ctx_paths
+        assert "/api/v1/items" in ctx_paths
+
+
 class TestGoRouteMountDetection:
     """Tests for Go route mount point detection.
 
