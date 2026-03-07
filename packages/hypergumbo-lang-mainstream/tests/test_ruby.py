@@ -1910,6 +1910,41 @@ end
         assert len(route_syms) == 1
         assert route_syms[0].name == "GET /home"
 
+    def test_inline_on_member_keyword(self, tmp_path: Path) -> None:
+        """Routes with inline on: :member keyword (no member do block)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        # get :setup, on: :member → member route
+        # get :active, on: :collection → collection route
+        # match :special → no on: keyword, should be ignored (not a member/collection)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :domains do
+    get :setup, on: :member
+    post :check, on: :member
+    get :active, on: :collection
+    match :special
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        assert "GET /domains/:id/setup" in route_names
+        assert "POST /domains/:id/check" in route_names
+        assert "GET /domains/active" in route_names
+
+        # match :special without on: keyword should not create a route
+        assert not any("special" in name for name in route_names)
+
+        # Verify controller_action
+        setup = next(s for s in route_syms if s.name == "GET /domains/:id/setup")
+        assert setup.meta["controller_action"] == "domains#setup"
+
     def test_singular_resource_nested(self, tmp_path: Path) -> None:
         """Singular resource (no :id) doesn't use _id param for nesting."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby

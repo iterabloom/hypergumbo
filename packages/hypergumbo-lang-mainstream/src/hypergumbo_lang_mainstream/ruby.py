@@ -742,6 +742,32 @@ def _singularize(name: str) -> str:
     return name
 
 
+def _extract_on_keyword(args_node: "tree_sitter.Node", source: bytes) -> str | None:
+    """Extract the value of an ``on:`` keyword argument from a call's args.
+
+    Rails inline member/collection routes use ``on: :member`` or
+    ``on: :collection`` as keyword arguments instead of ``member do...end``
+    blocks.  E.g.::
+
+        get :setup, on: :member
+        match :verify, on: :member, via: [:get, :post]
+
+    Returns "member", "collection", or None if no ``on:`` keyword found.
+    """
+    for arg in args_node.children:
+        if arg.type == "pair":
+            # pair children: hash_key_symbol("on"), ":"(punctuation), simple_symbol(":member")
+            children = list(arg.children)
+            if len(children) >= 3:
+                key_child = children[0]
+                val_child = children[-1]
+                if key_child.type == "hash_key_symbol":
+                    key_text = node_text(key_child, source).strip(":")
+                    if key_text == "on" and val_child.type == "simple_symbol":
+                        return node_text(val_child, source).strip(":")
+    return None
+
+
 def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -835,17 +861,43 @@ def _extract_rails_routes(
                 break
             # Symbol for HTTP method inside member/collection block
             # e.g., member do; post :activate; end → action_name = "activate"
+            # Also handles inline on: :member / on: :collection keyword args:
+            # e.g., get :setup, on: :member → GET /resources/:id/setup
             elif (
                 arg.type == "simple_symbol"
                 and method_name in HTTP_METHODS
-                and res_context in ("member", "collection")
+                and res_context in ("member", "collection", "nested")
             ):
                 action_name = node_text(arg, source).strip(":")
-                if res_context == "member":
-                    route_path = f"{res_path_prefix}/:id/{action_name}"
+                # Determine effective context: use inline on: keyword if present
+                effective_context = res_context
+                mc_path_prefix = res_path_prefix
+                mc_controller = res_controller
+                if res_context == "nested":
+                    # Check for on: :member or on: :collection keyword arg
+                    on_value = _extract_on_keyword(args_node, source)
+                    if on_value in ("member", "collection"):
+                        effective_context = on_value
+                        # For inline on: keyword, use the enclosing resource
+                        # block's own prefix (not the nested prefix which
+                        # includes :parent_id)
+                        innermost_rb = None
+                        for rb in resource_blocks:
+                            if rb.start_byte <= n.start_byte and n.end_byte <= rb.end_byte:
+                                if innermost_rb is None or rb.start_byte > innermost_rb.start_byte:
+                                    innermost_rb = rb
+                        if innermost_rb is not None:
+                            mc_path_prefix = innermost_rb.path_prefix
+                            mc_controller = innermost_rb.controller_name
+                    else:
+                        # Not a member/collection route — this is just a
+                        # symbol arg inside a nested resource, skip
+                        continue
+                if effective_context == "member":
+                    route_path = f"{mc_path_prefix}/:id/{action_name}"
                 else:  # collection
-                    route_path = f"{res_path_prefix}/{action_name}"
-                controller_action = f"{res_controller}#{action_name}"
+                    route_path = f"{mc_path_prefix}/{action_name}"
+                controller_action = f"{mc_controller}#{action_name}"
                 break
             # Handle "path" => "controller#action" syntax (pair with string key)
             elif arg.type == "pair" and method_name in HTTP_METHODS:
