@@ -14,7 +14,10 @@ Ranking uses multiple signals combined:
    log-scaled out-degree factor.  This rewards *connectors* — symbols
    that are both depended-on and depend-on-others (e.g., QuerySet, Model)
    — over pure *sinks* (e.g., exception classes, utility decorators) that
-   have high in-degree but near-zero out-degree.  Extreme in-degree is
+   have high in-degree but near-zero out-degree.  Pure sinks (out=0) get
+   a 0.5x multiplier instead of 1.0x, penalizing popular leaf utilities
+   (e.g., Elm ``map`` with in=71, out=0) that are plumbing.  Extreme
+   in-degree is
    saturated via ``hub_threshold`` to prevent infrastructure utilities
    (error sentinels, loggers) from dominating rankings.  Cross-file edges
    count as 1.0 while within-file edges are dampened (default 0.3x) to
@@ -158,7 +161,13 @@ def compute_centrality(
 
     The formula is::
 
-        raw_score = effective_in_degree * (1 + ln(1 + out_degree))
+        out_multiplier = (1 + ln(1 + out_degree)) if out_degree > 0 else 0.5
+        raw_score = effective_in_degree * out_multiplier
+
+    Pure sinks (out_degree=0) get a 0.5x multiplier instead of the standard
+    1.0x floor.  This ensures popular leaf utilities (e.g., ``map`` with
+    in=71, out=0) rank below architectural connectors with the same
+    in-degree.
 
     When ``hub_threshold`` is set, in-degree is saturated for symbols above
     the threshold to prevent infrastructure utilities (error sentinels,
@@ -252,7 +261,14 @@ def compute_centrality(
         else:
             effective_in = ind
 
-        scores[sid] = effective_in * (1 + math.log(1 + outd))
+        # Pure sinks (out_degree=0) get a dampened multiplier (0.5) vs
+        # the normal floor of 1.0.  This penalizes popular leaf utilities
+        # (e.g., Elm map with in=71, out=0) that accumulate high in-degree
+        # through ubiquitous use but have no outgoing dependencies — they're
+        # plumbing, not connectors.  Symbols with out_degree >= 1 get the
+        # standard (1 + ln(1 + out_degree)) boost.
+        out_multiplier = (1 + math.log(1 + outd)) if outd > 0 else 0.5
+        scores[sid] = effective_in * out_multiplier
 
     # Normalize to 0-1 range
     max_score = max(scores.values()) if scores else 1.0

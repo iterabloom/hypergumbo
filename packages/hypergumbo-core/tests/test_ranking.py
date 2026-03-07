@@ -136,12 +136,12 @@ class TestComputeCentrality:
 
         result = compute_centrality([a, b, c], edges)
 
-        # b has highest raw score (in=2), still max
-        assert result[b.id] == pytest.approx(1.0)
-        # c has lower in-degree (1) but gets out-degree boost from c→b
-        assert 0 < result[c.id] < 1.0
-        # b still outranks c (2 in-degree > 1 in-degree, even with c's out-degree boost)
-        assert result[b.id] > result[c.id]
+        # c has out-degree boost (1 + ln(2) ≈ 1.69x) which outweighs b's
+        # higher in-degree (2 vs 1) because b is a pure sink (out=0 → 0.5x).
+        # c raw = 1 * 1.69 = 1.69; b raw = 2 * 0.5 = 1.0
+        assert result[c.id] == pytest.approx(1.0)
+        assert 0 < result[b.id] < 1.0
+        assert result[c.id] > result[b.id]
         # a has zero in-degree → zero centrality
         assert result[a.id] == 0.0
 
@@ -236,6 +236,41 @@ class TestBidirectionalCentrality:
         # Max should still be 1.0
         assert max(result.values()) == pytest.approx(1.0)
 
+    def test_zero_out_degree_dampened_vs_nonzero_out(self):
+        """Zero-out-degree symbols get dampened vs symbols with even 1 outgoing edge.
+
+        A symbol with in=10, out=0 (pure sink) should score less than a symbol
+        with in=10, out=1 (minimal connector). This ensures popular leaf utilities
+        like Elm's `map` (in=71, out=0) rank below architectural symbols.
+        """
+        pure_sink = make_symbol("map")
+        connector = make_symbol("QuerySet")
+        # Give both the same 10 incoming edges
+        callers = [make_symbol(f"caller_{i}") for i in range(10)]
+        # One callee for the connector
+        callee = make_symbol("callee")
+
+        edges = []
+        for caller in callers:
+            edges.append(make_edge(caller.id, pure_sink.id))
+            edges.append(make_edge(caller.id, connector.id))
+        edges.append(make_edge(connector.id, callee.id))
+
+        all_symbols = [pure_sink, connector, callee] + callers
+
+        result = compute_centrality(all_symbols, edges)
+
+        # With equal in-degree, the symbol with out=1 should outrank out=0
+        assert result[connector.id] > result[pure_sink.id], (
+            f"connector (out=1) should outrank pure sink (out=0): "
+            f"{result[connector.id]} vs {result[pure_sink.id]}"
+        )
+        # The gap should be significant (connector gets ln(2)+1 ≈ 1.69 multiplier
+        # vs pure sink's dampened 0.5 multiplier)
+        ratio = result[connector.id] / result[pure_sink.id]
+        assert ratio > 2.0, (
+            f"connector should be >2x higher than pure sink, got {ratio:.2f}x"
+        )
 
 
 class TestCrossFileDegreeWeighting:
