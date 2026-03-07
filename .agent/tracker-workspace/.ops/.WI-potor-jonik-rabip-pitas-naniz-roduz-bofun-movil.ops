@@ -1,0 +1,19 @@
+- op: create  # 43bb
+  at: '2026-03-07T04:53:26Z'  # 43bb
+  by: agent  # 43bb
+  actor: jgstern_agent  # 43bb
+  clock: 1  # 43bb
+  nonce: 43bb  # 43bb
+  data:  # 43bb
+    kind: work_item  # 43bb
+    title: "feat: resolve dynamic dispatch through analyzer registry for cross-package call edges"  # 43bb
+    status: todo_soft  # 43bb
+    priority: 2  # 43bb
+    parent:  # 43bb
+    tags: []  # 43bb
+    before: []  # 43bb
+    duplicate_of: []  # 43bb
+    not_duplicate_of: []  # 43bb
+    pr_ref:  # 43bb
+    description: "Bakeoff DEEP self-analysis (session deep-20260306-232500) found that forward slices from __main__ cannot reach lang analyzer code because the registry-based dynamic dispatch (register_analyzer → .analyze()) is not followed. Zero ast_call_direct edges cross package boundaries despite 1,529 import edges doing so. Fix: when building the call graph, recognize the registry pattern and add synthetic call edges from run_all_analyzers/run_behavior_map to each registered analyzer's .analyze() method."  # 43bb
+    fields: {}  # 43bb
