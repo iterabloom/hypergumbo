@@ -1472,6 +1472,40 @@ func main() {
         assert routes[0].name == "<closure>"
 
 
+    def test_single_arg_get_not_route(self, tmp_path: Path) -> None:
+        """Single-arg .Get("/key") calls (cache, headers) are not routes.
+
+        Go code like cache.Get("/A"), field.Tag.Get("/metric"),
+        Header.Get("/Authorization") should NOT create route UsageContexts
+        because they have no handler argument.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    // These should NOT be detected as routes
+    val := cache.Get("/A")
+    tag := field.Tag.Get("/metric")
+    auth := req.Header.Get("/Authorization")
+
+    // This SHOULD be detected as a route (has handler arg)
+    r.Get("/health", healthHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+
+        # Only the real route should be detected
+        assert "/health" in ctx_paths
+        assert "/A" not in ctx_paths
+        assert "/metric" not in ctx_paths
+        assert "/Authorization" not in ctx_paths
+
+
 class TestGoRouteMountDetection:
     """Tests for Go route mount point detection.
 

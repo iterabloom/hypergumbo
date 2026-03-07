@@ -2831,6 +2831,12 @@ def _extract_go_usage_contexts(
         if not route_path:  # pragma: no cover
             continue
 
+        # Skip single-arg calls like cache.Get("/key"), field.Tag.Get("/metric"),
+        # Header.Get("/Authorization") — these are not route registrations.
+        # Real route registrations always have at least a handler argument.
+        if handler_name is None:
+            continue
+
         # Try to resolve handler to a symbol reference
         handler_ref = None
         if handler_name and handler_name in symbol_by_name:
