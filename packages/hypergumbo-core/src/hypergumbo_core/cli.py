@@ -81,6 +81,7 @@ import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F
 import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 import hypergumbo_core.linkers.build_target as _build_target_linker  # noqa: F401
+import hypergumbo_core.linkers.decorator_dispatch as _decorator_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
