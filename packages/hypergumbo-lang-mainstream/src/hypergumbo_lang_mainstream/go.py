@@ -2064,6 +2064,11 @@ def _extract_handler_name(
       Falls back to the function name for constructors like
       ``httpapi.NewHandler(env)`` where the argument is not a handler.
 
+    Note: ``func_literal`` (anonymous closures) are handled at the call sites
+    in ``_extract_go_routes`` and ``_extract_go_usage_contexts``, not here.
+    Those functions skip closures and prefer named handlers, falling back to
+    ``"<closure>"`` only when no named handler exists.
+
     Returns None if the node type is not recognized.
     """
     if node.type == "identifier":
@@ -2086,7 +2091,7 @@ def _extract_handler_name(
         func_node = find_child_by_field(node, "function")
         if func_node:
             return node_text(func_node, source)
-    return None
+    return None  # pragma: no cover - defensive for unrecognized node types
 
 
 def _extract_first_string_arg(
@@ -2278,6 +2283,11 @@ def _extract_go_routes(
                                 # Pick the LAST non-string argument as handler.
                                 # Go frameworks pass middleware before the handler:
                                 # r.GET("/path", mw1, mw2, handler)
+                                # Prefer named handlers over closures — if the
+                                # last arg is a func_literal, keep looking for
+                                # a named handler but remember the closure as
+                                # fallback.
+                                closure_fallback = False
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -2286,9 +2296,14 @@ def _extract_go_routes(
                                         ",",
                                     ):
                                         continue
+                                    if arg.type == "func_literal":
+                                        closure_fallback = True
+                                        continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
                                         break
+                                if handler_name is None and closure_fallback:
+                                    handler_name = "<closure>"
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
@@ -2335,6 +2350,8 @@ def _extract_go_routes(
                             if route_path and route_path.startswith("/"):
                                 # Last non-string arg is handler (same
                                 # middleware convention as HTTP methods).
+                                # Prefer named handlers over closures.
+                                closure_fallback = False
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -2343,9 +2360,14 @@ def _extract_go_routes(
                                         ",",
                                     ):
                                         continue
+                                    if arg.type == "func_literal":
+                                        closure_fallback = True
+                                        continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
                                         break
+                                if handler_name is None and closure_fallback:
+                                    handler_name = "<closure>"
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
@@ -2790,8 +2812,10 @@ def _extract_go_usage_contexts(
                     route_path = node_text(arg, source).strip('"')
                 break
 
-        # Handler is the LAST identifier/selector arg (middleware precedes it)
+        # Handler is the LAST identifier/selector arg (middleware precedes it).
+        # If only a func_literal (anonymous closure) is found, use "<closure>".
         if route_path is not None:
+            closure_fallback = False
             for arg in reversed(args_node.children):
                 if arg.type == "identifier":
                     handler_name = node_text(arg, source)
@@ -2799,6 +2823,10 @@ def _extract_go_usage_contexts(
                 elif arg.type == "selector_expression":
                     handler_name = node_text(arg, source)
                     break
+                elif arg.type == "func_literal":
+                    closure_fallback = True
+            if handler_name is None and closure_fallback:
+                handler_name = "<closure>"
 
         if not route_path:  # pragma: no cover
             continue

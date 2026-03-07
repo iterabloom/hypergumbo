@@ -932,6 +932,54 @@ func authMiddleware() {}
         # The closure can't be named, so the named identifier before it is used
         assert routes[0].name == "authMiddleware"
 
+    def test_anonymous_closure_handler_creates_route(self, tmp_path: Path) -> None:
+        """Routes with anonymous closure handlers should still be detected.
+
+        Pattern: r.Get("/path", func(w http.ResponseWriter, r *http.Request) {...})
+        Common in alertmanager, prometheus, and other Go projects that register
+        routes inline without named handler functions.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "net/http"
+
+func main() {
+    r.Get("/-/healthy", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    })
+    r.Get("/-/ready", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+    r.Post("/-/reload", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes}
+        assert "/-/healthy" in route_paths
+        assert "/-/ready" in route_paths
+        assert "/-/reload" in route_paths
+        assert len(routes) >= 3
+
+        # Verify the route symbols have a descriptive name
+        for route in routes:
+            assert route.name is not None
+            assert len(route.name) > 0
+
+        # Verify UsageContexts are also created
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+        assert "/-/healthy" in ctx_paths
+        assert "/-/ready" in ctx_paths
+        assert "/-/reload" in ctx_paths
+
     def test_group_prefix_composition(self, tmp_path: Path) -> None:
         """Routes inside Group() closures get the group prefix prepended.
 
@@ -1399,6 +1447,29 @@ func listPosts() {}
         assert len(routes) >= 2
         stable_ids = [s.stable_id for s in routes]
         assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
+
+    def test_handlefunc_closure_handler(self, tmp_path: Path) -> None:
+        """Gorilla mux HandleFunc with anonymous closure handler creates route."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "net/http"
+
+func main() {
+    r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta["route_path"] == "/health"
+        assert routes[0].name == "<closure>"
 
 
 class TestGoRouteMountDetection:
