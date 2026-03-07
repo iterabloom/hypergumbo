@@ -264,7 +264,9 @@ DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 # FastAPI's add_api_route() registers routes programmatically instead of
 # using @router.get() decorators.  Both take a path string as the first
 # argument and a handler function as a subsequent argument.
-FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route"}
+# Flask-RESTful's add_resource() takes the resource class as the first
+# argument and URL path(s) as subsequent arguments.
+FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route", "add_resource"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -947,6 +949,54 @@ def _extract_flask_usage_contexts(
                 receiver_name = node.func.value.id
 
         if func_name not in FLASK_URL_FUNCTIONS:
+            continue
+
+        # Flask-RESTful add_resource: first arg is class, second+ is path(s)
+        # add_resource(TodoList, '/todos', '/todos/')
+        if func_name == "add_resource":
+            if len(node.args) < 2:
+                continue
+            # First arg is the resource class
+            resource_arg = node.args[0]
+            resource_name = None
+            if isinstance(resource_arg, ast.Name):
+                resource_name = resource_arg.id
+            elif isinstance(resource_arg, ast.Attribute):
+                resource_name = resource_arg.attr
+            if resource_name is None:
+                continue
+            resource_ref = None
+            if resource_name in symbol_by_name:
+                resource_ref = symbol_by_name[resource_name].id
+            # Second arg onwards are URL paths
+            for path_arg in node.args[1:]:
+                if isinstance(path_arg, ast.Constant) and isinstance(path_arg.value, str):
+                    rpath = path_arg.value
+                    normalized = rpath if rpath.startswith("/") else f"/{rpath}"
+                    if receiver_name and receiver_name in _prefixes:
+                        prefix = _prefixes[receiver_name].rstrip("/")
+                        normalized = prefix + normalized
+                    span = Span(
+                        start_line=node.lineno,
+                        end_line=getattr(node, "end_lineno", node.lineno),
+                        start_col=getattr(node, "col_offset", 0),
+                        end_col=getattr(node, "end_col_offset", 0),
+                    )
+                    call_name = f"{receiver_name}.{func_name}" if receiver_name else func_name
+                    ctx = UsageContext.create(
+                        kind="call",
+                        context_name=call_name,
+                        position="resource_class",
+                        path=file_path,
+                        span=span,
+                        symbol_ref=resource_ref,
+                        metadata={
+                            "route_path": normalized,
+                            "view_name": resource_name,
+                            "args": [resource_name, rpath],
+                        },
+                    )
+                    contexts.append(ctx)
             continue
 
         # Extract the URL pattern from the first argument

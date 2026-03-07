@@ -1017,6 +1017,141 @@ def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None
 
 
 # ============================================================================
+# Flask-RESTful add_resource UsageContext Tests
+# ============================================================================
+
+
+def test_flask_restful_add_resource_usage_context(tmp_path: Path) -> None:
+    """Flask-RESTful api.add_resource(ClassName, '/path') emits UsageContext."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "from flask_restful import Api, Resource\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "api = Api(app)\n"
+        "\n"
+        "class TodoList(Resource):\n"
+        "    def get(self):\n"
+        "        return []\n"
+        "\n"
+        "    def post(self):\n"
+        "        return {}, 201\n"
+        "\n"
+        "class Todo(Resource):\n"
+        "    def get(self, todo_id):\n"
+        "        return {}\n"
+        "\n"
+        "    def delete(self, todo_id):\n"
+        "        return '', 204\n"
+        "\n"
+        "api.add_resource(TodoList, '/todos')\n"
+        "api.add_resource(Todo, '/todos/<string:todo_id>')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) >= 2
+
+    ctx_paths = {c.metadata.get("route_path") for c in contexts}
+    assert "/todos" in ctx_paths
+    assert "/todos/<string:todo_id>" in ctx_paths
+
+    # The view_name should be the class name
+    ctx_names = {c.metadata.get("view_name") for c in contexts}
+    assert "TodoList" in ctx_names
+    assert "Todo" in ctx_names
+
+
+def test_flask_restful_add_resource_attribute_class(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with attribute class (views.TodoList)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "import views\n"
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(views.TodoList, '/todos')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 1
+    assert contexts[0].metadata["view_name"] == "TodoList"
+    assert contexts[0].metadata["route_path"] == "/todos"
+
+
+def test_flask_restful_add_resource_with_prefix(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with APIRouter prefix composition."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "from flask_restful import Api, Resource\n"
+        "from fastapi import APIRouter\n"
+        "\n"
+        "api = APIRouter(prefix='/v1')\n"
+        "\n"
+        "class Users(Resource):\n"
+        "    def get(self):\n"
+        "        return []\n"
+        "\n"
+        "api.add_resource(Users, '/users')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) >= 1
+    # Should compose prefix /v1 with /users
+    paths = {c.metadata.get("route_path") for c in contexts}
+    assert "/v1/users" in paths
+
+
+def test_flask_restful_add_resource_too_few_args(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with only class arg (no path) is skipped."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(TodoList)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 0
+
+
+def test_flask_restful_add_resource_non_name_class(tmp_path: Path) -> None:
+    """add_resource with a non-Name/Attribute first arg (e.g. call) is skipped."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(get_resource_class(), '/todos')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 0
+
+
+# ============================================================================
 # FastAPI add_api_route UsageContext Tests
 # ============================================================================
 
