@@ -1206,6 +1206,42 @@ def test_fastapi_apirouter_prefix_composition_imported_constant(tmp_path: Path) 
     assert ctx["metadata"]["route_path"] == "/v2/models/{model_name}/infer"
 
 
+def test_fastapi_apirouter_prefix_composition_relative_import(tmp_path: Path) -> None:
+    """APIRouter(prefix=CONST) resolves relative import string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    # Create package structure: myapp/constants.py and myapp/api/endpoints.py
+    pkg_dir = tmp_path / "myapp"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "constants.py").write_text("API_PREFIX = '/api/v2'\n")
+
+    api_dir = pkg_dir / "api"
+    api_dir.mkdir()
+    (api_dir / "__init__.py").write_text("")
+    (api_dir / "endpoints.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from ..constants import API_PREFIX\n"
+        "\n"
+        "def handler():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=API_PREFIX)\n"
+        "router.add_api_route('/items', handler, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [
+        uc.to_dict()
+        for uc in result.usage_contexts
+        if "endpoints.py" in uc.path
+    ]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/api/v2/items"
+
+
 def test_fastapi_apirouter_prefix_decorator_route(tmp_path: Path) -> None:
     """APIRouter prefix composes with @router.get decorator routes."""
     from hypergumbo_lang_mainstream.py import analyze_python

@@ -738,6 +738,7 @@ def _extract_django_usage_contexts(
 def _scan_router_prefixes(
     tree: ast.Module,
     repo_root: Path | None,
+    file_path: Path | None = None,
 ) -> dict[str, str]:
     """Scan for FastAPI APIRouter(prefix=X) assignments and resolve prefixes.
 
@@ -747,7 +748,12 @@ def _scan_router_prefixes(
     1. Literal string: ``APIRouter(prefix="/v2")``
     2. Same-file constant: ``PREFIX = "/v2"; APIRouter(prefix=PREFIX)``
     3. Imported constant: ``from pkg.constants import PREFIX; APIRouter(prefix=PREFIX)``
-       (requires ``repo_root`` to find the source file)
+       (requires ``repo_root`` and ``file_path`` to resolve relative imports)
+
+    Args:
+        tree: The parsed AST module.
+        repo_root: Repository root for finding imported modules.
+        file_path: Path to the source file (for resolving relative imports).
 
     Returns:
         Dict mapping variable name (e.g. "v2_router") to prefix string (e.g. "/v2").
@@ -765,12 +771,33 @@ def _scan_router_prefixes(
             local_constants[node.targets[0].id] = node.value.value
 
     # Collect imports for cross-file constant resolution
+    # For relative imports (level > 0), resolve to an absolute file path
+    # using the file's position in the package hierarchy.
     imports: dict[str, tuple[str, str]] = {}  # local_name -> (module, original_name)
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
+            module_path = node.module
+            if node.level > 0 and file_path is not None:
+                # Relative import: go up (level - 1) directories from the
+                # file's parent. Python's `from ...X import Y` with
+                # __package__='a.b.c' resolves to 'a' (removing level-1
+                # components), then appends X.
+                pkg_base = file_path.parent
+                for _ in range(node.level - 1):
+                    pkg_base = pkg_base.parent
+                # Build absolute path: pkg_base / module.parts...
+                resolved = pkg_base / Path(*node.module.split("."))
+                # Convert to dotted module path relative to repo_root
+                # for _resolve_imported_string_constant
+                if repo_root is not None:
+                    try:
+                        rel = resolved.relative_to(repo_root)
+                        module_path = ".".join(rel.parts)
+                    except ValueError:  # pragma: no cover
+                        pass
             for alias in node.names:
                 local_name = alias.asname or alias.name
-                imports[local_name] = (node.module, alias.name)
+                imports[local_name] = (module_path, alias.name)
 
     prefixes: dict[str, str] = {}
 
@@ -1594,7 +1621,7 @@ def _extract_file_analysis(
     processed_functions: set[tuple[int, str]] = set()
 
     # Scan for APIRouter prefix assignments (for route path composition)
-    router_prefixes = _scan_router_prefixes(tree, repo_root)
+    router_prefixes = _scan_router_prefixes(tree, repo_root, py_file)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
