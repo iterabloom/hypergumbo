@@ -2774,6 +2774,39 @@ function main() {
             f"Call should be attributed to main function, got sources: {[e.src for e in helper_calls]}"
 
 
+    def test_app_get_without_string_path_not_route(self, tmp_path: Path) -> None:
+        """app.get(AppService) is NestJS DI lookup, not route registration.
+
+        When app.get() has no string path argument, it's not an Express route
+        registration. NestJS uses app.get(ServiceClass) for dependency injection.
+        These should NOT create route symbols or UsageContexts.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.spec.ts"
+        js_file.write_text("""
+const app = await NestFactory.create(AppModule);
+const appService = app.get(AppService);
+const tokenService = app.get(DYNAMIC_TOKEN);
+
+// This IS a real route (has string path)
+app.get('/health', (req, res) => res.send('ok'));
+""")
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_funcs = [s for s in result.symbols if s.meta and s.meta.get("route_path")]
+
+        # Only /health should be detected, not AppService or DYNAMIC_TOKEN
+        route_names = {s.name for s in routes}
+        assert "AppService" not in route_names
+        assert "DYNAMIC_TOKEN" not in route_names
+
+        # The /health route should still work
+        all_route_paths = {s.meta.get("route_path") for s in route_funcs}
+        assert "/health" in all_route_paths
+
+
 # ============================================================================
 # NestJS Route Detection Tests
 # ============================================================================

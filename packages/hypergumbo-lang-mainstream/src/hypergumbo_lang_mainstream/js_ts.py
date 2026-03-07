@@ -878,6 +878,13 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     if route_path is None:
         route_path = _find_route_path_in_chain(callee_node, source)
 
+    # No string path found — not a route registration. In Express, route
+    # handlers always require a path argument. Calls like NestJS
+    # app.get(AppService) (DI lookup) have no string path and should not
+    # be detected as routes.
+    if route_path is None:
+        return None, None
+
     # Return uppercase HTTP method for consistency with other analyzers
     return method_name.upper() if method_name else None, route_path
 
