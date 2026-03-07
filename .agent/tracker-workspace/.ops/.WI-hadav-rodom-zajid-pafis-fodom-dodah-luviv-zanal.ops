@@ -17,3 +17,18 @@
     pr_ref:  # b79f
     description: "Go analyzer only detects implements from explicit var _ Interface = &Struct{} assertions. Most Go code uses structural typing without assertions. In prometheus, only 2 of 18 Queryable implementors have implements edges. Need structural matching: collect interface method sets, then match structs whose method sets are supersets. This would dramatically improve interface ranking (Queryable, Storage, Querier are central abstractions but rank poorly due to missing implements edges)."  # b79f
     fields: {}  # b79f
+- op: update  # 1272
+  at: '2026-03-07T02:03:24Z'  # 1272
+  by: agent  # 1272
+  actor: jgstern_agent  # 1272
+  clock: 2  # 1272
+  nonce: '1272'  # 1272
+  set:  # 1272
+    status: done  # 1272
+- op: discuss  # 3560
+  at: '2026-03-07T02:03:24Z'  # 3560
+  by: agent  # 3560
+  actor: jgstern_agent  # 3560
+  clock: 3  # 3560
+  nonce: '3560'  # 3560
+  message: "Fixed in PR #1889. Added cross-file structural interface matching in Go analyzer. Per-file matching only found implements edges when interface and struct were in same file. Now aggregates interface_method_sets and struct_method_sets across all files in _analyze_go_impl() and matches after Pass 2."  # 3560

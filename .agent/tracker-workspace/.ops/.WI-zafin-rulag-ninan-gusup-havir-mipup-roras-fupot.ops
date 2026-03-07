@@ -1,0 +1,19 @@
+- op: create  # ddca
+  at: '2026-03-07T04:45:48Z'  # ddca
+  by: agent  # ddca
+  actor: jgstern_agent  # ddca
+  clock: 1  # ddca
+  nonce: ddca  # ddca
+  data:  # ddca
+    kind: work_item  # ddca
+    title: "fix: stop hook dead PID re-claim after crash"  # ddca
+    status: needs_human_review  # ddca
+    priority: 1  # ddca
+    parent:  # ddca
+    tags: []  # ddca
+    before: []  # ddca
+    duplicate_of: []  # ddca
+    not_duplicate_of: []  # ddca
+    pr_ref:  # ddca
+    description: "When Claude Code crashes, the stored PID in AUTONOMOUS_MODE.txt becomes stale. The stop hook treated the new session as interactive and approved immediately, bypassing all autonomous mode blocking. Fix: check if stored PID is alive before deciding — if dead, re-claim ownership. Also fixed 3 pre-existing test issues and added 2 new tests. All changed files are governance files requiring human approval."  # ddca
+    fields: {}  # ddca
