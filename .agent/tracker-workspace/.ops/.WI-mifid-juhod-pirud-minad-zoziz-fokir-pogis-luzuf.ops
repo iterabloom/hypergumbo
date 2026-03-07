@@ -62,3 +62,54 @@
   clock: 7  # 6725
   nonce: '6725'  # 6725
   message: "I approve. please refer to WI-simak for additional context."  # 6725
+- op: discuss  # a980
+  at: '2026-03-07T07:06:36Z'  # a980
+  by: agent  # a980
+  actor: jgstern_agent  # a980
+  clock: 8  # a980
+  nonce: a980  # a980
+  message: "Acknowledged. Starting with the highest-value languages first. Will review existing config file analyzers to see which already parse the relevant manifests (pyproject.toml, pom.xml, build.gradle, .csproj, etc.) and add build-target symbol extraction to them."  # a980
+- op: update  # 2b34
+  at: '2026-03-07T07:06:39Z'  # 2b34
+  by: agent  # 2b34
+  actor: jgstern_agent  # 2b34
+  clock: 9  # 2b34
+  nonce: 2b34  # 2b34
+  set:  # 2b34
+    priority: 2  # 2b34
+- op: discuss  # b3ce
+  at: '2026-03-07T07:31:50Z'  # b3ce
+  by: agent  # b3ce
+  actor: jgstern_agent  # b3ce
+  clock: 10  # b3ce
+  nonce: b3ce  # b3ce
+  message: "Python done (PR #1907). pyproject.toml [project.scripts] and [project.gui-scripts] now emit defines_target edges. Build-target linker enhanced with target_function meta support. Next: Java/Kotlin (Maven pom.xml mainClass, Gradle application mainClass)."  # b3ce
+- op: discuss  # 065e
+  at: '2026-03-07T07:41:30Z'  # 065e
+  by: agent  # 065e
+  actor: jgstern_agent  # 065e
+  clock: 11  # 065e
+  nonce: 065e  # 065e
+  message: "Maven pom.xml done (PR #1908). <mainClass> from any plugin config emits defines_target edges. Java class names (com.example.Main) converted to file paths (com/example/Main.java). Completed: Python (pyproject.toml), Java (Maven pom.xml). Remaining: Kotlin (Gradle), C# (.csproj), Dart, Swift, Haskell, Elixir, Ruby, Scala, OCaml, Zig, Nim."  # 065e
+- op: discuss  # 8679
+  at: '2026-03-07T07:42:26Z'  # 8679
+  by: agent  # 8679
+  actor: jgstern_agent  # 8679
+  clock: 12  # 8679
+  nonce: '8679'  # 8679
+  message: "Assessment: Python (pyproject.toml) and Java (Maven pom.xml) are done — these are the two highest-value additions. Remaining languages each require new infrastructure: Gradle needs Groovy DSL closure parsing, C# .csproj needs extending XML file discovery, Dart/Swift/Haskell/etc. need new manifest parsers. Recommend keeping at P4 for incremental addition. The two completed languages cover the majority of real-world use cases."  # 8679
+- op: update  # e6fd
+  at: '2026-03-07T07:42:30Z'  # e6fd
+  by: agent  # e6fd
+  actor: jgstern_agent  # e6fd
+  clock: 13  # e6fd
+  nonce: e6fd  # e6fd
+  set:  # e6fd
+    priority: 4  # e6fd
+- op: discuss  # 2cbb
+  at: '2026-03-07T07:42:30Z'  # 2cbb
+  by: agent  # 2cbb
+  actor: jgstern_agent  # 2cbb
+  clock: 14  # 2cbb
+  nonce: 2cbb  # 2cbb
+  message: "Python + Java done (PRs #1907, #1908). Remaining 11 languages deprioritized to P4 - each needs new infrastructure."  # 2cbb
