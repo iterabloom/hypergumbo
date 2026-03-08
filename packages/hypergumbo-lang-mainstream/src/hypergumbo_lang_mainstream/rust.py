@@ -1129,6 +1129,11 @@ def _extract_edges_from_file(
                                 )
                         if full_scoped_name is None:
                             full_scoped_name = node_text(inner, source)
+                        # Resolve Self:: to actual type name from enclosing impl block
+                        if full_scoped_name and full_scoped_name.startswith("Self::"):
+                            impl_type = _get_impl_target(node, source)
+                            if impl_type:
+                                full_scoped_name = f"{impl_type}::{full_scoped_name[6:]}"
                     else:
                         callee_name = None
 

@@ -4039,3 +4039,70 @@ impl Server {
         assert len(typed_edges) == 1
         assert typed_edges[0].dst == target.id
         assert typed_edges[0].confidence == 0.88
+
+
+class TestRustSelfResolution:
+    """Self:: calls inside impl blocks should resolve to the actual type."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_self_method_call_resolves(self, tmp_path: Path) -> None:
+        """Self::helper() inside impl Foo should resolve to Foo::helper."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Server;
+
+impl Server {
+    fn run(&self) {
+        Self::process();
+    }
+
+    fn process() {
+        // do work
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Self::process() should resolve to Server::process
+        run_to_process = [
+            e for e in call_edges
+            if "run" in e.src and "process" in e.dst
+        ]
+        assert len(run_to_process) >= 1
+
+    def test_self_new_call_resolves(self, tmp_path: Path) -> None:
+        """Self::new() inside impl should resolve to the actual type."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Config;
+
+impl Config {
+    fn new() -> Self {
+        Config
+    }
+
+    fn default_config() -> Config {
+        Self::new()
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Self::new() should resolve to Config::new
+        default_to_new = [
+            e for e in call_edges
+            if "default_config" in e.src and "new" in e.dst
+        ]
+        assert len(default_to_new) >= 1
