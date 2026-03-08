@@ -1527,6 +1527,32 @@ class TestDoSync:
         ]
 
     @staticmethod
+    def _rebase_check_no_diverge() -> list[Any]:
+        """Return git mock entries for post-CI rebase check (no divergence)."""
+        return [
+            _make_completed_process(),                       # fetch (re-fetch)
+            _make_completed_process(stdout="abc123\n"),       # rev-parse (same base)
+        ]
+
+    @staticmethod
+    def _rebase_check_diverged() -> list[Any]:
+        """Return git mock entries for post-CI rebase check (dev diverged).
+
+        Returns entries for: fetch, rev-parse (new base), read-tree,
+        add, write-tree, commit-tree, update-ref, force-push.
+        """
+        return [
+            _make_completed_process(),                          # fetch (re-fetch)
+            _make_completed_process(stdout="newbase999\n"),      # rev-parse (diverged!)
+            _make_completed_process(),                          # read-tree (new base)
+            _make_completed_process(),                          # add (stage ops)
+            _make_completed_process(stdout="newtree111\n"),      # write-tree
+            _make_completed_process(stdout="newcommit222\n"),    # commit-tree
+            _make_completed_process(),                          # update-ref
+            _make_completed_process(),                          # force-push
+        ]
+
+    @staticmethod
     def _cleanup() -> list[Any]:
         """Return git mock side_effect entries for the 2 cleanup calls."""
         return [
@@ -1555,6 +1581,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -1596,6 +1623,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -1797,6 +1825,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -1831,6 +1860,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -1937,6 +1967,7 @@ class TestDoSync:
                 *self._plumbing_setup(),
                 _make_completed_process(returncode=1),  # push attempt 1
                 _make_completed_process(),  # push attempt 2 succeeds
+                *self._rebase_check_no_diverge(),
                 *self._cleanup(),
             ]
             mock_find.return_value = (42, "sha123")
@@ -1972,6 +2003,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -2107,6 +2139,7 @@ class TestDoSync:
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
             *self._cleanup(),
         ]
         mock_find_pr.return_value = (42, "sha123")
@@ -2116,6 +2149,172 @@ class TestDoSync:
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert result.success
         assert not tmp_index.exists()
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_rebase_when_dev_diverges(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """When dev advances during CI, sync rebases the commit before merging."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_diverged(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+        assert result.pr_number == 42
+
+        # Verify the rebase sequence happened:
+        # After push (index 9), we expect:
+        #   10: fetch (re-fetch)
+        #   11: rev-parse (returns newbase999)
+        #   12: read-tree (new base)
+        #   13: add (stage ops)
+        #   14: write-tree
+        #   15: commit-tree
+        #   16: update-ref
+        #   17: force-push
+        calls = mock_git.call_args_list
+
+        # rev-parse after CI should return new base
+        rebase_rev = calls[11]
+        assert "rev-parse" in rebase_rev[0]
+
+        # The rebased commit-tree should use new base as parent
+        rebase_commit = calls[15]
+        commit_args = rebase_commit[0]
+        assert "commit-tree" in commit_args
+        assert "-p" in commit_args
+        p_idx = list(commit_args).index("-p")
+        assert commit_args[p_idx + 1] == "newbase999"
+
+        # Force-push should be present
+        force_push_call = calls[17]
+        assert "--force" in force_push_call[0]
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_rebase_read_tree_failure_skips_rebase(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If read-tree fails during rebase, skip rebase and try merge anyway."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            # Rebase check: dev diverged but read-tree fails
+            _make_completed_process(),                          # fetch
+            _make_completed_process(stdout="newbase999\n"),      # rev-parse
+            _make_completed_process(returncode=1),              # read-tree FAILS
+            # Falls through to merge attempt without rebasing
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        # Should still succeed if merge works despite stale base
+        assert result.success
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_rebase_fetch_failure_uses_old_base(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If re-fetch fails, rev-parse returns old base, no rebase needed."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            # Rebase check: fetch fails, rev-parse returns same base
+            _make_completed_process(returncode=1),              # fetch FAILS
+            _make_completed_process(stdout="abc123\n"),           # rev-parse (same)
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_rebase_rev_parse_failure_uses_old_base(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If rev-parse fails after CI, fall back to old base (no rebase)."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            # Rebase check: fetch ok but rev-parse fails
+            _make_completed_process(),                              # fetch
+            _make_completed_process(returncode=1, stderr="err"),    # rev-parse FAILS
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
 
 
 # ---------------------------------------------------------------------------

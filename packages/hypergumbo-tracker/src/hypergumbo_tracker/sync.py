@@ -967,7 +967,69 @@ def do_sync(
                 exit_code=2,
             )
 
-        # 13. Merge PR (with retries for status check propagation)
+        # 13. Rebase if dev advanced during CI polling
+        # Re-fetch origin/dev; if it moved since step 1, rebuild the
+        # sync commit on the new base and force-push so the PR is
+        # mergeable.  This prevents "head behind base branch" 405s.
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
+        new_base_result = _git(
+            repo_root, "rev-parse", base_ref, check=False,
+        )
+        new_base_sha = (
+            new_base_result.stdout.strip()
+            if new_base_result.returncode == 0
+            else base_sha
+        )
+        if new_base_sha != base_sha:
+            _log(
+                f"dev advanced during CI "
+                f"({base_sha[:8]}→{new_base_sha[:8]}), rebasing"
+            )
+            # Rebuild: read new base tree → stage ops → write → commit
+            rb_read = _git(
+                repo_root, "read-tree", new_base_sha,
+                check=False, env=idx_env,
+            )
+            if rb_read.returncode == 0:
+                _git(
+                    repo_root, "add", "--", *_TRACKER_PATHS,
+                    check=False, env=idx_env,
+                )
+                rb_tree = _git(
+                    repo_root, "write-tree",
+                    check=False, env=idx_env,
+                )
+                if rb_tree.returncode == 0:
+                    rb_commit = _git(
+                        repo_root,
+                        "-c", "commit.gpgSign=false",
+                        "commit-tree", rb_tree.stdout.strip(),
+                        "-p", new_base_sha, "-m", commit_msg,
+                        check=False,
+                    )
+                    if rb_commit.returncode == 0:
+                        new_sha = rb_commit.stdout.strip()
+                        _git(
+                            repo_root, "update-ref",
+                            ref_name, new_sha,
+                            check=False,
+                        )
+                        # Force-push the rebased branch
+                        _git(
+                            repo_root,
+                            "-c", f"credential.helper={cred_helper}",
+                            "push", "--force",
+                            preflight.push_remote, push_ref,
+                            check=False,
+                        )
+                        _log("rebased and force-pushed sync branch")
+                        # Brief delay for Forgejo to process
+                        time.sleep(3)
+
+        # 14. Merge PR (with retries for status check propagation)
         # After CI passes, the required commit status may take a few
         # seconds to propagate.  Retry the merge cascade on 405 responses.
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
