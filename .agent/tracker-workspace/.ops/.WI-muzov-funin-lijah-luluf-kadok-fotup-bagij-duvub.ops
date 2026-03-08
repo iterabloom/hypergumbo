@@ -17,3 +17,18 @@
     pr_ref:  # cd46
     description: "In asm.py, call instructions with register targets (r0, r5, r6, etc.) create false external call edges. Add a register-name exclusion set. Low priority: 3 false positives out of 3681 calls in x265."  # cd46
     fields: {}  # cd46
+- op: update  # d6e7
+  at: '2026-03-08T12:25:19Z'  # d6e7
+  by: agent  # d6e7
+  actor: jgstern_agent  # d6e7
+  clock: 2  # d6e7
+  nonce: d6e7  # d6e7
+  set:  # d6e7
+    status: done  # d6e7
+- op: discuss  # 48ee
+  at: '2026-03-08T12:25:19Z'  # 48ee
+  by: agent  # 48ee
+  actor: jgstern_agent  # 48ee
+  clock: 3  # 48ee
+  nonce: 48ee  # 48ee
+  message: "Fixed in PR #2024. Added _REGISTER_NAMES frozenset (x86 rax-r15/eax-ebp/ax-sp + ARM r0-r7/lr/pc/ip/fp). Case-insensitive comparison filters register targets before edge creation."  # 48ee

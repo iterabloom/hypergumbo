@@ -1,0 +1,19 @@
+- op: create  # 0c0a
+  at: '2026-03-08T14:31:47Z'  # 0c0a
+  by: agent  # 0c0a
+  actor: jgstern_agent  # 0c0a
+  clock: 1  # 0c0a
+  nonce: 0c0a  # 0c0a
+  data:  # 0c0a
+    kind: work_item  # 0c0a
+    title: "JAX-RS route detection: @Path/@GET/@POST annotation routes"  # 0c0a
+    status: todo_soft  # 0c0a
+    priority: 2  # 0c0a
+    parent:  # 0c0a
+    tags: []  # 0c0a
+    before: []  # 0c0a
+    duplicate_of: []  # 0c0a
+    not_duplicate_of: []  # 0c0a
+    pr_ref:  # 0c0a
+    description: "Kafka bakeoff assessment identifies 30+ undetected JAX-RS endpoints. Need to create route concepts from jakarta.ws.rs and javax.ws.rs annotations."  # 0c0a
+    fields: {}  # 0c0a
