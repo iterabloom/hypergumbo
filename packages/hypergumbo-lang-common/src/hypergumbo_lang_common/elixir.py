@@ -945,21 +945,33 @@ def _handle_dot_call(
             ))
             return
 
-    # Try resolver lookup with the function name and module as path hint
-    path_hint = alias_hints.get(module_name, module_name)
-    lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-    if lookup_result.found and lookup_result.symbol is not None:
-        edges.append(Edge.create(
-            src=current_function.id,
-            dst=lookup_result.symbol.id,
-            edge_type="calls",
-            line=call_node.start_point[0] + 1,
-            evidence_type="module_qualified_call",
-            confidence=0.75 * lookup_result.confidence,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        ))
-        return
+    # Try resolver lookup, but only when the module name plausibly belongs
+    # to this project.  If no global symbol key contains the module name as
+    # a prefix component (e.g., "Greeter." in "App.Helpers.Greeter.greet"),
+    # the call targets an external library and the resolver's bare-name
+    # suffix matching would produce false positives (e.g., bare "compile"
+    # matching Phoenix.Digester.compile when the source says
+    # Plug.Builder.compile).
+    module_dot = f"{module_name}."
+    alias_expanded = alias_hints.get(module_name)
+    if alias_expanded:
+        module_dot = f"{alias_expanded}."
+    module_known = any(module_dot in k for k in global_symbols)
+    if module_known:
+        path_hint = alias_hints.get(module_name, module_name)
+        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
+        if lookup_result.found and lookup_result.symbol is not None:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=lookup_result.symbol.id,
+                edge_type="calls",
+                line=call_node.start_point[0] + 1,
+                evidence_type="module_qualified_call",
+                confidence=0.75 * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+            return
 
     # Fallback: create an unresolved edge for cross-module calls
     # This allows linkers to match across files/languages

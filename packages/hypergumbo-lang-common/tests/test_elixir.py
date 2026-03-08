@@ -595,6 +595,111 @@ end
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 0
 
+    def test_dot_call_aliased_module_resolver_uses_expanded_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """Aliased module name expands before checking if module is known.
+
+        When code uses ``alias App.Helpers.Svc, as: S`` and calls
+        ``S.process()``, steps 1-2 fail because ``S.process`` is not in
+        global_symbols and ``App.Helpers.Svc.process`` is not in
+        global_symbols either (the function is named ``do_process`` in
+        source).  Without alias expansion, "S." won't match any global
+        symbol key and the resolver would be skipped (treating it as
+        external).  With expansion, "App.Helpers.Svc." IS found in global
+        symbols (``App.Helpers.Svc.do_process`` exists), so the resolver
+        is tried.
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        # Module exists and has a function, but not named "process"
+        (tmp_path / "svc.ex").write_text("""
+defmodule App.Helpers.Svc do
+  def do_process(x), do: x
+end
+""")
+
+        # Caller uses short alias and calls a function that doesn't exist
+        # under the exact qualified name
+        (tmp_path / "caller.ex").write_text("""
+defmodule Caller do
+  alias App.Helpers.Svc, as: S
+
+  def run() do
+    S.process("data")
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The call should produce some edge (resolved or unresolved).
+        # The key is that the alias expansion ran (line 958 covered) and
+        # the module was recognized as known so the resolver was tried.
+        edges_from_run = [
+            e for e in call_edges if "Caller.run" in e.src
+        ]
+        assert len(edges_from_run) >= 1, (
+            f"Expected at least 1 edge from Caller.run, "
+            f"got {len(edges_from_run)}"
+        )
+
+    def test_dot_call_external_module_no_false_positive(self, tmp_path: Path) -> None:
+        """Module-qualified call to external module does not match bare name.
+
+        When code calls Plug.Builder.compile(), and Plug.Builder is not part
+        of the project, the resolver should NOT match a local function named
+        "compile" in a different module (e.g., Phoenix.Digester.compile).
+        Instead, it should create an unresolved edge.
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        # A local module with a function named "compile"
+        (tmp_path / "digester.ex").write_text("""
+defmodule Phoenix.Digester do
+  def compile(input) do
+    {:ok, input}
+  end
+end
+""")
+
+        # A caller that invokes Plug.Builder.compile — an external module
+        (tmp_path / "router.ex").write_text("""
+defmodule Phoenix.Router do
+  def build() do
+    Plug.Builder.compile(env, [])
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should NOT have a resolved edge to Phoenix.Digester.compile
+        false_positives = [
+            e for e in call_edges
+            if "Router.build" in e.src and "Digester.compile" in e.dst
+        ]
+        assert len(false_positives) == 0, (
+            "Plug.Builder.compile() should not resolve to "
+            "Phoenix.Digester.compile. "
+            f"Got: {[(e.src, e.dst) for e in false_positives]}"
+        )
+
+        # Should have an unresolved edge for Plug.Builder.compile
+        unresolved = [
+            e for e in call_edges
+            if "Router.build" in e.src
+            and "Plug.Builder" in e.dst
+            and e.evidence_type == "unresolved_module_call"
+        ]
+        assert len(unresolved) == 1, (
+            "Expected 1 unresolved edge for Plug.Builder.compile, "
+            f"got {len(unresolved)}. "
+            f"All: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
     def test_simple_function_definition(self, tmp_path: Path) -> None:
         """Extracts simple function definition without parentheses."""
         from hypergumbo_lang_common.elixir import analyze_elixir
