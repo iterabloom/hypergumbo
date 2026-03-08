@@ -1,0 +1,19 @@
+- op: create  # a4b8
+  at: '2026-03-08T03:54:32Z'  # a4b8
+  by: agent  # a4b8
+  actor: jgstern_agent  # a4b8
+  clock: 1  # a4b8
+  nonce: a4b8  # a4b8
+  data:  # a4b8
+    kind: work_item  # a4b8
+    title: "Top-level call edge gap in bash/php/perl/powershell analyzers"  # a4b8
+    status: todo_hard  # a4b8
+    priority: 2  # a4b8
+    parent:  # a4b8
+    tags: []  # a4b8
+    before: []  # a4b8
+    duplicate_of: []  # a4b8
+    not_duplicate_of: []  # a4b8
+    pr_ref:  # a4b8
+    description: "Same pattern as JS fix (PR #1992, INV-jahom): _get_enclosing_function returns None for top-level code, dropping all call edges. Bash most impactful (scripts are inherently top-level). PHP, Perl, PowerShell also affected. Fix: create module symbol, use as fallback. TDD."  # a4b8
+    fields: {}  # a4b8
