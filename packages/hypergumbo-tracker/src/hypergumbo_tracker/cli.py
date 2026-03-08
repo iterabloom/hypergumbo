@@ -1334,6 +1334,36 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 _SYNC_COOLDOWN_SECONDS = 1800  # 30 minutes between retry attempts
+_SYNC_MAX_CONSECUTIVE_FAILURES = 3  # disable autonomous mode after this many
+
+
+def _escalate_disable_autonomous(repo_root: Path, fail_count: int) -> None:
+    """Disable autonomous mode after too many consecutive sync failures.
+
+    Writes ``OFF`` to ``AUTONOMOUS_MODE.txt`` and prints a prominent
+    warning.  This prevents runaway PR creation when the sync mechanism
+    is persistently broken.
+    """
+    mode_file = repo_root / "AUTONOMOUS_MODE.txt"
+    try:
+        current = mode_file.read_text().strip() if mode_file.exists() else "OFF"
+    except OSError:  # pragma: no cover
+        current = "UNKNOWN"
+    if current == "OFF":
+        return
+    try:
+        mode_file.write_text("OFF\n")
+    except OSError:  # pragma: no cover
+        print(
+            "auto-sync: CRITICAL: could not write AUTONOMOUS_MODE.txt",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"auto-sync: ESCALATION — {fail_count} consecutive sync failures. "
+        f"Autonomous mode disabled (was {current}).",
+        file=sys.stderr,
+    )
 
 
 def _maybe_auto_sync(tracker_root: Path) -> None:
@@ -1348,9 +1378,11 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
     Circuit Breaker
     ~~~~~~~~~~~~~~~
     When sync fails, a marker file (``.git/TRACKER_SYNC_FAILED``) is
-    written with the failure timestamp.  Subsequent calls skip sync
-    for 30 minutes to prevent runaway PR creation.  On success, the
-    marker is removed.
+    written with the failure count and timestamp (``count:timestamp``).
+    Subsequent calls skip sync for 30 minutes to prevent runaway PR
+    creation.  After ``_SYNC_MAX_CONSECUTIVE_FAILURES`` consecutive
+    failures, autonomous mode is disabled by writing ``OFF`` to
+    ``AUTONOMOUS_MODE.txt``.  On success, the marker is removed.
     """
     from hypergumbo_tracker.sync import (
         AUTO_SYNC_DEFAULT_THRESHOLD,
@@ -1390,9 +1422,12 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         # Circuit breaker: skip if recent failure
         git_dir = repo_root / ".git"
         fail_marker = git_dir / "TRACKER_SYNC_FAILED"
+        fail_count = 0
         if fail_marker.exists():
             try:
-                fail_ts = float(fail_marker.read_text().strip())
+                parts = fail_marker.read_text().strip().split(":", 1)
+                fail_count = int(parts[0]) if len(parts) == 2 else 0
+                fail_ts = float(parts[-1])
                 elapsed = time.time() - fail_ts
                 if elapsed < _SYNC_COOLDOWN_SECONDS:
                     remaining = int(_SYNC_COOLDOWN_SECONDS - elapsed)
@@ -1436,14 +1471,18 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
             )
         else:
             # Set failure marker — circuit breaker opens
+            new_count = fail_count + 1
             try:
-                fail_marker.write_text(str(time.time()))
+                fail_marker.write_text(f"{new_count}:{time.time()}")
             except OSError:  # pragma: no cover
                 pass
             print(
-                f"auto-sync: sync failed: {sync_result.error}",
+                f"auto-sync: sync failed ({new_count}/"
+                f"{_SYNC_MAX_CONSECUTIVE_FAILURES}): {sync_result.error}",
                 file=sys.stderr,
             )
+            if new_count >= _SYNC_MAX_CONSECUTIVE_FAILURES:
+                _escalate_disable_autonomous(repo_root, new_count)
     except Exception as e:
         print(f"auto-sync: unexpected error: {e}", file=sys.stderr)
 

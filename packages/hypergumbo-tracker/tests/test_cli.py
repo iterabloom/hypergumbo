@@ -2814,9 +2814,12 @@ class TestAutoSyncCircuitBreaker:
                 )
                 _maybe_auto_sync(tmp_path)
 
-        assert (git_dir / "TRACKER_SYNC_FAILED").exists()
+        marker = git_dir / "TRACKER_SYNC_FAILED"
+        assert marker.exists()
+        content = marker.read_text().strip()
+        assert content.startswith("1:")  # count:timestamp format
         captured = capsys.readouterr()
-        assert "sync failed" in captured.err
+        assert "sync failed (1/3)" in captured.err
 
     def test_marker_blocks_retry_during_cooldown(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -2828,7 +2831,9 @@ class TestAutoSyncCircuitBreaker:
         monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
         git_dir = tmp_path / ".git"
         git_dir.mkdir(exist_ok=True)
-        (git_dir / "TRACKER_SYNC_FAILED").write_text(str(time.time()))
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            f"1:{time.time()}"
+        )
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = _make_completed_process(
@@ -2859,7 +2864,7 @@ class TestAutoSyncCircuitBreaker:
         git_dir.mkdir(exist_ok=True)
         # Write marker from 2 hours ago (well past 30 min cooldown)
         (git_dir / "TRACKER_SYNC_FAILED").write_text(
-            str(time.time() - 7200)
+            f"1:{time.time() - 7200}"
         )
 
         with patch("subprocess.run") as mock_run:
@@ -2893,7 +2898,7 @@ class TestAutoSyncCircuitBreaker:
         git_dir.mkdir(exist_ok=True)
         # Write an expired marker so it doesn't block
         (git_dir / "TRACKER_SYNC_FAILED").write_text(
-            str(time.time() - 7200)
+            f"1:{time.time() - 7200}"
         )
 
         with patch("subprocess.run") as mock_run:
@@ -2950,6 +2955,191 @@ class TestAutoSyncCircuitBreaker:
                 )
                 _maybe_auto_sync(tmp_path)
                 mock_pre.assert_called_once()
+
+    def test_escalation_disables_autonomous_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """After max consecutive failures, autonomous mode is disabled."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        # Write marker with count=2, expired cooldown so sync retries
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            f"2:{time.time() - 7200}"
+        )
+        # Write AUTONOMOUS_MODE.txt so escalation has something to disable
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("BROAD\n")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=False, error="merge failed", exit_code=1,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        # Marker should show count=3
+        marker = git_dir / "TRACKER_SYNC_FAILED"
+        assert marker.exists()
+        assert marker.read_text().strip().startswith("3:")
+        # Autonomous mode should be OFF
+        assert (tmp_path / "AUTONOMOUS_MODE.txt").read_text().strip() == "OFF"
+        captured = capsys.readouterr()
+        assert "ESCALATION" in captured.err
+        assert "was BROAD" in captured.err
+
+    def test_escalation_skips_when_already_off(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Escalation does nothing if autonomous mode is already OFF."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            f"2:{time.time() - 7200}"
+        )
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("OFF\n")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=False, error="merge failed", exit_code=1,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        captured = capsys.readouterr()
+        # Should NOT see escalation message since already OFF
+        assert "ESCALATION" not in captured.err
+        assert (tmp_path / "AUTONOMOUS_MODE.txt").read_text().strip() == "OFF"
+
+    def test_escalation_no_mode_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Escalation handles missing AUTONOMOUS_MODE.txt (default OFF)."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            f"2:{time.time() - 7200}"
+        )
+        # No AUTONOMOUS_MODE.txt — defaults to OFF, so no escalation
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=False, error="merge failed", exit_code=1,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        captured = capsys.readouterr()
+        assert "ESCALATION" not in captured.err
+
+    def test_failure_count_increments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Consecutive failures increment the count in the marker file."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        # First failure — count goes from 1 to 2 after expired cooldown
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            f"1:{time.time() - 7200}"
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=False, error="merge failed", exit_code=1,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        marker = git_dir / "TRACKER_SYNC_FAILED"
+        assert marker.read_text().strip().startswith("2:")
+        captured = capsys.readouterr()
+        assert "sync failed (2/3)" in captured.err
 
 
 class TestSyncReminder:
