@@ -1,0 +1,19 @@
+- op: create  # a6cb
+  at: '2026-03-08T10:36:20Z'  # a6cb
+  by: agent  # a6cb
+  actor: jgstern_agent  # a6cb
+  clock: 1  # a6cb
+  nonce: a6cb  # a6cb
+  data:  # a6cb
+    kind: work_item  # a6cb
+    title: "Elixir import-aware name resolution: track use/import to scope unqualified calls"  # a6cb
+    status: todo_soft  # a6cb
+    priority: 3  # a6cb
+    parent:  # a6cb
+    tags: []  # a6cb
+    before: []  # a6cb
+    duplicate_of: []  # a6cb
+    not_duplicate_of: []  # a6cb
+    pr_ref:  # a6cb
+    description: "Bare calls to imported functions (Ecto.Query.from, Ecto.Migration.create, ExMachina.build) resolve to ANY project function with the same name. Track import/use directives to build module-level import scope, then gate cross-file resolution on whether the name could come from an import. Plausible-analytics bakeoff shows 82 false migration->Sites.create edges. P3 because local defp resolution is correct; only cross-module unqualified is affected."  # a6cb
+    fields: {}  # a6cb

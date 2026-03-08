@@ -1,0 +1,19 @@
+- op: create  # cd46
+  at: '2026-03-08T10:29:28Z'  # cd46
+  by: agent  # cd46
+  actor: jgstern_agent  # cd46
+  clock: 1  # cd46
+  nonce: cd46  # cd46
+  data:  # cd46
+    kind: work_item  # cd46
+    title: "ASM analyzer: filter CPU register names from call targets"  # cd46
+    status: todo_soft  # cd46
+    priority: 4  # cd46
+    parent:  # cd46
+    tags: []  # cd46
+    before: []  # cd46
+    duplicate_of: []  # cd46
+    not_duplicate_of: []  # cd46
+    pr_ref:  # cd46
+    description: "In asm.py, call instructions with register targets (r0, r5, r6, etc.) create false external call edges. Add a register-name exclusion set. Low priority: 3 false positives out of 3681 calls in x265."  # cd46
+    fields: {}  # cd46

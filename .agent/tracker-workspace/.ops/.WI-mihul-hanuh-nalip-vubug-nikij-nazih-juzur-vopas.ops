@@ -1,0 +1,19 @@
+- op: create  # 8a16
+  at: '2026-03-08T10:48:18Z'  # 8a16
+  by: agent  # 8a16
+  actor: jgstern_agent  # 8a16
+  clock: 1  # 8a16
+  nonce: 8a16  # 8a16
+  data:  # 8a16
+    kind: work_item  # 8a16
+    title: "gRPC/protobuf cross-language linker: connect proto RPC definitions to implementations"  # 8a16
+    status: todo_soft  # 8a16
+    priority: 2  # 8a16
+    parent:  # 8a16
+    tags: []  # 8a16
+    before: []  # 8a16
+    duplicate_of: []  # 8a16
+    not_duplicate_of: []  # 8a16
+    pr_ref:  # 8a16
+    description: "Multiple bakeoff assessments (otel-collector, ingress-nginx, microservices-demo) identify gRPC as a gap. Connect proto service/RPC definitions to Go (pb.RegisterXxxServer), Python (add_XxxServicer_to_server), and Java implementations. Also detect gRPC server registrations as entrypoints. Consider proto RPC as bridge nodes for cross-language edges."  # 8a16
+    fields: {}  # 8a16
