@@ -4042,3 +4042,101 @@ public class Child extends Parent {
         # Should resolve to Child.doWork (direct), not Parent.doWork
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_direct"
+
+    def test_inherited_field_method_call(self, tmp_path: Path) -> None:
+        """Call on field declared in parent class resolves via inheritance."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "AccountUserApi.java").write_text("""
+public interface AccountUserApi {
+    void createAccount(String name);
+}
+""")
+        (tmp_path / "BaseResource.java").write_text("""
+public class BaseResource {
+    protected AccountUserApi accountApi;
+}
+""")
+        (tmp_path / "AccountResource.java").write_text("""
+public class AccountResource extends BaseResource {
+    public void create(String name) {
+        accountApi.createAccount(name);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        create = next(
+            (s for s in result.symbols if "AccountResource" in s.name and "create" in s.name and s.kind == "method"),
+            None,
+        )
+        api_method = next(
+            (s for s in result.symbols if "createAccount" in s.name), None
+        )
+
+        assert create is not None, "Should find AccountResource.create"
+        assert api_method is not None, "Should find AccountUserApi.createAccount"
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == create.id
+            and e.dst == api_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from create to createAccount via inherited field, "
+            f"got {len(call_edges)}. "
+            f"All edges from create: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited_field"
+        assert call_edges[0].confidence <= 0.85
+
+    def test_inherited_field_from_grandparent(self, tmp_path: Path) -> None:
+        """Field declared in grandparent resolves through two extends levels."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Logger.java").write_text("""
+public class Logger {
+    public void info(String msg) {}
+}
+""")
+        (tmp_path / "GrandBase.java").write_text("""
+public class GrandBase {
+    protected Logger logger;
+}
+""")
+        (tmp_path / "MiddleBase.java").write_text("""
+public class MiddleBase extends GrandBase {
+}
+""")
+        (tmp_path / "Service.java").write_text("""
+public class Service extends MiddleBase {
+    public void run() {
+        logger.info("started");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if "Service" in s.name and "run" in s.name),
+            None,
+        )
+        info_method = next(
+            (s for s in result.symbols if "Logger.info" in s.name), None
+        )
+
+        assert run_method is not None
+        assert info_method is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_method.id
+            and e.dst == info_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_inherited_field"

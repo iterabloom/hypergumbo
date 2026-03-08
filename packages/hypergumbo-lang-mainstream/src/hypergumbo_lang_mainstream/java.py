@@ -1127,6 +1127,7 @@ def _extract_edges(
     sym_file_imports: dict[str, dict[str, str]] | None = None,
     method_resolver: ListNameResolver | None = None,
     class_parents: dict[str, str] | None = None,
+    class_fields: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1411,6 +1412,51 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+
+                    # Case 3.5: inherited field.method() — receiver is a
+                    # field declared in a parent class, not in this file's
+                    # var_types.  Walk the extends chain to find the field
+                    # type, then resolve the method on that type.
+                    if (
+                        not edge_added
+                        and receiver_name
+                        and receiver_name not in var_types
+                        and receiver_name not in class_symbols
+                        and class_fields
+                        and current_class
+                    ):
+                        parent = class_parents.get(current_class)
+                        depth = 0
+                        while parent and depth < 10:
+                            parent_fields = class_fields.get(parent)
+                            if parent_fields and receiver_name in parent_fields:
+                                field_type = parent_fields[receiver_name]
+                                candidate = f"{field_type}.{method_name}"
+                                lookup_result = resolver.lookup(candidate)
+                                if (
+                                    lookup_result.found
+                                    and not _is_import_class_mismatch(
+                                        field_type, lookup_result.symbol,
+                                        imports,
+                                        caller_file=str(file_path),
+                                    )
+                                ):
+                                    edge = Edge.create(
+                                        src=current_method.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_call_inherited_field",
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
+                                    resolved_sym = lookup_result.symbol
+                                break
+                            parent = class_parents.get(parent)
+                            depth += 1
 
                     # Return type inference: if the resolved method has
                     # a return type and the call is in a variable assignment,
@@ -1818,6 +1864,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Build global class inheritance map for inherited method resolution.
     # Maps child class name -> parent class name (resolved to symbol name).
     global_class_parents: dict[str, str] = {}
+    # Build global class field types for inherited field resolution.
+    # Maps class_name -> {field_name: type_name}
+    global_class_fields: dict[str, dict[str, str]] = {}
     for pf in parsed_files:
         for node in iter_tree(pf.tree.root_node):
             if node.type == "class_declaration":
@@ -1848,6 +1897,27 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                 if dst_sym is not None:
                                     global_class_parents[current] = dst_sym.name
                                 break
+            # Collect field declarations per class
+            elif node.type == "field_declaration":
+                cls_ancestors = _get_class_ancestors(node, pf.source)
+                if cls_ancestors:
+                    cls_name = ".".join(cls_ancestors)
+                    type_node = None
+                    for child in node.children:
+                        if child.type == "type_identifier":
+                            type_node = child
+                        elif (
+                            child.type == "variable_declarator"
+                            and type_node is not None
+                        ):
+                            for vc in child.children:
+                                if vc.type == "identifier":
+                                    field_name = _node_text(vc, pf.source)
+                                    type_name = _node_text(type_node, pf.source)
+                                    if cls_name not in global_class_fields:
+                                        global_class_fields[cls_name] = {}
+                                    global_class_fields[cls_name][field_name] = type_name
+                                    break
 
     # Pass 2: Extract edges using global symbol registry
     method_resolver = ListNameResolver(
@@ -1863,6 +1933,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             sym_file_imports=sym_file_imports,
             method_resolver=method_resolver,
             class_parents=global_class_parents,
+            class_fields=global_class_fields,
         )
         all_edges.extend(edges)
 
