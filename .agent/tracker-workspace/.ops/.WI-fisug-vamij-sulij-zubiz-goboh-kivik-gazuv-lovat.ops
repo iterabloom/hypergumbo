@@ -18,3 +18,18 @@
     pr_ref:  # be88
     description: "nex-framework DEEP bakeoff shows 28.2% orphan rate. Root causes: (1) defimpl ProtocolName creates functions with no incoming edges, (2) @behaviour BehaviourName callbacks like WebSock.handle_frame not in BEHAVIOUR_CALLBACKS. Fix: add defimpl detection to elixir.py, expand BEHAVIOUR_CALLBACKS with WebSock entries."  # be88
     fields: {}  # be88
+- op: update  # 8800
+  at: '2026-03-08T07:04:10Z'  # 8800
+  by: agent  # 8800
+  actor: jgstern_agent  # 8800
+  clock: 2  # 8800
+  nonce: '8800'  # 8800
+  set:  # 8800
+    status: done  # 8800
+- op: discuss  # 95ca
+  at: '2026-03-08T07:04:10Z'  # 95ca
+  by: agent  # 95ca
+  actor: jgstern_agent  # 95ca
+  clock: 3  # 95ca
+  nonce: 95ca  # 95ca
+  message: "Fixed in PR #2005. Added @behaviour directive detection and WebSock/WebSockex to BEHAVIOUR_CALLBACKS. Also restructured _extract_behaviour_callbacks to handle both use Module and @behaviour Module forms."  # 95ca

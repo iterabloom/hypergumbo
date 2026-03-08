@@ -18,3 +18,33 @@
     pr_ref:  # 8f32
     description: "aardvark-dns DEEP bakeoff: LOW_AVG_SLICE_NODES (13.1 < 19). Result::wrap() trait impl method has 0 in-degree despite 15+ call sites. Analyzer cannot resolve .wrap() on generic Result receivers to AardvarkWrap trait impl. Needs return-type tracking or trait impl method registry."  # 8f32
     fields: {}  # 8f32
+- op: update  # e358
+  at: '2026-03-08T07:05:05Z'  # e358
+  by: agent  # e358
+  actor: jgstern_agent  # e358
+  clock: 2  # e358
+  nonce: e358  # e358
+  set:  # e358
+    priority: 4  # e358
+- op: discuss  # 23b3
+  at: '2026-03-08T07:05:05Z'  # 23b3
+  by: agent  # 23b3
+  actor: jgstern_agent  # 23b3
+  clock: 3  # 23b3
+  nonce: 23b3  # 23b3
+  message: "Deprioritized to P4: requires return-type tracking infrastructure in the Rust analyzer, which is a significant architectural addition. The aardvark-dns slice depth already improved from 9.0→13.1 with adaptive hop limits. The remaining gap (13.1 vs 19.0 threshold) is partly due to this trait impl issue, but also reflects the repo's inherent structure. Better ROI from other improvements first."  # 23b3
+- op: update  # a879
+  at: '2026-03-08T07:05:32Z'  # a879
+  by: agent  # a879
+  actor: jgstern_agent  # a879
+  clock: 4  # a879
+  nonce: a879  # a879
+  set:  # a879
+    status: needs_human_review  # a879
+- op: discuss  # 749a
+  at: '2026-03-08T07:05:32Z'  # 749a
+  by: agent  # 749a
+  actor: jgstern_agent  # 749a
+  clock: 5  # 749a
+  nonce: 749a  # 749a
+  message: "Needs architectural decision: implementing return-type tracking for Rust trait impl method resolution is a significant investment. The adaptive hop limit already improved aardvark-dns from 9.0→13.1 slice nodes. Question for human: is the remaining gap (13.1 vs 19 threshold) worth the complexity of adding type inference to the Rust analyzer?"  # 749a
