@@ -73,6 +73,17 @@ _RUST_DEREF_WRAPPERS: frozenset[str] = frozenset({
     "Pin", "MutexGuard", "RwLockReadGuard", "RwLockWriteGuard",
 })
 
+# Async spawn functions that schedule a task on an executor.
+# When we see e.g. tokio::spawn(my_task), the interesting call target
+# is ``my_task``, not ``spawn`` itself.
+_SPAWN_FUNCTIONS: frozenset[str] = frozenset({
+    "tokio::spawn", "tokio::task::spawn",
+    "tokio::task::spawn_blocking",
+    "rayon::spawn", "rayon::spawn_fifo",
+    "async_std::task::spawn",
+    "async_std::task::spawn_blocking",
+})
+
 # Axum HTTP method functions that define route handlers
 # Used by _extract_axum_usage_contexts for YAML pattern matching
 AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
@@ -1140,9 +1151,47 @@ def _extract_edges_from_file(
                     if callee_name:
                         resolved = False
 
+                        # Async spawn detection: tokio::spawn(task()),
+                        # tokio::task::spawn(task()), rayon::spawn(task())
+                        # Create a call edge to the spawned task, not to spawn itself.
+                        if full_scoped_name in _SPAWN_FUNCTIONS:
+                            args_node = _find_child_by_field(node, "arguments")
+                            if args_node:
+                                for arg_child in args_node.children:
+                                    if arg_child.type == "call_expression":
+                                        # The spawned task is itself a call — it will
+                                        # be processed when iter_tree reaches it, so
+                                        # just skip creating an edge to spawn().
+                                        pass
+                                    elif arg_child.type == "async_block":
+                                        # async { ... } — calls inside will be
+                                        # visited by iter_tree normally.
+                                        pass
+                                    elif arg_child.type == "identifier":
+                                        # tokio::spawn(my_task) — bare function ref
+                                        ref_name = node_text(arg_child, source)
+                                        target = local_symbols.get(ref_name)
+                                        if target is None:
+                                            lr = resolver.lookup(ref_name)
+                                            if lr.found and lr.symbol is not None:
+                                                target = lr.symbol
+                                        if target is not None:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=target.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="async_spawn",
+                                                confidence=0.85,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                            # Don't resolve spawn itself as a callee
+                            resolved = True
+
                         # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
                         # This gives precise resolution for qualified calls.
-                        if full_scoped_name and full_scoped_name != callee_name:
+                        if not resolved and full_scoped_name and full_scoped_name != callee_name:
                             if full_scoped_name in local_symbols:
                                 callee = local_symbols[full_scoped_name]
                                 edges.append(Edge.create(

@@ -4106,3 +4106,173 @@ impl Config {
             if "default_config" in e.src and "new" in e.dst
         ]
         assert len(default_to_new) >= 1
+
+
+class TestRustAsyncSpawnDetection:
+    """tokio::spawn / rayon::spawn should create edges to the spawned task,
+    not to spawn itself."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_spawn_with_call_expression(self, tmp_path: Path) -> None:
+        """tokio::spawn(do_work()) — the inner call_expression is the target,
+        not spawn itself."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn do_work() {
+    // actual work
+}
+
+async fn main() {
+    tokio::spawn(do_work());
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have main -> do_work, NOT main -> spawn
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"Should not create edge to spawn: {spawn_edges}"
+
+        work_edges = [
+            e for e in call_edges
+            if "main" in e.src and "do_work" in e.dst
+        ]
+        assert len(work_edges) >= 1, (
+            f"Should have main->do_work edge, got: {call_edges}"
+        )
+
+    def test_spawn_with_bare_identifier(self, tmp_path: Path) -> None:
+        """tokio::spawn(my_task) — bare function reference should create
+        an async_spawn edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+async fn my_task() {
+    // task body
+}
+
+async fn orchestrator() {
+    tokio::spawn(my_task);
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should NOT have an edge to spawn itself
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"Should not create edge to spawn: {spawn_edges}"
+
+        # Should have an async_spawn edge to my_task
+        task_edges = [
+            e for e in call_edges
+            if "orchestrator" in e.src and "my_task" in e.dst
+        ]
+        assert len(task_edges) >= 1, (
+            f"Should have orchestrator->my_task edge, got: {call_edges}"
+        )
+        assert task_edges[0].evidence_type == "async_spawn"
+
+    def test_spawn_blocking_detected(self, tmp_path: Path) -> None:
+        """tokio::task::spawn_blocking also suppresses spawn edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn heavy_compute() -> i32 {
+    42
+}
+
+async fn handler() {
+    tokio::task::spawn_blocking(heavy_compute);
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn_blocking" in e.dst]
+        assert len(spawn_edges) == 0
+
+    def test_spawn_with_async_block(self, tmp_path: Path) -> None:
+        """tokio::spawn(async { ... }) — async block body is traversed by
+        iter_tree; spawn itself should not appear as a callee."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn do_io() {}
+
+async fn server() {
+    tokio::spawn(async {
+        do_io();
+    });
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"No edge to spawn: {spawn_edges}"
+
+        # do_io() inside the async block should still be attributed
+        io_edges = [e for e in call_edges if "do_io" in e.dst]
+        assert len(io_edges) >= 1
+
+    def test_spawn_bare_identifier_cross_file(self, tmp_path: Path) -> None:
+        """tokio::spawn(my_task) where my_task is defined in another file
+        should resolve via the cross-file resolver."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        task_code = """\
+pub async fn background_job() {
+    // does work
+}
+"""
+        main_code = """\
+use crate::tasks::background_job;
+
+async fn start() {
+    tokio::spawn(background_job);
+}
+"""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.rs").write_text(main_code)
+        (src / "tasks.rs").write_text(task_code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0
+
+    def test_normal_call_unaffected(self, tmp_path: Path) -> None:
+        """Regular function calls should still resolve normally."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn helper() -> i32 { 42 }
+
+fn main() {
+    let x = helper();
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [
+            e for e in call_edges
+            if "main" in e.src and "helper" in e.dst
+        ]
+        assert len(helper_edges) >= 1
