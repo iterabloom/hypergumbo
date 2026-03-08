@@ -1494,7 +1494,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 | Item | Horizon | Status |
 |------|---------|--------|
 | AST-based type inference improvements | Near-term | Method-scoped tracking (medium effort), generic handling (high effort). See ADR-0006. |
-| Additional linkers | Near-term | 🟪 Constant propagation for dynamic routes, middleware/proxy detection. |
+| Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟪 Middleware/proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
 | Multi-fidelity analysis | Medium-term | 🟪 Language server backends (tsserver, pyright, rust-analyzer, gopls, JDT). Mixed-fidelity graphs. |

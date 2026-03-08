@@ -5167,3 +5167,199 @@ class TestPythonFunctionReferences:
         ]
         assert len(ref_edges) == 1, f"Expected cross-file reference edge: {ref_edges}"
         assert "handlers.py" in ref_edges[0]["dst"]
+
+
+# ── Constant propagation for dynamic route paths ──
+
+
+def test_django_path_string_concatenation(tmp_path: Path) -> None:
+    """Django path() with string concatenation should resolve the full route path."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'BASE = "/api/v1"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(BASE + '/users/', views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v1/users/", f"Expected '/api/v1/users/', got {route_path!r}"
+
+
+def test_django_path_module_constant(tmp_path: Path) -> None:
+    """Django path() with a module-level constant variable should resolve."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'USERS_ROUTE = "users/"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(USERS_ROUTE, views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/users/", f"Expected '/users/', got {route_path!r}"
+
+
+def test_flask_add_url_rule_string_concatenation(tmp_path: Path) -> None:
+    """Flask add_url_rule() with string concatenation should resolve."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        'PREFIX = "/api"\n'
+        "\n"
+        "def list_users():\n"
+        "    pass\n"
+        "\n"
+        "app.add_url_rule(PREFIX + '/users', 'users', list_users)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["route_path"] == "/api/users", (
+        f"Expected '/api/users', got {ctx.metadata['route_path']!r}"
+    )
+
+
+def test_django_path_imported_constant(tmp_path: Path) -> None:
+    """Django path() with an imported constant should resolve via cross-file lookup."""
+    consts_file = tmp_path / "constants.py"
+    consts_file.write_text('API_BASE = "/api/v1"\n')
+
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from constants import API_BASE\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(API_BASE + '/items/', views.item_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v1/items/", f"Expected '/api/v1/items/', got {route_path!r}"
+
+
+def test_django_path_unresolvable_variable_skipped(tmp_path: Path) -> None:
+    """Django path() with an unresolvable variable should skip the route."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(get_dynamic_path(), views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for unresolvable call, got {len(routes)}"
+
+
+def test_django_path_partial_concatenation_skipped(tmp_path: Path) -> None:
+    """Django path() with partially resolvable concatenation should skip."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(get_base() + '/users/', views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for partial resolution, got {len(routes)}"
+
+
+def test_django_path_undefined_name_skipped(tmp_path: Path) -> None:
+    """Django path() with an undefined name variable should skip."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(UNDEFINED_VAR, views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for undefined var, got {len(routes)}"
+
+
+def test_django_path_nested_concatenation(tmp_path: Path) -> None:
+    """Django path() with nested concatenation (A + B + C) should resolve."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'API = "/api"\n'
+        'VERSION = "/v2"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(API + VERSION + '/items/', views.item_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v2/items/", f"Expected '/api/v2/items/', got {route_path!r}"

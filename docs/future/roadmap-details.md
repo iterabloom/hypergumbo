@@ -15,7 +15,7 @@ Remaining improvements (without requiring language servers):
 
 ## Additional linkers
 
-* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
+* 🟩 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`) — implemented for Python (Django path/re_path/url, Flask add_url_rule/add_api_route). Resolves module-level constants, imported constants, and string concatenation. Go already handles string concatenation natively in `_extract_string_from_node`.
 * 🟪 **Middleware/proxy rewriting** detection
 
 ## Additional output views
