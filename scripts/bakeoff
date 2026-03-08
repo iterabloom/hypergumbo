@@ -811,9 +811,12 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
             if t == "calls":
                 calls_total += 1
 
-        routes = sum(1 for n in nodes if any(
-            (c == "route" if isinstance(c, str) else c.get("concept") == "route")
-            for c in ((n.get("meta") or {}).get("concepts") or [])
+        routes = sum(1 for n in nodes if (
+            n.get("kind") == "route"
+            or any(
+                (c == "route" if isinstance(c, str) else c.get("concept") == "route")
+                for c in ((n.get("meta") or {}).get("concepts") or [])
+            )
         ))
 
         metrics = {
