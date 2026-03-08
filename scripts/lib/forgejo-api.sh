@@ -549,6 +549,9 @@ if best:
 # do_merge PR_NUM TITLE DESC ORIG_SHA [--squash]
 #   Merge helper: tries fast-forward, falls back to rebase on divergence,
 #   or squash if --squash is explicitly requested.
+#   When merge fails with "head behind base branch" (e.g., tracker
+#   auto-sync advanced dev during CI), rebases locally + force-pushes
+#   + retries the merge automatically.
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
@@ -643,6 +646,54 @@ do_merge() {
 			echo ""
 			echo "Or, if you must squash (loses commit body details):"
 			echo "  ./scripts/auto-pr --squash"
+			rm -f "$tmp_file"
+			return 1
+		fi
+
+		# Check if head is behind base (e.g., tracker auto-sync advanced
+		# dev while CI was running).  Rebase locally and force-push so the
+		# next retry attempt can fast-forward.
+		if echo "$merge_response" | grep -qi "head behind base branch\|is behind"; then
+			echo ""
+			echo "⚠️  Head branch is behind base — rebasing locally..."
+			local cur_branch
+			cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+			local base_branch="${BASE_BRANCH:-dev}"
+
+			if [[ -z "$cur_branch" || "$cur_branch" == "HEAD" ]]; then
+				echo "❌ Cannot determine current branch for local rebase"
+				rm -f "$tmp_file"
+				return 1
+			fi
+
+			if git fetch origin "$base_branch" --quiet 2>/dev/null \
+			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
+				echo "   Rebase succeeded — force-pushing..."
+				if git push origin "$cur_branch" --force-with-lease --quiet 2>/dev/null; then
+					echo "   Force-push succeeded — retrying merge..."
+					sleep 3  # Give Forgejo a moment to update PR head
+					# Retry fast-forward merge after rebase
+					if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
+						if _check_pr_merged "$pr_num"; then
+							echo "✅ Fast-forward merged after local rebase!"
+							rm -f "$tmp_file"
+							return 0
+						fi
+					fi
+					echo "⚠️  Merge not accepted after rebase (CI may need to re-run on new SHA)"
+					echo ""
+					echo "Recovery: ./scripts/merge-pr $pr_num --wait-for-ci"
+				else
+					echo "❌ Force-push failed after rebase"
+				fi
+			else
+				echo "❌ Local rebase failed (conflicts?)"
+				echo "   Resolve manually:"
+				echo "     git fetch origin $base_branch"
+				echo "     git rebase origin/$base_branch"
+				echo "     git push origin $cur_branch --force-with-lease"
+				echo "     ./scripts/merge-pr $pr_num"
+			fi
 			rm -f "$tmp_file"
 			return 1
 		fi
