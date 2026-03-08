@@ -1,0 +1,19 @@
+- op: create  # 30cb
+  at: '2026-03-08T10:49:20Z'  # 30cb
+  by: agent  # 30cb
+  actor: jgstern_agent  # 30cb
+  clock: 1  # 30cb
+  nonce: 30cb  # 30cb
+  data:  # 30cb
+    kind: work_item  # 30cb
+    title: "C/C++ function pointer dispatch: struct field assignment → call site edges"  # 30cb
+    status: todo_soft  # 30cb
+    priority: 3  # 30cb
+    parent:  # 30cb
+    tags: []  # 30cb
+    before: []  # 30cb
+    duplicate_of: []  # 30cb
+    not_duplicate_of: []  # 30cb
+    pr_ref:  # 30cb
+    description: "Redis and x265 bakeoff assessments identify function-pointer dispatch as a gap. When a struct field of function-pointer type is assigned (e.g., x265_api.encoder_open = x265_encoder_open) and later invoked (api->encoder_open()), create dispatches_to edges. Also relevant for Redis command dispatch (redisCommand.proc). Complex: assignment and invocation often in different translation units."  # 30cb
+    fields: {}  # 30cb
