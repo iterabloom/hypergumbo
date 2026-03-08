@@ -1,0 +1,19 @@
+- op: create  # cf03
+  at: '2026-03-08T14:33:41Z'  # cf03
+  by: agent  # cf03
+  actor: jgstern_agent  # cf03
+  clock: 1  # cf03
+  nonce: cf03  # cf03
+  data:  # cf03
+    kind: work_item  # cf03
+    title: "Java import-based name resolution to disambiguate common class names"  # cf03
+    status: todo_soft  # cf03
+    priority: 3  # cf03
+    parent:  # cf03
+    tags: []  # cf03
+    before: []  # cf03
+    duplicate_of: []  # cf03
+    not_duplicate_of: []  # cf03
+    pr_ref:  # cf03
+    description: "Kafka bakeoff assessment: Properties and Logger name collisions cause false edges to Log4jConfiguration.Properties instead of java.util.Properties. Using import declarations to disambiguate would eliminate this category of false positives."  # cf03
+    fields: {}  # cf03
