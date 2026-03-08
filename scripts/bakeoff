@@ -529,6 +529,12 @@ def cmd_cohort(args):
             print("No more repos available in pool!")
             return 1
 
+    # Mark previous cohort repos as tested before updating
+    if state.current_cohort:
+        for repo in state.current_cohort:
+            if repo not in state.tested_repos:
+                state.tested_repos.append(repo)
+
     # Update state
     state.cohort_number += 1
     state.iteration = 0
