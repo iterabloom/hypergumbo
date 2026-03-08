@@ -1438,8 +1438,8 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
             # Set failure marker — circuit breaker opens
             try:
                 fail_marker.write_text(str(time.time()))
-            except OSError:
-                pass  # pragma: no cover
+            except OSError:  # pragma: no cover
+                pass
             print(
                 f"auto-sync: sync failed: {sync_result.error}",
                 file=sys.stderr,
