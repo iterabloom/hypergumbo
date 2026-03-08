@@ -1556,7 +1556,7 @@ class TestDoSync:
     def _cleanup() -> list[Any]:
         """Return git mock side_effect entries for the 2 cleanup calls."""
         return [
-            _make_completed_process(),  # pull
+            _make_completed_process(),  # fetch (update remote tracking ref)
             _make_completed_process(),  # branch -D
         ]
 
@@ -1600,6 +1600,18 @@ class TestDoSync:
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()
         # Temp index should be cleaned up
         assert not (tmp_path / ".git" / "tmp-sync-index").exists()
+
+        # Cleanup should use fetch (not pull) to avoid merging dev into
+        # the checked-out feature branch
+        cleanup_calls = mock_git.call_args_list[-2:]  # last 2: fetch, branch -D
+        fetch_call = cleanup_calls[0]
+        fetch_args = fetch_call[0]  # positional args: (repo_root, *git_args)
+        assert "fetch" in fetch_args, (
+            f"Expected 'fetch' in cleanup call, got: {fetch_args}"
+        )
+        assert "pull" not in fetch_args, (
+            f"Cleanup should use 'fetch' not 'pull': {fetch_args}"
+        )
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")

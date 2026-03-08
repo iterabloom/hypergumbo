@@ -2776,6 +2776,147 @@ class TestAutoSync:
         assert "sync" not in _MUTATION_COMMANDS
 
 
+class TestAutoSyncPrWaitGate:
+    """Tests for the PR_PENDING wait gate in _maybe_auto_sync."""
+
+    def test_waits_for_pr_pending_removal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """When PR_PENDING exists, auto-sync waits until it's removed."""
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        pr_pending = git_dir / "PR_PENDING"
+        pr_pending.write_text("42\n")
+
+        call_count = 0
+        original_sleep = None  # not needed, time.sleep is patched
+
+        def fake_sleep(seconds: float) -> None:
+            nonlocal call_count
+            call_count += 1
+            # Remove PR_PENDING after 2 sleep calls (simulating auto-pr finishing)
+            if call_count >= 2:
+                pr_pending.unlink(missing_ok=True)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync, patch(
+                "hypergumbo_tracker.cli.time",
+            ) as mock_time:
+                mock_time.time = __import__("time").time
+                mock_time.monotonic = __import__("time").monotonic
+                mock_time.sleep = fake_sleep
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=True, pr_number=99,
+                    files_synced=1, exit_code=0,
+                )
+                _maybe_auto_sync(tmp_path)
+                # Should have proceeded to sync after PR_PENDING was removed
+                mock_sync.assert_called_once()
+
+        captured = capsys.readouterr()
+        assert "waiting for in-flight PR" in captured.err
+        assert "in-flight PR finished" in captured.err
+
+    def test_pr_pending_wait_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """When PR_PENDING never clears, auto-sync times out and skips."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        pr_pending = git_dir / "PR_PENDING"
+        pr_pending.write_text("42\n")
+
+        # monotonic returns increasing values that quickly exceed deadline
+        mono_values = iter([0, 1000, 2000])
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.cli.time",
+            ) as mock_time:
+                mock_time.time = __import__("time").time
+                mock_time.monotonic = lambda: next(mono_values)
+                mock_time.sleep = MagicMock()
+                _maybe_auto_sync(tmp_path)
+                # Should NOT have called preflight (timed out)
+                mock_pre.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "timed out waiting for in-flight PR" in captured.err
+
+    def test_no_pr_pending_skips_wait(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """When PR_PENDING doesn't exist, auto-sync proceeds without waiting."""
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        # No PR_PENDING file
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=True, pr_number=99,
+                    files_synced=1, exit_code=0,
+                )
+                _maybe_auto_sync(tmp_path)
+                mock_sync.assert_called_once()
+
+        captured = capsys.readouterr()
+        # Should NOT contain "waiting for in-flight PR"
+        assert "waiting for in-flight PR" not in captured.err
+
+
 class TestAutoSyncCircuitBreaker:
     """Tests for the circuit breaker in _maybe_auto_sync."""
 

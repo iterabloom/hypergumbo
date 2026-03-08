@@ -1082,8 +1082,15 @@ def do_sync(
         if tmp_index_path.exists():
             tmp_index_path.unlink()
 
-        # Pull latest (non-fatal)
-        _git(repo_root, "pull", preflight.push_remote, base_branch, check=False)
+        # Fetch latest remote ref (non-fatal).  We deliberately do NOT
+        # ``git pull`` here because that merges into the currently checked-out
+        # branch, which is likely a feature branch — not ``base_branch``.
+        # A fetch is sufficient: it updates ``origin/dev`` so the next
+        # ``do_sync`` or ``auto-pr`` sees the latest base.
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)

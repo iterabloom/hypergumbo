@@ -1335,6 +1335,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 _SYNC_COOLDOWN_SECONDS = 1800  # 30 minutes between retry attempts
 _SYNC_MAX_CONSECUTIVE_FAILURES = 3  # disable autonomous mode after this many
+_SYNC_PR_WAIT_TIMEOUT = 900  # 15 min max wait for in-flight PR
+_SYNC_PR_WAIT_INTERVAL = 10  # seconds between PR_PENDING checks
 
 
 def _escalate_disable_autonomous(repo_root: Path, fail_count: int) -> None:
@@ -1374,6 +1376,14 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
     ``do_sync()`` if the threshold is exceeded.  All output goes to stderr
     to preserve ``--json`` stdout.  Exceptions are caught and logged — this
     function never raises.
+
+    PR Wait Gate
+    ~~~~~~~~~~~~
+    Before syncing, checks for ``.git/PR_PENDING`` (created by ``auto-pr``
+    while polling CI).  If present, waits up to 15 minutes for the
+    in-flight PR to finish.  This prevents sync from advancing ``dev``
+    while a feature PR is mid-CI-poll, which would cause the feature PR to
+    fail with a 405 "head behind base branch" on merge.
 
     Circuit Breaker
     ~~~~~~~~~~~~~~~
@@ -1419,8 +1429,33 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         if lines < threshold:
             return
 
-        # Circuit breaker: skip if recent failure
+        # Wait for in-flight auto-pr to finish before syncing.
+        # auto-pr creates .git/PR_PENDING while polling CI; if we sync
+        # and merge while that PR is in flight, dev advances and the
+        # feature PR gets a 405 "head behind base branch" on merge.
         git_dir = repo_root / ".git"
+        pr_pending = git_dir / "PR_PENDING"
+        if pr_pending.exists():
+            print(
+                "auto-sync: waiting for in-flight PR to finish...",
+                file=sys.stderr,
+            )
+            deadline = time.monotonic() + _SYNC_PR_WAIT_TIMEOUT
+            while pr_pending.exists() and time.monotonic() < deadline:
+                time.sleep(_SYNC_PR_WAIT_INTERVAL)
+            if pr_pending.exists():
+                print(
+                    "auto-sync: timed out waiting for in-flight PR, "
+                    "skipping sync",
+                    file=sys.stderr,
+                )
+                return
+            print(
+                "auto-sync: in-flight PR finished, proceeding with sync",
+                file=sys.stderr,
+            )
+
+        # Circuit breaker: skip if recent failure
         fail_marker = git_dir / "TRACKER_SYNC_FAILED"
         fail_count = 0
         if fail_marker.exists():
