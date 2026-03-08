@@ -1126,6 +1126,7 @@ def _extract_edges(
     class_by_name: dict[str, list[Symbol]] | None = None,
     sym_file_imports: dict[str, dict[str, str]] | None = None,
     method_resolver: ListNameResolver | None = None,
+    class_parents: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1138,6 +1139,7 @@ def _extract_edges(
     - Qualified method calls: ClassName.method()
     - Variable method calls: variable.method() (with type inference)
     - Object instantiation: new ClassName()
+    - Inherited method calls: walks extends chain when direct lookup fails
 
     Type inference tracks types from:
     - Constructor calls: stub = new Client() -> stub has type Client
@@ -1152,6 +1154,14 @@ def _extract_edges(
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
+    # Track class inheritance: child_class_name -> parent_class_name
+    # Uses global map if provided (for cross-file inheritance), plus
+    # augmented with per-file extends relationships discovered during traversal.
+    if class_parents is None:
+        class_parents = {}
+    else:
+        # Copy to avoid mutating the shared dict
+        class_parents = dict(class_parents)
 
     for node in iter_tree(tree.root_node):
         # Check for extends (superclass) in class declarations
@@ -1191,6 +1201,8 @@ def _extract_edges(
                                             evidence_type="ast_extends",
                                         )
                                         edges.append(edge)
+                                        # Record parent for inherited method resolution
+                                        class_parents[current_class] = dst_sym.name
 
                     # Check for implements (interfaces)
                     if child.type == "super_interfaces":
@@ -1309,6 +1321,33 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
                                 resolved_sym = lookup_result.symbol
+                            else:
+                                # Walk extends chain to find inherited method
+                                parent = class_parents.get(current_class)
+                                depth = 0
+                                while parent and depth < 10:
+                                    candidate = f"{parent}.{method_name}"
+                                    lookup_result = resolver.lookup(candidate)
+                                    if lookup_result.found:
+                                        edge_confidence = (
+                                            0.90 * lookup_result.confidence
+                                        )
+                                        edge = Edge.create(
+                                            src=current_method.id,
+                                            dst=lookup_result.symbol.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            confidence=edge_confidence,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                            evidence_type="ast_call_inherited",
+                                        )
+                                        edges.append(edge)
+                                        edge_added = True
+                                        resolved_sym = lookup_result.symbol
+                                        break
+                                    parent = class_parents.get(parent)
+                                    depth += 1
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
@@ -1776,6 +1815,40 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                 if sym.path == str(pf.path):
                     sym_file_imports[sym.id] = file_imports
 
+    # Build global class inheritance map for inherited method resolution.
+    # Maps child class name -> parent class name (resolved to symbol name).
+    global_class_parents: dict[str, str] = {}
+    for pf in parsed_files:
+        for node in iter_tree(pf.tree.root_node):
+            if node.type == "class_declaration":
+                name = _get_class_name(node, pf.source)
+                if not name:  # pragma: no cover
+                    continue
+                ancestors = _get_class_ancestors(node, pf.source)
+                current = ".".join(ancestors + [name]) if ancestors else name
+                for child in node.children:
+                    if child.type == "superclass":
+                        for subchild in child.children:
+                            if subchild.type == "type_identifier":
+                                parent_name = _node_text(subchild, pf.source)
+                                # Resolve parent to its symbol name
+                                dst_sym = None
+                                src_sym = class_symbols.get(current)
+                                if (
+                                    src_sym is not None
+                                    and class_by_name is not None
+                                    and sym_file_imports is not None
+                                ):
+                                    dst_sym = _resolve_base_class_java(
+                                        parent_name, src_sym,
+                                        class_by_name, sym_file_imports,
+                                    )
+                                if dst_sym is None and parent_name in class_symbols:  # pragma: no cover
+                                    dst_sym = class_symbols[parent_name]
+                                if dst_sym is not None:
+                                    global_class_parents[current] = dst_sym.name
+                                break
+
     # Pass 2: Extract edges using global symbol registry
     method_resolver = ListNameResolver(
         global_methods, ambiguity_threshold=3,
@@ -1789,6 +1862,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             class_by_name=class_by_name,
             sym_file_imports=sym_file_imports,
             method_resolver=method_resolver,
+            class_parents=global_class_parents,
         )
         all_edges.extend(edges)
 

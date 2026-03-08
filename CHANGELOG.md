@@ -93,6 +93,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Java nested class name collision guard**: `new Properties()` no longer resolves to `Log4jConfiguration.Properties` (a nested class) when the caller is in a different file. In Java, bare inner class names are only valid inside the outer class's file. This eliminates false edges from JDK/library class name collisions (e.g., `Properties`, `Logger`) with project-internal nested classes.
 - **Elixir import-gated bare call resolution**: Bare function calls (e.g., `create("users")`) no longer resolve to cross-module functions unless the target module is explicitly imported with `import MyApp.Sites`. Previously, any project function with the same name would match regardless of imports, creating false edges (82 false `create` edges in plausible-analytics bakeoff). Local same-module calls and module-qualified calls (`MyApp.Sites.create()`) are unaffected.
 - **TOML symbol IDs**: Changed from opaque sha256 hashes (`toml:sha256:...`) to location-based format (`toml:path:start-end:name:kind`), making compact output node IDs resolvable by `slice --entry`.
+- **Java inherited method resolution via extends chain**: Bare `method()` and `this.method()` calls now resolve to parent class methods when the method isn't defined in the current class. Walks the extends chain up to 10 levels. killbill's `AccountResource.createAccount` → `JaxRsResourceBase.verifyNonNullOrEmpty` is now captured as a call edge (evidence: `ast_call_inherited`, confidence 0.90).
 
 ### Changed
 

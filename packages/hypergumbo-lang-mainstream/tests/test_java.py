@@ -3857,3 +3857,188 @@ public class Service {
         )
         assert method is not None
         assert "inferred_return_type" not in (method.meta or {})
+
+
+class TestJavaInheritedMethodResolution:
+    """Tests for resolving inherited method calls via this.method() or bare method().
+
+    When a class extends a parent and calls a method defined in the parent
+    (not overridden in the child), Case 1 of _extract_edges should walk
+    up the extends chain to find the method in the parent class.
+    """
+
+    def test_bare_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
+        """bare method() call resolves to parent class method via extends chain."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "BaseResource.java").write_text("""
+public class BaseResource {
+    protected void verifyNonNull(Object obj) {
+        if (obj == null) throw new IllegalArgumentException();
+    }
+}
+""")
+        (tmp_path / "AccountResource.java").write_text("""
+public class AccountResource extends BaseResource {
+    public void createAccount(String name) {
+        verifyNonNull(name);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        create_method = next(
+            (s for s in result.symbols if "createAccount" in s.name), None
+        )
+        verify_method = next(
+            (s for s in result.symbols if "verifyNonNull" in s.name), None
+        )
+
+        assert create_method is not None, "Should find createAccount"
+        assert verify_method is not None, "Should find verifyNonNull"
+
+        # Should have a call edge from createAccount to verifyNonNull
+        call_edges = [
+            e for e in result.edges
+            if e.src == create_method.id
+            and e.dst == verify_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from createAccount to verifyNonNull (inherited), "
+            f"got {len(call_edges)}. "
+            f"All edges from createAccount: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create_method.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited"
+        assert call_edges[0].confidence <= 0.90  # Slightly lower than direct
+
+    def test_this_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
+        """this.method() call resolves to parent class method via extends chain."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "BaseController.java").write_text("""
+public class BaseController {
+    protected String formatResponse(Object data) {
+        return data.toString();
+    }
+}
+""")
+        (tmp_path / "UserController.java").write_text("""
+public class UserController extends BaseController {
+    public String getUser(int id) {
+        return this.formatResponse(id);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        get_user = next(
+            (s for s in result.symbols if "getUser" in s.name), None
+        )
+        format_resp = next(
+            (s for s in result.symbols if "formatResponse" in s.name), None
+        )
+
+        assert get_user is not None
+        assert format_resp is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == get_user.id
+            and e.dst == format_resp.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from getUser to formatResponse (inherited), "
+            f"got {len(call_edges)}. "
+            f"All edges: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == get_user.id]}"
+        )
+
+    def test_grandparent_method_resolves(self, tmp_path: Path) -> None:
+        """Method defined in grandparent class resolves through two extends."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Base.java").write_text("""
+public class Base {
+    protected void validate() {}
+}
+""")
+        (tmp_path / "Middle.java").write_text("""
+public class Middle extends Base {
+    protected void transform() {}
+}
+""")
+        (tmp_path / "Child.java").write_text("""
+public class Child extends Middle {
+    public void process() {
+        validate();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        process_method = next(
+            (s for s in result.symbols if "process" in s.name), None
+        )
+        validate_method = next(
+            (s for s in result.symbols if "validate" in s.name), None
+        )
+
+        assert process_method is not None
+        assert validate_method is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == process_method.id
+            and e.dst == validate_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            "Expected edge from process to validate (inherited from grandparent)"
+        )
+
+    def test_own_method_preferred_over_parent(self, tmp_path: Path) -> None:
+        """When method exists in both child and parent, child method is preferred."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Parent.java").write_text("""
+public class Parent {
+    protected void doWork() {}
+}
+""")
+        (tmp_path / "Child.java").write_text("""
+public class Child extends Parent {
+    protected void doWork() {}
+    public void run() {
+        doWork();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if "run" in s.name), None
+        )
+        child_dowork = next(
+            (s for s in result.symbols
+             if "doWork" in s.name and "Child" in s.name), None
+        )
+
+        assert run_method is not None
+        assert child_dowork is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_method.id
+            and e.dst == child_dowork.id
+            and e.edge_type == "calls"
+        ]
+        # Should resolve to Child.doWork (direct), not Parent.doWork
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_direct"
