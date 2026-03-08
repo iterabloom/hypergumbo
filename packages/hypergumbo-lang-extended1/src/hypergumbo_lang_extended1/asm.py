@@ -54,6 +54,24 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("asm")
 
+# CPU register names to exclude from call targets. Indirect calls through
+# registers (e.g., `call rax`) are valid assembly but create false external
+# call edges since registers aren't function names. Covers x86 (eax..r15),
+# ARM (r0..r15, lr, sp, pc), and common aliases.
+_REGISTER_NAMES: frozenset[str] = frozenset({
+    # x86-64 general purpose (64-bit)
+    "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    # x86 general purpose (32-bit)
+    "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp",
+    # x86 general purpose (16-bit)
+    "ax", "bx", "cx", "dx", "si", "di", "bp", "sp",
+    # ARM general purpose
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+    # ARM aliases
+    "lr", "pc", "ip", "fp",
+})
+
 
 def find_asm_files(repo_root: Path) -> Iterator[Path]:
     """Yield all assembly files in the repository."""
@@ -193,6 +211,11 @@ class AsmAnalyzer(TreeSitterAnalyzer):
             if not target_node:
                 continue  # pragma: no cover - defensive
             target_name = node_text(target_node, source)
+
+            # Skip register names — indirect calls through registers are
+            # valid assembly but don't represent named function calls
+            if target_name.lower() in _REGISTER_NAMES:
+                continue
 
             # Find enclosing label (function) for this call instruction
             call_line = node.start_point[0] + 1
