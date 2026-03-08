@@ -1858,6 +1858,154 @@ end
             )
 
 
+class TestElixirStdlibExclusion:
+    """Tests that Elixir stdlib/Kernel functions don't create false edges.
+
+    Bare calls to Kernel functions like ``inspect(data)`` should NOT resolve
+    to project-defined functions with the same name in other modules.
+    """
+
+    def test_inspect_not_resolved_to_project_function(self, tmp_path: Path) -> None:
+        """inspect() call should not create an edge to a project inspect function."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "message.ex").write_text('''
+defmodule MyApp.Message do
+  def inspect(msg) do
+    "Message: #{msg}"
+  end
+end
+''')
+
+        (tmp_path / "caller.ex").write_text('''
+defmodule MyApp.Caller do
+  def run(data) do
+    inspect(data)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        inspect_sym = next((s for s in result.symbols if "inspect" in s.name), None)
+
+        assert run_sym is not None
+        assert inspect_sym is not None
+
+        # inspect() is a Kernel builtin — should NOT resolve to MyApp.Message.inspect
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert inspect_sym.id not in edge_dsts, (
+            "Kernel.inspect() should not resolve to MyApp.Message.inspect"
+        )
+
+    def test_to_string_not_resolved_cross_module(self, tmp_path: Path) -> None:
+        """to_string() should not resolve to project-defined to_string."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "converter.ex").write_text('''
+defmodule MyApp.Converter do
+  def to_string(val) do
+    "#{val}"
+  end
+end
+''')
+
+        (tmp_path / "user.ex").write_text('''
+defmodule MyApp.User do
+  def display(name) do
+    to_string(name)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        display_sym = next((s for s in result.symbols if "display" in s.name), None)
+        to_string_sym = next((s for s in result.symbols if "to_string" in s.name), None)
+
+        assert display_sym is not None
+        assert to_string_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == display_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert to_string_sym.id not in edge_dsts, (
+            "Kernel.to_string() should not resolve to MyApp.Converter.to_string"
+        )
+
+    def test_local_inspect_still_resolved(self, tmp_path: Path) -> None:
+        """A local inspect function (same module) should still create edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.Server do
+  defp inspect(state) do
+    IO.puts("State: #{state}")
+  end
+
+  def run(state) do
+    inspect(state)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        inspect_sym = next((s for s in result.symbols if "inspect" in s.name), None)
+
+        assert run_sym is not None
+        assert inspect_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        # Local defp inspect should still be resolved
+        assert inspect_sym.id in edge_dsts, (
+            "Local inspect should still be resolved (same module)"
+        )
+
+    def test_pipe_to_stdlib_not_resolved(self, tmp_path: Path) -> None:
+        """Piping to a stdlib function should not create false edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "formatter.ex").write_text('''
+defmodule MyApp.Formatter do
+  def to_string(val), do: "#{val}"
+end
+''')
+
+        (tmp_path / "pipeline.ex").write_text('''
+defmodule MyApp.Pipeline do
+  def run(data) do
+    data |> to_string
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        to_string_sym = next((s for s in result.symbols if "to_string" in s.name), None)
+
+        assert run_sym is not None
+        assert to_string_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert to_string_sym.id not in edge_dsts, (
+            "Kernel.to_string pipe should not resolve to MyApp.Formatter.to_string"
+        )
+
+
 class TestPipeOperatorCallEdges:
     """Tests for pipe operator (|>) call edge resolution.
 

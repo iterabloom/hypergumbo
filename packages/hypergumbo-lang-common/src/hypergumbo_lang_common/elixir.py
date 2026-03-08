@@ -80,6 +80,43 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     ],
 }
 
+# Elixir Kernel and stdlib functions that are auto-imported into every
+# module.  Bare calls to these names (e.g., ``inspect(data)``) should
+# NOT resolve to project-defined functions with the same name in other
+# modules — they are almost always Kernel/stdlib calls.
+#
+# Local definitions shadow Kernel, so local_symbols_multi matches are
+# still allowed.  Only the cross-file (global_multi / resolver)
+# fallback is gated.
+_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
+    # Kernel — auto-imported, always available bare
+    "inspect", "to_string", "to_charlist", "is_atom", "is_binary",
+    "is_bitstring", "is_boolean", "is_float", "is_function",
+    "is_integer", "is_list", "is_map", "is_map_key", "is_nil",
+    "is_number", "is_pid", "is_port", "is_reference", "is_tuple",
+    "is_struct", "is_exception", "abs", "ceil", "floor", "round",
+    "trunc", "div", "rem", "max", "min", "hd", "tl", "length",
+    "elem", "put_elem", "tuple_size", "map_size", "bit_size",
+    "byte_size", "node", "self", "send", "spawn", "spawn_link",
+    "spawn_monitor", "exit", "throw", "raise", "reraise",
+    "apply", "function_exported?", "macro_exported?",
+    "struct", "struct!", "update_in", "put_in", "get_in",
+    "get_and_update_in", "pop_in", "match?", "dbg",
+    # Kernel.SpecialForms — technically macros but called bare
+    "import", "require", "alias", "use",
+    # IO — commonly called bare via import
+    "puts", "write", "gets",
+    # Enum — very common via import
+    "map", "filter", "reduce", "each", "sort", "flat_map",
+    "find", "reject", "any?", "all?", "count", "zip",
+    "uniq", "chunk_every", "group_by", "into",
+    # String — commonly imported
+    "split", "join", "trim", "replace", "starts_with?",
+    "ends_with?", "contains?", "downcase", "upcase",
+    # Logger
+    "debug", "info", "warn", "error",
+})
+
 if TYPE_CHECKING:
     import tree_sitter
     from hypergumbo_core.ir import AnalysisRun
@@ -856,8 +893,10 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))
-                        # Cross-file: multi-clause global lookup, then resolver
-                        else:
+                        # Cross-file: multi-clause global lookup, then resolver.
+                        # Skip for Kernel/stdlib names — bare ``inspect(x)`` is
+                        # almost always Kernel.inspect, not a project function.
+                        elif target_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(target_name) if global_symbols_multi else None
                             if global_multi:
                                 for callee in global_multi:
@@ -923,7 +962,7 @@ def _extract_edges_from_tree(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                 ))
-                        else:
+                        elif func_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
                             if global_multi:
                                 for callee in global_multi:
