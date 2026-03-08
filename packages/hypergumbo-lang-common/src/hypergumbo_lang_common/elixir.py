@@ -226,20 +226,41 @@ def _get_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None
 
 
+def _unwrap_guard(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """Unwrap a guard clause's binary_operator to get the function head.
+
+    When a ``def`` has a ``when`` guard, tree-sitter wraps the head in a
+    ``binary_operator`` node: ``func(x) when guard(x)``.  This helper
+    returns the left-hand child (the function call) so callers can extract
+    the name and signature as if no guard were present.
+    """
+    if node.type == "binary_operator":
+        for child in node.children:
+            if child.type in ("call", "identifier"):
+                return child
+    return node
+
+
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract function name from def/defp/defmacro call."""
+    """Extract function name from def/defp/defmacro call.
+
+    Handles both plain heads (``def foo(a)``) and guarded heads
+    (``def foo(a) when is_atom(a)``).  In the guarded case the head is
+    wrapped in a ``binary_operator`` node which ``_unwrap_guard`` strips.
+    """
     # def has structure: (call target: (identifier "def") arguments: (arguments (call target: (identifier "func_name") ...)))
     args = find_child_by_type(node, "arguments")
     if args:
         for child in args.children:
-            if child.type == "call":
+            unwrapped = _unwrap_guard(child)
+            if unwrapped.type == "call":
                 # The function name is the target of this call
-                target = find_child_by_type(child, "identifier")
+                target = find_child_by_type(unwrapped, "identifier")
                 if target:
                     return node_text(target, source)
-            elif child.type == "identifier":
+            elif unwrapped.type == "identifier":
                 # Simple case: def foo, do: :ok
-                return node_text(child, source)
+                return node_text(unwrapped, source)
     return None
 
 
@@ -256,9 +277,10 @@ def _extract_elixir_signature(
         return "()"
 
     for child in args.children:
-        if child.type == "call":
+        unwrapped = _unwrap_guard(child)
+        if unwrapped.type == "call":
             # def foo(a, b) - parameters are in the arguments of the inner call
-            inner_args = find_child_by_type(child, "arguments")
+            inner_args = find_child_by_type(unwrapped, "arguments")
             if inner_args is None:  # pragma: no cover - rare
                 return "()"
 
@@ -291,7 +313,7 @@ def _extract_elixir_signature(
 
             return f"({', '.join(params)})"
 
-        elif child.type == "identifier":
+        elif unwrapped.type == "identifier":
             # Simple case: def foo, do: :ok (no parameters)
             return "()"
 

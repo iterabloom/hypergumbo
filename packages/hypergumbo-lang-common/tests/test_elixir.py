@@ -1744,6 +1744,120 @@ end
             )
 
 
+class TestMultiClauseGuardExtraction:
+    """Tests for multi-clause functions with guard clauses.
+
+    Elixir functions can have guard clauses:
+        def humanize(atom) when is_atom(atom), do: ...
+        def humanize(bin) when is_binary(bin), do: ...
+
+    Tree-sitter wraps guarded heads in a ``binary_operator`` node
+    (``func(x) when guard``), which the symbol extractor must unwrap
+    to find the function name and signature.
+    """
+
+    def test_guarded_multi_clause_all_nodes_present(self, tmp_path: Path) -> None:
+        """Multi-clause def with when guards must appear as separate symbol nodes."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "naming.ex").write_text('''
+defmodule Phoenix.Naming do
+  def humanize(atom) when is_atom(atom), do: atom |> to_string() |> humanize()
+  def humanize(bin) when is_binary(bin) do
+    bin
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        humanize_syms = [s for s in result.symbols if "humanize" in s.name and s.kind == "function"]
+        assert len(humanize_syms) == 2, (
+            f"Expected 2 humanize clauses, got {len(humanize_syms)}. "
+            f"All symbols: {[s.name for s in result.symbols]}"
+        )
+
+        # Both should have the full module-qualified name
+        for sym in humanize_syms:
+            assert sym.name == "Phoenix.Naming.humanize"
+
+    def test_guarded_function_signature_includes_params(self, tmp_path: Path) -> None:
+        """Guarded functions should still have correct parameter signatures."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "parser.ex").write_text('''
+defmodule MyApp.Parser do
+  def parse(input) when is_binary(input) do
+    String.split(input, ",")
+  end
+
+  def parse(input) when is_list(input) do
+    input
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        parse_syms = [s for s in result.symbols if "parse" in s.name and s.kind == "function"]
+        assert len(parse_syms) == 2
+
+        # Each clause should have a signature with the parameter
+        for sym in parse_syms:
+            assert sym.signature is not None, f"Missing signature for clause at line {sym.span.start_line}"
+            assert "input" in sym.signature, f"Signature should contain 'input', got: {sym.signature}"
+
+    def test_guarded_private_function(self, tmp_path: Path) -> None:
+        """defp with when guard should also be extracted."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "helper.ex").write_text('''
+defmodule MyApp.Helper do
+  defp format(val) when is_integer(val), do: Integer.to_string(val)
+  defp format(val) when is_float(val), do: Float.to_string(val)
+
+  def run(x), do: format(x)
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        format_syms = [s for s in result.symbols if "format" in s.name and s.kind == "function"]
+        assert len(format_syms) == 2
+        assert all("private" in s.modifiers for s in format_syms)
+
+    def test_guarded_call_edges_target_all_clauses(self, tmp_path: Path) -> None:
+        """Call to a guarded multi-clause function creates edges to all clauses."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "converter.ex").write_text('''
+defmodule MyApp.Converter do
+  def convert(val) when is_binary(val), do: String.to_integer(val)
+  def convert(val) when is_integer(val), do: val
+
+  def process(x) do
+    convert(x)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        convert_syms = [s for s in result.symbols if "convert" in s.name and s.kind == "function"]
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+
+        assert len(convert_syms) == 2
+        assert process_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == process_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        for clause in convert_syms:
+            assert clause.id in edge_dsts, (
+                f"Missing edge to convert clause at line {clause.span.start_line}"
+            )
+
+
 class TestPhoenixRouteAliasResolution:
     """Tests for Phoenix route alias resolution.
 
