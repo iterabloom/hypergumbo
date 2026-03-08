@@ -1333,6 +1333,9 @@ def _build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
+_SYNC_COOLDOWN_SECONDS = 1800  # 30 minutes between retry attempts
+
+
 def _maybe_auto_sync(tracker_root: Path) -> None:
     """Check if pending tracker ops exceed the threshold and trigger sync.
 
@@ -1341,6 +1344,13 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
     ``do_sync()`` if the threshold is exceeded.  All output goes to stderr
     to preserve ``--json`` stdout.  Exceptions are caught and logged — this
     function never raises.
+
+    Circuit Breaker
+    ~~~~~~~~~~~~~~~
+    When sync fails, a marker file (``.git/TRACKER_SYNC_FAILED``) is
+    written with the failure timestamp.  Subsequent calls skip sync
+    for 30 minutes to prevent runaway PR creation.  On success, the
+    marker is removed.
     """
     from hypergumbo_tracker.sync import (
         AUTO_SYNC_DEFAULT_THRESHOLD,
@@ -1377,6 +1387,27 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         if lines < threshold:
             return
 
+        # Circuit breaker: skip if recent failure
+        git_dir = repo_root / ".git"
+        fail_marker = git_dir / "TRACKER_SYNC_FAILED"
+        if fail_marker.exists():
+            try:
+                fail_ts = float(fail_marker.read_text().strip())
+                elapsed = time.time() - fail_ts
+                if elapsed < _SYNC_COOLDOWN_SECONDS:
+                    remaining = int(_SYNC_COOLDOWN_SECONDS - elapsed)
+                    print(
+                        f"auto-sync: circuit breaker open "
+                        f"({remaining}s remaining), skipping",
+                        file=sys.stderr,
+                    )
+                    return
+                # Cooldown expired — remove marker and retry
+                fail_marker.unlink(missing_ok=True)
+            except (ValueError, OSError):
+                # Corrupt marker — remove and retry
+                fail_marker.unlink(missing_ok=True)
+
         print(
             f"auto-sync: {lines} lines of tracker changes exceed "
             f"threshold ({threshold}), syncing...",
@@ -1396,12 +1427,19 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 
         sync_result = do_sync(repo_root=repo_root, preflight=pre)
         if sync_result.success:
+            # Clear failure marker on success
+            fail_marker.unlink(missing_ok=True)
             print(
                 f"auto-sync: synced {sync_result.files_synced} file(s) "
                 f"via PR #{sync_result.pr_number}",
                 file=sys.stderr,
             )
         else:
+            # Set failure marker — circuit breaker opens
+            try:
+                fail_marker.write_text(str(time.time()))
+            except OSError:
+                pass  # pragma: no cover
             print(
                 f"auto-sync: sync failed: {sync_result.error}",
                 file=sys.stderr,

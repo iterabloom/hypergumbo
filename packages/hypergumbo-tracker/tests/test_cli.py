@@ -2776,6 +2776,182 @@ class TestAutoSync:
         assert "sync" not in _MUTATION_COMMANDS
 
 
+class TestAutoSyncCircuitBreaker:
+    """Tests for the circuit breaker in _maybe_auto_sync."""
+
+    def test_failure_creates_marker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """When sync fails, a TRACKER_SYNC_FAILED marker is created."""
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=False, error="merge failed", exit_code=1,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        assert (git_dir / "TRACKER_SYNC_FAILED").exists()
+        captured = capsys.readouterr()
+        assert "sync failed" in captured.err
+
+    def test_marker_blocks_retry_during_cooldown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Circuit breaker prevents sync during cooldown period."""
+        import time
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(str(time.time()))
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre:
+                _maybe_auto_sync(tmp_path)
+                mock_pre.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "circuit breaker open" in captured.err
+
+    def test_expired_marker_allows_retry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Expired marker is removed and sync proceeds."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        # Write marker from 2 hours ago (well past 30 min cooldown)
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            str(time.time() - 7200)
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre:
+                mock_pre.return_value = PreflightResult(
+                    ok=False, error="test stop",
+                )
+                _maybe_auto_sync(tmp_path)
+                mock_pre.assert_called_once()
+
+        assert not (git_dir / "TRACKER_SYNC_FAILED").exists()
+
+    def test_success_clears_marker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Successful sync removes any existing failure marker."""
+        import time
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        # Write an expired marker so it doesn't block
+        (git_dir / "TRACKER_SYNC_FAILED").write_text(
+            str(time.time() - 7200)
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                mock_pre.return_value = PreflightResult(
+                    ok=True, repo_root=tmp_path, git_dir=git_dir,
+                    original_branch="dev",
+                    changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                    api_base="https://codeberg.org/api/v1/repos/o/r",
+                    forgejo_user="u", forgejo_token="t",
+                )
+                mock_sync.return_value = SyncResult(
+                    success=True, pr_number=42,
+                    files_synced=1, exit_code=0,
+                )
+                _maybe_auto_sync(tmp_path)
+
+        assert not (git_dir / "TRACKER_SYNC_FAILED").exists()
+
+    def test_corrupt_marker_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Corrupt marker file is removed and sync proceeds."""
+        from hypergumbo_tracker.sync import PreflightResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "TRACKER_SYNC_FAILED").write_text("not_a_number")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre:
+                mock_pre.return_value = PreflightResult(
+                    ok=False, error="test stop",
+                )
+                _maybe_auto_sync(tmp_path)
+                mock_pre.assert_called_once()
+
+
 class TestSyncReminder:
     """Tests for _print_sync_reminder."""
 
