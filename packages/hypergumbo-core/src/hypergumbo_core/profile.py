@@ -928,6 +928,9 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     """Detect Java/Kotlin frameworks from pom.xml, build.gradle, or AndroidManifest.xml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Also scans auxiliary Gradle files in the gradle/ directory (e.g.,
+    gradle/dependencies.gradle) used by multi-module Gradle projects like
+    Apache Kafka to declare dependencies outside of build.gradle.
     """
     detected: list[str] = []
     detected_set: set[str] = set()
@@ -952,6 +955,28 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
                         detected.append(framework)
                         detected_set.add(framework)
                         break
+
+    # Check auxiliary Gradle files (e.g., gradle/dependencies.gradle, gradle/libs.gradle)
+    # Multi-module Gradle projects like Apache Kafka declare dependencies in these
+    # files rather than in build.gradle directly.
+    gradle_dir = repo_root / "gradle"
+    if gradle_dir.is_dir():
+        aux_content_parts: list[str] = []
+        for pattern in ("*.gradle", "*.gradle.kts"):
+            for aux_file in gradle_dir.glob(pattern):
+                try:
+                    aux_content_parts.append(aux_file.read_text(errors="ignore").lower())
+                except (OSError, IOError):  # pragma: no cover
+                    pass
+        if aux_content_parts:
+            aux_content = "\n".join(aux_content_parts)
+            for framework, patterns in JAVA_FRAMEWORKS.items():
+                if framework not in detected_set:
+                    for pattern in patterns:
+                        if _manifest_has_package(aux_content, pattern):
+                            detected.append(framework)
+                            detected_set.add(framework)
+                            break
 
     # Check for AndroidManifest.xml (definitive Android indicator)
     # If any AndroidManifest.xml exists, this is an Android project

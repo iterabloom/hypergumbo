@@ -2228,6 +2228,37 @@ def test_detects_guice_from_gradle(tmp_path: Path) -> None:
     assert "guice" in data["profile"]["frameworks"]
 
 
+def test_detects_jaxrs_from_auxiliary_gradle_file(tmp_path: Path) -> None:
+    """Should detect JAX-RS from gradle/dependencies.gradle (auxiliary Gradle files).
+
+    Multi-module Gradle projects like Apache Kafka declare dependencies in
+    files like gradle/dependencies.gradle rather than in build.gradle directly.
+    The framework detector must scan *.gradle files in the gradle/ directory.
+    """
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    # Root build.gradle exists but doesn't declare JAX-RS
+    (tmp_path / "build.gradle").write_text("""plugins {
+    id 'java'
+}""")
+    # JAX-RS dependency declared in gradle/dependencies.gradle (Kafka pattern)
+    gradle_dir = tmp_path / "gradle"
+    gradle_dir.mkdir()
+    (gradle_dir / "dependencies.gradle").write_text("""
+ext {
+    versions = [jakartaRs: "3.1.0"]
+    libs = [
+        jakartaRsApi: "jakarta.ws.rs:jakarta.ws.rs-api:$versions.jakartaRs",
+    ]
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "jax-rs" in data["profile"]["frameworks"]
+
+
 def test_bare_graphql_package_does_not_trigger_framework(tmp_path: Path) -> None:
     """Bare 'graphql' npm package should NOT activate graphql framework (WI-rofiz).
 
