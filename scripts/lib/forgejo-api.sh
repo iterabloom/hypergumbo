@@ -666,27 +666,68 @@ do_merge() {
 				return 1
 			fi
 
-			# Clean up untracked tracker .ops files that would block rebase.
-			# These are created by tracker auto-sync and tracked on dev;
-			# the untracked copies on the feature branch conflict with the
-			# tracked versions during rebase.
+			# Back up tracker .ops files that would block rebase, then
+			# restore them afterward so no pending operations are lost.
+			local ops_backup
+			ops_backup=$(mktemp -d /tmp/ops-backup-XXXXXX)
+			local had_ops_backup=false
 			local ops_dir
 			for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
 				if [[ -d "$ops_dir" ]]; then
-					# Remove only untracked files (git ls-files --error-unmatch
-					# exits non-zero for untracked files)
+					local backup_subdir="$ops_backup/$ops_dir"
+					mkdir -p "$backup_subdir"
+					# Back up untracked .ops files
 					for f in "$ops_dir"/.*ops "$ops_dir"/*.ops; do
 						[[ -f "$f" ]] || continue
-						git ls-files --error-unmatch "$f" &>/dev/null || rm -f "$f"
+						if ! git ls-files --error-unmatch "$f" &>/dev/null; then
+							cp "$f" "$backup_subdir/"
+							rm -f "$f"
+							had_ops_backup=true
+						fi
 					done
+					# Back up modified tracked .ops files (diff from HEAD)
+					if git diff --quiet -- "$ops_dir" 2>/dev/null; then
+						:  # No modifications
+					else
+						for f in "$ops_dir"/.*ops "$ops_dir"/*.ops; do
+							[[ -f "$f" ]] || continue
+							if git diff --quiet -- "$f" 2>/dev/null; then
+								:  # This file is clean
+							else
+								cp "$f" "$backup_subdir/$(basename "$f").modified"
+								had_ops_backup=true
+							fi
+						done
+					fi
 				fi
 			done
-			# Also checkout any modified tracked .ops files to match HEAD
+			# Revert tracked .ops files to HEAD so rebase can proceed cleanly
 			git checkout -- .agent/tracker-workspace/.ops/ 2>/dev/null || true
 			git checkout -- .agent/tracker/.ops/ 2>/dev/null || true
 
 			if git fetch origin "$base_branch" --quiet 2>/dev/null \
 			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
+				# Restore backed-up .ops files so no pending operations are lost.
+				# Ops files are append-only, so restoring the pre-rebase copy
+				# (which has the latest appended ops) is safe — the rebased
+				# version from dev is a subset of what we backed up.
+				if [[ "$had_ops_backup" == true ]]; then
+					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+						local backup_subdir="$ops_backup/$ops_dir"
+						[[ -d "$backup_subdir" ]] || continue
+						mkdir -p "$ops_dir"
+						for f in "$backup_subdir"/*; do
+							[[ -f "$f" ]] || continue
+							local base
+							base=$(basename "$f")
+							# Strip .modified suffix for tracked-file backups
+							local target_name="${base%.modified}"
+							cp "$f" "$ops_dir/$target_name"
+						done
+					done
+					echo "   Restored backed-up .ops files from $ops_backup"
+				fi
+				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "   Rebase succeeded — force-pushing..."
 				# Push via refs/for/ (Forgejo AGit) to update the PR head ref.
 				# Pushing to the named branch alone doesn't update PRs created
@@ -709,6 +750,20 @@ do_merge() {
 					echo "❌ Force-push failed after rebase"
 				fi
 			else
+				# Restore backed-up .ops files even on rebase failure
+				if [[ "$had_ops_backup" == true ]]; then
+					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+						local backup_subdir="$ops_backup/$ops_dir"
+						[[ -d "$backup_subdir" ]] || continue
+						mkdir -p "$ops_dir"
+						for f in "$backup_subdir"/*; do
+							[[ -f "$f" ]] || continue
+							cp "$f" "$ops_dir/$(basename "$f")"
+						done
+					done
+					echo "   Restored backed-up .ops files from $ops_backup"
+				fi
+				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "❌ Local rebase failed (conflicts?)"
 				echo "   Resolve manually:"
 				echo "     git fetch origin $base_branch"
