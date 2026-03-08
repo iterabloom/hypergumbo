@@ -820,12 +820,32 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
 
         flags = []
 
-        if calls_total == 0 and len(nodes) > 10:
+        func_count = sum(
+            1 for n in nodes if n.get("kind") in ("function", "method")
+        )
+        if calls_total == 0 and len(nodes) > 10 and func_count >= 3:
             if dom_lang.lower() in CALL_EDGE_EXPECTED_LANGS:
                 flags.append("NO_CALL_EDGES")
 
+        # Only flag missing routes when name suggests a web app AND
+        # there's supporting evidence (route edges or framework signals).
+        # Bare name matching ("web" in "webtunnel") causes false positives.
+        has_route_edges = any(
+            e.get("type", "") in ("routes_to", "handles_route")
+            for e in edges
+        )
+        has_framework_signal = any(
+            n.get("meta", {}).get("framework")
+            for n in nodes
+            if isinstance(n.get("meta"), dict)
+        )
         is_graphql_repo = any(x in repo_name.lower() for x in ["graphql", "apollo"])
-        if routes == 0 and not is_graphql_repo and any(x in repo_name.lower() for x in ["api", "server", "web", "http", "rest"]):
+        name_suggests_web = any(
+            x in repo_name.lower() for x in ["api", "server", "http", "rest"]
+        )
+        if routes == 0 and not is_graphql_repo and (
+            name_suggests_web or has_route_edges or has_framework_signal
+        ):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
 
         for flag in flags:
