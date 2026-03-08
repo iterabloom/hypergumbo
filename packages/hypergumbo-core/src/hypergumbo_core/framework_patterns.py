@@ -223,8 +223,30 @@ class Pattern:
             re.compile(self.symbol_path) if self.symbol_path else None
         )
 
+    def _check_filters(self, symbol: Symbol) -> bool:
+        """Check language, path, and modifier filters.
+
+        Returns True if the symbol passes all filters, False to reject.
+        """
+        if self._language_re:
+            if not symbol.language or not self._language_re.match(symbol.language):
+                return False
+        if self._symbol_path_re:
+            if not symbol.path or not self._symbol_path_re.search(symbol.path):
+                return False
+        if self._modifiers_re:
+            if not symbol.modifiers:
+                return False
+            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
+                return False
+        if self._modifiers_exclude_re and symbol.modifiers:
+            for modifier in symbol.modifiers:
+                if self._modifiers_exclude_re.match(modifier):
+                    return False
+        return True
+
     def matches(self, symbol: Symbol) -> dict[str, Any] | None:
-        """Check if this pattern matches the given symbol.
+        """Check if this pattern matches the given symbol (first match only).
 
         Args:
             symbol: The symbol to check against this pattern
@@ -233,31 +255,25 @@ class Pattern:
             Dict with extracted data if matched, None otherwise.
             The dict always includes 'concept' and may include 'path', 'method', etc.
         """
-        # Language filter: if specified, symbol's language must match (AND'd with other conditions)
-        if self._language_re:
-            if not symbol.language or not self._language_re.match(symbol.language):
-                return None
+        all_matches = self.matches_all(symbol)
+        return all_matches[0] if all_matches else None
 
-        # File path filter: if specified, symbol's file path must match
-        # Used for Python __init__.py library export detection
-        if self._symbol_path_re:
-            if not symbol.path or not self._symbol_path_re.search(symbol.path):
-                return None
+    def matches_all(self, symbol: Symbol) -> list[dict[str, Any]]:
+        """Check this pattern against the symbol, returning all matches.
 
-        # Modifiers positive filter: require at least one modifier to match
-        # Used for Python re-exported symbols (re_exported modifier)
-        if self._modifiers_re:
-            if not symbol.modifiers:
-                return None
-            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
-                return None
+        When a symbol has multiple decorators or annotations that match the
+        same pattern, each produces a separate result. For example, a function
+        with both @app.get('/path') and @app.options('/path') produces two
+        route concepts with different HTTP methods.
 
-        # Modifiers exclusion filter: reject symbols with any matching modifier
-        # Used to exclude private functions (defp in Elixir, etc.)
-        if self._modifiers_exclude_re and symbol.modifiers:
-            for modifier in symbol.modifiers:
-                if self._modifiers_exclude_re.match(modifier):
-                    return None
+        Args:
+            symbol: The symbol to check against this pattern
+
+        Returns:
+            List of match result dicts. Empty if no matches.
+        """
+        if not self._check_filters(symbol):
+            return []
 
         # Get symbol metadata for matching
         decorators = symbol.meta.get("decorators", []) if symbol.meta else []
@@ -265,51 +281,55 @@ class Pattern:
         annotations = symbol.meta.get("annotations", []) if symbol.meta else []
         parameters = symbol.meta.get("parameters", []) if symbol.meta else []
 
-        result: dict[str, Any] = {"concept": self.concept}
+        results: list[dict[str, Any]] = []
 
-        # Try decorator match
+        # Try decorator match — collect ALL matching decorators
         if self._decorator_re:
             for dec in decorators:
                 dec_name = dec.get("name", "") if isinstance(dec, dict) else str(dec)
                 match = self._decorator_re.match(dec_name)
                 if match:
+                    result: dict[str, Any] = {"concept": self.concept}
                     result["matched_decorator"] = dec_name
                     if self.extract_path and isinstance(dec, dict):
                         path = self._extract_value(dec, self.extract_path)
-                        # Always set path when extract_path is configured - empty string
-                        # for decorators with no path arg (like @Get()) so that
-                        # prefix_from_parent can still combine with controller prefix
                         result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method(dec, match, dec_name)
                         if method:
                             result["method"] = method
-                    return result
+                    results.append(result)
+            if results:
+                return results
 
         # Try base class match
         if self._base_class_re:
             for base in base_classes:
                 if self._base_class_re.match(base):
-                    result["matched_base_class"] = base
-                    return result
+                    return [{"concept": self.concept, "matched_base_class": base}]
 
-        # Try annotation match (Java)
+        # Try annotation match (Java) — collect ALL matching annotations
         if self._annotation_re:
             for ann in annotations:
                 ann_name = ann.get("name", "") if isinstance(ann, dict) else str(ann)
                 match = self._annotation_re.match(ann_name)
                 if match:
-                    result["matched_annotation"] = ann_name
+                    result = {"concept": self.concept, "matched_annotation": ann_name}
                     if self.extract_path and isinstance(ann, dict):
                         path = self._extract_value(ann, self.extract_path)
-                        # Always set path when extract_path is configured - empty string
-                        # for annotations with no path arg so that prefix combination works
                         result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method_from_annotation(ann, match, ann_name)
                         if method:
                             result["method"] = method
-                    return result
+                    results.append(result)
+            if results:
+                return results
+
+        # Single-result match types below: parameter_type, symbol_name,
+        # symbol_kind, parent_base_class, method_name. These produce at most
+        # one match per symbol, so wrap in a list.
+        result: dict[str, Any] = {"concept": self.concept}
 
         # Try parameter type match
         if self._param_type_re:
@@ -319,7 +339,7 @@ class Pattern:
                 )
                 if param_type and self._param_type_re.match(param_type):
                     result["matched_parameter_type"] = param_type
-                    return result
+                    return [result]
 
         # Try symbol_name + symbol_kind combined match (for language conventions like main())
         # When both are specified, both must match (AND semantics)
@@ -339,12 +359,12 @@ class Pattern:
                 if self._symbol_kind_re:
                     if self._symbol_kind_re.match(symbol.kind):
                         result["matched_symbol_kind"] = symbol.kind
-                        return result
+                        return [result]
                     # symbol_kind specified but doesn't match
                     # Don't match this pattern
                 else:
                     # Only symbol_name specified, and it matches
-                    return result
+                    return [result]
 
         # Try symbol_kind match (alone, without any other specific match field).
         # If decorator/base_class/annotation/param_type were specified but didn't
@@ -362,7 +382,7 @@ class Pattern:
         ):
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
-                return result
+                return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
         # Both conditions must match when both are specified
@@ -404,9 +424,9 @@ class Pattern:
                     result["matched_parent_base_class"] = matched_parent_base
                 if matched_method:
                     result["matched_method_name"] = matched_method
-                return result
+                return [result]
 
-        return None
+        return []
 
     def _extract_value(self, metadata: dict[str, Any], path: str) -> str | None:
         """Extract a value from metadata using a simple path expression.
@@ -830,8 +850,7 @@ def match_patterns(
     results = []
     for pattern_def in pattern_defs:
         for pattern in pattern_def.patterns:
-            match = pattern.matches(symbol)
-            if match:
+            for match in pattern.matches_all(symbol):
                 match["framework"] = pattern_def.id
                 results.append(match)
 

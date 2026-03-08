@@ -843,6 +843,52 @@ class TestMatchPatterns:
         assert results == []
 
 
+    def test_matches_multiple_decorators_same_pattern(self) -> None:
+        """Multiple decorators on one symbol should each produce a match result.
+
+        When a function has @app.options('/v1/models') AND @app.get('/v1/models'),
+        both should produce route concepts (one OPTIONS, one GET). Previously
+        only the first matching decorator was captured.
+        """
+        pattern_def = FrameworkPatternDef(
+            id="fastapi",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    decorator=r"^app\.(get|post|put|delete|patch|options|head)$",
+                    extract_path="args[0]",
+                    extract_method="decorator_suffix",
+                ),
+            ],
+        )
+
+        symbol = Symbol(
+            id="test:serve.py:542:models_handler:function",
+            name="models_handler",
+            kind="function",
+            language="python",
+            path="serve.py",
+            span=Span(542, 550, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.options", "args": ["/v1/models"]},
+                    {"name": "app.get", "args": ["/v1/models"]},
+                ]
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 2
+        methods = {r["method"] for r in results}
+        assert methods == {"OPTIONS", "GET"}
+        for r in results:
+            assert r["concept"] == "route"
+            assert r["path"] == "/v1/models"
+            assert r["framework"] == "fastapi"
+
+
 class TestEnrichSymbols:
     """Tests for enrich_symbols function."""
 
