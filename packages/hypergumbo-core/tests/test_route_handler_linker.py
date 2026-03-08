@@ -270,6 +270,133 @@ class TestRouteHandlerLinker:
         assert edge.dst == handler.id
         assert edge.edge_type == "routes_to"
 
+    def test_liveview_module_fallback(self) -> None:
+        """LIVE route falls back to LiveView module when action function missing.
+
+        LiveView modules handle actions via handle_params/3, not separate
+        per-action functions. When LIVE route has action="page" but no
+        HomeLive.page function exists, resolve to the HomeLive module.
+        """
+        route = Symbol(
+            id="elixir:/lib/app_web/router.ex:5-5:LIVE /:route",
+            name="LIVE /",
+            kind="route",
+            language="elixir",
+            path="/lib/app_web/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/",
+                "controller": "HomeLive",
+                "action": "page",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/app_web/live/home_live.ex:1-50:AppWeb.HomeLive:module",
+            name="AppWeb.HomeLive",
+            kind="module",
+            language="elixir",
+            path="/lib/app_web/live/home_live.ex",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, module], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == module.id
+        assert edge.edge_type == "routes_to"
+
+    def test_liveview_exact_module_name_match(self) -> None:
+        """LIVE route resolves when controller exactly matches module name."""
+        route = Symbol(
+            id="elixir:/lib/router.ex:5-5:LIVE /admin:route",
+            name="LIVE /admin",
+            kind="route",
+            language="elixir",
+            path="/lib/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/admin",
+                "controller": "AdminLive",
+                "action": "index",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/admin_live.ex:1-30:AdminLive:module",
+            name="AdminLive",
+            kind="module",
+            language="elixir",
+            path="/lib/admin_live.ex",
+            span=Span(start_line=1, end_line=30, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, module], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == module.id
+
+    def test_liveview_prefers_function_over_module(self) -> None:
+        """LIVE route prefers action function when it exists."""
+        route = Symbol(
+            id="elixir:/lib/app_web/router.ex:5-5:LIVE /dash:route",
+            name="LIVE /dash",
+            kind="route",
+            language="elixir",
+            path="/lib/app_web/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/dash",
+                "controller": "DashLive",
+                "action": "mount",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        mount_func = Symbol(
+            id="elixir:/lib/app_web/live/dash_live.ex:10-20:DashLive.mount:function",
+            name="DashLive.mount",
+            kind="function",
+            language="elixir",
+            path="/lib/app_web/live/dash_live.ex",
+            span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/app_web/live/dash_live.ex:1-50:DashLive:module",
+            name="DashLive",
+            kind="module",
+            language="elixir",
+            path="/lib/app_web/live/dash_live.ex",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, mount_func, module], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        # Should prefer the mount function, not the module
+        assert edge.dst == mount_func.id
+
     def test_malformed_controller_action_no_hash(self) -> None:
         """Malformed controller_action without # doesn't match."""
         route = Symbol(

@@ -234,14 +234,21 @@ def _resolve_laravel_handler(
 
 
 def _resolve_phoenix_handler(
-    controller: str, action: str, symbol_by_name: dict[str, Symbol]
+    controller: str, action: str, symbol_by_name: dict[str, Symbol],
+    *, is_live: bool = False,
 ) -> Symbol | None:
     """Resolve Phoenix controller/action to a handler symbol.
 
     Args:
-        controller: Controller module name like "UserController"
-        action: Action function name like "index"
+        controller: Controller module name like "UserController" or
+            LiveView module name like "HomeLive"
+        action: Action function name like "index", or LiveView action
+            like "page"/"mount"
         symbol_by_name: Lookup table of symbols by name
+        is_live: Whether this is a Phoenix LiveView route. If True,
+            falls back to resolving the module itself when
+            ``controller.action`` isn't found (LiveView modules handle
+            actions via ``handle_params/3``, not per-action functions).
 
     Returns:
         Matching Symbol or None
@@ -257,6 +264,21 @@ def _resolve_phoenix_handler(
             return sym
         if name.endswith(f"{controller}.{action}"):
             return sym
+
+    # LiveView fallback: resolve to the module itself.
+    # LiveView modules handle actions in handle_params/3, not
+    # separate functions, so controller.action won't exist.
+    if is_live:
+        if controller in symbol_by_name:
+            sym = symbol_by_name[controller]
+            if sym.kind == "module":
+                return sym
+        # Try with Web suffix: AppWeb.HomeLive
+        for name, sym in symbol_by_name.items():
+            if sym.kind != "module":
+                continue
+            if name.endswith(f".{controller}") or name == controller:
+                return sym
 
     return None  # pragma: no cover - defensive: iteration found no match
 
@@ -409,11 +431,14 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
 
     # Phoenix: controller + action fields
     if "controller" in meta and "action" in meta:
-        return {
+        ref: dict[str, str] = {
             "type": "phoenix",
             "controller": meta["controller"],
             "action": meta["action"],
         }
+        if meta.get("http_method") == "LIVE":
+            ref["live"] = "true"
+        return ref
 
     # Express/JS: handler_ref field (e.g., "userController.list")
     if meta.get("handler_ref"):
@@ -482,7 +507,8 @@ def link_routes_to_handlers(
             )
         elif handler_ref["type"] == "phoenix":
             handler = _resolve_phoenix_handler(
-                handler_ref["controller"], handler_ref["action"], symbol_by_name
+                handler_ref["controller"], handler_ref["action"], symbol_by_name,
+                is_live=handler_ref.get("live") == "true",
             )
         elif handler_ref["type"] == "express":
             handler = _resolve_express_handler(
