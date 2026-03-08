@@ -17,3 +17,10 @@
     pr_ref:  # de62
     description: ""  # de62
     fields: {}  # de62
+- op: discuss  # cac3
+  at: '2026-03-08T02:31:08Z'  # cac3
+  by: agent  # cac3
+  actor: jgstern_agent  # cac3
+  clock: 2  # cac3
+  nonce: cac3  # cac3
+  message: "Human requested: if retry cap is breached, autonomous mode should be turned off. Current circuit breaker (PR #1982) only pauses for 30 min. Need: count consecutive failures in the marker file, and after N (e.g., 3-5) consecutive failures, call loop-toggle off."  # cac3
