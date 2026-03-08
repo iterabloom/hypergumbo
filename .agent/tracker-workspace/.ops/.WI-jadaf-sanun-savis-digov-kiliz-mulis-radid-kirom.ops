@@ -17,3 +17,18 @@
     pr_ref:  # a4b8
     description: "Same pattern as JS fix (PR #1992, INV-jahom): _get_enclosing_function returns None for top-level code, dropping all call edges. Bash most impactful (scripts are inherently top-level). PHP, Perl, PowerShell also affected. Fix: create module symbol, use as fallback. TDD."  # a4b8
     fields: {}  # a4b8
+- op: update  # e7be
+  at: '2026-03-08T04:16:47Z'  # e7be
+  by: agent  # e7be
+  actor: jgstern_agent  # e7be
+  clock: 2  # e7be
+  nonce: e7be  # e7be
+  set:  # e7be
+    status: done  # e7be
+- op: discuss  # cf99
+  at: '2026-03-08T04:16:47Z'  # cf99
+  by: agent  # cf99
+  actor: jgstern_agent  # cf99
+  clock: 3  # cf99
+  nonce: cf99  # cf99
+  message: "Fixed in PR #1995. Added <module:filename> symbol and enclosing-function fallback in bash, php, perl, and powershell analyzers."  # cf99

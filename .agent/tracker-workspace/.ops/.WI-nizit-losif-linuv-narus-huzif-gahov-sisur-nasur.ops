@@ -1,0 +1,19 @@
+- op: create  # f591
+  at: '2026-03-08T05:38:56Z'  # f591
+  by: agent  # f591
+  actor: jgstern_agent  # f591
+  clock: 1  # f591
+  nonce: f591  # f591
+  data:  # f591
+    kind: work_item  # f591
+    title: "Adaptive hop_limit for forward slices based on graph size"  # f591
+    status: todo_soft  # f591
+    priority: 2  # f591
+    parent:  # f591
+    tags: []  # f591
+    before: []  # f591
+    duplicate_of: []  # f591
+    not_duplicate_of: []  # f591
+    pr_ref:  # f591
+    description: "DEEP bakeoff assessment shows hop_limit=4 is too small for aardvark-dns (190 nodes, call chain depth 7). The entire DNS handling layer is excluded from forward slices. For small codebases, increasing hop_limit would produce manageable slices. Consider: adaptive limit based on graph diameter or node count, e.g. min(graph_diameter, max_nodes/20)."  # f591
+    fields: {}  # f591

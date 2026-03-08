@@ -1,0 +1,19 @@
+- op: create  # f3ed
+  at: '2026-03-08T05:38:49Z'  # f3ed
+  by: agent  # f3ed
+  actor: jgstern_agent  # f3ed
+  clock: 1  # f3ed
+  nonce: f3ed  # f3ed
+  data:  # f3ed
+    kind: work_item  # f3ed
+    title: "Consider relaxing std trait blocklist for Error/Display/From impls"  # f3ed
+    status: needs_human_review  # f3ed
+    priority: 3  # f3ed
+    parent:  # f3ed
+    tags: []  # f3ed
+    before: []  # f3ed
+    duplicate_of: []  # f3ed
+    not_duplicate_of: []  # f3ed
+    pr_ref:  # f3ed
+    description: "DEEP bakeoff assessment (aardvark-dns) argues that impl Display/From/Default for error types are architectural, not noise. Current blocklist suppresses all std trait implements edges. Options: (1) remove Display/From/Default from blocklist entirely, (2) only suppress when both sides are unresolved, (3) keep as-is (noise vs signal tradeoff). This is a design decision requiring human input."  # f3ed
+    fields: {}  # f3ed
