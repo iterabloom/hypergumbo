@@ -2119,6 +2119,28 @@ def _extract_symbols(
         line_offset: Line offset for Svelte script blocks
     """
     symbols: list[Symbol] = []
+
+    # Create module-level symbol for top-level code attribution
+    module_name = file_path.name
+    end_line = tree.root_node.end_point[0] + 1 + line_offset
+    module_span = Span(
+        start_line=1 + line_offset,
+        end_line=end_line,
+        start_col=0,
+        end_col=0,
+    )
+    module_symbol = Symbol(
+        id=_make_symbol_id(str(file_path), 1 + line_offset, end_line, f"<module:{module_name}>", "module", lang),
+        name=f"<module:{module_name}>",
+        kind="module",
+        language=lang,
+        path=str(file_path),
+        span=module_span,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    )
+    symbols.append(module_symbol)
+
     # Track nodes we've already processed as route handlers (to avoid duplicates)
     processed_handlers: set[int] = set()
 
@@ -2657,6 +2679,7 @@ def _extract_edges(
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
     named_imports: dict[str, str] | None = None,
     symbols_by_name: dict[str, list[Symbol]] | None = None,
+    module_symbol: Symbol | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -2781,7 +2804,7 @@ def _extract_edges(
                         pass  # fall through to callback/middleware handling below
                     elif _is_shadowed_by_param(node, func_name, source):
                         pass  # local parameter shadows global — skip resolution
-                    elif (current_function := _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)):
+                    elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
                         # Try import-path disambiguation first (cross-package
                         # same-name functions, e.g. two packages both export
                         # ``process()`` but main.js imports from one specific
@@ -2847,7 +2870,7 @@ def _extract_edges(
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -3011,7 +3034,7 @@ def _extract_edges(
                 current_function = _get_enclosing_function(
                     node, source, file_path, global_symbols,
                     symbol_by_position, line_offset,
-                )
+                ) or module_symbol
                 if current_function is not None:
                     for arg in args_node.children:
                         if arg.type != "identifier":
@@ -3139,7 +3162,7 @@ def _extract_edges(
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
@@ -3229,7 +3252,7 @@ def _extract_edges(
                     current_function = _get_enclosing_function(
                         node, source, file_path, global_symbols,
                         symbol_by_position, line_offset,
-                    )
+                    ) or module_symbol
                     if current_function is not None and target.id != current_function.id:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -3259,7 +3282,7 @@ def _extract_edges(
                 current_function = _get_enclosing_function(
                     node, source, file_path, global_symbols,
                     symbol_by_position, line_offset,
-                )
+                ) or module_symbol
                 if current_function is not None and target.id != current_function.id:
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -3305,7 +3328,10 @@ def _extract_symbols_and_edges(
         elif sym.kind == "class":
             global_classes[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes)
+    # Find module symbol for top-level call attribution
+    mod_sym = next((s for s in symbols if s.kind == "module"), None)
+    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes,
+                           module_symbol=mod_sym)
     return symbols, edges
 
 
@@ -3631,6 +3657,9 @@ def _analyze_javascript_impl(
     class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
+        # Look up module symbol for this file (top-level call attribution)
+        mod_sym_name = f"<module:{pf.path.name}>"
+        file_mod_sym = global_symbols.get(mod_sym_name)
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
@@ -3639,6 +3668,7 @@ def _analyze_javascript_impl(
             symbol_by_position,
             pf.named_imports or {},
             symbols_by_name,
+            module_symbol=file_mod_sym,
         )
         all_edges.extend(edges)
 

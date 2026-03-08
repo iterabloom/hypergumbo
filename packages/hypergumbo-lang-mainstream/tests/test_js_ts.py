@@ -892,9 +892,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "greet"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "greet"
 
     def test_extract_symbols_class_declaration(self) -> None:
         """Tests extraction of class declarations."""
@@ -919,9 +919,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "User"
-        assert symbols[0].kind == "class"
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0].name == "User"
 
     def test_extract_class_with_methods_builds_registry(self) -> None:
         """Tests that method registry is built correctly for cross-file resolution."""
@@ -954,8 +954,8 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        # Should have class + method
-        assert len(symbols) == 2
+        # Should have module + class + method
+        assert len(symbols) == 3
         class_symbols = [s for s in symbols if s.kind == "class"]
         method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(class_symbols) == 1
@@ -994,9 +994,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "add"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "add"
 
     def test_extract_arrow_function_with_body(self) -> None:
         """Tests extraction of arrow functions with nested calls."""
@@ -1303,9 +1303,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "handler"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "handler"
 
     def test_analyze_with_parse_errors(self, tmp_path: Path) -> None:
         """Continues analysis even with parse errors."""
@@ -7148,3 +7148,117 @@ class TestNormalizeJstsSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
         assert normalize_jsts_signature(None) is None
+
+
+class TestJsTsTopLevelCallEdges:
+    """Top-level code (outside any function) should produce call edges
+    attributed to a <module:filename> symbol (INV-jahom)."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_module_symbol_created(self, tmp_path: Path) -> None:
+        """Every JS file gets a <module:filename> symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("const x = 1;\n")
+        result = analyze_javascript(tmp_path)
+
+        mod_syms = [s for s in result.symbols if s.kind == "module"]
+        assert len(mod_syms) == 1
+        assert mod_syms[0].name == "<module:index.js>"
+
+    def test_toplevel_direct_call_produces_edge(self, tmp_path: Path) -> None:
+        """A top-level call like `helper()` should create a calls edge
+        from <module:main.js> to helper."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "helper.js").write_text("function helper() { return 1; }\n")
+        (tmp_path / "main.js").write_text(
+            "const helper = require('./helper');\nhelper();\n"
+        )
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The top-level call helper() in main.js should produce an edge
+        # from <module:main.js> → helper
+        module_call_edges = [
+            e for e in call_edges
+            if "<module:main.js>" in e.src
+        ]
+        assert len(module_call_edges) >= 1
+        assert any("helper" in e.dst for e in module_call_edges)
+
+    def test_toplevel_method_call_produces_edge(self, tmp_path: Path) -> None:
+        """Top-level method call like `app.listen(3000)` should be attributed
+        to the module symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+class Server {
+  listen(port) { return port; }
+}
+const app = new Server();
+app.listen(3000);
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        # The new Server() instantiation at top-level should be attributed
+        # to <module:app.js>
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        module_inst = [e for e in inst_edges if "<module:app.js>" in e.src]
+        assert len(module_inst) >= 1
+
+    def test_toplevel_new_expression_produces_edge(self, tmp_path: Path) -> None:
+        """Top-level `new Foo()` should produce an instantiates edge
+        from the module symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = "class Foo {}\nconst f = new Foo();\n"
+        (tmp_path / "index.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        module_inst = [e for e in inst_edges if "<module:index.js>" in e.src]
+        assert len(module_inst) == 1
+
+    def test_call_inside_function_still_uses_function(self, tmp_path: Path) -> None:
+        """Calls inside a named function should still be attributed to that
+        function, not the module symbol (regression check)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+function helper() { return 1; }
+function main() { helper(); }
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The call should be from main → helper, NOT from <module:app.js>
+        main_calls = [e for e in call_edges if "main" in e.src and "module" not in e.src]
+        assert len(main_calls) >= 1
+        module_calls = [e for e in call_edges if "<module:app.js>" in e.src]
+        assert len(module_calls) == 0
+
+    def test_esm_toplevel_call(self, tmp_path: Path) -> None:
+        """ESM-style top-level call with import should produce a call edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "export function setup() { return true; }\n"
+        )
+        (tmp_path / "index.js").write_text(
+            "import { setup } from './utils.js';\nsetup();\n"
+        )
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        module_calls = [
+            e for e in call_edges if "<module:index.js>" in e.src
+        ]
+        assert len(module_calls) >= 1
+        assert any("setup" in e.dst for e in module_calls)
