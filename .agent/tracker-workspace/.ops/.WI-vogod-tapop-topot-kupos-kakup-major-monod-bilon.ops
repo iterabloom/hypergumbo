@@ -32,3 +32,25 @@
   nonce: e968  # e968
   set:  # e968
     status: todo_soft  # e968
+- op: update  # 32df
+  at: '2026-03-08T02:29:46Z'  # 32df
+  by: agent  # 32df
+  actor: jgstern_agent  # 32df
+  clock: 4  # 32df
+  nonce: 32df  # 32df
+  set:  # 32df
+    status: done  # 32df
+- op: discuss  # 04c7
+  at: '2026-03-08T02:29:46Z'  # 04c7
+  by: agent  # 04c7
+  actor: jgstern_agent  # 04c7
+  clock: 5  # 04c7
+  nonce: 04c7  # 04c7
+  message: "Fixed in PR #1982. Circuit breaker uses .git/TRACKER_SYNC_FAILED marker with 30-min cooldown. Corrupt markers auto-cleaned. 5 tests added."  # 04c7
+- op: discuss  # ec51
+  at: '2026-03-08T02:29:53Z'  # ec51
+  by: agent  # ec51
+  actor: jgstern_agent  # ec51
+  clock: 6  # ec51
+  nonce: ec51  # ec51
+  message: "Implemented circuit breaker in PR #1982: .git/TRACKER_SYNC_FAILED marker with 30-min cooldown, corrupt marker cleanup, 5 tests. Re: disabling autonomous mode when retry cap is breached — the current impl pauses sync for 30 min after each failure, but doesn't count cumulative failures or disable autonomous mode. Creating a follow-up item for the escalation behavior (N consecutive failures → turn off autonomous mode)."  # ec51

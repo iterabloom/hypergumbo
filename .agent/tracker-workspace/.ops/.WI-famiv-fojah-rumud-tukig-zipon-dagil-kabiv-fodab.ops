@@ -1,0 +1,19 @@
+- op: create  # de62
+  at: '2026-03-08T02:30:05Z'  # de62
+  by: agent  # de62
+  actor: jgstern_agent  # de62
+  clock: 1  # de62
+  nonce: de62  # de62
+  data:  # de62
+    kind: work_item  # de62
+    title: "Tracker sync: escalate to disable autonomous mode after N consecutive failures"  # de62
+    status: todo_hard  # de62
+    priority: 2  # de62
+    parent:  # de62
+    tags: []  # de62
+    before: []  # de62
+    duplicate_of: []  # de62
+    not_duplicate_of: []  # de62
+    pr_ref:  # de62
+    description: ""  # de62
+    fields: {}  # de62
