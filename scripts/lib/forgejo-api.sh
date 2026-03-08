@@ -666,6 +666,25 @@ do_merge() {
 				return 1
 			fi
 
+			# Clean up untracked tracker .ops files that would block rebase.
+			# These are created by tracker auto-sync and tracked on dev;
+			# the untracked copies on the feature branch conflict with the
+			# tracked versions during rebase.
+			local ops_dir
+			for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+				if [[ -d "$ops_dir" ]]; then
+					# Remove only untracked files (git ls-files --error-unmatch
+					# exits non-zero for untracked files)
+					for f in "$ops_dir"/.*ops "$ops_dir"/*.ops; do
+						[[ -f "$f" ]] || continue
+						git ls-files --error-unmatch "$f" &>/dev/null || rm -f "$f"
+					done
+				fi
+			done
+			# Also checkout any modified tracked .ops files to match HEAD
+			git checkout -- .agent/tracker-workspace/.ops/ 2>/dev/null || true
+			git checkout -- .agent/tracker/.ops/ 2>/dev/null || true
+
 			if git fetch origin "$base_branch" --quiet 2>/dev/null \
 			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
 				echo "   Rebase succeeded — force-pushing..."
