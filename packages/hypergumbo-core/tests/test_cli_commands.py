@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import (
     cmd_run,
@@ -1344,6 +1346,60 @@ def test_cmd_slice_auto_entry_prefers_connected(tmp_path: Path, capsys) -> None:
     assert "main" in out
     assert "connectivity" in out  # Should mention connectivity
     assert "2 outgoing edges" in out  # Should report edge count
+
+
+@pytest.mark.parametrize(
+    "node_count,expected_hops",
+    [
+        (50, 10),    # ≤200 → 10 hops
+        (200, 10),   # ≤200 → 10 hops
+        (201, 7),    # ≤500 → 7 hops
+        (500, 7),    # ≤500 → 7 hops
+        (501, 5),    # ≤2000 → 5 hops
+        (2000, 5),   # ≤2000 → 5 hops
+        (2001, 3),   # >2000 → 3 hops
+    ],
+)
+def test_cmd_slice_adaptive_hop_limit(
+    tmp_path: Path, capsys, node_count: int, expected_hops: int,
+) -> None:
+    """When max_hops is None (default), hop limit adapts to graph size."""
+    # Create a behavior map with the specified number of nodes
+    nodes = []
+    for i in range(node_count):
+        nodes.append({
+            "id": f"python:src/f{i}.py:1-2:func{i}:function",
+            "name": f"func{i}",
+            "kind": "function",
+            "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+        })
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": nodes,
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "func0"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None
+    args.max_hops = None  # Trigger adaptive logic
+    args.max_files = 200
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    assert data["feature"]["query"]["hops"] == expected_hops
 
 
 def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:

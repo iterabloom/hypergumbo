@@ -1203,9 +1203,22 @@ def cmd_slice(args: argparse.Namespace) -> int:
     hub_threshold_raw = getattr(args, "hub_threshold", 50)
     hub_threshold = hub_threshold_raw if hub_threshold_raw else None
     exclude_imports = getattr(args, "exclude_imports", False)
+    # Adaptive hop limit: deeper traversal for smaller graphs where
+    # the full call chain is short enough to be manageable.
+    max_hops = args.max_hops
+    if max_hops is None:
+        node_count = len(nodes)
+        if node_count <= 200:
+            max_hops = 10
+        elif node_count <= 500:
+            max_hops = 7
+        elif node_count <= 2000:
+            max_hops = 5
+        else:
+            max_hops = 3
     query = SliceQuery(
         entrypoint=entry,
-        max_hops=args.max_hops,
+        max_hops=max_hops,
         max_files=args.max_files,
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
@@ -3338,8 +3351,8 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_slice.add_argument(
         "--max-hops",
         type=int,
-        default=3,
-        help="Maximum traversal depth (default: 3)",
+        default=None,
+        help="Maximum traversal depth (default: adaptive, 3-10 based on graph size)",
     )
     p_slice.add_argument(
         "--max-files",
