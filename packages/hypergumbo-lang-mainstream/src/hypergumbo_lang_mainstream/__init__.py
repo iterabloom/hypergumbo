@@ -59,6 +59,9 @@ ANALYZER_MODULES = [
     "hypergumbo_lang_mainstream.dockerfile",
     "hypergumbo_lang_mainstream.make",
     "hypergumbo_lang_mainstream.cmake",
+
+    # Cross-language manifest build targets
+    "hypergumbo_lang_mainstream.manifest_targets",
 ]
 
 __all__ = ["ANALYZER_MODULES", "__version__"]
