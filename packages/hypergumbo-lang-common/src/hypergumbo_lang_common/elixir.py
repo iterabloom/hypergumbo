@@ -6,7 +6,7 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Macro declarations (defmacro/defmacrop)
 - Function call relationships
 - Import relationships (use/import/alias)
-- OTP/Phoenix behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
+- OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -72,6 +72,12 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     "Plug": ["init", "call"],
     "Plug.Builder": ["init", "call"],
     "Plug.Router": ["init", "call"],
+    "WebSock": ["init", "handle_in", "handle_control", "terminate"],
+    "WebSockex": [
+        "handle_connect", "handle_frame", "handle_cast",
+        "handle_info", "handle_ping", "handle_pong",
+        "handle_disconnect", "terminate",
+    ],
 }
 
 if TYPE_CHECKING:
@@ -509,65 +515,80 @@ def _extract_behaviour_callbacks(
 ) -> list[Edge]:
     """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
 
-    When a module uses `use GenServer`, `use Phoenix.LiveView`, etc., the framework
-    invokes specific callback functions (init, handle_call, mount, render, ...).
-    Without these edges, callback functions appear as orphans.
+    When a module uses ``use GenServer``, ``use Phoenix.LiveView``, etc., or
+    declares ``@behaviour Plug``, the framework invokes specific callback
+    functions (init, handle_call, mount, render, ...).  Without these edges,
+    callback functions appear as orphans.
 
-    Detects `use Module` directives, maps to known behaviours via BEHAVIOUR_CALLBACKS,
-    and creates edges from the enclosing module to each implemented callback function.
+    Detects two directive forms:
+
+    1. ``use Module`` — e.g. ``use GenServer``, ``use WebSock``
+    2. ``@behaviour Module`` — e.g. ``@behaviour Plug``, ``@behaviour NexAI.Middleware``
+
+    Both forms are mapped to ``BEHAVIOUR_CALLBACKS`` and create edges from the
+    enclosing module symbol to each implemented callback function.
     """
     edges: list[Edge] = []
 
+    # Collect (behaviour_module_name, ast_node) pairs from both forms
+    behaviour_hits: list[tuple[str, "tree_sitter.Node"]] = []
+
     for node in iter_tree(tree.root_node):
-        if node.type != "call":
-            continue
+        # Form 1: `use Module`
+        if node.type == "call":
+            target = find_child_by_type(node, "identifier")
+            if target is not None and node_text(target, source) == "use":
+                args = find_child_by_type(node, "arguments")
+                if args is not None:
+                    for child in args.children:
+                        if child.type == "alias":
+                            used_module = node_text(child, source)
+                            if used_module in BEHAVIOUR_CALLBACKS:
+                                behaviour_hits.append((used_module, node))
+                            break
 
-        target = find_child_by_type(node, "identifier")
-        if target is None or node_text(target, source) != "use":
-            continue
+        # Form 2: `@behaviour Module`
+        # AST: unary_operator(@) → call(identifier="behaviour", arguments(alias=...))
+        elif node.type == "unary_operator":
+            op = find_child_by_type(node, "@")
+            if op is not None:
+                inner_call = find_child_by_type(node, "call")
+                if inner_call is not None:
+                    ident = find_child_by_type(inner_call, "identifier")
+                    if ident is not None and node_text(ident, source) == "behaviour":
+                        args = find_child_by_type(inner_call, "arguments")
+                        if args is not None:
+                            for child in args.children:
+                                if child.type == "alias":
+                                    beh_module = node_text(child, source)
+                                    if beh_module in BEHAVIOUR_CALLBACKS:
+                                        behaviour_hits.append(
+                                            (beh_module, node)
+                                        )
+                                    break
 
-        # Extract the used module name from arguments
-        args = find_child_by_type(node, "arguments")
-        if args is None:  # pragma: no cover — use always has arguments
-            continue
+    # Create callback edges for each behaviour hit
+    for used_module, node in behaviour_hits:
+        expected_callbacks = BEHAVIOUR_CALLBACKS[used_module]
 
-        used_module = None
-        for child in args.children:
-            if child.type == "alias":
-                used_module = node_text(child, source)
-                break
-
-        if used_module is None:  # pragma: no cover — use always takes alias arg
-            continue
-
-        # Check if used module matches a known behaviour
-        expected_callbacks = BEHAVIOUR_CALLBACKS.get(used_module)
-        if expected_callbacks is None:
-            continue
-
-        # Find the enclosing module
         enclosing_modules = _get_enclosing_modules(node, source)
         if not enclosing_modules:
-            continue  # pragma: no cover — use is always inside a module
+            continue  # pragma: no cover — use/@behaviour is always inside a module
 
         module_name = ".".join(enclosing_modules)
 
-        # Find the module symbol
         module_sym = file_symbols.get(module_name) or global_symbols.get(module_name)
         if module_sym is None:
             continue  # pragma: no cover — module always in file symbols
 
-        # Create edges for each implemented callback (all clauses)
         for callback_name in expected_callbacks:
             qualified = f"{module_name}.{callback_name}"
-            # Multi-clause: find all clauses of the callback function
             callees = (
                 (file_symbols_multi.get(qualified) if file_symbols_multi else None)
                 or (global_symbols_multi.get(qualified) if global_symbols_multi else None)
                 or (file_symbols_multi.get(callback_name) if file_symbols_multi else None)
             )
             if not callees:
-                # Fallback to single-match index
                 single = (
                     file_symbols.get(qualified)
                     or global_symbols.get(qualified)

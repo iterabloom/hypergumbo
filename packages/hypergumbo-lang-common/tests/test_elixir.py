@@ -1424,6 +1424,90 @@ end
         assert len(callback_edges) == 3  # mount, update, render
 
 
+    def test_behaviour_attribute_creates_callback_edges(self, tmp_path: Path) -> None:
+        """@behaviour Module creates invokes_callback edges like use Module."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "middleware.ex").write_text('''
+defmodule MyApp.AuthMiddleware do
+  @behaviour NexAI.Middleware
+
+  def call(req, opts) do
+    {:ok, req}
+  end
+
+  def init(opts) do
+    opts
+  end
+end
+''')
+        # NexAI.Middleware isn't in BEHAVIOUR_CALLBACKS, but Plug is
+        # and Plug has init/call. @behaviour Plug should work too.
+        (tmp_path / "plug_mid.ex").write_text('''
+defmodule MyApp.PlugMiddleware do
+  @behaviour Plug
+
+  def init(opts), do: opts
+  def call(conn, _opts), do: conn
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next(
+            (s for s in result.symbols
+             if s.name == "MyApp.PlugMiddleware" and s.kind == "module"),
+            None,
+        )
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            dst_sym = next((s for s in result.symbols if s.id == e.dst), None)
+            if dst_sym:
+                dst_names.add(dst_sym.name.split(".")[-1])
+        assert "init" in dst_names
+        assert "call" in dst_names
+
+    def test_websock_behaviour_callbacks(self, tmp_path: Path) -> None:
+        """WebSock callbacks are detected via use WebSock."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "socket.ex").write_text('''
+defmodule MyApp.LiveSocket do
+  use WebSock
+
+  def init(state), do: {:ok, state}
+  def handle_in({msg, _opts}, state), do: {:push, {:text, msg}, state}
+  def terminate(_reason, _state), do: :ok
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next(
+            (s for s in result.symbols
+             if s.name == "MyApp.LiveSocket" and s.kind == "module"),
+            None,
+        )
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            dst_sym = next((s for s in result.symbols if s.id == e.dst), None)
+            if dst_sym:
+                dst_names.add(dst_sym.name.split(".")[-1])
+        assert "init" in dst_names
+        assert "handle_in" in dst_names
+        assert "terminate" in dst_names
+
+
 class TestElixirMultiClauseEdges:
     """Tests for multi-clause function edge resolution.
 
