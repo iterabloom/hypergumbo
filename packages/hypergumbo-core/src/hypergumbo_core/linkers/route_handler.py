@@ -440,9 +440,15 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
             ref["live"] = "true"
         return ref
 
-    # Express/JS: handler_ref field (e.g., "userController.list")
+    # handler_ref may be a full symbol ID (e.g., "python:/path:line:Class:class")
+    # or a short name (e.g., "userController.list" for Express).
+    # Full IDs contain "://" and should be resolved by ID, not by name.
     if meta.get("handler_ref"):
-        return {"type": "express", "handler_ref": meta["handler_ref"]}
+        href = meta["handler_ref"]
+        if ":" in href and href.split(":")[0].isalpha() and "/" in href:
+            # Looks like a symbol ID (language:/path:span:name:kind)
+            return {"type": "direct", "handler_id": href}
+        return {"type": "express", "handler_ref": href}
 
     # Django: view_name field (e.g., "list_users" or "accounts.views.list_accounts")
     if meta.get("view_name"):
@@ -468,12 +474,15 @@ def link_routes_to_handlers(
     Returns:
         RouteHandlerResult with new edges and run info
     """
-    # Build symbol lookup by name, preferring handler-kind symbols over routes.
-    # In Go/JS/Django, route symbols often share the same name as their handler
-    # function. A naive overwrite would shadow the function with the route,
-    # causing the resolver to fail (routes aren't functions/methods).
+    # Build symbol lookup by name and by ID.
+    # Name lookup prefers handler-kind symbols over routes because in Go/JS/Django,
+    # route symbols often share the same name as their handler function. A naive
+    # overwrite would shadow the function with the route, causing resolution to fail.
+    # ID lookup is used for direct handler_ref resolution (Flask-RESTful, etc.).
     symbol_by_name: dict[str, Symbol] = {}
+    symbol_by_id: dict[str, Symbol] = {}
     for s in symbols:
+        symbol_by_id[s.id] = s
         existing = symbol_by_name.get(s.name)
         if existing is None or existing.kind == "route":
             symbol_by_name[s.name] = s
@@ -497,7 +506,9 @@ def link_routes_to_handlers(
 
         handler: Symbol | None = None
 
-        if handler_ref["type"] == "rails":
+        if handler_ref["type"] == "direct":
+            handler = symbol_by_id.get(handler_ref["handler_id"])
+        elif handler_ref["type"] == "rails":
             handler = _resolve_rails_handler(
                 handler_ref["controller_action"], symbol_by_name
             )

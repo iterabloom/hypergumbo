@@ -1030,6 +1030,78 @@ class TestRouteHandlerLinker:
         assert result.run.pass_id == PASS_ID
         assert result.run.files_analyzed > 0  # Tracks routes processed
 
+    def test_direct_id_handler_ref_linking(self) -> None:
+        """Routes with handler_ref as a full symbol ID resolve directly.
+
+        Flask-RESTful emits handler_ref as a full symbol ID like
+        'python:/path:line:Class:class'. This should match the handler
+        symbol by ID, not by name.
+        """
+        handler_id = (
+            "python:/app/resources.py:10-20:UserResource:class"
+        )
+        route = Symbol(
+            id="python:/app/api.py:5-5:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="python",
+            path="/app/api.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_ref": handler_id,
+                "view_name": "UserResource",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id=handler_id,
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="/app/resources.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+
+    def test_direct_id_handler_ref_not_found(self) -> None:
+        """Routes with handler_ref as symbol ID fall back gracefully.
+
+        When handler_ref is a full ID but doesn't match any symbol,
+        the linker should not crash and should produce no edge.
+        """
+        route = Symbol(
+            id="python:/app/api.py:5-5:GET /foo:route",
+            name="GET /foo",
+            kind="route",
+            language="python",
+            path="/app/api.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=30),
+            meta={
+                "http_method": "GET",
+                "route_path": "/foo",
+                "handler_ref": "python:/app/missing.py:1-1:Gone:class",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route], [])
+
+        assert len(result.edges) == 0
+
 
 class TestLinkerEntryPoint:
     """Tests for linker registry integration."""
@@ -1866,3 +1938,4 @@ class TestLaravelSuffixMatchFallback:
         result = link_routes_to_handlers([route, handler], [])
 
         assert len(result.edges) == 0
+
