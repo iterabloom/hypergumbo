@@ -17,3 +17,33 @@
     pr_ref:  # d0cb
     description: "Analogous to Go WI-hadav. TypeScript uses structural typing — a class satisfying an interface shape is compatible without explicit implements keyword. Currently only detecting explicit implements/extends clauses."  # d0cb
     fields: {}  # d0cb
+- op: update  # 1b2c
+  at: '2026-03-08T03:02:44Z'  # 1b2c
+  by: agent  # 1b2c
+  actor: jgstern_agent  # 1b2c
+  clock: 2  # 1b2c
+  nonce: 1b2c  # 1b2c
+  set:  # 1b2c
+    priority: 4  # 1b2c
+- op: discuss  # bd7a
+  at: '2026-03-08T03:02:44Z'  # bd7a
+  by: agent  # bd7a
+  actor: jgstern_agent  # bd7a
+  clock: 3  # bd7a
+  nonce: bd7a  # bd7a
+  message: "Deprioritized: TypeScript structural interface matching requires cross-file method signature comparison. Current explicit implements/extends detection covers most real-world TS codebases since TS developers typically declare implements explicitly for clarity. Structural matching is a nice-to-have optimization."  # bd7a
+- op: update  # 7fc4
+  at: '2026-03-08T03:06:04Z'  # 7fc4
+  by: agent  # 7fc4
+  actor: jgstern_agent  # 7fc4
+  clock: 4  # 7fc4
+  nonce: 7fc4  # 7fc4
+  set:  # 7fc4
+    status: wont_do  # 7fc4
+- op: discuss  # be60
+  at: '2026-03-08T03:06:04Z'  # be60
+  by: agent  # be60
+  actor: jgstern_agent  # be60
+  clock: 5  # be60
+  nonce: be60  # be60
+  message: "Deferred: structural interface matching requires cross-file method signature comparison — significant effort for marginal gain. Most TS codebases use explicit implements. Will reopen if bakeoff signals show missing implements edges in TS repos."  # be60

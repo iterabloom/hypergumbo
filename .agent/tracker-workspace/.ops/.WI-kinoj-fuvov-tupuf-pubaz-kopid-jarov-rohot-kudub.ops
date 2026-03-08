@@ -32,3 +32,18 @@
   clock: 3  # fe07
   nonce: fe07  # fe07
   message: "Deprioritized: requires cross-file prefix chain resolution. Current behavior shows router-level prefixes correctly but misses app.include_router(prefix=). Not blocking for most apps — primarily affects nested router composition."  # fe07
+- op: update  # 30de
+  at: '2026-03-08T03:06:04Z'  # 30de
+  by: agent  # 30de
+  actor: jgstern_agent  # 30de
+  clock: 4  # 30de
+  nonce: 30de  # 30de
+  set:  # 30de
+    status: wont_do  # 30de
+- op: discuss  # c71b
+  at: '2026-03-08T03:06:04Z'  # c71b
+  by: agent  # c71b
+  actor: jgstern_agent  # c71b
+  clock: 5  # c71b
+  nonce: c71b  # c71b
+  message: "Deferred: cross-file prefix chain resolution is needed but complex. Current behavior correctly detects router-level prefixes. Will reopen when cross-file linker infrastructure matures or bakeoff shows impact."  # c71b

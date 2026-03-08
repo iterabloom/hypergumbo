@@ -24,3 +24,18 @@
   clock: 2  # cac3
   nonce: cac3  # cac3
   message: "Human requested: if retry cap is breached, autonomous mode should be turned off. Current circuit breaker (PR #1982) only pauses for 30 min. Need: count consecutive failures in the marker file, and after N (e.g., 3-5) consecutive failures, call loop-toggle off."  # cac3
+- op: update  # 4f00
+  at: '2026-03-08T03:02:02Z'  # 4f00
+  by: agent  # 4f00
+  actor: jgstern_agent  # 4f00
+  clock: 3  # 4f00
+  nonce: 4f00  # 4f00
+  set:  # 4f00
+    status: done  # 4f00
+- op: discuss  # a827
+  at: '2026-03-08T03:02:02Z'  # a827
+  by: agent  # a827
+  actor: jgstern_agent  # a827
+  clock: 4  # a827
+  nonce: a827  # a827
+  message: "Fixed in PR #1990. After 3 consecutive sync failures, writes OFF to AUTONOMOUS_MODE.txt. Marker format changed to count:timestamp. 9 tests total (4 new for escalation)."  # a827
