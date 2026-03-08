@@ -271,6 +271,7 @@ def _extract_powershell_edges(
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
+    module_symbol: Optional[Symbol] = None,
 ) -> None:
     """Extract edges from a parsed PowerShell file (pass 2)."""
     for node in iter_tree(tree.root_node):
@@ -284,8 +285,8 @@ def _extract_powershell_edges(
                 elif command_name.lower() == "using":
                     _process_using_command(node, source, file_path, edges)
                 else:
-                    # Check if inside a function
-                    caller = _find_enclosing_function_powershell(node, source, local_symbols)
+                    # Check if inside a function, fall back to module symbol
+                    caller = _find_enclosing_function_powershell(node, source, local_symbols) or module_symbol
                     if caller:
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(command_name)
@@ -331,6 +332,21 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
         symbol_registry: dict[str, Symbol] = {}
 
+        # Create module-level symbol for top-level code attribution
+        module_name = file_path.name
+        end_line = tree.root_node.end_point[0] + 1
+        module_sym = Symbol(
+            id=make_symbol_id("powershell", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
+            name=f"<module:{module_name}>",
+            kind="module",
+            language="powershell",
+            path=rel_path,
+            span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        analysis.symbols.append(module_sym)
+
         _extract_powershell_symbols(
             tree, source, rel_path, run.execution_id,
             analysis.symbols, symbol_registry,
@@ -358,8 +374,11 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a PowerShell file."""
         edges: list[Edge] = []
+        mod_sym_name = f"<module:{file_path.name}>"
+        module_symbol = global_symbols.get(mod_sym_name)
         _extract_powershell_edges(
             tree, source, rel_path, edges, local_symbols, resolver,
+            module_symbol=module_symbol,
         )
         return edges
 

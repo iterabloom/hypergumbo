@@ -493,3 +493,75 @@ three() { echo 3; }
         assert len(funcs) == 3
         for func in funcs:
             assert func.signature == "()"
+
+
+class TestBashTopLevelCallEdges:
+    """Top-level code (outside any function) should produce call edges
+    attributed to a <module:filename> symbol."""
+
+    def test_module_symbol_created(self, tmp_path: Path) -> None:
+        """Every bash file gets a <module:filename> symbol."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "script.sh").write_text("#!/bin/bash\necho hello\n")
+        result = analyze_bash(tmp_path)
+
+        mod_syms = [s for s in result.symbols if s.kind == "module"]
+        assert len(mod_syms) == 1
+        assert mod_syms[0].name == "<module:script.sh>"
+
+    def test_toplevel_call_produces_edge(self, tmp_path: Path) -> None:
+        """A top-level call like `helper` should create a calls edge
+        from <module:main.sh> to helper."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "main.sh").write_text("""#!/bin/bash
+
+function helper() {
+    echo "helping"
+}
+
+helper
+""")
+        result = analyze_bash(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        assert len(module_calls) >= 1
+        assert any("helper" in e.dst for e in module_calls)
+
+    def test_call_inside_function_still_uses_function(self, tmp_path: Path) -> None:
+        """Calls inside a function should still be attributed to that
+        function, not the module symbol."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "main.sh").write_text("""#!/bin/bash
+
+function helper() {
+    echo "helping"
+}
+
+function main() {
+    helper
+}
+""")
+        result = analyze_bash(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main" in e.src and "module" not in e.src]
+        assert len(main_calls) >= 1
+        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        assert len(module_calls) == 0
+
+    def test_toplevel_cross_file_call(self, tmp_path: Path) -> None:
+        """Top-level cross-file call should be attributed to module symbol."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "lib.sh").write_text("#!/bin/bash\nfunction do_work() { echo work; }\n")
+        (tmp_path / "main.sh").write_text("#!/bin/bash\nsource lib.sh\ndo_work\n")
+        result = analyze_bash(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        assert len(module_calls) >= 1
+        assert any("do_work" in e.dst for e in module_calls)

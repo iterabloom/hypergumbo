@@ -172,6 +172,21 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """
         analysis = FileAnalysis()
 
+        # Create module-level symbol for top-level code attribution
+        module_name = file_path.name
+        end_line = tree.root_node.end_point[0] + 1
+        module_symbol = Symbol(
+            id=make_symbol_id("bash", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
+            name=f"<module:{module_name}>",
+            kind="module",
+            language="bash",
+            path=rel_path,
+            span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        analysis.symbols.append(module_symbol)
+
         for node in iter_tree(tree.root_node):
             if node.type == "function_definition":
                 func_name = _extract_function_name(node, source)
@@ -271,7 +286,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
         Exports and aliases are file-local; only functions can be called
         from other files via 'source' + function-name invocation.
         """
-        if symbol.kind == "function":
+        if symbol.kind in ("function", "module"):
             global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(
@@ -294,6 +309,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """
         edges: list[Edge] = []
         file_id = make_file_id("bash", rel_path)
+
+        # Find module symbol for top-level call attribution
+        mod_sym_name = f"<module:{file_path.name}>"
+        module_symbol: Symbol | None = global_symbols.get(mod_sym_name)
 
         def _get_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
             """Walk up the tree to find enclosing function."""
@@ -335,7 +354,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
                         # Track function calls
                         else:
-                            current_function = _get_enclosing_function(node)
+                            current_function = _get_enclosing_function(node) or module_symbol
                             if current_function is not None:
                                 if cmd_name in local_symbols:
                                     callee = local_symbols[cmd_name]
