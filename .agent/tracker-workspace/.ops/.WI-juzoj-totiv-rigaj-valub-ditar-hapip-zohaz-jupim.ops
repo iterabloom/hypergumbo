@@ -17,3 +17,18 @@
     pr_ref:  # 0c0a
     description: "Kafka bakeoff assessment identifies 30+ undetected JAX-RS endpoints. Need to create route concepts from jakarta.ws.rs and javax.ws.rs annotations."  # 0c0a
     fields: {}  # 0c0a
+- op: update  # 5e26
+  at: '2026-03-08T14:59:02Z'  # 5e26
+  by: agent  # 5e26
+  actor: jgstern_agent  # 5e26
+  clock: 2  # 5e26
+  nonce: '5e26'  # 5e26
+  set:  # 5e26
+    status: done  # 5e26
+- op: discuss  # 7282
+  at: '2026-03-08T14:59:02Z'  # 7282
+  by: agent  # 7282
+  actor: jgstern_agent  # 7282
+  clock: 3  # 7282
+  nonce: '7282'  # 7282
+  message: "Fixed in PR #2029. Root cause: _detect_java_frameworks() only scanned build.gradle/build.gradle.kts. Multi-module Gradle projects (Kafka) declare deps in gradle/dependencies.gradle. Fix scans *.gradle(*.kts) in gradle/ dir."  # 7282

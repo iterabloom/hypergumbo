@@ -17,3 +17,18 @@
     pr_ref:  # cf03
     description: "Kafka bakeoff assessment: Properties and Logger name collisions cause false edges to Log4jConfiguration.Properties instead of java.util.Properties. Using import declarations to disambiguate would eliminate this category of false positives."  # cf03
     fields: {}  # cf03
+- op: update  # bf31
+  at: '2026-03-08T15:34:48Z'  # bf31
+  by: agent  # bf31
+  actor: jgstern_agent  # bf31
+  clock: 2  # bf31
+  nonce: bf31  # bf31
+  set:  # bf31
+    status: done  # bf31
+- op: discuss  # 629c
+  at: '2026-03-08T15:34:48Z'  # 629c
+  by: agent  # 629c
+  actor: jgstern_agent  # 629c
+  clock: 3  # 629c
+  nonce: 629c  # 629c
+  message: "Fixed in PR #2031. Added nested class guard to _is_import_class_mismatch: if resolved symbol is a nested class (class/interface/enum with dot in name) but lookup used bare name from a different file, skip the edge. Eliminates Properties/Logger false positives from Kafka bakeoff."  # 629c
