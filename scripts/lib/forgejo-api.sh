@@ -669,7 +669,10 @@ do_merge() {
 			if git fetch origin "$base_branch" --quiet 2>/dev/null \
 			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
 				echo "   Rebase succeeded — force-pushing..."
-				if git push origin "$cur_branch" --force-with-lease --quiet 2>/dev/null; then
+				# Push via refs/for/ (Forgejo AGit) to update the PR head ref.
+				# Pushing to the named branch alone doesn't update PRs created
+				# via refs/for/dev/branch.
+				if git push origin "HEAD:refs/for/$base_branch/$cur_branch" -o force-push=true --quiet 2>/dev/null; then
 					echo "   Force-push succeeded — retrying merge..."
 					sleep 3  # Give Forgejo a moment to update PR head
 					# Retry fast-forward merge after rebase
@@ -691,8 +694,8 @@ do_merge() {
 				echo "   Resolve manually:"
 				echo "     git fetch origin $base_branch"
 				echo "     git rebase origin/$base_branch"
-				echo "     git push origin $cur_branch --force-with-lease"
-				echo "     ./scripts/merge-pr $pr_num"
+				echo "     git push origin HEAD:refs/for/$base_branch/$cur_branch -o force-push=true"
+				echo "     ./scripts/merge-pr $pr_num --wait-for-ci"
 			fi
 			rm -f "$tmp_file"
 			return 1
