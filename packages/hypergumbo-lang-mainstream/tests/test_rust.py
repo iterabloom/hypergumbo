@@ -4276,3 +4276,210 @@ fn main() {
             if "main" in e.src and "helper" in e.dst
         ]
         assert len(helper_edges) >= 1
+
+
+class TestRustMacroBodyCallDetection:
+    """Calls inside macro bodies (tokio::select!, assert!, etc.) should be
+    detected even though tree-sitter parses them as flat token_tree."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_select_self_method_call(self, tmp_path: Path) -> None:
+        """Self::method() inside tokio::select! should resolve."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Server;
+
+impl Server {
+    async fn run(&self) {
+        tokio::select! {
+            msg = rx.recv() => {
+                Self::handle(msg);
+            }
+        }
+    }
+
+    fn handle(msg: Message) {
+        // process
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handle_edges = [
+            e for e in call_edges
+            if "run" in e.src and "handle" in e.dst
+        ]
+        assert len(handle_edges) >= 1, (
+            f"Should detect Self::handle inside select!, got: {call_edges}"
+        )
+        # Check evidence type
+        macro_edges = [e for e in handle_edges if e.evidence_type == "macro_body_call"]
+        assert len(macro_edges) >= 1
+
+    def test_select_simple_function_call(self, tmp_path: Path) -> None:
+        """Simple function call inside tokio::select! should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn process_data(x: i32) -> i32 { x + 1 }
+
+async fn event_loop() {
+    tokio::select! {
+        val = stream.next() => {
+            process_data(val);
+        }
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        data_edges = [
+            e for e in call_edges
+            if "event_loop" in e.src and "process_data" in e.dst
+        ]
+        assert len(data_edges) >= 1
+
+    def test_select_method_call_on_self(self, tmp_path: Path) -> None:
+        """self.method() inside tokio::select! should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Handler;
+
+impl Handler {
+    async fn run(&self) {
+        tokio::select! {
+            _ = signal => {
+                self.shutdown();
+            }
+        }
+    }
+
+    fn shutdown(&self) {}
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        shutdown_edges = [
+            e for e in call_edges
+            if "run" in e.src and "shutdown" in e.dst
+        ]
+        assert len(shutdown_edges) >= 1
+
+    def test_assert_macro_call_detected(self, tmp_path: Path) -> None:
+        """Calls inside assert! macros should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn validate(x: i32) -> bool { x > 0 }
+
+fn test_it() {
+    assert!(validate(42));
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        validate_edges = [
+            e for e in call_edges
+            if "test_it" in e.src and "validate" in e.dst
+        ]
+        assert len(validate_edges) >= 1
+
+    def test_scoped_call_in_macro_short_name_fallback(self, tmp_path: Path) -> None:
+        """Module::func() in macro should fall back to short name ``func``."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+mod utils {
+    pub fn compute() -> i32 { 42 }
+}
+
+fn caller() {
+    println!("{}", utils::compute());
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        compute_edges = [
+            e for e in call_edges
+            if "caller" in e.src and "compute" in e.dst
+        ]
+        assert len(compute_edges) >= 1, f"Should find caller->compute: {call_edges}"
+
+    def test_macro_call_cross_file_resolver(self, tmp_path: Path) -> None:
+        """Call in macro body resolved via cross-file resolver."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        helper_code = """\
+pub fn remote_helper() -> i32 { 1 }
+"""
+        main_code = """\
+use crate::helpers::remote_helper;
+
+fn driver() {
+    assert!(remote_helper() > 0);
+}
+"""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.rs").write_text(main_code)
+        (src / "helpers.rs").write_text(helper_code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [
+            e for e in call_edges
+            if "driver" in e.src and "remote_helper" in e.dst
+        ]
+        assert len(helper_edges) >= 1, f"Should find driver->remote_helper: {call_edges}"
+
+    def test_nested_token_tree(self, tmp_path: Path) -> None:
+        """Calls in nested token_tree branches should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn cleanup() {}
+fn save() {}
+
+async fn main_loop() {
+    tokio::select! {
+        _ = a => { cleanup(); }
+        _ = b => { save(); }
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_edges = [
+            e for e in call_edges
+            if "main_loop" in e.src and "cleanup" in e.dst
+        ]
+        save_edges = [
+            e for e in call_edges
+            if "main_loop" in e.src and "save" in e.dst
+        ]
+        assert len(cleanup_edges) >= 1, f"cleanup not found: {call_edges}"
+        assert len(save_edges) >= 1, f"save not found: {call_edges}"

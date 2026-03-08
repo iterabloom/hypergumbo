@@ -981,6 +981,75 @@ def _extract_use_aliases(
     return aliases
 
 
+def _extract_macro_call_names(
+    token_tree_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[tuple[str, int]]:
+    """Extract call-like patterns from a macro's token_tree.
+
+    Tree-sitter parses macro bodies (tokio::select!, println!, etc.) as flat
+    token sequences, not structured AST.  This function pattern-matches
+    token sequences to identify likely function/method calls.
+
+    Returns (callee_name, line) pairs.  ``callee_name`` may be qualified
+    (``Foo::bar``) or simple (``bar``).
+    """
+    results: list[tuple[str, int]] = []
+    children = token_tree_node.children
+    i = 0
+    while i < len(children):
+        child = children[i]
+        # Pattern: identifier ( ... ) — simple call
+        # Pattern: identifier :: identifier ( ... ) — scoped call
+        # Pattern: self . identifier ( ... ) — method call
+        if child.type == "identifier":
+            text = node_text(child, source)
+            line = child.start_point[0] + 1
+            # Look ahead for :: or (
+            if i + 1 < len(children):
+                nxt = children[i + 1]
+                if nxt.type == "::" and i + 3 < len(children):
+                    # scoped: Foo::bar(...) or Self::bar(...)
+                    name_node = children[i + 2]
+                    paren = children[i + 3] if i + 3 < len(children) else None
+                    if (
+                        name_node.type == "identifier"
+                        and paren is not None
+                        and paren.type == "token_tree"
+                    ):
+                        scope = text
+                        name = node_text(name_node, source)
+                        results.append((f"{scope}::{name}", line))
+                        i += 4
+                        continue
+                elif nxt.type == "token_tree":
+                    # simple call: foo(...)
+                    results.append((text, line))
+                    i += 2
+                    continue
+        # Handle lowercase self: self.method(...) or self::method(...)
+        # Tree-sitter gives lowercase self node type "self", not "identifier"
+        elif child.type == "self" and i + 3 < len(children):
+            line = child.start_point[0] + 1
+            nxt = children[i + 1]
+            if nxt.type == ".":
+                # self.method(...)
+                meth = children[i + 2]
+                paren = children[i + 3]
+                if meth.type == "identifier" and paren.type == "token_tree":
+                    results.append((node_text(meth, source), line))
+                    i += 4
+                    continue
+            # Note: self::foo() means module-relative path, not a method call.
+            # It would be handled as a scoped_identifier if tree-sitter
+            # parsed it, but inside token_tree it's ambiguous. Skip it.
+        # Recurse into nested token_tree (e.g., branches of select!)
+        if child.type == "token_tree":
+            results.extend(_extract_macro_call_names(child, source))
+        i += 1
+    return results
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1368,6 +1437,46 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
+
+        # Detect calls inside macro bodies (tokio::select!, assert!, etc.).
+        # Tree-sitter parses macro bodies as flat token_tree, not structured
+        # AST, so call_expression nodes are never created.  We pattern-match
+        # token sequences to extract likely calls.
+        elif node.type == "macro_invocation":
+            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            if current_function is not None:
+                tt = None
+                for child in node.children:
+                    if child.type == "token_tree":
+                        tt = child
+                        break
+                if tt is not None:
+                    for callee_name, call_line in _extract_macro_call_names(tt, source):
+                        # Resolve Self:: to actual type
+                        if callee_name.startswith("Self::"):
+                            impl_type = _get_impl_target(node, source)
+                            if impl_type:
+                                callee_name = f"{impl_type}::{callee_name[6:]}"
+                        # Try qualified name first, then short name
+                        target = local_symbols.get(callee_name)
+                        if target is None and "::" in callee_name:
+                            short = callee_name.rsplit("::", 1)[-1]
+                            target = local_symbols.get(short)
+                        if target is None:
+                            lr = resolver.lookup(callee_name)
+                            if lr.found and lr.symbol is not None:
+                                target = lr.symbol
+                        if target is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="calls",
+                                line=call_line,
+                                evidence_type="macro_body_call",
+                                confidence=0.75,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
 
     return edges
 
