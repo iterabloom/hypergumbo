@@ -379,7 +379,7 @@ class TestElixirEdgeCases:
         assert result.run is not None
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
-        """Detects function calls across files."""
+        """Detects function calls across files when import is present."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         # File 1: defines helper
@@ -391,9 +391,11 @@ defmodule Helper do
 end
 """)
 
-        # File 2: calls helper
+        # File 2: imports helper and calls bare greet
         (tmp_path / "main.ex").write_text("""
 defmodule Main do
+  import Helper
+
   def run() do
     greet("world")
   end
@@ -403,7 +405,7 @@ end
         result = analyze_elixir(tmp_path)
 
 
-        # Should have cross-file call edge
+        # Should have cross-file call edge (import makes it valid)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
@@ -1685,6 +1687,8 @@ end
 
         (tmp_path / "caller.ex").write_text('''
 defmodule MyApp.Caller do
+  import MyApp.Handler
+
   def run do
     process(:ok)
   end
@@ -2006,6 +2010,103 @@ end
         )
 
 
+class TestElixirImportGating:
+    """Tests for import-gated bare call resolution (WI-dadid).
+
+    In Elixir, bare function calls (without module prefix) to functions in
+    other modules require an ``import`` directive. Without an import, bare
+    calls to non-stdlib functions should NOT resolve to cross-module targets.
+    """
+
+    def test_bare_call_without_import_not_resolved(self, tmp_path: Path) -> None:
+        """Bare create() should NOT resolve to Sites.create without import."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "sites.ex").write_text('''
+defmodule MyApp.Sites do
+  def create(params) do
+    {:ok, params}
+  end
+end
+''')
+
+        (tmp_path / "migration.ex").write_text('''
+defmodule MyApp.Migration do
+  def up() do
+    create("users")
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        create_sym = next(
+            (s for s in result.symbols if "create" in s.name and "Sites" in s.name),
+            None,
+        )
+        up_sym = next(
+            (s for s in result.symbols if "up" in s.name),
+            None,
+        )
+        assert create_sym is not None
+        assert up_sym is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == up_sym.id
+            and e.dst == create_sym.id
+        ]
+        assert len(false_edges) == 0, (
+            "Bare create() should NOT resolve to MyApp.Sites.create "
+            "without an import directive"
+        )
+
+    def test_bare_call_with_import_resolved(self, tmp_path: Path) -> None:
+        """Bare create() SHOULD resolve when module is imported."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "sites.ex").write_text('''
+defmodule MyApp.Sites do
+  def create(params) do
+    {:ok, params}
+  end
+end
+''')
+
+        (tmp_path / "migration.ex").write_text('''
+defmodule MyApp.Migration do
+  import MyApp.Sites
+
+  def up() do
+    create("users")
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        create_sym = next(
+            (s for s in result.symbols if "create" in s.name and "Sites" in s.name),
+            None,
+        )
+        up_sym = next(
+            (s for s in result.symbols if "up" in s.name),
+            None,
+        )
+        assert create_sym is not None
+        assert up_sym is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == up_sym.id
+            and e.dst == create_sym.id
+        ]
+        assert len(edges) == 1, (
+            "Bare create() should resolve to MyApp.Sites.create "
+            "when import MyApp.Sites is present"
+        )
+
+
 class TestPipeOperatorCallEdges:
     """Tests for pipe operator (|>) call edge resolution.
 
@@ -2143,6 +2244,8 @@ end
 
         (tmp_path / "handler.ex").write_text('''
 defmodule MyApp.Handler do
+  import MyApp.Utils
+
   def process(data) do
     data |> sanitize
   end

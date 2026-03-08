@@ -132,6 +132,16 @@ def find_elixir_files(repo_root: Path) -> Iterator[Path]:
 
 
 
+def _symbol_module(name: str) -> str:
+    """Extract the module prefix from a qualified Elixir symbol name.
+
+    ``MyApp.Sites.create`` → ``MyApp.Sites``
+    ``create`` → ``""``  (bare name, no module)
+    """
+    dot_pos = name.rfind(".")
+    return name[:dot_pos] if dot_pos >= 0 else ""
+
+
 def _extract_alias_hints(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -205,6 +215,37 @@ def _extract_alias_hints(
                         break
 
     return hints
+
+
+def _extract_imported_modules(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> set[str]:
+    """Extract the set of module names that appear in ``import`` directives.
+
+    In Elixir, ``import MyApp.Sites`` makes all public functions from
+    ``MyApp.Sites`` available as bare calls. This set is used to gate
+    cross-module bare call resolution: only functions from imported modules
+    should be resolved.
+    """
+    imported: set[str] = set()
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        if not target:  # pragma: no cover
+            continue
+        if node_text(target, source) != "import":
+            continue
+        args = find_child_by_type(node, "arguments")
+        if args:
+            for child in args.children:
+                if child.type == "alias":
+                    imported.add(node_text(child, source))
+                    break
+
+    return imported
 
 
 def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -809,11 +850,16 @@ def _extract_edges_from_tree(
     alias_hints: dict[str, str] | None = None,
     local_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
+    imported_modules: set[str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elixir tree.
 
     Args:
         alias_hints: Optional dict mapping short names to full module paths for disambiguation.
+        imported_modules: Set of module names from ``import`` directives. When
+            provided, bare cross-module calls are only resolved if the target
+            function's module was imported. This prevents false edges from
+            name collisions across unrelated modules.
     """
     if alias_hints is None:  # pragma: no cover - defensive default
         alias_hints = {}
@@ -899,6 +945,15 @@ def _extract_edges_from_tree(
                         elif target_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(target_name) if global_symbols_multi else None
                             if global_multi:
+                                # Gate on imports: if imported_modules is
+                                # available, only allow targets from imported
+                                # modules. Bare calls in Elixir require an
+                                # ``import`` directive for cross-module access.
+                                if imported_modules is not None:
+                                    global_multi = [
+                                        s for s in global_multi
+                                        if _symbol_module(s.name) in imported_modules
+                                    ]
                                 for callee in global_multi:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -965,6 +1020,11 @@ def _extract_edges_from_tree(
                         elif func_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
                             if global_multi:
+                                if imported_modules is not None:
+                                    global_multi = [
+                                        s for s in global_multi
+                                        if _symbol_module(s.name) in imported_modules
+                                    ]
                                 for callee in global_multi:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -1175,12 +1235,15 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
                 if local_matches:
                     local_symbols_multi[name] = local_matches
 
+        file_imported_modules = _extract_imported_modules(tree, source)
+
         edges = _extract_edges_from_tree(
             tree, source, rel_path, local_symbols, global_symbols,
             run.execution_id, resolver,
             alias_hints=import_aliases,
             local_symbols_multi=local_symbols_multi,
             global_symbols_multi=global_multi,
+            imported_modules=file_imported_modules,
         )
 
         # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)

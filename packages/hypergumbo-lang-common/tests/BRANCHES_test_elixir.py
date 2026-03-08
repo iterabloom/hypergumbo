@@ -210,7 +210,7 @@ end
         assert any("helper" in e["dst"] for e in edges)
 
     def test_cross_file_call(self, tmp_path: Path) -> None:
-        """Test call to function in different module."""
+        """Test call to function in different module (with import)."""
         make_elixir_file(tmp_path, "utils.ex", """
 defmodule Utils do
   def format(s), do: s
@@ -218,6 +218,8 @@ end
 """)
         make_elixir_file(tmp_path, "app.ex", """
 defmodule App do
+  import Utils
+
   def run do
     format("test")
   end
