@@ -88,6 +88,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test/utility classification**: `fv/`, `harnesses/` as test directories; `build.rs` as utility; `tests.rs`/`testonly.rs` as co-located test files; `bench/`/`benches/` excluded from production slices; dependency symbols classified as tier 3.
 - **Protobuf/gRPC codegen**: `.serde.rs`, `.pb.go`, `_pb2.py`, `_pb2_grpc.py` classified as derived (tier 4) and excluded from behavior maps. Reduces orphan rate inflation (penumbra: 5750 nodes removed, orphan rate 21% → ~9%).
 - **JSON output reproducibility**: All JSON output now uses sorted keys for deterministic ordering across runs.
+- **ASM register name filtering**: Indirect calls through CPU registers (`call rax`, `call r0`) no longer create false external call edges. Covers x86 (rax-r15, eax-ebp, ax-sp) and ARM (r0-r7, lr, pc, ip, fp) registers with case-insensitive matching.
 - **TOML symbol IDs**: Changed from opaque sha256 hashes (`toml:sha256:...`) to location-based format (`toml:path:start-end:name:kind`), making compact output node IDs resolvable by `slice --entry`.
 
 ### Changed
