@@ -3522,6 +3522,112 @@ class TestClassNameCollision:
         )
 
 
+    def test_nested_class_not_resolved_from_bare_name_without_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """new Properties() should NOT resolve to Log4jConfiguration.Properties.
+
+        When a file uses a bare class name like Properties without any import,
+        and the only matching symbol is a nested class (Log4jConfiguration.Properties),
+        the edge should be skipped. In Java, you can't use a bare inner class name
+        from outside the outer class — you'd need Log4jConfiguration.Properties.
+        This is the Kafka bakeoff false positive scenario (WI-bunul).
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with nested class named Properties
+        (tmp_path / "Log4jConfiguration.java").write_text(
+            "package kafka.docker;\n"
+            "public class Log4jConfiguration {\n"
+            "    public static class Properties {\n"
+            "        public String getProperty(String key) { return null; }\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that uses bare Properties (meaning java.util.Properties, not the nested one)
+        (tmp_path / "WordCount.java").write_text(
+            "package kafka.streams;\n"
+            "import java.util.*;\n"
+            "public class WordCount {\n"
+            "    public static void main(String[] args) {\n"
+            "        Properties props = new Properties();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        nested_props = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.Properties"),
+            None,
+        )
+        assert nested_props is not None, "Nested Properties class should be extracted"
+
+        wc_main = next(
+            (s for s in result.symbols if s.name == "WordCount.main"), None,
+        )
+        assert wc_main is not None, "WordCount.main should be extracted"
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == wc_main.id
+            and e.dst == nested_props.id
+        ]
+        assert len(false_edges) == 0, (
+            f"new Properties() should NOT resolve to Log4jConfiguration.Properties "
+            f"— bare name cannot refer to a nested class from outside the outer class "
+            f"(got {len(false_edges)} false edges)"
+        )
+
+    def test_nested_class_resolved_from_same_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """new Properties() SHOULD resolve to nested Properties when in the same file.
+
+        Inside the outer class's file, bare inner class names are valid Java.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Log4jConfiguration.java").write_text(
+            "package kafka.docker;\n"
+            "public class Log4jConfiguration {\n"
+            "    public static class Properties {\n"
+            "        public String getProperty(String key) { return null; }\n"
+            "    }\n"
+            "    public void configure() {\n"
+            "        Properties p = new Properties();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        nested_props = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.Properties"),
+            None,
+        )
+        assert nested_props is not None
+
+        configure = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.configure"),
+            None,
+        )
+        assert configure is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == configure.id
+            and e.dst == nested_props.id
+        ]
+        assert len(edges) == 1, (
+            "new Properties() inside Log4jConfiguration should resolve to "
+            "the nested Properties class"
+        )
+
+
 class TestJavaAmbiguousMethodGuard:
     """Tests for AMB-METHOD invariant in Java.
 

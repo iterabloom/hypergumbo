@@ -987,6 +987,7 @@ def _is_import_class_mismatch(
     type_name: str,
     resolved_sym: "Symbol",
     imports: dict[str, str],
+    caller_file: str = "",
 ) -> bool:
     """Check if a resolved class symbol conflicts with the file's imports.
 
@@ -995,12 +996,30 @@ def _is_import_class_mismatch(
     the developer intended the external library class. This prevents false
     edges that inflate centrality of inner/nested classes (INV-finak).
 
-    Returns True when the edge should be **skipped** (import points elsewhere).
+    Also rejects nested class resolution from bare names when the caller is
+    outside the outer class's file. In Java, ``new Properties()`` cannot refer
+    to ``Log4jConfiguration.Properties`` from outside Log4jConfiguration —
+    you'd need the qualified name ``new Log4jConfiguration.Properties()``.
+    This prevents false edges from JDK class name collisions (WI-bunul).
 
-    The check: if the file has an import for ``type_name`` whose FQN path
-    segments do NOT match the resolved symbol's file path, the import refers
-    to a different class.
+    Returns True when the edge should be **skipped** (import points elsewhere).
     """
+    # Check 1: Nested class guard — if the resolved symbol is a nested class
+    # (name contains "." AND kind is class/interface/enum) but the lookup used
+    # a bare name, and the caller is not in the same file as the nested class,
+    # it's almost certainly wrong. In Java, bare inner class names are only
+    # valid inside the outer class.
+    resolved_name = resolved_sym.name
+    if (
+        "." in resolved_name
+        and "." not in type_name
+        and resolved_sym.kind in ("class", "interface", "enum")
+    ):
+        resolved_path = resolved_sym.path or ""
+        if caller_file != resolved_path:
+            return True  # Bare name can't refer to nested class from outside
+
+    # Check 2: Explicit import mismatch (original INV-finak check)
     if type_name not in imports:
         return False  # No import → can't disprove; allow the edge
 
@@ -1317,7 +1336,8 @@ def _extract_edges(
                         candidate = f"{type_class_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate)
                         if lookup_result.found and not _is_import_class_mismatch(
-                            type_class_name, lookup_result.symbol, imports
+                            type_class_name, lookup_result.symbol, imports,
+                            caller_file=str(file_path),
                         ):
                             edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
@@ -1409,7 +1429,10 @@ def _extract_edges(
                         if lookup_result.found and lookup_result.symbol is not None:
                             # INV-finak: skip edge if file imports an external
                             # class with the same simple name (e.g., Logger)
-                            if _is_import_class_mismatch(type_name, lookup_result.symbol, imports):
+                            if _is_import_class_mismatch(
+                                type_name, lookup_result.symbol, imports,
+                                caller_file=str(file_path),
+                            ):
                                 pass  # Import points elsewhere; skip false edge
                             else:
                                 edge = Edge.create(
@@ -1468,7 +1491,10 @@ def _extract_edges(
                         lookup_result.found
                         and lookup_result.symbol is not None
                         # INV-finak: skip if import points elsewhere
-                        and not _is_import_class_mismatch(class_name, lookup_result.symbol, imports)
+                        and not _is_import_class_mismatch(
+                            class_name, lookup_result.symbol, imports,
+                            caller_file=str(file_path),
+                        )
                     ):
                         edge = Edge.create(
                             src=current_method.id,

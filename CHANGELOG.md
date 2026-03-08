@@ -90,6 +90,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **JSON output reproducibility**: All JSON output now uses sorted keys for deterministic ordering across runs.
 - **ASM register name filtering**: Indirect calls through CPU registers (`call rax`, `call r0`) no longer create false external call edges. Covers x86 (rax-r15, eax-ebp, ax-sp) and ARM (r0-r7, lr, pc, ip, fp) registers with case-insensitive matching.
 - **Java framework detection from auxiliary Gradle files**: Multi-module Gradle projects (like Apache Kafka) that declare dependencies in `gradle/dependencies.gradle` or similar `gradle/*.gradle(.kts)` files now have their frameworks correctly detected. Previously only `build.gradle` and `build.gradle.kts` were scanned, causing JAX-RS and other frameworks to go undetected when their dependencies were declared in auxiliary Gradle configuration files.
+- **Java nested class name collision guard**: `new Properties()` no longer resolves to `Log4jConfiguration.Properties` (a nested class) when the caller is in a different file. In Java, bare inner class names are only valid inside the outer class's file. This eliminates false edges from JDK/library class name collisions (e.g., `Properties`, `Logger`) with project-internal nested classes.
 - **TOML symbol IDs**: Changed from opaque sha256 hashes (`toml:sha256:...`) to location-based format (`toml:path:start-end:name:kind`), making compact output node IDs resolvable by `slice --entry`.
 
 ### Changed
