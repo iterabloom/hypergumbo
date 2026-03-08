@@ -1858,6 +1858,200 @@ end
             )
 
 
+class TestPipeOperatorCallEdges:
+    """Tests for pipe operator (|>) call edge resolution.
+
+    Elixir pipe calls without parentheses (``data |> transform``) are
+    idiomatic but tree-sitter parses the right-hand side as an identifier
+    rather than a call node.  The edge extractor must handle this.
+    """
+
+    def test_pipe_to_local_function_creates_edge(self, tmp_path: Path) -> None:
+        """Piping to a local function without parens creates a call edge."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "digester.ex").write_text('''
+defmodule Phoenix.Digester do
+  def compile(path) do
+    path
+    |> scan_files()
+    |> fixup_sourcemaps
+  end
+
+  defp fixup_sourcemaps(files) do
+    Enum.map(files, & &1)
+  end
+
+  defp scan_files(path) do
+    [path]
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        compile_sym = next((s for s in result.symbols if "compile" in s.name), None)
+        fixup_sym = next((s for s in result.symbols if "fixup_sourcemaps" in s.name), None)
+        scan_sym = next((s for s in result.symbols if "scan_files" in s.name), None)
+
+        assert compile_sym is not None
+        assert fixup_sym is not None
+        assert scan_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == compile_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+
+        # scan_files() has parens — should already work
+        assert scan_sym.id in edge_dsts, "Missing edge to scan_files (with parens)"
+        # fixup_sourcemaps has NO parens — pipe-only call
+        assert fixup_sym.id in edge_dsts, "Missing edge to fixup_sourcemaps (pipe, no parens)"
+
+    def test_pipe_chain_creates_multiple_edges(self, tmp_path: Path) -> None:
+        """A chain of pipes creates edges to each piped function."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "pipeline.ex").write_text('''
+defmodule MyApp.Pipeline do
+  def run(data) do
+    data
+    |> validate
+    |> transform
+    |> persist
+  end
+
+  defp validate(d), do: d
+  defp transform(d), do: d
+  defp persist(d), do: d
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        assert run_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+
+        for func_name in ("validate", "transform", "persist"):
+            func_sym = next((s for s in result.symbols if func_name in s.name), None)
+            assert func_sym is not None, f"Missing symbol for {func_name}"
+            assert func_sym.id in edge_dsts, f"Missing pipe edge to {func_name}"
+
+    def test_pipe_cross_file_creates_edge(self, tmp_path: Path) -> None:
+        """Piping to a function defined in another file creates a call edge."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "formatter.ex").write_text('''
+defmodule MyApp.Formatter do
+  def prettify(data), do: data
+end
+''')
+
+        (tmp_path / "processor.ex").write_text('''
+defmodule MyApp.Processor do
+  def run(data) do
+    data |> prettify
+  end
+
+  defp prettify(d), do: d
+end
+''')
+
+        # This tests the local path (not cross-file) for a bare pipe.
+        # Cross-file bare pipes fall through to the global_multi lookup.
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        prettify_syms = [s for s in result.symbols if "prettify" in s.name]
+
+        assert run_sym is not None
+        assert len(prettify_syms) >= 1  # At least the local defp
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        local_prettify = next(
+            (s for s in prettify_syms if "Processor" in s.name), None
+        )
+        assert local_prettify is not None
+        assert local_prettify.id in edge_dsts, "Missing pipe edge to local prettify"
+
+    def test_pipe_cross_file_global_lookup(self, tmp_path: Path) -> None:
+        """Piping to a function only in another file uses global multi-clause lookup."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "utils.ex").write_text('''
+defmodule MyApp.Utils do
+  def sanitize(data), do: data
+end
+''')
+
+        (tmp_path / "handler.ex").write_text('''
+defmodule MyApp.Handler do
+  def process(data) do
+    data |> sanitize
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+        sanitize_sym = next((s for s in result.symbols if "sanitize" in s.name), None)
+
+        assert process_sym is not None
+        assert sanitize_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == process_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert sanitize_sym.id in edge_dsts, "Missing cross-file pipe edge to sanitize"
+
+    def test_pipe_to_module_qualified_function(self, tmp_path: Path) -> None:
+        """Piping to a module-qualified function: data |> Mod.func.
+
+        Tree-sitter wraps ``Mod.func`` in a call node even without parens,
+        so this is handled by the existing dot-call path (not the pipe handler).
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "caller.ex").write_text('''
+defmodule MyApp.Caller do
+  def run(data) do
+    data |> MyApp.Helper.process
+  end
+end
+''')
+
+        (tmp_path / "helper.ex").write_text('''
+defmodule MyApp.Helper do
+  def process(data), do: data
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+
+        assert run_sym is not None
+        assert process_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert process_sym.id in edge_dsts, "Missing pipe edge to module-qualified function"
+
+
 class TestPhoenixRouteAliasResolution:
     """Tests for Phoenix route alias resolution.
 

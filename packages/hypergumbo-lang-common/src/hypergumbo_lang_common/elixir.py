@@ -897,6 +897,51 @@ def _extract_edges_from_tree(
                         global_symbols, resolver, alias_hints, edges, run_id,
                     )
 
+        # Pipe operator: ``data |> func`` (no parens) is a binary_operator
+        # whose right child is an identifier, not a call.  When parens are
+        # present (``data |> func()``), tree-sitter emits a call node that
+        # the block above already handles.
+        elif node.type == "binary_operator":
+            children = node.children
+            # binary_operator has [left, operator, right]
+            if len(children) >= 3 and node_text(children[1], source) == "|>":
+                rhs = children[2]
+                if rhs.type == "identifier":
+                    func_name = node_text(rhs, source)
+                    current_function = _get_enclosing_function(node, source, local_symbols)
+                    if current_function is not None:
+                        local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
+                        if local_multi:
+                            for callee in local_multi:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="pipe_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                ))
+                        else:
+                            global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
+                            if global_multi:
+                                for callee in global_multi:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="pipe_call",
+                                        confidence=0.80,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    ))
+                # Note: ``data |> Mod.func`` (module-qualified pipe) does NOT
+                # produce a bare ``dot`` rhs — tree-sitter wraps it in a
+                # ``call`` node, which iter_tree visits separately.  So this
+                # branch is handled by the normal call/dot path above.
+
     return edges
 
 
@@ -910,12 +955,14 @@ def _handle_dot_call(
     alias_hints: dict[str, str],
     edges: list[Edge],
     run_id: str,
+    evidence_type: str = "module_qualified_call",
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 
     Extracts the module alias and function name from a dot node, then resolves
     the function using the module-qualified name (e.g., "Helper.greet") against
-    the global symbol registry.
+    the global symbol registry.  The *evidence_type* parameter allows callers
+    (such as the pipe-operator handler) to supply a more specific tag.
     """
     # Extract module alias and function name from dot node
     alias_node = find_child_by_type(dot_node, "alias")
@@ -942,7 +989,7 @@ def _handle_dot_call(
             dst=callee.id,
             edge_type="calls",
             line=call_node.start_point[0] + 1,
-            evidence_type="module_qualified_call",
+            evidence_type=evidence_type,
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run_id,
@@ -960,7 +1007,7 @@ def _handle_dot_call(
                 dst=callee.id,
                 edge_type="calls",
                 line=call_node.start_point[0] + 1,
-                evidence_type="module_qualified_call",
+                evidence_type=evidence_type,
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run_id,
@@ -988,7 +1035,7 @@ def _handle_dot_call(
                 dst=lookup_result.symbol.id,
                 edge_type="calls",
                 line=call_node.start_point[0] + 1,
-                evidence_type="module_qualified_call",
+                evidence_type=evidence_type,
                 confidence=0.75 * lookup_result.confidence,
                 origin=PASS_ID,
                 origin_run_id=run_id,
