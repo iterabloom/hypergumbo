@@ -1,0 +1,19 @@
+- op: create  # b7ce
+  at: '2026-03-08T14:32:44Z'  # b7ce
+  by: agent  # b7ce
+  actor: jgstern_agent  # b7ce
+  clock: 1  # b7ce
+  nonce: b7ce  # b7ce
+  data:  # b7ce
+    kind: work_item  # b7ce
+    title: "Multiple decorators per handler: capture all HTTP method routes"  # b7ce
+    status: todo_soft  # b7ce
+    priority: 3  # b7ce
+    parent:  # b7ce
+    tags: []  # b7ce
+    before: []  # b7ce
+    duplicate_of: []  # b7ce
+    not_duplicate_of: []  # b7ce
+    pr_ref:  # b7ce
+    description: "Transformers bakeoff assessment: @app.options + @app.get on same handler only captures first decorator route. Affects FastAPI and Flask handlers with multiple HTTP method decorators."  # b7ce
+    fields: {}  # b7ce
