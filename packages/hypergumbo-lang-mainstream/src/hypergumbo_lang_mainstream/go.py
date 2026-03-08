@@ -2094,11 +2094,41 @@ def _extract_handler_name(
     return None  # pragma: no cover - defensive for unrecognized node types
 
 
+def _extract_string_from_node(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract a string value from a node, handling string literals and concatenation.
+
+    For a plain string literal, returns its content.
+    For a binary expression (string concat), collects all string literal
+    segments.  Variable parts are omitted, so ``baseUrl + "/users"``
+    yields ``"/users"`` (the resolvable suffix).
+    """
+    if node.type == "interpreted_string_literal":
+        content_node = find_child_by_type(node, "interpreted_string_literal_content")
+        if content_node:
+            return node_text(content_node, source)
+        return node_text(node, source).strip('"')  # pragma: no cover
+    if node.type == "binary_expression":
+        # Collect all string literal parts from the concat chain
+        parts: list[str] = []
+        for child in node.children:
+            val = _extract_string_from_node(child, source)
+            if val is not None:
+                parts.append(val)
+        return "".join(parts) if parts else None
+    return None
+
+
 def _extract_first_string_arg(
     args_node: "tree_sitter.Node",
     source: bytes,
 ) -> str | None:
     """Extract the first string literal from an argument list.
+
+    Handles plain string literals and string concatenation expressions
+    (e.g., ``baseUrl + "/path"`` → ``"/path"``).
 
     Returns the string content without quotes, or None if no string arg found.
     """
@@ -2108,6 +2138,10 @@ def _extract_first_string_arg(
             if content_node:
                 return node_text(content_node, source)
             return node_text(arg, source).strip('"')  # pragma: no cover
+        if arg.type == "binary_expression":
+            result = _extract_string_from_node(arg, source)
+            if result is not None:
+                return result
     return None  # pragma: no cover - only called with argument lists containing strings
 
 

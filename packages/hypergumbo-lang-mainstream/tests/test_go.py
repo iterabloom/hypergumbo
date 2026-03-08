@@ -1472,6 +1472,44 @@ func main() {
         assert routes[0].name == "<closure>"
 
 
+    def test_handlefunc_string_concat_path(self, tmp_path: Path) -> None:
+        """HandleFunc with variable + string literal path extracts the literal suffix.
+
+        Pattern: r.HandleFunc(baseUrl + "/users", handler) should detect
+        the route with path suffix "/users" even when the prefix is a variable.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    baseUrl := "/app"
+    r := mux.NewRouter()
+    r.HandleFunc(baseUrl + "/users", listUsers)
+    r.HandleFunc(baseUrl + "/users/{id}", getUser)
+    r.HandleFunc(baseUrl + "/cart", viewCart)
+}
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+func getUser(w http.ResponseWriter, r *http.Request) {}
+func viewCart(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes}
+
+        # Should detect routes with literal suffixes
+        assert any("/users" in p for p in route_paths), (
+            f"Expected route containing '/users', got: {route_paths}"
+        )
+        assert len(routes) >= 3, f"Expected 3 routes, got {len(routes)}: {route_paths}"
+
     def test_single_arg_get_not_route(self, tmp_path: Path) -> None:
         """Single-arg .Get("/key") calls (cache, headers) are not routes.
 
