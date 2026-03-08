@@ -1,0 +1,20 @@
+- op: create  # 8f32
+  at: '2026-03-08T06:50:11Z'  # 8f32
+  by: agent  # 8f32
+  actor: jgstern_agent  # 8f32
+  clock: 1  # 8f32
+  nonce: 8f32  # 8f32
+  data:  # 8f32
+    kind: work_item  # 8f32
+    title: "Rust: resolve method calls on generic trait impl receivers"  # 8f32
+    status: todo_soft  # 8f32
+    priority: 3  # 8f32
+    parent:  # 8f32
+    tags:  # 8f32
+    - analysis_quality  # 8f32
+    before: []  # 8f32
+    duplicate_of: []  # 8f32
+    not_duplicate_of: []  # 8f32
+    pr_ref:  # 8f32
+    description: "aardvark-dns DEEP bakeoff: LOW_AVG_SLICE_NODES (13.1 < 19). Result::wrap() trait impl method has 0 in-degree despite 15+ call sites. Analyzer cannot resolve .wrap() on generic Result receivers to AardvarkWrap trait impl. Needs return-type tracking or trait impl method registry."  # 8f32
+    fields: {}  # 8f32

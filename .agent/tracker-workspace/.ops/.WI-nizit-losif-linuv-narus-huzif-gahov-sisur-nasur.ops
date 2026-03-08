@@ -17,3 +17,18 @@
     pr_ref:  # f591
     description: "DEEP bakeoff assessment shows hop_limit=4 is too small for aardvark-dns (190 nodes, call chain depth 7). The entire DNS handling layer is excluded from forward slices. For small codebases, increasing hop_limit would produce manageable slices. Consider: adaptive limit based on graph diameter or node count, e.g. min(graph_diameter, max_nodes/20)."  # f591
     fields: {}  # f591
+- op: update  # 457f
+  at: '2026-03-08T06:43:25Z'  # 457f
+  by: agent  # 457f
+  actor: jgstern_agent  # 457f
+  clock: 2  # 457f
+  nonce: 457f  # 457f
+  set:  # 457f
+    status: done  # 457f
+- op: discuss  # d98d
+  at: '2026-03-08T06:43:25Z'  # d98d
+  by: agent  # d98d
+  actor: jgstern_agent  # d98d
+  clock: 3  # d98d
+  nonce: d98d  # d98d
+  message: "Implemented in PR #2002. Adaptive hop limit: ≤200 nodes→10 hops, ≤500→7, ≤2000→5, >2000→3. Default --max-hops changed from 3 to adaptive."  # d98d

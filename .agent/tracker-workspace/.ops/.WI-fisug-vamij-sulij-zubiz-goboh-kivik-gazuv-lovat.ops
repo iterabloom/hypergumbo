@@ -1,0 +1,20 @@
+- op: create  # be88
+  at: '2026-03-08T06:50:11Z'  # be88
+  by: agent  # be88
+  actor: jgstern_agent  # be88
+  clock: 1  # be88
+  nonce: be88  # be88
+  data:  # be88
+    kind: work_item  # be88
+    title: "Elixir: detect @behaviour and defimpl protocol implementation edges"  # be88
+    status: todo_soft  # be88
+    priority: 2  # be88
+    parent:  # be88
+    tags:  # be88
+    - analysis_quality  # be88
+    before: []  # be88
+    duplicate_of: []  # be88
+    not_duplicate_of: []  # be88
+    pr_ref:  # be88
+    description: "nex-framework DEEP bakeoff shows 28.2% orphan rate. Root causes: (1) defimpl ProtocolName creates functions with no incoming edges, (2) @behaviour BehaviourName callbacks like WebSock.handle_frame not in BEHAVIOUR_CALLBACKS. Fix: add defimpl detection to elixir.py, expand BEHAVIOUR_CALLBACKS with WebSock entries."  # be88
+    fields: {}  # be88
