@@ -48,3 +48,17 @@
   clock: 5  # 749a
   nonce: 749a  # 749a
   message: "Needs architectural decision: implementing return-type tracking for Rust trait impl method resolution is a significant investment. The adaptive hop limit already improved aardvark-dns from 9.0→13.1 slice nodes. Question for human: is the remaining gap (13.1 vs 19 threshold) worth the complexity of adding type inference to the Rust analyzer?"  # 749a
+- op: discuss  # 9603
+  at: '2026-03-09T15:41:56Z'  # 9603
+  by: human  # 9603
+  actor: jgstern  # 9603
+  clock: 6  # 9603
+  nonce: '9603'  # 9603
+  message: "I'm not sure as I have no Rust experience. However, I am going to be running a Rust-heavy curriculum bakeoff soon: `~/hypergumbo_lab_notebook/curricula/deep-plazaflow-20260309.md`"  # 9603
+- op: discuss  # 3c0b
+  at: '2026-03-09T15:42:37Z'  # 3c0b
+  by: human  # 3c0b
+  actor: jgstern  # 3c0b
+  clock: 7  # 3c0b
+  nonce: 3c0b  # 3c0b
+  message: "...and I plan to use hypergumbo to create \"plazaflow\", a tauri app"  # 3c0b

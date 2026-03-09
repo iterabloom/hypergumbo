@@ -17,3 +17,10 @@
     pr_ref:  # f3ed
     description: "DEEP bakeoff assessment (aardvark-dns) argues that impl Display/From/Default for error types are architectural, not noise. Current blocklist suppresses all std trait implements edges. Options: (1) remove Display/From/Default from blocklist entirely, (2) only suppress when both sides are unresolved, (3) keep as-is (noise vs signal tradeoff). This is a design decision requiring human input."  # f3ed
     fields: {}  # f3ed
+- op: discuss  # 41fc
+  at: '2026-03-09T15:39:31Z'  # 41fc
+  by: human  # 41fc
+  actor: jgstern  # 41fc
+  clock: 2  # 41fc
+  nonce: 41fc  # 41fc
+  message: "Please explain this a bit more for someone unfamiliar with \"std\", \"trait\", \"implements edges\", and aardvark-dns."  # 41fc

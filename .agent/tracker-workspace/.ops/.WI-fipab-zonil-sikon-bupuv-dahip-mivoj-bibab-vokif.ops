@@ -1,0 +1,19 @@
+- op: create  # 0cc9
+  at: '2026-03-09T18:53:44Z'  # 0cc9
+  by: agent  # 0cc9
+  actor: jgstern_agent  # 0cc9
+  clock: 1  # 0cc9
+  nonce: 0cc9  # 0cc9
+  data:  # 0cc9
+    kind: work_item  # 0cc9
+    title: "Cobra CLI command tree detection"  # 0cc9
+    status: todo_soft  # 0cc9
+    priority: 2  # 0cc9
+    parent:  # 0cc9
+    tags: []  # 0cc9
+    before: []  # 0cc9
+    duplicate_of: []  # 0cc9
+    not_duplicate_of: []  # 0cc9
+    pr_ref:  # 0cc9
+    description: "DEEP bakeoff: beads assessment shows rootCmd.Execute() misresolved to Client.Execute. Cobra command tree structure invisible — 30+ subcommands unlinked. Needs: detect AddCommand() calls, create parent-child command edges, resolve command Run/RunE closures."  # 0cc9
+    fields: {}  # 0cc9
