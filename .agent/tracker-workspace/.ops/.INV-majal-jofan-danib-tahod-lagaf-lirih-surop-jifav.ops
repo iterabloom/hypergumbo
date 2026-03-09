@@ -19,3 +19,18 @@
     fields:  # efad
       statement: "Function reference edges must not be created for identifiers that are local variables in scope"  # efad
       root_cause: "_extract_function_reference_edges checks local_symbols for function/method matches but does not check scoped_var_types to exclude local variables"  # efad
+- op: update  # caea
+  at: '2026-03-09T03:45:35Z'  # caea
+  by: agent  # caea
+  actor: jgstern_agent  # caea
+  clock: 2  # caea
+  nonce: caea  # caea
+  set:  # caea
+    status: holding  # caea
+- op: discuss  # 7427
+  at: '2026-03-09T03:45:35Z'  # 7427
+  by: agent  # 7427
+  actor: jgstern_agent  # 7427
+  clock: 3  # 7427
+  nonce: '7427'  # 7427
+  message: "Fixed in PR #2049. scoped_var_types now tracks all short-var-declaration variables (even without inferred type) and _extract_function_reference_edges skips identifiers found in scoped_vars."  # 7427

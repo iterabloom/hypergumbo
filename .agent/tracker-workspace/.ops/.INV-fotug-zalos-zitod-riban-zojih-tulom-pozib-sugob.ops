@@ -19,3 +19,18 @@
     fields:  # c5db
       statement: "Calls to std:: methods (clear, push_back, resize, min, max) must not resolve to project functions sharing the name"  # c5db
       root_cause: "C++ analyzer lacks namespace-aware resolution; bare function name matching picks project-level functions over std:: methods"  # c5db
+- op: update  # c3df
+  at: '2026-03-09T05:47:05Z'  # c3df
+  by: agent  # c3df
+  actor: jgstern_agent  # c3df
+  clock: 2  # c3df
+  nonce: c3df  # c3df
+  set:  # c3df
+    status: holding  # c3df
+- op: discuss  # 21ef
+  at: '2026-03-09T05:47:06Z'  # 21ef
+  by: agent  # 21ef
+  actor: jgstern_agent  # 21ef
+  clock: 3  # 21ef
+  nonce: 21ef  # 21ef
+  message: "Fixed in PR #2053. Added _CPP_STL_METHODS frozenset blocklist (35 methods) that suppresses fallback to local/global symbol resolution when the call is a member call (field_expression present). Excludes 'get' since it's too commonly user-defined."  # 21ef

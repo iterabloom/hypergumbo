@@ -1,0 +1,21 @@
+- op: create  # 76f4
+  at: '2026-03-09T06:19:46Z'  # 76f4
+  by: agent  # 76f4
+  actor: jgstern_agent  # 76f4
+  clock: 1  # 76f4
+  nonce: 76f4  # 76f4
+  data:  # 76f4
+    kind: invariant  # 76f4
+    title: "MPEG-TS .ts file misdetection: binary .ts test data files parsed as TypeScript"  # 76f4
+    status: violated  # 76f4
+    priority: 3  # 76f4
+    parent:  # 76f4
+    tags: []  # 76f4
+    before: []  # 76f4
+    duplicate_of: []  # 76f4
+    not_duplicate_of: []  # 76f4
+    pr_ref:  # 76f4
+    description: ""  # 76f4
+    fields:  # 76f4
+      statement: "Files with .ts extension must be validated as actual TypeScript before parsing; binary MPEG Transport Stream test data with .ts extension should be skipped"  # 76f4
+      root_cause: "JS/TS file discovery uses *.ts glob without checking file content; MPEG-TS files have .ts extension and are in testdata directories"  # 76f4
