@@ -62,3 +62,10 @@
   clock: 7  # 3c0b
   nonce: 3c0b  # 3c0b
   message: "...and I plan to use hypergumbo to create \"plazaflow\", a tauri app"  # 3c0b
+- op: discuss  # f77d
+  at: '2026-03-09T18:59:50Z'  # f77d
+  by: agent  # f77d
+  actor: jgstern_agent  # f77d
+  clock: 8  # f77d
+  nonce: f77d  # f77d
+  message: "Noted the Rust-heavy curriculum at ~/hypergumbo_lab_notebook/curricula/deep-plazaflow-20260309.md and the plazaflow Tauri app plan. This changes the priority calculus — if you're building a Tauri app with hypergumbo, Rust method resolution quality directly affects your development experience.\n\nFor the plazaflow curriculum: the current Rust analyzer handles basic method calls, trait implementations, and generic types. The gap is resolving method calls on generic receivers (e.g., `result.wrap()` where `result: Result<T, E>` and `wrap` comes from a custom trait impl on Result). This requires tracking return types through function signatures.\n\nI'll keep this at P4 for now but will reassess after the plazaflow curriculum bakeoff results come in. If Rust method resolution is a consistent gap across multiple Rust repos, I'll escalate to P2 and implement return-type tracking."  # f77d
