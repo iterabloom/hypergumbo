@@ -1243,10 +1243,14 @@ def _extract_go_var_types(
             if var_name in func_vars:
                 continue  # pragma: no cover - Go forbids redeclaration in same scope
 
-            # Get type from right side
+            # Get type from right side.  Record even if type unknown (empty
+            # string) so the variable name is tracked for false-positive
+            # prevention in function reference detection.
             type_name = _type_from_rhs(rhs, source)
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
+            else:
+                func_vars[var_name] = ""
 
         # Pattern 2: Var declaration  var c Client  or  var p *Client
         elif node.type == "var_spec":
@@ -1465,6 +1469,7 @@ def _extract_function_reference_edges(
     line: int,
     edges: list[Edge],
     run: AnalysisRun,
+    scoped_vars: dict[str, str] | None = None,
 ) -> None:
     """Detect function identifiers passed as arguments and create call edges.
 
@@ -1478,10 +1483,20 @@ def _extract_function_reference_edges(
     Handles two forms:
     - ``identifier``: simple function reference like ``handler``
     - ``selector_expression``: qualified reference like ``h.GetAPI``
+
+    The ``scoped_vars`` parameter (from ``_extract_go_var_types``) maps
+    local variable names to their types within the enclosing function.
+    Identifiers found in ``scoped_vars`` are skipped to avoid false
+    positives where a local variable shares a name with a function
+    (e.g., ``start := time.Now()`` vs ``func start()``).
     """
+    _scoped = scoped_vars or {}
     for arg in args_node.children:
         if arg.type == "identifier":
             ref_name = node_text(arg, source)
+            # Skip identifiers that are local variables in the current scope
+            if ref_name in _scoped:
+                continue
             # Check if it's a known function/method (local or global)
             if ref_name in local_symbols:
                 sym = local_symbols[ref_name]
@@ -1982,6 +1997,7 @@ def _extract_edges_from_file(
                         args_node, source, current_function,
                         local_symbols, global_symbols, resolver,
                         node.start_point[0] + 1, edges, run,
+                        scoped_vars=var_types,
                     )
 
         # Detect function references in struct literal fields

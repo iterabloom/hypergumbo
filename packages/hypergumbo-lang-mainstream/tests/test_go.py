@@ -3793,6 +3793,45 @@ func indirect() {
             f"lower than direct call confidence ({direct_call.confidence})"
         )
 
+    def test_local_variable_not_treated_as_function_reference(self, tmp_path: Path) -> None:
+        """Local variables passed as args must not create false function reference edges.
+
+        When a local variable shares a name with a function (e.g., ``start``
+        used as a time value vs ``start()`` as a method), the analyzer must
+        not create a call edge from the variable usage to the function.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "time"
+
+func start() {}
+
+func doWork() {
+    start := time.Now()
+    elapsed := time.Since(start)
+    _ = elapsed
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # doWork should NOT have a function_reference_arg edge to start()
+        false_ref = next(
+            (e for e in call_edges
+             if "doWork" in e.src and "start" in e.dst
+             and e.evidence_type == "function_reference_arg"),
+            None,
+        )
+        assert false_ref is None, (
+            f"Local variable 'start' should not create a function reference edge "
+            f"to start(). Found: {false_ref}"
+        )
+
 
 class TestGoAmbiguousMethodCallGuard:
     """Tests for the ambiguous method call resolution guard.
