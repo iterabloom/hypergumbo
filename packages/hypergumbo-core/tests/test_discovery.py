@@ -518,3 +518,62 @@ class TestFindFilesMaxFileBytes:
             assert len(result) == 1
         finally:
             set_max_file_bytes(None)
+
+    def test_global_on_file_skipped_callback(self, tmp_path: Path) -> None:
+        """Global on_file_skipped callback fires when no explicit callback."""
+        from hypergumbo_core.discovery import (
+            set_global_on_file_skipped,
+            set_max_file_bytes,
+        )
+
+        large = tmp_path / "big.py"
+        large.write_text("x" * 2000)
+        small = tmp_path / "ok.py"
+        small.write_text("x = 1")
+
+        skipped: list[tuple] = []
+
+        def on_skip(path: Path, size: int, reason: str) -> None:
+            skipped.append((str(path.name), size, reason))
+
+        try:
+            set_max_file_bytes(100)
+            set_global_on_file_skipped(on_skip)
+            result = list(find_files(tmp_path, ["*.py"]))
+            names = {p.name for p in result}
+            assert "ok.py" in names
+            assert "big.py" not in names
+            assert len(skipped) == 1
+            assert skipped[0][0] == "big.py"
+            assert "exceeds" in skipped[0][2]
+        finally:
+            set_max_file_bytes(None)
+            set_global_on_file_skipped(None)
+
+    def test_explicit_callback_overrides_global(self, tmp_path: Path) -> None:
+        """Explicit on_file_skipped overrides the global callback."""
+        from hypergumbo_core.discovery import (
+            set_global_on_file_skipped,
+            set_max_file_bytes,
+        )
+
+        large = tmp_path / "big.py"
+        large.write_text("x" * 2000)
+
+        global_skipped: list[str] = []
+        explicit_skipped: list[str] = []
+
+        try:
+            set_max_file_bytes(100)
+            set_global_on_file_skipped(
+                lambda p, s, r: global_skipped.append(str(p.name))
+            )
+            list(find_files(
+                tmp_path, ["*.py"],
+                on_file_skipped=lambda p, s, r: explicit_skipped.append(str(p.name)),
+            ))
+            assert len(explicit_skipped) == 1
+            assert len(global_skipped) == 0
+        finally:
+            set_max_file_bytes(None)
+            set_global_on_file_skipped(None)

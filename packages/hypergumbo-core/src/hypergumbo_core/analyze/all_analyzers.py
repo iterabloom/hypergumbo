@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..discovery import set_global_on_file_skipped
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
 from ..paths import normalize_path
@@ -121,6 +122,12 @@ def run_all_analyzers(
     limits.max_files_per_analyzer = max_files
     captured_symbols: dict[str, list[Symbol]] = {}
 
+    # Wire global callback so find_files() reports skipped files to limits
+    def _on_file_skipped(path: Path, size_bytes: int, reason: str) -> None:
+        limits.add_truncated_file(str(path), size_bytes, reason)
+
+    set_global_on_file_skipped(_on_file_skipped)
+
     for analyzer in _registry_get_all():
         # Build kwargs based on analyzer capabilities
         kwargs: dict[str, Any] = {}
@@ -161,5 +168,8 @@ def run_all_analyzers(
         normed = normalize_path(uc.path)
         if normed.startswith(root_prefix):
             uc.path = normed[len(root_prefix):]
+
+    # Clear global callback to avoid leaking state
+    set_global_on_file_skipped(None)
 
     return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols

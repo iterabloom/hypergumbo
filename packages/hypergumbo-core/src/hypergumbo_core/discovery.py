@@ -20,6 +20,12 @@ from typing import Callable, Iterator
 # is passed. Reset to None after use.
 _global_max_file_bytes: int | None = None
 
+# Global callback for skipped files. Set via set_global_on_file_skipped()
+# before running analyzers; find_files() uses this when no explicit
+# on_file_skipped callback is provided. This allows run_all_analyzers()
+# to collect truncated file info without modifying any analyzer signatures.
+_global_on_file_skipped: Callable[[Path, int, str], None] | None = None
+
 
 def set_max_file_bytes(limit: int | None) -> None:
     """Set the global max file bytes limit for find_files().
@@ -29,6 +35,20 @@ def set_max_file_bytes(limit: int | None) -> None:
     """
     global _global_max_file_bytes
     _global_max_file_bytes = limit
+
+
+def set_global_on_file_skipped(
+    callback: Callable[[Path, int, str], None] | None,
+) -> None:
+    """Set a global callback for files skipped due to size limits.
+
+    Called by run_all_analyzers() to wire skipped-file tracking into
+    the Limits object without modifying individual analyzer signatures.
+    When find_files() skips a file and no explicit on_file_skipped
+    callback is provided, it falls back to this global callback.
+    """
+    global _global_on_file_skipped
+    _global_on_file_skipped = callback
 
 
 # Compiled patterns for .m file disambiguation — compiled once at import time.
@@ -349,6 +369,10 @@ def find_files(
     # Use global limit if no explicit value provided
     if max_file_bytes is None:
         max_file_bytes = _global_max_file_bytes
+
+    # Use global callback if no explicit callback provided
+    if on_file_skipped is None:
+        on_file_skipped = _global_on_file_skipped
 
     # Classify once, use for all files in this call
     exact, globs = _classify_excludes(excludes)

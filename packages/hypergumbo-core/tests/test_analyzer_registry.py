@@ -891,3 +891,63 @@ class TestRunAllAnalyzersPathNormalization:
 
         # Path outside repo_root should be left as-is
         assert symbols[0].path == "/usr/include/stdlib.h"
+
+
+class TestRunAllAnalyzersTruncatedFiles:
+    """Tests that run_all_analyzers wires file-skip tracking to limits."""
+
+    def test_truncated_files_populated_via_global_callback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Oversized files discovered by find_files() are recorded in limits."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.discovery import find_files, set_max_file_bytes
+        from hypergumbo_core.ir import AnalysisRun
+
+        # Create a large file that exceeds the limit
+        large = tmp_path / "big.py"
+        large.write_text("x" * 5000)
+        small = tmp_path / "ok.py"
+        small.write_text("x = 1\n")
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-trunc-v1"}
+        run.pass_id = "test-trunc-v1"
+
+        # Analyzer that calls find_files — the global callback should fire
+        @register_analyzer("test_trunc")
+        def analyze_trunc(root: Path) -> AnalysisResult:
+            list(find_files(root, ["*.py"]))
+            return AnalysisResult(run=run, skipped=False)
+
+        try:
+            set_max_file_bytes(100)
+            with patch(
+                "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+            ):
+                _, _, _, _, limits, _ = facade_run_all(tmp_path)
+
+            assert len(limits.truncated_files) == 1
+            assert "big.py" in limits.truncated_files[0]["path"]
+            assert limits.truncated_files[0]["size_bytes"] > 100
+            assert "exceeds" in limits.truncated_files[0]["reason"]
+        finally:
+            set_max_file_bytes(None)
+
+    def test_global_callback_cleared_after_run(self) -> None:
+        """Global on_file_skipped callback is cleared after run_all_analyzers."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.discovery import _global_on_file_skipped
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            facade_run_all(Path("/test"))
+
+        # Import the module-level variable directly
+        import hypergumbo_core.discovery as disc_mod
+        assert disc_mod._global_on_file_skipped is None

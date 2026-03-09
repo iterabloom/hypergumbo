@@ -1387,7 +1387,7 @@ Tier and Role compose for analysis decisions:
 ### File size limits
 
 * 🟩 **Behavior**: Skip files exceeding `--max-file-bytes`, continue analysis. Applied globally via `set_max_file_bytes()` so all analyzers using `find_files()` respect the limit.
-* 🟨 **Output**: `limits.truncated_files[]` infrastructure exists (`add_truncated_file()`). The `find_files` callback mechanism is in place; wiring to `limits` at the `run_all_analyzers` level is the remaining step.
+* 🟩 **Output**: `limits.truncated_files[]` populated via global `on_file_skipped` callback. `run_all_analyzers()` sets a global callback in `discovery.py` that calls `limits.add_truncated_file()` for every file skipped due to size limits. No analyzer modifications required.
 
 ### Partial results guarantee
 
