@@ -286,12 +286,12 @@ class AnalysisIR:
   - Purpose: Track symbols across refactors (renames, moves, documentation changes)
   - **Does NOT change** when: Renaming, moving between files, changing implementation, adding comments
   - **DOES change** when: Signature changes (param types, arity), visibility changes, decorators added/removed
-* 🟨 `shape_id` (optional): Structural implementation fingerprint
+* 🟩 `shape_id` (optional): Structural implementation fingerprint
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
-  - ⬜ All other languages: planned via a generic tree-sitter CST walker (single implementation — walk CST, keep node types, strip literal values and identifier names, hash the structure)
+  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzerBase.compute_shape_id()`. Any analyzer that populates `node_for_symbol` gets automatic shape_id computation. Currently 27 analyzers use this (Rust, Ruby, C#, Swift, Nim, Ada, Pascal, etc.).
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
