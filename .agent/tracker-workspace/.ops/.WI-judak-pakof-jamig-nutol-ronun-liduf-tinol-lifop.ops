@@ -33,3 +33,11 @@
   clock: 3  # 80cf
   nonce: 80cf  # 80cf
   message: "Governance file (.agent/hooks). Proposed: variable cooldown messaging in stop hook based on elapsed time since last approved stop (short: gentle, long: more insistent). Requesting approval."  # 80cf
+- op: update  # 31b4
+  at: '2026-03-08T21:47:48Z'  # 31b4
+  by: human  # 31b4
+  actor: jgstern  # 31b4
+  clock: 4  # 31b4
+  nonce: 31b4  # 31b4
+  set:  # 31b4
+    status: wont_do  # 31b4

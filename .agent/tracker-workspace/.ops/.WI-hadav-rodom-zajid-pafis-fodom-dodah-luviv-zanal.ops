@@ -46,3 +46,17 @@
   clock: 5  # 6809
   nonce: '6809'  # 6809
   message: "Yes, structural interface/protocol matching could affect other languages. Java/Kotlin have nominal typing (explicit implements), so they're fine. But TypeScript uses structural typing like Go — a class satisfying an interface's shape is compatible without explicit implements. Rust traits require explicit impl blocks, so they're covered. Python protocols (typing.Protocol) are structural — similar gap possible. Swift protocols require explicit conformance. Ruby duck-typing is implicit but we don't track implements edges for Ruby. Net: TypeScript and Python Protocol are the two analogous gaps. Will create tracker items."  # 6809
+- op: discuss  # d70f
+  at: '2026-03-08T21:46:45Z'  # d70f
+  by: human  # d70f
+  actor: jgstern  # d70f
+  clock: 6  # d70f
+  nonce: d70f  # d70f
+  message: "please identify here the tracker items that you created. you may need to look through all statuses including \"done\" to find them."  # d70f
+- op: discuss  # 23c1
+  at: '2026-03-08T22:33:31Z'  # 23c1
+  by: agent  # 23c1
+  actor: jgstern_agent  # 23c1
+  clock: 7  # 23c1
+  nonce: 23c1  # 23c1
+  message: "Created two tracker items for the analogous gaps: (1) WI-mimuz (TypeScript structural interface matching for implements edges, currently wont_do/P4), and (2) WI-dahoj (Python Protocol structural matching for implements edges, currently wont_do/P4). Both were set to wont_do because bakeoff repos showed no CRITICAL/HIGH signals for these patterns, but they can be reopened if real-world demand emerges."  # 23c1

@@ -1,0 +1,21 @@
+- op: create  # efad
+  at: '2026-03-09T03:20:35Z'  # efad
+  by: agent  # efad
+  actor: jgstern_agent  # efad
+  clock: 1  # efad
+  nonce: efad  # efad
+  data:  # efad
+    kind: invariant  # efad
+    title: "Go: local vars falsely resolve to same-name methods"  # efad
+    status: violated  # efad
+    priority: 2  # efad
+    parent:  # efad
+    tags: []  # efad
+    before: []  # efad
+    duplicate_of: []  # efad
+    not_duplicate_of: []  # efad
+    pr_ref:  # efad
+    description: ""  # efad
+    fields:  # efad
+      statement: "Function reference edges must not be created for identifiers that are local variables in scope"  # efad
+      root_cause: "_extract_function_reference_edges checks local_symbols for function/method matches but does not check scoped_var_types to exclude local variables"  # efad
