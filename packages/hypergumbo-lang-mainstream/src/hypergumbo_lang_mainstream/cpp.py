@@ -60,6 +60,36 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("cpp")
 
+# Common C++ STL container/iterator method names.  When a call like
+# ``v.clear()`` is parsed, tree-sitter yields a ``field_expression``
+# wrapping the method name.  If field-chain resolution fails (the
+# receiver type is unknown), we must NOT fall through to global symbol
+# resolution — otherwise a project-level ``clear()`` function would
+# erroneously become the callee.  This set enumerates names that are
+# almost certainly STL member calls when invoked via ``.``.
+_CPP_STL_METHODS: frozenset[str] = frozenset({
+    # Container modifiers
+    "clear", "push_back", "push_front", "pop_back", "pop_front",
+    "emplace_back", "emplace_front", "emplace", "insert", "erase",
+    "resize", "reserve", "shrink_to_fit", "swap", "assign",
+    # Element access
+    "at", "front", "back", "data", "top",
+    # Capacity / observers
+    "size", "empty", "capacity", "max_size", "length",
+    # Iterators
+    "begin", "end", "cbegin", "cend", "rbegin", "rend",
+    # Lookup (associative containers)
+    "find", "count", "contains", "lower_bound", "upper_bound",
+    "equal_range",
+    # String operations
+    "substr", "append", "replace", "c_str", "str",
+    # Stream
+    "flush", "close", "open", "read", "write", "seekg", "seekp",
+    "tellg", "tellp",
+    # Smart pointers (excluding "get" — too commonly user-defined)
+    "reset", "release", "use_count",
+})
+
 # Backwards compatibility alias
 CppAnalysisResult = AnalysisResult
 
@@ -758,36 +788,45 @@ def _extract_edges_from_tree(
                 if callee_name:
                     # Try field chain resolution (this->field->method())
                     chain_resolved = False
-                    if field_type_registry:
-                        top_field = _find_child_by_type(node, "field_expression")
-                        if top_field:
-                            # Walk inner field_expression chain to find receiver
-                            receiver = top_field.child_by_field_name("argument")
-                            if receiver and receiver.type == "field_expression":
-                                resolved_type = _resolve_cpp_field_chain(
-                                    receiver, source, field_type_registry,
-                                    node,
-                                )
-                                if resolved_type:
-                                    lookup = resolver.lookup(callee_name, path_hint=resolved_type, caller_path=_caller_path)
-                                    if lookup.found and lookup.symbol is not None:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=lookup.symbol.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="method_call_field_chain",
-                                            confidence=0.85,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                        ))
-                                        chain_resolved = True
+                    # Detect member calls (obj.method() / ptr->method())
+                    top_field = _find_child_by_type(node, "field_expression")
+                    is_member_call = top_field is not None
+                    if field_type_registry and top_field:
+                        # Walk inner field_expression chain to find receiver
+                        receiver = top_field.child_by_field_name("argument")
+                        if receiver and receiver.type == "field_expression":
+                            resolved_type = _resolve_cpp_field_chain(
+                                receiver, source, field_type_registry,
+                                node,
+                            )
+                            if resolved_type:
+                                lookup = resolver.lookup(callee_name, path_hint=resolved_type, caller_path=_caller_path)
+                                if lookup.found and lookup.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="method_call_field_chain",
+                                        confidence=0.85,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                                    chain_resolved = True
 
                     if chain_resolved:
                         pass  # Skip normal resolution
                     else:
                         # Try to resolve: look for short name first
                         short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
+
+                        # STL method guard: when the call is a member call
+                        # (obj.method()) and the method name is a common STL
+                        # method, do NOT fall through to local/global resolution.
+                        # Without this, v.clear() would resolve to a project-level
+                        # clear() function.
+                        if is_member_call and short_name in _CPP_STL_METHODS:
+                            chain_resolved = True  # suppress fallback
 
                         # Extract namespace prefix for path_hint (ADR-0007)
                         path_hint = None

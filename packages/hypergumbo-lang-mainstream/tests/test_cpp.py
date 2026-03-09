@@ -1981,3 +1981,41 @@ class Ctrl {
         result = _get_enclosing_class(body, code)
         assert result is None
 
+
+class TestCppStdlibMethodGuard:
+    """Tests for C++ stdlib method blocklist.
+
+    Common STL container methods (clear, push_back, resize, etc.) called
+    via member syntax (obj.clear()) must not resolve to project functions
+    with the same name when the receiver type is unknown.
+    """
+
+    def test_stdlib_method_not_resolved_to_project_function(self, tmp_path: Path) -> None:
+        """v.clear() must not resolve to a project-level clear() function."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "main.cpp"
+        cpp_file.write_text("""
+#include <vector>
+
+void clear() {}
+
+void process() {
+    std::vector<int> v;
+    v.push_back(1);
+    v.clear();
+    v.resize(10);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # process() should NOT have edges to clear(), push_back(), resize()
+        for edge in call_edges:
+            if "process" in edge.src:
+                assert "clear" not in edge.dst or edge.evidence_type != "function_call", (
+                    f"v.clear() should not resolve to project clear(). Edge: {edge}"
+                )
+
