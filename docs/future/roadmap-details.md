@@ -16,7 +16,8 @@ Remaining improvements (without requiring language servers):
 ## Additional linkers
 
 * 🟩 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`) — implemented for Python (Django path/re_path/url, Flask add_url_rule/add_api_route). Resolves module-level constants, imported constants, and string concatenation. Go already handles string concatenation natively in `_extract_string_from_node`.
-* 🟪 **Middleware/proxy rewriting** detection
+* 🟩 **Middleware chain linker** — creates `middleware_chain` edges between consecutive middleware symbols in the same file. Works with all 58 framework patterns that tag `concept: middleware`. Same-file ordering by source line.
+* 🟪 **Proxy rewriting** detection
 
 ## Additional output views
 
