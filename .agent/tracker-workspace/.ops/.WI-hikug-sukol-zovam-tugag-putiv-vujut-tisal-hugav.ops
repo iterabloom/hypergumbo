@@ -1,0 +1,19 @@
+- op: create  # 0a97
+  at: '2026-03-09T18:55:10Z'  # 0a97
+  by: agent  # 0a97
+  actor: jgstern_agent  # 0a97
+  clock: 1  # 0a97
+  nonce: 0a97  # 0a97
+  data:  # 0a97
+    kind: work_item  # 0a97
+    title: "Go method resolution: receiver type tracking to prevent same-name collisions"  # 0a97
+    status: todo_soft  # 0a97
+    priority: 2  # 0a97
+    parent:  # 0a97
+    tags: []  # 0a97
+    before: []  # 0a97
+    duplicate_of: []  # 0a97
+    not_duplicate_of: []  # 0a97
+    pr_ref:  # 0a97
+    description: "DEEP bakeoff: Go analyzer resolves methods by name only. When multiple types have the same method name (e.g., Execute on both cobra.Command and Client), resolution picks the wrong target. Needs receiver type tracking through variable declarations to disambiguate."  # 0a97
+    fields: {}  # 0a97
