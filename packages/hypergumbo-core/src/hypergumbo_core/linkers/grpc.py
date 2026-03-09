@@ -28,11 +28,14 @@ TypeScript/JavaScript gRPC:
 
 How It Works
 ------------
-1. Scan .proto files for service definitions
+1. Scan .proto files for service and RPC method definitions
 2. Scan implementation files for gRPC patterns
 3. Create symbols for services, clients, and servers
-4. Match clients to servers by service name
-5. Create grpc_calls edges linking client stubs to servicers
+4. Create kind="route" symbols for each proto RPC method, using the
+   real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>
+5. Match clients to servers by service name
+6. Create grpc_calls edges linking client stubs to servicers
+7. Create routes_to edges from RPC route symbols to service symbols
 
 Unresolved Edge Resolution
 --------------------------
@@ -82,6 +85,17 @@ class GrpcPattern:
 
 
 @dataclass
+class ProtoRpcDef:
+    """An RPC method definition within a proto service."""
+
+    service_name: str
+    rpc_name: str
+    package: str  # May be empty
+    line: int
+    file_path: str
+
+
+@dataclass
 class GrpcLinkResult:
     """Result of gRPC linking."""
 
@@ -95,6 +109,14 @@ class GrpcLinkResult:
 # Proto file patterns
 PROTO_SERVICE_PATTERN = re.compile(
     r"^\s*service\s+(\w+)\s*\{",
+    re.MULTILINE,
+)
+PROTO_RPC_PATTERN = re.compile(
+    r"^\s*rpc\s+(\w+)\s*\(",
+    re.MULTILINE,
+)
+PROTO_PACKAGE_PATTERN = re.compile(
+    r"^\s*package\s+([\w.]+)\s*;",
     re.MULTILINE,
 )
 
@@ -158,22 +180,59 @@ def _find_grpc_files(root: Path) -> Iterator[Path]:
         yield path
 
 
-def _scan_proto_file(file_path: Path, content: str) -> list[GrpcPattern]:
-    """Scan a .proto file for service definitions."""
+def _scan_proto_file(
+    file_path: Path, content: str,
+) -> tuple[list[GrpcPattern], list[ProtoRpcDef]]:
+    """Scan a .proto file for service and RPC definitions.
+
+    Returns a tuple of (patterns, rpc_defs).  The *patterns* list contains
+    ``GrpcPattern`` entries for each ``service`` block.  The *rpc_defs* list
+    contains one ``ProtoRpcDef`` per ``rpc`` method, including the enclosing
+    service name and the proto package.  These are used downstream to
+    materialise ``kind="route"`` symbols whose path mirrors the real
+    HTTP/2 wire path ``/<package>.<ServiceName>/<MethodName>``.
+    """
     patterns: list[GrpcPattern] = []
+    rpc_defs: list[ProtoRpcDef] = []
+
+    # Extract package name (first match wins — proto allows at most one).
+    pkg_match = PROTO_PACKAGE_PATTERN.search(content)
+    package = pkg_match.group(1) if pkg_match else ""
+
+    # Track which service block we are inside.
+    current_service: str | None = None
+    brace_depth = 0
 
     for i, line in enumerate(content.split("\n"), 1):
-        match = PROTO_SERVICE_PATTERN.match(line)
-        if match:
+        svc_match = PROTO_SERVICE_PATTERN.match(line)
+        if svc_match:
+            current_service = svc_match.group(1)
+            brace_depth = 0
             patterns.append(GrpcPattern(
                 type="service",
-                service_name=match.group(1),
+                service_name=current_service,
                 line=i,
                 file_path=str(file_path),
                 language="protobuf",
             ))
 
-    return patterns
+        # Rough brace tracking to know when we leave a service block.
+        brace_depth += line.count("{") - line.count("}")
+        if brace_depth <= 0 and current_service is not None:
+            current_service = None
+
+        if current_service is not None:
+            rpc_match = PROTO_RPC_PATTERN.match(line)
+            if rpc_match:
+                rpc_defs.append(ProtoRpcDef(
+                    service_name=current_service,
+                    rpc_name=rpc_match.group(1),
+                    package=package,
+                    line=i,
+                    file_path=str(file_path),
+                ))
+
+    return patterns, rpc_defs
 
 
 def _scan_python_file(file_path: Path, content: str) -> list[GrpcPattern]:
@@ -344,6 +403,17 @@ def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
     return f"grpc:{file_path}:{line}:{name}:{kind}"
 
 
+def _make_route_stable_id(method: str, path: str) -> str:
+    """Compute a collision-free stable_id for gRPC route symbols.
+
+    Mirrors ``make_route_stable_id`` from ``analyze.base`` but avoids a
+    cross-package import.  Uses sha256("route:{method}:{path}").
+    """
+    import hashlib
+    digest = hashlib.sha256(f"route:{method}:{path}".encode()).hexdigest()[:16]
+    return f"sha256:{digest}"
+
+
 def _normalize_service_name(name: str) -> str:
     """Normalize service name for matching (remove common suffixes)."""
     # Remove common suffixes for matching
@@ -366,6 +436,7 @@ def link_grpc(root: Path) -> GrpcLinkResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     all_patterns: list[GrpcPattern] = []
+    all_rpc_defs: list[ProtoRpcDef] = []
 
     # Scan all relevant files
     for file_path in _find_grpc_files(root):
@@ -375,7 +446,9 @@ def link_grpc(root: Path) -> GrpcLinkResult:
             continue
 
         if file_path.suffix == ".proto":
-            all_patterns.extend(_scan_proto_file(file_path, content))
+            patterns, rpc_defs = _scan_proto_file(file_path, content)
+            all_patterns.extend(patterns)
+            all_rpc_defs.extend(rpc_defs)
         elif file_path.suffix == ".py":
             all_patterns.extend(_scan_python_file(file_path, content))
         elif file_path.suffix == ".go":
@@ -452,6 +525,55 @@ def link_grpc(root: Path) -> GrpcLinkResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_service_match",
+            ))
+
+    # Create route symbols for proto RPC definitions.
+    # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
+    # Build a lookup for service symbols to create routes_to edges.
+    service_sym_by_name: dict[str, str] = {}
+    for sym in symbols:
+        if sym.kind == "grpc_service":
+            service_sym_by_name[sym.name] = sym.id
+
+    for rpc in all_rpc_defs:
+        prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
+        route_path = f"/{prefix}/{rpc.rpc_name}"
+        route_name = f"RPC {route_path}"
+        stable_id = _make_route_stable_id("RPC", route_path)
+
+        route_id = _make_symbol_id(
+            rpc.file_path, rpc.line, route_name, "route"
+        )
+        symbols.append(Symbol(
+            id=route_id,
+            name=route_name,
+            kind="route",
+            language="protobuf",
+            path=rpc.file_path,
+            span=Span(rpc.line, rpc.line, 0, 0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            stable_id=stable_id,
+            meta={
+                "route_path": route_path,
+                "http_method": "RPC",
+                "rpc_service": rpc.service_name,
+                "rpc_method": rpc.rpc_name,
+            },
+        ))
+
+        # Create routes_to edge from route to the service symbol.
+        svc_id = service_sym_by_name.get(rpc.service_name)
+        if svc_id:
+            edges.append(Edge.create(
+                src=route_id,
+                dst=svc_id,
+                edge_type="routes_to",
+                line=rpc.line,
+                confidence=0.90,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="grpc_rpc_definition",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

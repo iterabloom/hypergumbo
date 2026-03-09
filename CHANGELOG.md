@@ -11,6 +11,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **gRPC proto RPC route detection**: Proto RPC method definitions now produce `kind="route"` symbols using the real HTTP/2 wire path `/<package>.<ServiceName>/<MethodName>`. Routes appear in `routes.txt` and get `routes_to` edges to their service symbols. Previously, 229 proto RPCs in the grpc repo were invisible in route output.
 - **MCP framework pattern detection**: TypeScript (8 patterns) and Python (10 patterns) for Model Context Protocol tool/resource/prompt registration. Framework detection via `@modelcontextprotocol/sdk` (JS) and `mcp`/`fastmcp` (Python) in manifests.
 - **Circom language support**: Tree-sitter analyzer for `.circom` zero-knowledge circuit files (built from source). Extracts templates, functions, signals with visibility, and main components. Call edges for template instantiation, import edges for includes. Entrypoint detection for both library and application repos.
 - **`--max-file-bytes` CLI argument**: Skips files exceeding the specified size during `run`. Useful for skipping minified JS, huge HTML, and generated files that slow analysis.

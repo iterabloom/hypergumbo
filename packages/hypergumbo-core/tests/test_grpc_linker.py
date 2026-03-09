@@ -448,6 +448,155 @@ class TestGrpcNormalizeServiceName:
         assert _normalize_service_name("UserServer") == "User"
 
 
+class TestGrpcProtoRouteSymbols:
+    """Tests for gRPC proto RPC methods surfaced as route symbols.
+
+    gRPC RPC methods are accessed via HTTP/2 at path
+    /<package>.<ServiceName>/<MethodName>.  The linker should create
+    kind="route" symbols for proto RPC definitions so they appear in
+    ``routes.txt`` and can be linked to handler implementations.
+    """
+
+    def test_proto_rpc_creates_route_symbols(self, tmp_path: Path) -> None:
+        """Proto RPC methods produce kind='route' symbols."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "    rpc CreateUser(CreateUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+        route_names = sorted(s.name for s in route_symbols)
+        assert route_names == [
+            "RPC /example.UserService/CreateUser",
+            "RPC /example.UserService/GetUser",
+        ]
+
+    def test_proto_rpc_route_has_metadata(self, tmp_path: Path) -> None:
+        """Route symbols have route_path and rpc_service metadata."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "order.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package shop.v1;\n"
+            "service OrderService {\n"
+            "    rpc PlaceOrder(PlaceOrderRequest) returns (OrderResponse);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+
+        route = route_symbols[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/shop.v1.OrderService/PlaceOrder"
+        assert route.meta["http_method"] == "RPC"
+        assert route.meta["rpc_service"] == "OrderService"
+
+    def test_proto_rpc_route_without_package(self, tmp_path: Path) -> None:
+        """Proto files without package still produce routes."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "echo.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "service EchoService {\n"
+            "    rpc Echo(EchoRequest) returns (EchoResponse);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+
+        route = route_symbols[0]
+        assert route.meta["route_path"] == "/EchoService/Echo"
+        assert route.name == "RPC /EchoService/Echo"
+
+    def test_proto_rpc_route_has_stable_id(self, tmp_path: Path) -> None:
+        """Route symbols have stable_id for deduplication."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+        assert route_symbols[0].stable_id is not None
+        assert route_symbols[0].stable_id.startswith("sha256:")
+
+    def test_proto_rpc_route_creates_routes_to_edge(self, tmp_path: Path) -> None:
+        """Route symbols get routes_to edges to the service symbol."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        routes_to_edges = [e for e in result.edges if e.edge_type == "routes_to"]
+        assert len(routes_to_edges) == 1
+        # Route should point to the grpc_service symbol
+        assert any(
+            s.kind == "grpc_service" and s.id == routes_to_edges[0].dst
+            for s in result.symbols
+        )
+
+    def test_multiple_services_produce_separate_routes(self, tmp_path: Path) -> None:
+        """Multiple services in one proto file produce separate route symbols."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "multi.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package api;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+            "service OrderService {\n"
+            "    rpc PlaceOrder(PlaceOrderRequest) returns (Order);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+        paths = sorted(s.meta["route_path"] for s in route_symbols)
+        assert paths == [
+            "/api.OrderService/PlaceOrder",
+            "/api.UserService/GetUser",
+        ]
+
+
 class TestGrpcLinkerRequirements:
     """Tests for gRPC linker registry requirements."""
 
