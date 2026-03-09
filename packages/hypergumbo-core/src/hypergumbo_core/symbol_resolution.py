@@ -552,7 +552,7 @@ class NameResolver:
                 )
             # Stage 2: filter by registry key (qualified symbol name)
             key_matched = [
-                c for c, k in zip(candidates, candidates_keys)
+                c for c, k in zip(candidates, candidates_keys, strict=True)
                 if any(h in k for h in all_hints)
             ]
             if len(key_matched) == 1:
