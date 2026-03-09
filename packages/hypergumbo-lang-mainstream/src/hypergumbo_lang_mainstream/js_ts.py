@@ -3544,6 +3544,12 @@ def _analyze_javascript_impl(
 
         try:
             source = file_path.read_bytes()
+            # Skip binary files: .ts extension is ambiguous between TypeScript
+            # and MPEG Transport Stream.  Null bytes in the first 8 KB indicate
+            # binary content (same heuristic git uses).
+            if b"\x00" in source[:8192]:
+                files_skipped += 1
+                continue
             tree = parser.parse(source)
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)

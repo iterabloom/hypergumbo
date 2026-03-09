@@ -7262,3 +7262,31 @@ function main() { helper(); }
         ]
         assert len(module_calls) >= 1
         assert any("setup" in e.dst for e in module_calls)
+
+
+class TestMpegTsBinarySkip:
+    """Binary .ts files (MPEG Transport Stream) must not be parsed as TypeScript."""
+
+    def test_binary_ts_file_skipped(self, tmp_path: Path) -> None:
+        """A .ts file containing binary data (MPEG-TS) produces no symbols."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # MPEG-TS sync byte is 0x47, packets are 188 bytes
+        mpeg_ts_data = b"\x47" + b"\x00" * 187  # one TS packet
+        mpeg_ts_data *= 10  # 10 packets
+        (tmp_path / "video.ts").write_bytes(mpeg_ts_data)
+
+        # Also add a real TypeScript file to confirm it still works
+        (tmp_path / "app.ts").write_text("const x: number = 1;\n")
+
+        result = analyze_javascript(tmp_path)
+
+        # The binary .ts file should not produce any symbols
+        ts_symbols = [s for s in result.symbols if "video.ts" in s.path]
+        assert len(ts_symbols) == 0, (
+            f"Binary MPEG-TS file should not produce symbols, got: {ts_symbols}"
+        )
+
+        # The real TypeScript file should still be analyzed
+        real_ts = [s for s in result.symbols if "app.ts" in s.path]
+        assert len(real_ts) >= 1
