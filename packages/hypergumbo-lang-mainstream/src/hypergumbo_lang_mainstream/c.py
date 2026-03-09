@@ -410,6 +410,7 @@ def _extract_edges(
         resolver = NameResolver(global_symbols)
 
     edges: list[Edge] = []
+    _caller_path = str(file_path)
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
@@ -423,7 +424,7 @@ def _extract_edges(
                 callee_name = None
                 if func_node and func_node.type == "identifier":
                     callee_name = node_text(func_node, source)
-                    lookup_result = resolver.lookup(callee_name)
+                    lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -451,7 +452,7 @@ def _extract_edges(
                         # duplicate the direct call edge).
                         if arg_name == callee_name:
                             continue
-                        cb_lookup = resolver.lookup(arg_name)
+                        cb_lookup = resolver.lookup(arg_name, caller_path=_caller_path)
                         if (
                             cb_lookup.found
                             and cb_lookup.symbol is not None
@@ -482,7 +483,7 @@ def _extract_edges(
                         node, source, file_path, global_symbols, local_symbols,
                     )
                     if current_function:
-                        lookup_result = resolver.lookup(ref_name)
+                        lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                         if (
                             lookup_result.found
                             and lookup_result.symbol is not None
@@ -555,7 +556,7 @@ def _extract_edges(
             if ident_name in seen_funcs:
                 continue
             # Only link to known function symbols
-            lookup_result = resolver.lookup(ident_name)
+            lookup_result = resolver.lookup(ident_name, caller_path=_caller_path)
             if not lookup_result.found or lookup_result.symbol is None:
                 continue
             if lookup_result.symbol.kind != "function":

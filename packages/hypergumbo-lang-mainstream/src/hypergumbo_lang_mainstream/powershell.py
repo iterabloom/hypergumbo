@@ -274,6 +274,7 @@ def _extract_powershell_edges(
     module_symbol: Optional[Symbol] = None,
 ) -> None:
     """Extract edges from a parsed PowerShell file (pass 2)."""
+    _caller_path = str(file_path)
     for node in iter_tree(tree.root_node):
         if node.type == "command":
             command_name_node = find_child_by_type(node, "command_name")
@@ -289,7 +290,7 @@ def _extract_powershell_edges(
                     caller = _find_enclosing_function_powershell(node, source, local_symbols) or module_symbol
                     if caller:
                         # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(command_name)
+                        lookup_result = resolver.lookup(command_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence

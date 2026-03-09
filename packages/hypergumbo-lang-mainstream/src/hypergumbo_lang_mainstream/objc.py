@@ -472,6 +472,7 @@ def _extract_edges_from_file(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
+    _caller_path = str(file_path)
     rel_path = str(file_path)
     file_id = make_file_id("objc", rel_path)
 
@@ -524,7 +525,7 @@ def _extract_edges_from_file(
                     ))
                 else:
                     # Try cross-file resolution via resolver
-                    lookup_result = method_resolver.lookup(selector)
+                    lookup_result = method_resolver.lookup(selector, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_method.id,

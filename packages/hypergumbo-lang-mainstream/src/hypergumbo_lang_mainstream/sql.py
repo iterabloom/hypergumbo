@@ -377,6 +377,7 @@ def _extract_sql_edges(
     resolver: "NameResolver",
 ) -> None:
     """Extract edges from SQL AST tree (pass 2)."""
+    _caller_path = rel_path
     for node in iter_tree(root_node):
         if node.type == "create_table":
             name = _extract_table_name(node, source)
@@ -393,7 +394,7 @@ def _extract_sql_edges(
                     if col_defs:
                         refs = _find_references_in_columns(col_defs, source)
                         for ref_table in refs:
-                            lookup_result = resolver.lookup(ref_table.lower())
+                            lookup_result = resolver.lookup(ref_table.lower(), caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol:
                                 dst_id = lookup_result.symbol.id
                                 confidence = 0.90 * lookup_result.confidence

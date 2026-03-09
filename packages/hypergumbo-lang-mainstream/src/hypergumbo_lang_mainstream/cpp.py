@@ -642,6 +642,7 @@ def _extract_edges_from_tree(
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
     edges: list[Edge] = []
+    _caller_path = str(file_path)
     file_id = _make_file_id(str(file_path))
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -768,7 +769,7 @@ def _extract_edges_from_tree(
                                     node,
                                 )
                                 if resolved_type:
-                                    lookup = resolver.lookup(callee_name, path_hint=resolved_type)
+                                    lookup = resolver.lookup(callee_name, path_hint=resolved_type, caller_path=_caller_path)
                                     if lookup.found and lookup.symbol is not None:
                                         edges.append(Edge.create(
                                             src=current_function.id,
@@ -815,7 +816,7 @@ def _extract_edges_from_tree(
                         ))
                     # Check global symbols via resolver
                     elif not chain_resolved:
-                        lookup_result = resolver.lookup(short_name, path_hint=path_hint)
+                        lookup_result = resolver.lookup(short_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -837,7 +838,7 @@ def _extract_edges_from_tree(
                             if arg.type != "identifier":
                                 continue
                             arg_name = _node_text(arg, source)
-                            cb_lookup = resolver.lookup(arg_name)
+                            cb_lookup = resolver.lookup(arg_name, caller_path=_caller_path)
                             if (
                                 cb_lookup.found
                                 and cb_lookup.symbol is not None
@@ -949,7 +950,7 @@ def _extract_edges_from_tree(
                     if ref_name:
                         target = local_symbols.get(ref_name)
                         if target is None:
-                            lk = resolver.lookup(ref_name)
+                            lk = resolver.lookup(ref_name, caller_path=_caller_path)
                             if lk.found and lk.symbol is not None:
                                 target = lk.symbol
                         if (
@@ -1021,7 +1022,7 @@ def _extract_edges_from_tree(
             if ident_name in seen_funcs:
                 continue
             # Only link to known function symbols
-            lookup_result = resolver.lookup(ident_name)
+            lookup_result = resolver.lookup(ident_name, caller_path=_caller_path)
             if not lookup_result.found or lookup_result.symbol is None:
                 continue
             if lookup_result.symbol.kind != "function":

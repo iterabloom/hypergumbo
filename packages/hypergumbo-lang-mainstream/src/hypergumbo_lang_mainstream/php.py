@@ -742,6 +742,7 @@ def _extract_edges(
     if use_aliases is None:  # pragma: no cover - defensive default
         use_aliases = {}
     edges: list[Edge] = []
+    _caller_path = str(file_path)
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name()
@@ -753,7 +754,7 @@ def _extract_edges(
                 if current_function:
                     # Use use_aliases for disambiguation
                     path_hint = use_aliases.get(callee_name)
-                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint)
+                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -784,7 +785,7 @@ def _extract_edges(
                     if is_this_call and current_class_name:
                         # Try to resolve to a method in the same class
                         full_name = f"{current_class_name}.{method_name}"
-                        lookup_result = symbol_resolver.lookup(full_name)
+                        lookup_result = symbol_resolver.lookup(full_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -834,7 +835,7 @@ def _extract_edges(
                     resolved_class = use_aliases.get(class_name, class_name)
                     full_name = f"{resolved_class}.{method_name}"
                     path_hint = use_aliases.get(class_name)
-                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint)
+                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -858,7 +859,7 @@ def _extract_edges(
                         class_name = node_text(child, source)
                         # Use use_aliases for disambiguation
                         path_hint = use_aliases.get(class_name)
-                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint)
+                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,

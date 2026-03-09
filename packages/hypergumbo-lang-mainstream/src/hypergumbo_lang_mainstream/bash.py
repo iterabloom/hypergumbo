@@ -308,6 +308,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
         - function calls (both local and cross-file via resolver)
         """
         edges: list[Edge] = []
+        _caller_path = str(file_path)
         file_id = make_file_id("bash", rel_path)
 
         # Find module symbol for top-level call attribution
@@ -370,7 +371,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                     ))
                                 else:
                                     # Check global symbols via resolver
-                                    lookup_result = resolver.lookup(cmd_name)
+                                    lookup_result = resolver.lookup(cmd_name, caller_path=_caller_path)
                                     if lookup_result.found and lookup_result.symbol is not None:
                                         edges.append(Edge.create(
                                             src=current_function.id,

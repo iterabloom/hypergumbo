@@ -313,6 +313,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         (ambiguous/func0op/func1op), and method calls (arrow operator).
         """
         edges: list[Edge] = []
+        _caller_path = str(file_path)
         file_id = make_file_id("perl", rel_path)
         package_name = self._file_package_names.get(rel_path, "main")
         run_id = run.execution_id
@@ -376,7 +377,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             node, source, local_symbols, package_name,
                         ) or module_symbol
                         if caller:
-                            lookup_result = resolver.lookup(func_name)
+                            lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
                                 confidence = 0.85 * lookup_result.confidence
@@ -414,7 +415,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         node, source, local_symbols, package_name,
                     )
                     if caller:
-                        lookup_result = resolver.lookup(method_name)
+                        lookup_result = resolver.lookup(method_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.75 * lookup_result.confidence

@@ -640,6 +640,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
 
         edges: list[Edge] = []
+        _caller_path = str(file_path)
         file_id = make_file_id("groovy", str(file_path))
         var_types: dict[str, str] = {}
 
@@ -730,6 +731,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                 lookup = resolver.lookup(
                                     qualified,
                                     path_hint=import_aliases.get(type_name),
+                                    caller_path=_caller_path,
                                 )
                                 if lookup.found and lookup.symbol is not None:
                                     target = lookup.symbol
@@ -768,7 +770,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                 ))
                             # Check global symbols via resolver
                             else:
-                                lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                                lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
