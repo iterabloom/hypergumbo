@@ -846,8 +846,9 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
         )
         # Only count web-serving framework signals (not event emitters,
         # CLI frameworks, test frameworks, etc.) as evidence of expected
-        # routes.  Non-web frameworks like "emitter" or "django" from
-        # event-sourcing linker on a non-Django repo cause false positives.
+        # routes.  Non-web frameworks like "emitter" cause false positives.
+        # Also exclude event-sourcing nodes (have "event_name" in meta) —
+        # these come from the event_sourcing linker and don't imply routes.
         _NON_WEB_FRAMEWORKS = frozenset({
             "emitter", "cli", "celery", "electron", "kafka-connect",
             "qt", "test", "logging", "naming", "config", "library",
@@ -856,6 +857,7 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
         has_framework_signal = any(
             n.get("meta", {}).get("framework")
             and n["meta"]["framework"] not in _NON_WEB_FRAMEWORKS
+            and "event_name" not in n.get("meta", {})
             for n in nodes
             if isinstance(n.get("meta"), dict)
         )
