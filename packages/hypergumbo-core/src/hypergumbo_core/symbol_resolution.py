@@ -62,6 +62,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .selection.filters import is_test_path
+
 if TYPE_CHECKING:
     from .ir import Symbol
 
@@ -414,6 +416,7 @@ class NameResolver:
         allow_suffix: bool = True,
         path_hint: str | None = None,
         path_hints: list[str] | None = None,
+        caller_path: str | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with optional suffix matching.
 
@@ -432,6 +435,12 @@ class NameResolver:
                 the exact-match symbol) are checked against the hints.  This
                 lets callers with import scope (e.g., D ``import errors;``)
                 disambiguate identically-named symbols across files.
+            caller_path: Optional path of the calling file.  When the caller
+                is in a non-test file and candidates include both test-file
+                and production-file symbols, production candidates are
+                preferred.  This prevents false positives like
+                ``server.startup()`` resolving to ``LogCleanerTest.startup()``
+                instead of ``Server.startup()``.
 
         Returns:
             LookupResult with the found symbol and match metadata.
@@ -463,6 +472,7 @@ class NameResolver:
                 effective_hints = [path_hint]
             result = self._lookup_suffix(
                 name, path_hint=None, path_hints=effective_hints,
+                caller_path=caller_path,
             )
             if result.found or result.candidates:
                 return result
@@ -474,6 +484,7 @@ class NameResolver:
         name: str,
         path_hint: str | None,
         path_hints: list[str] | None = None,
+        caller_path: str | None = None,
     ) -> LookupResult:
         """Look up symbol using suffix matching.
 
@@ -482,11 +493,18 @@ class NameResolver:
         For example, ``'doWork'`` matches ``'MyClass.doWork'``, and
         ``'compute'`` matches ``'Diff::compute'``.
 
+        When ``caller_path`` is provided and is a non-test file, candidates
+        from test files are deprioritized: non-test candidates are preferred
+        if any exist.  Test-file callers get no such preference (test code
+        legitimately calls test utilities).
+
         Args:
             name: The symbol name suffix to match.
             path_hint: Optional single path substring to prefer among candidates.
             path_hints: Optional list of path substrings (e.g., from imports)
                 to prefer among candidates.  Takes precedence over path_hint.
+            caller_path: Optional path of the calling file for test-path
+                preference filtering.
 
         Returns:
             LookupResult with suffix match or None.
@@ -499,6 +517,16 @@ class NameResolver:
             return LookupResult(symbol=None)
 
         candidates = [self.registry[key] for key in candidates_keys]
+
+        # Test-path preference: when caller is non-test, prefer non-test candidates
+        if (
+            caller_path
+            and not is_test_path(caller_path)
+            and len(candidates) > 1
+        ):
+            non_test = [c for c in candidates if not is_test_path(c.path)]
+            if non_test:
+                candidates = non_test
 
         # Try path hints disambiguation (from imports or single hint)
         all_hints = path_hints or ([path_hint] if path_hint else None)

@@ -1153,6 +1153,7 @@ def _extract_edges(
     if class_resolver is None:
         class_resolver = NameResolver(class_symbols)
     edges: list[Edge] = []
+    _caller_path = str(file_path)
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
     # Track class inheritance: child_class_name -> parent_class_name
@@ -1305,7 +1306,7 @@ def _extract_edges(
                     if receiver_name is None or receiver_name == "this":
                         if current_class:
                             candidate = f"{current_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found:
                                 # Scale confidence by resolver's confidence multiplier
                                 edge_confidence = 0.95 * lookup_result.confidence
@@ -1328,7 +1329,7 @@ def _extract_edges(
                                 depth = 0
                                 while parent and depth < 10:
                                     candidate = f"{parent}.{method_name}"
-                                    lookup_result = resolver.lookup(candidate)
+                                    lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                                     if lookup_result.found:
                                         edge_confidence = (
                                             0.90 * lookup_result.confidence
@@ -1353,7 +1354,7 @@ def _extract_edges(
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
                         candidate = f"{receiver_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate)
+                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         if lookup_result.found:
                             edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
@@ -1374,7 +1375,7 @@ def _extract_edges(
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate)
+                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         if lookup_result.found and not _is_import_class_mismatch(
                             type_class_name, lookup_result.symbol, imports,
                             caller_file=str(file_path),
@@ -1432,7 +1433,7 @@ def _extract_edges(
                             if parent_fields and receiver_name in parent_fields:
                                 field_type = parent_fields[receiver_name]
                                 candidate = f"{field_type}.{method_name}"
-                                lookup_result = resolver.lookup(candidate)
+                                lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                                 if (
                                     lookup_result.found
                                     and not _is_import_class_mismatch(
@@ -1485,7 +1486,7 @@ def _extract_edges(
                             full_class = imports[receiver_name].split(".")[-1]
                             candidates.insert(0, f"{full_class}.{method_name}")
                         for candidate in candidates:
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_method.id,
@@ -1510,7 +1511,7 @@ def _extract_edges(
                 if child.type == "type_identifier":
                     type_name = _node_text(child, source)
                     if current_method:
-                        lookup_result = class_resolver.lookup(type_name)
+                        lookup_result = class_resolver.lookup(type_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             # INV-finak: skip edge if file imports an external
                             # class with the same simple name (e.g., Logger)
@@ -1571,7 +1572,7 @@ def _extract_edges(
 
                 if class_name and method_name == "new":
                     # Constructor reference: try to resolve the class
-                    lookup_result = class_resolver.lookup(class_name)
+                    lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
                     if (
                         lookup_result.found
                         and lookup_result.symbol is not None
@@ -1603,7 +1604,7 @@ def _extract_edges(
                     else:
                         target_name = f"{class_name}.{method_name}"
 
-                    lookup_result = resolver.lookup(target_name)
+                    lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_method.id,

@@ -4140,3 +4140,56 @@ public class Service extends MiddleBase {
         ]
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_inherited_field"
+
+
+class TestJavaTestPathPreference:
+    """Tests for preferring non-test symbols over test symbols in resolution.
+
+    When production code calls a method like ``server.startup()``, the
+    resolver should prefer ``Server.startup`` over ``LogCleanerTest.startup``
+    if both exist. This prevents false positives from test class methods
+    polluting call graphs of production code.
+    """
+
+    def test_prod_code_prefers_prod_symbol(self, tmp_path: Path) -> None:
+        """Production caller resolves to production method, not test method."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Production file with a Server class
+        (tmp_path / "Server.java").write_text("""
+public class Server {
+    public void startup() {}
+}
+""")
+        # Test file with same method name
+        test_dir = tmp_path / "src" / "test" / "java"
+        test_dir.mkdir(parents=True)
+        (test_dir / "ServerTest.java").write_text("""
+public class ServerTest {
+    public void startup() {}
+}
+""")
+        # Production caller
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Server server = new Server();
+        server.startup();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "startup" in e.dst
+        ]
+
+        # Should resolve to Server.startup, not ServerTest.startup
+        for edge in call_edges:
+            if "run" in edge.src:
+                assert "ServerTest" not in edge.dst, (
+                    f"Production code should not resolve to test class. "
+                    f"Got dst={edge.dst}"
+                )

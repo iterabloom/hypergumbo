@@ -1122,3 +1122,61 @@ class TestNameResolverRustSeparator:
         assert result_rust.found is True
         assert result_rust.symbol is sym_rust
         assert result_rust.confidence == 1.0
+
+
+class TestNameResolverTestPathPreference:
+    """Tests for NameResolver preferring non-test symbols over test symbols.
+
+    When a non-test caller resolves a method name and both test-file and
+    production-file candidates exist, the resolver should prefer the
+    production candidate. This prevents false positives like
+    ``server.startup()`` resolving to ``LogCleanerTest.startup()``
+    instead of ``Server.startup()``.
+    """
+
+    def test_suffix_prefers_non_test_candidate(self) -> None:
+        """When caller_path is non-test, prefer non-test suffix match."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("LogCleanerTest.startup", "src/test/java/LogCleanerTest.java", "java")
+        registry = {"Server.startup": prod_sym, "LogCleanerTest.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup", caller_path="src/main/java/App.java")
+
+        assert result.found is True
+        assert result.symbol is prod_sym, (
+            f"Expected production symbol Server.startup, got {result.symbol.name}"
+        )
+
+    def test_suffix_no_preference_when_caller_is_test(self) -> None:
+        """When caller_path is a test file, no test-path preference applied."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("TestHelper.startup", "src/test/java/TestHelper.java", "java")
+        registry = {"Server.startup": prod_sym, "TestHelper.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        # From a test file, both candidates are equally valid
+        result = resolver.lookup("startup", caller_path="src/test/java/MyTest.java")
+        assert result.found is True
+        # Should still resolve (to either candidate), no preference filtering
+
+    def test_suffix_single_test_candidate_still_resolves(self) -> None:
+        """When only test candidates exist, still resolve (no elimination)."""
+        test_sym = make_symbol("TestHelper.startup", "src/test/java/TestHelper.java", "java")
+        registry = {"TestHelper.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup", caller_path="src/main/java/App.java")
+        assert result.found is True
+        assert result.symbol is test_sym  # Only option, still returned
+
+    def test_no_caller_path_no_preference(self) -> None:
+        """Without caller_path, no test-path preference applied (backward compat)."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("LogCleanerTest.startup", "src/test/java/LogCleanerTest.java", "java")
+        registry = {"Server.startup": prod_sym, "LogCleanerTest.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup")
+        assert result.found is True
+        # Without caller_path, returns first match (ambiguous) — no preference
