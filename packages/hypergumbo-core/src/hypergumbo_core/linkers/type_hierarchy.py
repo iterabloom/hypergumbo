@@ -34,6 +34,7 @@ Limitations
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -262,6 +263,14 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 ctx.symbols,
             )
 
+            # Scale confidence by 1/sqrt(N) for fan-out dampening
+            # (WI-kabom).  Interfaces with many implementors (e.g., 19
+            # Notifier impls) create N edges per method; without scaling,
+            # these dominate ranking and pollute reverse slices.  Matches
+            # the precedent in symbol_resolution.py for ambiguous lookups.
+            num_overrides = len(overrides)
+            base_confidence = 0.85 / math.sqrt(max(1, num_overrides))
+
             for override in overrides:
                 # Avoid duplicate edges (defensive - find_implementing_methods
                 # uses a set, so duplicates are rare)
@@ -274,7 +283,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 # Test overrides (e.g., TestImpl.method → base.method) inflate
                 # centrality and pollute reverse slices.  Penalty matches the
                 # precedent in ranking.py for test-tier downweighting.
-                confidence = 0.85
+                confidence = base_confidence
                 if override.path and is_test_file(override.path):
                     confidence = 0.30
 
