@@ -1,0 +1,21 @@
+- op: create  # 4bba
+  at: '2026-03-09T06:21:23Z'  # 4bba
+  by: agent  # 4bba
+  actor: jgstern_agent  # 4bba
+  clock: 1  # 4bba
+  nonce: 4bba  # 4bba
+  data:  # 4bba
+    kind: invariant  # 4bba
+    title: "C++ method name disambiguation: common method names (Initialize, Init, get) resolve to wrong class"  # 4bba
+    status: violated  # 4bba
+    priority: 2  # 4bba
+    parent:  # 4bba
+    tags: []  # 4bba
+    before: []  # 4bba
+    duplicate_of: []  # 4bba
+    not_duplicate_of: []  # 4bba
+    pr_ref:  # 4bba
+    description: ""  # 4bba
+    fields:  # 4bba
+      statement: "C++ method calls on objects must resolve to the method of the correct class, not an arbitrary class that happens to define a method with the same name"  # 4bba
+      root_cause: "C++ analyzer lacks type-aware method resolution; when multiple classes define Initialize(), callers are resolved to whichever definition the NameResolver finds first. shaka-packager: 38/41 callers of Packager::Initialize are false positives from other classes' Initialize() methods."  # 4bba
