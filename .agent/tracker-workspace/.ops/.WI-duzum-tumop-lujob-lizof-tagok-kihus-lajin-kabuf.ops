@@ -17,3 +17,18 @@
     pr_ref:  # 14a1
     description: "DEEP bakeoff: polyglot repos consistently lack cross-language edges. The most impactful would be matching API route paths between server-side route definitions and client-side API call strings (e.g., Ruby Rails routes matched to JS ApiClient resource paths, Python endpoints matched to TS fetch calls)."  # 14a1
     fields: {}  # 14a1
+- op: update  # bcca
+  at: '2026-03-09T19:06:56Z'  # bcca
+  by: agent  # bcca
+  actor: jgstern_agent  # bcca
+  clock: 2  # bcca
+  nonce: bcca  # bcca
+  set:  # bcca
+    priority: 4  # bcca
+- op: discuss  # e81a
+  at: '2026-03-09T19:06:56Z'  # e81a
+  by: agent  # e81a
+  actor: jgstern_agent  # e81a
+  clock: 3  # e81a
+  nonce: e81a  # e81a
+  message: "Deprioritized: cross-language edges are the biggest gap but also the most complex. Route path matching between server and client code requires language-specific heuristics. Will revisit based on plazaflow polyglot results."  # e81a
