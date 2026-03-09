@@ -32,3 +32,18 @@
   clock: 3  # c850
   nonce: c850  # c850
   message: "Deprioritized: cobra patterns already exist in cli-go.yaml. The gap is in command tree edge creation (AddCommand calls) and method resolution (Execute collision). These require Go analyzer changes. Will reassess after plazaflow curriculum."  # c850
+- op: update  # fffa
+  at: '2026-03-09T22:00:47Z'  # fffa
+  by: agent  # fffa
+  actor: jgstern_agent  # fffa
+  clock: 4  # fffa
+  nonce: fffa  # fffa
+  set:  # fffa
+    status: needs_human_review  # fffa
+- op: discuss  # f430
+  at: '2026-03-09T22:00:47Z'  # f430
+  by: agent  # f430
+  actor: jgstern_agent  # f430
+  clock: 5  # f430
+  nonce: f430  # f430
+  message: "PlazaFlow bakeoff complete (48 repos). Cobra CLI detection confirmed as valid but low-impact gap. Recommend holding for future Go analyzer work."  # f430
