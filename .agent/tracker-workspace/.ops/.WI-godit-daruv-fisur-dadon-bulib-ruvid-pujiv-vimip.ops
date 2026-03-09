@@ -17,3 +17,18 @@
     pr_ref:  # f727
     description: "DEEP bakeoff cohorts 16-17: all 10 Go-heavy repos lack interface-to-implementation edges. Go repos rely heavily on interface dispatch. Without these edges, refactoring/understanding scores drop ~15 points. Single biggest gap for Go repos. Implement: analyze Go interface declarations and struct method sets, create 'implements' edges when a struct satisfies an interface."  # f727
     fields: {}  # f727
+- op: update  # cbdc
+  at: '2026-03-09T11:03:24Z'  # cbdc
+  by: agent  # cbdc
+  actor: jgstern_agent  # cbdc
+  clock: 2  # cbdc
+  nonce: cbdc  # cbdc
+  set:  # cbdc
+    status: done  # cbdc
+- op: discuss  # 0682
+  at: '2026-03-09T11:03:24Z'  # 0682
+  by: agent  # 0682
+  actor: jgstern_agent  # 0682
+  clock: 3  # 0682
+  nonce: '0682'  # 0682
+  message: "FALSE ALARM from LLM assessors. Argo-CD already has 314 implements edges and 671 dispatches_to edges. All repos have substantial interface→implementation edges (prometheus=975, loki=4448, vault=1110, etc). The LLM assessment agents made false negative claims by not verifying against hg.json data. Go interface detection is already working via structural matching + inheritance linker."  # 0682
