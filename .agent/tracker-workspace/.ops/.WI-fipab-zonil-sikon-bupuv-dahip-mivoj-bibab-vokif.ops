@@ -17,3 +17,18 @@
     pr_ref:  # 0cc9
     description: "DEEP bakeoff: beads assessment shows rootCmd.Execute() misresolved to Client.Execute. Cobra command tree structure invisible — 30+ subcommands unlinked. Needs: detect AddCommand() calls, create parent-child command edges, resolve command Run/RunE closures."  # 0cc9
     fields: {}  # 0cc9
+- op: update  # dc03
+  at: '2026-03-09T19:03:47Z'  # dc03
+  by: agent  # dc03
+  actor: jgstern_agent  # dc03
+  clock: 2  # dc03
+  nonce: dc03  # dc03
+  set:  # dc03
+    priority: 4  # dc03
+- op: discuss  # c850
+  at: '2026-03-09T19:03:47Z'  # c850
+  by: agent  # c850
+  actor: jgstern_agent  # c850
+  clock: 3  # c850
+  nonce: c850  # c850
+  message: "Deprioritized: cobra patterns already exist in cli-go.yaml. The gap is in command tree edge creation (AddCommand calls) and method resolution (Execute collision). These require Go analyzer changes. Will reassess after plazaflow curriculum."  # c850
