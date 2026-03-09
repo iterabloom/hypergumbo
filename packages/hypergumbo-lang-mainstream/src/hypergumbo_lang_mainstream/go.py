@@ -158,6 +158,12 @@ GO_HTTP_METHODS = {
     "Del",  # Chi shorthand for Delete
 }
 
+# Uppercase HTTP methods for Go 1.22+ stdlib mux combined method-path
+# patterns like Handle("POST /path", handler).
+GO_HTTP_METHODS_UPPER = {
+    "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
+}
+
 # Short method aliases that need normalization before .upper().
 # Chi uses r.Del() as shorthand for r.Delete().
 _GO_METHOD_ALIASES: dict[str, str] = {
@@ -2460,10 +2466,23 @@ def _extract_go_routes(
 
                     elif method_name in GORILLA_HANDLE_METHODS:
                         # Gorilla mux simple: router.HandleFunc("/path", handler)
+                        # Also supports Go 1.22+ stdlib: mux.Handle("POST /path", h)
                         args_node = find_child_by_field(n, "arguments")
                         if args_node:
                             route_path = _extract_first_string_arg(args_node, source)
                             handler_name = None
+                            # Go 1.22+ http.ServeMux combined method-path:
+                            # "POST /v1/data/{path...}" → method="POST", path="/v1/data/{path...}"
+                            handle_http_method = "ANY"
+                            if route_path and not route_path.startswith("/"):
+                                parts = route_path.split(" ", 1)
+                                if (
+                                    len(parts) == 2
+                                    and parts[0].upper() in GO_HTTP_METHODS_UPPER
+                                    and parts[1].startswith("/")
+                                ):
+                                    handle_http_method = parts[0].upper()
+                                    route_path = parts[1]
 
                             if route_path and route_path.startswith("/"):
                                 # Last non-string arg is handler (same
@@ -2502,9 +2521,11 @@ def _extract_go_routes(
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"ANY {route_path}", "route"
+                                        f"{handle_http_method} {route_path}", "route"
                                     ),
-                                    stable_id=make_route_stable_id("ANY", route_path),
+                                    stable_id=make_route_stable_id(
+                                        handle_http_method, route_path,
+                                    ),
                                     name=handler_name,
                                     kind="route",
                                     language="go",
@@ -2519,7 +2540,7 @@ def _extract_go_routes(
                                     origin_run_id=run.execution_id,
                                     meta={
                                         "route_path": route_path,
-                                        "http_method": "ANY",
+                                        "http_method": handle_http_method,
                                         "handler_name": handler_name,
                                     },
                                 )

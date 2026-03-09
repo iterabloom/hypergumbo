@@ -1510,6 +1510,61 @@ func viewCart(w http.ResponseWriter, r *http.Request) {}
         )
         assert len(routes) >= 3, f"Expected 3 routes, got {len(routes)}: {route_paths}"
 
+    def test_go122_stdlib_method_path_pattern(self, tmp_path: Path) -> None:
+        """Go 1.22+ stdlib mux: Handle("POST /path", handler) combined method-path.
+
+        Go 1.22 introduced method-path routing in http.ServeMux where the
+        HTTP method and path are combined in a single string argument:
+        mux.Handle("POST /v1/data/{path...}", handler)
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "net/http"
+
+func main() {
+    mux := http.NewServeMux()
+    mux.Handle("POST /v1/data/{path...}", dataPostHandler)
+    mux.Handle("GET /v1/data/{path...}", dataGetHandler)
+    mux.HandleFunc("DELETE /v1/policies/{path...}", deletePolicyHandler)
+    mux.Handle("/health", healthHandler)
+}
+
+func dataPostHandler(w http.ResponseWriter, r *http.Request) {}
+func dataGetHandler(w http.ResponseWriter, r *http.Request) {}
+func deletePolicyHandler(w http.ResponseWriter, r *http.Request) {}
+func healthHandler(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_meta = {s.meta["route_path"]: s.meta for s in routes}
+
+        # Method-path routes should extract both method and path
+        assert "/v1/data/{path...}" in route_meta, (
+            f"Expected /v1/data/{{path...}}, got: {list(route_meta.keys())}"
+        )
+        post_route = route_meta["/v1/data/{path...}"]
+        # The first match for this path is POST
+        assert post_route["http_method"] in ("POST", "GET"), (
+            f"Expected POST or GET, got: {post_route['http_method']}"
+        )
+
+        # DELETE route
+        assert "/v1/policies/{path...}" in route_meta, (
+            f"Expected /v1/policies/{{path...}}, got: {list(route_meta.keys())}"
+        )
+        delete_meta = route_meta["/v1/policies/{path...}"]
+        assert delete_meta["http_method"] == "DELETE"
+
+        # Plain /health route should still work (no method prefix)
+        assert "/health" in route_meta
+        assert route_meta["/health"]["http_method"] == "ANY"
+
     def test_single_arg_get_not_route(self, tmp_path: Path) -> None:
         """Single-arg .Get("/key") calls (cache, headers) are not routes.
 
