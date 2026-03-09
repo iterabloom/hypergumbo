@@ -527,9 +527,13 @@ class NameResolver:
             and not is_test_path(caller_path)
             and len(candidates) > 1
         ):
-            non_test = [c for c in candidates if not is_test_path(c.path)]
-            if non_test:
-                candidates = non_test
+            non_test_pairs = [
+                (c, k) for c, k in zip(candidates, candidates_keys, strict=True)
+                if not is_test_path(c.path)
+            ]
+            if non_test_pairs:
+                candidates = [p[0] for p in non_test_pairs]
+                candidates_keys = [p[1] for p in non_test_pairs]
 
         # Try path hints disambiguation (from imports or single hint).
         # Two-stage matching: (1) file path, (2) registry key (qualified name).

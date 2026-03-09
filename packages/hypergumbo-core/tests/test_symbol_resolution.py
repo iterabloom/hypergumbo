@@ -1247,3 +1247,33 @@ class TestNameResolverTestPathPreference:
         result = resolver.lookup("startup")
         assert result.found is True
         # Without caller_path, returns first match (ambiguous) — no preference
+
+    def test_suffix_test_filter_with_path_hint_no_crash(self) -> None:
+        """Test filtering + path_hint zip must not crash (B905 strict zip).
+
+        When caller_path triggers test-path filtering, the candidates list
+        shrinks but candidates_keys must shrink with it.  Otherwise the
+        subsequent ``zip(candidates, candidates_keys, strict=True)`` in
+        Stage 2 raises ValueError.
+        """
+        prod_sym = make_symbol(
+            "Parser.Initialize", "src/parser.cc", "cpp"
+        )
+        test_sym = make_symbol(
+            "ParserTest.Initialize", "test/parser_test.cc", "cpp"
+        )
+        registry = {
+            "Parser.Initialize": prod_sym,
+            "ParserTest.Initialize": test_sym,
+        }
+        resolver = NameResolver(registry)
+
+        # Non-test caller + path_hint triggers both test filtering AND
+        # path-hint Stage 2 zip.  Before the fix this raised ValueError.
+        result = resolver.lookup(
+            "Initialize",
+            path_hint="parser",
+            caller_path="src/main.cc",
+        )
+        assert result.found is True
+        assert result.symbol is prod_sym
