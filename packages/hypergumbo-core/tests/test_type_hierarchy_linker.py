@@ -790,7 +790,7 @@ class TestTestFileConfidencePenalty:
 
         When an interface has many implementors (e.g., 19 Notifier impls),
         each dispatches_to edge should have proportionally lower confidence
-        to reduce ranking noise from N×M dispatch edges.
+        to reduce ranking noise from N*M dispatch edges.
         """
         import math
 
