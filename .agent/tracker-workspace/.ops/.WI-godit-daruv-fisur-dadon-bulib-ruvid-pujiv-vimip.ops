@@ -1,0 +1,19 @@
+- op: create  # f727
+  at: '2026-03-09T10:54:40Z'  # f727
+  by: agent  # f727
+  actor: jgstern_agent  # f727
+  clock: 1  # f727
+  nonce: f727  # f727
+  data:  # f727
+    kind: work_item  # f727
+    title: "Go interface-to-implementation edge detection"  # f727
+    status: todo_hard  # f727
+    priority: 1  # f727
+    parent:  # f727
+    tags: []  # f727
+    before: []  # f727
+    duplicate_of: []  # f727
+    not_duplicate_of: []  # f727
+    pr_ref:  # f727
+    description: "DEEP bakeoff cohorts 16-17: all 10 Go-heavy repos lack interface-to-implementation edges. Go repos rely heavily on interface dispatch. Without these edges, refactoring/understanding scores drop ~15 points. Single biggest gap for Go repos. Implement: analyze Go interface declarations and struct method sets, create 'implements' edges when a struct satisfies an interface."  # f727
+    fields: {}  # f727
