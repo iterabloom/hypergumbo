@@ -1,0 +1,19 @@
+- op: create  # 14a1
+  at: '2026-03-09T18:56:44Z'  # 14a1
+  by: agent  # 14a1
+  actor: jgstern_agent  # 14a1
+  clock: 1  # 14a1
+  nonce: 14a1  # 14a1
+  data:  # 14a1
+    kind: work_item  # 14a1
+    title: "Cross-language API consumption edges (route path matching)"  # 14a1
+    status: todo_soft  # 14a1
+    priority: 3  # 14a1
+    parent:  # 14a1
+    tags: []  # 14a1
+    before: []  # 14a1
+    duplicate_of: []  # 14a1
+    not_duplicate_of: []  # 14a1
+    pr_ref:  # 14a1
+    description: "DEEP bakeoff: polyglot repos consistently lack cross-language edges. The most impactful would be matching API route paths between server-side route definitions and client-side API call strings (e.g., Ruby Rails routes matched to JS ApiClient resource paths, Python endpoints matched to TS fetch calls)."  # 14a1
+    fields: {}  # 14a1
