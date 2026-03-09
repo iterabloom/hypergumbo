@@ -1531,6 +1531,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
         rc, stdout, stderr = run_cmd([
             "hypergumbo", "routes",
             "--input", hg_json,
+            "--exclude-tests",
         ])
         with open(os.path.join(repo_out, "routes.txt"), "w") as f:
             f.write(stdout)
