@@ -2318,3 +2318,66 @@ def test_detects_stapler_from_maven(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "stapler" in data["profile"]["frameworks"]
+
+
+def test_detects_protobuf_framework_from_proto_files(tmp_path: Path) -> None:
+    """Protobuf framework detected when .proto files are present."""
+    from hypergumbo_core.profile import _detect_protobuf
+
+    (tmp_path / "user.proto").write_text(
+        'syntax = "proto3";\nservice UserService { rpc GetUser(Req) returns (Resp); }\n'
+    )
+
+    detected = _detect_protobuf(tmp_path)
+    assert detected == ["protobuf"]
+
+
+def test_no_protobuf_without_proto_files(tmp_path: Path) -> None:
+    """No protobuf framework when no .proto files exist."""
+    from hypergumbo_core.profile import _detect_protobuf
+
+    (tmp_path / "app.py").write_text("print('hello')\n")
+
+    detected = _detect_protobuf(tmp_path)
+    assert detected == []
+
+
+def test_detects_grpc_go_framework(tmp_path: Path) -> None:
+    """gRPC detected from Go go.mod dependency."""
+    from hypergumbo_core.profile import _detect_go_frameworks
+
+    (tmp_path / "go.mod").write_text(
+        "module example.com/myapp\n\nrequire google.golang.org/grpc v1.60.0\n"
+    )
+
+    detected = _detect_go_frameworks(tmp_path)
+    assert "grpc" in detected
+
+
+def test_detects_grpc_python_framework(tmp_path: Path) -> None:
+    """gRPC detected from Python requirements."""
+    from hypergumbo_core.profile import _detect_python_frameworks
+
+    (tmp_path / "requirements.txt").write_text("grpcio==1.60.0\n")
+
+    detected = _detect_python_frameworks(tmp_path)
+    assert "grpc" in detected
+
+
+def test_detects_grpc_java_framework(tmp_path: Path) -> None:
+    """gRPC detected from Java pom.xml dependency."""
+    from hypergumbo_core.profile import _detect_java_frameworks
+
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-core</artifactId>
+        </dependency>
+    </dependencies>
+</project>"""
+    )
+
+    detected = _detect_java_frameworks(tmp_path)
+    assert "grpc" in detected

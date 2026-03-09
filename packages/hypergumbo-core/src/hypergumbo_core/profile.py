@@ -120,6 +120,8 @@ PYTHON_FRAMEWORKS = {
     "anthropic": ["anthropic"],
     # MCP (Model Context Protocol)
     "mcp-python": ["mcp", "fastmcp"],
+    # gRPC
+    "grpc": ["grpcio", "grpc"],
     # GraphQL
     "graphql": ["graphql-core"],
     "graphql-python": ["strawberry-graphql", "ariadne", "graphene"],
@@ -259,6 +261,8 @@ GO_FRAMEWORKS = {
     "iris": ["github.com/kataras/iris"],
     # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
     "prometheus-common": ["github.com/prometheus/common"],
+    # gRPC
+    "grpc": ["google.golang.org/grpc"],
     # ORM
     "xorm": ["xorm.io/xorm"],
     # CLI
@@ -321,6 +325,8 @@ JAVA_FRAMEWORKS = {
         "javax.enterprise.inject",
         "weld",
     ],
+    # gRPC
+    "grpc": ["io.grpc", "grpc-core", "grpc-netty", "grpc-stub", "grpc-protobuf"],
 }
 
 # Swift Package.swift detection patterns
@@ -1528,6 +1534,23 @@ def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_protobuf(repo_root: Path) -> list[str]:
+    """Detect protobuf/gRPC by the presence of .proto files.
+
+    This is language-agnostic: any repo with .proto service definitions
+    gets the ``protobuf`` framework tag, which activates the gRPC linker.
+    The gRPC linker creates route symbols for proto RPC methods.
+
+    Uses ``find_files`` with a limit of 1 for efficiency — we only need
+    to know if at least one .proto file exists.
+    """
+    from .discovery import find_files
+
+    for _ in find_files(repo_root, ["*.proto"]):
+        return ["protobuf"]
+    return []
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -1589,6 +1612,7 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_zig_frameworks(repo_root))
     frameworks.extend(_detect_d_frameworks(repo_root))
     frameworks.extend(_detect_groovy_frameworks(repo_root))
+    frameworks.extend(_detect_protobuf(repo_root))
     return frameworks
 
 
