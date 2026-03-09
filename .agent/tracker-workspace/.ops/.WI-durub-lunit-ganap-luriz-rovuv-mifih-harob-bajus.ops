@@ -1,0 +1,19 @@
+- op: create  # e3d1
+  at: '2026-03-09T10:58:41Z'  # e3d1
+  by: agent  # e3d1
+  actor: jgstern_agent  # e3d1
+  clock: 1  # e3d1
+  nonce: e3d1  # e3d1
+  data:  # e3d1
+    kind: work_item  # e3d1
+    title: "Filter test-file routes from route detection output"  # e3d1
+    status: todo_soft  # e3d1
+    priority: 3  # e3d1
+    parent:  # e3d1
+    tags: []  # e3d1
+    before: []  # e3d1
+    duplicate_of: []  # e3d1
+    not_duplicate_of: []  # e3d1
+    pr_ref:  # e3d1
+    description: "DEEP bakeoff: routes in *_test.go files appear alongside production routes. E.g., prometheus shows mock test routes from discovery/*_test.go. These are test infrastructure, not application endpoints. The routes command should filter or tag them."  # e3d1
+    fields: {}  # e3d1
