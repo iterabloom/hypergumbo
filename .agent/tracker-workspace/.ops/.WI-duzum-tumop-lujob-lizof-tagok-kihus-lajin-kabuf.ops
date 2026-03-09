@@ -32,3 +32,18 @@
   clock: 3  # e81a
   nonce: e81a  # e81a
   message: "Deprioritized: cross-language edges are the biggest gap but also the most complex. Route path matching between server and client code requires language-specific heuristics. Will revisit based on plazaflow polyglot results."  # e81a
+- op: update  # f345
+  at: '2026-03-09T22:02:52Z'  # f345
+  by: agent  # f345
+  actor: jgstern_agent  # f345
+  clock: 4  # f345
+  nonce: f345  # f345
+  set:  # f345
+    status: needs_human_review  # f345
+- op: discuss  # 4274
+  at: '2026-03-09T22:02:52Z'  # 4274
+  by: agent  # 4274
+  actor: jgstern_agent  # 4274
+  clock: 5  # 4274
+  nonce: '4274'  # 4274
+  message: "PlazaFlow bakeoff confirms cross-language edges as #1 gap across 48 repos. Top targets: wasm_bindgen, Tauri IPC, NAPI. Each needs its own focused linker."  # 4274
