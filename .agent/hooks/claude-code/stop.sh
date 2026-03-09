@@ -53,8 +53,12 @@ if [[ -n "$_STORED_PID" ]]; then
     echo '{"decision": "approve", "reason": "Interactive session (PID does not match autonomous agent)"}'
     exit 0
   else
-    # Stored PID is dead (crash/restart) — re-claim ownership
-    echo "$MODE pid=$PPID" > "$REPO_ROOT/AUTONOMOUS_MODE.txt"
+    # Stored PID is dead — don't auto-reclaim. Approve this session.
+    # The autonomous agent must be restarted via loop-toggle, which
+    # will set a fresh PID. Auto-reclaim caused interactive sessions
+    # to inherit autonomous blocking after the agent crashed.
+    echo '{"decision": "approve", "reason": "Autonomous agent PID is dead; use loop-toggle to restart"}'
+    exit 0
   fi
 else
   # No PID stored: claim ownership using $PPID (the agent process)
