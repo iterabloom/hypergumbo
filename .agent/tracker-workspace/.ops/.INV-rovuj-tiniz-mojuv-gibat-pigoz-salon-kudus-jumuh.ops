@@ -19,3 +19,40 @@
     fields:  # 4bba
       statement: "C++ method calls on objects must resolve to the method of the correct class, not an arbitrary class that happens to define a method with the same name"  # 4bba
       root_cause: "C++ analyzer lacks type-aware method resolution; when multiple classes define Initialize(), callers are resolved to whichever definition the NameResolver finds first. shaka-packager: 38/41 callers of Packager::Initialize are false positives from other classes' Initialize() methods."  # 4bba
+- op: discuss  # 7d7d
+  at: '2026-03-09T06:48:53Z'  # 7d7d
+  by: agent  # 7d7d
+  actor: jgstern_agent  # 7d7d
+  clock: 2  # 7d7d
+  nonce: 7d7d  # 7d7d
+  message: "PR #2058 provides partial mitigation: ambiguous confidence now scales as 0.70/sqrt(N), so Initialize() with 15 candidates gets 0.18 confidence (was flat 0.70). This naturally filters false edges in ranking/display. Full fix (type-aware resolution) remains future work."  # 7d7d
+- op: update  # 10fa
+  at: '2026-03-09T06:49:10Z'  # 10fa
+  by: agent  # 10fa
+  actor: jgstern_agent  # 10fa
+  clock: 3  # 10fa
+  nonce: 10fa  # 10fa
+  set:  # 10fa
+    priority: 3  # 10fa
+- op: discuss  # 301f
+  at: '2026-03-09T06:49:10Z'  # 301f
+  by: agent  # 301f
+  actor: jgstern_agent  # 301f
+  clock: 4  # 301f
+  nonce: 301f  # 301f
+  message: "Partially mitigated by PR #2058 (1/sqrt(N) confidence scaling). Full type-aware resolution requires tracking variable types through declarations and include context — medium-term effort."  # 301f
+- op: update  # 7ac4
+  at: '2026-03-09T07:14:34Z'  # 7ac4
+  by: agent  # 7ac4
+  actor: jgstern_agent  # 7ac4
+  clock: 5  # 7ac4
+  nonce: 7ac4  # 7ac4
+  set:  # 7ac4
+    status: holding  # 7ac4
+- op: discuss  # 07b6
+  at: '2026-03-09T07:14:34Z'  # 07b6
+  by: agent  # 07b6
+  actor: jgstern_agent  # 07b6
+  clock: 6  # 07b6
+  nonce: 07b6  # 07b6
+  message: "Fixed in PRs #2058 (1/sqrt(N) confidence scaling) and #2059 (inline method qualification + same-class preference + key-based path_hint matching). Inline methods now get qualified names, preventing registry collisions. Same-class preference uses enclosing class as path_hint. Remaining gap: cross-file disambiguation without type info."  # 07b6
