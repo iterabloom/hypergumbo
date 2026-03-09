@@ -1,0 +1,21 @@
+- op: create  # c5db
+  at: '2026-03-09T03:21:18Z'  # c5db
+  by: agent  # c5db
+  actor: jgstern_agent  # c5db
+  clock: 1  # c5db
+  nonce: c5db  # c5db
+  data:  # c5db
+    kind: invariant  # c5db
+    title: "C++: stdlib method calls resolve to project functions with same name"  # c5db
+    status: violated  # c5db
+    priority: 3  # c5db
+    parent:  # c5db
+    tags: []  # c5db
+    before: []  # c5db
+    duplicate_of: []  # c5db
+    not_duplicate_of: []  # c5db
+    pr_ref:  # c5db
+    description: ""  # c5db
+    fields:  # c5db
+      statement: "Calls to std:: methods (clear, push_back, resize, min, max) must not resolve to project functions sharing the name"  # c5db
+      root_cause: "C++ analyzer lacks namespace-aware resolution; bare function name matching picks project-level functions over std:: methods"  # c5db
