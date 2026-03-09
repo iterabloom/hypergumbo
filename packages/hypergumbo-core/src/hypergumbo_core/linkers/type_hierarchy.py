@@ -1,6 +1,6 @@
 """Type hierarchy linker for polymorphic dispatch resolution.
 
-This linker creates `dispatches_to` edges from interface/abstract class methods
+Creates `dispatches_to` edges from interface/abstract class methods
 to their concrete implementations, enabling polymorphic call resolution.
 
 How It Works
