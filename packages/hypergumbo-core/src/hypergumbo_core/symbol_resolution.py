@@ -58,6 +58,7 @@ component.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -217,10 +218,12 @@ class SymbolResolver:
                         candidates=candidates,
                     )
 
-        # Ambiguous - return first with low confidence
+        # Ambiguous — scale confidence by 1/sqrt(N) so that high-ambiguity
+        # names (e.g., Initialize() defined in 15 classes) get proportionally
+        # lower confidence than a two-way ambiguity.
         return LookupResult(
             symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
             match_type="ambiguous",
             candidates=candidates,
         )
@@ -265,7 +268,7 @@ class SymbolResolver:
         if allow_ambiguous:
             return LookupResult(
                 symbol=candidates[0],
-                confidence=self.CONFIDENCE_AMBIGUOUS,
+                confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
                 match_type="suffix_ambiguous",
                 candidates=candidates,
             )
@@ -548,10 +551,12 @@ class NameResolver:
                 candidates=candidates,
             )
 
-        # Multiple - ambiguous, return first
+        # Multiple — ambiguous, return first.  Scale confidence by
+        # 1/sqrt(N) so common method names (Initialize with 15 classes)
+        # get proportionally lower confidence than a two-way ambiguity.
         return LookupResult(
             symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
             match_type="suffix_ambiguous",
             candidates=candidates,
         )

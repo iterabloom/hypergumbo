@@ -1826,8 +1826,10 @@ class TestRustMethodCallAmbiguity:
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
-        # Regular function calls use standard confidence: 0.80 * 0.70 = 0.56
-        assert call_edges[0].confidence >= 0.50
+        # Regular function calls use 0.80 * ambiguous_confidence.
+        # Ambiguous confidence scales as 0.70/sqrt(N) where N=5 candidates,
+        # giving 0.80 * 0.313 ≈ 0.25.
+        assert call_edges[0].confidence >= 0.20
 
     def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
         """Method call with 2 candidates keeps moderate confidence.

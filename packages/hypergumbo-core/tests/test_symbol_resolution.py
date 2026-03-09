@@ -139,7 +139,8 @@ class TestSymbolResolverSuffixMatch:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == SymbolResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - SymbolResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
 
     def test_suffix_match_disabled(self) -> None:
         """Suffix matching can be disabled."""
@@ -233,7 +234,8 @@ class TestSymbolResolverLookupByName:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == SymbolResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - SymbolResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
         assert result.is_ambiguous is True
 
     def test_lookup_by_name_with_path_hint(self) -> None:
@@ -493,7 +495,7 @@ class TestNameResolverSuffixMatch:
         assert result.confidence == 1.0  # Exact match confidence
 
     def test_suffix_match_ambiguous_returns_first(self) -> None:
-        """Ambiguous suffix match returns first with low confidence."""
+        """Ambiguous suffix match returns first with scaled confidence."""
         sym1 = make_symbol("doWork", "/pkg1/MyClass.java", "java")
         sym2 = make_symbol("doWork", "/pkg2/OtherClass.java", "java")
         registry = {
@@ -506,9 +508,31 @@ class TestNameResolverSuffixMatch:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        # Confidence scales as CONFIDENCE_AMBIGUOUS / sqrt(N)
+        import math
+        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)
+        assert abs(result.confidence - expected) < 0.01
         assert "ambiguous" in result.match_type
         assert len(result.candidates) == 2
+
+    def test_suffix_match_many_candidates_low_confidence(self) -> None:
+        """Many ambiguous candidates produce very low confidence."""
+        # Simulate 15 classes defining Initialize()
+        registry = {}
+        for i in range(15):
+            sym = make_symbol("Initialize", f"/pkg{i}/Class{i}.cpp", "cpp")
+            registry[f"pkg{i}::Class{i}::Initialize"] = sym
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("Initialize")
+
+        assert result.found is True
+        # 15 candidates: 0.70 / sqrt(15) ≈ 0.18
+        import math
+        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(15)
+        assert abs(result.confidence - expected) < 0.01
+        assert result.confidence < 0.20  # sanity: very low
+        assert len(result.candidates) == 15
 
     def test_suffix_match_path_hint_disambiguates(self) -> None:
         """Path hint disambiguates among multiple suffix matches."""
@@ -1043,7 +1067,8 @@ class TestNameResolverRustSeparator:
         result = resolver.lookup("compute")
 
         assert result.found is True
-        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
         assert result.match_type == "suffix_ambiguous"
         assert len(result.candidates) == 2
 
