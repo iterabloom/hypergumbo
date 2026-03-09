@@ -39,3 +39,18 @@
   nonce: e0c0  # e0c0
   set:  # e0c0
     status: wont_do  # e0c0
+- op: update  # befe
+  at: '2026-03-09T08:52:19Z'  # befe
+  by: human  # befe
+  actor: jgstern  # befe
+  clock: 5  # befe
+  nonce: befe  # befe
+  set:  # befe
+    status: deleted  # befe
+- op: discuss  # d024
+  at: '2026-03-09T10:07:17Z'  # d024
+  by: agent  # d024
+  actor: jgstern_agent  # d024
+  clock: 6  # d024
+  nonce: d024  # d024
+  message: "Acknowledged. The root cause was guidance folder writes changing the hash, not the 0-TODO path. Closing without changes — the current behavior correctly allows important non-code analyses to proceed."  # d024

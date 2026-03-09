@@ -37,3 +37,17 @@
   nonce: deed  # deed
   set:  # deed
     title: "Properties analyzer must handle non-UTF-8 encoded files (UnicodeDecodeError)"  # deed
+- op: update  # 7c3b
+  at: '2026-03-09T08:58:39Z'  # 7c3b
+  by: agent  # 7c3b
+  actor: jgstern_agent  # 7c3b
+  clock: 4  # 7c3b
+  nonce: 7c3b  # 7c3b
+  set: {}  # 7c3b
+- op: discuss  # 2226
+  at: '2026-03-09T08:58:39Z'  # 2226
+  by: agent  # 2226
+  actor: jgstern_agent  # 2226
+  clock: 5  # 2226
+  nonce: '2226'  # 2226
+  message: "Already fixed in commit 335bb307. Uses errors='replace' in _get_node_text(). Test test_non_utf8_encoded_file validates Latin-1 handling."  # 2226
