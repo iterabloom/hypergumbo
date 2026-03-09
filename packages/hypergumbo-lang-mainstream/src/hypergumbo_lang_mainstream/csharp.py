@@ -975,6 +975,7 @@ def _extract_edges_from_file(
     except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
         return []
 
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("csharp", str(file_path))
     # Track variable types for type inference: var_name -> class_name
@@ -1089,7 +1090,7 @@ def _extract_edges_from_file(
                                             var_types, local_symbols,
                                         )
                                         continue
-                                    lookup = resolver.lookup(qname)
+                                    lookup = resolver.lookup(qname, caller_path=_caller_path)
                                     if lookup.found and lookup.symbol is not None:
                                         edges.append(Edge.create(
                                             src=current_function.id,
@@ -1155,7 +1156,7 @@ def _extract_edges_from_file(
                             else:
                                 # Use type's import path for disambiguation
                                 import_hint = using_aliases.get(class_name)
-                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint)
+                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -1201,7 +1202,7 @@ def _extract_edges_from_file(
                     # Check global symbols via resolver
                     else:
                         import_hint = using_aliases.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1241,7 +1242,7 @@ def _extract_edges_from_file(
                 else:
                     # Use import path for disambiguation
                     import_hint = using_aliases.get(type_name)
-                    lookup_result = resolver.lookup(type_name, path_hint=import_hint)
+                    lookup_result = resolver.lookup(type_name, path_hint=import_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -1283,7 +1284,7 @@ def _extract_edges_from_file(
                 ref_name = node_text(id_node, source)
                 target = local_symbols.get(ref_name)
                 if target is None and resolver is not None:
-                    lookup = resolver.lookup(ref_name)
+                    lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup.found and lookup.symbol is not None:
                         target = lookup.symbol
                 if target is not None and target.kind in ("function", "method"):
@@ -1314,7 +1315,7 @@ def _extract_edges_from_file(
                     ref_name = node_text(rhs, source)
                     target = local_symbols.get(ref_name)
                     if target is None and resolver is not None:
-                        lookup = resolver.lookup(ref_name)
+                        lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                         if lookup.found and lookup.symbol is not None:
                             target = lookup.symbol
                     if target is not None and target.kind in ("function", "method"):

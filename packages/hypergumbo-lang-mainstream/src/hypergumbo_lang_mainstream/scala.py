@@ -563,6 +563,7 @@ def _extract_edges_from_file(
     Tracks variable types from function parameters and constructor assignments
     (``val x = new Foo()``) to disambiguate method calls like ``x.bar()``.
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     var_types: dict[str, str] = {}
@@ -628,6 +629,7 @@ def _extract_edges_from_file(
                             lookup = resolver.lookup(
                                 qualified,
                                 path_hint=import_aliases.get(type_name),
+                                caller_path=_caller_path,
                             )
                             if lookup.found and lookup.symbol is not None:
                                 target = lookup.symbol
@@ -658,7 +660,7 @@ def _extract_edges_from_file(
                         ))
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -689,7 +691,7 @@ def _extract_edges_from_file(
                 if current_function is not None:
                     target = local_symbols.get(ref_name)
                     if target is None:  # pragma: no cover — cross-file
-                        lookup = resolver.lookup(ref_name)
+                        lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                         if lookup.found and lookup.symbol is not None:
                             target = lookup.symbol
                     if (

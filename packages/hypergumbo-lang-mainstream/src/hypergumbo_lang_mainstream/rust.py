@@ -1078,6 +1078,7 @@ def _extract_edges_from_file(
         span_index: Optional line-span index for enclosing function detection.
             Built from global_symbols to avoid name collisions in symbol_by_name.
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
 
@@ -1241,7 +1242,7 @@ def _extract_edges_from_file(
                                         ref_name = node_text(arg_child, source)
                                         target = local_symbols.get(ref_name)
                                         if target is None:
-                                            lr = resolver.lookup(ref_name)
+                                            lr = resolver.lookup(ref_name, caller_path=_caller_path)
                                             if lr.found and lr.symbol is not None:
                                                 target = lr.symbol
                                         if target is not None:
@@ -1277,7 +1278,7 @@ def _extract_edges_from_file(
                             else:
                                 import_hint = use_aliases.get(callee_name)
                                 lookup_result = resolver.lookup(
-                                    full_scoped_name, path_hint=import_hint,
+                                    full_scoped_name, path_hint=import_hint, caller_path=_caller_path,
                                 )
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
@@ -1317,7 +1318,7 @@ def _extract_edges_from_file(
                                             resolved = True
                                             break
                                         lr = resolver.lookup(
-                                            suffix, path_hint=import_hint,
+                                            suffix, path_hint=import_hint, caller_path=_caller_path,
                                         )
                                         if lr.found and lr.symbol is not None:
                                             edges.append(Edge.create(
@@ -1359,7 +1360,7 @@ def _extract_edges_from_file(
                                         or global_symbols.get(typed_name)
                                     )
                                     if target is None:
-                                        lookup = resolver.lookup(typed_name)
+                                        lookup = resolver.lookup(typed_name, caller_path=_caller_path)
                                         if lookup.found and lookup.symbol:
                                             target = lookup.symbol
                                     if target is not None:
@@ -1424,7 +1425,7 @@ def _extract_edges_from_file(
                                         )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
-                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     confidence = 0.80 * lookup_result.confidence
                                     edges.append(Edge.create(
@@ -1463,7 +1464,7 @@ def _extract_edges_from_file(
                             short = callee_name.rsplit("::", 1)[-1]
                             target = local_symbols.get(short)
                         if target is None:
-                            lr = resolver.lookup(callee_name)
+                            lr = resolver.lookup(callee_name, caller_path=_caller_path)
                             if lr.found and lr.symbol is not None:
                                 target = lr.symbol
                         if target is not None:

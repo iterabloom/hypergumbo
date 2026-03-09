@@ -1281,6 +1281,7 @@ def _extract_rails_callbacks(
 
     Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
@@ -1344,7 +1345,7 @@ def _extract_rails_callbacks(
                 # 4. Try resolver for fuzzy matching (steps 1-3 cover all normal cases;
                 #    this handles edge cases where method name differs from symbol key)
                 if callee is None:  # pragma: no cover — steps 1-3 resolve all known patterns
-                    lookup = resolver.lookup(callback_name)
+                    lookup = resolver.lookup(callback_name, caller_path=_caller_path)
                     if lookup.found and lookup.symbol is not None:
                         callee = lookup.symbol
 
@@ -2161,6 +2162,7 @@ def _extract_edges_from_file(
             method-specific lookups.  When provided, used instead of ``resolver``
             for method name lookups (bare calls and receiver call fallbacks).
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
     var_types = _extract_ruby_var_types(tree, source)
@@ -2233,7 +2235,7 @@ def _extract_edges_from_file(
                                 if target is None:
                                     target = local_symbols.get(ref_name)
                                 if target is None:
-                                    lookup = resolver.lookup(ref_name)
+                                    lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                                     if lookup.found and lookup.symbol is not None:
                                         target = lookup.symbol
                                 if (
@@ -2326,7 +2328,7 @@ def _extract_edges_from_file(
                         elif receiver_node is None:
                             # Use require hints for disambiguation
                             path_hint = require_hints.get(callee_name)
-                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_method.id,
@@ -2402,7 +2404,7 @@ def _extract_edges_from_file(
                 elif not ambiguous:
                     # Use require hints for disambiguation
                     path_hint = require_hints.get(callee_name)
-                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         callee = lookup_result.symbol
                         if callee.kind == "method" and callee.id != current_method.id:
@@ -2435,7 +2437,7 @@ def _extract_edges_from_file(
                 ref_name = node_text(value_node, source)
                 target = local_symbols.get(ref_name) or global_symbols.get(ref_name)
                 if target is None:  # pragma: no cover - defensive resolver fallback
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         target = lookup_result.symbol
                 if target is not None and target.kind == "method":

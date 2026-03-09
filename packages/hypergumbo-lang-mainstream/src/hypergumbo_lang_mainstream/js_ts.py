@@ -2714,6 +2714,7 @@ def _extract_edges(
         method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -2829,7 +2830,7 @@ def _extract_edges(
                             if callee is not None:
                                 edge_confidence = 0.85  # same-package heuristic
                         if callee is None:
-                            lookup_result = resolver.lookup(func_name)
+                            lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: the resolver fallback
                                 # should not cross npm packages (import-path
@@ -2889,7 +2890,7 @@ def _extract_edges(
                         # Case 1: this.method()
                         if is_this_call and current_class_name:
                             full_name = f"{current_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(full_name)
+                            lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
@@ -2928,7 +2929,7 @@ def _extract_edges(
                                         import_module, file_path, full_name, symbols_by_name,
                                     )
                                 if callee is None:
-                                    lookup_result = resolver.lookup(full_name)
+                                    lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                                     if lookup_result.found and lookup_result.symbol is not None:
                                         callee = lookup_result.symbol
                                 if callee is not None:
@@ -2951,7 +2952,7 @@ def _extract_edges(
                             # Resolve via global symbols using import path as hint
                             # to disambiguate when same name exists in multiple modules
                             import_path = namespace_imports[obj_name]
-                            lookup_result = resolver.lookup(method_name, path_hint=import_path)
+                            lookup_result = resolver.lookup(method_name, path_hint=import_path, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: block resolution when
                                 # the target lives in a different npm package.
@@ -2984,7 +2985,7 @@ def _extract_edges(
                                     import_module, file_path, full_name, symbols_by_name,
                                 )
                             if callee is None:
-                                lookup_result = resolver.lookup(full_name)
+                                lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     callee = lookup_result.symbol
                             if callee is not None:
@@ -3062,7 +3063,7 @@ def _extract_edges(
                         if target is None:
                             target = global_symbols.get(arg_name)
                         if target is None:  # pragma: no cover - defensive resolver fallback
-                            lookup_result = resolver.lookup(arg_name)
+                            lookup_result = resolver.lookup(arg_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 target = lookup_result.symbol
                         # Route symbols can shadow function symbols in
@@ -3239,7 +3240,7 @@ def _extract_edges(
                 ref_name = _node_text(value_node, source)
                 target = global_symbols.get(ref_name)
                 if target is None:  # pragma: no cover - defensive resolver fallback
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         target = lookup_result.symbol
                 # Cross-package guard: object field refs should not
@@ -3270,7 +3271,7 @@ def _extract_edges(
             ref_name = _node_text(node, source)
             target = global_symbols.get(ref_name)
             if target is None:  # pragma: no cover - defensive resolver fallback
-                lookup_result = resolver.lookup(ref_name)
+                lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target = lookup_result.symbol
             # Cross-package guard: shorthand props should not cross packages

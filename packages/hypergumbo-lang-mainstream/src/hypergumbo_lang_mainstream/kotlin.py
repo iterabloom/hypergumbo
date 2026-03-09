@@ -723,6 +723,7 @@ def _extract_edges_from_file(
     except (OSError, IOError):
         return []
 
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
 
@@ -831,7 +832,7 @@ def _extract_edges_from_file(
                         enclosing_class = _get_enclosing_class(node, source)
                         if enclosing_class:
                             candidate = f"{enclosing_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -860,7 +861,7 @@ def _extract_edges_from_file(
                                 candidate = f"{type_name}.{method_name}"
                                 import_hint = imports.get(type_name)
                                 lookup_result = resolver.lookup(
-                                    candidate, path_hint=import_hint
+                                    candidate, path_hint=import_hint, caller_path=_caller_path,
                                 )
                                 if (
                                     lookup_result.found
@@ -892,7 +893,7 @@ def _extract_edges_from_file(
                             candidate = f"{receiver_name}.{method_name}"
                             # Use import path as hint for disambiguation
                             import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -913,7 +914,7 @@ def _extract_edges_from_file(
                             candidate = f"{type_class_name}.{method_name}"
                             # Use import path of the type as hint for disambiguation
                             import_hint = imports.get(type_class_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -953,7 +954,7 @@ def _extract_edges_from_file(
                             candidate = f"{receiver_name}.{method_name}"
                             # Use import path as hint if receiver is an imported name
                             import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -995,7 +996,7 @@ def _extract_edges_from_file(
                     # Check global symbols via resolver
                     else:
                         import_hint = imports.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1049,9 +1050,9 @@ def _extract_edges_from_file(
                 target_name = (
                     f"{enclosing_class}.{ref_name}" if enclosing_class else ref_name
                 )
-                lookup_result = resolver.lookup(target_name)
+                lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
                 if not (lookup_result.found and lookup_result.symbol is not None):
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -1094,7 +1095,7 @@ def _extract_edges_from_file(
                         receiver_name = node_text(receiver_node, source)
                         target = f"{receiver_name}.{method_name}"
 
-                    lookup_result = resolver.lookup(target)
+                    lookup_result = resolver.lookup(target, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
