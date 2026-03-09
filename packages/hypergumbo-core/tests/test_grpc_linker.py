@@ -597,6 +597,363 @@ class TestGrpcProtoRouteSymbols:
         ]
 
 
+class TestGrpcProtoToGoImplementation:
+    """Tests for linking proto RPC definitions to Go implementation methods.
+
+    When a .proto file defines a service with RPC methods, and a Go file has a
+    struct embedding UnimplementedXxxServer with methods matching those RPCs,
+    the linker should create implements_rpc edges from the Go methods to the
+    proto RPC route symbols.
+    """
+
+    def test_links_go_method_to_proto_rpc_route(self, tmp_path: Path) -> None:
+        """Go method on server struct creates implements_rpc edge to proto RPC."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        # Proto defines the service
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package user;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "    rpc CreateUser(CreateUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        # Go file implements the service
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type server struct {\n"
+            "    UnimplementedUserServiceServer\n"
+            "}\n\n"
+            "func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {\n"
+            '    return &pb.User{Name: "test"}, nil\n'
+            "}\n\n"
+            "func (s *server) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.User, error) {\n"
+            "    return &pb.User{Name: req.Name}, nil\n"
+            "}\n"
+        )
+
+        # Pass existing Go method symbols (as if the Go analyzer had run)
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:7-9:server.GetUser:method",
+                name="server.GetUser",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(7, 9, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:11-13:server.CreateUser:method",
+                name="server.CreateUser",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(11, 13, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        # Should have implements_rpc edges from Go methods to proto routes
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 2
+
+        # Check edge targets are proto RPC route symbols
+        route_ids = {s.id for s in result.symbols if s.kind == "route"}
+        for edge in impl_edges:
+            assert edge.dst in route_ids
+
+        # Check source names cover both methods
+        src_names = sorted(e.src.split(":")[-2] for e in impl_edges)
+        assert src_names == ["server.CreateUser", "server.GetUser"]
+
+    def test_skips_non_go_non_method_symbols(self, tmp_path: Path) -> None:
+        """Non-Go symbols and non-method symbols are ignored."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package user;\n"
+            "service UserService {\n"
+            "    rpc GetUser(Req) returns (Resp);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type server struct {\n"
+            "    UnimplementedUserServiceServer\n"
+            "}\n\n"
+            "func (s *server) GetUser(ctx context.Context, req *Req) (*Resp, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        # Pass a Python symbol, a Go function (not method), and a method
+        # without dot — all should be skipped
+        non_matching = [
+            Symbol(
+                id="python:handler.py:1-3:GetUser:function",
+                name="GetUser",
+                kind="function",
+                language="python",
+                path="handler.py",
+                span=Span(1, 3, 0, 0),
+                origin="py-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:1-3:GetUser:function",
+                name="GetUser",
+                kind="function",
+                language="go",
+                path=str(go_file),
+                span=Span(1, 3, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:1-3:NoDotName:method",
+                name="NoDotName",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(1, 3, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:1-3:otherStruct.GetUser:method",
+                name="otherStruct.GetUser",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(1, 3, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:7-9:server.NonExistentRpc:method",
+                name="server.NonExistentRpc",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(7, 9, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=non_matching)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 0
+
+    def test_no_link_without_unimplemented_embedding(self, tmp_path: Path) -> None:
+        """Go methods without UnimplementedXxxServer don't get linked."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package user;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        # Go file without UnimplementedUserServiceServer
+        go_file = tmp_path / "handler.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type handler struct {}\n\n"
+            "func (h *handler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {\n"
+            '    return &pb.User{Name: "test"}, nil\n'
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:5-7:handler.GetUser:method",
+                name="handler.GetUser",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(5, 7, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 0
+
+    def test_no_link_when_struct_pattern_not_extractable(self, tmp_path: Path) -> None:
+        """No implements_rpc when struct embedding pattern is unusual."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "svc.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "service MyService {\n"
+            "    rpc DoThing(Req) returns (Resp);\n"
+            "}\n"
+        )
+
+        # Go file references UnimplementedMyServiceServer but not inside
+        # a type ... struct { } block that the regex can parse — it's in a
+        # comment, so the regex-based scan finds the Go pattern (triggering
+        # file re-read) but _GO_STRUCT_WITH_UNIMPLEMENTED fails to match.
+        go_file = tmp_path / "impl.go"
+        go_file.write_text(
+            "package main\n\n"
+            "// We embed UnimplementedMyServiceServer elsewhere\n"
+            "var _ = UnimplementedMyServiceServer{}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{go_file}:4-4:implServer.DoThing:method",
+                name="implServer.DoThing",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(4, 4, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 0
+
+    def test_no_link_when_proto_has_no_rpc_methods(self, tmp_path: Path) -> None:
+        """No implements_rpc when proto service has no RPC methods."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        # Proto with a service but no RPCs
+        proto_file = tmp_path / "empty.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "service EmptyService {\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type myServer struct {\n"
+            "    UnimplementedEmptyServiceServer\n"
+            "}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{go_file}:3-5:myServer.SomeMethod:method",
+                name="myServer.SomeMethod",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(3, 5, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 0
+
+    def test_multiple_services_link_correctly(self, tmp_path: Path) -> None:
+        """Each server struct links to its own service's RPCs."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "api.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package api;\n"
+            "service UserService {\n"
+            "    rpc GetUser(Req) returns (Resp);\n"
+            "}\n"
+            "service OrderService {\n"
+            "    rpc PlaceOrder(Req) returns (Resp);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "servers.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type userServer struct {\n"
+            "    UnimplementedUserServiceServer\n"
+            "}\n\n"
+            "func (s *userServer) GetUser(ctx context.Context, req *Req) (*Resp, error) {\n"
+            "    return nil, nil\n"
+            "}\n\n"
+            "type orderServer struct {\n"
+            "    UnimplementedOrderServiceServer\n"
+            "}\n\n"
+            "func (s *orderServer) PlaceOrder(ctx context.Context, req *Req) (*Resp, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:7-9:userServer.GetUser:method",
+                name="userServer.GetUser",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(7, 9, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:15-17:orderServer.PlaceOrder:method",
+                name="orderServer.PlaceOrder",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(15, 17, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 2
+
+        # userServer.GetUser → GetUser RPC, orderServer.PlaceOrder → PlaceOrder RPC
+        for edge in impl_edges:
+            src_method = edge.src.split(":")[-2].split(".")[-1]
+            dst_route = next(
+                s for s in result.symbols
+                if s.kind == "route" and s.id == edge.dst
+            )
+            assert src_method in dst_route.meta["rpc_method"]
+
+
 class TestGrpcLinkerRequirements:
     """Tests for gRPC linker registry requirements."""
 

@@ -1674,6 +1674,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             and f != "rslice_seeds.json"
         ]
         slice_node_counts = []
+        slice_max_depths = []
         cross_file_edges = 0
         total_slice_edges = 0
         slices_with_limits = 0
@@ -1695,6 +1696,9 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                     limits_hit = feature.get("limits_hit", [])
                     slice_node_counts.append(len(slice_nodes))
                     total_slices += 1
+                    node_depths = feature.get("node_depths", {})
+                    if node_depths:
+                        slice_max_depths.append(max(node_depths.values()))
                     if limits_hit:
                         slices_with_limits += 1
                     if _TRUNCATION_LIMITS & set(limits_hit):
@@ -1717,6 +1721,8 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         if slice_node_counts:
             avg_slice_size = sum(slice_node_counts) / len(slice_node_counts)
             metrics.avg_slice_nodes = avg_slice_size
+        if slice_max_depths:
+            metrics.avg_slice_depth = sum(slice_max_depths) / len(slice_max_depths)
             metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
 
         if total_slices > 0:

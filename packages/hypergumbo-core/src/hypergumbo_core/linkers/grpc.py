@@ -414,6 +414,120 @@ def _make_route_stable_id(method: str, path: str) -> str:
     return f"sha256:{digest}"
 
 
+# Regex to find the struct type enclosing an UnimplementedXxxServer embedding.
+# Looks for "type <Name> struct {" preceding the embedding within the same
+# type declaration.
+_GO_STRUCT_WITH_UNIMPLEMENTED = re.compile(
+    r"type\s+(\w+)\s+struct\s*\{[^}]*?"
+    r"Unimplemented(\w+)Server\b",
+    re.DOTALL,
+)
+
+
+def _link_go_methods_to_rpc_routes(
+    all_patterns: list[GrpcPattern],
+    all_rpc_defs: list[ProtoRpcDef],
+    existing_symbols: list[Symbol],
+    route_symbols: list[Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Create implements_rpc edges from Go methods to proto RPC routes.
+
+    When a Go struct embeds ``UnimplementedXxxServer``, methods on that struct
+    with names matching proto RPC definitions are implementations of those RPCs.
+    This function creates ``implements_rpc`` edges connecting the Go method
+    symbols to the proto RPC route symbols.
+
+    Args:
+        all_patterns: Detected gRPC patterns (includes Go "server" patterns).
+        all_rpc_defs: Proto RPC definitions from .proto files.
+        existing_symbols: Pre-existing symbols from language analyzers.
+        route_symbols: Route symbols created by this linker.
+        run: Analysis run for provenance.
+
+    Returns:
+        List of implements_rpc edges.
+    """
+    edges: list[Edge] = []
+
+    # Find Go files with UnimplementedXxxServer and extract struct→service mapping.
+    # We need to know which struct type embeds which service's Unimplemented server.
+    go_server_files: set[str] = set()
+    for pattern in all_patterns:
+        if pattern.language == "go" and pattern.type == "server":
+            go_server_files.add(pattern.file_path)
+
+    if not go_server_files:
+        return edges
+
+    # Build struct_type → service_name mapping by re-scanning Go files.
+    struct_to_service: dict[str, str] = {}
+    for file_path_str in go_server_files:
+        try:
+            content = Path(file_path_str).read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:  # pragma: no cover
+            continue
+        for match in _GO_STRUCT_WITH_UNIMPLEMENTED.finditer(content):
+            struct_name = match.group(1)
+            service_name = match.group(2)
+            struct_to_service[struct_name] = service_name
+
+    if not struct_to_service:
+        return edges
+
+    # Build RPC name → route symbol ID mapping per service.
+    # Key: (service_name, rpc_name) → route symbol ID
+    rpc_route_lookup: dict[tuple[str, str], str] = {}
+    for sym in route_symbols:
+        if sym.kind == "route" and sym.meta:
+            svc = sym.meta.get("rpc_service", "")
+            method = sym.meta.get("rpc_method", "")
+            if svc and method:
+                rpc_route_lookup[(svc, method)] = sym.id
+
+    if not rpc_route_lookup:
+        return edges
+
+    # Match existing Go method symbols to proto RPCs.
+    # Go methods are named "StructType.MethodName".
+    for sym in existing_symbols:
+        if sym.kind != "method" or sym.language != "go":
+            continue
+        # Parse "StructType.MethodName" format
+        parts = sym.name.rsplit(".", 1)
+        if len(parts) != 2:
+            continue
+        struct_name, method_name = parts
+
+        service_name = struct_to_service.get(struct_name)
+        if not service_name:
+            continue
+
+        # Build the service name as it appears in proto (e.g., "UserService")
+        proto_service = service_name + "Service"
+        route_id = rpc_route_lookup.get((proto_service, method_name))
+        if not route_id:
+            # Try without "Service" suffix (some protos name services without it)
+            route_id = rpc_route_lookup.get((service_name, method_name))
+        if not route_id:
+            continue
+
+        edges.append(Edge.create(
+            src=sym.id,
+            dst=route_id,
+            edge_type="implements_rpc",
+            line=sym.span.start_line,
+            confidence=0.90,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="grpc_go_server_method",
+        ))
+
+    return edges
+
+
 def _normalize_service_name(name: str) -> str:
     """Normalize service name for matching (remove common suffixes)."""
     # Remove common suffixes for matching
@@ -423,11 +537,17 @@ def _normalize_service_name(name: str) -> str:
     return name
 
 
-def link_grpc(root: Path) -> GrpcLinkResult:
+def link_grpc(
+    root: Path,
+    existing_symbols: list[Symbol] | None = None,
+) -> GrpcLinkResult:
     """Link gRPC clients to servers across files.
 
     Args:
         root: Repository root directory
+        existing_symbols: Pre-existing symbols from language analyzers.
+            When provided, enables linking Go methods on server structs
+            to their corresponding proto RPC route symbols.
 
     Returns:
         GrpcLinkResult with symbols and edges.
@@ -576,6 +696,16 @@ def link_grpc(root: Path) -> GrpcLinkResult:
                 evidence_type="grpc_rpc_definition",
             ))
 
+    # Link Go implementation methods to proto RPC route symbols.
+    # When a Go struct embeds UnimplementedXxxServer, its methods that
+    # match proto RPC names are implementations of those RPCs.
+    if existing_symbols:
+        edges.extend(
+            _link_go_methods_to_rpc_routes(
+                all_patterns, all_rpc_defs, existing_symbols, symbols, run,
+            )
+        )
+
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return GrpcLinkResult(
@@ -720,7 +850,7 @@ def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     This wraps link_grpc() and adds unresolved edge resolution.
     """
     # Run the core linking logic
-    result = link_grpc(ctx.repo_root)
+    result = link_grpc(ctx.repo_root, existing_symbols=ctx.symbols)
 
     # Resolve unresolved edges from analyzers
     resolved_edges = _resolve_unresolved_grpc_edges(
