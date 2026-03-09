@@ -534,6 +534,48 @@ class TestNameResolverSuffixMatch:
         assert result.confidence < 0.20  # sanity: very low
         assert len(result.candidates) == 15
 
+    def test_suffix_key_disambiguation_same_file(self) -> None:
+        """Key-based disambiguation when path_hint matches all candidates' paths.
+
+        When multiple candidates share the same file path, path-based
+        disambiguation fails (all match).  The resolver falls back to
+        key-based matching: path_hint="Parser" matches key
+        "Parser::Initialize" but not "Packager::Initialize".
+        """
+        sym1 = make_symbol("Initialize", "/src/parser.cpp", "cpp")
+        sym2 = make_symbol("Initialize", "/src/parser.cpp", "cpp")
+        registry = {
+            "Parser::Initialize": sym1,
+            "Packager::Initialize": sym2,
+        }
+        resolver = NameResolver(registry)
+
+        # path_hint="Parser" should match key "Parser::Initialize" uniquely
+        result = resolver.lookup("Initialize", path_hint="Parser")
+
+        assert result.found is True
+        assert result.symbol is sym1
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+        assert result.match_type == "path_hint"
+
+    def test_suffix_key_disambiguation_multiple_key_matches(self) -> None:
+        """When key matching produces multiple matches, return first."""
+        sym1 = make_symbol("Init", "/src/core.cpp", "cpp")
+        sym2 = make_symbol("Init", "/src/core.cpp", "cpp")
+        sym3 = make_symbol("Init", "/src/core.cpp", "cpp")
+        registry = {
+            "Core::Parser::Init": sym1,
+            "Core::Loader::Init": sym2,
+            "Other::Init": sym3,
+        }
+        resolver = NameResolver(registry)
+
+        # "Core" matches two keys (both Core::Parser and Core::Loader)
+        result = resolver.lookup("Init", path_hint="Core")
+        assert result.found is True
+        assert result.symbol in [sym1, sym2]
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+
     def test_suffix_match_path_hint_disambiguates(self) -> None:
         """Path hint disambiguates among multiple suffix matches."""
         sym1 = make_symbol("doWork", "/pkg1/MyClass.java", "java")

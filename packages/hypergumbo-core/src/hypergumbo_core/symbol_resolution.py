@@ -531,17 +531,48 @@ class NameResolver:
             if non_test:
                 candidates = non_test
 
-        # Try path hints disambiguation (from imports or single hint)
+        # Try path hints disambiguation (from imports or single hint).
+        # Two-stage matching: (1) file path, (2) registry key (qualified name).
+        # Key matching handles C++ same-file disambiguation where
+        # path_hint="Parser" matches key "Parser::Initialize" but not
+        # "Packager::Initialize" even when both are in parser.cpp.
         all_hints = path_hints or ([path_hint] if path_hint else None)
         if all_hints and len(candidates) > 1:
-            for candidate in candidates:
-                if any(h in candidate.path for h in all_hints):
-                    return LookupResult(
-                        symbol=candidate,
-                        confidence=self.CONFIDENCE_PATH_HINT,
-                        match_type="path_hint",
-                        candidates=candidates,
-                    )
+            # Stage 1: filter by file path
+            path_matched = [
+                c for c in candidates
+                if any(h in c.path for h in all_hints)
+            ]
+            if len(path_matched) == 1:
+                return LookupResult(
+                    symbol=path_matched[0],
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
+            # Stage 2: filter by registry key (qualified symbol name)
+            key_matched = [
+                c for c, k in zip(candidates, candidates_keys)
+                if any(h in k for h in all_hints)
+            ]
+            if len(key_matched) == 1:
+                return LookupResult(
+                    symbol=key_matched[0],
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
+            # Return first match from either stage
+            first_match = key_matched[0] if key_matched else (
+                path_matched[0] if path_matched else None
+            )
+            if first_match is not None:
+                return LookupResult(
+                    symbol=first_match,
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
 
         if len(candidates) == 1:
             return LookupResult(

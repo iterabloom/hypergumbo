@@ -458,6 +458,13 @@ def _extract_symbols_from_tree(
             result = _extract_function_name(node, source)
             if result:
                 name, kind = result
+                # Qualify inline method names with the enclosing class.
+                # Without this, Parser::Initialize and Packager::Initialize
+                # both register as just "Initialize", colliding in the registry.
+                if kind == "method" and "::" not in name:
+                    enclosing_cls = _get_enclosing_class(node, source)
+                    if enclosing_cls:
+                        name = f"{enclosing_cls}::{name}"
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 signature = _extract_cpp_signature(node, source)
@@ -839,10 +846,27 @@ def _extract_edges_from_tree(
                             else:
                                 # Use explicit namespace as path_hint
                                 path_hint = ns_prefix
+                        elif current_function.kind == "method":
+                            # Same-class preference: bare call like Initialize()
+                            # inside a class method — use the enclosing class
+                            # as path_hint so the resolver prefers same-class
+                            # symbols (e.g., Parser::Initialize over Packager::Initialize).
+                            enclosing_cls = _get_enclosing_class(node, source)
+                            if enclosing_cls:
+                                path_hint = enclosing_cls
 
-                    # Check local symbols first (skip if chain already resolved)
-                    if not chain_resolved and short_name in local_symbols:
-                        callee = local_symbols[short_name]
+                    # Check local symbols first (skip if chain already resolved).
+                    # Same-class preference: try qualified name (Class::method)
+                    # before short name to avoid collisions when multiple classes
+                    # define the same method name.
+                    _local_callee = None
+                    if not chain_resolved:
+                        if path_hint and f"{path_hint}::{short_name}" in local_symbols:
+                            _local_callee = local_symbols[f"{path_hint}::{short_name}"]
+                        elif short_name in local_symbols:
+                            _local_callee = local_symbols[short_name]
+                    if _local_callee is not None:
+                        callee = _local_callee
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=callee.id,

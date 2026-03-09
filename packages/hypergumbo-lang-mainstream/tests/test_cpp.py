@@ -2019,3 +2019,37 @@ void process() {
                     f"v.clear() should not resolve to project clear(). Edge: {edge}"
                 )
 
+
+class TestCppSameClassPreference:
+    """Tests for same-class method preference in bare call resolution."""
+
+    def test_bare_call_prefers_same_class(self, tmp_path: Path) -> None:
+        """Initialize() inside Parser::parse prefers Parser::Initialize."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "parser.cpp").write_text("""
+class Parser {
+public:
+    void Initialize() {}
+    void parse() {
+        Initialize();
+    }
+};
+
+class Packager {
+public:
+    void Initialize() {}
+};
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        init_edges = [e for e in call_edges if "parse" in e.src and "Initialize" in e.dst]
+
+        assert len(init_edges) == 1, f"Expected 1 Initialize edge from parse, got {init_edges}"
+        # Should resolve to Parser::Initialize, not Packager::Initialize
+        assert "Parser" in init_edges[0].dst, (
+            f"Expected Parser::Initialize, got {init_edges[0].dst}"
+        )
+
