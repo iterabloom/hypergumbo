@@ -284,6 +284,60 @@ def _extract_symbols_from_file(
     return symbols, edges
 
 
+def _resolve_ansible_path(
+    raw_dst: str,
+    src_file_id: str,
+    file_basename_map: dict[str, list[str]],
+    file_node_ids: dict[str, str],
+) -> str | None:
+    """Resolve an Ansible include/import path to a file node ID.
+
+    Tries several strategies:
+    1. Exact basename match (e.g., "common.yml" → tasks/common.yml)
+    2. Relative path from the source file's directory
+    3. Role name resolution ("name=rolename" → roles/rolename/tasks/main.yml)
+
+    Returns the file node ID if resolved, None otherwise. Jinja2 template
+    expressions (containing "{{") are always unresolvable.
+    """
+    # Jinja2 templates are unresolvable at parse time
+    if "{{" in raw_dst:
+        return None
+
+    # Handle role references: "name=rolename" → roles/rolename/tasks/main.yml
+    if raw_dst.startswith("name="):
+        role_name = raw_dst[5:]
+        for rel_path, node_id in file_node_ids.items():
+            if f"roles/{role_name}/tasks/main.yml" in rel_path:
+                return node_id
+        return None
+
+    # Strip quotes that may have leaked through
+    cleaned = raw_dst.strip("'\"")
+
+    # Try exact basename match
+    basename = cleaned.rsplit("/", 1)[-1] if "/" in cleaned else cleaned
+    if basename in file_basename_map:
+        candidates = file_basename_map[basename]
+        if len(candidates) == 1:
+            return file_node_ids[candidates[0]]
+        # Multiple candidates: try to pick the one in the same directory
+        # Extract source directory from src_file_id
+        # src_file_id format: ansible:{path}:1-1:file:file
+        parts = src_file_id.split(":")
+        if len(parts) >= 2:
+            src_path = parts[1]
+            src_dir = src_path.rsplit("/", 1)[0] if "/" in src_path else ""
+            for cand in candidates:
+                cand_dir = cand.rsplit("/", 1)[0] if "/" in cand else ""
+                if cand_dir == src_dir:
+                    return file_node_ids[cand]
+        # Fall back to first candidate
+        return file_node_ids[candidates[0]]
+
+    return None
+
+
 class AnsibleAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based Ansible YAML analyzer.
 
@@ -340,6 +394,31 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
+        # Build file-level nodes and a lookup map for edge resolution.
+        # Maps basename → list of relative paths (multiple files may share a name).
+        file_basename_map: dict[str, list[str]] = {}
+        file_node_ids: dict[str, str] = {}  # rel_path → file node ID
+
+        for ansible_file in all_files:
+            rel_path = str(ansible_file)
+            fid = make_file_id("ansible", rel_path)
+            file_node_ids[rel_path] = fid
+
+            basename = ansible_file.name
+            file_basename_map.setdefault(basename, []).append(rel_path)
+
+            # Create file-level node
+            all_symbols.append(Symbol(
+                id=fid,
+                name=basename,
+                kind="file",
+                language="ansible",
+                path=rel_path,
+                span=Span(1, 1, 0, 0),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
         for ansible_file in all_files:
             if max_files is not None and len(all_symbols) >= max_files:
                 break  # pragma: no cover
@@ -347,6 +426,25 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
             symbols, edges = _extract_symbols_from_file(ansible_file, parser, run)
             all_symbols.extend(symbols)
             all_edges.extend(edges)
+
+        # Resolve edge destinations: convert raw filenames to file node IDs.
+        # include_tasks/import_tasks use relative filenames; try to match
+        # them against known Ansible files by basename or relative path.
+        for edge in all_edges:
+            if edge.edge_type != "imports":
+                continue  # pragma: no cover — all current edges are imports
+            raw_dst = edge.dst
+            # Skip if already a valid node ID (shouldn't happen, but defensive)
+            if raw_dst in file_node_ids.values():
+                continue  # pragma: no cover — dst is always raw filename
+            resolved = _resolve_ansible_path(
+                raw_dst, edge.src, file_basename_map, file_node_ids,
+            )
+            if resolved is not None:
+                edge.dst = resolved
+            else:
+                # Unresolvable (Jinja2 template, missing file, etc.)
+                edge.confidence = 0.50
 
         run.duration_ms = int((_time.time() - start_time) * 1000)
 
