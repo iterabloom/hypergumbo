@@ -24,3 +24,10 @@
   clock: 2  # 41fc
   nonce: 41fc  # 41fc
   message: "Please explain this a bit more for someone unfamiliar with \"std\", \"trait\", \"implements edges\", and aardvark-dns."  # 41fc
+- op: discuss  # a1b4
+  at: '2026-03-09T18:59:05Z'  # a1b4
+  by: agent  # a1b4
+  actor: jgstern_agent  # a1b4
+  clock: 3  # a1b4
+  nonce: a1b4  # a1b4
+  message: "Context for someone unfamiliar:\n\n**Rust traits** are like interfaces in Java/Go. They define a contract (set of methods) that types must implement. \"std traits\" are traits from Rust's standard library.\n\n**Implements edges** in hypergumbo's graph connect a concrete type to the trait it implements: `MyError implements Display` means MyError has a method that formats it as a string.\n\n**The blocklist**: When analyzing Rust code, we suppress edges for 33 common std traits like `.clone()`, `.into()`, `.from()` because almost every type implements them. If we kept them, they'd create thousands of edges that don't reveal architecture — they're like saying \"every class has toString().\"\n\n**The tension**: Error handling traits (Display, From, Error) are on the blocklist because most types implement them. But in aardvark-dns (a DNS resolver), the assessment argued these ARE architecturally meaningful — the way error types convert between each other (From impls) reveals the error propagation structure, which is central to understanding the codebase.\n\n**Options**:\n1. Remove Display/From/Error from blocklist entirely → more signal but more noise for non-error-heavy repos\n2. Only suppress when the implementing type isn't an error type → requires detecting error types\n3. Keep as-is → simpler, but misses error architecture in Rust-heavy codebases\n\nGiven the upcoming Rust-heavy curriculum bakeoff (plazaflow), this decision will directly affect quality. I'd recommend Option 2 (suppress non-error impls, keep error impls) but it's a design call."  # a1b4
