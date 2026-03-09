@@ -17,3 +17,18 @@
     pr_ref:  # 39cd
     description: "DEEP bakeoff: gRPC routes detected (130 in Argo-CD) but no edges connect proto service/RPC definitions to Go server implementations. E.g., account.proto AccountService not linked to server/account/account.go Server struct methods. Needed: match proto service names to Go struct types implementing the gRPC service interface."  # 39cd
     fields: {}  # 39cd
+- op: update  # 76c2
+  at: '2026-03-09T11:25:34Z'  # 76c2
+  by: agent  # 76c2
+  actor: jgstern_agent  # 76c2
+  clock: 2  # 76c2
+  nonce: 76c2  # 76c2
+  set:  # 76c2
+    status: done  # 76c2
+- op: discuss  # 1db8
+  at: '2026-03-09T11:25:34Z'  # 1db8
+  by: agent  # 1db8
+  actor: jgstern_agent  # 1db8
+  clock: 3  # 1db8
+  nonce: 1db8  # 1db8
+  message: "Implemented in PR #2071. Go structs embedding UnimplementedXxxServer now have their methods matched to proto RPC definitions via implements_rpc edges. Validated on Argo-CD (130 RPCs) and Vault (57 RPCs)."  # 1db8

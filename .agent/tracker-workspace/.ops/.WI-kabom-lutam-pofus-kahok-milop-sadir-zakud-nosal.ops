@@ -17,3 +17,18 @@
     pr_ref:  # 9782
     description: "DEEP bakeoff: interface dispatch creates N×N cross-product edges between all implementations. E.g., alertmanager Integration.Notify has 325 dispatches_to edges creating full mesh between Notifier.Notify implementations. Reverse slices show every impl pointing to every other impl instead of showing actual callers. Should show callers of interface method, not peer-to-peer edges."  # 9782
     fields: {}  # 9782
+- op: update  # 098a
+  at: '2026-03-09T11:54:19Z'  # 098a
+  by: agent  # 098a
+  actor: jgstern_agent  # 098a
+  clock: 2  # 098a
+  nonce: 098a  # 098a
+  set:  # 098a
+    status: done  # 098a
+- op: discuss  # ecc6
+  at: '2026-03-09T11:54:19Z'  # ecc6
+  by: agent  # ecc6
+  actor: jgstern_agent  # ecc6
+  clock: 3  # ecc6
+  nonce: ecc6  # ecc6
+  message: "Fixed in PR #2073. Dispatches_to edges now scale confidence by 1/sqrt(N) where N is the number of overriding implementations per method. For 19 Notifier impls: confidence drops from flat 0.85 to 0.85/sqrt(19) ≈ 0.20. Matches symbol_resolution.py ambiguous lookup precedent."  # ecc6

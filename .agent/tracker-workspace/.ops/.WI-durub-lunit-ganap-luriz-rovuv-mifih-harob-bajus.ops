@@ -17,3 +17,18 @@
     pr_ref:  # e3d1
     description: "DEEP bakeoff: routes in *_test.go files appear alongside production routes. E.g., prometheus shows mock test routes from discovery/*_test.go. These are test infrastructure, not application endpoints. The routes command should filter or tag them."  # e3d1
     fields: {}  # e3d1
+- op: update  # a973
+  at: '2026-03-09T11:26:33Z'  # a973
+  by: agent  # a973
+  actor: jgstern_agent  # a973
+  clock: 2  # a973
+  nonce: a973  # a973
+  set:  # a973
+    status: done  # a973
+- op: discuss  # 56df
+  at: '2026-03-09T11:26:34Z'  # 56df
+  by: agent  # 56df
+  actor: jgstern_agent  # 56df
+  clock: 3  # 56df
+  nonce: 56df  # 56df
+  message: "Fixed in bakeoff-features script: routes command now uses --exclude-tests flag. The CLI already had -x/--exclude-tests support, the bakeoff script just wasn't using it."  # 56df
