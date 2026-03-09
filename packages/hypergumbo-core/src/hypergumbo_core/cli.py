@@ -122,6 +122,65 @@ from .framework_patterns import (
 from .partial_install_warnings import check_partial_install_warnings
 
 
+def _setup_locale_filtering(
+    repo_root: Path,
+    locale: str | None,
+) -> None:
+    """Detect locale documentation directories and configure filtering.
+
+    Scans the repo for translated doc directories (GitLab-style doc-locale/<lang>/
+    or FastAPI-style docs/<lang>/). Logs what was found and what decision was made
+    to stderr. Sets the global locale excludes so find_files() skips the
+    appropriate directories.
+
+    Args:
+        repo_root: Repository root path.
+        locale: The --locale flag value. None means "use default (exclude
+            translations)", a string like "ja-jp" means "swap to that locale".
+    """
+    from .discovery import detect_locale_dirs, set_locale_excludes
+
+    info = detect_locale_dirs(repo_root)
+    if info is None:
+        if locale is not None:
+            print(
+                f"WARNING: --locale {locale} specified but no translated "
+                f"documentation directories found in {repo_root}",
+                file=sys.stderr,
+            )
+        return
+
+    # Log what we found
+    lang_list = ", ".join(info.languages)
+    print(
+        f"Locale docs detected ({info.style}): "
+        f"{len(info.languages)} language(s) [{lang_list}]",
+        file=sys.stderr,
+    )
+
+    try:
+        excludes = info.excludes_for_locale(locale)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    set_locale_excludes(excludes)
+
+    # Log the decision
+    if locale is None:
+        excluded_str = ", ".join(d.name for d in excludes)
+        print(
+            f"  Excluding translated docs: {excluded_str} "
+            f"(use --locale <code> to analyze a specific translation)",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"  Using locale '{locale}' instead of primary docs",
+            file=sys.stderr,
+        )
+
+
 # =============================================================================
 # Custom Help Formatter for Grouped Subcommands
 # =============================================================================
@@ -524,7 +583,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
+    locale = getattr(args, "locale", None)
     verbose = getattr(args, "verbose", False)
+
+    # Detect and filter locale documentation directories
+    _setup_locale_filtering(repo_root, locale)
 
     # Convert string mode to enum
     mode_str = getattr(args, "config_extraction_mode", "hybrid")
@@ -798,6 +861,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     frameworks = getattr(args, "frameworks", None)
     include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
+    locale = getattr(args, "locale", None)
+
+    # Detect and filter locale documentation directories
+    _setup_locale_filtering(repo_root, locale)
 
     generated_files = run_behavior_map(
         repo_root=repo_root,
@@ -3154,6 +3221,15 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         dest="no_secret_scan",
         help="Skip secret scanning (not recommended)",
     )
+    p_sketch.add_argument(
+        "--locale",
+        type=str,
+        default=None,
+        metavar="CODE",
+        help="Analyze translated docs for this locale instead of English "
+             "(e.g., --locale ja-jp). By default, translated documentation "
+             "directories are excluded to avoid processing duplicate content.",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo run
@@ -3288,6 +3364,15 @@ Cache location:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+    )
+    p_run.add_argument(
+        "--locale",
+        type=str,
+        default=None,
+        metavar="CODE",
+        help="Analyze translated docs for this locale instead of English "
+             "(e.g., --locale ja-jp). By default, translated documentation "
+             "directories are excluded to avoid processing duplicate content.",
     )
     p_run.set_defaults(func=cmd_run)
 
