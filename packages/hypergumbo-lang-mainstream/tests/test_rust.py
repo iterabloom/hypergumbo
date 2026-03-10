@@ -2836,6 +2836,109 @@ class TestRustTraitImplEdges:
         # Clone is a std trait — no unresolved edge should be created
         assert len(impl_edges) == 0
 
+    def test_error_type_display_from_not_blocklisted(self, tmp_path: Path) -> None:
+        """impl Display/From/Error for *Error types creates unresolved edges.
+
+        Error-handling traits (Display, From, Error) are normally blocklisted,
+        but when the implementing type is an error type (name contains 'Error'
+        or 'Err'), these impls reveal error propagation architecture.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "error.rs").write_text(
+            "struct ParseError;\n"
+            "\n"
+            "impl std::fmt::Display for ParseError {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"parse error\")\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "impl From<std::io::Error> for ParseError {\n"
+            "    fn from(e: std::io::Error) -> Self { ParseError }\n"
+            "}\n"
+            "\n"
+            "impl std::error::Error for ParseError {}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # All three: Display, From, Error should create unresolved edges
+        trait_names = {e.dst.split(":")[-2] for e in impl_edges}
+        assert "Display" in trait_names, f"Display edge missing, got {trait_names}"
+        assert "From" in trait_names, f"From edge missing, got {trait_names}"
+        assert "Error" in trait_names, f"Error edge missing, got {trait_names}"
+
+    def test_non_error_type_still_blocklisted(self, tmp_path: Path) -> None:
+        """impl Display for non-error type remains blocklisted.
+
+        Only error types get the exemption. Regular types implementing
+        Display/From/Error are still suppressed.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyConfig;\n"
+            "\n"
+            "impl std::fmt::Display for MyConfig {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"config\")\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Display for non-error type should still be blocked
+        assert len(impl_edges) == 0
+
+    def test_error_type_with_err_suffix(self, tmp_path: Path) -> None:
+        """Types ending with 'Err' also get the exemption."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "err.rs").write_text(
+            "struct IoErr;\n"
+            "\n"
+            "impl std::fmt::Display for IoErr {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"io err\")\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        trait_names = {e.dst.split(":")[-2] for e in impl_edges}
+        assert "Display" in trait_names
+
+
+class TestIsErrorTypeName:
+    """Unit tests for _is_error_type_name heuristic."""
+
+    def test_error_suffix(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("ParseError") is True
+
+    def test_err_suffix(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("IoErr") is True
+
+    def test_non_error(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("MyConfig") is False
+
+    def test_just_error(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("Error") is True
+
+    def test_just_err(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("Err") is True
+
+    def test_empty(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("") is False
+
 
 class TestRustGenericTraitMethodBlocklist:
     """Tests for generic trait method blocklist (false-positive suppression).

@@ -1114,7 +1114,12 @@ def _extract_edges_from_file(
                         # Create a lower-confidence edge so the relationship
                         # is captured even when the trait source isn't available.
                         short_name = trait_name.rsplit("::", 1)[-1] if "::" in trait_name else trait_name
-                        if short_name not in _RUST_STD_TRAIT_NAMES:
+                        # Allow error-related traits through for error types
+                        is_exempt = (
+                            short_name in _ERROR_TRAIT_EXEMPTIONS
+                            and _is_error_type_name(impl_type_name)
+                        )
+                        if short_name not in _RUST_STD_TRAIT_NAMES or is_exempt:
                             unresolved_id = make_symbol_id(
                                 "rust", "unresolved", 0, 0, short_name, "trait",
                             )
@@ -1569,11 +1574,34 @@ _RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
 })
 
 
+# Traits that are normally blocklisted but should be allowed through when the
+# implementing type is an error type.  Error types commonly implement Display
+# (for user-facing messages), From (for error conversion chains), Error (the
+# std::error::Error trait itself), and Default.  These impls are architecturally
+# meaningful: they define how errors compose and propagate.
+_ERROR_TRAIT_EXEMPTIONS: frozenset[str] = frozenset({
+    "Display", "From", "Error", "Default",
+})
+
+
+def _is_error_type_name(name: str) -> bool:
+    """Check if a type name suggests an error type.
+
+    Heuristic: the name ends with ``Error`` or ``Err`` (e.g. ``ParseError``,
+    ``MyErr``).  This covers the overwhelming majority of Rust error types
+    without requiring trait resolution.
+    """
+    return name.endswith("Error") or name.endswith("Err")
+
+
 # Standard library trait names that should NOT generate unresolved implements
 # edges.  These are ubiquitous auto-derived or manually-impl'd traits whose
 # definitions are in std/core and won't be in the project's symbol registry.
 # Creating unresolved edges for them would be pure noise — a developer never
 # needs to know "MyStruct implements Clone" in the call graph.
+#
+# Exception: traits in _ERROR_TRAIT_EXEMPTIONS are allowed through when the
+# implementing type is an error type (see _is_error_type_name).
 _RUST_STD_TRAIT_NAMES: frozenset[str] = frozenset({
     # core::marker
     "Copy", "Send", "Sync", "Sized", "Unpin",
