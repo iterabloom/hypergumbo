@@ -1,0 +1,19 @@
+- op: create  # e8dd
+  at: '2026-03-10T21:48:17Z'  # e8dd
+  by: agent  # e8dd
+  actor: jgstern_agent  # e8dd
+  clock: 1  # e8dd
+  nonce: e8dd  # e8dd
+  data:  # e8dd
+    kind: work_item  # e8dd
+    title: "Go gRPC RegisterServer handler pattern detection incomplete"  # e8dd
+    status: todo_soft  # e8dd
+    priority: 3  # e8dd
+    parent:  # e8dd
+    tags: []  # e8dd
+    before: []  # e8dd
+    duplicate_of: []  # e8dd
+    not_duplicate_of: []  # e8dd
+    pr_ref:  # e8dd
+    description: ""  # e8dd
+    fields: {}  # e8dd
