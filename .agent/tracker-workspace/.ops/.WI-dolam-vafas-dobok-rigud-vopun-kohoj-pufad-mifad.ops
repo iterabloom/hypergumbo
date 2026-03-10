@@ -18,3 +18,11 @@
     pr_ref:  # 1a47
     description: "PlazaFlow Cohorts 1, 2, 3, 4, 6: React is the most common frontend framework in the corpus but hypergumbo has no React-specific detection. Three gaps: (1) ReactDOM.createRoot/render not detected as entrypoints, (2) no component-renders-component edges from JSX usage, (3) no React Router client-side route detection. These affect understanding, refactoring, and new-feature scores across the majority of repos."  # 1a47
     fields: {}  # 1a47
+- op: update  # 2dae
+  at: '2026-03-10T11:51:01Z'  # 2dae
+  by: agent  # 2dae
+  actor: jgstern_agent  # 2dae
+  clock: 2  # 2dae
+  nonce: 2dae  # 2dae
+  set:  # 2dae
+    status: in_progress  # 2dae
