@@ -18,3 +18,18 @@
     pr_ref:  # 7f56
     description: "PlazaFlow Cohort 1: 231 TS commands.xxx() calls to 110 Rust #[tauri::command] functions produce zero cross-language edges. Tauri IPC is the architectural spine of every Tauri app. User is building plazaflow (a Tauri app), making this the highest-priority linker gap. Needs: (1) detect #[tauri::command] attribute on Rust functions, (2) detect invoke('command_name') calls in TS/JS, (3) create ipc_calls edges between them. Also handle tauri-specta patterns. Affects spacedrive, yaak, Cap, readest in bakeoff."  # 7f56
     fields: {}  # 7f56
+- op: update  # d5fa
+  at: '2026-03-10T09:13:00Z'  # d5fa
+  by: agent  # d5fa
+  actor: jgstern_agent  # d5fa
+  clock: 2  # d5fa
+  nonce: d5fa  # d5fa
+  set:  # d5fa
+    status: done  # d5fa
+- op: discuss  # 0c97
+  at: '2026-03-10T09:13:00Z'  # 0c97
+  by: agent  # 0c97
+  actor: jgstern_agent  # 0c97
+  clock: 3  # 0c97
+  nonce: 0c97  # 0c97
+  message: "Merged in PR #2098. Tauri IPC linker implemented with 32 tests, 100% coverage. Also fixed pre-existing registry.py:578 coverage gap."  # 0c97

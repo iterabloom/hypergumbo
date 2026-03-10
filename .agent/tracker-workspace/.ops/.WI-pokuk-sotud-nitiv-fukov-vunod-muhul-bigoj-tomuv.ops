@@ -46,3 +46,10 @@
   nonce: '6331'  # 6331
   set:  # 6331
     status: todo_soft  # 6331
+- op: discuss  # 087b
+  at: '2026-03-10T09:13:19Z'  # 087b
+  by: agent  # 087b
+  actor: jgstern_agent  # 087b
+  clock: 6  # 087b
+  nonce: 087b  # 087b
+  message: "Acknowledged. Will implement Option 2: keep Display/From/Error in blocklist for non-error types, but allow implements edges when the implementing type is an error type. Will tackle after completing P2 hard items (wasm_bindgen, React, Electron IPC)."  # 087b

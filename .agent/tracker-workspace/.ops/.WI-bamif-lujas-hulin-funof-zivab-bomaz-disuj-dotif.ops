@@ -18,3 +18,18 @@
     pr_ref:  # 9b76
     description: "PlazaFlow Cohort 3: slice.tier1.json and slice.tier2.json return empty node_ids arrays despite populated hg.json with valid tier classifications. This is a correctness bug, not a feature gap. Affects refactoring and new-feature usefulness scores. Discovered in WebRTC cohort (livekit, mediasoup, jitsi-meet, element-call)."  # 9b76
     fields: {}  # 9b76
+- op: update  # b2d7
+  at: '2026-03-10T07:18:44Z'  # b2d7
+  by: agent  # b2d7
+  actor: jgstern_agent  # b2d7
+  clock: 2  # b2d7
+  nonce: b2d7  # b2d7
+  set:  # b2d7
+    status: wont_do  # b2d7
+- op: discuss  # c5e3
+  at: '2026-03-10T07:18:44Z'  # c5e3
+  by: agent  # c5e3
+  actor: jgstern_agent  # c5e3
+  clock: 3  # c5e3
+  nonce: c5e3  # c5e3
+  message: "False positive from LLM bakeoff assessment. The galene assessment hallucinated '0 nodes, 0 edges' for slice.tier1.json, but the actual file has 167 nodes and 307 edges. Checked ALL tier-filtered slices across ALL bakeoff sessions — zero files have empty node_ids. The tier-filtered slice serialization works correctly."  # c5e3
