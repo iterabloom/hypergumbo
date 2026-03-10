@@ -1,0 +1,21 @@
+- op: create  # 5334
+  at: '2026-03-10T21:46:11Z'  # 5334
+  by: agent  # 5334
+  actor: jgstern_agent  # 5334
+  clock: 1  # 5334
+  nonce: '5334'  # 5334
+  data:  # 5334
+    kind: invariant  # 5334
+    title: "Tauri IPC commands not detected as routes or cross-language edges"  # 5334
+    status: violated  # 5334
+    priority: 2  # 5334
+    parent:  # 5334
+    tags: []  # 5334
+    before: []  # 5334
+    duplicate_of: []  # 5334
+    not_duplicate_of: []  # 5334
+    pr_ref:  # 5334
+    description: ""  # 5334
+    fields:  # 5334
+      statement: "Tauri #[tauri::command] handlers must be detected as routes and TS invoke() calls must create cross-language edges to the Rust handler"  # 5334
+      root_cause: "No Tauri IPC linker exists; framework detection finds Tauri but does not create route/linker edges"  # 5334
