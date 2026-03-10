@@ -209,6 +209,103 @@ class TestBuildTargetLinker:
         assert len(result.edges) == 1
         assert result.edges[0].dst == run_app.id
 
+    def test_monorepo_cargo_binary_resolves_relative_path(self) -> None:
+        """Cargo [[bin]] in a subdirectory resolves target path relative to manifest.
+
+        In monorepos, the Cargo.toml is in a subdirectory (e.g., crates/myapp/)
+        and the defines_target dst is relative to that directory (e.g., ./bin/main.rs).
+        The linker must resolve this to the repo-root-relative path
+        (crates/myapp/bin/main.rs) to find the main() symbol.
+        """
+        binary = _make_symbol(
+            "toml", "crates/myapp/Cargo.toml", 10, 14, "myapp", "binary",
+        )
+        main_fn = _make_symbol(
+            "rust", "crates/myapp/src/main.rs", 1, 10, "main", "function",
+        )
+        # dst is relative to manifest directory: src/main.rs
+        defines_edge = _make_edge(
+            binary.id, "src/main.rs", "defines_target",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[binary, main_fn],
+            edges=[defines_edge],
+        )
+        result = link_build_targets(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == main_fn.id
+        assert result.edges[0].edge_type == "calls"
+
+    def test_monorepo_cargo_binary_dot_slash_prefix(self) -> None:
+        """Cargo [[bin]] with ./ prefix in target path resolves correctly."""
+        binary = _make_symbol(
+            "toml", "crates/rolldown_testing/Cargo.toml", 46, 51,
+            "run-fixture", "binary",
+        )
+        main_fn = _make_symbol(
+            "rust", "crates/rolldown_testing/bin/run_fixture.rs", 1, 10,
+            "main", "function",
+        )
+        # dst has ./ prefix as seen in rolldown's Cargo.toml
+        defines_edge = _make_edge(
+            binary.id, "./bin/run_fixture.rs", "defines_target",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[binary, main_fn],
+            edges=[defines_edge],
+        )
+        result = link_build_targets(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == main_fn.id
+
+    def test_monorepo_npm_bin_resolves_relative_path(self) -> None:
+        """npm bin in a subdirectory resolves target path relative to package.json."""
+        bin_sym = _make_symbol(
+            "json", "packages/rolldown/package.json", 21, 21,
+            "rolldown", "bin",
+        )
+        main_fn = _make_symbol(
+            "javascript", "packages/rolldown/bin/cli.mjs", 1, 20,
+            "main", "function",
+        )
+        defines_edge = _make_edge(
+            bin_sym.id, "bin/cli.mjs", "defines_target",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/fake"),
+            symbols=[bin_sym, main_fn],
+            edges=[defines_edge],
+        )
+        result = link_build_targets(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == main_fn.id
+
+    def test_resolve_target_path_src_not_found(self) -> None:
+        """When src node is not in symbol index, path is returned as-is."""
+        from hypergumbo_core.linkers.build_target import _resolve_target_path
+
+        result = _resolve_target_path("src/main.rs", "nonexistent:id", {})
+        assert result == "src/main.rs"
+
+    def test_resolve_target_path_manifest_at_root(self) -> None:
+        """When manifest is at repo root, path is returned as-is."""
+        from hypergumbo_core.linkers.build_target import _resolve_target_path
+
+        # Create a mock symbol with path at root level (no directory)
+        root_sym = _make_symbol("toml", "Cargo.toml", 5, 8, "app", "binary")
+        result = _resolve_target_path(
+            "src/main.rs", root_sym.id, {root_sym.id: root_sym},
+        )
+        assert result == "src/main.rs"
+
     def test_python_script_falls_back_to_main(self) -> None:
         """Python script with target_function but no match falls back to main()."""
         script = _make_symbol("toml", "pyproject.toml", 5, 5, "my-cli", "script")
