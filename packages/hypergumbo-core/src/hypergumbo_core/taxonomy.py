@@ -696,9 +696,12 @@ def is_additional_file_candidate(path: Path) -> bool:
 
 # Language name aliases for backward compatibility
 # profile.py uses "shell" but taxonomy uses "bash"
-_LANGUAGE_ALIASES: dict[str, str] = {
+LANGUAGE_ALIASES: dict[str, str] = {
     "shell": "bash",
 }
+
+# Keep private alias for backward compatibility within this module
+_LANGUAGE_ALIASES = LANGUAGE_ALIASES
 
 
 def get_language_extensions() -> dict[str, list[str]]:

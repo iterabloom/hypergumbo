@@ -40,6 +40,8 @@ import warnings as python_warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .taxonomy import LANGUAGE_ALIASES
+
 if TYPE_CHECKING:
     from .linkers.registry import LinkerContext
     from .profile import RepoProfile
@@ -214,16 +216,20 @@ def check_unanalyzed_files(
     warnings: list[PartialInstallWarning] = []
 
     for lang, stats in profile.languages.items():
+        # Normalize aliases (e.g., "shell" -> "bash") so we match the
+        # canonical analyzer name used in the registry.
+        canonical = LANGUAGE_ALIASES.get(lang, lang)
+
         # Skip config-only languages (no analyzer expected)
-        if lang in CONFIG_ONLY_LANGUAGES:
+        if canonical in CONFIG_ONLY_LANGUAGES:
             continue
 
         # Skip if analyzer is registered
-        if lang in registered_languages:
+        if canonical in registered_languages:
             continue
 
-        # Get package suggestion
-        package = LANGUAGE_PACKAGES.get(lang)
+        # Get package suggestion (try canonical first, then raw name)
+        package = LANGUAGE_PACKAGES.get(canonical) or LANGUAGE_PACKAGES.get(lang)
 
         # Build warning message
         file_count = stats.files
