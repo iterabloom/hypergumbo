@@ -11,6 +11,7 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | Python FFI | Python `ctypes`/`cffi` calls ↔ C/C++ functions, PyO3 Rust ↔ Python |
 | Ruby FFI | Ruby FFI gem `attach_function` ↔ C/C++ functions, `rb_define_method` C extensions |
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
+| Tauri IPC | TypeScript/JavaScript `invoke()` → Rust `#[tauri::command]` functions |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
 | OTP | Elixir GenServer.call/cast → handle_call/handle_cast dispatch |
