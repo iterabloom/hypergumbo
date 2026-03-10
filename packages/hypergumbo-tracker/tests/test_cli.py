@@ -2917,6 +2917,46 @@ class TestAutoSyncPrWaitGate:
         assert "waiting for in-flight PR" not in captured.err
 
 
+class TestAutoSyncEarlyGateCheck:
+    """Tests for the early TRACKER_SYNC_PENDING check in _maybe_auto_sync.
+
+    When a sync is already in progress (gate file exists), _maybe_auto_sync
+    should bail out early without calling preflight or do_sync.  This
+    prevents concurrent auto-sync calls from racing past preflight and
+    creating duplicate PRs.
+    """
+
+    def test_skips_when_sync_pending_exists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """auto-sync bails early when TRACKER_SYNC_PENDING exists."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "TRACKER_SYNC_PENDING").write_text("sync\n")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ), patch(
+                "hypergumbo_tracker.sync.preflight_check",
+            ) as mock_pre, patch(
+                "hypergumbo_tracker.sync.do_sync",
+            ) as mock_sync:
+                _maybe_auto_sync(tmp_path)
+                # Neither preflight nor do_sync should have been called
+                mock_pre.assert_not_called()
+                mock_sync.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert "sync already in progress" in captured.err
+
+
 class TestAutoSyncCircuitBreaker:
     """Tests for the circuit breaker in _maybe_auto_sync."""
 

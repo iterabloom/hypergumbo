@@ -2588,16 +2588,29 @@ class TestSumAddedLines:
 
 
 class TestPendingSyncLines:
-    """Tests for pending_sync_lines — counts pending tracker ops lines."""
+    """Tests for pending_sync_lines — counts pending tracker ops lines.
+
+    The function first tries ``rev-parse --verify origin/dev`` to determine
+    the diff base.  If origin/dev exists, it diffs against that (preventing
+    re-sync of already-merged ops).  If not, it falls back to HEAD.
+    All existing tests simulate origin/dev being available (the common case).
+    """
+
+    # Helper: rev-parse origin/dev succeeds (common case)
+    _REV_PARSE_OK = _make_completed_process(stdout="abc123\n")
+
+    # Helper: rev-parse origin/dev fails (fallback case)
+    _REV_PARSE_FAIL = _make_completed_process(returncode=1)
 
     @patch("hypergumbo_tracker.sync._git")
     def test_with_changes(
         self, mock_git: MagicMock, tmp_path: Path,
     ) -> None:
         mock_git.side_effect = [
+            self._REV_PARSE_OK,  # rev-parse origin/dev
             _make_completed_process(
                 stdout="10\t2\t.agent/tracker/.ops/.WI-a.ops\n"
-            ),  # diff HEAD --numstat
+            ),  # diff origin/dev --numstat
             _make_completed_process(stdout=""),  # ls-files
         ]
         assert pending_sync_lines(tmp_path) == 10
@@ -2607,7 +2620,8 @@ class TestPendingSyncLines:
         self, mock_git: MagicMock, tmp_path: Path,
     ) -> None:
         mock_git.side_effect = [
-            _make_completed_process(stdout=""),  # diff HEAD
+            self._REV_PARSE_OK,  # rev-parse origin/dev
+            _make_completed_process(stdout=""),  # diff origin/dev
             _make_completed_process(stdout=""),  # ls-files
         ]
         assert pending_sync_lines(tmp_path) == 0
@@ -2617,7 +2631,8 @@ class TestPendingSyncLines:
         self, mock_git: MagicMock, tmp_path: Path,
     ) -> None:
         mock_git.side_effect = [
-            _make_completed_process(returncode=1),  # diff HEAD fails
+            self._REV_PARSE_OK,  # rev-parse origin/dev
+            _make_completed_process(returncode=1),  # diff fails
             _make_completed_process(returncode=1),  # ls-files fails
         ]
         assert pending_sync_lines(tmp_path) == 0
@@ -2633,7 +2648,8 @@ class TestPendingSyncLines:
         ops_file.write_text("line1\nline2\nline3\n")
 
         mock_git.side_effect = [
-            _make_completed_process(stdout=""),  # diff HEAD (no tracked changes)
+            self._REV_PARSE_OK,  # rev-parse origin/dev
+            _make_completed_process(stdout=""),  # diff (no tracked changes)
             _make_completed_process(
                 stdout=".agent/tracker/.ops/.WI-new.ops\n"
             ),  # ls-files
@@ -2650,6 +2666,7 @@ class TestPendingSyncLines:
         (ops_dir / ".WI-u.ops").write_text("a\nb\n")
 
         mock_git.side_effect = [
+            self._REV_PARSE_OK,  # rev-parse origin/dev
             _make_completed_process(
                 stdout="5\t0\t.agent/tracker/.ops/.WI-t.ops\n"
             ),  # tracked changes
@@ -2665,6 +2682,7 @@ class TestPendingSyncLines:
     ) -> None:
         """ls-files lists a file that doesn't exist on disk (race condition)."""
         mock_git.side_effect = [
+            self._REV_PARSE_OK,  # rev-parse origin/dev
             _make_completed_process(stdout=""),
             _make_completed_process(
                 stdout=".agent/tracker/.ops/.WI-gone.ops\n"
@@ -2684,7 +2702,8 @@ class TestPendingSyncLines:
         ops_file.write_text("line1\n")
 
         mock_git.side_effect = [
-            _make_completed_process(stdout=""),  # diff HEAD
+            self._REV_PARSE_OK,  # rev-parse origin/dev
+            _make_completed_process(stdout=""),  # diff
             _make_completed_process(
                 stdout=".agent/tracker/.ops/.WI-err.ops\n"
             ),  # ls-files
@@ -2700,6 +2719,52 @@ class TestPendingSyncLines:
         with patch.object(Path, "read_text", failing_read):
             result = pending_sync_lines(tmp_path)
         assert result == 0
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_diffs_against_origin_dev_not_head(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """pending_sync_lines diffs against origin/dev, not HEAD.
+
+        After do_sync merges ops to origin/dev, the ops are still dirty
+        relative to the feature branch HEAD.  Diffing against origin/dev
+        correctly shows 0 pending lines, preventing re-sync of already-synced
+        ops.  This is the root cause of the duplicate PR bug: 4 identical
+        tracker sync PRs created because the same ops kept triggering sync.
+        """
+        mock_git.side_effect = [
+            self._REV_PARSE_OK,  # rev-parse origin/dev
+            _make_completed_process(stdout=""),  # diff origin/dev (clean)
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 0
+
+        # Verify the diff was against origin/dev, not HEAD
+        diff_call = mock_git.call_args_list[1]
+        assert "origin/dev" in diff_call.args[1:]
+        assert "HEAD" not in diff_call.args[1:]
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_falls_back_to_head_when_origin_dev_missing(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Falls back to HEAD when origin/dev ref doesn't exist.
+
+        In a fresh clone or disconnected state, origin/dev may not exist.
+        The function should gracefully fall back to diffing against HEAD.
+        """
+        mock_git.side_effect = [
+            self._REV_PARSE_FAIL,  # rev-parse origin/dev fails
+            _make_completed_process(
+                stdout="5\t0\t.agent/tracker/.ops/.WI-a.ops\n"
+            ),  # diff HEAD --numstat
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 5
+
+        # Verify fallback used HEAD
+        diff_call = mock_git.call_args_list[1]
+        assert "HEAD" in diff_call.args[1:]
 
 
 # ---------------------------------------------------------------------------

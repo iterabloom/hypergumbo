@@ -1484,6 +1484,21 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
             file=sys.stderr,
         )
 
+        # Check gate file BEFORE preflight to prevent concurrent auto-sync
+        # calls from racing.  Previously the gate was only written in
+        # do_sync step 8 (after commit creation), leaving a window where
+        # multiple _maybe_auto_sync calls could all pass preflight and
+        # push duplicate PRs.  Preflight also checks this gate, but by
+        # checking here first we can bail out faster and more reliably.
+        sync_gate = git_dir / "TRACKER_SYNC_PENDING"
+        if sync_gate.exists():
+            print(
+                "auto-sync: sync already in progress "
+                "(TRACKER_SYNC_PENDING exists), skipping",
+                file=sys.stderr,
+            )
+            return
+
         pre = preflight_check(repo_root)
         if not pre.ok:
             print(

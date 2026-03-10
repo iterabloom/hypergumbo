@@ -551,18 +551,34 @@ def _sum_added_lines(numstat_output: str) -> int:
 
 
 def pending_sync_lines(repo_root: Path) -> int:
-    """Count pending tracker ops lines (staged + unstaged + untracked).
+    """Count pending tracker ops lines (not yet synced to origin/dev).
 
-    Uses ``git diff HEAD --numstat`` for tracked file changes, plus
-    ``git ls-files --others --exclude-standard`` for new untracked ops
-    files (counts their line count directly).
+    Diffs working tree ops against ``origin/dev`` (the sync target) rather
+    than ``HEAD``.  This prevents re-syncing ops that were already merged
+    to ``origin/dev`` by a previous ``do_sync()`` call — the plumbing
+    approach leaves ops dirty relative to the local branch HEAD, which
+    caused duplicate sync PRs when the function diffed against HEAD.
+
+    Falls back to ``HEAD`` when ``origin/dev`` doesn't exist (fresh clone,
+    disconnected state, or non-standard remote setup).
+
+    Also counts untracked ops files (new files not yet in any commit).
 
     Returns 0 if git fails or no changes exist.
     """
     total = 0
 
-    # 1. Tracked changes (staged + unstaged) relative to HEAD
-    numstat_args = ["diff", "HEAD", "--numstat", "--"]
+    # 0. Determine diff base: prefer origin/dev (the sync target),
+    #    fall back to HEAD if origin/dev doesn't exist.
+    diff_base = "HEAD"
+    rev_result = _git(
+        repo_root, "rev-parse", "--verify", "origin/dev", check=False,
+    )
+    if rev_result.returncode == 0 and rev_result.stdout.strip():
+        diff_base = "origin/dev"
+
+    # 1. Tracked changes (staged + unstaged) relative to diff base
+    numstat_args = ["diff", diff_base, "--numstat", "--"]
     numstat_args.extend(_OPS_PATHS)
     result = _git(repo_root, *numstat_args, check=False)
     if result.returncode == 0 and result.stdout.strip():
@@ -803,8 +819,14 @@ def do_sync(
     idx_env = {"GIT_INDEX_FILE": tmp_index}
 
     try:
-        # 0. Fetch latest base branch (non-fatal if offline — we'll use
-        #    the local ref which may be slightly stale but still correct).
+        # 0a. Create gate file immediately to prevent concurrent syncs.
+        # Previously this was done at step 8 (after commit creation),
+        # leaving a window where concurrent _maybe_auto_sync calls could
+        # all pass preflight and create duplicate PRs.
+        gate_file.write_text("sync\n")
+
+        # 0b. Fetch latest base branch (non-fatal if offline — we'll use
+        #     the local ref which may be slightly stale but still correct).
         _git(
             repo_root, "fetch", preflight.push_remote, base_branch,
             check=False,
@@ -891,8 +913,7 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 8. Create gate file
-        gate_file.write_text("sync\n")
+        # 8. (Gate file already created at step 0a.)
 
         # 9. Push with retries
         push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
