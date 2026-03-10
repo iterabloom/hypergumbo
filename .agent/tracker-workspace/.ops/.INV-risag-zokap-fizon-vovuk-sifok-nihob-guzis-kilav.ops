@@ -1,0 +1,21 @@
+- op: create  # dff8
+  at: '2026-03-10T21:43:12Z'  # dff8
+  by: agent  # dff8
+  actor: jgstern_agent  # dff8
+  clock: 1  # dff8
+  nonce: dff8  # dff8
+  data:  # dff8
+    kind: invariant  # dff8
+    title: "SPA/Electron entrypoint detection missing"  # dff8
+    status: violated  # dff8
+    priority: 1  # dff8
+    parent:  # dff8
+    tags: []  # dff8
+    before: []  # dff8
+    duplicate_of: []  # dff8
+    not_duplicate_of: []  # dff8
+    pr_ref:  # dff8
+    description: ""  # dff8
+    fields:  # dff8
+      statement: "SPA entrypoints (createRoot, ReactDOM.render) and Electron main/preload files must be detected as entrypoints for slicing to start from production code"  # dff8
+      root_cause: "Entrypoint detection heuristics do not include SPA bootstrap patterns or Electron process file conventions"  # dff8
