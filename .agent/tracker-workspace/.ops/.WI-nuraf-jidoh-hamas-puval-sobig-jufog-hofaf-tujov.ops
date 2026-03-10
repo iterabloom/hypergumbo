@@ -1,0 +1,19 @@
+- op: create  # 6eb5
+  at: '2026-03-10T21:47:22Z'  # 6eb5
+  by: agent  # 6eb5
+  actor: jgstern_agent  # 6eb5
+  clock: 1  # 6eb5
+  nonce: 6eb5  # 6eb5
+  data:  # 6eb5
+    kind: work_item  # 6eb5
+    title: "Symbol ranking noise: utility functions and test helpers outrank architectural symbols"  # 6eb5
+    status: todo_soft  # 6eb5
+    priority: 2  # 6eb5
+    parent:  # 6eb5
+    tags: []  # 6eb5
+    before: []  # 6eb5
+    duplicate_of: []  # 6eb5
+    not_duplicate_of: []  # 6eb5
+    pr_ref:  # 6eb5
+    description: ""  # 6eb5
+    fields: {}  # 6eb5
