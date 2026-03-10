@@ -173,18 +173,35 @@ class LinkerContext:
         self._ensure_indexes()
         assert self._symbols_by_path is not None  # for type checker
 
-        # Try exact path match first
-        candidates = self._symbols_by_path.get(path, [])
+        # Collect candidate symbols from matching paths.
+        # When linker-produced synthetic nodes share a file with analyzer
+        # symbols, the exact path may return only synthetic nodes (wrong
+        # kind).  We gather from ALL matching paths (exact + suffix) so
+        # the kind filter below has the full candidate set.
+        candidate_sets: list[list["Symbol"]] = []
 
-        # If no match, try suffix matching (handles absolute vs relative paths)
-        if not candidates:
-            for p, syms in self._symbols_by_path.items():
-                if p.endswith(path) or path.endswith(p):
-                    candidates = syms
-                    break
+        exact = self._symbols_by_path.get(path, [])
+        if exact:
+            candidate_sets.append(exact)
 
-        if not candidates:
+        # Suffix matching (handles absolute vs relative path mismatches).
+        # Always check — even when exact match exists — because analyzer
+        # symbols may be indexed under relative paths while linker symbols
+        # use absolute paths (or vice versa after CLI normalization).
+        for p, syms in self._symbols_by_path.items():
+            if p == path:
+                continue  # already included via exact match
+            if p.endswith(path) or path.endswith(p):
+                candidate_sets.append(syms)
+
+        if not candidate_sets:
             return None
+
+        # Merge candidates (may contain duplicates across sets, but that's
+        # harmless — we pick the smallest enclosing match below)
+        candidates: list["Symbol"] = []
+        for s in candidate_sets:
+            candidates.extend(s)
 
         # Filter by kind and find enclosing symbols
         enclosing = []
