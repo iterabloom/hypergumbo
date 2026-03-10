@@ -5,13 +5,25 @@ message_send and message_receive edges for cross-process communication.
 
 Detected Patterns
 -----------------
-Electron IPC:
+Electron IPC (renderer → main):
 - ipcRenderer.send('channel', data) -> message_send
 - ipcRenderer.invoke('channel', data) -> message_send
+- ipcRenderer.sendSync('channel', data) -> message_send
 - ipcRenderer.send(channelVar, data) -> message_send (variable channel)
+
+Electron IPC (main → renderer):
+- webContents.send('channel', data) -> message_send
+- event.sender.send('channel', data) -> message_send
+
+Electron IPC (main-side receive):
 - ipcMain.on('channel', handler) -> message_receive
 - ipcMain.handle('channel', handler) -> message_receive
+- ipcMain.handleOnce('channel', handler) -> message_receive
 - ipcMain.handle(channelVar, handler) -> message_receive (variable channel)
+
+Electron IPC (renderer-side receive):
+- ipcRenderer.on('channel', handler) -> message_receive
+- ipcRenderer.once('channel', handler) -> message_receive
 
 Web Workers / postMessage:
 - worker.postMessage(data) -> message_send
@@ -98,14 +110,29 @@ _CHANNEL_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
 
 # Regex patterns for IPC detection
 # Electron IPC send patterns - matches both literals and variables
+# Covers: ipcRenderer.send, ipcRenderer.invoke, ipcRenderer.sendSync
 ELECTRON_SEND_PATTERN = re.compile(
-    rf"ipcRenderer\s*\.\s*(send|invoke)\s*\(\s*{_CHANNEL_ARG}",
+    rf"ipcRenderer\s*\.\s*(send|invoke|sendSync)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
 # Electron IPC receive patterns - matches both literals and variables
+# Covers: ipcMain.on, ipcMain.handle, ipcMain.handleOnce
 ELECTRON_RECEIVE_PATTERN = re.compile(
-    rf"ipcMain\s*\.\s*(on|handle)\s*\(\s*{_CHANNEL_ARG}",
+    rf"ipcMain\s*\.\s*(on|handle|handleOnce)\s*\(\s*{_CHANNEL_ARG}",
+    re.MULTILINE,
+)
+
+# Electron main-to-renderer push: webContents.send('channel', data)
+# Covers: win.webContents.send, event.sender.send, <expr>.webContents.send
+WEBCONTENTS_SEND_PATTERN = re.compile(
+    rf"(?:webContents|sender)\s*\.\s*send\s*\(\s*{_CHANNEL_ARG}",
+    re.MULTILINE,
+)
+
+# Electron renderer-side receive: ipcRenderer.on('channel', handler)
+ELECTRON_RENDERER_RECEIVE_PATTERN = re.compile(
+    rf"ipcRenderer\s*\.\s*(on|once)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
@@ -176,10 +203,39 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
             "method": method,
         })
 
-    # Detect Electron ipcMain.on/handle
+    # Detect Electron ipcMain.on/handle/handleOnce
     # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_RECEIVE_PATTERN.finditer(text):
-        method = match.group(1)  # 'on' or 'handle'
+        method = match.group(1)  # 'on' or 'handle' or 'handleOnce'
+        channel, channel_type = _extract_channel_from_match(match, 2, 3)
+        line = text[:match.start()].count("\n") + 1
+        patterns.append({
+            "type": "receive",
+            "channel": channel,
+            "channel_type": channel_type,
+            "line": line,
+            "pattern_type": "electron",
+            "method": method,
+        })
+
+    # Detect Electron main-to-renderer push: webContents.send / sender.send
+    # Groups: 1=literal channel, 2=variable channel
+    for match in WEBCONTENTS_SEND_PATTERN.finditer(text):
+        channel, channel_type = _extract_channel_from_match(match, 1, 2)
+        line = text[:match.start()].count("\n") + 1
+        patterns.append({
+            "type": "send",
+            "channel": channel,
+            "channel_type": channel_type,
+            "line": line,
+            "pattern_type": "electron",
+            "method": "webcontents_send",
+        })
+
+    # Detect Electron renderer-side receive: ipcRenderer.on/once
+    # Groups: 1=method, 2=literal channel, 3=variable channel
+    for match in ELECTRON_RENDERER_RECEIVE_PATTERN.finditer(text):
+        method = match.group(1)  # 'on' or 'once'
         channel, channel_type = _extract_channel_from_match(match, 2, 3)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
