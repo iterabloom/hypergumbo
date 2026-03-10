@@ -58,6 +58,7 @@ from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.events import Click, Resize
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -2126,7 +2127,10 @@ class TrackerApp(App):
             drift = self._tracker_set.drift_check(item.id)
             if drift:
                 lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
-        content = self.query_one("#std-detail-content", Static)
+        try:
+            content = self.query_one("#std-detail-content", Static)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         content.update("\n".join(lines))
         self._update_chain_summary(item_id)
         if self._layout_tier == "wide":
