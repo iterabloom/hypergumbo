@@ -90,6 +90,20 @@ _TS_PROVIDER = re.compile(
     r"provide\s*:\s*(\w+)\s*,\s*useClass\s*:\s*(\w+)",
 )
 
+# TypeScript/NestJS: @Module({ providers: [...], controllers: [...] })
+# Captures the array contents for providers and controllers keys.
+_NESTJS_MODULE_ARRAY = re.compile(
+    r"(?:providers|controllers)\s*:\s*\[([^\]]*)\]",
+    re.DOTALL,
+)
+# Matches the class declaration following @Module({...})
+_NESTJS_MODULE_CLASS = re.compile(
+    r"@Module\s*\(\s*\{",
+)
+# Extracts simple PascalCase identifiers from a comma-separated list,
+# skipping object literals like { provide: X, useClass: Y }.
+_SIMPLE_CLASS_REF = re.compile(r"\b([A-Z]\w+)\b")
+
 # TypeScript: container.bind<I>(token).to(C)
 _INVERSIFY_BIND = re.compile(
     r"\.bind\s*<\s*(\w+)\s*>\s*\([^)]*\)\s*\.to\s*\(\s*(\w+)\s*\)",
@@ -271,11 +285,77 @@ def _scan_spi_files(root: Path) -> list[DIBinding]:
     return bindings
 
 
+def _extract_nestjs_module_bindings(content: str) -> list[DIBinding]:
+    """Extract NestJS @Module provider/controller registrations from TS content.
+
+    Parses ``@Module({ providers: [...], controllers: [...] })`` decorators and
+    returns DIBinding entries with ``source="nestjs:module"``.  The
+    ``interface_name`` field holds the module class name and ``impl_name`` holds
+    each registered provider/controller.
+
+    Only simple class references (``PascalCase`` identifiers) are extracted.
+    Object literals like ``{ provide: X, useClass: Y }`` are left to
+    ``_TS_PROVIDER`` to handle.
+    """
+    bindings: list[DIBinding] = []
+
+    # Find each @Module({...}) decorator and the class it decorates
+    for mod_match in _NESTJS_MODULE_CLASS.finditer(content):
+        # Find matching closing brace for the decorator's object arg
+        start = mod_match.end()
+        brace_depth = 1
+        pos = start
+        decorator_end = len(content)
+        while pos < len(content) and brace_depth > 0:
+            ch = content[pos]
+            if ch == "{":
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+            pos += 1
+        decorator_end = pos
+
+        decorator_body = content[mod_match.start():decorator_end]
+
+        # Find the class name after the decorator — require `class Foo`
+        # followed by `{`, `extends`, or `implements` to avoid matching
+        # "class" in comments.
+        rest = content[decorator_end:]
+        class_match = re.search(
+            r"(?:export\s+)?class\s+(\w+)\s*(?:[{]|extends|implements)", rest,
+        )
+        if not class_match:
+            continue
+        module_name = class_match.group(1)
+
+        # Extract providers and controllers arrays from the decorator body
+        for arr_match in _NESTJS_MODULE_ARRAY.finditer(decorator_body):
+            arr_content = arr_match.group(1)
+            # Skip object literals: split by comma, keep only simple identifiers
+            for item in arr_content.split(","):
+                item = item.strip()
+                if not item or "{" in item or "}" in item:
+                    continue
+                # Extract the PascalCase class name
+                ref_match = _SIMPLE_CLASS_REF.match(item)
+                if ref_match:
+                    class_ref = ref_match.group(1)
+                    bindings.append(DIBinding(
+                        interface_name=module_name,
+                        impl_name=class_ref,
+                        confidence=0.85,
+                        source="nestjs:module",
+                    ))
+
+    return bindings
+
+
 def extract_bindings_from_source(root: Path) -> list[DIBinding]:
     """Extract explicit DI bindings from source files in *root*.
 
     Scans ``.java``, ``.kt``, ``.scala``, ``.cs``, ``.ts``, ``.tsx``, ``.py``
-    files and ``META-INF/services/`` directories.
+    files and ``META-INF/services/`` directories.  Also detects NestJS
+    ``@Module({providers: [...], controllers: [...]})`` registrations.
 
     Returns:
         List of DIBinding with confidence levels.
@@ -320,6 +400,10 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
                     confidence=confidence,
                     source=f"annotation:{ext}",
                 ))
+
+        # NestJS @Module registrations (TypeScript only)
+        if ext in (".ts", ".tsx"):
+            bindings.extend(_extract_nestjs_module_bindings(content))
 
     # SPI files
     bindings.extend(_scan_spi_files(root))
@@ -521,6 +605,62 @@ def _create_di_edges(
     return edges
 
 
+def _create_di_registers_edges(
+    bindings: list[DIBinding],
+    symbols: list[Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Create di_registers edges from NestJS module classes to providers.
+
+    For each ``nestjs:module`` binding (module_name → provider_name), finds the
+    module and provider class symbols and creates a class-level edge.
+
+    Args:
+        bindings: DI bindings (only ``nestjs:module`` source are used).
+        symbols: All symbols.
+        run: AnalysisRun for provenance.
+
+    Returns:
+        List of ``di_registers`` edges.
+    """
+    module_bindings = [b for b in bindings if b.source == "nestjs:module"]
+    if not module_bindings:
+        return []
+
+    # Index: class name -> Symbol (prefer class kind)
+    sym_by_name: dict[str, Symbol] = {}
+    for sym in symbols:
+        if sym.kind in ("class", "interface"):
+            sym_by_name[sym.name] = sym
+
+    edges: list[Edge] = []
+    seen: set[tuple[str, str]] = set()
+
+    for binding in module_bindings:
+        module_sym = sym_by_name.get(binding.interface_name)
+        provider_sym = sym_by_name.get(binding.impl_name)
+        if not module_sym or not provider_sym:
+            continue
+
+        pair = (module_sym.id, provider_sym.id)
+        if pair in seen:
+            continue
+        seen.add(pair)
+
+        edges.append(Edge.create(
+            src=module_sym.id,
+            dst=provider_sym.id,
+            edge_type="di_registers",
+            line=module_sym.span.start_line if module_sym.span else 0,
+            confidence=binding.confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="nestjs_module_registration",
+        ))
+
+    return edges
+
+
 # ---------------------------------------------------------------------------
 # Main linker function
 # ---------------------------------------------------------------------------
@@ -531,12 +671,13 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
     1. Extract explicit bindings from source files.
     2. Apply resolution cascade (explicit > naming > single-impl).
     3. Create ``di_resolves`` edges at method level.
+    4. Create ``di_registers`` edges for NestJS module registrations.
 
     Args:
         ctx: LinkerContext with symbols, edges, and repo_root.
 
     Returns:
-        LinkerResult with new di_resolves edges.
+        LinkerResult with new di_resolves and di_registers edges.
     """
     start = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -544,13 +685,18 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
     # Step 1: Extract explicit DI bindings from source
     explicit_bindings = extract_bindings_from_source(ctx.repo_root)
 
-    # Step 2: Resolution cascade
+    # Step 2: Resolution cascade (for di_resolves method-level edges)
     all_bindings = resolve_bindings(
         ctx.symbols, ctx.edges, explicit_bindings,
     )
 
     # Step 3: Create di_resolves edges
     new_edges = _create_di_edges(all_bindings, ctx.symbols, run)
+
+    # Step 4: Create di_registers edges for NestJS module registrations
+    new_edges.extend(_create_di_registers_edges(
+        explicit_bindings, ctx.symbols, run,
+    ))
 
     run.duration_ms = int((time.time() - start) * 1000)
     return LinkerResult(edges=new_edges, run=run)

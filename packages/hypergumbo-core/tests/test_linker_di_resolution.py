@@ -991,3 +991,218 @@ class TestBuildInterfaceImplMap:
         result = build_interface_impl_map([parent, child], [edge])
         # class->class extends is not an interface binding
         assert "BaseService" not in result
+
+
+# ===========================================================================
+# NestJS @Module({providers: [...], controllers: [...]}) detection
+# ===========================================================================
+
+
+class TestNestJSModuleRegistrations:
+    """Tests for NestJS @Module decorator provider/controller detection."""
+
+    def test_providers_array(self, tmp_path: Path) -> None:
+        """@Module({providers: [ServiceA, ServiceB]}) extracts both providers."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService, AuthService],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        reg_bindings = [b for b in bindings if b.source == "nestjs:module"]
+        names = {(b.interface_name, b.impl_name) for b in reg_bindings}
+        assert ("AppModule", "UserService") in names
+        assert ("AppModule", "AuthService") in names
+
+    def test_controllers_array(self, tmp_path: Path) -> None:
+        """@Module({controllers: [ControllerA]}) extracts controllers."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  controllers: [UserController],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        reg_bindings = [b for b in bindings if b.source == "nestjs:module"]
+        assert any(
+            b.interface_name == "AppModule" and b.impl_name == "UserController"
+            for b in reg_bindings
+        )
+
+    def test_both_providers_and_controllers(self, tmp_path: Path) -> None:
+        """@Module with both providers and controllers extracts all."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService],\n"
+            "  controllers: [UserController],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        reg_bindings = [b for b in bindings if b.source == "nestjs:module"]
+        names = {b.impl_name for b in reg_bindings}
+        assert "UserService" in names
+        assert "UserController" in names
+
+    def test_no_module_decorator(self, tmp_path: Path) -> None:
+        """TypeScript file without @Module produces no nestjs:module bindings."""
+        src = tmp_path / "service.ts"
+        src.write_text(
+            "@Injectable()\n"
+            "export class UserService {\n"
+            "  findAll() { return []; }\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(b.source == "nestjs:module" for b in bindings)
+
+    def test_empty_providers_array(self, tmp_path: Path) -> None:
+        """@Module({providers: []}) produces no bindings."""
+        src = tmp_path / "empty.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [],\n"
+            "})\n"
+            "export class EmptyModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(b.source == "nestjs:module" for b in bindings)
+
+    def test_object_provider_skipped(self, tmp_path: Path) -> None:
+        """{ provide: X, useClass: Y } in providers array handled by _TS_PROVIDER, not duplicated."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [\n"
+            "    { provide: FooService, useClass: FooServiceImpl },\n"
+            "    BarService,\n"
+            "  ],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        # BarService should appear as nestjs:module registration
+        reg_bindings = [b for b in bindings if b.source == "nestjs:module"]
+        assert any(b.impl_name == "BarService" for b in reg_bindings)
+        # FooService→FooServiceImpl should appear via _TS_PROVIDER (regex:.ts source)
+        ts_bindings = [b for b in bindings if b.source.startswith("regex:")]
+        assert any(
+            b.interface_name == "FooService" and b.impl_name == "FooServiceImpl"
+            for b in ts_bindings
+        )
+
+    def test_module_without_class_no_crash(self, tmp_path: Path) -> None:
+        """@Module decorator without an export class doesn't crash."""
+        src = tmp_path / "broken.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [SomeService],\n"
+            "})\n"
+            "// no class declaration\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        # Should gracefully produce no nestjs:module bindings (no module class found)
+        assert not any(b.source == "nestjs:module" for b in bindings)
+
+    def test_module_integration_creates_di_registers_edges(self, tmp_path: Path) -> None:
+        """Full integration: @Module providers create di_registers edges."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService],\n"
+            "  controllers: [UserController],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        module_sym = _make_class_symbol(
+            "AppModule", "typescript", path="app.module.ts", kind="class",
+        )
+        provider_sym = _make_class_symbol(
+            "UserService", "typescript", path="user.service.ts", kind="class",
+        )
+        controller_sym = _make_class_symbol(
+            "UserController", "typescript", path="user.controller.ts", kind="class",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, provider_sym, controller_sym],
+            edges=[],
+        )
+        result = link_di_resolution(ctx)
+        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        assert len(reg_edges) == 2
+        dst_ids = {e.dst for e in reg_edges}
+        assert provider_sym.id in dst_ids
+        assert controller_sym.id in dst_ids
+        # All should have module as source
+        assert all(e.src == module_sym.id for e in reg_edges)
+
+    def test_di_registers_skips_unknown_symbols(self, tmp_path: Path) -> None:
+        """di_registers edges are not created when provider symbol is missing."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UnknownService],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        module_sym = _make_class_symbol(
+            "AppModule", "typescript", path="app.module.ts", kind="class",
+        )
+        # No symbol for UnknownService
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym],
+            edges=[],
+        )
+        result = link_di_resolution(ctx)
+        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        assert len(reg_edges) == 0
+
+    def test_di_registers_dedup(self, tmp_path: Path) -> None:
+        """Duplicate module→provider registrations are deduplicated."""
+        src = tmp_path / "app.module.ts"
+        # Same provider listed twice (e.g., in both providers and controllers)
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService],\n"
+            "  controllers: [UserService],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        module_sym = _make_class_symbol(
+            "AppModule", "typescript", path="app.module.ts", kind="class",
+        )
+        provider_sym = _make_class_symbol(
+            "UserService", "typescript", path="user.service.ts", kind="class",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, provider_sym],
+            edges=[],
+        )
+        result = link_di_resolution(ctx)
+        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        assert len(reg_edges) == 1
+
+    def test_multiline_providers_array(self, tmp_path: Path) -> None:
+        """Providers spread across multiple lines are detected."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [\n"
+            "    UserService,\n"
+            "    AuthService,\n"
+            "    CacheService,\n"
+            "  ],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        reg_bindings = [b for b in bindings if b.source == "nestjs:module"]
+        names = {b.impl_name for b in reg_bindings}
+        assert names == {"UserService", "AuthService", "CacheService"}
