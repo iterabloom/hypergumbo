@@ -18296,3 +18296,258 @@ class TestConceptDeduplication:
         assert len(status_routes) == 1, (
             f"Expected 1 route concept for /status, got {len(status_routes)}: {concepts}"
         )
+
+
+class TestLitPatterns:
+    """Tests for Lit web component framework patterns.
+
+    Lit uses decorators (@customElement, @property, @state, @query) and
+    lifecycle hooks (connectedCallback, firstUpdated, render, etc.).
+    """
+
+    def test_custom_element_decorator(self) -> None:
+        """@customElement('my-element') matches component pattern with tag name."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None, "Lit patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:my-element.ts:5:MyElement:class",
+            name="MyElement",
+            kind="class",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(5, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "customElement", "args": ["my-element"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        component = [r for r in results if r["concept"] == "component"]
+        assert len(component) >= 1
+        assert component[0]["path"] == "my-element"
+
+    def test_lit_element_base_class(self) -> None:
+        """class extends LitElement matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:3:MyElement:class",
+            name="MyElement",
+            kind="class",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(3, 20, 0, 0),
+            meta={"base_classes": ["LitElement"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        component = [r for r in results if r["concept"] == "component"]
+        assert len(component) >= 1
+
+    def test_property_decorator(self) -> None:
+        """@property() matches reactive_property concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:10:name:property",
+            name="name",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(10, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "property", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        props = [r for r in results if r["concept"] == "reactive_property"]
+        assert len(props) == 1
+
+    def test_state_decorator(self) -> None:
+        """@state() matches internal_state concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:12:count:property",
+            name="count",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(12, 12, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "state", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        states = [r for r in results if r["concept"] == "internal_state"]
+        assert len(states) == 1
+
+    def test_query_decorator(self) -> None:
+        """@query('#input') matches dom_query concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:14:inputEl:property",
+            name="inputEl",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(14, 14, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "query", "args": ["#input"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        queries = [r for r in results if r["concept"] == "dom_query"]
+        assert len(queries) == 1
+
+    def test_query_all_decorator(self) -> None:
+        """@queryAll('.items') matches dom_query concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:16:items:property",
+            name="items",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(16, 16, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "queryAll", "args": [".items"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        queries = [r for r in results if r["concept"] == "dom_query"]
+        assert len(queries) == 1
+
+    def test_render_method(self) -> None:
+        """render() matches render_method concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:20:render:method",
+            name="render",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(20, 30, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        renders = [r for r in results if r["concept"] == "render_method"]
+        assert len(renders) == 1
+
+    def test_connected_callback(self) -> None:
+        """connectedCallback matches lifecycle_hook concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:32:connectedCallback:method",
+            name="connectedCallback",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(32, 35, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        hooks = [r for r in results if r["concept"] == "lifecycle_hook"]
+        assert len(hooks) == 1
+
+    def test_first_updated(self) -> None:
+        """firstUpdated matches lifecycle_hook concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:38:firstUpdated:method",
+            name="firstUpdated",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(38, 42, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        hooks = [r for r in results if r["concept"] == "lifecycle_hook"]
+        assert len(hooks) == 1
+
+    def test_should_update(self) -> None:
+        """shouldUpdate matches update_control concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:45:shouldUpdate:method",
+            name="shouldUpdate",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(45, 48, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controls = [r for r in results if r["concept"] == "update_control"]
+        assert len(controls) == 1
+
+    def test_non_lit_method_no_match(self) -> None:
+        """Regular methods don't match Lit patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:50:handleClick:method",
+            name="handleClick",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(50, 55, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0
+
+    def test_event_options_decorator(self) -> None:
+        """@eventOptions({capture: true}) matches event_config concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:60:onClick:method",
+            name="onClick",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(60, 65, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "eventOptions", "args": [], "kwargs": {"capture": "true"}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        events = [r for r in results if r["concept"] == "event_config"]
+        assert len(events) == 1
