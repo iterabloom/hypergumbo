@@ -88,7 +88,7 @@ class _RailsIndex:
     """Pre-built indexes for fast Rails handler resolution.
 
     Built once per link_routes_to_handlers call and shared across all
-    route resolutions. Avoids O(routes × symbols) linear scans.
+    route resolutions. Avoids O(routes * symbols) linear scans.
     """
 
     symbol_by_name: dict[str, Symbol]
