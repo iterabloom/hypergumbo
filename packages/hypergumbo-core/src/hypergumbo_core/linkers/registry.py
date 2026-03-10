@@ -527,7 +527,7 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     # and can run in parallel.  E.g., inheritance linker (priority 15)
     # creates implements edges that type_hierarchy (priority 60) needs,
     # but linkers *within* the same priority never depend on each other.
-    for _priority, group_iter in groupby(active_linkers, key=lambda l: l.priority):
+    for _priority, group_iter in groupby(active_linkers, key=lambda lnk: lnk.priority):
         group = list(group_iter)
 
         # Snapshot accumulated state for this priority group
