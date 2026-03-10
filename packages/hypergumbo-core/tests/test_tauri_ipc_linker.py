@@ -474,6 +474,148 @@ class TestTauriIPCLinkerEdgeCases:
         assert len(result.edges) == 2
 
 
+class TestTauriIPCLinkerInternalFunctions:
+    """Tests for internal helper functions with mixed/edge-case inputs."""
+
+    def test_find_commands_filters_non_rust_symbols(self) -> None:
+        """_find_tauri_commands ignores non-Rust symbols."""
+        from hypergumbo_core.linkers.tauri_ipc import _find_tauri_commands
+
+        ts_sym = _make_ts_symbol("greet")
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+
+        result = _find_tauri_commands([ts_sym, rust_sym])
+        assert "greet" in result
+        assert result["greet"] is rust_sym
+
+    def test_find_commands_filters_non_function_kinds(self) -> None:
+        """_find_tauri_commands ignores struct/module symbols."""
+        from hypergumbo_core.linkers.tauri_ipc import _find_tauri_commands
+
+        struct_sym = _make_rust_symbol(
+            "AppState", kind="struct",
+            annotations=[_tauri_command_annotation()],
+        )
+
+        result = _find_tauri_commands([struct_sym])
+        assert len(result) == 0
+
+    def test_find_commands_skips_empty_annotations(self) -> None:
+        """_find_tauri_commands skips symbols with empty annotations list."""
+        from hypergumbo_core.linkers.tauri_ipc import _find_tauri_commands
+
+        sym = _make_rust_symbol("greet")
+        sym.meta = {"annotations": []}
+
+        result = _find_tauri_commands([sym])
+        assert len(result) == 0
+
+    def test_find_commands_skips_non_tauri_annotations(self) -> None:
+        """_find_tauri_commands skips symbols with non-tauri annotations."""
+        from hypergumbo_core.linkers.tauri_ipc import _find_tauri_commands
+
+        sym = _make_rust_symbol("greet")
+        sym.meta = {"annotations": [{"name": "derive", "args": ["Debug"], "kwargs": {}}]}
+
+        result = _find_tauri_commands([sym])
+        assert len(result) == 0
+
+    def test_link_filters_non_js_ts_symbols(self, tmp_path: Path) -> None:
+        """link_tauri_ipc ignores non-JS/TS symbols in ts_js_symbols list."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+
+        rust_cmd = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        # Pass a Rust symbol in the ts_js_symbols list (edge case)
+        rust_extra = _make_rust_symbol("extra", path="src/extra.rs")
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[rust_extra, ts_sym],
+            rust_symbols=[rust_cmd],
+        )
+
+        # Only the TS file produces an edge
+        assert len(result.edges) == 1
+
+    def test_link_deduplicates_same_path_symbols(self, tmp_path: Path) -> None:
+        """Multiple symbols from same TS file only scan the file once."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        # Two TS symbols from same file
+        ts1 = _make_ts_symbol("funcA", path=str(ts_file), start_line=1, end_line=5)
+        ts2 = _make_ts_symbol("funcB", path=str(ts_file), start_line=6, end_line=10)
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts1, ts2],
+            rust_symbols=[rust_sym],
+        )
+
+        # Only one edge despite two symbols from same file
+        assert len(result.edges) == 1
+
+    def test_link_handles_relative_ts_path(self, tmp_path: Path) -> None:
+        """TS symbols with relative paths are resolved to repo_root."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path="src/app.ts")
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts_sym],
+            rust_symbols=[rust_sym],
+        )
+
+        assert len(result.edges) == 1
+
+    def test_link_handles_non_relative_path(self, tmp_path: Path) -> None:
+        """TS files outside repo_root use absolute path in edge ID."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as other_dir:
+            ts_file = Path(other_dir) / "app.ts"
+            ts_file.write_text("invoke('greet');\n")
+
+            rust_sym = _make_rust_symbol(
+                "greet", annotations=[_tauri_command_annotation()],
+            )
+            ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+            result = link_tauri_ipc(
+                repo_root=tmp_path,
+                ts_js_symbols=[ts_sym],
+                rust_symbols=[rust_sym],
+            )
+
+            assert len(result.edges) == 1
+            # Path should be absolute since it's outside repo_root
+            assert str(other_dir) in result.edges[0].src
+
+
 class TestTauriIPCLinkerRegistry:
     """Tests for Tauri IPC linker registry integration."""
 

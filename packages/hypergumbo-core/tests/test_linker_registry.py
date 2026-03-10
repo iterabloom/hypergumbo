@@ -479,6 +479,49 @@ class TestRunAllLinkers:
         run_all_linkers(ctx)
         assert order == ["early", "late"]
 
+    def test_parallel_linkers_accumulate_symbols(self):
+        """Linkers at the same priority run in parallel and accumulate symbols."""
+        from hypergumbo_core.ir import Span
+
+        span = Span(start_line=1, end_line=1, start_col=0, end_col=0)
+        sym_a = Symbol(
+            id="test:a.py:1-1:alpha:function",
+            name="alpha",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=span,
+        )
+        sym_b = Symbol(
+            id="test:b.py:1-1:beta:function",
+            name="beta",
+            kind="function",
+            language="python",
+            path="b.py",
+            span=span,
+        )
+
+        @register_linker("par-sym-a", priority=50)
+        def link_par_a(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[sym_a])
+
+        @register_linker("par-sym-b", priority=50)
+        def link_par_b(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[sym_b])
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+        # Both linkers ran
+        names = {name for name, _ in results}
+        assert "par-sym-a" in names
+        assert "par-sym-b" in names
+        # Both symbols were returned
+        all_syms = []
+        for _, result in results:
+            all_syms.extend(result.symbols)
+        assert sym_a in all_syms
+        assert sym_b in all_syms
+
 
 class TestClearRegistry:
     """Tests for clear_registry function."""
