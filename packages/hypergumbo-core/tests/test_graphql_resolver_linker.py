@@ -540,3 +540,199 @@ class TestGraphQLResolverLinkerRegistry:
             symbols=[schema_sym, non_graphql],
         )
         assert _count_graphql_schema(ctx) == 1
+
+
+class TestTypeGraphQLResolverPatterns:
+    """Tests for NestJS/TypeGraphQL @Resolver() decorator patterns."""
+
+    def test_resolver_with_query(self, tmp_path: Path):
+        """@Resolver(() => User) with @Query() creates resolver pattern."""
+        code = dedent('''
+            import { Resolver, Query, Mutation, ResolveField } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @Query(() => [User])
+                async users() {
+                    return this.userService.findAll();
+                }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert len(patterns) >= 1
+        query_pattern = [p for p in patterns if p.field_name == "users"]
+        assert len(query_pattern) == 1
+        assert query_pattern[0].type_name == "Query"
+
+    def test_resolver_with_mutation(self, tmp_path: Path):
+        """@Mutation() method in @Resolver() creates Mutation pattern."""
+        code = dedent('''
+            import { Resolver, Mutation } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @Mutation(() => User)
+                async createUser(@Args('input') input: CreateUserInput) {
+                    return this.userService.create(input);
+                }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert len(patterns) >= 1
+        mut_pattern = [p for p in patterns if p.field_name == "createUser"]
+        assert len(mut_pattern) == 1
+        assert mut_pattern[0].type_name == "Mutation"
+
+    def test_resolver_with_resolve_field(self, tmp_path: Path):
+        """@ResolveField() uses the @Resolver type name."""
+        code = dedent('''
+            import { Resolver, ResolveField } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @ResolveField(() => [Post])
+                async posts(@Parent() user: User) {
+                    return this.postService.findByUser(user.id);
+                }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert len(patterns) >= 1
+        field_pattern = [p for p in patterns if p.field_name == "posts"]
+        assert len(field_pattern) == 1
+        assert field_pattern[0].type_name == "User"
+
+    def test_resolver_string_arg(self, tmp_path: Path):
+        """@Resolver('User') with string arg extracts type name."""
+        code = dedent('''
+            import { Resolver, Query } from '@nestjs/graphql';
+
+            @Resolver('User')
+            export class UserResolver {
+                @Query(() => User)
+                async user() {
+                    return {};
+                }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        field_pattern = [p for p in patterns if p.field_name == "user"]
+        assert len(field_pattern) == 1
+        assert field_pattern[0].type_name == "Query"
+
+    def test_resolver_resolve_field_string_name(self, tmp_path: Path):
+        """@ResolveField('displayName') with explicit field name."""
+        code = dedent('''
+            import { Resolver, ResolveField } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @ResolveField('displayName')
+                getDisplayName(@Parent() user: User) {
+                    return user.firstName + ' ' + user.lastName;
+                }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        field_pattern = [p for p in patterns if p.field_name == "displayName"]
+        assert len(field_pattern) == 1
+        assert field_pattern[0].type_name == "User"
+
+    def test_multiple_resolvers_same_file(self, tmp_path: Path):
+        """Multiple @Resolver classes in same file."""
+        code = dedent('''
+            import { Resolver, Query, ResolveField } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @Query(() => [User])
+                async users() { return []; }
+
+                @ResolveField(() => [Post])
+                async posts(@Parent() user: User) { return []; }
+            }
+
+            @Resolver(() => Post)
+            export class PostResolver {
+                @Query(() => [Post])
+                async posts() { return []; }
+            }
+        ''')
+        file = tmp_path / "resolvers.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        # Should have patterns for both resolvers
+        user_fields = [p for p in patterns if p.type_name == "User"]
+        post_queries = [p for p in patterns
+                        if p.type_name in ("Query", "Post")
+                        and p.field_name == "posts"
+                        and any(q.type_name == "Post" for q in patterns)]
+        assert len(user_fields) >= 1  # ResolveField → User.posts
+        assert len(patterns) >= 3
+
+    def test_resolver_no_arg(self, tmp_path: Path):
+        """@Resolver() without type arg — defaults to Query for @Query methods."""
+        code = dedent('''
+            import { Resolver, Query } from '@nestjs/graphql';
+
+            @Resolver()
+            export class AppResolver {
+                @Query(() => String)
+                async healthCheck() {
+                    return 'ok';
+                }
+            }
+        ''')
+        file = tmp_path / "app.resolver.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert len(patterns) >= 1
+        assert patterns[0].field_name == "healthCheck"
+        assert patterns[0].type_name == "Query"
+
+    def test_integration_creates_edges(self, tmp_path: Path):
+        """Full integration: @Resolver + @Query creates resolver_for_type edge."""
+        code = dedent('''
+            import { Resolver, Query } from '@nestjs/graphql';
+
+            @Resolver(() => User)
+            export class UserResolver {
+                @Query(() => [User])
+                async users() { return []; }
+            }
+        ''')
+        file = tmp_path / "user.resolver.ts"
+        file.write_text(code)
+
+        schema_type = Symbol(
+            id="graphql:schema.graphql:1-5:User:type",
+            name="User",
+            kind="type",
+            path="schema.graphql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="graphql",
+        )
+        query_type = Symbol(
+            id="graphql:schema.graphql:1-5:Query:type",
+            name="Query",
+            kind="type",
+            path="schema.graphql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="graphql",
+        )
+
+        result = link_graphql_resolvers(tmp_path, [schema_type, query_type])
+        assert len(result.symbols) >= 1
+        # Should have at least a resolver_for_type edge to Query
+        type_edges = [e for e in result.edges if e.edge_type == "resolver_for_type"]
+        assert len(type_edges) >= 1

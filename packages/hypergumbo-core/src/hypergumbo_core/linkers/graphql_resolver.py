@@ -1,13 +1,18 @@
 """GraphQL resolver linker for detecting resolver implementations.
 
-This linker detects GraphQL resolver functions in JavaScript/Python and links
-them to GraphQL schema type definitions.
+This linker detects GraphQL resolver functions in JavaScript/TypeScript/Python
+and links them to GraphQL schema type definitions.
 
 Detected Patterns
 -----------------
 JavaScript (Apollo Server, graphql-yoga):
 - const resolvers = { Query: { users: (_, args, ctx) => ... } }
 - const resolvers = { User: { posts: (parent) => ... } }
+
+TypeScript (NestJS/TypeGraphQL):
+- @Resolver(() => User) class UserResolver { @Query() users() {} }
+- @Mutation() createUser() / @ResolveField('name') getName()
+- @Resolver('User') class UserResolver { ... }
 
 Python (Ariadne):
 - @query.field("users") def resolve_users(_, info): ...
@@ -130,6 +135,38 @@ STRAWBERRY_TYPE_CLASS_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+# ============================================================================
+# TypeScript resolver patterns (NestJS/TypeGraphQL)
+# ============================================================================
+
+# Match: @Resolver(() => TypeName) or @Resolver('TypeName') or @Resolver()
+# Group 1: the type name (from arrow function or string arg), or empty
+TYPEGRAPHQL_RESOLVER_PATTERN = re.compile(
+    r"@Resolver\s*\("
+    r"(?:\s*\(\)\s*=>\s*(\w+)"           # arrow: () => TypeName
+    r"|\s*['\"](\w+)['\"]"               # string: 'TypeName'
+    r")?\s*\)",
+    re.MULTILINE,
+)
+
+# Match: @Query(() => ...) or @Mutation(() => ...) or @ResolveField(() => ...)
+# followed by async? methodName(
+# Handles nested parens like @Query(() => [User]).
+# Group 1: decorator name (Query/Mutation/Subscription/ResolveField)
+# Group 2: full decorator args (for extracting explicit field name)
+# Group 3: method name
+TYPEGRAPHQL_METHOD_PATTERN = re.compile(
+    r"@(Query|Mutation|Subscription|ResolveField)\s*\("
+    r"([^)]*(?:\([^)]*\)[^)]*)*)"        # args with nested parens
+    r"\)\s*\n"
+    r"\s*(?:async\s+)?(\w+)\s*\(",       # method name
+    re.MULTILINE,
+)
+
+# Extract explicit string field name from decorator args (e.g., 'displayName')
+# Only matches when the args start with a string (not an arrow function).
+_EXPLICIT_FIELD_NAME_RE = re.compile(r"^\s*['\"](\w+)['\"]")
+
 
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain resolver implementations."""
@@ -150,7 +187,8 @@ def _detect_language(file_path: Path) -> str:
 
 _GRAPHQL_CONTEXT_RE = re.compile(
     r"(?:graphql|apollo|@apollo|gql`|typeDefs|makeExecutableSchema|"
-    r"graphql-yoga|type Query|type Mutation|resolvers\s*[=:])",
+    r"graphql-yoga|type Query|type Mutation|resolvers\s*[=:]|"
+    r"@nestjs/graphql|type-graphql|@Resolver)",
     re.IGNORECASE,
 )
 
@@ -227,7 +265,75 @@ def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPa
         if brace_depth == 0:
             current_type = None
 
+    # NestJS/TypeGraphQL: @Resolver(() => Type) + @Query/@Mutation/@ResolveField
+    _scan_typegraphql_resolvers(file_path, content, patterns)
+
     return patterns
+
+
+def _scan_typegraphql_resolvers(
+    file_path: Path,
+    content: str,
+    patterns: list[ResolverPattern],
+) -> None:
+    """Detect NestJS/TypeGraphQL @Resolver class patterns.
+
+    Scans for ``@Resolver(() => Type)`` class decorators and
+    ``@Query``/``@Mutation``/``@ResolveField`` method decorators inside them.
+    Creates ResolverPattern entries with the appropriate type_name:
+
+    - ``@Query`` → type_name="Query"
+    - ``@Mutation`` → type_name="Mutation"
+    - ``@Subscription`` → type_name="Subscription"
+    - ``@ResolveField`` → type_name from the enclosing ``@Resolver()``
+
+    Args:
+        file_path: Source file path.
+        content: File content.
+        patterns: List to append detected patterns to (mutated in place).
+    """
+    # Phase 1: Find @Resolver() decorators and their type names, keyed by line
+    resolver_types: list[tuple[int, str | None]] = []  # (line, type_name)
+    for match in TYPEGRAPHQL_RESOLVER_PATTERN.finditer(content):
+        line_num = content[: match.start()].count("\n") + 1
+        # Group 1 = arrow function arg, Group 2 = string arg
+        type_name = match.group(1) or match.group(2) or None
+        resolver_types.append((line_num, type_name))
+
+    if not resolver_types:
+        return
+
+    # Phase 2: Find @Query/@Mutation/@ResolveField methods
+    for match in TYPEGRAPHQL_METHOD_PATTERN.finditer(content):
+        decorator = match.group(1)  # Query, Mutation, Subscription, ResolveField
+        args = match.group(2).strip()  # full decorator args
+        method_name = match.group(3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        # Extract explicit field name from string arg (e.g., @ResolveField('name'))
+        field_name_match = _EXPLICIT_FIELD_NAME_RE.match(args)
+        explicit_name = field_name_match.group(1) if field_name_match else None
+        field_name = explicit_name or method_name
+
+        # Determine type_name based on decorator
+        if decorator in ("Query", "Mutation", "Subscription"):
+            type_name = decorator
+        else:
+            # ResolveField: use the enclosing @Resolver's type_name
+            enclosing_type = None
+            for res_line, res_type in reversed(resolver_types):
+                if res_line < line_num:
+                    enclosing_type = res_type
+                    break
+            type_name = enclosing_type or "Query"
+
+        patterns.append(ResolverPattern(
+            type_name=type_name,
+            field_name=field_name,
+            line=line_num,
+            file_path=str(file_path),
+            language="javascript",
+        ))
 
 
 def _scan_python_resolvers(file_path: Path, content: str) -> list[ResolverPattern]:
