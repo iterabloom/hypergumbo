@@ -1,0 +1,20 @@
+- op: create  # 0836
+  at: '2026-03-10T06:56:06Z'  # 0836
+  by: agent  # 0836
+  actor: jgstern_agent  # 0836
+  clock: 1  # 0836
+  nonce: '0836'  # 0836
+  data:  # 0836
+    kind: work_item  # 0836
+    title: "GraphQL schema-to-resolver linking via @Resolver() decorators"  # 0836
+    status: todo_soft  # 0836
+    priority: 3  # 0836
+    parent:  # 0836
+    tags:  # 0836
+    - framework  # 0836
+    before: []  # 0836
+    duplicate_of: []  # 0836
+    not_duplicate_of: []  # 0836
+    pr_ref:  # 0836
+    description: "PlazaFlow Cohort 2: 482 GraphQL schema nodes and 414 resolver entrypoints exist independently with no edges between them. Needs: link @Resolver('TypeName') decorators to their corresponding schema type definitions. Affects AFFiNE and other GraphQL-heavy repos."  # 0836
+    fields: {}  # 0836
