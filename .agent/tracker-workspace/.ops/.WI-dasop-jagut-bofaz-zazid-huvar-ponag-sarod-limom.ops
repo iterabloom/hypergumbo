@@ -1,0 +1,20 @@
+- op: create  # 2530
+  at: '2026-03-10T06:56:42Z'  # 2530
+  by: agent  # 2530
+  actor: jgstern_agent  # 2530
+  clock: 1  # 2530
+  nonce: '2530'  # 2530
+  data:  # 2530
+    kind: work_item  # 2530
+    title: "Lit web component framework patterns (@customElement, @property, render)"  # 2530
+    status: todo_soft  # 2530
+    priority: 3  # 2530
+    parent:  # 2530
+    tags:  # 2530
+    - framework  # 2530
+    before: []  # 2530
+    duplicate_of: []  # 2530
+    not_duplicate_of: []  # 2530
+    pr_ref:  # 2530
+    description: "PlazaFlow Cohort 2: BlockSuite is entirely Lit-based but no Lit-specific framework patterns are detected. Needs: detect @customElement decorator for component registration, @property/@state for reactive properties, render() method as lifecycle hook. Part of broader web component pattern coverage."  # 2530
+    fields: {}  # 2530
