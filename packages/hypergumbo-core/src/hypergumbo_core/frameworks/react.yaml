@@ -1,0 +1,45 @@
+# React framework patterns (ADR-0003)
+#
+# Detects React SPA bootstrap patterns. These are the functions that mount
+# the React component tree into the DOM, serving as the application entry
+# point in single-page applications.
+#
+# Patterns detected:
+# - createRoot() / ReactDOM.createRoot() — React 18+ bootstrap
+# - ReactDOM.render() — React 17 and earlier bootstrap
+# - hydrateRoot() / ReactDOM.hydrate() — SSR hydration bootstrap
+# - createBrowserRouter() — React Router v6 app-level router
+
+id: react
+language: javascript
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # React 18+ createRoot() bootstrap
+  - concept: app_bootstrap
+    decorator: "^(createRoot|ReactDOM\\.createRoot)$"
+
+  # React 17 ReactDOM.render() bootstrap
+  - concept: app_bootstrap
+    decorator: "^ReactDOM\\.render$"
+
+  # React 18+ hydrateRoot() for SSR hydration
+  - concept: app_bootstrap
+    decorator: "^(hydrateRoot|ReactDOM\\.hydrateRoot)$"
+
+  # React 17 hydrate() for SSR hydration
+  - concept: app_bootstrap
+    decorator: "^ReactDOM\\.hydrate$"
+
+  # React Router v6 createBrowserRouter() — app-level router creation
+  - concept: app_bootstrap
+    decorator: "^createBrowserRouter$"
+
+  # React component definition patterns
+  - concept: component
+    decorator: "^React\\.createElement$"
+
+  # React hooks (for symbol classification, not entrypoint detection)
+  - concept: hook
+    decorator: "^(useState|useEffect|useContext|useReducer|useMemo|useCallback|useRef|useLayoutEffect|useImperativeHandle|useDebugValue|useDeferredValue|useTransition|useId|useSyncExternalStore|useInsertionEffect)$"

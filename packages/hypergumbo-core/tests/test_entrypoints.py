@@ -3528,3 +3528,128 @@ class TestFrontendRouteSupression:
         route_eps = [e for e in eps if e.kind == EntrypointKind.HTTP_ROUTE]
         assert len(route_eps) == 1
         assert route_eps[0].confidence == 0.95
+
+
+class TestEntrypointConceptDetection:
+    """Tests for generic 'entrypoint' concept -> entrypoint mapping.
+
+    The 'entrypoint' concept is used by electron.yaml, cli.yaml, cli-go.yaml,
+    cli-ruby.yaml, and akka-http.yaml but was previously silently ignored by
+    _detect_from_concepts(). These tests verify it is now handled.
+    """
+
+    def test_entrypoint_concept_electron(self) -> None:
+        """entrypoint concept with electron framework -> ELECTRON_MAIN."""
+        sym = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.ELECTRON_MAIN]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "electron" in ep[0].label.lower()
+
+    def test_entrypoint_concept_generic(self) -> None:
+        """entrypoint concept without specific framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "bootstrap",
+            path="src/app.py",
+            language="python",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "cli"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_entrypoint_concept_no_framework(self) -> None:
+        """entrypoint concept with no framework field -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "init",
+            path="src/init.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_duplicate_entrypoint_concepts_deduplicated(self) -> None:
+        """Multiple entrypoint concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "electron"},
+                {"concept": "entrypoint", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        main_eps = [e for e in entrypoints
+                    if e.kind in (EntrypointKind.ELECTRON_MAIN, EntrypointKind.MAIN_FUNCTION)]
+        assert len(main_eps) == 1
+
+
+class TestSpaBootstrapConceptDetection:
+    """Tests for SPA bootstrap entrypoint detection.
+
+    SPA frameworks bootstrap via createRoot(), ReactDOM.render(), hydrateRoot().
+    These should be detected as app_bootstrap concepts and mapped to
+    SPA_BOOTSTRAP entrypoint kind.
+    """
+
+    def test_app_bootstrap_concept(self) -> None:
+        """app_bootstrap concept -> SPA_BOOTSTRAP entrypoint."""
+        sym = make_symbol(
+            "main",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "bootstrap" in ep[0].label.lower() or "spa" in ep[0].label.lower()
+
+    def test_app_bootstrap_no_framework(self) -> None:
+        """app_bootstrap concept without framework uses generic label."""
+        sym = make_symbol(
+            "init",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+
+    def test_duplicate_app_bootstrap_deduplicated(self) -> None:
+        """Multiple app_bootstrap concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "root",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1

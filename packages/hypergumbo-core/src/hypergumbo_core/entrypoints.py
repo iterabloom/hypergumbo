@@ -195,6 +195,8 @@ class EntrypointKind(Enum):
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
     # Test/benchmark entry points (from test-frameworks.yaml patterns)
     TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
+    # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
+    SPA_BOOTSTRAP = "spa_bootstrap"  # SPA app bootstrap function
     # Connectivity-based fallback (no patterns matched)
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
@@ -251,6 +253,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
     - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
     - "lifecycle_hook" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)
+
+    Detected concepts (generic entrypoint, confidence=0.90):
+    - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)
+    - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
     - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
@@ -625,6 +631,50 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=f"{label_prefix}: {sym.name}",
                 ))
                 added_kinds.add(EntrypointKind.TEST_FUNCTION)
+
+            # Generic entrypoint concept -> framework-specific or MAIN_FUNCTION
+            # Used by electron.yaml (app.whenReady), cli.yaml (fire.Fire,
+            # argparse.ArgumentParser), cli-go.yaml (kong.Parse),
+            # cli-ruby.yaml (OptionParser), akka-http.yaml (Http().newServerAt).
+            elif concept_type == "entrypoint":
+                # Map to framework-specific kind when possible
+                fw_lower = framework.lower() if framework else ""
+                if fw_lower == "electron":
+                    target_kind = EntrypointKind.ELECTRON_MAIN
+                    label = "Electron app entrypoint"
+                else:
+                    target_kind = EntrypointKind.MAIN_FUNCTION
+                    if framework:
+                        label = f"{framework.title()} entrypoint"
+                    else:
+                        label = "App entrypoint"
+                if target_kind in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=target_kind,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(target_kind)
+
+            # SPA bootstrap concept -> SPA_BOOTSTRAP
+            # Detected from react.yaml patterns: createRoot(), ReactDOM.render(),
+            # hydrateRoot(), createBrowserRouter().
+            elif concept_type == "app_bootstrap":
+                if EntrypointKind.SPA_BOOTSTRAP in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} app bootstrap"
+                else:
+                    label = "SPA bootstrap"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SPA_BOOTSTRAP,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.SPA_BOOTSTRAP)
 
     # --- Pass 2: Direct route symbol detection ---
     # Go (and potentially other analyzers) create symbols with kind="route"

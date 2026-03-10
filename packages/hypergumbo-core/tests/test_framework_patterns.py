@@ -18551,3 +18551,157 @@ class TestLitPatterns:
         results = match_patterns(symbol, [pattern_def])
         events = [r for r in results if r["concept"] == "event_config"]
         assert len(events) == 1
+
+
+class TestReactPatterns:
+    """Tests for react.yaml SPA bootstrap patterns."""
+
+    def test_react_yaml_loads(self) -> None:
+        """react.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+        assert pattern_def.id == "react"
+        assert len(pattern_def.patterns) > 0
+
+    def test_create_root_matches_app_bootstrap(self) -> None:
+        """createRoot() decorator matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/index.tsx:5:main:function",
+            name="main",
+            kind="function",
+            language="typescript",
+            path="src/index.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createRoot", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_reactdom_render_matches_app_bootstrap(self) -> None:
+        """ReactDOM.render() decorator matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/index.tsx:5:render:function",
+            name="render",
+            kind="function",
+            language="typescript",
+            path="src/index.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ReactDOM.render", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_hydrate_root_matches_app_bootstrap(self) -> None:
+        """hydrateRoot() decorator matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/index.tsx:5:hydrate:function",
+            name="hydrate",
+            kind="function",
+            language="typescript",
+            path="src/index.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "hydrateRoot", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_create_browser_router_matches_app_bootstrap(self) -> None:
+        """createBrowserRouter() decorator matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:init:function",
+            name="init",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createBrowserRouter", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_non_bootstrap_call_not_matched(self) -> None:
+        """Regular React API calls don't match app_bootstrap."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:render:function",
+            name="render",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "someOtherFunction", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 0
+
+
+class TestElectronEntrypointConcept:
+    """Tests that electron.yaml entrypoint concept is correctly loaded."""
+
+    def test_electron_yaml_has_entrypoint_concept(self) -> None:
+        """electron.yaml loads and has entrypoint concept pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/main.ts:1:main:function",
+            name="main",
+            kind="function",
+            language="typescript",
+            path="src/main.ts",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.whenReady", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 1
