@@ -968,3 +968,46 @@ class TestEventSubscriberToMethodEdges:
 
         sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
         assert len(sub_edges) == 0
+
+    def test_subscribes_edge_with_relative_context_paths(
+        self, tmp_path: Path
+    ) -> None:
+        """event_subscribes edge works when context symbols have relative paths.
+
+        The CLI pipeline normalizes analyzer symbol paths to be relative to
+        the repo root before passing them to linkers. The event sourcing
+        linker scans files from repo_root and produces absolute paths.
+        The suffix-matching fallback must bridge this mismatch.
+        """
+        pub_file = tmp_path / "emitter.js"
+        pub_file.write_text("this.emit('data:ready', payload);")
+
+        sub_file = tmp_path / "handler.js"
+        sub_file.write_text("emitter.on('data:ready', this.handleData);")
+
+        # Context symbol with RELATIVE path (as the CLI pipeline normalizes)
+        handler_method = Symbol(
+            id="javascript:handler.js:1-1:Controller.setup:method",
+            name="Controller.setup",
+            kind="method",
+            language="javascript",
+            path="handler.js",  # relative, not absolute
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=50),
+        )
+
+        ctx = LinkerContext(
+            symbols=[handler_method],
+            edges=[],
+            repo_root=tmp_path,
+        )
+
+        result = event_sourcing_linker(ctx)
+
+        # Should still create event_subscribes edge despite path format mismatch
+        sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
+        assert len(sub_edges) == 1, (
+            f"Expected 1 event_subscribes edge with relative context paths, "
+            f"got {len(sub_edges)}. "
+            f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
+        )
+        assert sub_edges[0].dst == handler_method.id

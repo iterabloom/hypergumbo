@@ -613,6 +613,11 @@ def _create_subscriber_to_method_edges(
     Without these edges, forward slices dead-end at subscriber nodes because
     the ``uses`` edges (created by the enclosure linker) go in the wrong
     direction (method → subscriber, not subscriber → method).
+
+    Path matching uses suffix comparison to handle absolute/relative path
+    mismatches: the event sourcing linker produces absolute paths from
+    filesystem scanning, while analyzer symbols may have paths normalized
+    to be relative to the repo root.
     """
     subscribers = [s for s in event_symbols if s.kind == "event_subscriber"]
     if not subscribers:
@@ -626,13 +631,30 @@ def _create_subscriber_to_method_edges(
                 methods_by_file[sym.path] = []
             methods_by_file[sym.path].append(sym)
 
+    def _find_methods_for_path(path: str) -> list[Symbol]:
+        """Find methods matching a path, with suffix fallback.
+
+        Handles absolute/relative path mismatches: event symbols may have
+        absolute paths while context symbols have relative paths (or vice
+        versa) after path normalization in the analyzer pipeline.
+        """
+        # Exact match first (fast path)
+        candidates = methods_by_file.get(path, [])
+        if candidates:
+            return candidates
+        # Suffix match fallback (handles abs/rel mismatch)
+        for p, syms in methods_by_file.items():
+            if p.endswith(path) or path.endswith(p):
+                return syms
+        return []
+
     edges: list[Edge] = []
     for sub in subscribers:
         if not sub.path or not sub.span:
             continue  # pragma: no cover
 
         # Find enclosing method: same file, line range contains subscriber line
-        candidates = methods_by_file.get(sub.path, [])
+        candidates = _find_methods_for_path(sub.path)
         enclosing = None
         best_size = float("inf")
         for method in candidates:
