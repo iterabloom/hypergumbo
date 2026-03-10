@@ -1,0 +1,21 @@
+- op: create  # 0238
+  at: '2026-03-10T21:44:42Z'  # 0238
+  by: agent  # 0238
+  actor: jgstern_agent  # 0238
+  clock: 1  # 0238
+  nonce: '0238'  # 0238
+  data:  # 0238
+    kind: invariant  # 0238
+    title: "React Router routes not detected in routes.txt"  # 0238
+    status: violated  # 0238
+    priority: 2  # 0238
+    parent:  # 0238
+    tags: []  # 0238
+    before: []  # 0238
+    duplicate_of: []  # 0238
+    not_duplicate_of: []  # 0238
+    pr_ref:  # 0238
+    description: ""  # 0238
+    fields:  # 0238
+      statement: "React Router Route path patterns must be detected and listed in routes.txt for SPA-based repos"  # 0238
+      root_cause: "Route detection only covers HTTP verb-based patterns, not JSX Route components"  # 0238
