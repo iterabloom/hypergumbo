@@ -83,14 +83,54 @@ def _normalize_rails_controller(controller: str) -> str:
         return "::".join(normalized_parts[:-1]) + f"::{normalized_parts[-1]}Controller"
 
 
+@dataclass
+class _RailsIndex:
+    """Pre-built indexes for fast Rails handler resolution.
+
+    Built once per link_routes_to_handlers call and shared across all
+    route resolutions. Avoids O(routes × symbols) linear scans.
+    """
+
+    symbol_by_name: dict[str, Symbol]
+    # action -> [(sym_class_part, sep, name, sym)] for suffix/reverse/CI matching
+    by_action: dict[str, list[tuple[str, str, str, Symbol]]]
+    # (action, class_lower) -> (name, sym) for case-insensitive exact match
+    by_action_class_lower: dict[tuple[str, str], tuple[str, Symbol]]
+
+    @staticmethod
+    def build(symbol_by_name: dict[str, Symbol]) -> _RailsIndex:
+        """Build indexes from symbol_by_name."""
+        by_action: dict[str, list[tuple[str, str, str, Symbol]]] = {}
+        by_action_class_lower: dict[tuple[str, str], tuple[str, Symbol]] = {}
+        for name, sym in symbol_by_name.items():
+            for sep in ("#", "."):
+                if sep not in name:
+                    continue
+                sym_class_part, sym_action = name.rsplit(sep, 1)
+                by_action.setdefault(sym_action, []).append(
+                    (sym_class_part, sep, name, sym)
+                )
+                key = (sym_action, sym_class_part.lower())
+                if key not in by_action_class_lower:
+                    by_action_class_lower[key] = (name, sym)
+        return _RailsIndex(
+            symbol_by_name=symbol_by_name,
+            by_action=by_action,
+            by_action_class_lower=by_action_class_lower,
+        )
+
+
 def _resolve_rails_handler(
-    controller_action: str, symbol_by_name: dict[str, Symbol]
+    controller_action: str, symbol_by_name: dict[str, Symbol],
+    rails_index: _RailsIndex | None = None,
 ) -> Symbol | None:
     """Resolve Rails controller#action to a handler symbol.
 
     Args:
         controller_action: String like "users#index" or "admin/users#show"
         symbol_by_name: Lookup table of symbols by name
+        rails_index: Pre-built index for fast resolution. When provided,
+            avoids O(N) linear scans of symbol_by_name.
 
     Returns:
         Matching Symbol or None
@@ -119,23 +159,75 @@ def _resolve_rails_handler(
         if controller_class in sym_class or sym_class.endswith(controller_class):
             return sym
 
-    # Try suffix matching for deeply namespaced controllers.
-    # Rails routes use short names (e.g., "users#index" → "UsersController#index")
-    # but actual symbols may be deeply namespaced
-    # (e.g., "Api::V1::Accounts::UsersController#index").
+    # Use pre-built index for suffix/reverse/CI matching when available
+    if rails_index is not None:
+        return _resolve_rails_handler_indexed(
+            controller_class, action, rails_index
+        )
+
+    # Fallback: linear scan (legacy path for direct callers without index)
+    return _resolve_rails_handler_scan(  # pragma: no cover
+        controller_class, action, symbol_by_name
+    )
+
+
+def _resolve_rails_handler_indexed(
+    controller_class: str, action: str, idx: _RailsIndex,
+) -> Symbol | None:
+    """Resolve Rails handler using pre-built indexes.
+
+    Replaces three O(N) linear scans with O(candidates) lookups keyed
+    by action name.
+    """
+    candidates = idx.by_action.get(action, [])
+
+    # Suffix matching for deeply namespaced controllers
+    hash_suffix = f"::{controller_class}"
+    for sym_class_part, _sep, _name, sym in candidates:
+        if sym_class_part == controller_class:
+            return sym  # pragma: no cover - caught by exact-match dict lookups
+        if sym_class_part.endswith(hash_suffix):
+            return sym
+
+    # Reverse suffix matching
+    for sym_class_part, _sep, _name, sym in candidates:
+        reverse_suffix = f"::{sym_class_part}"
+        if controller_class.endswith(reverse_suffix):
+            return sym
+
+    # Case-insensitive fallback for Rails acronym inflections (ADR-0008).
+    # Rails treats words like IP, HTTP, SMTP, API as acronyms:
+    # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
+    controller_lower = controller_class.lower()
+    for sym_class_part, _sep, _name, sym in candidates:
+        sym_class_lower = sym_class_part.lower()
+        if sym_class_lower == controller_lower:
+            return sym
+        ci_suffix = f"::{controller_lower}"
+        if sym_class_lower.endswith(ci_suffix):
+            return sym
+        reverse_ci_suffix = f"::{sym_class_lower}"
+        if controller_lower.endswith(reverse_ci_suffix):
+            return sym
+
+    return None
+
+
+def _resolve_rails_handler_scan(
+    controller_class: str, action: str, symbol_by_name: dict[str, Symbol],
+) -> Symbol | None:  # pragma: no cover
+    """Legacy linear-scan fallback for Rails handler resolution.
+
+    Used only when _resolve_rails_handler is called without a pre-built index.
+    """
+    # Suffix matching for deeply namespaced controllers
     hash_suffix = f"::{controller_class}#{action}"
     dot_suffix = f"::{controller_class}.{action}"
     for name, sym in symbol_by_name.items():
         if name.endswith(hash_suffix) or name.endswith(dot_suffix):
             return sym
 
-    # Reverse suffix matching: route has a namespaced controller_action
-    # (e.g., "api/v1/statuses#destroy" → "Api::V1::StatusesController") but the
-    # symbol has a SHORT name (e.g., "StatusesController#destroy") because the
-    # Ruby analyzer only captures the immediately enclosing class. Check if the
-    # normalized controller_class ENDS WITH the symbol's class portion, respecting
-    # namespace boundaries (:: separator) to avoid false positives like
-    # "SubscriptionStatusesController" matching "StatusesController".
+    # Reverse suffix matching
     for name, sym in symbol_by_name.items():
         for sep in ("#", "."):
             if sep not in name:
@@ -144,36 +236,25 @@ def _resolve_rails_handler(
             if sym_action != action:
                 continue
             if sym_class_part == controller_class:
-                # Already handled by exact match above.
-                continue  # pragma: no cover
-            # Check namespace-boundary-separated suffix
+                continue
             reverse_suffix = f"::{sym_class_part}"
             if controller_class.endswith(reverse_suffix):
                 return sym
 
-    # Case-insensitive fallback for Rails acronym inflections (ADR-0008).
-    # Rails treats words like IP, HTTP, SMTP, API as acronyms:
-    # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
-    # Our naive CamelCase conversion can't replicate Rails' custom acronym list,
-    # so we fall back to case-insensitive matching after exact match fails.
+    # Case-insensitive fallback
     controller_lower = controller_class.lower()
     for name, sym in symbol_by_name.items():
-        # Check ClassName#action or ClassName.action (case-insensitive on class)
         for sep in ("#", "."):
             if sep not in name:
                 continue
             sym_class_part, sym_action = name.rsplit(sep, 1)
             if sym_action != action:
                 continue
-            # Full match (case-insensitive on controller class portion)
             if sym_class_part.lower() == controller_lower:
                 return sym
-            # Suffix match for deeply namespaced controllers
             ci_suffix = f"::{controller_lower}"
             if sym_class_part.lower().endswith(ci_suffix):
                 return sym
-            # Reverse suffix (case-insensitive): controller_class ends with
-            # symbol's class portion at a namespace boundary.
             reverse_ci_suffix = f"::{sym_class_part.lower()}"
             if controller_lower.endswith(reverse_ci_suffix):
                 return sym
@@ -496,6 +577,14 @@ def link_routes_to_handlers(
     # Find route symbols
     routes = [s for s in symbols if s.kind == "route"]
 
+    # Build Rails index once if there are any Rails routes
+    rails_index: _RailsIndex | None = None
+    for route in routes:
+        ref = _extract_handler_ref(route)
+        if ref and ref["type"] == "rails":
+            rails_index = _RailsIndex.build(symbol_by_name)
+            break
+
     new_edges: list[Edge] = []
     routes_linked = 0
 
@@ -510,7 +599,8 @@ def link_routes_to_handlers(
             handler = symbol_by_id.get(handler_ref["handler_id"])
         elif handler_ref["type"] == "rails":
             handler = _resolve_rails_handler(
-                handler_ref["controller_action"], symbol_by_name
+                handler_ref["controller_action"], symbol_by_name,
+                rails_index=rails_index,
             )
         elif handler_ref["type"] == "laravel":
             handler = _resolve_laravel_handler(

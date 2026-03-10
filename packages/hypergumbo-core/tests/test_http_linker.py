@@ -624,6 +624,30 @@ class TestLinkHttp:
         assert result.run is not None
         assert result.run.pass_id == "http-linker-v1"
 
+    def test_matches_wildcard_method_route(self, tmp_path):
+        """Routes with no HTTP method match any client method."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/data", { method: "DELETE" })')
+
+        # Route with no method (wildcard)
+        route_symbol = Symbol(
+            id="server.js::handleData",
+            name="handleData",
+            kind="route",
+            path=str(tmp_path / "server.js"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="javascript",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/data", "method": ""}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == route_symbol.id
+
 
 class TestVariableUrlPatterns:
     """Tests for variable URL detection in HTTP calls."""

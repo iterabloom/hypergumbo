@@ -1921,6 +1921,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                     break
 
     # Pass 2: Extract edges using global symbol registry
+    # Build resolvers ONCE and share across all files — the registry is frozen
+    # after Pass 1, so the suffix index only needs to be built once.
+    resolver = NameResolver(global_symbols)
+    class_resolver = NameResolver(class_symbols)
     method_resolver = ListNameResolver(
         global_methods, ambiguity_threshold=3,
     )
@@ -1929,6 +1933,8 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
             global_symbols, class_symbols, pf.imports or {},
+            resolver=resolver,
+            class_resolver=class_resolver,
             symbol_by_position=symbol_by_position,
             class_by_name=class_by_name,
             sym_file_imports=sym_file_imports,

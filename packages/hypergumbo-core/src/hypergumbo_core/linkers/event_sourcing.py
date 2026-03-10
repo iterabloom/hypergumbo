@@ -536,14 +536,17 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 subscriber_by_event[event_key] = []
             subscriber_by_event[event_key].append((pattern, symbol))
 
+    # Build (file_path, line) -> symbol index for fast publisher lookup
+    publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
+    for s in symbols:
+        if s.kind == "event_publisher":
+            publisher_symbol_index[(s.path, s.span.start_line)] = s
+
     # Create edges from publishers to matching subscribers
     for publisher in publishers:
-        pub_symbol = None
-        for s in symbols:
-            if s.kind == "event_publisher" and s.span.start_line == publisher.line:
-                if s.path == publisher.file_path:
-                    pub_symbol = s
-                    break
+        pub_symbol = publisher_symbol_index.get(
+            (publisher.file_path, publisher.line)
+        )
 
         if pub_symbol is None:  # pragma: no cover
             continue
