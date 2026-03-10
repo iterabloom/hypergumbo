@@ -519,7 +519,7 @@ class TestWasmBindgenRegistry:
         """Linker is registered in the registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         linker = get_linker("wasm_bindgen")
         assert linker is not None
@@ -529,7 +529,7 @@ class TestWasmBindgenRegistry:
         """Activates for TypeScript/Rust and JavaScript/Rust pairs."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         linker = get_linker("wasm_bindgen")
         assert linker.activation.should_run(set(), {"typescript", "rust"})
@@ -540,7 +540,7 @@ class TestWasmBindgenRegistry:
         """Has requirements for JS/TS files and Rust wasm_bindgen functions."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         linker = get_linker("wasm_bindgen")
         assert len(linker.requirements) == 2
@@ -552,7 +552,7 @@ class TestWasmBindgenRegistry:
         """Requirements are met when both JS/TS and Rust wasm_bindgen symbols exist."""
         from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         js_sym = _make_js_sym("main")
         rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
@@ -568,7 +568,7 @@ class TestWasmBindgenRegistry:
         """Requirements are unmet when no wasm_bindgen symbols exist."""
         from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         js_sym = _make_js_sym("main")
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[js_sym])
@@ -583,7 +583,7 @@ class TestWasmBindgenRegistry:
         """Can be invoked via run_linker registry dispatch."""
         from hypergumbo_core.linkers.registry import LinkerContext, run_linker
 
-        import hypergumbo_core.linkers.wasm_bindgen  # noqa: F401
+        import hypergumbo_core.linkers.wasm_bindgen
 
         rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
         ts_file = tmp_path / "app.ts"
