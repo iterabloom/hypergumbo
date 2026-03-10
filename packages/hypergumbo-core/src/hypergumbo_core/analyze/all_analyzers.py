@@ -11,6 +11,8 @@ Import points:
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -128,23 +130,32 @@ def run_all_analyzers(
 
     set_global_on_file_skipped(_on_file_skipped)
 
-    for analyzer in _registry_get_all():
-        # Build kwargs based on analyzer capabilities
-        kwargs: dict[str, Any] = {}
-        if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
-            kwargs["max_files"] = max_files
+    # Run all analyzers in parallel using threads.  Tree-sitter (C
+    # extension) and file I/O release the GIL, so threads provide real
+    # parallelism for the expensive parts of each analyzer.
+    analyzers = list(_registry_get_all())
+    worker_count = max(1, min(len(analyzers), os.cpu_count() or 1))
 
-        # Run the analyzer (using get_func() for test patchability)
-        result = analyzer.get_func()(repo_root, **kwargs)
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {}
+        for analyzer in analyzers:
+            kwargs: dict[str, Any] = {}
+            if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
+                kwargs["max_files"] = max_files
+            future = pool.submit(analyzer.get_func(), repo_root, **kwargs)
+            futures[future] = analyzer
 
-        # Collect results
-        collect_analyzer_result(
-            result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
-        )
+        for future in as_completed(futures):
+            analyzer = futures[future]
+            result = future.result()
 
-        # Capture symbols for linkers if needed (e.g., JNI needs c_symbols and java_symbols)
-        if analyzer.capture_symbols_as and not result.skipped:
-            captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
+            collect_analyzer_result(
+                result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+            )
+
+            # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)
+            if analyzer.capture_symbols_as and not result.skipped:
+                captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

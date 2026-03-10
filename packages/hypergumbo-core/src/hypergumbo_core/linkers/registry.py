@@ -46,7 +46,10 @@ In cli.py:
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator
 
@@ -512,18 +515,22 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     accum_symbols = list(ctx.symbols)
     accum_edges = list(ctx.edges)
 
-    # Run linkers that pass activation check
-    for linker in get_all_linkers():
-        # Check if linker should run based on detected frameworks/languages
-        if not linker.activation.should_run(
+    # Filter to active linkers (already sorted by priority from get_all_linkers)
+    active_linkers = [
+        linker for linker in get_all_linkers()
+        if linker.activation.should_run(
             ctx.detected_frameworks, ctx.detected_languages
-        ):
-            continue  # Skip inactive linkers
+        )
+    ]
 
-        # Build a fresh context with accumulated data so each linker
-        # sees edges/symbols from all prior linkers.  E.g., inheritance
-        # linker (priority 15) creates implements edges that
-        # type_hierarchy linker (priority 60) needs for dispatches_to.
+    # Group by priority — linkers at the same priority are independent
+    # and can run in parallel.  E.g., inheritance linker (priority 15)
+    # creates implements edges that type_hierarchy (priority 60) needs,
+    # but linkers *within* the same priority never depend on each other.
+    for _priority, group_iter in groupby(active_linkers, key=lambda l: l.priority):
+        group = list(group_iter)
+
+        # Snapshot accumulated state for this priority group
         running_ctx = LinkerContext(
             repo_root=ctx.repo_root,
             symbols=accum_symbols,
@@ -532,15 +539,43 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
             detected_frameworks=ctx.detected_frameworks,
             detected_languages=ctx.detected_languages,
         )
-        result = linker.func(running_ctx)
-        results.append((linker.name, result))
-        all_linker_symbols.extend(result.symbols)
 
-        # Accumulate results for subsequent linkers
-        if result.edges:
-            accum_edges.extend(result.edges)
-        if result.symbols:
-            accum_symbols.extend(result.symbols)
+        if len(group) == 1:
+            # Single linker — run directly (avoids thread pool overhead)
+            linker = group[0]
+            result = linker.func(running_ctx)
+            results.append((linker.name, result))
+            all_linker_symbols.extend(result.symbols)
+            if result.edges:
+                accum_edges.extend(result.edges)
+            if result.symbols:
+                accum_symbols.extend(result.symbols)
+        else:
+            # Multiple linkers at same priority — run in parallel.
+            # Each gets its own LinkerContext to avoid index-building
+            # race conditions (lazy _ensure_indexes is not thread-safe).
+            worker_count = min(len(group), os.cpu_count() or 1)
+            with ThreadPoolExecutor(max_workers=worker_count) as pool:
+                future_to_linker = {}
+                for linker in group:
+                    lctx = LinkerContext(
+                        repo_root=ctx.repo_root,
+                        symbols=accum_symbols,
+                        edges=accum_edges,
+                        captured_symbols=ctx.captured_symbols,
+                        detected_frameworks=ctx.detected_frameworks,
+                        detected_languages=ctx.detected_languages,
+                    )
+                    future_to_linker[pool.submit(linker.func, lctx)] = linker
+                for future in as_completed(future_to_linker):
+                    linker = future_to_linker[future]
+                    result = future.result()
+                    results.append((linker.name, result))
+                    all_linker_symbols.extend(result.symbols)
+                    if result.edges:
+                        accum_edges.extend(result.edges)
+                    if result.symbols:
+                        accum_symbols.extend(result.symbols)
 
     # Post-process: connect synthetic nodes to enclosing functions
     enclosure_ctx = LinkerContext(
