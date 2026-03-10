@@ -1,0 +1,20 @@
+- op: create  # 9b76
+  at: '2026-03-10T06:50:32Z'  # 9b76
+  by: agent  # 9b76
+  actor: jgstern_agent  # 9b76
+  clock: 1  # 9b76
+  nonce: 9b76  # 9b76
+  data:  # 9b76
+    kind: work_item  # 9b76
+    title: "Bug: tier-filtered slice serialization returns empty node_ids"  # 9b76
+    status: todo_hard  # 9b76
+    priority: 1  # 9b76
+    parent:  # 9b76
+    tags:  # 9b76
+    - bug  # 9b76
+    before: []  # 9b76
+    duplicate_of: []  # 9b76
+    not_duplicate_of: []  # 9b76
+    pr_ref:  # 9b76
+    description: "PlazaFlow Cohort 3: slice.tier1.json and slice.tier2.json return empty node_ids arrays despite populated hg.json with valid tier classifications. This is a correctness bug, not a feature gap. Affects refactoring and new-feature usefulness scores. Discovered in WebRTC cohort (livekit, mediasoup, jitsi-meet, element-call)."  # 9b76
+    fields: {}  # 9b76

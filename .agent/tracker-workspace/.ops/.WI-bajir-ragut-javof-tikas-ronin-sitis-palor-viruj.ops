@@ -1,0 +1,20 @@
+- op: create  # 7f56
+  at: '2026-03-10T06:50:32Z'  # 7f56
+  by: agent  # 7f56
+  actor: jgstern_agent  # 7f56
+  clock: 1  # 7f56
+  nonce: 7f56  # 7f56
+  data:  # 7f56
+    kind: work_item  # 7f56
+    title: "Tauri IPC linker: commands.invoke() to #[tauri::command]"  # 7f56
+    status: todo_hard  # 7f56
+    priority: 1  # 7f56
+    parent:  # 7f56
+    tags:  # 7f56
+    - cross_language  # 7f56
+    before: []  # 7f56
+    duplicate_of: []  # 7f56
+    not_duplicate_of: []  # 7f56
+    pr_ref:  # 7f56
+    description: "PlazaFlow Cohort 1: 231 TS commands.xxx() calls to 110 Rust #[tauri::command] functions produce zero cross-language edges. Tauri IPC is the architectural spine of every Tauri app. User is building plazaflow (a Tauri app), making this the highest-priority linker gap. Needs: (1) detect #[tauri::command] attribute on Rust functions, (2) detect invoke('command_name') calls in TS/JS, (3) create ipc_calls edges between them. Also handle tauri-specta patterns. Affects spacedrive, yaak, Cap, readest in bakeoff."  # 7f56
+    fields: {}  # 7f56
