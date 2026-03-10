@@ -1,0 +1,20 @@
+- op: create  # 6ab0
+  at: '2026-03-10T06:54:57Z'  # 6ab0
+  by: agent  # 6ab0
+  actor: jgstern_agent  # 6ab0
+  clock: 1  # 6ab0
+  nonce: 6ab0  # 6ab0
+  data:  # 6ab0
+    kind: work_item  # 6ab0
+    title: "NestJS module-to-provider DI registration edges"  # 6ab0
+    status: todo_soft  # 6ab0
+    priority: 3  # 6ab0
+    parent:  # 6ab0
+    tags:  # 6ab0
+    - framework  # 6ab0
+    before: []  # 6ab0
+    duplicate_of: []  # 6ab0
+    not_duplicate_of: []  # 6ab0
+    pr_ref:  # 6ab0
+    description: "PlazaFlow Cohort 2: AFFiNE backend uses NestJS but module-to-provider registration edges are missing. Cannot see DI container wiring. Needs: detect @Module({providers: [...]}) decorators and create di_resolves edges."  # 6ab0
+    fields: {}  # 6ab0
