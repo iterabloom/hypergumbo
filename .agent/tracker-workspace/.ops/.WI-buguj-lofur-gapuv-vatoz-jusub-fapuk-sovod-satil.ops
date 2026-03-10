@@ -18,3 +18,18 @@
     pr_ref:  # 0836
     description: "PlazaFlow Cohort 2: 482 GraphQL schema nodes and 414 resolver entrypoints exist independently with no edges between them. Needs: link @Resolver('TypeName') decorators to their corresponding schema type definitions. Affects AFFiNE and other GraphQL-heavy repos."  # 0836
     fields: {}  # 0836
+- op: update  # ea1e
+  at: '2026-03-10T13:19:47Z'  # ea1e
+  by: agent  # ea1e
+  actor: jgstern_agent  # ea1e
+  clock: 2  # ea1e
+  nonce: ea1e  # ea1e
+  set:  # ea1e
+    status: done  # ea1e
+- op: discuss  # f638
+  at: '2026-03-10T13:19:47Z'  # f638
+  by: agent  # f638
+  actor: jgstern_agent  # f638
+  clock: 3  # f638
+  nonce: f638  # f638
+  message: "NestJS/TypeGraphQL @Resolver() decorator detection added to graphql_resolver linker. PR pending."  # f638

@@ -1,0 +1,21 @@
+- op: create  # ffe9
+  at: '2026-03-10T21:41:50Z'  # ffe9
+  by: agent  # ffe9
+  actor: jgstern_agent  # ffe9
+  clock: 1  # ffe9
+  nonce: ffe9  # ffe9
+  data:  # ffe9
+    kind: invariant  # ffe9
+    title: "Slice BFS does not traverse event_publishes edges"  # ffe9
+    status: violated  # ffe9
+    priority: 1  # ffe9
+    parent:  # ffe9
+    tags: []  # ffe9
+    before: []  # ffe9
+    duplicate_of: []  # ffe9
+    not_duplicate_of: []  # ffe9
+    pr_ref:  # ffe9
+    description: ""  # ffe9
+    fields:  # ffe9
+      statement: "Event edges detected in hg.json must be traversable during slice BFS so that event-driven refactoring analysis captures subscriber dependencies"  # ffe9
+      root_cause: "Slice BFS traversal only follows call/references edges, not event_publishes edges"  # ffe9
