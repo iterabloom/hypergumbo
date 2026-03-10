@@ -32,6 +32,7 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | Route Handler | Route symbols → handler functions (Rails, Phoenix, Laravel, Express, Django) |
 | Type Hierarchy | Interface/abstract methods → concrete implementations (`dispatches_to` edges) |
 | DI Resolution | Interface methods → DI-bound implementation methods (`di_resolves` edges). Supports Guice, Spring, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python injector, Java SPI. Heuristic fallbacks for single-impl and naming conventions. |
+| React Component | JSX `<Component />` usage → component definitions (`renders_component` edges) |
 
 ## How Linkers Work
 
