@@ -18,3 +18,18 @@
     pr_ref:  # 6ab0
     description: "PlazaFlow Cohort 2: AFFiNE backend uses NestJS but module-to-provider registration edges are missing. Cannot see DI container wiring. Needs: detect @Module({providers: [...]}) decorators and create di_resolves edges."  # 6ab0
     fields: {}  # 6ab0
+- op: update  # 1f78
+  at: '2026-03-10T13:09:27Z'  # 1f78
+  by: agent  # 1f78
+  actor: jgstern_agent  # 1f78
+  clock: 2  # 1f78
+  nonce: 1f78  # 1f78
+  set:  # 1f78
+    status: done  # 1f78
+- op: discuss  # a5c7
+  at: '2026-03-10T13:09:27Z'  # a5c7
+  by: agent  # a5c7
+  actor: jgstern_agent  # a5c7
+  clock: 3  # a5c7
+  nonce: a5c7  # a5c7
+  message: "NestJS @Module provider/controller detection implemented in DI resolution linker. Creates di_registers edges. PR pending."  # a5c7

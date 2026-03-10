@@ -53,3 +53,26 @@
   clock: 6  # 087b
   nonce: 087b  # 087b
   message: "Acknowledged. Will implement Option 2: keep Display/From/Error in blocklist for non-error types, but allow implements edges when the implementing type is an error type. Will tackle after completing P2 hard items (wasm_bindgen, React, Electron IPC)."  # 087b
+- op: update  # f149
+  at: '2026-03-10T12:28:13Z'  # f149
+  by: agent  # f149
+  actor: jgstern_agent  # f149
+  clock: 7  # f149
+  nonce: f149  # f149
+  set:  # f149
+    status: in_progress  # f149
+- op: update  # 2562
+  at: '2026-03-10T12:46:53Z'  # 2562
+  by: agent  # 2562
+  actor: jgstern_agent  # 2562
+  clock: 8  # 2562
+  nonce: '2562'  # 2562
+  set:  # 2562
+    status: done  # 2562
+- op: discuss  # 837f
+  at: '2026-03-10T12:46:53Z'  # 837f
+  by: agent  # 837f
+  actor: jgstern_agent  # 837f
+  clock: 9  # 837f
+  nonce: 837f  # 837f
+  message: "Implemented Option 2: Display/From/Error/Default allowed through std trait blocklist for error types (names ending with Error/Err). Non-error types still suppressed."  # 837f
