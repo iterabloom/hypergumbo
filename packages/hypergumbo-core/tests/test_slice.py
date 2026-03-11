@@ -2623,3 +2623,236 @@ class TestSliceNodeDepths:
         assert result.node_depths[cls.id] == 0
         assert result.node_depths[method.id] == 0
         assert result.node_depths[callee.id] == 1
+
+
+class TestPassThroughSyntheticNodes:
+    """Tests for pass-through filtering of synthetic routing nodes.
+
+    Synthetic nodes like event_publisher and event_subscriber are created by
+    linkers to represent IPC channels. They are useful for traversal (connecting
+    producers to consumers) but inflate slice output with nodes that don't
+    correspond to real code the developer can read or modify.
+
+    The pass_through_kinds parameter controls which node kinds are traversed
+    through during BFS but excluded from the final SliceResult.node_ids.
+    """
+
+    def test_event_publisher_excluded_from_node_ids(self) -> None:
+        """event_publisher nodes are traversed but not in output.
+
+        Uses the real edge pattern from the event sourcing linker:
+        enclosing --(uses)--> event_publisher --(event_publishes)-->
+        event_subscriber --(event_subscribes)--> handler
+        """
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # Handler should be reachable through the synthetic nodes
+        assert handler.id in result.node_ids
+        # Synthetic nodes should NOT be in node_ids
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+        # Entry node should still be there
+        assert func_a.id in result.node_ids
+
+    def test_pass_through_still_traverses(self) -> None:
+        """Nodes behind synthetic routing are reachable despite filtering."""
+        producer = make_symbol("send_event", path="src/producer.py")
+        pub = make_symbol(
+            "event:user.signup", path="src/producer.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:user.signup", path="src/consumer.py",
+            kind="event_subscriber", start_line=1,
+        )
+        consumer = make_symbol("handle_signup", path="src/consumer.py", start_line=5)
+        downstream = make_symbol("send_welcome", path="src/consumer.py", start_line=15)
+
+        edges = [
+            make_edge(producer, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, consumer, edge_type="event_subscribes"),
+            make_edge(consumer, downstream, edge_type="calls"),
+        ]
+
+        query = SliceQuery(entrypoint="send_event", max_hops=5)
+        result = slice_graph(
+            [producer, pub, sub, consumer, downstream], edges, query,
+        )
+
+        # Both real consumer nodes reachable
+        assert consumer.id in result.node_ids
+        assert downstream.id in result.node_ids
+        # Synthetic nodes filtered out
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+
+    def test_edges_to_synthetic_nodes_excluded(self) -> None:
+        """Edges referencing filtered synthetic nodes are excluded."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        uses_edge = make_edge(func_a, pub, edge_type="uses")
+        publishes_edge = make_edge(pub, sub, edge_type="event_publishes")
+        subscribes_edge = make_edge(sub, handler, edge_type="event_subscribes")
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph(
+            [func_a, pub, sub, handler],
+            [uses_edge, publishes_edge, subscribes_edge],
+            query,
+        )
+
+        # Edges touching synthetic nodes should not be in edge_ids
+        assert uses_edge.id not in result.edge_ids
+        assert publishes_edge.id not in result.edge_ids
+        assert subscribes_edge.id not in result.edge_ids
+
+    def test_pass_through_kinds_empty_keeps_all(self) -> None:
+        """When pass_through_kinds is empty, synthetic nodes stay in output."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(
+            entrypoint="emit_order", max_hops=5,
+            pass_through_kinds=frozenset(),
+        )
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # With empty pass_through_kinds, synthetic nodes ARE included
+        assert pub.id in result.node_ids
+        assert sub.id in result.node_ids
+        assert handler.id in result.node_ids
+
+    def test_pass_through_in_reverse_slice(self) -> None:
+        """Reverse slice also filters pass-through synthetic nodes."""
+        producer = make_symbol("send_event", path="src/producer.py")
+        pub = make_symbol(
+            "event:user.signup", path="src/producer.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:user.signup", path="src/consumer.py",
+            kind="event_subscriber", start_line=1,
+        )
+        consumer = make_symbol("handle_signup", path="src/consumer.py", start_line=5)
+
+        edges = [
+            make_edge(producer, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, consumer, edge_type="event_subscribes"),
+        ]
+
+        # Reverse from consumer: should find producer through synthetic nodes
+        query = SliceQuery(
+            entrypoint="handle_signup", max_hops=5, reverse=True,
+        )
+        result = slice_graph([producer, pub, sub, consumer], edges, query)
+
+        assert producer.id in result.node_ids
+        assert consumer.id in result.node_ids
+        # Synthetic nodes filtered
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+
+    def test_pass_through_node_depths_excluded(self) -> None:
+        """Filtered synthetic nodes should not appear in node_depths."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # Synthetic nodes should not be in node_depths
+        assert pub.id not in result.node_depths
+        assert sub.id not in result.node_depths
+        # Handler should have a depth (it's reachable)
+        assert handler.id in result.node_depths
+
+    def test_custom_pass_through_kinds(self) -> None:
+        """Custom pass_through_kinds can include additional synthetic types."""
+        func_a = make_symbol("call_grpc", path="src/client.py")
+        stub = make_symbol(
+            "grpc:OrderService", path="src/client.py",
+            kind="grpc_stub", start_line=10,
+        )
+        server = make_symbol(
+            "grpc:OrderService", path="src/server.py",
+            kind="grpc_server", start_line=1,
+        )
+        impl = make_symbol("create_order", path="src/server.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, stub, edge_type="uses"),
+            make_edge(stub, server, edge_type="grpc"),
+            make_edge(server, impl, edge_type="implements_rpc"),
+        ]
+
+        # Include grpc_stub and grpc_server in pass-through
+        query = SliceQuery(
+            entrypoint="call_grpc", max_hops=5,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+                "grpc_stub", "grpc_server",
+            }),
+        )
+        result = slice_graph([func_a, stub, server, impl], edges, query)
+
+        assert func_a.id in result.node_ids
+        assert impl.id in result.node_ids
+        assert stub.id not in result.node_ids
+        assert server.id not in result.node_ids

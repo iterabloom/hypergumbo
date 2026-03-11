@@ -147,6 +147,13 @@ class SliceQuery:
                         output. This produces a call-graph-only slice, removing
                         file-level package dependencies that can constitute 60%+
                         of edges in large codebases. Default False.
+        pass_through_kinds: Node kinds to traverse through during BFS but
+                           exclude from the output node_ids. These are typically
+                           synthetic routing nodes (event_publisher, event_subscriber)
+                           that connect real code through IPC channels. The BFS
+                           still follows their edges, but the final slice only
+                           contains real code nodes. Edges touching filtered nodes
+                           are also excluded. Default: {event_publisher, event_subscriber}.
     """
 
     entrypoint: str
@@ -161,6 +168,9 @@ class SliceQuery:
     language: str | None = None
     hub_threshold: int | None = 50
     exclude_imports: bool = False
+    pass_through_kinds: frozenset[str] = frozenset({
+        "event_publisher", "event_subscriber",
+    })
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -181,6 +191,8 @@ class SliceQuery:
             result["hub_threshold"] = self.hub_threshold
         if self.exclude_imports:
             result["exclude_imports"] = True
+        if self.pass_through_kinds:
+            result["pass_through_kinds"] = sorted(self.pass_through_kinds)
         return result
 
 
@@ -555,6 +567,29 @@ def slice_graph(
                 # unless imports excluded)
                 if not query.reverse and not query.exclude_imports:
                     add_file_imports(next_node.path)
+
+    # Filter pass-through synthetic nodes: they were traversed during BFS
+    # but should not appear in the output (they represent IPC channels,
+    # not real code).  Edges touching filtered nodes are also removed.
+    if query.pass_through_kinds:
+        pass_through_ids = {
+            nid for nid in visited_nodes
+            if node_by_id.get(nid) is not None
+            and node_by_id[nid].kind in query.pass_through_kinds
+        }
+        if pass_through_ids:
+            visited_nodes -= pass_through_ids
+            # Build edge lookup for fast membership check
+            edge_by_id = {e.id: e for e in edges}
+            visited_edges = {
+                eid for eid in visited_edges
+                if eid in edge_by_id
+                and edge_by_id[eid].src not in pass_through_ids
+                and edge_by_id[eid].dst not in pass_through_ids
+            }
+            for nid in pass_through_ids:
+                node_depths.pop(nid, None)
+                node_tiers.pop(nid, None)
 
     return SliceResult(
         entry_nodes=[n.id for n in entry_nodes],
