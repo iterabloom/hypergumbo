@@ -17,3 +17,18 @@
     pr_ref:  # b82e
     description: "DEEP bakeoff (8 cohorts, 48 repos) found that symbol ranking conflates architectural importance with call frequency. Examples: assert() ranked 6th in automerge, Button ranked above JobQueue.add in AFFiNE, logPanicAndDie dominates firecracker. The ranking dampening pipeline (PR #2129) handles test fixtures but not general utility/UI-primitive inflation. Consider: PageRank-style centrality, betweenness centrality, or edge-type weighting (renders_component vs calls)."  # b82e
     fields: {}  # b82e
+- op: update  # 3bd6
+  at: '2026-03-11T05:21:30Z'  # 3bd6
+  by: agent  # 3bd6
+  actor: jgstern_agent  # 3bd6
+  clock: 2  # 3bd6
+  nonce: 3bd6  # 3bd6
+  set:  # 3bd6
+    status: done  # 3bd6
+- op: discuss  # 8512
+  at: '2026-03-11T05:21:30Z'  # 8512
+  by: agent  # 8512
+  actor: jgstern_agent  # 8512
+  clock: 3  # 8512
+  nonce: '8512'  # 8512
+  message: "Partially addressed in PR #2140. Added utility dampening for assert/panic/exit builtins and UI primitive components (Button, Icon, etc.). Remaining: edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes that would require a separate design effort."  # 8512

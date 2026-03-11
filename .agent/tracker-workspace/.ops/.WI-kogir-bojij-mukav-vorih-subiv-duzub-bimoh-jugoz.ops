@@ -17,3 +17,18 @@
     pr_ref:  # e540
     description: "DEEP bakeoff (cohort 1: Cap, spacedrive, yaak, readest) found that while Rust #[tauri::command] handlers are detected (135 in Cap), the TypeScript side (invoke/TAURI_INVOKE calls) produces nearly zero ipc_calls edges. Cap has 201 TS call sites but only 1 IPC edge. The tauri_ipc linker exists but is not matching the generated tauri-specta bindings pattern. Need to investigate why the linker fails for generated binding files."  # e540
     fields: {}  # e540
+- op: update  # 8511
+  at: '2026-03-11T05:02:06Z'  # 8511
+  by: agent  # 8511
+  actor: jgstern_agent  # 8511
+  clock: 2  # 8511
+  nonce: '8511'  # 8511
+  set:  # 8511
+    status: done  # 8511
+- op: discuss  # 0c9d
+  at: '2026-03-11T05:02:06Z'  # 0c9d
+  by: agent  # 0c9d
+  actor: jgstern_agent  # 0c9d
+  clock: 3  # 0c9d
+  nonce: 0c9d  # 0c9d
+  message: "Fixed in PR #2139. Expanded invoke regex to match TAURI_INVOKE and __TAURI_INVOKE__ patterns from tauri-specta generated bindings. Remaining gap: wrapper functions (commands.takeScreenshot()) that don't contain literal command names — these require call-graph tracing through generated bindings, a fundamentally harder problem."  # 0c9d

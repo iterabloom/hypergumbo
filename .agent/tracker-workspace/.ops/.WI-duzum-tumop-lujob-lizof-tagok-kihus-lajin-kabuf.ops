@@ -62,3 +62,25 @@
   nonce: '2e63'  # 2e63
   set:  # 2e63
     status: todo_soft  # 2e63
+- op: update  # de05
+  at: '2026-03-11T05:02:26Z'  # de05
+  by: agent  # de05
+  actor: jgstern_agent  # de05
+  clock: 8  # de05
+  nonce: de05  # de05
+  set:  # de05
+    status: done  # de05
+- op: discuss  # 94b4
+  at: '2026-03-11T05:02:26Z'  # 94b4
+  by: agent  # 94b4
+  actor: jgstern_agent  # 94b4
+  clock: 9  # 94b4
+  nonce: 94b4  # 94b4
+  message: "Sub-items all completed: WI-bajir (Tauri IPC), WI-dovas (NAPI), WI-fikab (wasm_bindgen), WI-mihul (gRPC/protobuf), WI-nudok (Proto-to-Go), WI-kogir (Tauri specta). These cover the top cross-language linking targets identified in the PlazaFlow bakeoff. Remaining gap (generic REST API path matching) tracked separately in WI-zulok."  # 94b4
+- op: discuss  # 0494
+  at: '2026-03-11T05:02:30Z'  # 0494
+  by: agent  # 0494
+  actor: jgstern_agent  # 0494
+  clock: 10  # 0494
+  nonce: '0494'  # 0494
+  message: "Confirmed: all sub-items exist and are done. wasm_bindgen (WI-fikab), Tauri IPC (WI-bajir + WI-kogir for specta patterns), NAPI (WI-dovas), gRPC/protobuf (WI-mihul + WI-nudok). Marking done. Generic REST API path matching is a separate, harder problem tracked in WI-zulok."  # 0494
