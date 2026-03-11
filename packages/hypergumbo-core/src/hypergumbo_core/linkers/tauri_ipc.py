@@ -15,10 +15,14 @@ Two-phase detection:
    - ``rename_all = "camelCase"``: converts ``get_user_data`` → ``getUserData``
    - ``rename = "customName"``: explicit override
 
-2. **TS/JS side**: Scans source files for ``invoke('command_name')`` patterns.
-   Handles single-quoted, double-quoted, backtick-quoted, and TypeScript generic
-   forms (``invoke<T>('cmd')``). Also handles the Tauri plugin invoke pattern
-   ``invoke('plugin:name|command')`` by extracting the command portion after ``|``.
+2. **TS/JS side**: Scans source files for invoke patterns with literal command
+   names. Handles three invoke function forms:
+   - ``invoke('cmd')`` — standard ``@tauri-apps/api`` import
+   - ``TAURI_INVOKE("cmd")`` — tauri-specta generated bindings
+   - ``__TAURI_INVOKE__('cmd')`` — older specta / internal Tauri API
+   All forms support single/double/backtick quotes, TypeScript generics
+   (``invoke<T>('cmd')``), and the Tauri plugin pattern
+   ``invoke('plugin:name|command')`` (extracts command after ``|``).
 
 After building both maps, the linker creates ipc_calls edges from synthetic
 TS/JS-side sources to the matching Rust command functions.
@@ -51,11 +55,19 @@ from .registry import (
 
 PASS_ID = make_pass_id("tauri-ipc-linker")
 
-# Matches invoke('command'), invoke("command"), invoke(`command`),
-# invoke<Type>('command'), invoke<A, B>('command'), etc.
+# Matches invoke(), TAURI_INVOKE(), and __TAURI_INVOKE__() with string
+# literal command names. Also handles TypeScript generics like invoke<T>().
+#
+# Matched patterns:
+#   invoke('command')              - standard Tauri API
+#   invoke<Type>('command')        - TypeScript generic form
+#   TAURI_INVOKE("command")        - tauri-specta generated bindings
+#   TAURI_INVOKE<T>("command")     - tauri-specta with generics
+#   __TAURI_INVOKE__('command')    - older specta / internal Tauri API
+#
 # Group 1 captures the command name string.
 _INVOKE_PATTERN = re.compile(
-    r"""invoke\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
+    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
 )
 
 
