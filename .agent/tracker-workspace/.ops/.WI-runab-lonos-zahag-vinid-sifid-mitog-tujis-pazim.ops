@@ -54,3 +54,18 @@
   clock: 6  # 2eec
   nonce: 2eec  # 2eec
   message: "Validation on osx repo: only 1 abi_call edge found. Root cause: Solidity functions have qualified names (e.g., 'PermissionManager._grant') while TS calls use unqualified names ('contract.applyMultiTargetPermissions'). The linker matches by exact name, so qualified Solidity names don't match unqualified TS calls. Fix: strip contract prefix from Solidity function names when building the match map."  # 2eec
+- op: update  # 6b67
+  at: '2026-03-11T23:40:45Z'  # 6b67
+  by: agent  # 6b67
+  actor: jgstern_agent  # 6b67
+  clock: 7  # 6b67
+  nonce: 6b67  # 6b67
+  set:  # 6b67
+    status: todo_soft  # 6b67
+- op: discuss  # d41a
+  at: '2026-03-11T23:40:45Z'  # d41a
+  by: agent  # d41a
+  actor: jgstern_agent  # d41a
+  clock: 8  # d41a
+  nonce: d41a  # d41a
+  message: "Reopened: linker works for simple names but fails on qualified Solidity names (ContractName.function). Need to strip contract prefix for matching."  # d41a
