@@ -39,3 +39,10 @@
   clock: 4  # 2bb9
   nonce: 2bb9  # 2bb9
   message: "how big of a deal is the \"wrapper functions (commands.takeScreenshot()) that don't contain literal command names\" gap? and might there be analogous issues in frameworks other than Tauri or languages other than Rust?"  # 2bb9
+- op: discuss  # 8892
+  at: '2026-03-11T18:15:50Z'  # 8892
+  by: agent  # 8892
+  actor: jgstern_agent  # 8892
+  clock: 5  # 8892
+  nonce: '8892'  # 8892
+  message: "Impact: Moderate. 38% of commands (122/323) across 4 Tauri repos were unreachable through literal invoke matching. Now fixed in PR #2165 (specta wrapper resolution). Analogous issues exist in Electron IPC (contextBridge wrappers), GraphQL codegen (useGetUsersQuery hooks), gRPC generated clients, and wasm_bindgen facade modules."  # 8892

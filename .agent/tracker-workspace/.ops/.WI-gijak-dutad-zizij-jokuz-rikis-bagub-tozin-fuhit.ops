@@ -48,3 +48,10 @@
   clock: 5  # 4694
   nonce: '4694'  # 4694
   message: "you wrote \"edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes\". Please search through all of the tracker items to find whether there are other items (marked done or any other Status) that would benefit or would have benefited from such \"larger architectural changes\". Also search through the lab notebook to investigate this question. when querying the tracker, be sure to only use the tracker tool and NOT grep through the raw ops files. (doing the latter will lead only to confusion and misery.) If you find the tracker tool awkward or unweildy for the sorts of queries you wish to run, then add new tracker items to expand the query capabilities of tracker, and mark them with a status of needs_human_review, and designate their `before` fields as the present item."  # 4694
+- op: discuss  # a0d7
+  at: '2026-03-11T18:15:50Z'  # a0d7
+  by: agent  # a0d7
+  actor: jgstern_agent  # a0d7
+  clock: 6  # a0d7
+  nonce: a0d7  # a0d7
+  message: "18 tracker items would benefit from edge-type weighting or PageRank/betweenness. Key items: INV-mosag (logging dampening), INV-mahap (entrypoint ranking), WI-luvaj (method collision), WI-kabom (dispatches_to N×N), WI-tukod (derive methods), WI-zojis (clone 6849 edges), WI-dugaf (Into/From), INV-posun (compact mode), WI-digir (rslice seeds), WI-nuraf (symbol ranking), WI-sivun (hub pruning). Lab notebook shows 8+ separate dampening heuristics in ranking.py — a unified PageRank/edge-type-weighting solution would subsume many. Created WI-sisaj (needs_human_review) for tracker search capability."  # a0d7
