@@ -457,6 +457,21 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # Catches: DummyNetworkAdapter, MockClient, FakeServer, StubRepository.
     # Case-insensitive prefix, but suffix must be uppercase (to exclude "Mockingbird").
     re.compile(r"^(?:[Dd]ummy|[Mm]ock|[Ff]ake|[Ss]tub|[Ss]py)[A-Z_]"),
+    # Assertion/panic/abort/exit builtins: control-flow primitives called
+    # everywhere but not domain architecture. Bakeoff: assert() ranked 6th
+    # in automerge, logPanicAndDie dominated firecracker.
+    # Catches: assert, assertEqual, assert_eq, panic, abort, exit, die, unreachable,
+    #          logPanicAndDie, panicOnError (compound camelCase with ^log prefix).
+    # Avoids: PanicButton, ExitSurvey, aborted (domain terms).
+    re.compile(r"(?i)^assert(?:_|[A-Z]|$)"),  # assert, assertEqual, assert_eq
+    re.compile(r"^(?:panic|abort|exit|die|unreachable)$", re.IGNORECASE),
+    # camelCase log-prefixed compound names: logPanicAndDie, logAndExit, logFatal.
+    # The ^log_ pattern catches snake_case (log_error) but not camelCase (logError).
+    re.compile(r"^log[A-Z]"),  # logPanicAndDie, logAndExit, logError
+    # UI primitive components: leaf design-system elements rendered everywhere.
+    # Bakeoff: Button ranked above JobQueue.add in AFFiNE. These are plumbing.
+    # Exact match only — compound names like LoginButton are domain-specific.
+    re.compile(r"^(?:Button|Icon|Input|Checkbox|Select|Tooltip|Spinner|Modal|Avatar|Badge|Divider|Label|Switch|Slider|Radio|Popover|Drawer|Skeleton|Progress|Tag|Chip|Snackbar|Toast)$"),
 ]
 
 

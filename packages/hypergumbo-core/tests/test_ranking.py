@@ -2401,6 +2401,70 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("stubborn")  # Lowercase, no uppercase after
         assert not is_utility_symbol("Factory")  # Not a test double prefix
 
+    def test_assertion_panic_abort_names(self):
+        """Assertion/panic/abort builtins are utility symbols.
+
+        DEEP bakeoff finding: assert() ranked 6th in automerge despite being
+        a language built-in called everywhere. logPanicAndDie dominated
+        firecracker rankings (caught by ^log_ pattern). These are
+        control-flow primitives, not domain architecture.
+        """
+        # Assertion builtins
+        assert is_utility_symbol("assert")
+        assert is_utility_symbol("Assert")
+        assert is_utility_symbol("assertEqual")
+        assert is_utility_symbol("assertNotNil")
+        assert is_utility_symbol("assert_eq")
+        # Panic/abort/exit (exact match only)
+        assert is_utility_symbol("panic")
+        assert is_utility_symbol("Panic")
+        assert is_utility_symbol("abort")
+        assert is_utility_symbol("exit")
+        assert is_utility_symbol("Exit")
+        assert is_utility_symbol("die")
+        assert is_utility_symbol("Die")
+        # Unreachable markers
+        assert is_utility_symbol("unreachable")
+        assert is_utility_symbol("Unreachable")
+        # Compound names caught by existing patterns (^log_)
+        assert is_utility_symbol("logPanicAndDie")
+
+    def test_assertion_panic_false_positives(self):
+        """Domain terms should not be caught by assertion/panic patterns."""
+        assert not is_utility_symbol("PanicButton")  # Domain concept
+        assert not is_utility_symbol("ExitSurvey")  # Domain concept
+        assert not is_utility_symbol("aborted")  # Past tense, not the function
+        assert not is_utility_symbol("exitCode")  # Property, not the function
+
+    def test_ui_primitive_component_names(self):
+        """UI primitive components are utility symbols.
+
+        DEEP bakeoff finding: Button ranked above JobQueue.add in AFFiNE.
+        Leaf UI components like Button, Input, Icon are rendered everywhere
+        but are design-system plumbing, not application architecture.
+        """
+        assert is_utility_symbol("Button")
+        assert is_utility_symbol("Icon")
+        assert is_utility_symbol("Input")
+        assert is_utility_symbol("Checkbox")
+        assert is_utility_symbol("Select")
+        assert is_utility_symbol("Tooltip")
+        assert is_utility_symbol("Spinner")
+        assert is_utility_symbol("Modal")
+        assert is_utility_symbol("Avatar")
+        assert is_utility_symbol("Badge")
+        assert is_utility_symbol("Divider")
+
+    def test_ui_primitive_false_positives(self):
+        """Compound UI component names should NOT be caught."""
+        assert not is_utility_symbol("LoginButton")  # Domain-specific
+        assert not is_utility_symbol("UserAvatar")  # Domain-specific
+        assert not is_utility_symbol("CheckboxGroup")  # Composite, not primitive
+        assert not is_utility_symbol("ModalManager")  # Controller, not leaf
+        assert not is_utility_symbol("InputValidator")  # Logic, not UI
+        assert not is_utility_symbol("IconButton")  # Composite
+        assert not is_utility_symbol("Selector")  # Not same as Select
+
 
 class TestIsHelperFile:
     """Tests for _is_helper_file function."""
