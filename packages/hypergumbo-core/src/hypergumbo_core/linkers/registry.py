@@ -631,6 +631,7 @@ SYNTHETIC_KINDS = frozenset({
     "db_query",
     "http_client",
     "subprocess_call",
+    "abi_call",
 })
 
 
