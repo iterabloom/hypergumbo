@@ -142,9 +142,11 @@ PYTHON_GENERATED_STUB_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# Go gRPC patterns
+# Go gRPC/ttrpc patterns
+# Matches both RegisterXxxServer (standard gRPC) and RegisterXxxService (ttrpc).
+# ttrpc is a lightweight gRPC alternative used by containerd, kata-containers, etc.
 GO_REGISTER_SERVER_PATTERN = re.compile(
-    r"Register(\w+)Server\s*\(",
+    r"Register(\w+)(?:Server|Service)\s*\(",
     re.MULTILINE,
 )
 GO_NEW_CLIENT_PATTERN = re.compile(
@@ -507,6 +509,27 @@ def _link_go_methods_to_rpc_routes(
         except OSError:  # pragma: no cover
             continue
         struct_to_service.update(_find_struct_unimplemented_embeddings(content))
+
+    # Also check Go struct symbols for ttrpc-style interface implementations.
+    # ttrpc generates interfaces (e.g., AgentServiceService, HealthService) that
+    # Go structs implement without UnimplementedXxxServer embedding. The Go
+    # analyzer records these in base_classes metadata.
+    for sym in existing_symbols:
+        if sym.kind != "struct" or sym.language != "go":
+            continue
+        if sym.name in struct_to_service:
+            continue  # already mapped via Unimplemented embedding
+        base_classes = (sym.meta or {}).get("base_classes", [])
+        for base in base_classes:
+            # Match ttrpc patterns: XxxService or XxxServiceService
+            if base.endswith("Service") and not base.startswith("Unimplemented"):
+                # Extract service name: "AgentServiceService" → "AgentService",
+                # "HealthService" → "Health"
+                if base.endswith("ServiceService"):
+                    service_name = base[:-len("Service")]
+                else:
+                    service_name = base[:-len("Service")]
+                struct_to_service[sym.name] = service_name
 
     if not struct_to_service:
         return edges

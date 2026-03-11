@@ -169,6 +169,229 @@ func main() {
         assert len(symbols) >= 1
 
 
+class TestTtrpcPatterns:
+    """Tests for detecting ttrpc (containerd/ttrpc) patterns in Go code.
+
+    ttrpc is a lightweight alternative to gRPC used by kata-containers,
+    containerd, and other container runtimes. It generates RegisterXxxService
+    functions (not RegisterXxxServer) and uses interface-based implementation
+    instead of UnimplementedXxxServer embedding.
+    """
+
+    def test_detects_ttrpc_service_registration(self, tmp_path: Path) -> None:
+        """Detects Go ttrpc RegisterXxxService calls."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        go_file = tmp_path / "agent_ttrpc.pb.go"
+        go_file.write_text(
+            "package grpc\n\n"
+            "func RegisterAgentServiceService(srv *ttrpc.Server, svc AgentServiceService) {\n"
+            '    srv.RegisterService("grpc.AgentService", &ttrpc.ServiceDesc{})\n'
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        assert any("AgentService" in s.name for s in server_symbols), (
+            f"Expected AgentService server symbol, got: {[s.name for s in server_symbols]}"
+        )
+
+    def test_ttrpc_implements_rpc_via_interface(self, tmp_path: Path) -> None:
+        """ttrpc interface implementation creates implements_rpc edges."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "agent.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service AgentService {\n"
+            "    rpc CreateContainer(CreateContainerRequest) returns (Empty);\n"
+            "    rpc StartContainer(StartContainerRequest) returns (Empty);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "agent_ttrpc.pb.go"
+        go_file.write_text(
+            "package grpc\n\n"
+            "func RegisterAgentServiceService(srv *ttrpc.Server, svc AgentServiceService) {\n"
+            '    srv.RegisterService("grpc.AgentService", &ttrpc.ServiceDesc{})\n'
+            "}\n"
+        )
+
+        # Simulate Go analyzer having extracted the implementing struct
+        go_method_syms = [
+            Symbol(
+                id=f"go:{tmp_path}/handler.go:10-12:agentHandler.CreateContainer:method",
+                name="agentHandler.CreateContainer",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "handler.go"),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/handler.go:14-16:agentHandler.StartContainer:method",
+                name="agentHandler.StartContainer",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "handler.go"),
+                span=Span(14, 16, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            # Struct symbol with ttrpc service interface in base_classes
+            Symbol(
+                id=f"go:{tmp_path}/handler.go:5-8:agentHandler:struct",
+                name="agentHandler",
+                kind="struct",
+                language="go",
+                path=str(tmp_path / "handler.go"),
+                span=Span(5, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+                meta={"base_classes": ["AgentServiceService"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 2
+        src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
+        assert src_methods == [
+            "agentHandler.CreateContainer",
+            "agentHandler.StartContainer",
+        ]
+
+    def test_detects_ttrpc_health_service(self, tmp_path: Path) -> None:
+        """Detects ttrpc RegisterHealthService pattern."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        go_file = tmp_path / "health_ttrpc.pb.go"
+        go_file.write_text(
+            "package grpc\n\n"
+            "func RegisterHealthService(srv *ttrpc.Server, svc HealthService) {\n"
+            '    srv.RegisterService("grpc.Health", &ttrpc.ServiceDesc{})\n'
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        assert any("Health" in s.name for s in server_symbols), (
+            f"Expected Health server symbol, got: {[s.name for s in server_symbols]}"
+        )
+
+    def test_ttrpc_health_interface_implements_rpc(self, tmp_path: Path) -> None:
+        """ttrpc HealthService interface (non-ServiceService suffix) creates edges."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "health.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service Health {\n"
+            "    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "health_ttrpc.pb.go"
+        go_file.write_text(
+            "package grpc\n\n"
+            "func RegisterHealthService(srv *ttrpc.Server, svc HealthService) {\n"
+            '    srv.RegisterService("grpc.Health", &ttrpc.ServiceDesc{})\n'
+            "}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{tmp_path}/mock.go:10-12:mockHealth.Check:method",
+                name="mockHealth.Check",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "mock.go"),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/mock.go:5-8:mockHealth:struct",
+                name="mockHealth",
+                kind="struct",
+                language="go",
+                path=str(tmp_path / "mock.go"),
+                span=Span(5, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+                meta={"base_classes": ["HealthService"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 1
+        assert "mockHealth.Check" in impl_edges[0].src
+
+    def test_ttrpc_skips_struct_already_mapped_via_unimplemented(self, tmp_path: Path) -> None:
+        """Struct with both Unimplemented embedding and ttrpc interface uses Unimplemented mapping."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "cache.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package cache;\n"
+            "service CacheService {\n"
+            "    rpc Config(Empty) returns (VMConfig);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type cacheServer struct {\n"
+            "    UnimplementedCacheServiceServer\n"
+            "}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{go_file}:7-9:cacheServer.Config:method",
+                name="cacheServer.Config",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(7, 9, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            # Struct has BOTH Unimplemented embedding (in source) and ttrpc-like interface
+            Symbol(
+                id=f"go:{go_file}:3-5:cacheServer:struct",
+                name="cacheServer",
+                kind="struct",
+                language="go",
+                path=str(go_file),
+                span=Span(3, 5, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+                meta={"base_classes": ["UnimplementedCacheServiceServer", "CacheServiceClient"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        # Should still create 1 edge via the Unimplemented path
+        assert len(impl_edges) == 1
+        assert "cacheServer.Config" in impl_edges[0].src
+
+
 class TestGrpcEdgeCreation:
     """Tests for edge creation linking clients to servers."""
 
