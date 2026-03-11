@@ -31,3 +31,25 @@
   clock: 3  # 0c93
   nonce: 0c93  # 0c93
   message: "when the script refuses to to things with out --force, it should use spicy language. Something like \"important NOTE: you are about to ERASE RESULTS OF A SCIENCE EXPERIMENT so unless you are REALLY FUCKING CERTAIN you know what your doing you should probably NOT use the force option\""  # 0c93
+- op: update  # 300b
+  at: '2026-03-11T04:44:57Z'  # 300b
+  by: agent  # 300b
+  actor: jgstern_agent  # 300b
+  clock: 4  # 300b
+  nonce: 300b  # 300b
+  set:  # 300b
+    status: done  # 300b
+- op: discuss  # 5dc5
+  at: '2026-03-11T04:44:57Z'  # 5dc5
+  by: agent  # 5dc5
+  actor: jgstern_agent  # 5dc5
+  clock: 5  # 5dc5
+  nonce: 5dc5  # 5dc5
+  message: "Fixed in PR #2137. init now creates new session by default; --resume for explicit reuse. Run warns against deleting outputs with strong language as requested."  # 5dc5
+- op: discuss  # e9e2
+  at: '2026-03-11T04:45:04Z'  # e9e2
+  by: agent  # e9e2
+  actor: jgstern_agent  # e9e2
+  clock: 6  # e9e2
+  nonce: e9e2  # e9e2
+  message: "Done in PR #2137. The warning now reads: 'IMPORTANT NOTE: If you are tempted to DELETE the existing output directory to force a re-run, STOP. You are about to ERASE RESULTS OF A SCIENCE EXPERIMENT. Unless you are REALLY CERTAIN you know what you'\\''re doing, create a new session instead. Bakeoff artifacts are DATA, not temp files — they exist for before/after comparison.' Also flipped the default: init now creates new sessions by default, with --resume for explicit reuse."  # e9e2

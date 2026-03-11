@@ -76,3 +76,10 @@
   clock: 9  # d6f0
   nonce: d6f0  # d6f0
   message: "please check whether any related work was done on this since your last message on this item?"  # d6f0
+- op: discuss  # 8d69
+  at: '2026-03-11T04:45:33Z'  # 8d69
+  by: agent  # 8d69
+  actor: jgstern_agent  # 8d69
+  clock: 10  # 8d69
+  nonce: 8d69  # 8d69
+  message: "Since last message: the plazaflow curriculum bakeoff completed (48 repos, 8 cohorts). Cohort 1 (Tauri apps: spacedrive, yaak, Cap, readest) and Cohort 8 (polyglot Rust+TS: loro, automerge, rolldown, swc) both exercised Rust heavily. Six fixes were merged (PRs #2123-#2129) including Tauri IPC entrypoint detection (PR #2128), but none addressed Rust method resolution on generic trait impl receivers specifically. The LLM assessments across these Rust-heavy repos scored mean ~55/100, with issues concentrated on cross-language linking (Tauri IPC TS→Rust edges) rather than intra-Rust method resolution. So the bakeoff data doesn't strongly push for escalating this item yet — the bigger wins came from cross-language edge improvements. Keeping at P4 pending further evidence."  # 8d69
