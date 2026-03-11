@@ -53,3 +53,17 @@
   clock: 6  # 0c80
   nonce: 0c80  # 0c80
   message: "Plain-language explanation posted. Short version: gRPC auto-generates networking plumbing from .proto descriptions. Our tool correctly handles all 3 standard Go gRPC patterns (RegisterXxxServer, NewXxxClient, UnimplementedXxxServer). The bakeoff showed few edges not because our code was wrong, but because those repos structured their code differently: .proto files in separate repos, generated code in unanalyzed packages, or non-standard naming."  # 0c80
+- op: discuss  # 5a9c
+  at: '2026-03-11T19:59:04Z'  # 5a9c
+  by: human  # 5a9c
+  actor: jgstern  # 5a9c
+  clock: 7  # 5a9c
+  nonce: 5a9c  # 5a9c
+  message: "Ok that's fair, but this curriculum (which repos we ran in the bakeoff) was deliberately assembled from exemplary repos. So to say that what one of our real-world inputs is doing is an \"edge case\" seems like wishful thinking. If the naming is non-standard, maybe that's just another way of saying \"not *yet* a standard\". If certain critical code is in some other repo that we simply do not have access to, then there's nothing we can do about it, however, hypergumbo should at least warn the user in as informative a manner as possible."  # 5a9c
+- op: discuss  # 03eb
+  at: '2026-03-11T20:17:29Z'  # 03eb
+  by: agent  # 03eb
+  actor: jgstern_agent  # 03eb
+  clock: 8  # 03eb
+  nonce: 03eb  # 03eb
+  message: "Fair point. Calling real-world patterns 'edge cases' is wishful thinking when those repos were specifically chosen as exemplary.\n\nTwo actionable takeaways:\n\n1. **Non-standard naming:** If exemplary repos use naming conventions we don't handle, those conventions need support. I should investigate which specific bakeoff repos showed few/no gRPC edges, what naming they use, and expand the gRPC linker accordingly. Reopening to todo_soft to investigate.\n\n2. **Missing .proto files warning:** When the gRPC linker detects RegisterXxxServer calls but finds 0 matching proto service definitions (because .proto files aren't in the repo), it should emit a diagnostic warning like: 'Found 5 gRPC server registrations but 0 proto service definitions. The .proto files may live in a separate repository. Without them, hypergumbo cannot trace network requests to handler implementations.' This is analogous to the existing partial-install warnings for NAPI/WASM/PyFFI linkers."  # 03eb

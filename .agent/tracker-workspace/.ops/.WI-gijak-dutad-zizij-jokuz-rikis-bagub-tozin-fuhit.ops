@@ -55,3 +55,17 @@
   clock: 6  # a0d7
   nonce: a0d7  # a0d7
   message: "18 tracker items would benefit from edge-type weighting or PageRank/betweenness. Key items: INV-mosag (logging dampening), INV-mahap (entrypoint ranking), WI-luvaj (method collision), WI-kabom (dispatches_to N×N), WI-tukod (derive methods), WI-zojis (clone 6849 edges), WI-dugaf (Into/From), INV-posun (compact mode), WI-digir (rslice seeds), WI-nuraf (symbol ranking), WI-sivun (hub pruning). Lab notebook shows 8+ separate dampening heuristics in ranking.py — a unified PageRank/edge-type-weighting solution would subsume many. Created WI-sisaj (needs_human_review) for tracker search capability."  # a0d7
+- op: discuss  # c926
+  at: '2026-03-11T19:46:30Z'  # c926
+  by: human  # c926
+  actor: jgstern  # c926
+  clock: 7  # c926
+  nonce: c926  # c926
+  message: "does that imply that if we did implement a unified PageRank/edge-type-weighting solution, that we would also need to disable 8+ preexisting dampening heuristics in ranking.py?"  # c926
+- op: discuss  # c9ff
+  at: '2026-03-11T19:51:27Z'  # c9ff
+  by: agent  # c9ff
+  actor: jgstern_agent  # c9ff
+  clock: 8  # c9ff
+  nonce: c9ff  # c9ff
+  message: "Re: would we disable 8+ existing heuristics? No — only 3 of the 15 ranking heuristics would be subsumed by edge-type weighting:\n\n1. **Edge type filtering** (imports excluded, extends preserved) — hand-coded edge weights; directly replaceable with a weight map\n2. **Edge confidence filtering** (min_confidence threshold) — workaround for unreliable receiver_call edges; fixed by explicit per-type weights\n3. **Common method name dampening** (>10 symbols with same name) — symptom of unweighted low-confidence inferred edges\n\nThe other 12 heuristics are ORTHOGONAL and would remain:\n- **Scope topology**: within-file dampening (0.3x), per-file in-degree capping (max 5 per source)\n- **Node semantics**: utility symbol names (Logger, Button), test file dampening, noise paths (migrations), helper file/dir dampening, supply chain tier weighting\n- **Structural normalization**: hub saturation (in-degree > 100), out-degree connector boost, trivial sink dampening (out≤1 + LoC≤5)\n- **Interface polymorphism**: sibling implementation dampening (>6 same-name methods)\n- **Aggregation**: file density scoring (sum-of-top-K)\n\nThese address concerns PageRank/edge-weights can't: where a symbol lives (test? migration? utils?), what it's named (Logger? Button?), its code size, its role (connector vs sink), and interface polymorphism. Hub saturation is PARTIAL — edge weights would reduce some hub in-degree, but the log-saturation above 100 would still be needed as a safety net.\n\nBottom line: implementing edge-type weighting would replace 3 heuristics with a weight lookup table and simplify the code, but 12 heuristics stay. The 8+ dampening patches I mentioned earlier referred to incremental additions across multiple PRs — the actual conceptual categories are fewer, but the implementation has grown organically."  # c9ff
