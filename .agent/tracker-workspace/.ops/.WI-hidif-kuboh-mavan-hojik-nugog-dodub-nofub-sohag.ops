@@ -1,0 +1,19 @@
+- op: create  # 4fe5
+  at: '2026-03-11T02:18:03Z'  # 4fe5
+  by: agent  # 4fe5
+  actor: jgstern_agent  # 4fe5
+  clock: 1  # 4fe5
+  nonce: 4fe5  # 4fe5
+  data:  # 4fe5
+    kind: work_item  # 4fe5
+    title: "Bakeoff init should default to new session, not reuse existing — prevents accidental data destruction"  # 4fe5
+    status: todo_hard  # 4fe5
+    priority: 1  # 4fe5
+    parent:  # 4fe5
+    tags: []  # 4fe5
+    before: []  # 4fe5
+    duplicate_of: []  # 4fe5
+    not_duplicate_of: []  # 4fe5
+    pr_ref:  # 4fe5
+    description: "When bakeoff-features init is called with the same pool, it silently reuses the existing session. This led to rm -rf of completed bakeoff outputs when trying to re-run with code fixes. Fixes needed: (1) init should create a new timestamped session by default, not reuse; (2) add --resume flag for explicit reuse; (3) when reusing, warn about existing outputs and suggest safe alternatives; (4) run --all should refuse to overwrite without --force."  # 4fe5
+    fields: {}  # 4fe5

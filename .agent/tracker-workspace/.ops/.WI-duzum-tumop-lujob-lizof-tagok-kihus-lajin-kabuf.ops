@@ -47,3 +47,18 @@
   clock: 5  # 4274
   nonce: '4274'  # 4274
   message: "PlazaFlow bakeoff confirms cross-language edges as #1 gap across 48 repos. Top targets: wasm_bindgen, Tauri IPC, NAPI. Each needs its own focused linker."  # 4274
+- op: discuss  # 0527
+  at: '2026-03-11T02:00:07Z'  # 0527
+  by: human  # 0527
+  actor: jgstern  # 0527
+  clock: 6  # 0527
+  nonce: '0527'  # 0527
+  message: "Please double-check that new items were added to the tracker to accomplish this item. If they were, you can mark this item as done."  # 0527
+- op: update  # 2e63
+  at: '2026-03-11T02:00:13Z'  # 2e63
+  by: human  # 2e63
+  actor: jgstern  # 2e63
+  clock: 7  # 2e63
+  nonce: '2e63'  # 2e63
+  set:  # 2e63
+    status: todo_soft  # 2e63
