@@ -17,3 +17,18 @@
     pr_ref:  # b76e
     description: "LLM assessment: Cap uses Solid.js, not React, for the desktop frontend. Add framework patterns for Solid.js reactive primitives alongside existing React patterns."  # b76e
     fields: {}  # b76e
+- op: update  # 8c00
+  at: '2026-03-11T09:31:11Z'  # 8c00
+  by: agent  # 8c00
+  actor: jgstern_agent  # 8c00
+  clock: 2  # 8c00
+  nonce: 8c00  # 8c00
+  set:  # 8c00
+    status: done  # 8c00
+- op: discuss  # fbe0
+  at: '2026-03-11T09:31:11Z'  # fbe0
+  by: agent  # fbe0
+  actor: jgstern_agent  # fbe0
+  clock: 3  # fbe0
+  nonce: fbe0  # fbe0
+  message: "Fixed in PR #2148. Added solid.yaml with 12 patterns covering reactive primitives (createSignal, createEffect, createMemo), async data (createResource), stores (createStore), context, lifecycle hooks, router, and app bootstrap."  # fbe0

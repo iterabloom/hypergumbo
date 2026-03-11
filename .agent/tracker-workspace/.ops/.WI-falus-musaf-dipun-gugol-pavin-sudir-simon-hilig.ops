@@ -17,3 +17,18 @@
     pr_ref:  # e73b
     description: "LLM assessment: element-call, hubs, Signal-Desktop all flagged missing React app root entrypoints. Only test utilities or admin routes get detected as entrypoints, making forward slices useless for understanding the main application. Detect ReactDOM.createRoot/render, createBrowserRouter, or top-level App component as entrypoints."  # e73b
     fields: {}  # e73b
+- op: update  # 0881
+  at: '2026-03-11T09:07:54Z'  # 0881
+  by: agent  # 0881
+  actor: jgstern_agent  # 0881
+  clock: 2  # 0881
+  nonce: '0881'  # 0881
+  set:  # 0881
+    status: done  # 0881
+- op: discuss  # 7796
+  at: '2026-03-11T09:07:54Z'  # 7796
+  by: agent  # 7796
+  actor: jgstern_agent  # 7796
+  clock: 3  # 7796
+  nonce: '7796'  # 7796
+  message: "Fixed in PR #2146. Root cause: react.yaml used decorator matching but createRoot() is a call expression, not a decorator. Fix: JS/TS analyzer emits UsageContext records for SPA bootstrap calls, react.yaml updated to usage-based patterns."  # 7796

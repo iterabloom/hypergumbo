@@ -17,3 +17,18 @@
     pr_ref:  # 6256
     description: "LLM assessment: Signal-Desktop and session-desktop both flagged missing Electron main process entrypoints. The main Electron entry (main.ts/background.ts) is not detected as an entrypoint. Also detect package.json 'main' field for Node.js/Electron apps."  # 6256
     fields: {}  # 6256
+- op: update  # a189
+  at: '2026-03-11T09:21:25Z'  # a189
+  by: agent  # a189
+  actor: jgstern_agent  # a189
+  clock: 2  # a189
+  nonce: a189  # a189
+  set:  # a189
+    status: done  # a189
+- op: discuss  # bddd
+  at: '2026-03-11T09:21:25Z'  # bddd
+  by: agent  # bddd
+  actor: jgstern_agent  # bddd
+  clock: 3  # bddd
+  nonce: bddd  # bddd
+  message: "Fixed in PR #2147. Two changes: (1) package.json 'main' field now creates defines_target edges, (2) app.whenReady()/app.on('ready') now detected via UsageContext-based patterns in electron.yaml."  # bddd
