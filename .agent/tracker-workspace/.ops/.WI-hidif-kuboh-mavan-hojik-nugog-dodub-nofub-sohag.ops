@@ -17,3 +17,17 @@
     pr_ref:  # 4fe5
     description: "When bakeoff-features init is called with the same pool, it silently reuses the existing session. This led to rm -rf of completed bakeoff outputs when trying to re-run with code fixes. Fixes needed: (1) init should create a new timestamped session by default, not reuse; (2) add --resume flag for explicit reuse; (3) when reusing, warn about existing outputs and suggest safe alternatives; (4) run --all should refuse to overwrite without --force."  # 4fe5
     fields: {}  # 4fe5
+- op: discuss  # 4e3e
+  at: '2026-03-11T02:18:57Z'  # 4e3e
+  by: agent  # 4e3e
+  actor: jgstern_agent  # 4e3e
+  clock: 2  # 4e3e
+  nonce: 4e3e  # 4e3e
+  message: "Not a duplicate of WI-bunul (Java import resolution). SimHash collision."  # 4e3e
+- op: discuss  # 0c93
+  at: '2026-03-11T02:58:11Z'  # 0c93
+  by: human  # 0c93
+  actor: jgstern  # 0c93
+  clock: 3  # 0c93
+  nonce: 0c93  # 0c93
+  message: "when the script refuses to to things with out --force, it should use spicy language. Something like \"important NOTE: you are about to ERASE RESULTS OF A SCIENCE EXPERIMENT so unless you are REALLY FUCKING CERTAIN you know what your doing you should probably NOT use the force option\""  # 0c93
