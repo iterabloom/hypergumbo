@@ -1905,6 +1905,167 @@ def _extract_inheritance_edges(
     return edges
 
 
+# TypeScript built-in types that should not generate type_ref edges.
+_TS_BUILTIN_TYPES = frozenset({
+    "string", "number", "boolean", "void", "null", "undefined",
+    "never", "any", "unknown", "object", "symbol", "bigint",
+    "String", "Number", "Boolean", "Object", "Symbol", "BigInt",
+    "Array", "Promise", "Map", "Set", "Record", "Partial", "Readonly",
+    "Pick", "Omit", "Exclude", "Extract", "Required", "NonNullable",
+    "ReturnType", "Parameters", "ConstructorParameters", "InstanceType",
+    "ThisType", "Awaited", "Uppercase", "Lowercase", "Capitalize",
+    "Uncapitalize",
+})
+
+
+def _collect_type_identifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Recursively collect type_identifier names from an AST subtree.
+
+    Walks all descendants looking for type_identifier nodes (user-defined type
+    references in TypeScript type expressions). Excludes built-in types like
+    string, number, boolean, etc.
+    """
+    names: list[str] = []
+    if node.type == "type_identifier":
+        name = _node_text(node, source)
+        if name and name not in _TS_BUILTIN_TYPES:
+            names.append(name)
+    for child in node.children:
+        names.extend(_collect_type_identifiers(child, source))
+    return names
+
+
+def _extract_type_reference_edges(
+    symbols: list[Symbol],
+    parsed_files: list["_ParsedFile"],
+    run: "AnalysisRun",
+) -> list[Edge]:
+    """Extract type_ref edges from TypeScript type alias bodies and interface signatures.
+
+    For each type alias declaration (``type Foo = Bar & Baz``), creates type_ref
+    edges from the Foo symbol to Bar and Baz symbols. For each interface declaration,
+    creates type_ref edges from the interface to user-defined types referenced in
+    method signatures and property types.
+
+    This enables refactoring blast radius analysis: changing type User affects all
+    type aliases and interfaces that reference it.
+
+    Built-in types (string, number, boolean, etc.) are excluded.
+    """
+    edges: list[Edge] = []
+
+    # Build lookup: (file_path, type_name) -> Symbol for resolution
+    types_by_name: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if sym.kind in ("type", "interface", "class", "enum"):
+            if sym.name not in types_by_name:
+                types_by_name[sym.name] = []
+            types_by_name[sym.name].append(sym)
+
+    # Also build symbol lookup by (path, name) for disambiguation
+    symbols_by_path_name: dict[tuple[str, str], Symbol] = {}
+    for sym in symbols:
+        if sym.kind in ("type", "interface", "class", "enum"):
+            symbols_by_path_name[(sym.path, sym.name)] = sym
+
+    for pf in parsed_files:
+        file_path_str = str(pf.path)
+
+        for node in pf.tree.root_node.children:
+            if node.type == "export_statement":
+                # Unwrap: export type Foo = ...
+                for child in node.children:
+                    if child.type in ("type_alias_declaration", "interface_declaration"):
+                        node = child
+                        break
+
+            if node.type == "type_alias_declaration":
+                # Find the declaration name and the type body
+                decl_name = None
+                body_node = None
+                for child in node.children:
+                    if child.type == "type_identifier" and decl_name is None:
+                        decl_name = _node_text(child, pf.source)
+                    elif child.type not in ("type", "=", ";", "type_identifier",
+                                             "type_parameters"):
+                        # This is the type body (after the =)
+                        body_node = child
+
+                if decl_name and body_node:
+                    # Find the source symbol
+                    src_sym = symbols_by_path_name.get((file_path_str, decl_name))
+                    if src_sym is None:  # pragma: no cover - defensive
+                        continue
+
+                    ref_names = _collect_type_identifiers(body_node, pf.source)
+                    seen: set[str] = set()
+                    for ref_name in ref_names:
+                        if ref_name == decl_name or ref_name in seen:
+                            continue
+                        seen.add(ref_name)
+
+                        # Resolve to target symbol — prefer same file
+                        candidates = types_by_name.get(ref_name, [])
+                        if not candidates:
+                            continue
+                        dst_sym = (
+                            symbols_by_path_name.get((file_path_str, ref_name))
+                            or candidates[0]
+                        )
+                        edges.append(Edge.create(
+                            src=src_sym.id,
+                            dst=dst_sym.id,
+                            edge_type="type_ref",
+                            line=src_sym.span.start_line if src_sym.span else 0,
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_type_ref",
+                        ))
+
+            elif node.type == "interface_declaration":
+                # Find the interface name and body
+                decl_name = None
+                body_node = None
+                for child in node.children:
+                    if child.type == "type_identifier" and decl_name is None:
+                        decl_name = _node_text(child, pf.source)
+                    elif child.type == "interface_body":
+                        body_node = child
+
+                if decl_name and body_node:
+                    src_sym = symbols_by_path_name.get((file_path_str, decl_name))
+                    if src_sym is None:  # pragma: no cover - defensive
+                        continue
+
+                    ref_names = _collect_type_identifiers(body_node, pf.source)
+                    seen: set[str] = set()
+                    for ref_name in ref_names:
+                        if ref_name == decl_name or ref_name in seen:
+                            continue
+                        seen.add(ref_name)
+
+                        candidates = types_by_name.get(ref_name, [])
+                        if not candidates:
+                            continue
+                        dst_sym = (
+                            symbols_by_path_name.get((file_path_str, ref_name))
+                            or candidates[0]
+                        )
+                        edges.append(Edge.create(
+                            src=src_sym.id,
+                            dst=dst_sym.id,
+                            edge_type="type_ref",
+                            line=src_sym.span.start_line if src_sym.span else 0,
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_type_ref",
+                        ))
+
+    return edges
+
+
 def _extract_decorator_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -3968,6 +4129,10 @@ def _analyze_javascript_impl(
     # Extract decorator edges (INV-012: decorators metadata -> decorated_by edges)
     decorator_edges = _extract_decorator_edges(all_symbols, global_symbols, run)
     all_edges.extend(decorator_edges)
+
+    # Extract type reference edges (WI-jivip: type-level dependency tracking)
+    type_ref_edges = _extract_type_reference_edges(all_symbols, parsed_files, run)
+    all_edges.extend(type_ref_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

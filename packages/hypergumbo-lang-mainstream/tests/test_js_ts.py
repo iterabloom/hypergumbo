@@ -7629,3 +7629,149 @@ class TestSpaBootstrapUsageContext:
             if c.kind == "call" and c.context_name == "app.on"
         ]
         assert len(bootstrap_ctx) == 1
+
+
+class TestTypeReferenceEdges:
+    """Tests for TypeScript type-level reference edges."""
+
+    def test_type_alias_references_other_type(self, tmp_path: Path) -> None:
+        """Type alias body creates type_ref edges to referenced types."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+  name: string;
+}
+
+type UserList = User[];
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # UserList should reference User
+        assert any(
+            "UserList" in e.src and "User" in e.dst
+            for e in type_ref_edges
+        ), f"Expected type_ref from UserList to User, got: {type_ref_edges}"
+
+    def test_type_alias_references_multiple_types(self, tmp_path: Path) -> None:
+        """Type alias with intersection/union references multiple types."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface Serializable {
+  serialize(): string;
+}
+
+interface Loggable {
+  log(): void;
+}
+
+type Combined = Serializable & Loggable;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # Combined should reference both Serializable and Loggable
+        combined_refs = [e for e in type_ref_edges if "Combined" in e.src]
+        ref_dsts = {e.dst for e in combined_refs}
+        assert any("Serializable" in d for d in ref_dsts), (
+            f"Expected Combined -> Serializable, got dst: {ref_dsts}"
+        )
+        assert any("Loggable" in d for d in ref_dsts), (
+            f"Expected Combined -> Loggable, got dst: {ref_dsts}"
+        )
+
+    def test_interface_method_return_type_ref(self, tmp_path: Path) -> None:
+        """Interface method return type creates type_ref to the return type."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+  name: string;
+}
+
+interface UserService {
+  getUser(id: string): User;
+  listUsers(): User[];
+}
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # UserService should reference User (from method signatures)
+        service_refs = [e for e in type_ref_edges if "UserService" in e.src]
+        assert any(
+            "User" in e.dst for e in service_refs
+        ), f"Expected UserService -> User type_ref, got: {service_refs}"
+
+    def test_no_type_ref_to_builtin_types(self, tmp_path: Path) -> None:
+        """Does not create type_ref edges to built-in types like string, number."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+type Name = string;
+type Count = number;
+type Flag = boolean;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # No edges to built-in types
+        assert len(type_ref_edges) == 0, (
+            f"Expected no type_ref edges to builtins, got: {type_ref_edges}"
+        )
+
+    def test_type_alias_self_ref_and_dedup(self, tmp_path: Path) -> None:
+        """Self-referential type and duplicate refs don't create redundant edges."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface Node {
+  value: string;
+}
+
+type TreeNode = Node & { children: TreeNode[] };
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # TreeNode references Node (not itself)
+        tree_refs = [e for e in type_ref_edges if "TreeNode" in e.src]
+        assert len(tree_refs) == 1, (
+            f"Expected exactly 1 type_ref from TreeNode (to Node), got: {tree_refs}"
+        )
+        assert "Node" in tree_refs[0].dst
+
+    def test_type_ref_edge_confidence(self, tmp_path: Path) -> None:
+        """Type reference edges have appropriate confidence."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+}
+
+type UserOrNull = User | null;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        for edge in type_ref_edges:
+            assert edge.confidence == 0.85, (
+                f"Expected confidence 0.85, got {edge.confidence}"
+            )
