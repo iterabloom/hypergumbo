@@ -1,0 +1,19 @@
+- op: create  # 1c78
+  at: '2026-03-11T23:31:01Z'  # 1c78
+  by: agent  # 1c78
+  actor: jgstern_agent  # 1c78
+  clock: 1  # 1c78
+  nonce: 1c78  # 1c78
+  data:  # 1c78
+    kind: work_item  # 1c78
+    title: "Forward slice entry point selection favors leaf nodes over architecturally central ones"  # 1c78
+    status: todo_soft  # 1c78
+    priority: 3  # 1c78
+    parent:  # 1c78
+    tags: []  # 1c78
+    before: []  # 1c78
+    duplicate_of: []  # 1c78
+    not_duplicate_of: []  # 1c78
+    pr_ref:  # 1c78
+    description: "DEEP bakeoff assessment: AFFiNE slice.0 starts from admin import-users dialog (a leaf) instead of SpaceSyncGateway or DocService. Consider selecting slice roots from highest in-degree entrypoints."  # 1c78
+    fields: {}  # 1c78

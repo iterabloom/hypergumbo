@@ -17,3 +17,18 @@
     pr_ref:  # 6f54
     description: "DEEP bakeoff assessments show event_publisher/event_subscriber nodes proliferate as standalone nodes, inflating graph sizes. automerge-repo slice.0 has 238 nodes where 148 would be meaningful. Should attribute event emit/on calls to their containing function/method rather than creating standalone nodes."  # 6f54
     fields: {}  # 6f54
+- op: update  # 0722
+  at: '2026-03-11T22:17:01Z'  # 0722
+  by: agent  # 0722
+  actor: jgstern_agent  # 0722
+  clock: 2  # 0722
+  nonce: '0722'  # 0722
+  set:  # 0722
+    status: done  # 0722
+- op: discuss  # e9b2
+  at: '2026-03-11T22:17:02Z'  # e9b2
+  by: agent  # e9b2
+  actor: jgstern_agent  # e9b2
+  clock: 3  # e9b2
+  nonce: e9b2  # e9b2
+  message: "Fixed in PR #2178. Added pass_through_kinds parameter to SliceQuery that filters synthetic routing nodes (event_publisher, event_subscriber) from slice output while still traversing through them during BFS. Edges touching filtered nodes are also excluded."  # e9b2
