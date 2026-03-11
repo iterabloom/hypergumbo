@@ -79,7 +79,7 @@ PASS_ID = make_pass_id("tauri-ipc-linker")
 #
 # Group 1 captures the command name string.
 _INVOKE_PATTERN = re.compile(
-    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
+    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|\-]+)['"`]""",
 )
 
 
@@ -92,7 +92,34 @@ _INVOKE_PATTERN = re.compile(
 _SPECTA_WRAPPER_PATTERN = re.compile(
     r"""export\s+(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*"""
     r"""(?::\s*[^{]*)?\{[^}]*?"""
-    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
+    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|\-]+)['"`]""",
+)
+
+# Matches `export const objName = { ... }` — the object-method form of specta wrappers.
+# Group 1: the exported const name (e.g., "commands")
+# Group 2: the object body (everything between the outer braces)
+_SPECTA_OBJ_PATTERN = re.compile(
+    r"""export\s+const\s+(\w+)\s*=\s*\{""",
+)
+
+# Matches object method wrappers inside an exported const object body:
+#   async methodName(args) { ... TAURI_INVOKE("cmd") }
+#   methodName: (args) => TAURI_INVOKE("cmd")
+# Group 1: the method name
+# Group 2: the command name string
+# Matches the start of a method definition inside an exported object.
+# Anchored to line start (after optional whitespace) so it doesn't match
+# function calls like TAURI_INVOKE(...) inside method bodies.
+# Group 1: method name
+# Used by _extract_obj_methods() to split object body into per-method chunks.
+_SPECTA_OBJ_METHOD_START = re.compile(
+    r"""(?:^|[,\n])\s*(?:async\s+)?(\w+)\s*(?:\([^)]*\)|:\s*(?:async\s+)?\([^)]*\))""",
+)
+
+# Simple pattern to find an invoke call within a method body.
+# Group 1: command name
+_INVOKE_IN_BODY = re.compile(
+    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|\-]+)['"`]""",
 )
 
 # Matches import statements from a relative path:
@@ -218,32 +245,139 @@ def _scan_ts_js_file_for_invoke(
     return commands
 
 
+def _extract_obj_methods(obj_body: str) -> list[tuple[str, str]]:
+    """Extract (method_name, method_body) pairs from an object literal body.
+
+    Uses brace-depth tracking to correctly delimit each method body, handling
+    nested braces from object arguments (e.g., ``TAURI_INVOKE("cmd", { key })``).
+    Arrow functions without braces are delimited by the next comma or end of body.
+    """
+    results: list[tuple[str, str]] = []
+    # Find all method start positions
+    starts = list(_SPECTA_OBJ_METHOD_START.finditer(obj_body))
+    for i, m in enumerate(starts):
+        method_name = m.group(1)
+        # The method body starts after the matched signature
+        body_start = m.end()
+        # Scan forward to find the method boundary.
+        # For brace-delimited bodies: find the opening { and track depth.
+        # For arrow functions without braces: delimit at top-level comma or end.
+        pos = body_start
+        # Skip whitespace and optional return type annotation up to { or =>
+        found_brace = False
+        while pos < len(obj_body):
+            ch = obj_body[pos]
+            if ch == "{":
+                # Brace-delimited method body
+                depth = 1
+                pos += 1
+                while pos < len(obj_body) and depth > 0:
+                    if obj_body[pos] == "{":
+                        depth += 1
+                    elif obj_body[pos] == "}":
+                        depth -= 1
+                    pos += 1
+                found_brace = True
+                break
+            if ch == "=" and pos + 1 < len(obj_body) and obj_body[pos + 1] == ">":
+                # Arrow function — body follows =>
+                pos += 2
+                break
+            pos += 1
+
+        if found_brace:
+            body_end = pos
+        else:
+            # Arrow without braces: scan to next top-level comma or end
+            depth = 0
+            body_end = pos
+            while body_end < len(obj_body):
+                ch = obj_body[body_end]
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                elif ch == "," and depth == 0:
+                    break
+                body_end += 1
+
+        results.append((method_name, obj_body[body_start:body_end]))
+    return results
+
+
 def _scan_specta_wrappers(
     file_path: Path,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
     """Scan a specta-generated file for wrapper-name → command-name mappings.
 
-    Detects patterns like:
+    Detects two forms of specta bindings:
+
+    1. Function exports (older specta style)::
+
         export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }
 
-    Returns a dict mapping the JS/TS function name to the Rust command name,
-    e.g., {"takeScreenshot": "take_screenshot"}.
+    2. Object method exports (newer specta style)::
+
+        export const commands = {
+            async takeScreenshot() { return await TAURI_INVOKE("take_screenshot") },
+        };
+
+    Returns:
+        A tuple of (flat_wrappers, obj_wrappers) where:
+        - flat_wrappers: {func_name: cmd_name} for function-level exports
+        - obj_wrappers: {obj_name: {method_name: cmd_name}} for object exports
     """
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
-        return {}
+        return {}, {}
 
-    wrappers: dict[str, str] = {}
+    flat_wrappers: dict[str, str] = {}
+    obj_wrappers: dict[str, dict[str, str]] = {}
+
+    # Phase A: Detect function-level wrappers
     for match in _SPECTA_WRAPPER_PATTERN.finditer(content):
         func_name = match.group(1)
         raw_cmd = match.group(2)
-        # Handle plugin pattern: invoke('plugin:name|command')
         if "|" in raw_cmd:
             raw_cmd = raw_cmd.split("|", 1)[1]
-        wrappers[func_name] = raw_cmd
+        flat_wrappers[func_name] = raw_cmd
 
-    return wrappers
+    # Phase B: Detect object-method wrappers (e.g., export const commands = { ... })
+    for obj_match in _SPECTA_OBJ_PATTERN.finditer(content):
+        obj_name = obj_match.group(1)
+        obj_start = obj_match.end()  # position right after the opening {
+
+        # Find the matching closing brace. We track brace depth since
+        # method bodies contain their own braces.
+        depth = 1
+        pos = obj_start
+        while pos < len(content) and depth > 0:
+            ch = content[pos]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            pos += 1
+
+        if depth != 0:
+            continue  # pragma: no cover - defensive for malformed input
+
+        obj_body = content[obj_start:pos - 1]
+
+        methods: dict[str, str] = {}
+        for method_name, method_body in _extract_obj_methods(obj_body):
+            invoke_match = _INVOKE_IN_BODY.search(method_body)
+            if invoke_match:
+                raw_cmd = invoke_match.group(1)
+                if "|" in raw_cmd:
+                    raw_cmd = raw_cmd.split("|", 1)[1]
+                methods[method_name] = raw_cmd
+
+        if methods:
+            obj_wrappers[obj_name] = methods
+
+    return flat_wrappers, obj_wrappers
 
 
 def _resolve_import_path(
@@ -276,13 +410,17 @@ def _scan_imports_from_wrapper(
     file_path: Path,
     wrapper_paths: set[str],
     wrapper_maps: dict[str, dict[str, str]],
+    obj_wrapper_maps: dict[str, dict[str, dict[str, str]]],
 ) -> list[tuple[str, str]]:
     """Scan a TS/JS file for imports from known specta wrapper files.
 
     Args:
         file_path: The file to scan for import statements.
         wrapper_paths: Set of absolute path strings for known wrapper files.
-        wrapper_maps: Maps absolute wrapper path → {func_name: cmd_name}.
+        wrapper_maps: Maps absolute wrapper path → {func_name: cmd_name}
+            for function-level exports.
+        obj_wrapper_maps: Maps absolute wrapper path → {obj_name: {method: cmd}}
+            for object-method exports.
 
     Returns:
         List of (wrapper_func_name, command_name) pairs imported in this file.
@@ -308,8 +446,10 @@ def _scan_imports_from_wrapper(
         if abs_resolved not in wrapper_paths:
             continue
 
-        wrapper_map = wrapper_maps.get(abs_resolved, {})
-        if not wrapper_map:
+        flat_map = wrapper_maps.get(abs_resolved, {})
+        obj_map = obj_wrapper_maps.get(abs_resolved, {})
+
+        if not flat_map and not obj_map:
             continue  # pragma: no cover
 
         if named_specs:
@@ -318,17 +458,27 @@ def _scan_imports_from_wrapper(
                 spec = spec.strip()
                 if not spec:
                     continue
-                # Handle "name as alias" — we want the original name
                 parts = spec.split()
                 original_name = parts[0] if parts else ""
-                if original_name in wrapper_map:
-                    results.append((original_name, wrapper_map[original_name]))
+
+                # Check flat function wrappers first
+                if original_name in flat_map:
+                    results.append((original_name, flat_map[original_name]))
+                # Check if importing an exported object (e.g., { commands })
+                elif original_name in obj_map:
+                    # Treat as namespace: all methods become accessible
+                    for method_name, cmd_name in obj_map[original_name].items():
+                        results.append((method_name, cmd_name))
 
         elif namespace:
             # Namespace import: * as commands
             # All wrapper functions are accessible via commands.funcName()
-            for func_name, cmd_name in wrapper_map.items():
+            for func_name, cmd_name in flat_map.items():
                 results.append((func_name, cmd_name))
+            # Also include all methods from all exported objects
+            for _obj_name, methods in obj_map.items():
+                for method_name, cmd_name in methods.items():
+                    results.append((method_name, cmd_name))
 
     return results
 
@@ -450,15 +600,19 @@ def link_tauri_ipc(
     # then scan other files for imports from those wrappers.
     wrapper_file_paths: set[str] = set()  # absolute paths of wrapper files
     wrapper_maps: dict[str, dict[str, str]] = {}  # abs_path → {func: cmd}
+    obj_wrapper_maps: dict[str, dict[str, dict[str, str]]] = {}  # abs → {obj: {m: c}}
 
     for file_path in ts_js_files:
         if not file_path.exists():
             continue
-        wrappers = _scan_specta_wrappers(file_path)
-        if wrappers:
+        flat_wrappers, obj_wrappers = _scan_specta_wrappers(file_path)
+        if flat_wrappers or obj_wrappers:
             abs_key = str(file_path.resolve())
             wrapper_file_paths.add(abs_key)
-            wrapper_maps[abs_key] = wrappers
+            if flat_wrappers:
+                wrapper_maps[abs_key] = flat_wrappers
+            if obj_wrappers:
+                obj_wrapper_maps[abs_key] = obj_wrappers
 
     if wrapper_file_paths:
         # Build publisher_id lookup: cmd_name → ipc_publisher src_id
@@ -481,6 +635,7 @@ def link_tauri_ipc(
 
             imported = _scan_imports_from_wrapper(
                 file_path, wrapper_file_paths, wrapper_maps,
+                obj_wrapper_maps,
             )
             if not imported:
                 continue

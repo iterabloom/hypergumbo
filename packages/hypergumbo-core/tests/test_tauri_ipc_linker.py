@@ -1877,3 +1877,233 @@ class TestTauriIPCLinkerRegistry:
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "ipc_calls"
+
+
+class TestSpectaObjectMethodWrappers:
+    """Tests for specta-style `export const commands = { async method() { TAURI_INVOKE } }`.
+
+    Newer versions of tauri-specta generate an exported const object instead of
+    individual export functions. This test class verifies detection of:
+    - Object method → command-name mapping
+    - Named import of the object (e.g., `import { commands } from './tauri'`)
+    - caller_invokes edges through the object pattern
+    """
+
+    def _make_rust_sym(
+        self, name: str, tmp_path: Path,
+    ) -> "Symbol":
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+        run = AnalysisRun.create(pass_id="test", version="test")
+        return Symbol(
+            id=f"rust:src/lib.rs:1-10:{name}:function",
+            name=name,
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 10, 0, 0),
+            origin="rust-ts-v1",
+            origin_run_id=run.execution_id,
+            meta={"annotations": [{"name": "tauri::command"}]},
+        )
+
+    def _make_ts_sym(
+        self, path: str, tmp_path: Path,
+    ) -> "Symbol":
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+        run = AnalysisRun.create(pass_id="test", version="test")
+        return Symbol(
+            id=f"typescript:{path}:1-10:mod:module",
+            name="mod",
+            kind="module",
+            language="typescript",
+            path=path,
+            span=Span(1, 10, 0, 0),
+            origin="js-ts-v1",
+            origin_run_id=run.execution_id,
+        )
+
+    def test_scan_obj_method_wrappers(self, tmp_path: Path) -> None:
+        """Detects async method wrappers inside export const object."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "tauri.ts"
+        wrapper_file.write_text("""
+export const commands = {
+async setMicInput(label: string | null) : Promise<null> {
+    return await TAURI_INVOKE("set_mic_input", { label });
+},
+async startRecording(inputs: StartRecordingInputs) : Promise<RecordingAction> {
+    return await TAURI_INVOKE("start_recording", { inputs });
+},
+async stopRecording() : Promise<null> {
+    return await TAURI_INVOKE("stop_recording");
+},
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert flat == {}
+        assert "commands" in obj
+        methods = obj["commands"]
+        assert methods["setMicInput"] == "set_mic_input"
+        assert methods["startRecording"] == "start_recording"
+        assert methods["stopRecording"] == "stop_recording"
+
+    def test_scan_both_function_and_obj_wrappers(self, tmp_path: Path) -> None:
+        """Detects both function-level and object-method wrappers."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "bindings.ts"
+        wrapper_file.write_text("""
+export function greet() { return TAURI_INVOKE("greet") }
+
+export const commands = {
+async getData() : Promise<string> {
+    return await TAURI_INVOKE("get_data");
+},
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert flat == {"greet": "greet"}
+        assert obj == {"commands": {"getData": "get_data"}}
+
+    def test_named_import_of_obj_creates_edges(self, tmp_path: Path) -> None:
+        """import { commands } from './tauri' creates caller_invokes edges."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        wrapper_file = tmp_path / "tauri.ts"
+        wrapper_file.write_text("""
+export const commands = {
+async startRecording() : Promise<null> {
+    return await TAURI_INVOKE("start_recording");
+},
+async stopRecording() : Promise<null> {
+    return await TAURI_INVOKE("stop_recording");
+},
+}
+""")
+        caller_file = tmp_path / "app.tsx"
+        caller_file.write_text("""
+import { commands } from "./tauri";
+commands.startRecording();
+commands.stopRecording();
+""")
+
+        rust_sym1 = self._make_rust_sym("start_recording", tmp_path)
+        rust_sym2 = self._make_rust_sym("stop_recording", tmp_path)
+        ts_sym1 = self._make_ts_sym(str(wrapper_file), tmp_path)
+        ts_sym2 = self._make_ts_sym(str(caller_file), tmp_path)
+
+        result = link_tauri_ipc(
+            tmp_path,
+            [ts_sym1, ts_sym2],
+            [rust_sym1, rust_sym2],
+        )
+
+        # Should have ipc_calls edges (from Phase 3 direct detection)
+        ipc_edges = [e for e in result.edges if e.edge_type == "ipc_calls"]
+        assert len(ipc_edges) >= 2
+
+        # Should have caller_invokes edges from the named import
+        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        assert len(caller_edges) >= 2
+        cmd_names = {e.meta.get("tauri_command") if e.meta else None for e in result.symbols if e.kind == "ipc_caller"}
+        assert "start_recording" in cmd_names
+        assert "stop_recording" in cmd_names
+
+    def test_obj_method_with_plugin_pattern(self, tmp_path: Path) -> None:
+        """Object method wrappers handle plugin:name|command pattern."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "bindings.ts"
+        wrapper_file.write_text("""
+export const commands = {
+async speak(text: string) : Promise<null> {
+    return await TAURI_INVOKE("plugin:native-tts|speak", { text });
+},
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert "commands" in obj
+        assert obj["commands"]["speak"] == "speak"
+
+    def test_obj_method_no_invoke_ignored(self, tmp_path: Path) -> None:
+        """Object without TAURI_INVOKE methods is not detected."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "utils.ts"
+        wrapper_file.write_text("""
+export const helpers = {
+    formatDate(d: Date) { return d.toISOString(); },
+    parseJSON(s: string) { return JSON.parse(s); },
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert flat == {}
+        assert obj == {}
+
+    def test_multiple_exported_objects(self, tmp_path: Path) -> None:
+        """Multiple export const objects each contribute their methods."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "bindings.ts"
+        wrapper_file.write_text("""
+export const commands = {
+async greet() : Promise<string> {
+    return await TAURI_INVOKE("greet");
+},
+}
+
+export const events = {
+async onReady() : Promise<null> {
+    return await TAURI_INVOKE("on_ready");
+},
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert "commands" in obj
+        assert "events" in obj
+        assert obj["commands"]["greet"] == "greet"
+        assert obj["events"]["onReady"] == "on_ready"
+
+    def test_obj_arrow_function_method(self, tmp_path: Path) -> None:
+        """Detects arrow function methods inside exported objects."""
+        from hypergumbo_core.linkers.tauri_ipc import _scan_specta_wrappers
+
+        wrapper_file = tmp_path / "bindings.ts"
+        wrapper_file.write_text("""
+export const commands = {
+greet: (name: string) => TAURI_INVOKE("greet", { name }),
+getData: async () => await TAURI_INVOKE("get_data"),
+}
+""")
+        flat, obj = _scan_specta_wrappers(wrapper_file)
+        assert "commands" in obj
+        assert obj["commands"]["greet"] == "greet"
+        assert obj["commands"]["getData"] == "get_data"
+
+    def test_namespace_import_includes_obj_methods(self, tmp_path: Path) -> None:
+        """import * as bindings creates edges for object method wrappers too."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        wrapper_file = tmp_path / "bindings.ts"
+        wrapper_file.write_text("""
+export const commands = {
+async doStuff() : Promise<null> {
+    return await TAURI_INVOKE("do_stuff");
+},
+}
+""")
+        caller_file = tmp_path / "main.ts"
+        caller_file.write_text("""
+import * as bindings from "./bindings";
+bindings.commands.doStuff();
+""")
+
+        rust_sym = self._make_rust_sym("do_stuff", tmp_path)
+        ts_sym1 = self._make_ts_sym(str(wrapper_file), tmp_path)
+        ts_sym2 = self._make_ts_sym(str(caller_file), tmp_path)
+
+        result = link_tauri_ipc(tmp_path, [ts_sym1, ts_sym2], [rust_sym])
+
+        caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
+        assert len(caller_edges) >= 1
