@@ -76,6 +76,7 @@ import glob
 import gzip
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -692,7 +693,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     utility wrappers.
 
     Scoring: ``base * lang_weight * route_boost`` where:
-      - base = ``capped_in * min(1.0, out_degree / 10)``
+      - base = ``effective_in * min(1.0, out_degree / 10)``
+        where effective_in uses sqrt-diminishing returns above a knee (50):
+        ``in_deg if in_deg <= 50 else 50 + sqrt(in_deg - 50)``.
+        This penalises infrastructure symbols (UserFriendlyError, join) with
+        very high in-degree while preserving domain function scores.
       - lang_weight = fraction of codebase in this language, normalised so the
         dominant language = 1.0.  This prevents bash/shell utility functions
         from outscoring primary-language entrypoints in polyglot repos.
@@ -759,12 +764,21 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # or thin wrappers, not domain logic hubs.
     _MIN_OUT_DEGREE = 3
 
-    # In-degree cap prevents mega-hubs (in_degree > 500) from dominating
-    # via sheer volume.  A function called 1200 times isn't 5x more
-    # interesting as a seed than one called 250 times — it's likely
-    # infrastructure.  Capping at 300 equalises domain functions
-    # (in=100-300) against infrastructure (in=500-2000).
-    _IN_DEGREE_CAP = 300
+    # In-degree diminishing returns: above _IN_DEGREE_KNEE, additional
+    # callers contribute sqrt-scaled benefit instead of linear.  This
+    # penalises infrastructure symbols (UserFriendlyError in=200,
+    # join in=150) without a hard cutoff, while domain functions
+    # (in=20-50) keep their full linear score.
+    #
+    #   effective_in(30)  = 30      (linear, domain function)
+    #   effective_in(100) = 50 + sqrt(50)*~7 = 85   (moderate compression)
+    #   effective_in(200) = 50 + sqrt(150)*~12 = 62  (wait, let's compute)
+    #
+    # Formula: in_deg if in_deg <= knee, else knee + sqrt(in_deg - knee)
+    # At in=200: 50 + sqrt(150) ≈ 62.  At in=500: 50 + sqrt(450) ≈ 71.
+    # This compresses the 200→500 range into 62→71, preventing mega-hubs
+    # from dominating over moderate-in-degree domain functions.
+    _IN_DEGREE_KNEE = 50
 
     # Route boost: HTTP entrypoints are high-value reverse-slice seeds
     # ("who calls this API?") but score low because they're thin dispatchers
@@ -814,14 +828,19 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         # Use production in-degree for scoring: callers from test files
         # don't indicate architectural importance.
         prod_in = prod_in_degree.get(node_id, 0)
-        capped_in = min(prod_in, _IN_DEGREE_CAP)
+        # Diminishing returns above knee: sqrt scaling compresses
+        # infrastructure symbols (in=200→eff=62) vs domain (in=30→eff=30).
+        if prod_in <= _IN_DEGREE_KNEE:
+            effective_in = float(prod_in)
+        else:
+            effective_in = _IN_DEGREE_KNEE + math.sqrt(prod_in - _IN_DEGREE_KNEE)
 
         # API handlers get a bidirectional base score that rewards their
         # high out-degree (they call many domain functions).
         if node_id in api_handler_ids:
-            base_score = max(capped_in, out_deg / 2) * min(1.0, out_deg / _OUT_THRESHOLD) * _API_HANDLER_BOOST
+            base_score = max(effective_in, out_deg / 2) * min(1.0, out_deg / _OUT_THRESHOLD) * _API_HANDLER_BOOST
         else:
-            base_score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
+            base_score = effective_in * min(1.0, out_deg / _OUT_THRESHOLD)
 
         # Language-dominance weight: dominant language = 1.0, others proportional.
         lang = node.get("language", "unknown")
@@ -939,7 +958,8 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         name = node.get("name", "")
         lang = node.get("language", "unknown")
         lang_weight = lang_counts.get(lang, 1) / max_lang_count
-        weighted_in = in_deg * lang_weight
+        eff_in = float(in_deg) if in_deg <= _IN_DEGREE_KNEE else _IN_DEGREE_KNEE + math.sqrt(in_deg - _IN_DEGREE_KNEE)
+        weighted_in = eff_in * lang_weight
         relaxed.append((weighted_in, in_deg, entry, name))
 
     relaxed.sort(key=lambda x: (-x[0], -x[1], x[3]))
