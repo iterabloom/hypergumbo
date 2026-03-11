@@ -7457,3 +7457,136 @@ class TestReactRouterJSXRouteDetection:
         result = analyze_javascript(tmp_path)
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
+
+
+class TestSpaBootstrapUsageContext:
+    """Tests for SPA bootstrap call detection via UsageContext.
+
+    React (and similar SPA frameworks) bootstrap applications through
+    module-level calls like createRoot(), ReactDOM.render(), hydrateRoot().
+    These calls should emit UsageContext records with kind="call" so that
+    react.yaml usage patterns can assign the app_bootstrap concept to the
+    module symbol, enabling SPA_BOOTSTRAP entrypoint detection.
+    """
+
+    def test_create_root_react18(self, tmp_path: Path) -> None:
+        """React 18 createRoot() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import { createRoot } from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "const root = createRoot(document.getElementById('root')!);\n"
+            "root.render(<App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "createRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        ctx = bootstrap_ctx[0]
+        assert ctx.context_name == "createRoot"
+        # symbol_ref should point to the module symbol
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert ctx.symbol_ref == module_sym.id
+
+    def test_reactdom_render_react17(self, tmp_path: Path) -> None:
+        """React 17 ReactDOM.render() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.jsx").write_text(
+            "import React from 'react';\n"
+            "import ReactDOM from 'react-dom';\n"
+            "import App from './App';\n"
+            "\n"
+            "ReactDOM.render(<App />, document.getElementById('root'));\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "ReactDOM.render" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        ctx = bootstrap_ctx[0]
+        assert ctx.context_name == "ReactDOM.render"
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert ctx.symbol_ref == module_sym.id
+
+    def test_hydrate_root_ssr(self, tmp_path: Path) -> None:
+        """hydrateRoot() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "entry-client.tsx").write_text(
+            "import { hydrateRoot } from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "hydrateRoot(document.getElementById('root')!, <App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "hydrateRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        assert bootstrap_ctx[0].context_name == "hydrateRoot"
+
+    def test_create_browser_router(self, tmp_path: Path) -> None:
+        """createBrowserRouter() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import { createBrowserRouter, RouterProvider } from 'react-router-dom';\n"
+            "import { createRoot } from 'react-dom/client';\n"
+            "\n"
+            "const router = createBrowserRouter([{ path: '/', element: <Home /> }]);\n"
+            "const root = createRoot(document.getElementById('root')!);\n"
+            "root.render(<RouterProvider router={router} />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_names = {
+            c.context_name for c in result.usage_contexts
+            if c.kind == "call" and c.context_name in (
+                "createRoot", "createBrowserRouter"
+            )
+        }
+        assert "createRoot" in bootstrap_names
+        assert "createBrowserRouter" in bootstrap_names
+
+    def test_no_bootstrap_for_non_spa_calls(self, tmp_path: Path) -> None:
+        """Regular function calls should NOT produce bootstrap UsageContexts."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "const result = doSomething();\n"
+            "console.log(result);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name in (
+                "createRoot", "ReactDOM.render", "hydrateRoot",
+                "createBrowserRouter",
+            )
+        ]
+        assert len(bootstrap_ctx) == 0
+
+    def test_reactdom_createroot_qualified(self, tmp_path: Path) -> None:
+        """ReactDOM.createRoot() (qualified form) emits a bootstrap context."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import ReactDOM from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "const root = ReactDOM.createRoot(document.getElementById('root')!);\n"
+            "root.render(<App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "createRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        assert bootstrap_ctx[0].context_name == "ReactDOM.createRoot"

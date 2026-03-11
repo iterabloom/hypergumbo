@@ -4,6 +4,12 @@
 # the React component tree into the DOM, serving as the application entry
 # point in single-page applications.
 #
+# Bootstrap detection uses USAGE-BASED patterns (v1.1.x) because createRoot()
+# and ReactDOM.render() are module-level call expressions, not decorators on
+# symbol definitions. The JS/TS analyzer emits UsageContext records for these
+# calls (kind="call", position="caller"), which are matched here to assign
+# the app_bootstrap concept to the module symbol.
+#
 # Patterns detected:
 # - createRoot() / ReactDOM.createRoot() — React 18+ bootstrap
 # - ReactDOM.render() — React 17 and earlier bootstrap
@@ -14,27 +20,42 @@ id: react
 language: javascript
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match UsageContext records emitted by the JS/TS analyzer for
+  # module-level SPA bootstrap calls. The symbol_ref points to the module
+  # symbol, so the module gets the app_bootstrap concept.
+
+  # React 18+ createRoot() / ReactDOM.createRoot()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^(createRoot|ReactDOM\\.createRoot)$"
+      position: "^caller$"
+
+  # React 17 ReactDOM.render()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^ReactDOM\\.render$"
+      position: "^caller$"
+
+  # SSR hydration: hydrateRoot() / ReactDOM.hydrateRoot() / ReactDOM.hydrate()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^(hydrateRoot|ReactDOM\\.hydrateRoot|ReactDOM\\.hydrate)$"
+      position: "^caller$"
+
+  # React Router v6 createBrowserRouter / createHashRouter / createMemoryRouter
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^create(Browser|Hash|Memory)Router$"
+      position: "^caller$"
+
   # ==================== DEFINITION-BASED PATTERNS ====================
-
-  # React 18+ createRoot() bootstrap
-  - concept: app_bootstrap
-    decorator: "^(createRoot|ReactDOM\\.createRoot)$"
-
-  # React 17 ReactDOM.render() bootstrap
-  - concept: app_bootstrap
-    decorator: "^ReactDOM\\.render$"
-
-  # React 18+ hydrateRoot() for SSR hydration
-  - concept: app_bootstrap
-    decorator: "^(hydrateRoot|ReactDOM\\.hydrateRoot)$"
-
-  # React 17 hydrate() for SSR hydration
-  - concept: app_bootstrap
-    decorator: "^ReactDOM\\.hydrate$"
-
-  # React Router v6 createBrowserRouter() — app-level router creation
-  - concept: app_bootstrap
-    decorator: "^createBrowserRouter$"
+  # Legacy decorator-based patterns retained for symbols that have decorator
+  # metadata (e.g., custom decorators wrapping React bootstrap).
 
   # React component definition patterns
   - concept: component

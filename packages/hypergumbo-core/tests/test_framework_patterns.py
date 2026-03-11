@@ -18564,120 +18564,113 @@ class TestReactPatterns:
         assert pattern_def.id == "react"
         assert len(pattern_def.patterns) > 0
 
-    def test_create_root_matches_app_bootstrap(self) -> None:
-        """createRoot() decorator matches app_bootstrap concept."""
+    def test_create_root_usage_matches_app_bootstrap(self) -> None:
+        """createRoot() UsageContext matches app_bootstrap concept."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("react")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/index.tsx:5:main:function",
-            name="main",
-            kind="function",
-            language="typescript",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="createRoot",
+            position="caller",
             path="src/index.tsx",
-            span=Span(5, 15, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "createRoot", "args": [], "kwargs": {}},
-                ],
-            },
+            span=Span(4, 4, 0, 50),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
         assert len(bootstrap) == 1
 
-    def test_reactdom_render_matches_app_bootstrap(self) -> None:
-        """ReactDOM.render() decorator matches app_bootstrap concept."""
+    def test_reactdom_render_usage_matches_app_bootstrap(self) -> None:
+        """ReactDOM.render() UsageContext matches app_bootstrap concept."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("react")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/index.tsx:5:render:function",
-            name="render",
-            kind="function",
-            language="typescript",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="ReactDOM.render",
+            position="caller",
             path="src/index.tsx",
-            span=Span(5, 15, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "ReactDOM.render", "args": [], "kwargs": {}},
-                ],
-            },
+            span=Span(5, 5, 0, 60),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
         assert len(bootstrap) == 1
 
-    def test_hydrate_root_matches_app_bootstrap(self) -> None:
-        """hydrateRoot() decorator matches app_bootstrap concept."""
+    def test_hydrate_root_usage_matches_app_bootstrap(self) -> None:
+        """hydrateRoot() UsageContext matches app_bootstrap concept."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("react")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/index.tsx:5:hydrate:function",
-            name="hydrate",
-            kind="function",
-            language="typescript",
-            path="src/index.tsx",
-            span=Span(5, 15, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "hydrateRoot", "args": [], "kwargs": {}},
-                ],
-            },
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="hydrateRoot",
+            position="caller",
+            path="src/entry-client.tsx",
+            span=Span(4, 4, 0, 55),
+            symbol_ref="test:src/entry-client.tsx:1-5:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
         assert len(bootstrap) == 1
 
-    def test_create_browser_router_matches_app_bootstrap(self) -> None:
-        """createBrowserRouter() decorator matches app_bootstrap concept."""
+    def test_create_browser_router_usage_matches_app_bootstrap(self) -> None:
+        """createBrowserRouter() UsageContext matches app_bootstrap concept."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("react")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/App.tsx:10:init:function",
-            name="init",
-            kind="function",
-            language="typescript",
-            path="src/App.tsx",
-            span=Span(10, 20, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "createBrowserRouter", "args": [], "kwargs": {}},
-                ],
-            },
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="createBrowserRouter",
+            position="caller",
+            path="src/main.tsx",
+            span=Span(4, 4, 0, 70),
+            symbol_ref="test:src/main.tsx:1-6:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
         assert len(bootstrap) == 1
 
     def test_non_bootstrap_call_not_matched(self) -> None:
-        """Regular React API calls don't match app_bootstrap."""
+        """Regular function calls don't match app_bootstrap usage patterns."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("react")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/App.tsx:10:render:function",
-            name="render",
-            kind="function",
-            language="typescript",
-            path="src/App.tsx",
-            span=Span(10, 20, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "someOtherFunction", "args": [], "kwargs": {}},
-                ],
-            },
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="someOtherFunction",
+            position="caller",
+            path="src/utils.ts",
+            span=Span(1, 1, 0, 30),
+            symbol_ref="test:src/utils.ts:1-5:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
         assert len(bootstrap) == 0
+
+    def test_reactdom_createroot_qualified_usage(self) -> None:
+        """ReactDOM.createRoot() qualified UsageContext matches."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="ReactDOM.createRoot",
+            position="caller",
+            path="src/main.tsx",
+            span=Span(4, 4, 0, 65),
+            symbol_ref="test:src/main.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
 
 
 class TestElectronEntrypointConcept:

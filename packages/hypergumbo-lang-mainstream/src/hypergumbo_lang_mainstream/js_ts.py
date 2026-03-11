@@ -1637,6 +1637,119 @@ def _extract_library_export_contexts(
     return contexts
 
 
+# SPA bootstrap function names that indicate application mounting.
+# These are module-level calls (not decorators) that mount a component tree.
+_SPA_BOOTSTRAP_NAMES: frozenset[str] = frozenset({
+    # React 18+
+    "createRoot",
+    "hydrateRoot",
+    # React 17 and earlier (qualified: ReactDOM.render)
+    "render",
+    "hydrate",
+    # React Router v6 app-level router creation
+    "createBrowserRouter",
+    "createHashRouter",
+    "createMemoryRouter",
+})
+
+# Qualified forms where the callee is a member expression (e.g., ReactDOM.render).
+# Maps receiver.method -> context_name.
+_SPA_BOOTSTRAP_QUALIFIED: dict[str, str] = {
+    "ReactDOM.render": "ReactDOM.render",
+    "ReactDOM.hydrate": "ReactDOM.hydrate",
+    "ReactDOM.createRoot": "ReactDOM.createRoot",
+    "ReactDOM.hydrateRoot": "ReactDOM.hydrateRoot",
+}
+
+
+def _extract_spa_bootstrap_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    module_symbol: Symbol,
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for SPA bootstrap calls.
+
+    Detects module-level calls to functions like createRoot(), ReactDOM.render(),
+    hydrateRoot(), and createBrowserRouter(). These mount the application's
+    component tree into the DOM and serve as SPA entry points.
+
+    The UsageContext has symbol_ref pointing to the module symbol, so that
+    react.yaml usage patterns can assign the app_bootstrap concept to the
+    module, enabling SPA_BOOTSTRAP entrypoint detection in entrypoints.py.
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        module_symbol: The module symbol for this file
+        line_offset: Line offset for Svelte/Vue script blocks
+
+    Returns:
+        List of UsageContext records for SPA bootstrap calls.
+    """
+    contexts: list[UsageContext] = []
+    seen_names: set[str] = set()  # Deduplicate (e.g., two createRoot calls)
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        # Get the callee node (first child of call_expression)
+        callee = node.children[0] if node.children else None
+        if callee is None:
+            continue  # pragma: no cover
+
+        context_name: str | None = None
+
+        if callee.type == "identifier":
+            # Bare call: createRoot(...), hydrateRoot(...)
+            name = _node_text(callee, source)
+            if name in _SPA_BOOTSTRAP_NAMES:
+                context_name = name
+        elif callee.type == "member_expression":
+            # Qualified call: ReactDOM.render(...), ReactDOM.createRoot(...)
+            qualified = _node_text(callee, source)
+            if qualified in _SPA_BOOTSTRAP_QUALIFIED:
+                context_name = _SPA_BOOTSTRAP_QUALIFIED[qualified]
+            else:
+                # Check if the method name alone matches (e.g., someAlias.createRoot)
+                for child in callee.children:
+                    if child.type == "property_identifier":
+                        method_name = _node_text(child, source)
+                        if method_name in _SPA_BOOTSTRAP_NAMES:
+                            context_name = f"{_node_text(callee, source)}"
+                        break
+
+        if context_name is None or context_name in seen_names:
+            continue
+
+        seen_names.add(context_name)
+
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=context_name,
+            position="caller",  # The module is the caller, not a handler
+            path=str(file_path),
+            span=span,
+            symbol_ref=module_symbol.id,
+            metadata={
+                "bootstrap_function": context_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 def _resolve_base_class_js(
     base_name: str,
     child_sym: Symbol,
@@ -3823,6 +3936,15 @@ def _analyze_javascript_impl(
             pf.tree, pf.source, pf.path, global_symbols, pf.line_offset
         )
         all_usage_contexts.extend(library_contexts)
+
+        # SPA bootstrap calls (createRoot, ReactDOM.render, hydrateRoot, etc.)
+        mod_sym_name = f"<module:{pf.path.name}>"
+        file_mod_sym = global_symbols.get(mod_sym_name)
+        if file_mod_sym is not None:
+            bootstrap_contexts = _extract_spa_bootstrap_contexts(
+                pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
+            )
+            all_usage_contexts.extend(bootstrap_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     # Build multi-value class lookup for disambiguation (INV-015)
