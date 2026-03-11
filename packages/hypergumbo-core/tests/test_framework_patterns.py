@@ -18676,28 +18676,59 @@ class TestReactPatterns:
 class TestElectronEntrypointConcept:
     """Tests that electron.yaml entrypoint concept is correctly loaded."""
 
-    def test_electron_yaml_has_entrypoint_concept(self) -> None:
-        """electron.yaml loads and has entrypoint concept pattern."""
+    def test_electron_app_when_ready_usage_matches_entrypoint(self) -> None:
+        """app.whenReady() UsageContext matches entrypoint concept."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("electron")
         assert pattern_def is not None
 
-        symbol = Symbol(
-            id="test:src/main.ts:1:main:function",
-            name="main",
-            kind="function",
-            language="typescript",
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.whenReady",
+            position="caller",
             path="src/main.ts",
-            span=Span(1, 20, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "app.whenReady", "args": [], "kwargs": {}},
-                ],
-            },
+            span=Span(3, 3, 0, 40),
+            symbol_ref="test:src/main.ts:1-10:module:module",
         )
-        results = match_patterns(symbol, [pattern_def])
+        results = match_usage_patterns(ctx, [pattern_def])
         entrypoints = [r for r in results if r["concept"] == "entrypoint"]
         assert len(entrypoints) == 1
+
+    def test_electron_app_on_usage_matches_entrypoint(self) -> None:
+        """app.on('ready') UsageContext matches entrypoint concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.on",
+            position="caller",
+            path="src/main.ts",
+            span=Span(3, 3, 0, 35),
+            symbol_ref="test:src/main.ts:1-10:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 1
+
+    def test_electron_non_app_call_not_matched(self) -> None:
+        """Non-app calls should not match entrypoint concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="someOtherFunction",
+            position="caller",
+            path="src/utils.ts",
+            span=Span(1, 1, 0, 30),
+            symbol_ref="test:src/utils.ts:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 0
 
 
 class TestTauriPatterns:

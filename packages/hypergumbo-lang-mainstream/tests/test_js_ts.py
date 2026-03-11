@@ -7590,3 +7590,42 @@ class TestSpaBootstrapUsageContext:
         ]
         assert len(bootstrap_ctx) == 1
         assert bootstrap_ctx[0].context_name == "ReactDOM.createRoot"
+
+    def test_electron_app_when_ready(self, tmp_path: Path) -> None:
+        """Electron app.whenReady() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text(
+            "const { app, BrowserWindow } = require('electron');\n"
+            "\n"
+            "app.whenReady().then(() => {\n"
+            "  const win = new BrowserWindow({ width: 800, height: 600 });\n"
+            "  win.loadFile('index.html');\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "app.whenReady"
+        ]
+        assert len(bootstrap_ctx) == 1
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert bootstrap_ctx[0].symbol_ref == module_sym.id
+
+    def test_electron_app_on_ready(self, tmp_path: Path) -> None:
+        """Electron app.on('ready') emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.ts").write_text(
+            "import { app } from 'electron';\n"
+            "\n"
+            "app.on('ready', () => {\n"
+            "  console.log('App is ready');\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "app.on"
+        ]
+        assert len(bootstrap_ctx) == 1

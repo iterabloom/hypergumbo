@@ -1637,9 +1637,10 @@ def _extract_library_export_contexts(
     return contexts
 
 
-# SPA bootstrap function names that indicate application mounting.
-# These are module-level calls (not decorators) that mount a component tree.
-_SPA_BOOTSTRAP_NAMES: frozenset[str] = frozenset({
+# App bootstrap function names that indicate application initialization.
+# These are module-level calls (not decorators) that mount a component tree
+# or initialize an application framework.
+_APP_BOOTSTRAP_NAMES: frozenset[str] = frozenset({
     # React 18+
     "createRoot",
     "hydrateRoot",
@@ -1654,30 +1655,35 @@ _SPA_BOOTSTRAP_NAMES: frozenset[str] = frozenset({
 
 # Qualified forms where the callee is a member expression (e.g., ReactDOM.render).
 # Maps receiver.method -> context_name.
-_SPA_BOOTSTRAP_QUALIFIED: dict[str, str] = {
+_APP_BOOTSTRAP_QUALIFIED: dict[str, str] = {
     "ReactDOM.render": "ReactDOM.render",
     "ReactDOM.hydrate": "ReactDOM.hydrate",
     "ReactDOM.createRoot": "ReactDOM.createRoot",
     "ReactDOM.hydrateRoot": "ReactDOM.hydrateRoot",
+    # Electron app lifecycle
+    "app.whenReady": "app.whenReady",
+    "app.on": "app.on",
+    "app.once": "app.once",
 }
 
 
-def _extract_spa_bootstrap_contexts(
+def _extract_app_bootstrap_contexts(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
     module_symbol: Symbol,
     line_offset: int = 0,
 ) -> list[UsageContext]:
-    """Extract UsageContext records for SPA bootstrap calls.
+    """Extract UsageContext records for app bootstrap and lifecycle calls.
 
     Detects module-level calls to functions like createRoot(), ReactDOM.render(),
-    hydrateRoot(), and createBrowserRouter(). These mount the application's
-    component tree into the DOM and serve as SPA entry points.
+    hydrateRoot(), createBrowserRouter() (React SPA), and app.whenReady(),
+    app.on('ready') (Electron). These initialize the application and serve
+    as entry points.
 
     The UsageContext has symbol_ref pointing to the module symbol, so that
-    react.yaml usage patterns can assign the app_bootstrap concept to the
-    module, enabling SPA_BOOTSTRAP entrypoint detection in entrypoints.py.
+    framework YAML usage patterns can assign concepts (app_bootstrap, entrypoint)
+    to the module, enabling entrypoint detection in entrypoints.py.
 
     Args:
         tree: The parsed tree-sitter tree
@@ -1706,19 +1712,19 @@ def _extract_spa_bootstrap_contexts(
         if callee.type == "identifier":
             # Bare call: createRoot(...), hydrateRoot(...)
             name = _node_text(callee, source)
-            if name in _SPA_BOOTSTRAP_NAMES:
+            if name in _APP_BOOTSTRAP_NAMES:
                 context_name = name
         elif callee.type == "member_expression":
             # Qualified call: ReactDOM.render(...), ReactDOM.createRoot(...)
             qualified = _node_text(callee, source)
-            if qualified in _SPA_BOOTSTRAP_QUALIFIED:
-                context_name = _SPA_BOOTSTRAP_QUALIFIED[qualified]
+            if qualified in _APP_BOOTSTRAP_QUALIFIED:
+                context_name = _APP_BOOTSTRAP_QUALIFIED[qualified]
             else:
                 # Check if the method name alone matches (e.g., someAlias.createRoot)
                 for child in callee.children:
                     if child.type == "property_identifier":
                         method_name = _node_text(child, source)
-                        if method_name in _SPA_BOOTSTRAP_NAMES:
+                        if method_name in _APP_BOOTSTRAP_NAMES:
                             context_name = f"{_node_text(callee, source)}"
                         break
 
@@ -3941,7 +3947,7 @@ def _analyze_javascript_impl(
         mod_sym_name = f"<module:{pf.path.name}>"
         file_mod_sym = global_symbols.get(mod_sym_name)
         if file_mod_sym is not None:
-            bootstrap_contexts = _extract_spa_bootstrap_contexts(
+            bootstrap_contexts = _extract_app_bootstrap_contexts(
                 pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
             )
             all_usage_contexts.extend(bootstrap_contexts)

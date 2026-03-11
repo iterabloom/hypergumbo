@@ -377,6 +377,68 @@ def _process_bin(
                     )
 
 
+def _process_main_entry(
+    main_node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    pkg_name: Optional[str],
+) -> None:
+    """Extract the package.json "main" field as a defines_target edge.
+
+    The "main" field specifies the primary entry point for Node.js modules
+    and Electron apps (e.g., ``"main": "./src/main.js"``). This creates a
+    ``main_entry`` symbol and a ``defines_target`` edge to the target file,
+    enabling the build-target linker to connect it to the module's main()
+    function or module symbol.
+    """
+    if main_node.type != "string":
+        return  # pragma: no cover - main should always be a string
+
+    main_path = _get_string_content(main_node, source)
+    if not main_path:
+        return  # pragma: no cover - empty string
+
+    entry_name = pkg_name or "main"
+    start_line = main_node.start_point[0] + 1
+    end_line = main_node.end_point[0] + 1
+    symbol_id = _make_symbol_id(rel_path, start_line, end_line, entry_name, "main_entry")
+
+    sym = Symbol(
+        id=symbol_id,
+        stable_id=None,
+        shape_id=None,
+        canonical_name=entry_name,
+        fingerprint=hashlib.sha256(source[main_node.start_byte:main_node.end_byte]).hexdigest()[:16],
+        kind="main_entry",
+        name=entry_name,
+        path=rel_path,
+        language="json",
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=main_node.start_point[1],
+            end_col=main_node.end_point[1],
+        ),
+        origin=PASS_ID,
+        meta={"path": main_path},
+    )
+    symbols.append(sym)
+
+    target = main_path.lstrip("./")
+    edges.append(
+        Edge.create(
+            src=symbol_id,
+            dst=target,
+            edge_type="defines_target",
+            line=start_line,
+            confidence=1.0,
+            origin=PASS_ID,
+        )
+    )
+
+
 def _process_package_json(
     root: "tree_sitter.Node",
     source: bytes,
@@ -457,6 +519,11 @@ def _process_package_json(
     bin_node = _find_object_key(obj_node, source, "bin")
     if bin_node:
         _process_bin(bin_node, source, rel_path, symbols, pkg_name, edges)
+
+    # Process main entry (Node.js/Electron app entry point)
+    main_node = _find_object_key(obj_node, source, "main")
+    if main_node:
+        _process_main_entry(main_node, source, rel_path, symbols, edges, pkg_name)
 
 
 def _process_tsconfig(

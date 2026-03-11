@@ -367,6 +367,61 @@ def test_package_json_without_version(tmp_path):
     assert packages[0].meta.get("version") is None
 
 
+def test_package_json_main_creates_defines_target_edge(tmp_path):
+    """package.json "main" field should create a defines_target edge.
+
+    The "main" field specifies the entry point for Node.js/Electron apps.
+    It should produce a defines_target edge pointing to the target file,
+    enabling the build-target linker to connect it to the module symbol.
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-electron-app",
+  "main": "./src/main.js"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(target_edges) >= 1
+    main_edge = next((e for e in target_edges if e.dst == "src/main.js"), None)
+    assert main_edge is not None
+
+    # Should also create a main_entry symbol
+    main_syms = [s for s in result.symbols if s.kind == "main_entry"]
+    assert len(main_syms) >= 1
+    assert main_syms[0].name == "my-electron-app"
+    assert main_syms[0].meta["path"] == "./src/main.js"
+
+
+def test_package_json_main_no_name_uses_default(tmp_path):
+    """package.json "main" without "name" uses fallback name."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "main": "index.js"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(target_edges) >= 1
+    assert target_edges[0].dst == "index.js"
+
+
+def test_package_json_main_missing_no_edge(tmp_path):
+    """package.json without "main" should not create main_entry edges."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-lib",
+  "version": "1.0.0"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    main_syms = [s for s in result.symbols if s.kind == "main_entry"]
+    assert len(main_syms) == 0
+
+
 def test_is_json_tree_sitter_available():
     """Check that JSON tree-sitter availability returns True."""
     from hypergumbo_lang_mainstream.json_config import is_json_tree_sitter_available

@@ -2,11 +2,33 @@
 #
 # Electron apps have main process, renderer process, and preload scripts.
 # IPC communication uses ipcMain/ipcRenderer and contextBridge.
+#
+# Entrypoint detection uses USAGE-BASED patterns (v1.1.x) because
+# app.whenReady() and app.on('ready') are call expressions, not decorators.
+# The JS/TS analyzer emits UsageContext records for these calls.
 
 id: electron
 language: javascript
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match UsageContext records emitted by the JS/TS analyzer for
+  # Electron app lifecycle calls that indicate the main process entry point.
+
+  # Electron app ready (main process entry)
+  - concept: entrypoint
+    usage:
+      kind: "^call$"
+      name: "^app\\.whenReady$"
+      position: "^caller$"
+
+  # Electron app.on('ready') / app.once('ready') lifecycle
+  - concept: entrypoint
+    usage:
+      kind: "^call$"
+      name: "^app\\.(on|once)$"
+      position: "^caller$"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Electron main process IPC handlers
   - concept: ipc_handler
@@ -24,13 +46,9 @@ patterns:
   - concept: window
     decorator: "^new BrowserWindow$"
 
-  # Electron app lifecycle events
+  # Electron app lifecycle events (for concept tagging, not entrypoint detection)
   - concept: lifecycle
     decorator: "^app\\.(on|once|whenReady)$"
-
-  # Electron app ready
-  - concept: entrypoint
-    decorator: "^app\\.whenReady$"
 
   # Electron Menu
   - concept: menu
