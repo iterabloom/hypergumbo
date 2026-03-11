@@ -17,3 +17,18 @@
     pr_ref:  # e8dd
     description: ""  # e8dd
     fields: {}  # e8dd
+- op: update  # 885c
+  at: '2026-03-11T01:20:55Z'  # 885c
+  by: agent  # 885c
+  actor: jgstern_agent  # 885c
+  clock: 2  # 885c
+  nonce: 885c  # 885c
+  set:  # 885c
+    status: done  # 885c
+- op: discuss  # 185e
+  at: '2026-03-11T01:20:55Z'  # 185e
+  by: agent  # 185e
+  actor: jgstern_agent  # 185e
+  clock: 3  # 185e
+  nonce: 185e  # 185e
+  message: "Investigation complete. The gRPC linker (grpc.py) already handles RegisterXxxServer, NewXxxClient, and UnimplementedXxxServer with struct→service mapping and implements_rpc edge creation. The bakeoff finding of 'few/no edges' is likely due to specific repo characteristics: (1) .proto files not present in repo (only generated code), (2) generated code in external packages not analyzed, (3) service naming conventions not matching the expected pattern. No code change needed — the linker handles the standard patterns correctly."  # 185e

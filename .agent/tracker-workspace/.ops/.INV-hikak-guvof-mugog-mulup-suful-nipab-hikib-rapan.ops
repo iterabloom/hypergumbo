@@ -19,3 +19,18 @@
     fields:  # 5334
       statement: "Tauri #[tauri::command] handlers must be detected as routes and TS invoke() calls must create cross-language edges to the Rust handler"  # 5334
       root_cause: "No Tauri IPC linker exists; framework detection finds Tauri but does not create route/linker edges"  # 5334
+- op: update  # b128
+  at: '2026-03-11T00:45:07Z'  # b128
+  by: agent  # b128
+  actor: jgstern_agent  # b128
+  clock: 2  # b128
+  nonce: b128  # b128
+  set:  # b128
+    status: holding  # b128
+- op: discuss  # dba3
+  at: '2026-03-11T00:45:07Z'  # dba3
+  by: agent  # dba3
+  actor: jgstern_agent  # dba3
+  clock: 3  # dba3
+  nonce: dba3  # dba3
+  message: "Fixed. Cross-language edges: tauri_ipc linker already existed. Entrypoint detection: added tauri.yaml (#[tauri::command]→ipc_handler concept) and ipc_handler concept handling in _detect_from_concepts()→EVENT_HANDLER. PR pending."  # dba3

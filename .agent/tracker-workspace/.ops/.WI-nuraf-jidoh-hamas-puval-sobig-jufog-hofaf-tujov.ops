@@ -17,3 +17,18 @@
     pr_ref:  # 6eb5
     description: ""  # 6eb5
     fields: {}  # 6eb5
+- op: update  # 08cd
+  at: '2026-03-11T01:13:18Z'  # 08cd
+  by: agent  # 08cd
+  actor: jgstern_agent  # 08cd
+  clock: 2  # 08cd
+  nonce: 08cd  # 08cd
+  set:  # 08cd
+    status: done  # 08cd
+- op: discuss  # 6fae
+  at: '2026-03-11T01:13:18Z'  # 6fae
+  by: agent  # 6fae
+  actor: jgstern_agent  # 6fae
+  clock: 3  # 6fae
+  nonce: 6fae  # 6fae
+  message: "Fixed. Added test double name patterns (Dummy*, Mock*, Fake*, Stub*, Spy*) and test fixture file detection (conftest, fixtures, factories). These now get 0.1x dampening like other utility symbols. PR pending."  # 6fae
