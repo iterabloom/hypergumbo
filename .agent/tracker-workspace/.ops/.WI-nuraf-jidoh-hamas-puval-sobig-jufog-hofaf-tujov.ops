@@ -39,3 +39,10 @@
   clock: 4  # c5ec
   nonce: c5ec  # c5ec
   message: "please find the PR number if it exists"  # c5ec
+- op: discuss  # 5d9a
+  at: '2026-03-11T17:36:18Z'  # 5d9a
+  by: agent  # 5d9a
+  actor: jgstern_agent  # 5d9a
+  clock: 5  # 5d9a
+  nonce: 5d9a  # 5d9a
+  message: "PRs found: Test fixture dampening was PR #2129 (commit 8f492d6e). Assertion/panic/exit builtins and UI primitive dampening was PR #2140 (commit 04856436). Earlier utility dampening was PR #1394 (commit fba8673a)."  # 5d9a
