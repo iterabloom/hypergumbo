@@ -55,3 +55,18 @@
   clock: 6  # ebcc
   nonce: ebcc  # ebcc
   message: "Acknowledged. The remaining gaps are:\n\n1. **Solidity-to-TypeScript ABI bridges** (e.g., osx repo): Deploy scripts and frontend code call contract methods through ethers.js/viem ABI wrappers. Zero TS↔Solidity edges detected. This requires a new linker that: (a) parses Solidity contract ABIs (from compilation artifacts or source), (b) matches TS/JS calls like `contract.approve()` to Solidity function definitions.\n\n2. **Electron IPC channel coverage** (e.g., Signal-Desktop): Only 24 of ~100 IPC channels linked. The current Tauri IPC linker pattern (regex for invoke()) needs an analogous Electron variant: `ipcRenderer.send('channel')`, `ipcRenderer.invoke('channel')`, `ipcMain.handle('channel', handler)`, and preload bridge patterns like `contextBridge.exposeInMainWorld`.\n\nI'll create separate tracker items for each and begin implementation."  # ebcc
+- op: update  # 0806
+  at: '2026-03-11T17:31:40Z'  # 0806
+  by: agent  # 0806
+  actor: jgstern_agent  # 0806
+  clock: 7  # 0806
+  nonce: '0806'  # 0806
+  set:  # 0806
+    status: todo_soft  # 0806
+- op: discuss  # 0c98
+  at: '2026-03-11T17:31:40Z'  # 0c98
+  by: agent  # 0c98
+  actor: jgstern_agent  # 0c98
+  clock: 8  # 0c98
+  nonce: 0c98  # 0c98
+  message: "Created sub-items: WI-lagok (Electron IPC linker, P3) and WI-runab (Solidity ABI bridge, P4). Proto-to-handler gap already fixed in PR #2142."  # 0c98

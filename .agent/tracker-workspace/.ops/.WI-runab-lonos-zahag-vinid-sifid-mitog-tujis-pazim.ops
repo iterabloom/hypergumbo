@@ -1,0 +1,19 @@
+- op: create  # 2c8e
+  at: '2026-03-11T17:31:13Z'  # 2c8e
+  by: agent  # 2c8e
+  actor: jgstern_agent  # 2c8e
+  clock: 1  # 2c8e
+  nonce: 2c8e  # 2c8e
+  data:  # 2c8e
+    kind: work_item  # 2c8e
+    title: "Solidity-to-TypeScript ABI bridge linker"  # 2c8e
+    status: todo_soft  # 2c8e
+    priority: 4  # 2c8e
+    parent:  # 2c8e
+    tags: []  # 2c8e
+    before: []  # 2c8e
+    duplicate_of: []  # 2c8e
+    not_duplicate_of: []  # 2c8e
+    pr_ref:  # 2c8e
+    description: "osx repo has 0 TS-Solidity edges. Need linker matching ethers.js/viem calls to Solidity function defs. Parent: WI-zulok."  # 2c8e
+    fields: {}  # 2c8e
