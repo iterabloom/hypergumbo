@@ -15,6 +15,11 @@
 # - ReactDOM.render() — React 17 and earlier bootstrap
 # - hydrateRoot() / ReactDOM.hydrate() — SSR hydration bootstrap
 # - createBrowserRouter() — React Router v6 app-level router
+#
+# Note: Bare createRoot() and hydrateRoot() collide with Solid.js which uses
+# the same function names. When both React and Solid patterns match the same
+# symbol, entrypoints.py disambiguates by preferring the more specific
+# framework match (e.g., Solid for render(), React for createBrowserRouter).
 
 id: react
 language: javascript

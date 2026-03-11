@@ -3655,6 +3655,136 @@ class TestSpaBootstrapConceptDetection:
         assert len(ep) == 1
 
 
+    def test_solid_preferred_over_react_for_bare_createroot(self) -> None:
+        """When both React and Solid claim app_bootstrap, prefer Solid.
+
+        Solid.js uses bare createRoot() for reactive scope creation. React
+        also matches bare createRoot() via its pattern. When both are present,
+        the label should say "Solid" not "React" because Solid's createRoot
+        is the more specific match.
+        """
+        sym = make_symbol(
+            "app",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+        assert "react" not in ep[0].label.lower()
+
+    def test_solid_wins_even_when_react_is_first(self) -> None:
+        """Framework priority applies regardless of concept order."""
+        sym = make_symbol(
+            "app",
+            path="src/main.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+
+    def test_react_only_uses_react_label(self) -> None:
+        """When only React claims app_bootstrap, label says React."""
+        sym = make_symbol(
+            "root",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "react" in ep[0].label.lower()
+
+    def test_solid_only_uses_solid_label(self) -> None:
+        """When only Solid claims app_bootstrap, label says Solid."""
+        sym = make_symbol(
+            "entry",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+
+
+class TestPickBestBootstrapFramework:
+    """Unit tests for _pick_best_bootstrap_framework helper."""
+
+    def test_empty_concepts(self) -> None:
+        """No concepts returns empty string."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        assert _pick_best_bootstrap_framework([]) == ""
+
+    def test_single_framework(self) -> None:
+        """Single app_bootstrap returns that framework."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [{"concept": "app_bootstrap", "framework": "vue"}]
+        assert _pick_best_bootstrap_framework(concepts) == "vue"
+
+    def test_solid_beats_react(self) -> None:
+        """Solid takes priority over React."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "react"},
+            {"concept": "app_bootstrap", "framework": "solid"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "solid"
+
+    def test_svelte_beats_react(self) -> None:
+        """Svelte takes priority over React."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "react"},
+            {"concept": "app_bootstrap", "framework": "svelte"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "svelte"
+
+    def test_non_bootstrap_concepts_ignored(self) -> None:
+        """Non-app_bootstrap concepts don't affect the result."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "route", "framework": "express"},
+            {"concept": "app_bootstrap", "framework": "react"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "react"
+
+    def test_non_dict_concepts_ignored(self) -> None:
+        """Non-dict entries in concepts are skipped."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            "not a dict",
+            {"concept": "app_bootstrap", "framework": "solid"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "solid"
+
+    def test_unknown_frameworks_use_first(self) -> None:
+        """When frameworks aren't in priority list, use first."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "alpine"},
+            {"concept": "app_bootstrap", "framework": "preact"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "alpine"
+
+
 class TestIpcHandlerConceptDetection:
     """Tests for ipc_handler concept -> EVENT_HANDLER entrypoint mapping.
 

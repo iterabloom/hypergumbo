@@ -227,6 +227,57 @@ class Entrypoint:
         }
 
 
+# Priority order for disambiguating app_bootstrap framework labels.
+# When multiple frameworks match the same bootstrap call (e.g., both React
+# and Solid match bare createRoot()), we prefer the more specific framework.
+# React is deprioritized because its patterns match Solid.js function names
+# (createRoot, hydrateRoot) — Solid uses the same names for different APIs.
+# Frameworks earlier in this list win over those later.
+_BOOTSTRAP_FRAMEWORK_PRIORITY: list[str] = [
+    "solid",    # Solid's createRoot/render are always Solid-specific
+    "svelte",   # Svelte's mount/hydrate are Svelte-specific
+    "vue",      # Vue's createApp is Vue-specific
+    "react",    # React patterns overlap with Solid (createRoot, hydrateRoot)
+]
+
+
+def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
+    """Pick the best framework label when multiple claim app_bootstrap.
+
+    When a symbol has app_bootstrap concepts from multiple frameworks (e.g.,
+    both React and Solid match bare createRoot()), this function picks the
+    most appropriate one based on framework priority.
+
+    Args:
+        concepts: The symbol's concept list (meta.concepts).
+
+    Returns:
+        Best framework name, or empty string if no app_bootstrap concepts.
+    """
+    bootstrap_fws: list[str] = []
+    for c in concepts:
+        if not isinstance(c, dict):
+            continue
+        if c.get("concept") == "app_bootstrap":
+            fw = c.get("framework", "")
+            if fw:
+                bootstrap_fws.append(fw)
+
+    if not bootstrap_fws:
+        return ""
+    if len(bootstrap_fws) == 1:
+        return bootstrap_fws[0]
+
+    # Multiple frameworks claim app_bootstrap — pick by priority
+    fw_set = set(bootstrap_fws)
+    for fw in _BOOTSTRAP_FRAMEWORK_PRIORITY:
+        if fw in fw_set:
+            return fw
+
+    # Fallback: return first framework found
+    return bootstrap_fws[0]
+
+
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
@@ -659,13 +710,19 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(target_kind)
 
             # SPA bootstrap concept -> SPA_BOOTSTRAP
-            # Detected from react.yaml patterns: createRoot(), ReactDOM.render(),
-            # hydrateRoot(), createBrowserRouter().
+            # Detected from react.yaml, solid.yaml, etc. patterns:
+            # createRoot(), ReactDOM.render(), render(), hydrateRoot(),
+            # createBrowserRouter().
+            #
+            # When multiple frameworks claim app_bootstrap for the same
+            # symbol (e.g., both React and Solid match bare createRoot()),
+            # disambiguate by preferring the more specific framework.
             elif concept_type == "app_bootstrap":
                 if EntrypointKind.SPA_BOOTSTRAP in added_kinds:
                     continue
-                if framework:
-                    label = f"{framework.title()} app bootstrap"
+                best_fw = _pick_best_bootstrap_framework(concepts)
+                if best_fw:
+                    label = f"{best_fw.title()} app bootstrap"
                 else:
                     label = "SPA bootstrap"
                 entrypoints.append(Entrypoint(
