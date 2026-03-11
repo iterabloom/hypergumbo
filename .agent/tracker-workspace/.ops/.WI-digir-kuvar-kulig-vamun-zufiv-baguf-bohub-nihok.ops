@@ -1,0 +1,34 @@
+- op: create  # e15a
+  at: '2026-03-11T13:15:02Z'  # e15a
+  by: agent  # e15a
+  actor: jgstern_agent  # e15a
+  clock: 1  # e15a
+  nonce: e15a  # e15a
+  data:  # e15a
+    kind: work_item  # e15a
+    title: "Reverse slice seed selection: avoid infrastructure base classes"  # e15a
+    status: todo_soft  # e15a
+    priority: 3  # e15a
+    parent:  # e15a
+    tags: []  # e15a
+    before: []  # e15a
+    duplicate_of: []  # e15a
+    not_duplicate_of: []  # e15a
+    pr_ref:  # e15a
+    description: "DEEP bakeoff LLM assessment: rslice seed selection sometimes picks infrastructure symbols (UserFriendlyError in AFFiNE, join in Signal-Desktop) producing unhelpfully broad reverse slices. domain_score should penalize symbols with very high in-degree (>50) that are utility/infrastructure rather than feature-specific."  # e15a
+    fields: {}  # e15a
+- op: update  # fe6c
+  at: '2026-03-11T14:51:41Z'  # fe6c
+  by: agent  # fe6c
+  actor: jgstern_agent  # fe6c
+  clock: 2  # fe6c
+  nonce: fe6c  # fe6c
+  set:  # fe6c
+    status: done  # fe6c
+- op: discuss  # b287
+  at: '2026-03-11T14:51:41Z'  # b287
+  by: agent  # b287
+  actor: jgstern_agent  # b287
+  clock: 3  # b287
+  nonce: b287  # b287
+  message: "Fixed in bakeoff-features script. Replaced hard in-degree cap (300) with sqrt-diminishing returns above knee of 50. Infrastructure symbols (UserFriendlyError in=200→eff=62, join in=150→eff=60) no longer dominate over domain functions (processPayment in=30→eff=30)."  # b287
