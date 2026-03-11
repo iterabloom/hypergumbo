@@ -255,7 +255,7 @@ def _extract_obj_methods(obj_body: str) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
     # Find all method start positions
     starts = list(_SPECTA_OBJ_METHOD_START.finditer(obj_body))
-    for i, m in enumerate(starts):
+    for m in starts:
         method_name = m.group(1)
         # The method body starts after the matched signature
         body_start = m.end()
