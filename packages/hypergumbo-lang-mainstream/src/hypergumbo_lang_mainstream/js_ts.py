@@ -746,6 +746,93 @@ def _extract_param_types(
     return param_types
 
 
+def _detect_jsx_route(
+    node: "tree_sitter.Node", source: bytes,
+) -> tuple[str | None, str | None]:
+    """Detect React Router <Route path="..." /> JSX elements.
+
+    Returns (route_path, component_name) if the node is a Route JSX element
+    with a path attribute, else (None, None).
+
+    Supported patterns:
+    - <Route path="/users" element={<Users />} />
+    - <Route path="/users" component={Users} />
+    - <Route path="/users">...</Route>
+    - <Route path="/" />  (index route)
+
+    The tag name must be exactly "Route" (case-sensitive). The path attribute
+    must have a string value. The component name is extracted from the element
+    or component prop if present.
+    """
+    # Handle both self-closing and opening elements
+    if node.type == "jsx_self_closing_element":
+        tag_node = node
+    elif node.type == "jsx_element":
+        # Get the opening tag
+        tag_node = None
+        for child in node.children:
+            if child.type == "jsx_opening_element":
+                tag_node = child
+                break
+        if tag_node is None:  # pragma: no cover - valid JSX always has opening tag
+            return None, None
+    else:
+        return None, None  # pragma: no cover - only called for JSX node types
+
+    # Check the tag name is "Route"
+    tag_name = None
+    for child in tag_node.children:
+        if child.type == "identifier":
+            tag_name = _node_text(child, source)
+            break
+        elif child.type == "member_expression":
+            # e.g., ReactRouter.Route
+            tag_name = _node_text(child, source)
+            if tag_name and tag_name.endswith(".Route"):
+                tag_name = "Route"
+            break
+
+    if tag_name != "Route":
+        return None, None
+
+    # Extract path and component/element attributes
+    route_path = None
+    component_name = None
+
+    for child in tag_node.children:
+        if child.type != "jsx_attribute":
+            continue
+
+        attr_name = None
+        attr_value = None
+        for attr_child in child.children:
+            if attr_child.type == "property_identifier":
+                attr_name = _node_text(attr_child, source)
+            elif attr_child.type == "string":
+                attr_value = _node_text(attr_child, source).strip("'\"")
+            elif attr_child.type == "jsx_expression":
+                # {<Users />} or {Users}
+                for expr_child in attr_child.children:
+                    if expr_child.type == "jsx_self_closing_element":
+                        # <Users /> — extract tag name
+                        for jsx_child in expr_child.children:
+                            if jsx_child.type == "identifier":
+                                attr_value = _node_text(jsx_child, source)
+                                break
+                    elif expr_child.type == "identifier":
+                        attr_value = _node_text(expr_child, source)
+
+        if attr_name == "path" and attr_value is not None:
+            route_path = attr_value
+        elif attr_name in ("element", "component") and attr_value is not None:
+            component_name = attr_value
+
+    if route_path is None:
+        return None, None
+
+    return route_path, component_name
+
+
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Find route path from a .route('/path') call in a chained expression.
 
@@ -2210,6 +2297,36 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
                     continue  # Skip further processing of this call_expression
+
+        # React Router JSX route detection: <Route path="/users" element={<Users />} />
+        if node.type in ("jsx_self_closing_element", "jsx_element"):
+            route_path, component_name = _detect_jsx_route(node, source)
+            if route_path is not None:
+                handler_name = component_name or f"_route{route_path.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
+                    name=handler_name,
+                    kind="route",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=make_route_stable_id("GET", route_path),
+                    meta={
+                        "route_path": route_path,
+                        "http_method": "GET",
+                        "handler_ref": component_name,
+                    },
+                )
+                symbols.append(symbol)
+                # Don't continue — let tree walk also process child nodes
 
         # Function declarations (skip if inside an export_statement - handled below)
         if node.type == "function_declaration":

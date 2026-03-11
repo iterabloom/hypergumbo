@@ -7290,3 +7290,170 @@ class TestMpegTsBinarySkip:
         # The real TypeScript file should still be analyzed
         real_ts = [s for s in result.symbols if "app.ts" in s.path]
         assert len(real_ts) >= 1
+
+
+# ============================================================================
+# React Router JSX Route Detection
+# ============================================================================
+
+
+class TestReactRouterJSXRouteDetection:
+    """Tests for React Router <Route> JSX element detection.
+
+    React Router uses JSX elements to define client-side routes:
+    - <Route path="/users" element={<Users />} />
+    - <Route path="/about" component={About} />
+    - <Route path="/">...</Route>
+
+    These should be detected as route symbols and appear in routes.txt.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _skip_no_ts(self) -> None:
+        """Skip if tree-sitter is not available."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_self_closing_route_with_element(self, tmp_path: Path) -> None:
+        """<Route path="/users" element={<Users />} /> creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/users" element={<Users />} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/users"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta.get("handler_ref") == "Users"
+
+    def test_self_closing_route_with_component(self, tmp_path: Path) -> None:
+        """<Route path="/about" component={About} /> creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/about" component={About} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/about"
+        assert route.meta.get("handler_ref") == "About"
+
+    def test_route_element_with_children(self, tmp_path: Path) -> None:
+        """<Route path="/home">...</Route> (non-self-closing) creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/home">\n'
+            "      <Home />\n"
+            "    </Route>\n"
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/home"
+
+    def test_multiple_routes(self, tmp_path: Path) -> None:
+        """Multiple <Route> elements each create a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route, Routes } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            "    <Routes>\n"
+            '      <Route path="/" element={<Home />} />\n'
+            '      <Route path="/users" element={<Users />} />\n'
+            '      <Route path="/settings" element={<Settings />} />\n'
+            "    </Routes>\n"
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 3
+
+        paths = {r.meta["route_path"] for r in routes if r.meta}
+        assert "/" in paths
+        assert "/users" in paths
+        assert "/settings" in paths
+
+    def test_route_without_path_ignored(self, tmp_path: Path) -> None:
+        """<Route element={<Layout />} /> without path is not a route."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return <Route element={<Layout />} />;\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+    def test_member_expression_route_tag(self, tmp_path: Path) -> None:
+        """<ReactRouter.Route path="/x" /> (member expression tag) creates a route."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.jsx").write_text(
+            'import * as ReactRouter from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <ReactRouter.Route path="/dashboard" element={<Dashboard />} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/dashboard"
+
+    def test_non_route_jsx_ignored(self, tmp_path: Path) -> None:
+        """Non-Route JSX elements are not detected as routes."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            "function App() {\n"
+            '  return <div className="app"><Header /><Footer /></div>;\n'
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
