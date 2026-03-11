@@ -1939,3 +1939,141 @@ class TestLaravelSuffixMatchFallback:
 
         assert len(result.edges) == 0
 
+
+class TestJSXRouteComponentLinking:
+    """Tests for JSX Route component handler resolution.
+
+    JSX <Route> elements reference handler components by name. The resolver
+    must handle: class components (kind='class'), module_file exports, and
+    name suffixes like 'Component' that differ from the JSX reference name.
+    """
+
+    def test_jsx_route_links_to_class_component(self) -> None:
+        """Route with handler_ref='Users' links to a class kind symbol."""
+        route = Symbol(
+            id="javascript:src/App.tsx:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/Users.tsx:1-50:Users:class",
+            name="Users",
+            kind="class",
+            language="javascript",
+            path="src/Users.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_links_to_module_file_default_export(self) -> None:
+        """Route with handler_ref='DropStage' links to module_file symbol."""
+        route = Symbol(
+            id="javascript:src/App.tsx:20-20:GET /drop:route",
+            name="GET /drop",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
+            meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/DropStage.tsx:1-100:DropStage:module_file",
+            name="DropStage",
+            kind="module_file",
+            language="javascript",
+            path="src/DropStage.tsx",
+            span=Span(start_line=1, end_line=100, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_suffix_component_match(self) -> None:
+        """Route handler_ref='ContentCDN' matches 'ContentCDNComponent' symbol."""
+        route = Symbol(
+            id="javascript:src/admin.js:10-10:GET /content-cdn:route",
+            name="GET /content-cdn",
+            kind="route",
+            language="javascript",
+            path="src/admin.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/content-cdn", "http_method": "GET",
+                  "handler_ref": "ContentCDN"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/ContentCDN.js:1-80:ContentCDNComponent:class",
+            name="ContentCDNComponent",
+            kind="class",
+            language="javascript",
+            path="src/ContentCDN.js",
+            span=Span(start_line=1, end_line=80, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_prefers_exact_function_over_class(self) -> None:
+        """When both a function and class match, prefer the function."""
+        route = Symbol(
+            id="javascript:src/App.tsx:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        func_handler = Symbol(
+            id="javascript:src/Users.tsx:1-50:Users:function",
+            name="Users",
+            kind="function",
+            language="javascript",
+            path="src/Users.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        class_handler = Symbol(
+            id="javascript:src/UsersClass.tsx:1-50:Users:class",
+            name="Users",
+            kind="class",
+            language="javascript",
+            path="src/UsersClass.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, func_handler, class_handler], [])
+
+        assert len(result.edges) == 1
+        # Function takes priority because symbol_by_name prefers non-route, and
+        # function kinds are checked first by _resolve_express_handler
+        assert result.edges[0].dst == func_handler.id
+

@@ -369,8 +369,14 @@ def _resolve_express_handler(
 ) -> Symbol | None:
     """Resolve Express/JS handler_ref to a handler symbol.
 
+    Handles both traditional Express handlers (functions) and JSX Route
+    component references. JSX ``<Route element={<Users />} />`` sets
+    handler_ref to the component name, which may be a function, class,
+    or module_file symbol. When an exact name match fails, tries common
+    React naming patterns like appending "Component" or "View".
+
     Args:
-        handler_ref: Handler reference like "userController.list" or "list"
+        handler_ref: Handler reference like "userController.list" or "Users"
         symbol_by_name: Lookup table of symbols by name
 
     Returns:
@@ -381,10 +387,16 @@ def _resolve_express_handler(
         """Check if symbol is a potential handler (not a route itself)."""
         return sym.kind in ("function", "method", "arrow_function")
 
-    # Try exact match first (must be a function/method, not a route)
+    def is_component(sym: Symbol) -> bool:
+        """Check if symbol is a React component (class or module_file)."""
+        return sym.kind in ("class", "module_file")
+
+    # Try exact match first — prefer function/method kinds, fall back to class/module
     if handler_ref in symbol_by_name:
         sym = symbol_by_name[handler_ref]
         if is_handler(sym):
+            return sym
+        if is_component(sym):
             return sym
 
     # Extract function name from qualified reference (module.function)
@@ -401,6 +413,16 @@ def _resolve_express_handler(
         # Try looking for symbols that end with the function name
         for name, sym in symbol_by_name.items():
             if (name.endswith(f".{func_name}") or name == func_name) and is_handler(sym):
+                return sym
+
+    # JSX component suffix matching: <Route element={<ContentCDN />} /> may
+    # reference a symbol named ContentCDNComponent, ContentCDNView, etc.
+    _COMPONENT_SUFFIXES = ("Component", "View", "Page", "Screen", "Container")
+    for suffix in _COMPONENT_SUFFIXES:
+        candidate = handler_ref + suffix
+        if candidate in symbol_by_name:
+            sym = symbol_by_name[candidate]
+            if is_handler(sym) or is_component(sym):
                 return sym
 
     return None  # pragma: no cover - defensive: no match found
