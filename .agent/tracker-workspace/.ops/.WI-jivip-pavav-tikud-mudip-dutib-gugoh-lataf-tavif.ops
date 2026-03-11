@@ -1,0 +1,19 @@
+- op: create  # 373e
+  at: '2026-03-11T18:51:14Z'  # 373e
+  by: agent  # 373e
+  actor: jgstern_agent  # 373e
+  clock: 1  # 373e
+  nonce: 373e  # 373e
+  data:  # 373e
+    kind: work_item  # 373e
+    title: "TypeScript type-level dependency edges for refactoring blast radius"  # 373e
+    status: todo_soft  # 373e
+    priority: 3  # 373e
+    parent:  # 373e
+    tags: []  # 373e
+    before: []  # 373e
+    duplicate_of: []  # 373e
+    not_duplicate_of: []  # 373e
+    pr_ref:  # 373e
+    description: "DEEP bakeoff (48 repos) shows TypeScript type-level edges are the most cross-cutting gap. Multiple repos (Signal-Desktop, automerge-repo, AFFiNE, blocksuite) note that refactoring function return types or interface conformance is invisible to the graph. Need: interface conformance edges, generic type parameter propagation, and type alias resolution."  # 373e
+    fields: {}  # 373e
