@@ -2380,6 +2380,27 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("FilterBar")
         assert not is_utility_symbol("MapView")
 
+    def test_test_fixture_names_are_utility(self):
+        """Test doubles (Dummy*, Mock*, Fake*, Stub*, Spy*) are utility symbols.
+
+        These have high in-degree from test code but zero production relevance.
+        Bakeoff finding: DummyNetworkAdapter ranked ahead of production code.
+        """
+        assert is_utility_symbol("DummyNetworkAdapter")
+        assert is_utility_symbol("MockClient")
+        assert is_utility_symbol("FakeServer")
+        assert is_utility_symbol("StubRepository")
+        assert is_utility_symbol("SpyLogger")
+        # Lowercase variants
+        assert is_utility_symbol("dummyHandler")
+        assert is_utility_symbol("mockService")
+
+    def test_test_fixture_false_positives(self):
+        """Names merely containing 'mock' etc. as substrings are NOT matched."""
+        assert not is_utility_symbol("Mockingbird")  # Not PascalCase Dummy/Mock prefix
+        assert not is_utility_symbol("stubborn")  # Lowercase, no uppercase after
+        assert not is_utility_symbol("Factory")  # Not a test double prefix
+
 
 class TestIsHelperFile:
     """Tests for _is_helper_file function."""
@@ -2402,6 +2423,16 @@ class TestIsHelperFile:
         assert _is_helper_file("src/helpers/format.ts")
         assert _is_helper_file("lib/utils/string.py")
         assert _is_helper_file("app/helpers/application_helper.rb")
+
+    def test_test_fixture_files(self):
+        """Test fixture files (conftest, fixtures, factories) are helper files."""
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("tests/conftest.py")
+        assert _is_helper_file("spec/fixtures.rb")
+        assert _is_helper_file("test/factories.py")
+        assert _is_helper_file("tests/test_helpers.py")
+        assert _is_helper_file("tests/test_helper.py")
 
     def test_non_helper_file(self):
         from hypergumbo_core.ranking import _is_helper_file

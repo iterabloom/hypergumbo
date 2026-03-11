@@ -452,6 +452,11 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # high fan-in but no architectural relevance.  Elm's map/filter/reduce
     # and JS Array methods dominate rankings in polyglot repos.
     re.compile(r"^(?:map|filter|reduce|forEach|flatMap|fold|foldl|foldr|zip|concat|apply)$"),
+    # Test fixtures and doubles: mock/fake/stub/dummy classes used in tests.
+    # These have high in-degree from test code but zero production relevance.
+    # Catches: DummyNetworkAdapter, MockClient, FakeServer, StubRepository.
+    # Case-insensitive prefix, but suffix must be uppercase (to exclude "Mockingbird").
+    re.compile(r"^(?:[Dd]ummy|[Mm]ock|[Ff]ake|[Ss]tub|[Ss]py)[A-Z_]"),
 ]
 
 
@@ -505,6 +510,9 @@ def _is_helper_file(path: str) -> bool:
         or basename.endswith("_utils")
         or basename.endswith("_util")
         or basename in ("helpers", "utils", "util")
+        # Test fixture files: conftest, fixtures, factories, test_helpers
+        or basename in ("conftest", "fixtures", "factories")
+        or basename.startswith("test_helper")
     )
 
 
