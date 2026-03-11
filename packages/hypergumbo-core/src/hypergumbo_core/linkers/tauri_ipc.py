@@ -6,7 +6,7 @@ and the Rust functions annotated with ``#[tauri::command]``.
 
 How It Works
 ------------
-Two-phase detection:
+Three-phase detection:
 
 1. **Rust side**: Iterates all Rust symbols to find functions with
    ``#[tauri::command]`` in their ``meta.annotations``. Builds a command map
@@ -15,17 +15,24 @@ Two-phase detection:
    - ``rename_all = "camelCase"``: converts ``get_user_data`` → ``getUserData``
    - ``rename = "customName"``: explicit override
 
-2. **TS/JS side**: Scans source files for invoke patterns with literal command
-   names. Handles three invoke function forms:
+2. **TS/JS side (direct invokes)**: Scans source files for invoke patterns
+   with literal command names. Handles three invoke function forms:
    - ``invoke('cmd')`` — standard ``@tauri-apps/api`` import
    - ``TAURI_INVOKE("cmd")`` — tauri-specta generated bindings
    - ``__TAURI_INVOKE__('cmd')`` — older specta / internal Tauri API
-   All forms support single/double/backtick quotes, TypeScript generics
-   (``invoke<T>('cmd')``), and the Tauri plugin pattern
-   ``invoke('plugin:name|command')`` (extracts command after ``|``).
+
+3. **TS/JS side (specta wrapper resolution)**: Detects tauri-specta generated
+   wrapper files — files that export functions wrapping TAURI_INVOKE calls
+   (e.g., ``export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }``).
+   Scans other TS/JS files for imports from these wrapper files, and creates
+   ``caller_invokes`` edges from the import site to the synthetic
+   ``ipc_publisher`` node. This closes the "last mile" gap: TS components
+   calling ``commands.startRecording()`` are now linked through to Rust
+   handlers.
 
 After building both maps, the linker creates ipc_calls edges from synthetic
-TS/JS-side sources to the matching Rust command functions.
+TS/JS-side sources to the matching Rust command functions, and caller_invokes
+edges from TS/JS files that import specta wrappers to the ipc_publisher nodes.
 
 Why This Design
 ---------------
@@ -36,6 +43,9 @@ Why This Design
   pattern and Tauri apps consistently use it.
 - The ``#[tauri::command]`` attribute is captured by the Rust analyzer's
   annotation extraction, so no additional Rust source scanning is needed.
+- Specta wrapper resolution uses a two-pass approach: first identify wrapper
+  files (files containing TAURI_INVOKE), then scan imports pointing at those
+  files and resolve imported names to command names.
 """
 from __future__ import annotations
 
@@ -70,6 +80,37 @@ PASS_ID = make_pass_id("tauri-ipc-linker")
 # Group 1 captures the command name string.
 _INVOKE_PATTERN = re.compile(
     r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
+)
+
+
+# Matches `export function funcName(...)` followed by TAURI_INVOKE("cmd")
+# within the same function body. Used to build wrapper-name → command-name maps
+# for specta-generated binding files.
+#
+# Group 1: the exported function name
+# Group 2: the command name string passed to TAURI_INVOKE/invoke
+_SPECTA_WRAPPER_PATTERN = re.compile(
+    r"""export\s+(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*"""
+    r"""(?::\s*[^{]*)?\{[^}]*?"""
+    r"""(?:__TAURI_INVOKE__|TAURI_INVOKE|invoke)\s*(?:<[^>]*>)?\s*\(\s*['"`]([a-zA-Z0-9_:|]+)['"`]""",
+)
+
+# Matches import statements from a relative path:
+#   import { func1, func2 } from './bindings'
+#   import * as commands from './bindings'
+#   import { func } from './bindings.ts'
+# Group 1 (named imports): the specifier list inside braces, or None
+# Group 2 (namespace import): the namespace alias after "* as", or None
+# Group 3: the import path
+_TS_IMPORT_PATTERN = re.compile(
+    r"""import\s+(?:"""
+    r"""(?!type\s)"""  # skip `import type`
+    r"""(?:"""
+    r"""\{([^}]+)\}"""  # named imports: { func1, func2 }
+    r"""|"""
+    r"""\*\s+as\s+(\w+)"""  # namespace import: * as commands
+    r""")"""
+    r"""\s+from\s+['"]([^'"]+)['"])""",
 )
 
 
@@ -175,6 +216,121 @@ def _scan_ts_js_file_for_invoke(
         commands.append(raw_cmd)
 
     return commands
+
+
+def _scan_specta_wrappers(
+    file_path: Path,
+) -> dict[str, str]:
+    """Scan a specta-generated file for wrapper-name → command-name mappings.
+
+    Detects patterns like:
+        export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }
+
+    Returns a dict mapping the JS/TS function name to the Rust command name,
+    e.g., {"takeScreenshot": "take_screenshot"}.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - defensive for I/O errors
+        return {}
+
+    wrappers: dict[str, str] = {}
+    for match in _SPECTA_WRAPPER_PATTERN.finditer(content):
+        func_name = match.group(1)
+        raw_cmd = match.group(2)
+        # Handle plugin pattern: invoke('plugin:name|command')
+        if "|" in raw_cmd:
+            raw_cmd = raw_cmd.split("|", 1)[1]
+        wrappers[func_name] = raw_cmd
+
+    return wrappers
+
+
+def _resolve_import_path(
+    import_path: str,
+    importer_dir: Path,
+) -> Path | None:
+    """Resolve a relative import path to an absolute file path.
+
+    Tries the path as-is first, then with common TS/JS extensions.
+    Returns None if unresolvable or not a relative import.
+    """
+    if not import_path.startswith("."):
+        return None
+
+    base = importer_dir / import_path
+    # Try exact path first (e.g., import from './bindings.ts')
+    if base.exists() and base.is_file():
+        return base
+
+    # Try appending common extensions (for extensionless imports)
+    for ext in (".ts", ".tsx", ".js", ".jsx"):
+        candidate = Path(str(base) + ext)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    return None
+
+
+def _scan_imports_from_wrapper(
+    file_path: Path,
+    wrapper_paths: set[str],
+    wrapper_maps: dict[str, dict[str, str]],
+) -> list[tuple[str, str]]:
+    """Scan a TS/JS file for imports from known specta wrapper files.
+
+    Args:
+        file_path: The file to scan for import statements.
+        wrapper_paths: Set of absolute path strings for known wrapper files.
+        wrapper_maps: Maps absolute wrapper path → {func_name: cmd_name}.
+
+    Returns:
+        List of (wrapper_func_name, command_name) pairs imported in this file.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - defensive for I/O errors
+        return []
+
+    results: list[tuple[str, str]] = []
+    importer_dir = file_path.parent
+
+    for match in _TS_IMPORT_PATTERN.finditer(content):
+        named_specs = match.group(1)  # e.g., "getUser, saveUser as save"
+        namespace = match.group(2)     # e.g., "commands"
+        import_path = match.group(3)   # e.g., "./bindings"
+
+        resolved = _resolve_import_path(import_path, importer_dir)
+        if resolved is None:
+            continue
+
+        abs_resolved = str(resolved.resolve())
+        if abs_resolved not in wrapper_paths:
+            continue
+
+        wrapper_map = wrapper_maps.get(abs_resolved, {})
+        if not wrapper_map:
+            continue  # pragma: no cover
+
+        if named_specs:
+            # Named imports: { getUser, saveUser as save }
+            for spec in named_specs.split(","):
+                spec = spec.strip()
+                if not spec:
+                    continue
+                # Handle "name as alias" — we want the original name
+                parts = spec.split()
+                original_name = parts[0] if parts else ""
+                if original_name in wrapper_map:
+                    results.append((original_name, wrapper_map[original_name]))
+
+        elif namespace:
+            # Namespace import: * as commands
+            # All wrapper functions are accessible via commands.funcName()
+            for func_name, cmd_name in wrapper_map.items():
+                results.append((func_name, cmd_name))
+
+    return results
 
 
 def link_tauri_ipc(
@@ -288,6 +444,101 @@ def link_tauri_ipc(
                 origin_run_id=run.execution_id,
                 evidence_type="tauri_invoke",
             ))
+
+    # Phase 4: Specta wrapper resolution
+    # Files that contain TAURI_INVOKE are wrapper files. Build wrapper maps,
+    # then scan other files for imports from those wrappers.
+    wrapper_file_paths: set[str] = set()  # absolute paths of wrapper files
+    wrapper_maps: dict[str, dict[str, str]] = {}  # abs_path → {func: cmd}
+
+    for file_path in ts_js_files:
+        if not file_path.exists():
+            continue
+        wrappers = _scan_specta_wrappers(file_path)
+        if wrappers:
+            abs_key = str(file_path.resolve())
+            wrapper_file_paths.add(abs_key)
+            wrapper_maps[abs_key] = wrappers
+
+    if wrapper_file_paths:
+        # Build publisher_id lookup: cmd_name → ipc_publisher src_id
+        publisher_id_by_cmd: dict[str, str] = {}
+        for sym in result_symbols:
+            if sym.kind == "ipc_publisher":
+                cmd = sym.meta.get("tauri_command", "") if sym.meta else ""
+                if cmd:
+                    publisher_id_by_cmd[cmd] = sym.id
+
+        seen_caller_edges: set[tuple[str, str]] = set()
+        seen_caller_ids: set[str] = set()
+
+        for file_path in ts_js_files:
+            if not file_path.exists():
+                continue
+            # Skip wrapper files themselves
+            if str(file_path.resolve()) in wrapper_file_paths:
+                continue
+
+            imported = _scan_imports_from_wrapper(
+                file_path, wrapper_file_paths, wrapper_maps,
+            )
+            if not imported:
+                continue
+
+            rel_path = str(file_path)
+            try:
+                rel_path = str(file_path.relative_to(repo_root))
+            except ValueError:
+                pass
+
+            for func_name, cmd_name in imported:
+                publisher_id = publisher_id_by_cmd.get(cmd_name)
+                if publisher_id is None:
+                    continue
+
+                dedup_key = (rel_path, cmd_name)
+                if dedup_key in seen_caller_edges:
+                    continue
+                seen_caller_edges.add(dedup_key)
+
+                caller_id = (
+                    f"typescript:{rel_path}:0-0:{func_name}:ipc_caller"
+                )
+
+                if caller_id not in seen_caller_ids:
+                    seen_caller_ids.add(caller_id)
+                    result_symbols.append(Symbol(
+                        id=caller_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=f"{func_name}()",
+                        fingerprint=hashlib.sha256(
+                            caller_id.encode(),
+                        ).hexdigest()[:16],
+                        kind="ipc_caller",
+                        name=func_name,
+                        path=rel_path,
+                        language="typescript",
+                        span=Span(
+                            start_line=0, end_line=0,
+                            start_col=0, end_col=0,
+                        ),
+                        origin=PASS_ID,
+                        meta={"tauri_command": cmd_name},
+                        supply_chain_tier=2,
+                        supply_chain_reason="synthetic IPC caller node",
+                    ))
+
+                result_edges.append(Edge.create(
+                    src=caller_id,
+                    dst=publisher_id,
+                    edge_type="caller_invokes",
+                    line=0,
+                    confidence=0.80,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="specta_wrapper_import",
+                ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
