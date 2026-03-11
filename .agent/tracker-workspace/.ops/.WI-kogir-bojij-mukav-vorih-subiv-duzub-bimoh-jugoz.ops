@@ -1,0 +1,19 @@
+- op: create  # e540
+  at: '2026-03-11T04:17:54Z'  # e540
+  by: agent  # e540
+  actor: jgstern_agent  # e540
+  clock: 1  # e540
+  nonce: e540  # e540
+  data:  # e540
+    kind: work_item  # e540
+    title: "Tauri IPC call linking: TS invoke() calls not connected to Rust handlers"  # e540
+    status: todo_soft  # e540
+    priority: 2  # e540
+    parent:  # e540
+    tags: []  # e540
+    before: []  # e540
+    duplicate_of: []  # e540
+    not_duplicate_of: []  # e540
+    pr_ref:  # e540
+    description: "DEEP bakeoff (cohort 1: Cap, spacedrive, yaak, readest) found that while Rust #[tauri::command] handlers are detected (135 in Cap), the TypeScript side (invoke/TAURI_INVOKE calls) produces nearly zero ipc_calls edges. Cap has 201 TS call sites but only 1 IPC edge. The tauri_ipc linker exists but is not matching the generated tauri-specta bindings pattern. Need to investigate why the linker fails for generated binding files."  # e540
+    fields: {}  # e540
