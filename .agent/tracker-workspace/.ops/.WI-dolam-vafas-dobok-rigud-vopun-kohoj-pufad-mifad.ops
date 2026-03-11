@@ -72,3 +72,10 @@
   nonce: 2a7f  # 2a7f
   set:  # 2a7f
     status: done  # 2a7f
+- op: discuss  # 9a06
+  at: '2026-03-11T18:17:36Z'  # 9a06
+  by: agent  # 9a06
+  actor: jgstern_agent  # 9a06
+  clock: 9  # 9a06
+  nonce: 9a06  # 9a06
+  message: "Both remaining gaps already addressed: Gap 1 (ReactDOM entrypoints) in PR #2108 + commits 1c6393ef, ac0a2fcb, 200fcae2. Gap 3 (React Router routes) in PR #2127 (9929cd88) + PR #2136 (7277c3bb). All 3 gaps from original description now complete. Status: done."  # 9a06
