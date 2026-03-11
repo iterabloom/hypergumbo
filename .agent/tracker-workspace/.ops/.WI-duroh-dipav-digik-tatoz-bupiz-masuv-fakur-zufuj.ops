@@ -1,0 +1,19 @@
+- op: create  # b76e
+  at: '2026-03-11T08:34:10Z'  # b76e
+  by: agent  # b76e
+  actor: jgstern_agent  # b76e
+  clock: 1  # b76e
+  nonce: b76e  # b76e
+  data:  # b76e
+    kind: work_item  # b76e
+    title: "Solid.js framework pattern detection (createSignal, createEffect, createMemo)"  # b76e
+    status: todo_soft  # b76e
+    priority: 3  # b76e
+    parent:  # b76e
+    tags: []  # b76e
+    before: []  # b76e
+    duplicate_of: []  # b76e
+    not_duplicate_of: []  # b76e
+    pr_ref:  # b76e
+    description: "LLM assessment: Cap uses Solid.js, not React, for the desktop frontend. Add framework patterns for Solid.js reactive primitives alongside existing React patterns."  # b76e
+    fields: {}  # b76e
