@@ -18731,6 +18731,150 @@ class TestElectronEntrypointConcept:
         assert len(entrypoints) == 0
 
 
+class TestSolidPatterns:
+    """Tests for solid.yaml Solid.js framework patterns."""
+
+    def test_solid_yaml_loads(self) -> None:
+        """solid.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+        assert pattern_def.id == "solid"
+        assert len(pattern_def.patterns) > 0
+
+    def test_render_usage_matches_app_bootstrap(self) -> None:
+        """Solid render() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="render",
+            position="caller",
+            path="src/index.tsx",
+            span=Span(4, 4, 0, 40),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_create_signal_matches_state(self) -> None:
+        """createSignal() matches state concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/Counter.tsx:5:Counter:function",
+            name="Counter",
+            kind="function",
+            language="typescript",
+            path="src/Counter.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createSignal", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        state = [r for r in results if r["concept"] == "state"]
+        assert len(state) == 1
+
+    def test_create_effect_matches_effect(self) -> None:
+        """createEffect() matches effect concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:App:function",
+            name="App",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createEffect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        effects = [r for r in results if r["concept"] == "effect"]
+        assert len(effects) == 1
+
+    def test_create_resource_matches_data_source(self) -> None:
+        """createResource() matches data_source concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/Users.tsx:5:Users:function",
+            name="Users",
+            kind="function",
+            language="typescript",
+            path="src/Users.tsx",
+            span=Span(5, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createResource", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        data = [r for r in results if r["concept"] == "data_source"]
+        assert len(data) == 1
+
+    def test_on_mount_matches_lifecycle(self) -> None:
+        """onMount() matches lifecycle concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:App:function",
+            name="App",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "onMount", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        lifecycle = [r for r in results if r["concept"] == "lifecycle"]
+        assert len(lifecycle) == 1
+
+    def test_non_solid_call_not_matched(self) -> None:
+        """Regular function calls don't match Solid patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/utils.ts:1:helper:function",
+            name="helper",
+            kind="function",
+            language="typescript",
+            path="src/utils.ts",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "someRandomFunction", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0
+
+
 class TestTauriPatterns:
     """Tests for tauri.yaml IPC command patterns."""
 

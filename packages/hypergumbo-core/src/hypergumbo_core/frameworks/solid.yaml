@@ -1,0 +1,69 @@
+# Solid.js framework patterns (ADR-0003)
+#
+# Solid.js is a reactive UI framework similar to React but with fine-grained
+# reactivity. Instead of virtual DOM diffing, Solid compiles JSX to real DOM
+# operations and uses signals/effects for state management.
+#
+# Key patterns:
+# - render() from solid-js/web — app bootstrap (same name as React)
+# - createSignal/createEffect/createMemo — reactive primitives
+# - createResource — async data fetching
+# - createStore — state management (solid-js/store)
+# - createContext/useContext — context API
+# - onMount/onCleanup — lifecycle hooks
+
+id: solid
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+
+  # Solid.js render() bootstrap — mounts component tree into DOM
+  # Note: render() is also matched by React patterns since it's in
+  # _APP_BOOTSTRAP_NAMES. Both frameworks use the same function name.
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^render$"
+      position: "^caller$"
+
+  # Solid.js hydrate() for SSR — same name as React
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^hydrate$"
+      position: "^caller$"
+
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Reactive primitives — signal creation (core state management)
+  - concept: state
+    decorator: "^createSignal$"
+
+  # Reactive effects — side effects that re-run on signal changes
+  - concept: effect
+    decorator: "^(createEffect|createRenderEffect|createComputed)$"
+
+  # Memoization — derived state that caches computation
+  - concept: computed
+    decorator: "^createMemo$"
+
+  # Async data fetching — suspense-integrated resource loading
+  - concept: data_source
+    decorator: "^createResource$"
+
+  # State store — mutable nested reactive state (solid-js/store)
+  - concept: state
+    decorator: "^(createStore|createMutable|produce|reconcile)$"
+
+  # Context API — dependency injection for component trees
+  - concept: context
+    decorator: "^(createContext|useContext)$"
+
+  # Lifecycle hooks
+  - concept: lifecycle
+    decorator: "^(onMount|onCleanup|onError)$"
+
+  # Router patterns (solid-router / @solidjs/router)
+  - concept: route
+    decorator: "^(Route|Router|Routes|useNavigate|useParams|useSearchParams|useLocation)$"
