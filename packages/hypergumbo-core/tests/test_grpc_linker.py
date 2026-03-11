@@ -1123,6 +1123,171 @@ class TestGrpcProtoToGoImplementation:
             assert src_method in dst_route.meta["rpc_method"]
 
 
+class TestGrpcNestedStructBraces:
+    """Tests for Go structs with nested braces (e.g., chan struct{}).
+
+    Real-world Go gRPC servers often embed UnimplementedXxxServer in structs
+    that also contain fields with nested braces like ``done chan struct{}``.
+    The regex must handle this correctly.
+    """
+
+    def test_struct_with_nested_struct_field(self, tmp_path: Path) -> None:
+        """Detects Unimplemented embedding after chan struct{} field."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "cache.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package cache;\n"
+            "service CacheService {\n"
+            "    rpc Config(Empty) returns (VMConfig);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type cacheServer struct {\n"
+            "    rpc     *grpc.Server\n"
+            "    factory Factory\n"
+            "    done    chan struct{}\n"
+            "    UnimplementedCacheServiceServer\n"
+            "}\n\n"
+            "func (s *cacheServer) Config(ctx context.Context, empty *emptypb.Empty) (*pb.VMConfig, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:10-12:cacheServer.Config:method",
+                name="cacheServer.Config",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 1
+        assert "cacheServer.Config" in impl_edges[0].src
+
+    def test_struct_with_package_prefixed_unimplemented(self, tmp_path: Path) -> None:
+        """Detects pb.UnimplementedXxxServer (package-prefixed embedding)."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "cache.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package cache;\n"
+            "service CacheService {\n"
+            "    rpc Status(Empty) returns (StatusReply);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "factory.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type cacheServer struct {\n"
+            "    rpc     *grpc.Server\n"
+            "    factory Factory\n"
+            "    done    chan struct{}\n"
+            "    pb.UnimplementedCacheServiceServer\n"
+            "}\n\n"
+            "func (s *cacheServer) Status(ctx context.Context, empty *emptypb.Empty) (*pb.StatusReply, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:10-12:cacheServer.Status:method",
+                name="cacheServer.Status",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 1
+        assert "cacheServer.Status" in impl_edges[0].src
+
+    def test_struct_with_both_issues(self, tmp_path: Path) -> None:
+        """Handles nested struct{} AND package-prefixed embedding together."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "agent.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package agent;\n"
+            "service AgentService {\n"
+            "    rpc Start(StartRequest) returns (StartReply);\n"
+            "    rpc Stop(StopRequest) returns (StopReply);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "handler.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type agentHandler struct {\n"
+            "    mu      sync.Mutex\n"
+            "    notify  chan struct{}\n"
+            "    config  map[string]struct{ enabled bool }\n"
+            "    pb.UnimplementedAgentServiceServer\n"
+            "}\n\n"
+            "func (h *agentHandler) Start(ctx context.Context, req *pb.StartRequest) (*pb.StartReply, error) {\n"
+            "    return nil, nil\n"
+            "}\n\n"
+            "func (h *agentHandler) Stop(ctx context.Context, req *pb.StopRequest) (*pb.StopReply, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{go_file}:10-12:agentHandler.Start:method",
+                name="agentHandler.Start",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{go_file}:14-16:agentHandler.Stop:method",
+                name="agentHandler.Stop",
+                kind="method",
+                language="go",
+                path=str(go_file),
+                span=Span(14, 16, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 2
+        src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
+        assert src_methods == ["agentHandler.Start", "agentHandler.Stop"]
+
+
 class TestGrpcLinkerRequirements:
     """Tests for gRPC linker registry requirements."""
 

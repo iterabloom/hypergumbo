@@ -414,14 +414,48 @@ def _make_route_stable_id(method: str, path: str) -> str:
     return f"sha256:{digest}"
 
 
-# Regex to find the struct type enclosing an UnimplementedXxxServer embedding.
-# Looks for "type <Name> struct {" preceding the embedding within the same
-# type declaration.
-_GO_STRUCT_WITH_UNIMPLEMENTED = re.compile(
-    r"type\s+(\w+)\s+struct\s*\{[^}]*?"
-    r"Unimplemented(\w+)Server\b",
-    re.DOTALL,
+# Regex to find "type <Name> struct {" declarations.
+_GO_STRUCT_DECL = re.compile(r"type\s+(\w+)\s+struct\s*\{")
+
+# Regex to find UnimplementedXxxServer embedding inside a struct body.
+# Allows optional package prefix (e.g., "pb.UnimplementedCacheServiceServer").
+_UNIMPLEMENTED_EMBEDDING = re.compile(
+    r"(?:\w+\.)?Unimplemented(\w+)Server\b"
 )
+
+
+def _find_struct_unimplemented_embeddings(content: str) -> dict[str, str]:
+    """Find Go structs embedding UnimplementedXxxServer, returning struct→service.
+
+    Uses brace-depth tracking to correctly handle structs with nested braces
+    (e.g., ``done chan struct{}``, ``map[string]struct{ enabled bool }``).
+    Supports package-prefixed embeddings (e.g., ``pb.UnimplementedXxxServer``).
+    """
+    result: dict[str, str] = {}
+    for m in _GO_STRUCT_DECL.finditer(content):
+        struct_name = m.group(1)
+        body_start = m.end()  # position right after the opening {
+
+        # Find the matching closing brace using depth tracking
+        depth = 1
+        pos = body_start
+        while pos < len(content) and depth > 0:
+            ch = content[pos]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            pos += 1
+
+        if depth != 0:
+            continue  # pragma: no cover - unbalanced braces
+
+        struct_body = content[body_start:pos - 1]
+        embed_match = _UNIMPLEMENTED_EMBEDDING.search(struct_body)
+        if embed_match:
+            service_name = embed_match.group(1)
+            result[struct_name] = service_name
+    return result
 
 
 def _link_go_methods_to_rpc_routes(
@@ -461,6 +495,9 @@ def _link_go_methods_to_rpc_routes(
         return edges
 
     # Build struct_type → service_name mapping by re-scanning Go files.
+    # Uses brace-depth tracking to handle structs with nested braces
+    # (e.g., chan struct{}) and supports package-prefixed embeddings
+    # (e.g., pb.UnimplementedXxxServer).
     struct_to_service: dict[str, str] = {}
     for file_path_str in go_server_files:
         try:
@@ -469,10 +506,7 @@ def _link_go_methods_to_rpc_routes(
             )
         except OSError:  # pragma: no cover
             continue
-        for match in _GO_STRUCT_WITH_UNIMPLEMENTED.finditer(content):
-            struct_name = match.group(1)
-            service_name = match.group(2)
-            struct_to_service[struct_name] = service_name
+        struct_to_service.update(_find_struct_unimplemented_embeddings(content))
 
     if not struct_to_service:
         return edges
