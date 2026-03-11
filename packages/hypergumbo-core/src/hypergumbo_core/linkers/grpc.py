@@ -655,6 +655,32 @@ def link_grpc(
         if sym.kind == "grpc_service":
             service_sym_by_name[sym.name] = sym.id
 
+    # Bridge servicer/server symbols to their proto service definition.
+    # grpc_calls edges terminate at grpc_server/grpc_servicer, but route
+    # and implements_rpc edges originate from grpc_service symbols. Without
+    # this bridge, the call chain is disconnected: the client-side graph
+    # (stub → server) and the handler-side graph (route → service → method)
+    # are separate components. This dispatches_to edge connects them.
+    service_by_normalized: dict[str, str] = {}
+    for svc_name, svc_id in service_sym_by_name.items():
+        service_by_normalized[_normalize_service_name(svc_name)] = svc_id
+
+    for sym in symbols:
+        if sym.kind in ("grpc_server", "grpc_servicer"):
+            normalized = _normalize_service_name(sym.name)
+            svc_id = service_by_normalized.get(normalized)
+            if svc_id and svc_id != sym.id:
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=svc_id,
+                    edge_type="dispatches_to",
+                    line=sym.span.start_line,
+                    confidence=0.90,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="grpc_server_to_service",
+                ))
+
     for rpc in all_rpc_defs:
         prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
         route_path = f"/{prefix}/{rpc.rpc_name}"

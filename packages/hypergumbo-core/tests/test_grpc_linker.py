@@ -597,6 +597,175 @@ class TestGrpcProtoRouteSymbols:
         ]
 
 
+class TestGrpcServerToServiceBridge:
+    """Tests for dispatches_to edges bridging server/servicer to service symbols.
+
+    grpc_calls edges terminate at grpc_server/grpc_servicer symbols (from Go
+    RegisterXxxServer or Python XxxServicer). routes_to edges originate from
+    route symbols and target grpc_service symbols (from proto files). Without a
+    bridge edge, these two graph components are disconnected, breaking forward
+    slice traversal from client code to handler implementations.
+    """
+
+    def test_go_server_dispatches_to_proto_service(self, tmp_path: Path) -> None:
+        """Go grpc_server symbol gets dispatches_to edge to proto grpc_service."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type userServer struct {\n"
+            "    pb.UnimplementedUserServiceServer\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        dispatches = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatches) >= 1
+
+        # The edge should go from grpc_server to grpc_service
+        server_ids = {s.id for s in result.symbols if s.kind == "grpc_server"}
+        service_ids = {s.id for s in result.symbols if s.kind == "grpc_service"}
+        bridge = [
+            e for e in dispatches
+            if e.src in server_ids and e.dst in service_ids
+        ]
+        assert len(bridge) == 1
+        assert bridge[0].evidence_type == "grpc_server_to_service"
+
+    def test_python_servicer_dispatches_to_proto_service(self, tmp_path: Path) -> None:
+        """Python grpc_servicer symbol gets dispatches_to edge to proto grpc_service."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        py_file = tmp_path / "server.py"
+        py_file.write_text(
+            "class UserServiceServicer(user_pb2_grpc.UserServiceServicer):\n"
+            "    def GetUser(self, request, context):\n"
+            "        return user_pb2.User(name='test')\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        dispatches = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and e.evidence_type == "grpc_server_to_service"
+        ]
+        assert len(dispatches) >= 1
+
+        # Verify it bridges servicer to service
+        servicer_ids = {s.id for s in result.symbols if s.kind == "grpc_servicer"}
+        service_ids = {s.id for s in result.symbols if s.kind == "grpc_service"}
+        bridge = [e for e in dispatches if e.src in servicer_ids and e.dst in service_ids]
+        assert len(bridge) == 1
+
+    def test_end_to_end_client_to_handler_traversal(self, tmp_path: Path) -> None:
+        """Full chain: grpc_client → grpc_server → grpc_service, reachable via edges.
+
+        This is the key integration test: a forward slice from a client stub
+        should be able to traverse through server to service to route to handler.
+        """
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "user.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc GetUser(GetUserRequest) returns (User);\n"
+            "}\n"
+        )
+
+        go_main = tmp_path / "main.go"
+        go_main.write_text(
+            "package main\n\n"
+            "func main() {\n"
+            "    pb.RegisterUserServiceServer(s, &server{})\n"
+            "}\n"
+        )
+
+        go_client = tmp_path / "client.go"
+        go_client.write_text(
+            "package main\n\n"
+            "func call() {\n"
+            "    c := pb.NewUserServiceClient(conn)\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        # Build adjacency list
+        adj: dict[str, set[str]] = {}
+        for e in result.edges:
+            adj.setdefault(e.src, set()).add(e.dst)
+
+        # Find client and service symbols
+        clients = [s for s in result.symbols if s.kind == "grpc_client"]
+        services = [s for s in result.symbols if s.kind == "grpc_service"]
+
+        assert len(clients) >= 1, "Should have at least one client"
+        assert len(services) >= 1, "Should have at least one service"
+
+        # BFS from client to check if service is reachable
+        client_id = clients[0].id
+        service_id = services[0].id
+
+        visited: set[str] = set()
+        queue = [client_id]
+        while queue:
+            node = queue.pop(0)
+            if node in visited:
+                continue
+            visited.add(node)
+            for neighbor in adj.get(node, set()):
+                queue.append(neighbor)
+
+        assert service_id in visited, (
+            f"grpc_service {service_id} not reachable from grpc_client {client_id}. "
+            f"Visited: {visited}"
+        )
+
+    def test_no_bridge_when_no_matching_service(self, tmp_path: Path) -> None:
+        """No dispatches_to edge when there's no matching proto service."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "type server struct {\n"
+            "    pb.UnimplementedOrderServiceServer\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        dispatches = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and e.evidence_type == "grpc_server_to_service"
+        ]
+        assert len(dispatches) == 0
+
+
 class TestGrpcProtoToGoImplementation:
     """Tests for linking proto RPC definitions to Go implementation methods.
 
