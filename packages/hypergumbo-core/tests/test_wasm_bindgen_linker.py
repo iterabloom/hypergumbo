@@ -512,6 +512,89 @@ class TestLinkWasmBindgen:
         assert str(other_dir) in result.edges[0].src
 
 
+class TestWasmBindgenSyntheticSymbols:
+    """Tests for synthetic wasm_import Symbol creation.
+
+    The slicer's BFS needs node_by_id.get(edge.src) to return a Symbol for
+    cross-language traversal. The linker creates synthetic wasm_import
+    Symbol nodes so reverse slices from Rust exports can traverse through
+    the wasm bridge back to the JS/TS importer.
+    """
+
+    def test_creates_synthetic_symbol_for_each_edge(self, tmp_path: Path) -> None:
+        """Each wasm import creates a synthetic wasm_import Symbol."""
+        from hypergumbo_core.linkers.wasm_bindgen import link_wasm_bindgen
+
+        sym_a = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        sym_b = _make_rust_sym("add", path="src/math.rs", annotations=[{"name": "wasm_bindgen"}])
+
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("import { greet, add } from './pkg/my_module';")
+        js_sym = _make_js_sym("main", path=str(ts_file))
+
+        result = link_wasm_bindgen(tmp_path, [js_sym], [sym_a, sym_b])
+
+        assert len(result.edges) == 2
+        assert len(result.symbols) == 2
+
+        sym_by_id = {s.id: s for s in result.symbols}
+        for edge in result.edges:
+            assert edge.src in sym_by_id
+            sym = sym_by_id[edge.src]
+            assert sym.kind == "wasm_import"
+            assert sym.language == "typescript"
+
+    def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
+        """Synthetic Symbol has proper id, name, fingerprint, meta."""
+        from hypergumbo_core.linkers.wasm_bindgen import link_wasm_bindgen
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("import { greet } from './pkg/my_module';")
+        js_sym = _make_js_sym("main", path=str(ts_file))
+
+        result = link_wasm_bindgen(tmp_path, [js_sym], [rust_sym])
+
+        assert len(result.symbols) == 1
+        sym = result.symbols[0]
+        assert sym.name == "greet"
+        assert sym.kind == "wasm_import"
+        assert sym.language == "typescript"
+        assert sym.canonical_name == "import { greet }"
+        assert sym.meta == {"wasm_export": "greet"}
+        assert sym.fingerprint is not None
+        assert len(sym.fingerprint) == 16
+
+    def test_no_symbols_when_no_matches(self, tmp_path: Path) -> None:
+        """No synthetic symbols when imports don't match exports."""
+        from hypergumbo_core.linkers.wasm_bindgen import link_wasm_bindgen
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("import { other } from './pkg/my_module';")
+        js_sym = _make_js_sym("main", path=str(ts_file))
+
+        result = link_wasm_bindgen(tmp_path, [js_sym], [rust_sym])
+        assert len(result.symbols) == 0
+        assert len(result.edges) == 0
+
+    def test_symbols_passed_through_registry(self, tmp_path: Path) -> None:
+        """Symbols are passed through LinkerResult via registry dispatch."""
+        from hypergumbo_core.linkers.registry import LinkerContext, run_linker
+
+        import hypergumbo_core.linkers.wasm_bindgen
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("import { greet } from './pkg/my_module';")
+        js_sym = _make_js_sym("main", path=str(ts_file))
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[js_sym, rust_sym])
+        result = run_linker("wasm_bindgen", ctx)
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "wasm_import"
+
+
 class TestWasmBindgenRegistry:
     """Tests for registry integration."""
 

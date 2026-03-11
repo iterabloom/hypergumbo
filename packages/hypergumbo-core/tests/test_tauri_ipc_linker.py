@@ -776,6 +776,158 @@ class TestTauriIPCLinkerSpectaPatterns:
         assert get_config.id in dst_ids
 
 
+class TestTauriIPCSyntheticSymbols:
+    """Tests for synthetic IPC publisher Symbol creation.
+
+    The slicer's BFS needs node_by_id.get(edge.src) to return a Symbol for
+    cross-language traversal. The linker creates synthetic ipc_publisher
+    Symbol nodes so reverse slices from Rust handlers can traverse through
+    the IPC bridge back to the TS/JS caller.
+    """
+
+    def test_creates_synthetic_symbol_for_each_edge(self, tmp_path: Path) -> None:
+        """Each invoke() call creates a synthetic ipc_publisher Symbol."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text(
+            "invoke('greet');\n"
+            "invoke('save_user');\n"
+        )
+
+        greet = _make_rust_symbol(
+            "greet", start_line=1, end_line=5,
+            annotations=[_tauri_command_annotation()],
+        )
+        save = _make_rust_symbol(
+            "save_user", start_line=10, end_line=15,
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts_sym],
+            rust_symbols=[greet, save],
+        )
+
+        assert len(result.symbols) == 2
+        assert len(result.edges) == 2
+
+        sym_by_id = {s.id: s for s in result.symbols}
+        for edge in result.edges:
+            # Every edge source has a corresponding Symbol
+            assert edge.src in sym_by_id
+            sym = sym_by_id[edge.src]
+            assert sym.kind == "ipc_publisher"
+            assert sym.language == "typescript"
+
+    def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
+        """Synthetic Symbol has proper id, name, fingerprint, meta."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts_sym],
+            rust_symbols=[rust_sym],
+        )
+
+        assert len(result.symbols) == 1
+        sym = result.symbols[0]
+        assert sym.name == "greet"
+        assert sym.kind == "ipc_publisher"
+        assert sym.language == "typescript"
+        assert sym.canonical_name == "invoke('greet')"
+        assert sym.meta == {"tauri_command": "greet"}
+        assert sym.fingerprint is not None
+        assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
+
+    def test_deduplicates_symbols_across_files(self, tmp_path: Path) -> None:
+        """Same command invoked in two files creates only one Symbol per (file, cmd)."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        src = tmp_path / "src"
+        src.mkdir(parents=True)
+
+        f1 = src / "a.ts"
+        f1.write_text("invoke('greet');\n")
+        f2 = src / "b.ts"
+        f2.write_text("invoke('greet');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        ts1 = _make_ts_symbol("a", path=str(f1))
+        ts2 = _make_ts_symbol("b", path=str(f2))
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts1, ts2],
+            rust_symbols=[rust_sym],
+        )
+
+        # Two edges (one per file) but two distinct symbols (different file paths)
+        assert len(result.edges) == 2
+        assert len(result.symbols) == 2
+        sym_ids = {s.id for s in result.symbols}
+        assert len(sym_ids) == 2  # Different because different file paths
+
+    def test_no_symbols_when_no_matches(self, tmp_path: Path) -> None:
+        """No synthetic symbols created when no invoke calls match commands."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('nonexistent');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+        result = link_tauri_ipc(
+            repo_root=tmp_path,
+            ts_js_symbols=[ts_sym],
+            rust_symbols=[rust_sym],
+        )
+
+        assert len(result.symbols) == 0
+        assert len(result.edges) == 0
+
+    def test_symbols_passed_through_registry(self, tmp_path: Path) -> None:
+        """Symbols are passed through LinkerResult via registry dispatch."""
+        from hypergumbo_core.linkers.registry import run_linker
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+
+        rust_sym = _make_rust_symbol(
+            "greet", annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[ts_sym, rust_sym],
+            edges=[],
+        )
+
+        result = run_linker("tauri_ipc", ctx)
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "ipc_publisher"
+
+
 class TestTauriIPCLinkerRegistry:
     """Tests for Tauri IPC linker registry integration."""
 

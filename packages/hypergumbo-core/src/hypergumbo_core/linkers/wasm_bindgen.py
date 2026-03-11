@@ -37,12 +37,13 @@ Why This Design
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -173,6 +174,7 @@ class WasmBindgenLinkResult:
     """Result of wasm_bindgen linking."""
 
     edges: list[Edge] = field(default_factory=list)
+    symbols: list[Symbol] = field(default_factory=list)
     run: AnalysisRun | None = None
 
 
@@ -195,6 +197,8 @@ def link_wasm_bindgen(
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     result_edges: list[Edge] = []
+    result_symbols: list[Symbol] = []
+    seen_import_ids: set[str] = set()
 
     # Phase 1: Build export map from Rust symbols
     export_map = _find_wasm_bindgen_exports(rust_symbols)
@@ -245,6 +249,27 @@ def link_wasm_bindgen(
 
             src_id = f"typescript:{rel_path}:0-0:{import_name}:wasm_import"
 
+            # Create synthetic Symbol node for the wasm import so the
+            # slicer's BFS can traverse through it. Without this node,
+            # reverse slices from Rust exports would dead-end because
+            # node_by_id.get(edge.src) returns None.
+            if src_id not in seen_import_ids:
+                seen_import_ids.add(src_id)
+                result_symbols.append(Symbol(
+                    id=src_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=f"import {{ {import_name} }}",
+                    fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                    kind="wasm_import",
+                    name=import_name,
+                    path=rel_path,
+                    language="typescript",
+                    span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+                    origin=PASS_ID,
+                    meta={"wasm_export": import_name},
+                ))
+
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
@@ -258,7 +283,9 @@ def link_wasm_bindgen(
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return WasmBindgenLinkResult(edges=result_edges, run=run)
+    return WasmBindgenLinkResult(
+        edges=result_edges, symbols=result_symbols, run=run,
+    )
 
 
 def _count_js_ts_files(ctx: LinkerContext) -> int:
@@ -331,7 +358,7 @@ def wasm_bindgen_linker(ctx: LinkerContext) -> LinkerResult:
     result = link_wasm_bindgen(ctx.repo_root, ts_js_symbols, rust_symbols)
 
     return LinkerResult(
-        symbols=[],
+        symbols=result.symbols,
         edges=result.edges,
         run=result.run,
     )

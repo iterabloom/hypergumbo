@@ -44,7 +44,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+import hashlib
+
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -87,6 +89,7 @@ class TauriIPCLinkResult:
     """Result of Tauri IPC linking."""
 
     edges: list[Edge] = field(default_factory=list)
+    symbols: list[Symbol] = field(default_factory=list)
     run: AnalysisRun | None = None
 
 
@@ -193,6 +196,8 @@ def link_tauri_ipc(
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     result_edges: list[Edge] = []
+    result_symbols: list[Symbol] = []
+    seen_publisher_ids: set[str] = set()
 
     # Phase 1: Build command map from Rust symbols
     command_map = _find_tauri_commands(rust_symbols)
@@ -247,6 +252,27 @@ def link_tauri_ipc(
 
             src_id = f"typescript:{rel_path}:0-0:{cmd_name}:ipc_publisher"
 
+            # Create synthetic Symbol node for the IPC publisher so the
+            # slicer's BFS can traverse through it. Without this node,
+            # reverse slices from Rust handlers would dead-end because
+            # node_by_id.get(edge.src) returns None.
+            if src_id not in seen_publisher_ids:
+                seen_publisher_ids.add(src_id)
+                result_symbols.append(Symbol(
+                    id=src_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=f"invoke('{cmd_name}')",
+                    fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                    kind="ipc_publisher",
+                    name=cmd_name,
+                    path=rel_path,
+                    language="typescript",
+                    span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+                    origin=PASS_ID,
+                    meta={"tauri_command": cmd_name},
+                ))
+
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
@@ -260,7 +286,9 @@ def link_tauri_ipc(
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return TauriIPCLinkResult(edges=result_edges, run=run)
+    return TauriIPCLinkResult(
+        edges=result_edges, symbols=result_symbols, run=run,
+    )
 
 
 def _count_js_ts_files(ctx: LinkerContext) -> int:
@@ -336,7 +364,7 @@ def tauri_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     result = link_tauri_ipc(ctx.repo_root, ts_js_symbols, rust_symbols)
 
     return LinkerResult(
-        symbols=[],
+        symbols=result.symbols,
         edges=result.edges,
         run=result.run,
     )
