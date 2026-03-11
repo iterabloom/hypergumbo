@@ -41,3 +41,10 @@
   clock: 4  # 2b3d
   nonce: 2b3d  # 2b3d
   message: "Please double check what the PR number was if it exists."  # 2b3d
+- op: discuss  # a460
+  at: '2026-03-11T17:33:36Z'  # a460
+  by: agent  # a460
+  actor: jgstern_agent  # a460
+  clock: 5  # a460
+  nonce: a460  # a460
+  message: "PR found: React Router JSX route detection was implemented in PR #2127 (commit 9929cd88). Route-handler linking improvements were in PR #2136 (commit 7277c3bb). Both merged to dev."  # a460
