@@ -18705,3 +18705,60 @@ class TestElectronEntrypointConcept:
         results = match_patterns(symbol, [pattern_def])
         entrypoints = [r for r in results if r["concept"] == "entrypoint"]
         assert len(entrypoints) == 1
+
+
+class TestTauriPatterns:
+    """Tests for tauri.yaml IPC command patterns."""
+
+    def test_tauri_yaml_loads(self) -> None:
+        """tauri.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+        assert pattern_def.id == "tauri"
+
+    def test_tauri_command_matches_ipc_handler(self) -> None:
+        """#[tauri::command] annotation matches ipc_handler concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src-tauri/src/main.rs:10:greet:function",
+            name="greet",
+            kind="function",
+            language="rust",
+            path="src-tauri/src/main.rs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "tauri::command", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ipc_handlers = [r for r in results if r["concept"] == "ipc_handler"]
+        assert len(ipc_handlers) >= 1
+
+    def test_non_tauri_annotation_ignored(self) -> None:
+        """Other Rust annotations don't match tauri ipc_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/lib.rs:5:my_func:function",
+            name="my_func",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "derive", "args": ["Debug"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ipc_handlers = [r for r in results if r["concept"] == "ipc_handler"]
+        assert len(ipc_handlers) == 0

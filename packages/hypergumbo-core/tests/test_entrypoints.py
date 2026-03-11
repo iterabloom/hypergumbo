@@ -3653,3 +3653,73 @@ class TestSpaBootstrapConceptDetection:
         entrypoints = detect_entrypoints([sym], [])
         ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
         assert len(ep) == 1
+
+
+class TestIpcHandlerConceptDetection:
+    """Tests for ipc_handler concept -> EVENT_HANDLER entrypoint mapping.
+
+    The ipc_handler concept is used by electron.yaml (ipcMain.on/handle)
+    and tauri.yaml (#[tauri::command]) for cross-language IPC handlers.
+    """
+
+    def test_ipc_handler_concept_tauri(self) -> None:
+        """ipc_handler concept with tauri framework -> EVENT_HANDLER."""
+        sym = make_symbol(
+            "greet",
+            path="src-tauri/src/main.rs",
+            language="rust",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "tauri"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "tauri" in ep[0].label.lower()
+        assert "ipc" in ep[0].label.lower()
+
+    def test_ipc_handler_concept_electron(self) -> None:
+        """ipc_handler concept with electron framework -> EVENT_HANDLER."""
+        sym = make_symbol(
+            "handleFileOpen",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert "electron" in ep[0].label.lower()
+
+    def test_ipc_handler_no_framework(self) -> None:
+        """ipc_handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "handleMessage",
+            path="src/handler.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "ipc_handler"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert "ipc" in ep[0].label.lower()
+
+    def test_duplicate_ipc_handler_deduplicated(self) -> None:
+        """Multiple ipc_handler concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "greet",
+            path="src-tauri/src/main.rs",
+            language="rust",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "tauri"},
+                {"concept": "ipc_handler", "framework": "tauri"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1

@@ -676,6 +676,25 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.SPA_BOOTSTRAP)
 
+            # IPC handler concept -> EVENT_HANDLER
+            # Used by electron.yaml (ipcMain.on/handle) and tauri.yaml
+            # (#[tauri::command]). IPC handlers are cross-language entry
+            # points analogous to HTTP routes.
+            elif concept_type == "ipc_handler":
+                if EntrypointKind.EVENT_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} IPC handler"
+                else:
+                    label = "IPC handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.EVENT_HANDLER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
     # --- Pass 2: Direct route symbol detection ---
     # Go (and potentially other analyzers) create symbols with kind="route"
     # that carry route metadata (route_path, http_method) directly in sym.meta
