@@ -439,6 +439,176 @@ def _process_main_entry(
     )
 
 
+# Priority order for resolving conditional export paths.
+# "source" is preferred (points to unbuilt source), then "import" (ESM),
+# then "require" (CJS), then "default" (fallback).
+_EXPORT_CONDITION_PRIORITY = ("source", "import", "require", "default")
+
+
+def _resolve_conditional_export(
+    value_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Resolve a conditional export value to a single file path.
+
+    Conditional exports look like:
+    {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+
+    We pick the first available condition from _EXPORT_CONDITION_PRIORITY.
+    Falls back to first non-types string value if no priority condition matches.
+    """
+    if value_node.type == "string":
+        return _get_string_content(value_node, source)
+
+    if value_node.type != "object":
+        return None  # pragma: no cover
+
+    # Build a map of condition -> path
+    conditions: dict[str, str] = {}
+    first_path: Optional[str] = None
+    for child in value_node.children:
+        if child.type == "pair":
+            key = _get_pair_key(child, source)
+            val = _get_pair_value(child)
+            if key and val:
+                path = _get_string_content(val, source)
+                if path:
+                    conditions[key] = path
+                    if first_path is None and key != "types":
+                        first_path = path
+
+    # Pick by priority
+    for cond in _EXPORT_CONDITION_PRIORITY:
+        if cond in conditions:
+            return conditions[cond]
+
+    return first_path
+
+
+def _process_exports(
+    exports_node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    pkg_name: Optional[str],
+) -> None:
+    """Extract package.json "exports" field as defines_target edges.
+
+    The "exports" field maps subpath patterns to source files, providing
+    entry points for library consumers. It can be:
+    - String: "./src/index.js" (single main export)
+    - Object with subpath keys: {".": "./src/index.js", "./sync": "./src/sync.js"}
+    - Object with conditional values: {".": {"import": "./dist/esm.js", "require": "./dist/cjs.js"}}
+
+    Each resolved export path creates an ``export_entry`` symbol and a
+    ``defines_target`` edge to the target file.
+    """
+    if exports_node.type == "string":
+        # Simple string form: single main export
+        export_path = _get_string_content(exports_node, source)
+        if export_path:
+            entry_name = "."
+            start_line = exports_node.start_point[0] + 1
+            end_line = exports_node.end_point[0] + 1
+            symbol_id = _make_symbol_id(
+                rel_path, start_line, end_line, entry_name, "export_entry",
+            )
+            sym = Symbol(
+                id=symbol_id,
+                stable_id=None,
+                shape_id=None,
+                canonical_name=f"{pkg_name or 'pkg'}:{entry_name}",
+                fingerprint=hashlib.sha256(
+                    source[exports_node.start_byte:exports_node.end_byte],
+                ).hexdigest()[:16],
+                kind="export_entry",
+                name=entry_name,
+                path=rel_path,
+                language="json",
+                span=Span(
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_col=exports_node.start_point[1],
+                    end_col=exports_node.end_point[1],
+                ),
+                origin=PASS_ID,
+                meta={"path": export_path, "subpath": entry_name},
+            )
+            symbols.append(sym)
+            target = export_path.lstrip("./")
+            edges.append(
+                Edge.create(
+                    src=symbol_id,
+                    dst=target,
+                    edge_type="defines_target",
+                    line=start_line,
+                    confidence=1.0,
+                    origin=PASS_ID,
+                )
+            )
+        return
+
+    if exports_node.type != "object":
+        return  # pragma: no cover
+
+    # Object form: iterate subpath keys
+    for child in exports_node.children:
+        if child.type != "pair":
+            continue
+        subpath = _get_pair_key(child, source)
+        value_node = _get_pair_value(child)
+        if not subpath or not value_node:
+            continue  # pragma: no cover
+
+        # Resolve the export target (handles both string and conditional)
+        export_path = _resolve_conditional_export(value_node, source)
+        if not export_path:
+            continue  # pragma: no cover
+
+        start_line = child.start_point[0] + 1
+        end_line = child.end_point[0] + 1
+        symbol_id = _make_symbol_id(
+            rel_path, start_line, end_line, subpath, "export_entry",
+        )
+        sym = Symbol(
+            id=symbol_id,
+            stable_id=None,
+            shape_id=None,
+            canonical_name=f"{pkg_name or 'pkg'}:{subpath}",
+            fingerprint=hashlib.sha256(
+                source[child.start_byte:child.end_byte],
+            ).hexdigest()[:16],
+            kind="export_entry",
+            name=subpath,
+            path=rel_path,
+            language="json",
+            span=Span(
+                start_line=start_line,
+                end_line=end_line,
+                start_col=child.start_point[1],
+                end_col=child.end_point[1],
+            ),
+            origin=PASS_ID,
+            meta={"path": export_path, "subpath": subpath},
+        )
+        symbols.append(sym)
+        target = export_path.lstrip("./")
+        edges.append(
+            Edge.create(
+                src=symbol_id,
+                dst=target,
+                edge_type="defines_target",
+                line=start_line,
+                confidence=1.0,
+                origin=PASS_ID,
+            )
+        )
+
+
 def _process_package_json(
     root: "tree_sitter.Node",
     source: bytes,
@@ -524,6 +694,11 @@ def _process_package_json(
     main_node = _find_object_key(obj_node, source, "main")
     if main_node:
         _process_main_entry(main_node, source, rel_path, symbols, edges, pkg_name)
+
+    # Process exports (library entry points)
+    exports_node = _find_object_key(obj_node, source, "exports")
+    if exports_node:
+        _process_exports(exports_node, source, rel_path, symbols, edges, pkg_name)
 
 
 def _process_tsconfig(

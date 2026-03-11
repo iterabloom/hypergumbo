@@ -422,6 +422,128 @@ def test_package_json_main_missing_no_edge(tmp_path):
     assert len(main_syms) == 0
 
 
+def test_package_json_exports_object_creates_defines_target_edges(tmp_path):
+    """package.json "exports" object form should create defines_target edges.
+
+    The "exports" field maps subpath patterns to source files:
+    - "." → main entry point
+    - "./sync" → sync subpath
+    - "./awareness" → awareness subpath
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "y-websocket",
+  "exports": {
+    ".": "./src/y-websocket.js",
+    "./sync": "./src/sync.js"
+  }
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    assert len(export_syms) >= 2
+
+    main_export = next((s for s in export_syms if s.name == "."), None)
+    assert main_export is not None
+    assert main_export.meta["path"] == "./src/y-websocket.js"
+    assert main_export.meta["subpath"] == "."
+
+    sync_export = next((s for s in export_syms if s.name == "./sync"), None)
+    assert sync_export is not None
+    assert sync_export.meta["path"] == "./src/sync.js"
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    # At least 2 from exports
+    export_targets = [e for e in target_edges if "src/y-websocket.js" in e.dst or "src/sync.js" in e.dst]
+    assert len(export_targets) >= 2
+
+
+def test_package_json_exports_string_creates_defines_target_edge(tmp_path):
+    """package.json "exports" as a plain string should create one edge."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-lib",
+  "exports": "./src/index.js"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    assert len(export_syms) >= 1
+    assert export_syms[0].meta["path"] == "./src/index.js"
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert any(e.dst == "src/index.js" for e in target_edges)
+
+
+def test_package_json_exports_conditional_resolves_best_path(tmp_path):
+    """Conditional exports should pick the source/import/default path.
+
+    When a subpath maps to an object with condition keys (import, require,
+    types, default), we pick the first available source-like path.
+    """
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-lib",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  }
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    assert len(export_syms) >= 1
+    # Should pick the "import" or first source-like path
+    assert export_syms[0].meta["path"] in (
+        "./dist/esm/index.js", "./dist/cjs/index.js",
+    )
+
+    target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(target_edges) >= 1
+
+
+def test_package_json_exports_conditional_unknown_conditions(tmp_path):
+    """Conditional exports with non-standard conditions use first non-types path."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-lib",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js"
+    }
+  }
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    assert len(export_syms) >= 1
+    # Should pick first non-types path (browser)
+    assert export_syms[0].meta["path"] == "./dist/browser.js"
+
+
+def test_package_json_exports_missing_no_export_syms(tmp_path):
+    """package.json without "exports" should not create export_entry symbols."""
+    pkg_file = tmp_path / "package.json"
+    pkg_file.write_text("""{
+  "name": "my-app",
+  "version": "1.0.0"
+}
+""")
+    result = analyze_json_files(tmp_path)
+
+    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    assert len(export_syms) == 0
+
+
 def test_is_json_tree_sitter_available():
     """Check that JSON tree-sitter availability returns True."""
     from hypergumbo_lang_mainstream.json_config import is_json_tree_sitter_available
