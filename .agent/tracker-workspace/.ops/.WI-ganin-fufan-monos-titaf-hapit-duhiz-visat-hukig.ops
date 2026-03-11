@@ -1,0 +1,19 @@
+- op: create  # a446
+  at: '2026-03-11T18:52:34Z'  # a446
+  by: agent  # a446
+  actor: jgstern_agent  # a446
+  clock: 1  # a446
+  nonce: a446  # a446
+  data:  # a446
+    kind: work_item  # a446
+    title: "Reverse slice seed identity in rslice JSON output"  # a446
+    status: todo_soft  # a446
+    priority: 3  # a446
+    parent:  # a446
+    tags: []  # a446
+    before: []  # a446
+    duplicate_of: []  # a446
+    not_duplicate_of: []  # a446
+    pr_ref:  # a446
+    description: "DEEP bakeoff: multiple assessments note that rslice JSON feature data does not include the seed symbol identity. Consumers must cross-reference rslice_seeds.json separately. Surface the seed symbol name/ID directly in each rslice feature."  # a446
+    fields: {}  # a446
