@@ -77,3 +77,18 @@
   clock: 9  # cec2
   nonce: cec2  # cec2
   message: "Created sub-items: WI-lagok (Electron IPC linker, P3) and WI-runab (Solidity ABI bridge, P4). Proto-to-handler gap already fixed in PR #2142."  # cec2
+- op: update  # 1b1c
+  at: '2026-03-11T21:16:28Z'  # 1b1c
+  by: agent  # 1b1c
+  actor: jgstern_agent  # 1b1c
+  clock: 10  # 1b1c
+  nonce: 1b1c  # 1b1c
+  set:  # 1b1c
+    status: done  # 1b1c
+- op: discuss  # 8faf
+  at: '2026-03-11T21:16:28Z'  # 8faf
+  by: agent  # 8faf
+  actor: jgstern_agent  # 8faf
+  clock: 11  # 8faf
+  nonce: 8faf  # 8faf
+  message: "Partially addressed in PR #2176. Added ttrpc RegisterXxxService pattern detection and ttrpc interface-based implements_rpc edges. Remaining: CSI interface implementations (use different code generation without Unimplemented or ttrpc patterns)."  # 8faf

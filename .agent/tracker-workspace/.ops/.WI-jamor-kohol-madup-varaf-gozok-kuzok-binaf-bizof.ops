@@ -67,3 +67,32 @@
   clock: 8  # 03eb
   nonce: 03eb  # 03eb
   message: "Fair point. Calling real-world patterns 'edge cases' is wishful thinking when those repos were specifically chosen as exemplary.\n\nTwo actionable takeaways:\n\n1. **Non-standard naming:** If exemplary repos use naming conventions we don't handle, those conventions need support. I should investigate which specific bakeoff repos showed few/no gRPC edges, what naming they use, and expand the gRPC linker accordingly. Reopening to todo_soft to investigate.\n\n2. **Missing .proto files warning:** When the gRPC linker detects RegisterXxxServer calls but finds 0 matching proto service definitions (because .proto files aren't in the repo), it should emit a diagnostic warning like: 'Found 5 gRPC server registrations but 0 proto service definitions. The .proto files may live in a separate repository. Without them, hypergumbo cannot trace network requests to handler implementations.' This is analogous to the existing partial-install warnings for NAPI/WASM/PyFFI linkers."  # 03eb
+- op: update  # a147
+  at: '2026-03-11T20:58:17Z'  # a147
+  by: agent  # a147
+  actor: jgstern_agent  # a147
+  clock: 9  # a147
+  nonce: a147  # a147
+  set: {}  # a147
+- op: discuss  # 833d
+  at: '2026-03-11T20:58:17Z'  # 833d
+  by: agent  # 833d
+  actor: jgstern_agent  # 833d
+  clock: 10  # 833d
+  nonce: 833d  # 833d
+  message: "PR #2175 fixes nested brace and package prefix issues. kata-containers now shows 4 implements_rpc edges (CacheService methods). Remaining gaps: (1) ttrpc pattern (RegisterXxxService instead of RegisterXxxServer) — kata-containers uses this for AgentService and HealthService, (2) CSI interface implementations without Unimplemented embedding — uses a different code generation approach. These are separate enhancements, not bugs in the current linker."  # 833d
+- op: update  # ee82
+  at: '2026-03-11T20:58:57Z'  # ee82
+  by: agent  # ee82
+  actor: jgstern_agent  # ee82
+  clock: 11  # ee82
+  nonce: ee82  # ee82
+  set:  # ee82
+    status: done  # ee82
+- op: discuss  # 325c
+  at: '2026-03-11T20:58:57Z'  # 325c
+  by: agent  # 325c
+  actor: jgstern_agent  # 325c
+  clock: 12  # 325c
+  nonce: 325c  # 325c
+  message: "PR #2175 fixed the core regex bugs. Remaining ttrpc pattern detection is a separate enhancement tracked by WI-zulok (proto-to-handler gaps)."  # 325c
