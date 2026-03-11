@@ -1,0 +1,19 @@
+- op: create  # 6256
+  at: '2026-03-11T08:32:57Z'  # 6256
+  by: agent  # 6256
+  actor: jgstern_agent  # 6256
+  clock: 1  # 6256
+  nonce: '6256'  # 6256
+  data:  # 6256
+    kind: work_item  # 6256
+    title: "Electron main process entrypoint detection (BrowserWindow, app.on('ready'))"  # 6256
+    status: todo_soft  # 6256
+    priority: 3  # 6256
+    parent:  # 6256
+    tags: []  # 6256
+    before: []  # 6256
+    duplicate_of: []  # 6256
+    not_duplicate_of: []  # 6256
+    pr_ref:  # 6256
+    description: "LLM assessment: Signal-Desktop and session-desktop both flagged missing Electron main process entrypoints. The main Electron entry (main.ts/background.ts) is not detected as an entrypoint. Also detect package.json 'main' field for Node.js/Electron apps."  # 6256
+    fields: {}  # 6256

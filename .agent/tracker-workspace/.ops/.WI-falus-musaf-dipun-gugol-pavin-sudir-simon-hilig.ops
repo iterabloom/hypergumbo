@@ -1,0 +1,19 @@
+- op: create  # e73b
+  at: '2026-03-11T08:32:53Z'  # e73b
+  by: agent  # e73b
+  actor: jgstern_agent  # e73b
+  clock: 1  # e73b
+  nonce: e73b  # e73b
+  data:  # e73b
+    kind: work_item  # e73b
+    title: "React app root entrypoint detection (ReactDOM.createRoot, createBrowserRouter)"  # e73b
+    status: todo_soft  # e73b
+    priority: 2  # e73b
+    parent:  # e73b
+    tags: []  # e73b
+    before: []  # e73b
+    duplicate_of: []  # e73b
+    not_duplicate_of: []  # e73b
+    pr_ref:  # e73b
+    description: "LLM assessment: element-call, hubs, Signal-Desktop all flagged missing React app root entrypoints. Only test utilities or admin routes get detected as entrypoints, making forward slices useless for understanding the main application. Detect ReactDOM.createRoot/render, createBrowserRouter, or top-level App component as entrypoints."  # e73b
+    fields: {}  # e73b

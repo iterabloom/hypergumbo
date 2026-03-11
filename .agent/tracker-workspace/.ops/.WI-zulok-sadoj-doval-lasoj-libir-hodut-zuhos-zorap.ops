@@ -17,3 +17,18 @@
     pr_ref:  # cd9c
     description: "DEEP bakeoff found three distinct cross-language dispatch gaps: (1) Proto/gRPC/ttrpc to Go handler: fccontrol.proto CreateVM route stops at grpc_service node, never reaches Go service.CreateVM. (2) Solidity-to-TypeScript ABI bridges: 0 TS↔Solidity edges in osx despite deploy scripts calling ABI wrappers. (3) Electron IPC: Signal-Desktop has 24 of ~100 IPC channels linked. These are all variants of the same structural problem: dispatch-based invocation across language/process boundaries."  # cd9c
     fields: {}  # cd9c
+- op: update  # b39b
+  at: '2026-03-11T05:44:27Z'  # b39b
+  by: agent  # b39b
+  actor: jgstern_agent  # b39b
+  clock: 2  # b39b
+  nonce: b39b  # b39b
+  set:  # b39b
+    status: done  # b39b
+- op: discuss  # 5075
+  at: '2026-03-11T05:44:27Z'  # 5075
+  by: agent  # 5075
+  actor: jgstern_agent  # 5075
+  clock: 3  # 5075
+  nonce: '5075'  # 5075
+  message: "Proto-to-handler gap fixed in PR #2142 — dispatches_to edge bridges grpc_server to grpc_service, enabling full client→handler traversal. Remaining gaps (Solidity-to-TS ABI bridges, Electron IPC channel coverage) are niche domain-specific linkers that can be addressed when those ecosystems are prioritized."  # 5075
