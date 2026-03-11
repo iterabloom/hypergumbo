@@ -268,6 +268,11 @@ def link_wasm_bindgen(
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     meta={"wasm_export": import_name},
+                    # Tier 2 prevents _classify_symbols from reclassifying
+                    # based on the host file path (e.g., generated pkg/ files
+                    # detected as "minified/generated" → tier 4 → filtered out).
+                    supply_chain_tier=2,
+                    supply_chain_reason="synthetic WASM bridge node",
                 ))
 
             result_edges.append(Edge.create(

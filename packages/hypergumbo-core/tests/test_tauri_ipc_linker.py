@@ -851,6 +851,9 @@ class TestTauriIPCSyntheticSymbols:
         assert sym.meta == {"tauri_command": "greet"}
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
+        # Tier 2 prevents _classify_symbols from reclassifying to tier 4
+        assert sym.supply_chain_tier == 2
+        assert sym.supply_chain_reason == "synthetic IPC bridge node"
 
     def test_deduplicates_symbols_across_files(self, tmp_path: Path) -> None:
         """Same command invoked in two files creates only one Symbol per (file, cmd)."""

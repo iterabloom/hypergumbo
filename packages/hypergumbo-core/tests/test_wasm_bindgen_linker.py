@@ -564,6 +564,9 @@ class TestWasmBindgenSyntheticSymbols:
         assert sym.meta == {"wasm_export": "greet"}
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16
+        # Tier 2 prevents _classify_symbols from reclassifying to tier 4
+        assert sym.supply_chain_tier == 2
+        assert sym.supply_chain_reason == "synthetic WASM bridge node"
 
     def test_no_symbols_when_no_matches(self, tmp_path: Path) -> None:
         """No synthetic symbols when imports don't match exports."""
