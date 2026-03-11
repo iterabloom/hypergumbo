@@ -19,3 +19,18 @@
     fields:  # dff8
       statement: "SPA entrypoints (createRoot, ReactDOM.render) and Electron main/preload files must be detected as entrypoints for slicing to start from production code"  # dff8
       root_cause: "Entrypoint detection heuristics do not include SPA bootstrap patterns or Electron process file conventions"  # dff8
+- op: update  # f8b4
+  at: '2026-03-10T23:43:29Z'  # f8b4
+  by: agent  # f8b4
+  actor: jgstern_agent  # f8b4
+  clock: 2  # f8b4
+  nonce: f8b4  # f8b4
+  set:  # f8b4
+    status: holding  # f8b4
+- op: discuss  # 4530
+  at: '2026-03-10T23:43:29Z'  # 4530
+  by: agent  # 4530
+  actor: jgstern_agent  # 4530
+  clock: 3  # 4530
+  nonce: '4530'  # 4530
+  message: "Fixed in PR #2125. Added handling for 'entrypoint' concept (electron→ELECTRON_MAIN, others→MAIN_FUNCTION) and new 'app_bootstrap' concept (→SPA_BOOTSTRAP) in _detect_from_concepts(). Created react.yaml with createRoot/ReactDOM.render/hydrateRoot/createBrowserRouter patterns."  # 4530

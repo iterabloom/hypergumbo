@@ -19,3 +19,18 @@
     fields:  # ffe9
       statement: "Event edges detected in hg.json must be traversable during slice BFS so that event-driven refactoring analysis captures subscriber dependencies"  # ffe9
       root_cause: "Slice BFS traversal only follows call/references edges, not event_publishes edges"  # ffe9
+- op: update  # b8e7
+  at: '2026-03-10T22:20:41Z'  # b8e7
+  by: agent  # b8e7
+  actor: jgstern_agent  # b8e7
+  clock: 2  # b8e7
+  nonce: b8e7  # b8e7
+  set:  # b8e7
+    status: holding  # b8e7
+- op: discuss  # 1d88
+  at: '2026-03-10T22:20:41Z'  # 1d88
+  by: agent  # 1d88
+  actor: jgstern_agent  # 1d88
+  clock: 3  # 1d88
+  nonce: 1d88  # 1d88
+  message: "Fixed path mismatch in _create_subscriber_to_method_edges (PR #2123). event_subscribes edges now created correctly (54 edges for automerge-repo). Remaining work: verify event edges are actually traversed during slice BFS and appear in slice output. The invariant statement is broader than just the path bug - it's about event edges appearing in slices."  # 1d88

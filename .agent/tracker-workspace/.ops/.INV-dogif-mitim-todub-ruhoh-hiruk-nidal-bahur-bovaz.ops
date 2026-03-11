@@ -19,3 +19,18 @@
     fields:  # 0238
       statement: "React Router Route path patterns must be detected and listed in routes.txt for SPA-based repos"  # 0238
       root_cause: "Route detection only covers HTTP verb-based patterns, not JSX Route components"  # 0238
+- op: update  # 5bb5
+  at: '2026-03-11T00:15:38Z'  # 5bb5
+  by: agent  # 5bb5
+  actor: jgstern_agent  # 5bb5
+  clock: 2  # 5bb5
+  nonce: 5bb5  # 5bb5
+  set:  # 5bb5
+    status: holding  # 5bb5
+- op: discuss  # 81af
+  at: '2026-03-11T00:15:38Z'  # 81af
+  by: agent  # 81af
+  actor: jgstern_agent  # 81af
+  clock: 3  # 81af
+  nonce: 81af  # 81af
+  message: "Partially fixed. Added JSX <Route path='...' /> detection in JS/TS analyzer. Creates kind='route' symbols with route_path metadata. Routes appear in routes.txt via existing cmd_routes() pipeline. PR pending."  # 81af
