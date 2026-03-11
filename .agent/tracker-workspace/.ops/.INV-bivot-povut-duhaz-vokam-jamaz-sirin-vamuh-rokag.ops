@@ -34,3 +34,11 @@
   clock: 3  # 1d88
   nonce: 1d88  # 1d88
   message: "Fixed path mismatch in _create_subscriber_to_method_edges (PR #2123). event_subscribes edges now created correctly (54 edges for automerge-repo). Remaining work: verify event edges are actually traversed during slice BFS and appear in slice output. The invariant statement is broader than just the path bug - it's about event edges appearing in slices."  # 1d88
+- op: update  # 1f2e
+  at: '2026-03-11T16:29:23Z'  # 1f2e
+  by: human  # 1f2e
+  actor: jgstern  # 1f2e
+  clock: 4  # 1f2e
+  nonce: 1f2e  # 1f2e
+  set:  # 1f2e
+    title: "Slice BFS must traverse event_publishes edges"  # 1f2e

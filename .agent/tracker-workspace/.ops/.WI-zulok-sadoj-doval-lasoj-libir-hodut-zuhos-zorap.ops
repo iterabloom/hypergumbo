@@ -32,3 +32,19 @@
   clock: 3  # 5075
   nonce: '5075'  # 5075
   message: "Proto-to-handler gap fixed in PR #2142 — dispatches_to edge bridges grpc_server to grpc_service, enabling full client→handler traversal. Remaining gaps (Solidity-to-TS ABI bridges, Electron IPC channel coverage) are niche domain-specific linkers that can be addressed when those ecosystems are prioritized."  # 5075
+- op: update  # dc8d
+  at: '2026-03-11T16:57:26Z'  # dc8d
+  by: human  # dc8d
+  actor: jgstern  # dc8d
+  clock: 4  # dc8d
+  nonce: dc8d  # dc8d
+  set:  # dc8d
+    status: todo_soft  # dc8d
+    priority: 4  # dc8d
+- op: discuss  # f6b2
+  at: '2026-03-11T16:57:37Z'  # f6b2
+  by: human  # f6b2
+  actor: jgstern  # f6b2
+  clock: 5  # f6b2
+  nonce: f6b2  # f6b2
+  message: "please address those remaining gaps"  # f6b2

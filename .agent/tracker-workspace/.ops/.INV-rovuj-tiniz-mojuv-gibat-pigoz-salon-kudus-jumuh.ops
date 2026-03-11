@@ -56,3 +56,18 @@
   clock: 6  # 07b6
   nonce: 07b6  # 07b6
   message: "Fixed in PRs #2058 (1/sqrt(N) confidence scaling) and #2059 (inline method qualification + same-class preference + key-based path_hint matching). Inline methods now get qualified names, preventing registry collisions. Same-class preference uses enclosing class as path_hint. Remaining gap: cross-file disambiguation without type info."  # 07b6
+- op: update  # 5a07
+  at: '2026-03-11T16:42:46Z'  # 5a07
+  by: human  # 5a07
+  actor: jgstern  # 5a07
+  clock: 7  # 5a07
+  nonce: 5a07  # 5a07
+  set:  # 5a07
+    title: "C++ method name disambiguation: common method names (Initialize, Init, get) must resolve to the method of the correct class"  # 5a07
+- op: discuss  # d059
+  at: '2026-03-11T16:44:44Z'  # d059
+  by: human  # d059
+  actor: jgstern  # d059
+  clock: 8  # d059
+  nonce: d059  # d059
+  message: "how impactful is the \"cross-file disambiguation without type info\" gap?"  # d059

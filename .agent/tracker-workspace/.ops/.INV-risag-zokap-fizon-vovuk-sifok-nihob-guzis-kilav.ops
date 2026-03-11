@@ -34,3 +34,11 @@
   clock: 3  # 4530
   nonce: '4530'  # 4530
   message: "Fixed in PR #2125. Added handling for 'entrypoint' concept (electron→ELECTRON_MAIN, others→MAIN_FUNCTION) and new 'app_bootstrap' concept (→SPA_BOOTSTRAP) in _detect_from_concepts(). Created react.yaml with createRoot/ReactDOM.render/hydrateRoot/createBrowserRouter patterns."  # 4530
+- op: update  # 5dae
+  at: '2026-03-11T16:30:12Z'  # 5dae
+  by: human  # 5dae
+  actor: jgstern  # 5dae
+  clock: 4  # 5dae
+  nonce: 5dae  # 5dae
+  set:  # 5dae
+    title: "SPA/Electron entrypoint must be detected"  # 5dae

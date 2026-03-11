@@ -32,3 +32,10 @@
   clock: 3  # d2a7
   nonce: d2a7  # d2a7
   message: "Fixed in PR (auto-pr in flight). Root cause: Tauri IPC and wasm_bindgen linkers created edges with synthetic source IDs but never created corresponding Symbol nodes. Slicer BFS dead-ended on node_by_id.get(edge.src) returning None. Fix: both linkers now emit synthetic Symbol nodes (ipc_publisher, wasm_import) alongside edges, and registry wrappers pass symbols through."  # d2a7
+- op: discuss  # be73
+  at: '2026-03-11T16:58:30Z'  # be73
+  by: human  # be73
+  actor: jgstern  # be73
+  clock: 4  # be73
+  nonce: be73  # be73
+  message: "please find the PR number if it exists"  # be73

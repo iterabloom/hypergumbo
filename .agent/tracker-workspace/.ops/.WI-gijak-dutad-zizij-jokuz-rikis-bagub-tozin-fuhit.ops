@@ -32,3 +32,19 @@
   clock: 3  # 8512
   nonce: '8512'  # 8512
   message: "Partially addressed in PR #2140. Added utility dampening for assert/panic/exit builtins and UI primitive components (Button, Icon, etc.). Remaining: edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes that would require a separate design effort."  # 8512
+- op: update  # 9898
+  at: '2026-03-11T16:54:58Z'  # 9898
+  by: human  # 9898
+  actor: jgstern  # 9898
+  clock: 4  # 9898
+  nonce: '9898'  # 9898
+  set:  # 9898
+    status: todo_soft  # 9898
+    priority: 3  # 9898
+- op: discuss  # 4694
+  at: '2026-03-11T16:55:02Z'  # 4694
+  by: human  # 4694
+  actor: jgstern  # 4694
+  clock: 5  # 4694
+  nonce: '4694'  # 4694
+  message: "you wrote \"edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes\". Please search through all of the tracker items to find whether there are other items (marked done or any other Status) that would benefit or would have benefited from such \"larger architectural changes\". Also search through the lab notebook to investigate this question. when querying the tracker, be sure to only use the tracker tool and NOT grep through the raw ops files. (doing the latter will lead only to confusion and misery.) If you find the tracker tool awkward or unweildy for the sorts of queries you wish to run, then add new tracker items to expand the query capabilities of tracker, and mark them with a status of needs_human_review, and designate their `before` fields as the present item."  # 4694

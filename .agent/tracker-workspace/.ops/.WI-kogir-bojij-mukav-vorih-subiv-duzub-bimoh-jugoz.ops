@@ -32,3 +32,10 @@
   clock: 3  # 0c9d
   nonce: 0c9d  # 0c9d
   message: "Fixed in PR #2139. Expanded invoke regex to match TAURI_INVOKE and __TAURI_INVOKE__ patterns from tauri-specta generated bindings. Remaining gap: wrapper functions (commands.takeScreenshot()) that don't contain literal command names — these require call-graph tracing through generated bindings, a fundamentally harder problem."  # 0c9d
+- op: discuss  # 2bb9
+  at: '2026-03-11T16:48:06Z'  # 2bb9
+  by: human  # 2bb9
+  actor: jgstern  # 2bb9
+  clock: 4  # 2bb9
+  nonce: 2bb9  # 2bb9
+  message: "how big of a deal is the \"wrapper functions (commands.takeScreenshot()) that don't contain literal command names\" gap? and might there be analogous issues in frameworks other than Tauri or languages other than Rust?"  # 2bb9

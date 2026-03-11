@@ -32,3 +32,10 @@
   clock: 3  # 185e
   nonce: 185e  # 185e
   message: "Investigation complete. The gRPC linker (grpc.py) already handles RegisterXxxServer, NewXxxClient, and UnimplementedXxxServer with struct→service mapping and implements_rpc edge creation. The bakeoff finding of 'few/no edges' is likely due to specific repo characteristics: (1) .proto files not present in repo (only generated code), (2) generated code in external packages not analyzed, (3) service naming conventions not matching the expected pattern. No code change needed — the linker handles the standard patterns correctly."  # 185e
+- op: discuss  # 0a6b
+  at: '2026-03-11T17:01:50Z'  # 0a6b
+  by: human  # 0a6b
+  actor: jgstern  # 0a6b
+  clock: 4  # 0a6b
+  nonce: 0a6b  # 0a6b
+  message: "Please explain in plain language to someone unfamiliar with Golang and gRPC why this was at first considered a problem and then later considered not a problem."  # 0a6b

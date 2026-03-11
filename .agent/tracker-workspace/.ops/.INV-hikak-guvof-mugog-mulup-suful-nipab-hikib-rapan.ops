@@ -34,3 +34,18 @@
   clock: 3  # dba3
   nonce: dba3  # dba3
   message: "Fixed. Cross-language edges: tauri_ipc linker already existed. Entrypoint detection: added tauri.yaml (#[tauri::command]→ipc_handler concept) and ipc_handler concept handling in _detect_from_concepts()→EVENT_HANDLER. PR pending."  # dba3
+- op: update  # a97d
+  at: '2026-03-11T16:41:25Z'  # a97d
+  by: human  # a97d
+  actor: jgstern  # a97d
+  clock: 4  # a97d
+  nonce: a97d  # a97d
+  set:  # a97d
+    title: "Tauri IPC commands must be detected as routes or cross-language edges"  # a97d
+- op: discuss  # 6859
+  at: '2026-03-11T16:41:57Z'  # 6859
+  by: human  # 6859
+  actor: jgstern  # 6859
+  clock: 5  # 6859
+  nonce: '6859'  # 6859
+  message: "please find the PR number"  # 6859

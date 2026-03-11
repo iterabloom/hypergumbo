@@ -41,3 +41,19 @@
   clock: 4  # c282
   nonce: c282  # c282
   message: "Merged in PR #2108. React component linker creates renders_component edges from JSX usage to component definitions. 40 tests, 100% coverage. Addresses Gap 2 (component composition) which was the highest-impact gap. Gaps 1 (ReactDOM entrypoints) and 3 (React Router routes) remain but are lower priority."  # c282
+- op: discuss  # 87e4
+  at: '2026-03-11T16:36:28Z'  # 87e4
+  by: human  # 87e4
+  actor: jgstern  # 87e4
+  clock: 5  # 87e4
+  nonce: '87e4'  # 87e4
+  message: "Please also address gap 1 and gap 3"  # 87e4
+- op: update  # c0b4
+  at: '2026-03-11T16:39:21Z'  # c0b4
+  by: human  # c0b4
+  actor: jgstern  # c0b4
+  clock: 6  # c0b4
+  nonce: c0b4  # c0b4
+  set:  # c0b4
+    status: todo_soft  # c0b4
+    priority: 3  # c0b4

@@ -32,3 +32,10 @@
   clock: 3  # 6fae
   nonce: 6fae  # 6fae
   message: "Fixed. Added test double name patterns (Dummy*, Mock*, Fake*, Stub*, Spy*) and test fixture file detection (conftest, fixtures, factories). These now get 0.1x dampening like other utility symbols. PR pending."  # 6fae
+- op: discuss  # c5ec
+  at: '2026-03-11T16:45:58Z'  # c5ec
+  by: human  # c5ec
+  actor: jgstern  # c5ec
+  clock: 4  # c5ec
+  nonce: c5ec  # c5ec
+  message: "please find the PR number if it exists"  # c5ec

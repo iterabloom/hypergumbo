@@ -102,3 +102,11 @@
   nonce: 4d00  # 4d00
   set:  # 4d00
     status: holding  # 4d00
+- op: update  # 454d
+  at: '2026-03-11T16:33:22Z'  # 454d
+  by: human  # 454d
+  actor: jgstern  # 454d
+  clock: 13  # 454d
+  nonce: 454d  # 454d
+  set:  # 454d
+    title: "Go vendored SDK code must be classified as external dependency"  # 454d
