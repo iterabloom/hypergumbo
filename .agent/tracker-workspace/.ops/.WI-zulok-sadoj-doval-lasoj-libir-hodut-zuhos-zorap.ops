@@ -48,3 +48,10 @@
   clock: 5  # f6b2
   nonce: f6b2  # f6b2
   message: "please address those remaining gaps"  # f6b2
+- op: discuss  # ebcc
+  at: '2026-03-11T17:28:46Z'  # ebcc
+  by: agent  # ebcc
+  actor: jgstern_agent  # ebcc
+  clock: 6  # ebcc
+  nonce: ebcc  # ebcc
+  message: "Acknowledged. The remaining gaps are:\n\n1. **Solidity-to-TypeScript ABI bridges** (e.g., osx repo): Deploy scripts and frontend code call contract methods through ethers.js/viem ABI wrappers. Zero TS↔Solidity edges detected. This requires a new linker that: (a) parses Solidity contract ABIs (from compilation artifacts or source), (b) matches TS/JS calls like `contract.approve()` to Solidity function definitions.\n\n2. **Electron IPC channel coverage** (e.g., Signal-Desktop): Only 24 of ~100 IPC channels linked. The current Tauri IPC linker pattern (regex for invoke()) needs an analogous Electron variant: `ipcRenderer.send('channel')`, `ipcRenderer.invoke('channel')`, `ipcMain.handle('channel', handler)`, and preload bridge patterns like `contextBridge.exposeInMainWorld`.\n\nI'll create separate tracker items for each and begin implementation."  # ebcc

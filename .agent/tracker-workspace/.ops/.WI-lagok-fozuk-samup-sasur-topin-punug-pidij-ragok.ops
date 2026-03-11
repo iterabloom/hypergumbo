@@ -1,0 +1,19 @@
+- op: create  # 87c1
+  at: '2026-03-11T17:29:43Z'  # 87c1
+  by: agent  # 87c1
+  actor: jgstern_agent  # 87c1
+  clock: 1  # 87c1
+  nonce: 87c1  # 87c1
+  data:  # 87c1
+    kind: work_item  # 87c1
+    title: "Electron IPC linker: ipcRenderer/ipcMain channel matching"  # 87c1
+    status: todo_soft  # 87c1
+    priority: 3  # 87c1
+    parent:  # 87c1
+    tags: []  # 87c1
+    before: []  # 87c1
+    duplicate_of: []  # 87c1
+    not_duplicate_of: []  # 87c1
+    pr_ref:  # 87c1
+    description: "Signal-Desktop shows only 24 of ~100 IPC channels linked. Need Electron-specific IPC linker. Parent: WI-zulok."  # 87c1
+    fields: {}  # 87c1

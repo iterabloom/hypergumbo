@@ -57,3 +57,18 @@
   set:  # c0b4
     status: todo_soft  # c0b4
     priority: 3  # c0b4
+- op: discuss  # 5eb6
+  at: '2026-03-11T17:28:35Z'  # 5eb6
+  by: agent  # 5eb6
+  actor: jgstern_agent  # 5eb6
+  clock: 7  # 5eb6
+  nonce: 5eb6  # 5eb6
+  message: "Both gaps 1 and 3 were already addressed in prior PRs:\n\n**Gap 1 (ReactDOM.createRoot/render entrypoints):** Fixed in commit 1c6393ef \"feat: React SPA bootstrap entrypoint detection via UsageContext\" and commit ac0a2fcb \"feat: SPA/Electron entrypoint detection via concept mapping\". ReactDOM.createRoot() and ReactDOM.render() are now detected as SPA bootstrap entrypoints via the concept mapping system. Commit 200fcae2 also fixed SPA bootstrap framework disambiguation between Solid and React.\n\n**Gap 3 (React Router routes):** Fixed in commit 9929cd88 \"feat: React Router JSX route detection in JS/TS analyzer\" and commit 7277c3bb \"fix: route-handler linker resolves class/module components and suffix names\". React Router <Route path=\"/foo\" component={Bar}/> and <Route path=\"/foo\" element={<Bar/>}/> patterns are now detected and produce routes_to edges.\n\nAll three gaps from the original WI-dolam description are now addressed. Updating status to done."  # 5eb6
+- op: update  # 2a7f
+  at: '2026-03-11T17:28:35Z'  # 2a7f
+  by: agent  # 2a7f
+  actor: jgstern_agent  # 2a7f
+  clock: 8  # 2a7f
+  nonce: 2a7f  # 2a7f
+  set:  # 2a7f
+    status: done  # 2a7f
