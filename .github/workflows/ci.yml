@@ -321,15 +321,34 @@ jobs:
         with:
           python-version: "3.11"
           # Don't use pip cache - we cache the entire venv instead
+      - name: Detect Python prefix
+        id: pyprefix
+        run: echo "prefix=$(python -c 'import sys; print(sys.prefix)')" >> "$GITHUB_OUTPUT"
       - name: Cache venv
         id: cache-venv
         uses: actions/cache@v3
         with:
           path: .venv
-          # Key on all pyproject.toml files - any change invalidates the cache
-          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}
+          # Key includes Python prefix to prevent cross-runner cache sharing.
+          # Codeberg hosted runners and self-hosted runners install Python at
+          # different paths; venv shebangs are not portable across them.
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}-${{ steps.pyprefix.outputs.prefix }}
+      - name: Validate cached venv
+        if: steps.cache-venv.outputs.cache-hit == 'true'
+        id: validate-venv
+        run: |
+          # Cached venv may have shebangs from a different runner's Python path.
+          # If the venv python is broken, delete it so the install step recreates it.
+          if ! .venv/bin/python --version >/dev/null 2>&1; then
+            echo "⚠️ Cached venv is broken (wrong Python path) - recreating"
+            rm -rf .venv
+            echo "venv_ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✓ Cached venv is functional"
+            echo "venv_ok=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create venv and install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-venv.outputs.cache-hit != 'true' || steps.validate-venv.outputs.venv_ok == 'false'
         run: |
           python -m venv .venv
           source .venv/bin/activate
@@ -697,14 +716,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Detect Python prefix
+        id: pyprefix
+        run: echo "prefix=$(python -c 'import sys; print(sys.prefix)')" >> "$GITHUB_OUTPUT"
       - name: Cache venv
         id: cache-venv
         uses: actions/cache@v3
         with:
           path: .venv
-          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}-${{ steps.pyprefix.outputs.prefix }}
+      - name: Validate cached venv
+        if: steps.cache-venv.outputs.cache-hit == 'true'
+        id: validate-venv
+        run: |
+          if ! .venv/bin/python --version >/dev/null 2>&1; then
+            echo "⚠️ Cached venv is broken (wrong Python path) - recreating"
+            rm -rf .venv
+            echo "venv_ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✓ Cached venv is functional"
+            echo "venv_ok=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create venv and install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-venv.outputs.cache-hit != 'true' || steps.validate-venv.outputs.venv_ok == 'false'
         run: |
           python -m venv .venv
           source .venv/bin/activate
