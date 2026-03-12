@@ -567,25 +567,19 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
 
 ## Overview
-Python (91%), Markdown (4%), Yaml (3%)
-757 files    (402 non-test + 355 test)
-~352,188 LOC (~140,689 non-test + ~211,499 test)
+Python (92%), Markdown (4%), Yaml (3%)
+740 files    (385 non-test + 355 test)
+~350,568 LOC (~138,739 non-test + ~211,829 test)
 
 ## Structure
 
 hypergumbo/
-├── .agent
-│   ├── hooks
-│   │   ├── _shared
-│   │   │   └── stop_logic.sh
-│   │   └── [and 4 other items]
-│   └── [and 10 other items]
 ├── .githooks
 │   ├── commit-msg
 │   └── [and 9 other items]
 ├── docs
 │   ├── FRAMEWORKS.md
-│   └── [and 23 other items]
+│   └── [and 22 other items]
 ├── packages
 │   ├── hypergumbo-core
 │   │   ├── src
@@ -611,7 +605,7 @@ hypergumbo/
 ├── scripts
 │   ├── lib
 │   │   └── forgejo-api.sh
-│   └── [and 34 other items]
+│   └── [and 35 other items]
 ├── tests
 │   ├── test_bakeoff_features_reflect.py
 │   └── [and 3 other items]
@@ -619,7 +613,7 @@ hypergumbo/
 ├── conftest.py
 ├── pyproject.toml
 ├── setup.py
-└── [and 24 other items]
+└── [and 30 other items]
 
 ## Frameworks
 
@@ -631,7 +625,7 @@ hypergumbo/
 
 355 test files · hypothesis, pytest, unittest
 
-*~94% estimated coverage (2820/2999 functions called by tests)*
+*~94% estimated coverage (2820/2996 functions called by tests)*
 
 ## Configuration
 
@@ -641,11 +635,14 @@ LICENSE: AGPL
 
 [packages/hypergumbo-core/pyproject.toml]
   > [build-system] requires = ["hatchling>=1.24"]
-  > [project] name = "hypergumbo-core" version = "2.1.0"
+  > # YAML parsing for framework patterns "pyyaml~=6.0.3", ]
 
 [packages/hypergumbo-lang-common/pyproject.toml]
   > "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only", ]
-  > [tool.ruff] target-version = "py310"
+
+[packages/hypergumbo-lang-extended1/pyproject.toml]
+  > readme = "README.md" requires-python = ">=3.10" license = { text = "AGPL-3.0-or-later" }
+
 
 [packages/hypergumbo-lang-mainstream/pyproject.toml]
   > "tree-sitter-typescript~=0.23.2", "tree-sitter-php~=0.24.1", "tree-sitter-c~=0.24.1",
@@ -653,12 +650,9 @@ LICENSE: AGPL
 [packages/hypergumbo-tracker/pyproject.toml]
   > ] dependencies = [ "ruamel.yaml>=0.18",
   > dev = [ "pytest>=8.0,<10", "pytest-cov~=7.0.0",
-  > filterwarnings = [] pythonpath = ["tests"]
-
 
 [packages/hypergumbo/pyproject.toml]
-  > [project] name = "hypergumbo" version = "2.1.0"
-
+  > # Pulls in sentence-transformers which requires PyTorch (~2GB) # Install with: pip install hypergumbo[embeddings] or ./scripts/install-embe
 
 [pyproject.toml]
   > # Root pyproject.toml - shared tool configuration only # Packages are defined in packages/*/pyproject.toml
@@ -803,9 +797,7 @@ LICENSE: AGPL
   - `_TypeHierarchyIndex` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/cgo.py`:
   - `CgoLinkResult` (Python @dataclass)
-`packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py`:
-  - `FileAnalysis` (Python @dataclass)
-- ... and 47 more data models
+- ... and 48 more data models
 
 ## Source Files
 
@@ -853,7 +845,7 @@ LICENSE: AGPL
 - `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/racket.py`
 - `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/vue.py`
 - `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/puppet.py`
-- ... and 520 more files
+- ... and 515 more files
 
 ## Key Symbols
 
@@ -913,24 +905,24 @@ LICENSE: AGPL
 ### `packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py`
 - `main(argv: list[str] | None=…) -> None` (function) — Primary CLI entry point.
 
-(... and 3474 more symbols across 223 other files)
+(... and 3466 more symbols across 218 other files)
 
 ## Additional Files
 
 - `README.md`
 - `CONTRIBUTING.md`
-- `docs/adr/0009-feature-focused-bakeoff.md`
+- `docs/adr/0001-portable-agent-instructions.md`
 - `packages/hypergumbo-core/README.md`
 - `packages/hypergumbo-tracker/README.md`
-- `docs/adr/0001-portable-agent-instructions.md`
+- `docs/GOVERNANCE.md`
 - `docs/LANGUAGES.md`
-- `docs/adr/0005-sketch-budget-allocation.md`
-- `docs/MIGRATION-2.0.md`
 - `docs/future/roadmap-details.md`
+- `docs/MIGRATION-2.0.md`
+- `docs/MAINTAINER_AGENT_SPEC.md`
 - `packages/hypergumbo-core/src/hypergumbo_core/frameworks/shiny.yaml`
-- `docs/FRAMEWORKS.md`
+- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/servant.yaml`
 - `packages/hypergumbo-core/src/hypergumbo_core/frameworks/plug.yaml`
-- `docs/adr/0013-structured-tracker.md`
+- `docs/adr/0012-pass-unification-and-multi-fidelity.md`
 - ... and 148 more files
 ````
 
@@ -940,7 +932,7 @@ LICENSE: AGPL
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9c737049e4b3
-  hypergumbo: 2.1.0
+  commit: 7c238273d3a4
+  hypergumbo: 2.2.0
   python: 3.12.3
 -->

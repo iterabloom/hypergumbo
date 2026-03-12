@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo Core: Core infrastructure for repo behavior map generation.
 
 This package provides the core infrastructure for static analysis, including:
@@ -22,6 +23,6 @@ format has breaking changes, while the tool version changes with any release.
 See ADR-0010 for the modular package architecture.
 """
 __all__ = ["PASS_VERSION", "__version__", "make_pass_id"]
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 from .ir import PASS_VERSION, make_pass_id

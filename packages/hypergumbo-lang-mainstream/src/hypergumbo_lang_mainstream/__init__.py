@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo mainstream language analyzers.
 
 This package provides analyzers for the most widely-used programming languages
@@ -7,7 +8,7 @@ These are languages that most developers will encounter regularly, representing
 the core of modern software development stacks.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
