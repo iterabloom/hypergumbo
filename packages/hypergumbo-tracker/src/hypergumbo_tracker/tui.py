@@ -2160,7 +2160,10 @@ class TrackerApp(App):
         """Remove italic ghost rows from previous chain selection."""
         if not self._ghost_row_ids:
             return
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         for rid in list(self._ghost_row_ids):
             try:
                 table.remove_row(rid)
@@ -2176,7 +2179,10 @@ class TrackerApp(App):
         at the bottom of the table.  Ghost rows are tracked in
         ``_ghost_row_ids`` so they can be removed when the cursor moves.
         """
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         hidden = self._hidden_ids()
         if not hidden:
             return
@@ -2264,7 +2270,10 @@ class TrackerApp(App):
             return
         # Manage ghost rows: remove old ones, append new ones
         self._remove_ghost_rows()
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         if table.row_count == 0:
             return
 
