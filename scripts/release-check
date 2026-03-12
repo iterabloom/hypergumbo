@@ -198,7 +198,7 @@ fi
 # Check for secrets
 echo "  Scanning for secrets..."
 if command -v gitleaks &>/dev/null; then
-    if gitleaks detect --source . --no-git --quiet 2>/dev/null; then
+    if gitleaks detect --source . --no-git --no-banner 2>/dev/null; then
         pass "No secrets detected (gitleaks)"
     else
         fail "Potential secrets detected (run 'gitleaks detect' for details)"
