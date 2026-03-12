@@ -14,6 +14,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [2.2.0] - 2026-03-12
 
+## [2.2.0] - 2026-03-12
+
 ### Added
 
 #### Cross-language linkers
