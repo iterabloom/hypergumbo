@@ -320,7 +320,7 @@ class TestRegistryIntegration:
         from hypergumbo_core.linkers.registry import list_registered
 
         # Ensure the module is imported (triggers @register_linker)
-        import hypergumbo_core.linkers.solidity_abi  # noqa: F401
+        import hypergumbo_core.linkers.solidity_abi
 
         assert "solidity_abi" in list_registered()
 
