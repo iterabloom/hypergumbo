@@ -318,13 +318,18 @@ jobs:
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
+            # Install test deps separately, then packages without [dev] extras.
+            # This matches ci.yml's approach and avoids a resolution conflict:
+            # hypergumbo-core[dev] pins pytest~=9.0.2, but syrupy==4.8.0
+            # (from pytest-textual-snapshot via tracker[tui]) requires pytest<9.
+            # Installing pytest first lets pip skip the upper-bound check.
+            pip install pytest pytest-cov pytest-xdist jsonschema
+            pip install -e packages/hypergumbo-core \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
                         -e "packages/hypergumbo-tracker[dev,tui]" \
-                        -e packages/hypergumbo \
-                        jsonschema
+                        -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
