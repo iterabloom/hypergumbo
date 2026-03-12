@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for file taxonomy classification (ADR-0004).
 
 Tests the two-dimensional classification system:

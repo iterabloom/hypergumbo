@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Scala analysis pass using tree-sitter-scala.
 
 This analyzer uses tree-sitter to parse Scala files and extract:

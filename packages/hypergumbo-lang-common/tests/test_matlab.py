@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for MATLAB analyzer.
 
 Tests for the tree-sitter-based MATLAB analyzer, verifying symbol extraction,

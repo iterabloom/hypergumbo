@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for PowerShell analysis pass.
 
 Tests verify that the PowerShell analyzer correctly extracts:

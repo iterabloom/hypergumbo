@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from hypergumbo_core.schema import new_behavior_map, SCHEMA_VERSION
 
 

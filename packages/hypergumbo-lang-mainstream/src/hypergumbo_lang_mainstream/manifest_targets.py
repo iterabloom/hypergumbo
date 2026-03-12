@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Build-target extraction from language-specific manifest files.
 
 Extracts ``defines_target`` edges from build/project manifest files that

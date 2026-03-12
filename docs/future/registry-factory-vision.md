@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Registry & Factory Vision (Future Work)
 
 > **Note**: This document captures aspirational ideas for a registry and factory system. These are speculative features that would only make sense if there's demonstrated demand for custom analyzers. Currently, the general-purpose analyzer works well enough that custom composition isn't needed.

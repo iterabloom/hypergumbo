@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """VHDL analysis pass using tree-sitter-vhdl.
 
 This analyzer uses tree-sitter to parse VHDL files and extract:

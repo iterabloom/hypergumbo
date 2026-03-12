@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Groovy analysis pass using tree-sitter-groovy.
 
 This analyzer uses tree-sitter to parse Groovy files and extract:

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 # hypergumbo-tracker
 
 Structured work tracker for AI agent governance. Append-only YAML op-logs

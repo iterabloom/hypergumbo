@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Flask framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Flask route decorators, blueprint patterns, and common extensions.

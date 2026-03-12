@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Java analysis pass using tree-sitter-java.
 
 This analyzer uses tree-sitter-java to parse Java files and extract:

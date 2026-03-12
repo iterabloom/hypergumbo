@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the selection.language_proportional module."""
 
 from hypergumbo_core.ir import Edge, Symbol, Span

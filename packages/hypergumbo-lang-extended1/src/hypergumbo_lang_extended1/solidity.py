@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Solidity analysis pass using tree-sitter-solidity.
 
 This analyzer uses tree-sitter to parse Solidity smart contract files and extract:

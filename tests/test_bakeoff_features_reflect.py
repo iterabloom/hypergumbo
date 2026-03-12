@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for scripts/bakeoff-features-reflect.
 
 These tests verify the mechanical parts of the bakeoff-features-reflect script:
@@ -765,7 +766,7 @@ def _make_aggregate_args(workdir, *, iteration=None, use_all=False, use_some=Non
     args.workdir = str(workdir)
     args.iteration = iteration
     # These control single-cohort vs multi-cohort path
-    setattr(args, "all", use_all)
+    setattr(args, "all", use_all)  # noqa: B010 — avoids shadowing builtin `all`
     args.some = use_some
     args.ingest = ingest
     return args

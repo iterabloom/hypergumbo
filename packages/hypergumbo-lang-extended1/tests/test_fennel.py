@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Fennel analyzer.
 
 Tests for the tree-sitter-based Fennel analyzer, verifying symbol extraction,

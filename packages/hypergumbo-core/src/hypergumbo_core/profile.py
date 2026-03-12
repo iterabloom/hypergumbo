@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Repo profile detection - language and framework heuristics.
 
 This module provides fast, heuristic-based detection of programming

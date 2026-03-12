@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Assembly language analysis pass using tree-sitter.
 
 Extracts labels (functions), data symbols, and call edges from assembly source

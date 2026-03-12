@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """YAML/Ansible analyzer using tree-sitter.
 
 This analyzer extracts playbooks, tasks, handlers, and variables from

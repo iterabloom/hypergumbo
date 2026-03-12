@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Protocol Buffers (Proto) analysis pass.
 
 Tests verify that the Proto analyzer correctly extracts:

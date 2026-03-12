@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # CI Failover SOP
 
 When Codeberg is down and you have a self-hosted Forgejo with a runner.

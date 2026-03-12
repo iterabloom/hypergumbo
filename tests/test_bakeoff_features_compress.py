@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for bakeoff-features compress subcommand and hg.json.gz transparent reading."""
 
 import argparse

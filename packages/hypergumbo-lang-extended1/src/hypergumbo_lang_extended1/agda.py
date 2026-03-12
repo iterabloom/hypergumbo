@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Agda analysis pass using tree-sitter-agda.
 
 This analyzer uses tree-sitter to parse Agda files and extract:

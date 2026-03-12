@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0014: Generalized Symbol Identity (stable_id / shape_id)
 
 Date: 2026-02-20

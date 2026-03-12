@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Event sourcing linker for detecting event publishers and subscribers.
 
 This linker detects event-driven patterns (EventEmitter, Django signals, Spring

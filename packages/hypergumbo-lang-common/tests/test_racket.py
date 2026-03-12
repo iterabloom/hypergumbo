@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Racket analyzer.
 
 Tests for the tree-sitter-based Racket analyzer, verifying symbol extraction,

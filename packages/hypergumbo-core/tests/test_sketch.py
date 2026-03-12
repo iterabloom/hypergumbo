@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the sketch module (token-budgeted Markdown output)."""
 from typing import ClassVar
 from pathlib import Path

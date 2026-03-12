@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Markdown documentation analyzer using tree-sitter.
 
 Markdown is the standard format for README files, documentation, and API

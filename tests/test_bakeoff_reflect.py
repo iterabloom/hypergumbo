@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for scripts/bakeoff-reflect.
 
 These tests verify the mechanical parts of the bakeoff-reflect script:

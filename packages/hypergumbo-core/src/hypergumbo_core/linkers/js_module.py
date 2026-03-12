@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JS/TS module resolution linker for cross-file import edges.
 
 The JS/TS analyzer creates `imports` edges with synthetic dst IDs like

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Go analysis pass using tree-sitter-go.
 
 This analyzer uses tree-sitter to parse Go files and extract:

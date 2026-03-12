@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Ktor framework patterns (ADR-0003)
 #
 # Ktor is a Kotlin web framework using DSL-based routing.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Lua FFI linker (LuaJIT ffi.cdef/ffi.load/ffi.C linking to C).
 
 The Lua FFI linker creates ffi_bridge edges between Lua code that uses LuaJIT's

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the build target linker.
 
 The build target linker connects manifest-declared build targets

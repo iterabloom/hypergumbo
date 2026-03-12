@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Tauri IPC linker (TypeScript/JavaScript to Rust cross-language bridge).
 
 The Tauri IPC linker creates ipc_calls edges between TypeScript/JavaScript

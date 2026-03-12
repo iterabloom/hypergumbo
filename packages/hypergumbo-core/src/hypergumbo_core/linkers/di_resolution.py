@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Multi-language dependency injection resolution linker.
 
 Creates ``di_resolves`` edges from interface methods to implementation methods

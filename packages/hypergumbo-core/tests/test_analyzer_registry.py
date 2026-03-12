@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the analyze.registry module.
 
 Tests the decorator-based analyzer registration system, mirroring the

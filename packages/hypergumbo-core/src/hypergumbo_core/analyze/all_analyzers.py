@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Facade for analyzer dispatch — delegates to the decorator-based registry.
 
 This module provides the stable import points used by cli.py and

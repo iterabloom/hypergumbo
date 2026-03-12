@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Odin analyzer.
 
 Tests for the tree-sitter-based Odin analyzer, verifying symbol extraction,

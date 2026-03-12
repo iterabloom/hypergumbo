@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Graph slicing for LLM context extraction.
 
 This module implements BFS-based graph traversal to extract relevant

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for stable_id and shape_id computation."""
 import json
 from pathlib import Path

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Vue component linker for resolving cross-file component imports.
 
 The Vue analyzer creates `imports_component` edges with raw import paths

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Middleware chain linker for connecting consecutive middleware functions.
 
 Creates ``middleware_chain`` edges between consecutive middleware symbols

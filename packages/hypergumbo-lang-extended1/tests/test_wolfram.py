@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Wolfram Language analyzer.
 
 Wolfram Language (also known as Mathematica) analysis uses tree-sitter to extract:

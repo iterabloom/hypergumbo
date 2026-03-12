@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for haskell.py analyzer.
 
 Tests specific branch paths in the Haskell analyzer that may not be covered

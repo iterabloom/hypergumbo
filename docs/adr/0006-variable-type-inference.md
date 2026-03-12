@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 6. Variable Type Inference for Method Call Resolution
 
 Date: 2025-01-21

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for slice tier filtering (--max-tier flag).
 
 Tests that BFS traversal respects supply chain tier boundaries,

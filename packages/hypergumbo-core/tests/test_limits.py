@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for limits tracking."""
 
 from hypergumbo_core.limits import Limits, FailedFile

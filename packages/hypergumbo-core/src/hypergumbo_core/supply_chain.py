@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Supply chain classification for code analysis.
 
 Classifies files into tiers based on their position in the project's

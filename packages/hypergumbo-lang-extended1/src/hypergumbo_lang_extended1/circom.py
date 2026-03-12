@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Circom analysis pass using tree-sitter-circom.
 
 This analyzer uses tree-sitter to parse Circom (.circom) files and extract:

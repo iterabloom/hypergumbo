@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Route-handler linker for connecting routes to their handler functions.
 
 This linker creates routes_to edges from route symbols to their handler symbols

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Token-budgeted Markdown sketch generation.
 
 This module generates human/LLM-readable Markdown summaries of repositories,

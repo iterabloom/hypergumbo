@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Makefile analysis pass using tree-sitter-make.
 
 This analyzer uses tree-sitter to parse Makefiles and extract:

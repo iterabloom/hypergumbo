@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lua analysis pass using tree-sitter-lua.
 
 This analyzer uses tree-sitter to parse Lua files and extract:

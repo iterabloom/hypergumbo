@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # MCP (Model Context Protocol) framework patterns (ADR-0003)
 #
 # Patterns for MCP servers and clients using the official SDKs:

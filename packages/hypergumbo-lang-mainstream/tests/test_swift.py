@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Swift analyzer."""
 import pytest
 from pathlib import Path

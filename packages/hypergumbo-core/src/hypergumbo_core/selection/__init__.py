@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Selection module for symbol filtering and prioritization.
 
 This module provides shared utilities for selecting and filtering symbols

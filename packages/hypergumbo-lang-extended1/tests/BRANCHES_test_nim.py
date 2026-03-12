@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for nim.py analyzer.
 
 Tests specific branch paths in the Nim analyzer that may not be covered

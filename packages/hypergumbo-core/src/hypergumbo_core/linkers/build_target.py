@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Build target linker for connecting manifest entries to main() functions.
 
 Manifest analyzers (TOML for Cargo.toml, JSON for package.json) create

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Toggle autonomous mode on/off with support for multiple modes
 #
 # This script manages:

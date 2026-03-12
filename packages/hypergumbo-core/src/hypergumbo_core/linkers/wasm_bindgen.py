@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """wasm_bindgen linker for connecting JS/TS imports to Rust #[wasm_bindgen] exports.
 
 This linker creates wasm_bridge edges between JavaScript/TypeScript code that

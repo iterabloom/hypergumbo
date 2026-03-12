@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lean 4 analysis pass using tree-sitter-lean.
 
 This analyzer uses tree-sitter to parse Lean 4 files and extract:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for TypeScript decorator edge detection (INV-012 scope expansion).
 
 Verifies that decorator applications create edges in the call graph for TypeScript.

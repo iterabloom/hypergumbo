@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compact output mode with coverage-based truncation and residual summarization.
 
 This module provides LLM-friendly output formatting that:

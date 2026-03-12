@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the React component linker.
 
 Covers: JSX component detection, PascalCase filtering, component map building,

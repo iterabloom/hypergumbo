@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """COBOL analyzer using tree-sitter.
 
 This module provides static analysis of COBOL source code to extract

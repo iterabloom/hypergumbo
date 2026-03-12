@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JNI linker for connecting Java native methods to C/C++/Rust implementations.
 
 This linker creates native_bridge edges between Java native method declarations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Embedding-based utilities for sketch generation.
 
 This module contains optional sentence-transformers-based functionality

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Electron framework patterns (ADR-0003)
 #
 # Electron apps have main process, renderer process, and preload scripts.

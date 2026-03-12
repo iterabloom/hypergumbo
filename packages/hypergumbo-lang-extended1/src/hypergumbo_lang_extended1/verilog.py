@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Verilog/SystemVerilog analysis pass using tree-sitter-verilog.
 
 This analyzer uses tree-sitter to parse Verilog/SystemVerilog files and extract:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Data model detection for code analysis.
 
 Detects data models (ORM entities, DTOs, domain objects) via:

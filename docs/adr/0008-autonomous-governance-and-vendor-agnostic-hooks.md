@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 8. Autonomous Governance and Vendor-Agnostic Hook System
 
 Date: 2026-01-24

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for framework_patterns.py.
 
 Targets specific branch paths not exercised by the main test suite.

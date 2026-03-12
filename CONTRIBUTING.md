@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Contributing
 
 We use the **Developer Certificate of Origin (DCO)** instead of a CLA.

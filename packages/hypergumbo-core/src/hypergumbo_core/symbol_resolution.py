@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Unified symbol resolution with pluggable matching strategies.
 
 This module provides a shared framework for cross-file symbol resolution

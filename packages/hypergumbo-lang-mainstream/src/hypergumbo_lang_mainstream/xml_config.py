@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """XML configuration analysis pass using tree-sitter-xml.
 
 This analyzer parses XML configuration files and extracts:

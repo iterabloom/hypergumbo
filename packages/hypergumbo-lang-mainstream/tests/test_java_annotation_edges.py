@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Java annotation edge detection (INV-012 scope expansion).
 
 Verifies that annotation applications create edges in the call graph for Java.

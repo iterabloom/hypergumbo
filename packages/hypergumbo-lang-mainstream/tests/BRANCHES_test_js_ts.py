@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for JS/TS analyzer.
 
 These tests specifically target uncovered branches in js_ts.py.

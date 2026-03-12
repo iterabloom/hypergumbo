@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Pre-release validation script for multi-package hypergumbo.
 #
 # Runs all checks required before a release can proceed.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for route-handler linker.
 
 The route-handler linker creates edges from route symbols to their handler symbols

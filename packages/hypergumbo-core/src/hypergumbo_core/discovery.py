@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """File discovery with exclude patterns, locale handling, and extension disambiguation.
 
 Provides shared utilities for finding source files across the repository while
@@ -443,8 +444,9 @@ DEFAULT_EXCLUDES = [
     # gitignored.  Excluding "public" caused severe false positives:
     # Airflow routes/public/ (109 API handlers), Laravel/Symfony public/
     # (web root), etc.  Removed in v0.5.1.
-    # Hypergumbo output artifacts
+    # Hypergumbo output artifacts and agent governance
     ".hypergumbo",
+    ".agent",  # Agent tracker ops, hooks, config — not source code
     "hypergumbo.results*.json",  # Matches .json, .4k.json, .16k.json, .64k.json, etc.
     # Lock files - generated, inflate LOC counts
     "package-lock.json",

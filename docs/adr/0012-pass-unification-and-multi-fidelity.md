@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0012: Pass Unification and Multi-Fidelity Architecture
 
 ## Status

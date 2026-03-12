@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """HLSL (DirectX shader) analysis pass using tree-sitter.
 
 Detects:

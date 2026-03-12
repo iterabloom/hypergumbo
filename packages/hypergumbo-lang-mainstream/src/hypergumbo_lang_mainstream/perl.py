@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Perl analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse Perl files and extract:

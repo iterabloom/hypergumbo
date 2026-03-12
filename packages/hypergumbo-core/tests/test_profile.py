@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for repo profile detection."""
 import json
 from pathlib import Path

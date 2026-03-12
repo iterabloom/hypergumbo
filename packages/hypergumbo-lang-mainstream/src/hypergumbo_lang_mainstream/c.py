@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """C analysis pass using tree-sitter-c.
 
 This analyzer uses tree-sitter-c to parse C files and extract:

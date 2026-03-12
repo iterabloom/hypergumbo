@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """INI configuration file analyzer using tree-sitter.
 
 INI files are a common format for configuration files used by many

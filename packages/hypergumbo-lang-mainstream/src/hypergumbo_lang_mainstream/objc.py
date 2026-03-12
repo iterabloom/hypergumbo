@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Objective-C analyzer using tree-sitter.
 
 This analyzer extracts classes, protocols, methods, and properties from

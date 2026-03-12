@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """HCL/Terraform analyzer using tree-sitter.
 
 This analyzer extracts resources, data sources, modules, variables, outputs,

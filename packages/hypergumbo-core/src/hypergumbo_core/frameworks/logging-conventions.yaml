@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Logging infrastructure patterns (INV-mosag)
 #
 # These patterns detect logging-related symbols by naming and inheritance.

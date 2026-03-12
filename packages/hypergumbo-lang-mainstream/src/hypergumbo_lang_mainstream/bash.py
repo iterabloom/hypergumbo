@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Bash/shell script analyzer using tree-sitter.
 
 This analyzer extracts functions, exported variables, aliases, and source statements

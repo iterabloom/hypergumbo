@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Solidity analysis pass."""
 from pathlib import Path
 

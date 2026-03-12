@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Maintainer Agent Specification
 
 This document specifies the behavior of an automated maintainer agent that processes incoming pull requests from external contributors.

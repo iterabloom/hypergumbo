@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """React component linker for detecting JSX composition edges.
 
 This linker scans JavaScript/TypeScript (JSX/TSX) files for component usage

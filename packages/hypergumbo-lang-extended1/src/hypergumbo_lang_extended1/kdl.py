@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """KDL (KDL Document Language) configuration analyzer using tree-sitter.
 
 KDL is a modern document language designed for configuration files. It offers

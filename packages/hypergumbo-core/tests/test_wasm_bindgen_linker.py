@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the wasm_bindgen linker.
 
 Covers: Rust #[wasm_bindgen] export detection, JS/TS wasm import scanning,

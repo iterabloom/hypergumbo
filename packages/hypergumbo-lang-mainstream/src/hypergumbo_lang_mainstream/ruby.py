@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Ruby analysis pass using tree-sitter-ruby.
 
 This analyzer uses tree-sitter to parse Ruby files and extract:

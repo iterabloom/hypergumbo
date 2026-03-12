@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lua FFI linker for connecting LuaJIT FFI calls to C function implementations.
 
 This linker creates ffi_bridge edges between Lua code that uses LuaJIT's FFI

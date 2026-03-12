@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the slice module (graph slicing for LLM context)."""
 from typing import List
 

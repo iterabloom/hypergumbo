@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pre-computed probe embeddings for sketch_embeddings.py.
 
 This module contains base64-encoded float16 embedding vectors for the probe

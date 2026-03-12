@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Circom language analyzer.
 
 Tests the Circom (.circom) language analyzer that uses tree-sitter to extract:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Lean analyzer.
 
 Lean analysis uses tree-sitter to extract:

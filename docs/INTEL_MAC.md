@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Running hypergumbo on Intel Macs
 
 Some tree-sitter grammar packages lack pre-built wheels for Intel Macs (x86_64 Darwin), causing installation failures. This guide provides a Docker-based workaround that mimics `pipx` behavior.

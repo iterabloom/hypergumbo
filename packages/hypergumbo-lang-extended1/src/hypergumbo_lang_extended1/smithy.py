@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Smithy API definition language analyzer.
 
 This module analyzes Smithy files (.smithy) using tree-sitter. Smithy is AWS's

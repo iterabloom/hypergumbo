@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hack language analyzer.
 
 This module analyzes Hack files (.hack, .php with <?hh header) using tree-sitter.

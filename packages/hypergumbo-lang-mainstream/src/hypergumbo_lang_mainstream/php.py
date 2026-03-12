@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PHP analysis pass using tree-sitter-php.
 
 This analyzer uses tree-sitter-php to parse PHP files and extract:

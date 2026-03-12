@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Python AST analysis pass.
 
 This analyzer uses Python's built-in ast module to extract symbols and

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 9. Feature-Focused Bakeoff Suite
 
 Date: 2026-01-30

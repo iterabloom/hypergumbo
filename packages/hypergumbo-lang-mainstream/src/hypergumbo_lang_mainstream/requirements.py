@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Python requirements.txt analyzer using tree-sitter.
 
 requirements.txt is the standard format for specifying Python package dependencies.

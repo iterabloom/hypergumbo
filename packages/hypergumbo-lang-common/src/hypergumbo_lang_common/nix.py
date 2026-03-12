@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Nix expression analysis pass using tree-sitter-nix.
 
 This analyzer uses tree-sitter to parse Nix files and extract:

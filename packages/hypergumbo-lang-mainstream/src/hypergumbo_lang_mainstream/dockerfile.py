@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Dockerfile analysis pass using tree-sitter-dockerfile.
 
 This analyzer uses tree-sitter to parse Dockerfiles and extract:

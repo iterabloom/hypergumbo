@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # CLI entrypoint patterns - Go (ADR-0003)
 #
 # Patterns for detecting command-line interface entrypoints:

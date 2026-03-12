@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Elm language analyzer.
 
 Elm is a functional programming language for web frontends that compiles

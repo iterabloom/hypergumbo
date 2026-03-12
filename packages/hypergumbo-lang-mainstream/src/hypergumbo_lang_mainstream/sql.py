@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """SQL schema analysis pass using tree-sitter-sql.
 
 This analyzer uses tree-sitter to parse SQL files and extract:

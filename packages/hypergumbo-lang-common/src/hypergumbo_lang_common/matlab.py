@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """MATLAB language analyzer using tree-sitter.
 
 This module provides static analysis for MATLAB source code, extracting symbols

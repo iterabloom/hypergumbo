@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 4. File Taxonomy: Tier and Role Classification
 
 Date: 2025-01-14

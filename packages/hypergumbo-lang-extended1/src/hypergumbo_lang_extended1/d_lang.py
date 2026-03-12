@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """D language analysis pass using tree-sitter.
 
 Detects:

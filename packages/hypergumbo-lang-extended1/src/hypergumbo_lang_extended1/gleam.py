@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gleam language analyzer using tree-sitter.
 
 This module provides static analysis for Gleam source code, extracting symbols

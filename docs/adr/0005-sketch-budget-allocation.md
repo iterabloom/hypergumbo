@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 5. Sketch Budget Allocation and Section Composition
 
 Date: 2025-01-15

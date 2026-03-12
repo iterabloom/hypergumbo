@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for F# language analyzer.
 
 F# is a functional-first language on the .NET platform with strong

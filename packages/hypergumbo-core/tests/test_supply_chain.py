@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for supply chain classification.
 
 Tests the classification of files into supply chain tiers:

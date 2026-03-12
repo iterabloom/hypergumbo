@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Cap'n Proto analysis pass.
 
 Tests verify that the Cap'n Proto analyzer correctly extracts:

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Repair .agent/ file/directory permissions for two-user setup.
 #
 # Belt-and-suspenders complement to the runtime repair in store.py

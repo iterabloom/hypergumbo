@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for TreeSitterAnalyzer base class.
 
 Tests the two-pass analysis framework that subclasses can use to

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Swift analysis pass using tree-sitter-swift.
 
 This analyzer uses tree-sitter to parse Swift files and extract:

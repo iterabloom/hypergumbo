@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Sketch sanity tests for various languages.
 
 These tests catch truly insane sketch behavior - catastrophic failures that

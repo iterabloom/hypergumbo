@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the DI resolution linker.
 
 Tests cover explicit DI binding detection across Java (Guice, Spring), C#,

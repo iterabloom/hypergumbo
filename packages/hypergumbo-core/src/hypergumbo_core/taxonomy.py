@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """File taxonomy classification (ADR-0004).
 
 This module provides the two-dimensional file classification system:

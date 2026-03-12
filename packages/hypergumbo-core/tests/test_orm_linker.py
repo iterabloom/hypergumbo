@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ORM query linker.
 
 The ORM linker detects ORM query patterns (e.g., User.objects.filter()) in source

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Protocol Buffers (Proto) analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse .proto files and extract:

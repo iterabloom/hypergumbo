@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Vue template-method linker.
 
 The Vue template-method linker connects Vue template event handler directives

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Tcl analyzer.
 
 Tests for the tree-sitter-based Tcl analyzer, verifying symbol extraction,

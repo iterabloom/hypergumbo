@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 hypergumbo_diag.py - Unified diagnostic script for hypergumbo bakeoff analysis
 

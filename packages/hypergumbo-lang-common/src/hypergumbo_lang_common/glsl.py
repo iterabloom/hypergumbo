@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """GLSL shader analysis pass using tree-sitter-glsl.
 
 This analyzer uses tree-sitter to parse OpenGL Shading Language files and extract:

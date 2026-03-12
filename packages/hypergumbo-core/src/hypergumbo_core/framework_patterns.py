@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework pattern matching for symbol enrichment (ADR-0003).
 
 This module provides data-driven framework detection using YAML pattern files.

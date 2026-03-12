@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for JS/TS module resolution linker.
 
 The JS module linker resolves unresolved import edges created by the JS/TS

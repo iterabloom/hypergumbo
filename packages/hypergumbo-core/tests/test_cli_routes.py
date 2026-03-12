@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo routes command.
 
 Covers cmd_routes CLI command: listing API routes, filtering by language,

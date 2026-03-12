@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Base classes and utilities for language analyzers.
 
 This module provides shared infrastructure for all language analyzers,

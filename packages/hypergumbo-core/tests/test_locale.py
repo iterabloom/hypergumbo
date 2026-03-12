@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for locale-aware documentation directory handling.
 
 Covers detection of translated documentation directories (GitLab-style

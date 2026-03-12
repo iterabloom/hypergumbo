@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for file exclude logic."""
 import json
 from pathlib import Path

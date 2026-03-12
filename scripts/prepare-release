@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Prepare a release for human approval.
 #
 # This script does everything an agent can do to prepare a release,

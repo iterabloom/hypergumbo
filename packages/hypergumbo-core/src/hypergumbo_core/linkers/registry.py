@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Linker registry for dynamic dispatch.
 
 This module provides a registration system for cross-language linkers,

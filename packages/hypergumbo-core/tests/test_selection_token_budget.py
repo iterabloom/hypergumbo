@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the selection.token_budget module."""
 
 from hypergumbo_core.selection.token_budget import (

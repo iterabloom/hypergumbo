@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for manifest_targets build-target extraction.
 
 Covers all 11 manifest formats: Gradle, C#, Dart, Swift, Haskell,

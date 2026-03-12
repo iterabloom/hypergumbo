@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fish shell analysis pass using tree-sitter.
 
 Detects:

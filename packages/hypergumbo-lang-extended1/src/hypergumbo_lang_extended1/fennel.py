@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fennel language analyzer using tree-sitter.
 
 This module provides static analysis for Fennel source code, extracting symbols

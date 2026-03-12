@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Java properties file analyzer using tree-sitter.
 
 Java .properties files are key-value configuration files used extensively

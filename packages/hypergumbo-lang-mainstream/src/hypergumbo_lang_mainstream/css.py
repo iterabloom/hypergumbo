@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CSS stylesheet analysis using tree-sitter-css.
 
 This module parses CSS files to extract structure information useful for

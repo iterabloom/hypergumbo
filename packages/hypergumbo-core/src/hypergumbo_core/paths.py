@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Centralized path handling utilities for hypergumbo.
 
 This module provides consistent path normalization and comparison functions

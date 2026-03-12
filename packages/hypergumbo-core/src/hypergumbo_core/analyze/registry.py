@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Analyzer registry for decorator-based dynamic dispatch.
 
 This module provides the canonical registration system for language analyzers,

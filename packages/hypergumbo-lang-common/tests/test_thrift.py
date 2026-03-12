@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Apache Thrift analysis pass.
 
 Tests verify that the Thrift analyzer correctly extracts:

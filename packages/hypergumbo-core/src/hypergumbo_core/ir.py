@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Internal Representation (IR) for code analysis.
 
 Parsers emit Symbol and Edge objects to this IR layer. The IR is then

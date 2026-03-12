@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Citations
 
 Hypergumbo uses several pretrained models for semantic analysis. If you use hypergumbo in academic work, please consider citing the underlying model papers.

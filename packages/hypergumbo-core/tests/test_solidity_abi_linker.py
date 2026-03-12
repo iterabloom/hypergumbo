@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Solidity ABI bridge linker.
 
 Covers: Solidity function export detection, TypeScript/JavaScript ethers.js and

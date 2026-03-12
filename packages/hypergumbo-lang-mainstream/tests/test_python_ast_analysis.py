@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Python AST analysis - detecting functions and classes."""
 import json
 from pathlib import Path

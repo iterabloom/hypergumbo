@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Language-level test function detection (ADR-0003 v1.2.x)
 #
 # Detects idiomatic test functions across languages and frameworks:

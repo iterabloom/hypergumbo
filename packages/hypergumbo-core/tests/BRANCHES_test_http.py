@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for http.py linker.
 
 Tests specific branch paths that may not be covered by the main test suite.

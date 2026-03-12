@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Http4k framework patterns (ADR-0003 v1.1.x)
 #
 # Http4k is a functional HTTP toolkit for Kotlin.

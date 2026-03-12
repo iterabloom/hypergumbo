@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Future work — detailed designs
 
 This document contains detailed designs for future capabilities listed in [§20 of the spec](../hypergumbo-spec.md#20-future-work). These are not yet implemented; they are preserved here for reference as the project evolves.

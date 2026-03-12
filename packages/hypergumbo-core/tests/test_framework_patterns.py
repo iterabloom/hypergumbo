@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for framework pattern matching (ADR-0003 v0.8.x).
 
 Tests the YAML-based framework pattern system that enriches symbols

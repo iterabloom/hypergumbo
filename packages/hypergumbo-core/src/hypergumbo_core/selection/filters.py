@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Path classification and symbol kind filtering for selection.
 
 This module provides shared utilities for filtering symbols based on

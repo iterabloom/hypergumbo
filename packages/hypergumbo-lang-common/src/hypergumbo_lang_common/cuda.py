@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CUDA analysis pass using tree-sitter-cuda.
 
 This analyzer uses tree-sitter to parse CUDA files and extract:

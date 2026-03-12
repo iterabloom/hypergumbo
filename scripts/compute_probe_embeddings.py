@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compute probe embeddings for sketch_embeddings.py.
 
 This script generates base64-encoded float16 embedding vectors for the probe

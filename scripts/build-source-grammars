@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Build tree-sitter grammars that are not available on PyPI.
 #
 # This script builds tree-sitter-lean and tree-sitter-wolfram from source.

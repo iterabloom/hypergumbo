@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Web/Application Frameworks Reference
 
 This document lists web and application frameworks that hypergumbo can analyze or should consider for pattern detection.

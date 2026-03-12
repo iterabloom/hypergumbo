@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pytest configuration for hypergumbo-lang-common tests.
 
 Includes self-healing pytest wrapper repair (ADR-0010).

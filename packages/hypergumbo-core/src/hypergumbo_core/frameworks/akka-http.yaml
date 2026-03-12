@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Akka HTTP patterns for Scala (ADR-0003)
 #
 # Akka HTTP is a toolkit for building HTTP-based services in Scala.

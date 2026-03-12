@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Type hierarchy linker for polymorphic dispatch resolution.
 
 Creates `dispatches_to` edges from interface/abstract class methods

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Assembly language analyzer.
 
 Tests verify that the analyzer correctly extracts:

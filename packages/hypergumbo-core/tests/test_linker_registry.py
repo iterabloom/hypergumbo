@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the linkers.registry module."""
 
 from pathlib import Path

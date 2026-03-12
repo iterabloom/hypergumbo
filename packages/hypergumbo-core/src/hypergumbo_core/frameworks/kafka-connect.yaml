@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Kafka Connect framework patterns
 #
 # Kafka Connect is a framework for building streaming data connectors.

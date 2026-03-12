@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Schema versioning and behavior map factory.
 
 This module defines the output schema version and provides a factory

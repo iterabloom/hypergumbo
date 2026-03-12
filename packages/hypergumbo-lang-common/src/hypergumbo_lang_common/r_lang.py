@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """R language analysis pass using tree-sitter.
 
 This analyzer parses R source files and extracts:

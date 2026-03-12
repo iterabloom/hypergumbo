@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JSON configuration analysis pass using tree-sitter-json.
 
 This analyzer parses JSON configuration files and extracts:

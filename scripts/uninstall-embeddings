@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Uninstall embedding dependencies from hypergumbo.
 #
 # This removes sentence-transformers and optionally PyTorch to free disk space.

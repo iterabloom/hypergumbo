@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Python FFI linker (Python-C/C++/Rust interop).
 
 The Python FFI linker creates ffi_bridge edges between Python code that calls

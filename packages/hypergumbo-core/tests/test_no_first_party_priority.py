@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for --no-first-party-priority flag in sketch command.
 
 Tests that the flag disables tier-based weighting of symbols, giving all

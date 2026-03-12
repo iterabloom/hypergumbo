@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the decorator dispatch linker.
 
 Validates that the linker creates ``dispatches_to`` edges from registry

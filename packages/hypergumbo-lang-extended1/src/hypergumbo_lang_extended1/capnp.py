@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cap'n Proto analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse .capnp files and extract:

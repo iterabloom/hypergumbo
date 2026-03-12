@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """gRPC/Protobuf linker for detecting RPC communication patterns.
 
 This linker detects gRPC patterns across multiple languages and creates

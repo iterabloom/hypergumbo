@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """GraphQL client-schema linker for detecting cross-file GraphQL calls.
 
 This linker detects GraphQL client calls (gql, useQuery, etc.) and links

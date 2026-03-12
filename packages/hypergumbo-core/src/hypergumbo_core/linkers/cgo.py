@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Cgo linker for connecting Go C function calls to C/C++ implementations.
 
 This linker creates cgo_bridge edges between Go functions that call C functions

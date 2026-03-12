@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fortran analysis pass using tree-sitter-fortran.
 
 This analyzer uses tree-sitter to parse Fortran files and extract:

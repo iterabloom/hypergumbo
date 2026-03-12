@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # ------------------------------------------------------------------
 # forgejo-api.sh: Shared library for Forgejo/Gitea API interactions
 #

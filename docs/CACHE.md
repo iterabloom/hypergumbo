@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Caching Architecture
 
 Hypergumbo uses a two-tier caching system that balances efficiency with correctness. The cache lives in the XDG-compliant location `~/.cache/hypergumbo/`.

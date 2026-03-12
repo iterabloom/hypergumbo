@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gitleaks integration for secret scanning.
 
 This module provides best-effort secret scanning of hypergumbo output before

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """HTML script tag analysis pass.
 
 This analyzer uses regex pattern matching to detect <script src="...">

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for WGSL (WebGPU) shader analyzer using tree-sitter-wgsl.
 
 Tests verify that the analyzer correctly extracts:
@@ -25,7 +26,7 @@ from hypergumbo_lang_common.wgsl import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "wgsl-v1"
-    assert PASS_VERSION == "2.1.0"
+    assert PASS_VERSION == "2.2.0"
 
 def test_is_wgsl_tree_sitter_available():
     """Availability check returns True when grammar installed."""

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Entrypoint detection for code analysis using YAML-driven pattern matching.
 
 Detects entrypoints via semantic concepts from YAML framework patterns (ADR-0003):

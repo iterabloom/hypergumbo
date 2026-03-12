@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Decorator dispatch linker for registry-based dynamic call resolution.
 
 Creates ``dispatches_to`` edges from registry iteration call sites to all

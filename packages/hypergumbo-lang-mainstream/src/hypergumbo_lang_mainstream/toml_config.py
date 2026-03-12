@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """TOML configuration file analyzer using tree-sitter-toml.
 
 This module parses TOML configuration files (Cargo.toml, pyproject.toml, etc.)

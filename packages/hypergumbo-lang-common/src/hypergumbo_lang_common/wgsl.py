@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
 
 This analyzer uses tree-sitter to parse WebGPU Shading Language files and extract:

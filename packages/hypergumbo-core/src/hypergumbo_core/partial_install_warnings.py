@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Runtime warnings for partial installations (ADR-0010 Item 8).
 
 This module provides diagnostic warnings when hypergumbo detects that:

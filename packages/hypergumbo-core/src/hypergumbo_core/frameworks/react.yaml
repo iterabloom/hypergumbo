@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # React framework patterns (ADR-0003)
 #
 # Detects React SPA bootstrap patterns. These are the functions that mount

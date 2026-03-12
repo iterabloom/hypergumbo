@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for GDScript (Godot) analysis pass.
 
 Tests verify that the GDScript analyzer correctly extracts:

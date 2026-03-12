@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo symbols command."""
 import json
 from pathlib import Path
