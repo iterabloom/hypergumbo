@@ -1,2 +1,19 @@
-packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py
-packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_ini.py
+# .env contains local development tokens (FORGEJO_TOKEN etc.)
+.env:generic-api-key:8
+.env:generic-api-key:11
+
+# Hypothesis test framework auto-generated constants
+.hypothesis/constants/022db5084484a444:generic-api-key:4
+.hypothesis/constants/959b519aed8dc0c7:generic-api-key:4
+.hypothesis/constants/fe153fcba53d98bb:generic-api-key:4
+
+# Test fixture with fake API key in INI config example
+packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_ini.py:generic-api-key:352
+
+# Compiled bytecode of the above source files
+packages/hypergumbo-lang-mainstream/tests/__pycache__/BRANCHES_test_ini.cpython-312-pytest-8.4.2.pyc:generic-api-key:329
+packages/hypergumbo-lang-mainstream/tests/__pycache__/BRANCHES_test_ini.cpython-312-pytest-9.0.2.pyc:generic-api-key:328
+packages/hypergumbo-tracker/src/hypergumbo_tracker/__pycache__/embeddings.cpython-312.pyc:generic-api-key:15
+
+# Embeddings module references model name strings that look like API keys
+packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py:generic-api-key:12

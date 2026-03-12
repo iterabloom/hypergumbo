@@ -249,7 +249,7 @@ section "5. Test Suite"
 
 # Run tests with coverage
 echo "  Running pytest with coverage..."
-if pytest --cov=src --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-fail-under=100 --quiet 2>/dev/null; then
+if pytest --full --cov-fail-under=100 --quiet 2>/dev/null; then
     pass "All tests passed with 100% coverage"
 else
     fail "Tests failed or coverage < 100%"
@@ -269,7 +269,8 @@ for pkg in "${PACKAGES[@]}"; do
         echo "    Building $pkg..."
         if pip wheel "$pkg" --no-deps --wheel-dir dist/ --quiet 2>/dev/null; then
             PKG_NAME=$(basename "$pkg")
-            WHEEL=$(ls dist/*"$PKG_NAME"*.whl 2>/dev/null | head -1 || echo "")
+            PKG_NAME_UNDER="${PKG_NAME//-/_}"
+            WHEEL=$(ls dist/*"$PKG_NAME_UNDER"*.whl 2>/dev/null | head -1 || echo "")
             if [[ -n "$WHEEL" ]]; then
                 pass "  Built: $(basename "$WHEEL")"
             else
