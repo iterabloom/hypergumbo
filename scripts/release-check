@@ -96,6 +96,8 @@ if [[ "$LOCAL" == "$REMOTE" ]]; then
     pass "Branch up to date with origin"
 elif [[ "$REMOTE" == "none" ]]; then
     warn "No remote tracking branch"
+elif git merge-base --is-ancestor "$REMOTE" "$LOCAL" 2>/dev/null; then
+    warn "Branch is ahead of origin (unpushed commits — expected during prepare-release)"
 else
     fail "Branch not in sync with origin (pull or push needed)"
 fi
