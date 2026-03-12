@@ -227,10 +227,10 @@ section "4. Code Quality"
 
 # Linting
 echo "  Running Ruff..."
-if ruff check src/ tests/ packages/*/src/ --quiet 2>/dev/null; then
+if ruff check packages/*/src packages/*/tests tests/ --quiet 2>/dev/null; then
     pass "Linting passed (Ruff)"
 else
-    fail "Linting issues detected (run 'ruff check src/ tests/')"
+    fail "Linting issues detected (run 'ruff check packages/*/src packages/*/tests tests/')"
 fi
 
 # Type checking (if configured)
