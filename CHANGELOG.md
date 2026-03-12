@@ -686,15 +686,27 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
-| 1.0.0   | 2026-01-12 | Memory optimization (80% reduction), 100% YAML-driven entrypoints |
+| 2.1.0   | 2026-03-01 | 9 new linkers (DI, HTTP, FFI, Vue, ORM, etc.), 150+ framework patterns, smart test selection |
+| 2.0.2   | 2026-02-01 | Default token budget increased to 8000                       |
+| 2.0.1   | 2026-01-31 | `--files` flag for slice (smart test selection support)       |
+| 2.0.0   | 2026-01-31 | **Breaking:** modular package structure (5 packages), import paths changed |
+| 1.3.1   | 2026-01-29 | C++ test framework patterns, go-restful support              |
+| 1.3.0   | 2026-01-29 | Centralized inheritance linker, type hierarchy linker        |
+| 1.2.1   | 2026-01-29 | 37 new analyzers, route-handler linker, compact subcommand   |
+| 1.1.0   | 2026-01-24 | Breaking changes (not published to PyPI)                     |
+| 1.0.0   | 2026-01-12 | Memory optimization (80% reduction), YAML-driven entrypoints (not published to PyPI) |
 | 0.9.1   | 2026-01-09 | ADR-0003 implementation (was missing in 0.9.0)               |
 | 0.9.0   | 2026-01-09 | Schema 0.2.0, --frameworks flag, YAML patterns (incomplete)  |
 | 0.6.9   | 2026-01-07 | Fewer false positives, richer slice traversal                |
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.0.0...HEAD
-[1.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.0.0
+[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.1.0...HEAD
+[2.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
+[2.0.2]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
+[2.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
+[1.2.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
+[1.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
 [0.9.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
 [0.9.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
 [0.6.9]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
