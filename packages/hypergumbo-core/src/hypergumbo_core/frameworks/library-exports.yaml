@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Library export detection (ADR-0003 v1.3.x)
 #
 # Detects exports that define the public API surface of a library.
@@ -206,5 +207,82 @@ patterns:
     symbol_kind: "^method$"
     language: "^rust$"
     modifiers: "^pub$"
+
+  # === Solidity: Definition-based (public/external contract functions) ===
+  # Solidity smart contracts expose their ABI through public and external functions.
+  # These are the callable surface from external accounts and other contracts.
+  # Internal and private functions are excluded via explicit modifiers match.
+  # The Solidity analyzer extracts visibility modifiers: public, external, internal, private.
+
+  # Public functions (callable externally and internally)
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^solidity$"
+    modifiers: "^public$"
+
+  # External functions (callable only externally — primary ABI surface)
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^solidity$"
+    modifiers: "^external$"
+
+  # Public contracts (the contract itself is a deployable unit)
+  - concept: library_export
+    symbol_kind: "^contract$"
+    language: "^solidity$"
+
+  # Public interfaces (define the callable surface)
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^solidity$"
+
+  # === Circom: Templates are the API surface ===
+  # Circom templates define reusable circuit components. In library repos
+  # like circomlib, templates are the primary exports (Poseidon, MiMC, etc.)
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^circom$"
+
+  # Circom functions (pure computations) are also library exports
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^circom$"
+
+  # === Lean 4: Definition-based (all public defs are API surface) ===
+
+  # Lean 4 definitions (def, theorem, lemma) are public by default.
+  # In proof libraries like ArkLib, theorems ARE the library exports.
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^lean$"
+
+  # Lean 4 structures (equivalent to classes/records)
+  - concept: library_export
+    symbol_kind: "^(structure|inductive)$"
+    language: "^lean$"
+
+  # === Agda: Definition-based (public functions and data types) ===
+
+  # Agda functions (including theorems/lemmas) are public by default
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^agda$"
+
+  # Agda data types and records
+  - concept: library_export
+    symbol_kind: "^(data|record)$"
+    language: "^agda$"
+
+  # === Wolfram: Definition-based (all public definitions are API surface) ===
+
+  # Wolfram function definitions (SetDelayed :=) are public by default
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^wolfram$"
+
+  # Wolfram variable definitions (Set =) - package-level constants
+  - concept: library_export
+    symbol_kind: "^variable$"
+    language: "^wolfram$"
 
 linkers: []

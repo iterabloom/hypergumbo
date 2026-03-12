@@ -1,6 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Type hierarchy linker for polymorphic dispatch resolution.
 
-This linker creates `dispatches_to` edges from interface/abstract class methods
+Creates `dispatches_to` edges from interface/abstract class methods
 to their concrete implementations, enabling polymorphic call resolution.
 
 How It Works
@@ -34,10 +35,13 @@ Limitations
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -138,11 +142,45 @@ def _get_class_name_from_method(method_symbol: Symbol) -> str | None:
     return None
 
 
+@dataclass
+class _TypeHierarchyIndex:
+    """Pre-built indexes for fast type hierarchy resolution.
+
+    Built once in link_type_hierarchy and shared across all
+    find_implementing_methods calls. Avoids rebuilding symbol_by_id
+    and scanning all_symbols on every invocation.
+    """
+
+    symbol_by_id: dict[str, Symbol]
+    # short_method_name -> [(class_name, Symbol)]
+    methods_by_short_name: dict[str, list[tuple[str, Symbol]]]
+
+    @staticmethod
+    def build(all_symbols: list[Symbol]) -> _TypeHierarchyIndex:
+        """Build indexes from the full symbol list."""
+        symbol_by_id = {s.id: s for s in all_symbols}
+        methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
+        for sym in all_symbols:
+            if sym.kind != "method":
+                continue
+            short_name = _get_method_short_name(sym.name)
+            class_name = _get_class_name_from_method(sym)
+            if class_name:
+                methods_by_short_name.setdefault(short_name, []).append(
+                    (class_name, sym)
+                )
+        return _TypeHierarchyIndex(
+            symbol_by_id=symbol_by_id,
+            methods_by_short_name=methods_by_short_name,
+        )
+
+
 def find_implementing_methods(
     parent_method: Symbol,
     parent_class: Symbol,
     parent_to_children: dict[str, list[str]],
     all_symbols: list[Symbol],
+    index: _TypeHierarchyIndex | None = None,
 ) -> list[Symbol]:
     """Find methods in child classes that override a parent method.
 
@@ -151,6 +189,8 @@ def find_implementing_methods(
         parent_class: Class containing the method
         parent_to_children: Map of class_id -> [child_class_ids]
         all_symbols: All symbols to search through
+        index: Pre-built index for fast resolution. When provided,
+            avoids O(N) linear scans and per-call dict rebuilds.
 
     Returns:
         List of method symbols that override the parent method
@@ -163,31 +203,61 @@ def find_implementing_methods(
     if not child_class_ids:
         return []
 
-    # Build index of symbols by ID for quick lookup
+    # Use pre-built index when available
+    if index is not None:
+        return _find_implementing_methods_indexed(
+            method_short_name, child_class_ids, index
+        )
+
+    # Legacy fallback for direct callers without index
+    return _find_implementing_methods_scan(  # pragma: no cover
+        method_short_name, child_class_ids, all_symbols
+    )
+
+
+def _find_implementing_methods_indexed(
+    method_short_name: str,
+    child_class_ids: list[str],
+    index: _TypeHierarchyIndex,
+) -> list[Symbol]:
+    """Find overriding methods using pre-built indexes."""
+    # Resolve child class IDs to names
+    child_class_names = set()
+    for child_id in child_class_ids:
+        child_sym = index.symbol_by_id.get(child_id)
+        if child_sym:
+            child_class_names.add(child_sym.name)
+
+    # Look up methods by short name, filter by child class membership
+    candidates = index.methods_by_short_name.get(method_short_name, [])
+    return [sym for class_name, sym in candidates
+            if class_name in child_class_names]
+
+
+def _find_implementing_methods_scan(
+    method_short_name: str,
+    child_class_ids: list[str],
+    all_symbols: list[Symbol],
+) -> list[Symbol]:  # pragma: no cover
+    """Legacy linear-scan fallback for finding implementing methods."""
     symbol_by_id = {s.id: s for s in all_symbols}
 
-    # Find child class names
     child_class_names = set()
     for child_id in child_class_ids:
         child_sym = symbol_by_id.get(child_id)
         if child_sym:
             child_class_names.add(child_sym.name)
 
-    # Find methods in child classes with matching short name
     overrides = []
     for sym in all_symbols:
         if sym.kind != "method":
             continue
-
         sym_short_name = _get_method_short_name(sym.name)
         if sym_short_name != method_short_name:
             continue
-
-        # Check if this method belongs to a child class
         sym_class_name = _get_class_name_from_method(sym)
         if sym_class_name and sym_class_name in child_class_names:
             overrides.append(sym)
-
     return overrides
 
 
@@ -222,24 +292,30 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         # No inheritance relationships, nothing to do
         return LinkerResult(run=run)
 
-    # Build index of class/interface symbols by ID
+    # Build index of class/interface symbols by ID and by name
     class_symbols = {
         s.id: s for s in ctx.symbols
         if s.kind in ("class", "interface")
     }
+    class_id_by_name: dict[str, str] = {}
+    for cid, csym in class_symbols.items():
+        # First match wins — consistent with the original linear scan
+        if csym.name not in class_id_by_name:
+            class_id_by_name[csym.name] = cid
 
-    # Build index of methods by their containing class
+    # Build index of methods by their containing class (O(methods) via dict lookup)
     methods_by_class: dict[str, list[Symbol]] = defaultdict(list)
     for sym in ctx.symbols:
         if sym.kind != "method":
             continue
         class_name = _get_class_name_from_method(sym)
         if class_name:
-            # Try to find the class symbol
-            for class_id, class_sym in class_symbols.items():
-                if class_sym.name == class_name:
-                    methods_by_class[class_id].append(sym)
-                    break
+            class_id = class_id_by_name.get(class_name)
+            if class_id:
+                methods_by_class[class_id].append(sym)
+
+    # Build shared index once for find_implementing_methods
+    hierarchy_index = _TypeHierarchyIndex.build(ctx.symbols)
 
     # Create dispatches_to edges
     new_edges: list[Edge] = []
@@ -259,7 +335,16 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 parent_class,
                 all_parents_to_children,
                 ctx.symbols,
+                index=hierarchy_index,
             )
+
+            # Scale confidence by 1/sqrt(N) for fan-out dampening
+            # (WI-kabom).  Interfaces with many implementors (e.g., 19
+            # Notifier impls) create N edges per method; without scaling,
+            # these dominate ranking and pollute reverse slices.  Matches
+            # the precedent in symbol_resolution.py for ambiguous lookups.
+            num_overrides = len(overrides)
+            base_confidence = 0.85 / math.sqrt(max(1, num_overrides))
 
             for override in overrides:
                 # Avoid duplicate edges (defensive - find_implementing_methods
@@ -269,12 +354,20 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     continue
                 seen_pairs.add(pair)
 
+                # Apply confidence penalty for test-file overrides (WI-supok).
+                # Test overrides (e.g., TestImpl.method → base.method) inflate
+                # centrality and pollute reverse slices.  Penalty matches the
+                # precedent in ranking.py for test-tier downweighting.
+                confidence = base_confidence
+                if override.path and is_test_file(override.path):
+                    confidence = 0.30
+
                 edge = Edge.create(
                     src=parent_method.id,
                     dst=override.id,
                     edge_type="dispatches_to",
                     line=parent_method.span.start_line if parent_method.span else 0,
-                    confidence=0.85,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",

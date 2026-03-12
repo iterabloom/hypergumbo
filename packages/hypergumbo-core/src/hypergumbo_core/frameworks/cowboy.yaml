@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Cowboy framework patterns (ADR-0003 v1.1.x)
 #
 # Cowboy is the most popular Erlang HTTP server.

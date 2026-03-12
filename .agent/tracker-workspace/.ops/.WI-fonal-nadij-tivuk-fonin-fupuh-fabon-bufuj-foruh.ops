@@ -1,0 +1,72 @@
+- op: create  # 1a7d
+  at: '2026-03-04T21:48:34Z'  # 1a7d
+  by: agent  # 1a7d
+  actor: jgstern_agent  # 1a7d
+  clock: 1  # 1a7d
+  nonce: 1a7d  # 1a7d
+  data:  # 1a7d
+    kind: work_item  # 1a7d
+    title: "auto-pr: rebase merge fallback when fast-forward fails"  # 1a7d
+    status: todo_soft  # 1a7d
+    priority: 3  # 1a7d
+    parent:  # 1a7d
+    tags:  # 1a7d
+    - ci_infrastructure  # 1a7d
+    before: []  # 1a7d
+    duplicate_of: []  # 1a7d
+    not_duplicate_of: []  # 1a7d
+    pr_ref:  # 1a7d
+    description: "Add rebase merge attempt between FF retry and cherry-pick fallback. Less disruptive than cherry-pick since it preserves the original branch."  # 1a7d
+    fields: {}  # 1a7d
+- op: update  # b475
+  at: '2026-03-06T00:52:20Z'  # b475
+  by: agent  # b475
+  actor: jgstern_agent  # b475
+  clock: 2  # b475
+  nonce: b475  # b475
+  set:  # b475
+    status: needs_human_review  # b475
+- op: discuss  # aba4
+  at: '2026-03-06T00:52:20Z'  # aba4
+  by: agent  # aba4
+  actor: jgstern_agent  # aba4
+  clock: 3  # aba4
+  nonce: aba4  # aba4
+  message: "Requires modifying scripts/auto-pr (governance file). Requesting approval."  # aba4
+- op: discuss  # 60dd
+  at: '2026-03-06T00:57:07Z'  # 60dd
+  by: human  # 60dd
+  actor: jgstern  # 60dd
+  clock: 4  # 60dd
+  nonce: 60dd  # 60dd
+  message: "I approve"  # 60dd
+- op: update  # 0bc0
+  at: '2026-03-06T00:57:15Z'  # 0bc0
+  by: human  # 0bc0
+  actor: jgstern  # 0bc0
+  clock: 5  # 0bc0
+  nonce: 0bc0  # 0bc0
+  set:  # 0bc0
+    status: todo_soft  # 0bc0
+- op: discuss  # a533
+  at: '2026-03-06T01:34:51Z'  # a533
+  by: agent  # a533
+  actor: jgstern_agent  # a533
+  clock: 6  # a533
+  nonce: a533  # a533
+  message: "Acknowledged approval."  # a533
+- op: update  # 075c
+  at: '2026-03-06T05:39:24Z'  # 075c
+  by: agent  # 075c
+  actor: jgstern_agent  # 075c
+  clock: 7  # 075c
+  nonce: 075c  # 075c
+  set:  # 075c
+    status: done  # 075c
+- op: discuss  # 1444
+  at: '2026-03-06T05:39:24Z'  # 1444
+  by: agent  # 1444
+  actor: jgstern_agent  # 1444
+  clock: 8  # 1444
+  nonce: '1444'  # 1444
+  message: "Fixed in PR #1790. Added rebase merge fallback in do_merge() between fast-forward retry and manual recovery instructions."  # 1444

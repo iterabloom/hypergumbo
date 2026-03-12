@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Spec
 
 Status: living document.
@@ -114,7 +115,7 @@ These options apply to all analysis commands (`run`, `slice`, and default sketch
 Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
 * Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
 
-⬜ **`--max-file-bytes N`** (default: 2MB)
+🟩 **`--max-file-bytes N`** (default: no limit)
 Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
 * Skipped files logged in `limits.truncated_files[]`
 
@@ -286,12 +287,12 @@ class AnalysisIR:
   - Purpose: Track symbols across refactors (renames, moves, documentation changes)
   - **Does NOT change** when: Renaming, moving between files, changing implementation, adding comments
   - **DOES change** when: Signature changes (param types, arity), visibility changes, decorators added/removed
-* 🟨 `shape_id` (optional): Structural implementation fingerprint
+* 🟩 `shape_id` (optional): Structural implementation fingerprint
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
-  - ⬜ All other languages: planned via a generic tree-sitter CST walker (single implementation — walk CST, keep node types, strip literal values and identifier names, hash the structure)
+  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzerBase.compute_shape_id()`. Any analyzer that populates `node_for_symbol` gets automatic shape_id computation. Currently 27 analyzers use this (Rust, Ruby, C#, Swift, Nim, Ada, Pascal, etc.).
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -1064,7 +1065,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
 Output ordering is deterministic (same input → same output) and optimized for consumption priority.
 
 * 🟩 **Default: centrality-ranked** — Nodes sorted by centrality score (most important first). Edges sorted by source node centrality. This ordering is deterministic given the same input graph and optimizes for LLM context windows and human scanning. Used in JSON output, sketch output, and compact/tiered views.
-* ⬜ **JSON key-level reproducibility** — `json.dumps` should use `sort_keys=True` for reproducible diffs at the key level (currently missing).
+* 🟩 **JSON key-level reproducibility** — all `json.dump`/`json.dumps` output calls use `sort_keys=True` for reproducible diffs at the key level.
 * 🟪 **`--sort-order` option** — Future flag to allow alternative orderings (e.g., `--sort-order alphabetical` with sort keys: nodes by `(language, path, start_line, name)`, edges by `(src, dst, type)`) for users who prefer diffability over importance ranking.
 
 ## 14) Supply chain classification
@@ -1386,8 +1387,8 @@ Tier and Role compose for analysis decisions:
 
 ### File size limits
 
-* ⬜ **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis (`--max-file-bytes` not implemented; see §3)
-* ⬜ **Output**: Add to `limits.truncated_files[]` with path, size, and reason (`add_truncated_file()` exists but is never called)
+* 🟩 **Behavior**: Skip files exceeding `--max-file-bytes`, continue analysis. Applied globally via `set_max_file_bytes()` so all analyzers using `find_files()` respect the limit.
+* 🟩 **Output**: `limits.truncated_files[]` populated via global `on_file_skipped` callback. `run_all_analyzers()` sets a global callback in `discovery.py` that calls `limits.add_truncated_file()` for every file skipped due to size limits. No analyzer modifications required.
 
 ### Partial results guarantee
 
@@ -1494,7 +1495,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 | Item | Horizon | Status |
 |------|---------|--------|
 | AST-based type inference improvements | Near-term | Method-scoped tracking (medium effort), generic handling (high effort). See ADR-0006. |
-| Additional linkers | Near-term | 🟪 Constant propagation for dynamic routes, middleware/proxy detection. |
+| Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟩 Middleware chain linker (same-file chaining). 🟪 Proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
 | Multi-fidelity analysis | Medium-term | 🟪 Language server backends (tsserver, pyright, rust-analyzer, gopls, JDT). Mixed-fidelity graphs. |

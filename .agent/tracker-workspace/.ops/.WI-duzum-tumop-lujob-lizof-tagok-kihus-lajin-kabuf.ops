@@ -1,0 +1,86 @@
+- op: create  # 14a1
+  at: '2026-03-09T18:56:44Z'  # 14a1
+  by: agent  # 14a1
+  actor: jgstern_agent  # 14a1
+  clock: 1  # 14a1
+  nonce: 14a1  # 14a1
+  data:  # 14a1
+    kind: work_item  # 14a1
+    title: "Cross-language API consumption edges (route path matching)"  # 14a1
+    status: todo_soft  # 14a1
+    priority: 3  # 14a1
+    parent:  # 14a1
+    tags: []  # 14a1
+    before: []  # 14a1
+    duplicate_of: []  # 14a1
+    not_duplicate_of: []  # 14a1
+    pr_ref:  # 14a1
+    description: "DEEP bakeoff: polyglot repos consistently lack cross-language edges. The most impactful would be matching API route paths between server-side route definitions and client-side API call strings (e.g., Ruby Rails routes matched to JS ApiClient resource paths, Python endpoints matched to TS fetch calls)."  # 14a1
+    fields: {}  # 14a1
+- op: update  # bcca
+  at: '2026-03-09T19:06:56Z'  # bcca
+  by: agent  # bcca
+  actor: jgstern_agent  # bcca
+  clock: 2  # bcca
+  nonce: bcca  # bcca
+  set:  # bcca
+    priority: 4  # bcca
+- op: discuss  # e81a
+  at: '2026-03-09T19:06:56Z'  # e81a
+  by: agent  # e81a
+  actor: jgstern_agent  # e81a
+  clock: 3  # e81a
+  nonce: e81a  # e81a
+  message: "Deprioritized: cross-language edges are the biggest gap but also the most complex. Route path matching between server and client code requires language-specific heuristics. Will revisit based on plazaflow polyglot results."  # e81a
+- op: update  # f345
+  at: '2026-03-09T22:02:52Z'  # f345
+  by: agent  # f345
+  actor: jgstern_agent  # f345
+  clock: 4  # f345
+  nonce: f345  # f345
+  set:  # f345
+    status: needs_human_review  # f345
+- op: discuss  # 4274
+  at: '2026-03-09T22:02:52Z'  # 4274
+  by: agent  # 4274
+  actor: jgstern_agent  # 4274
+  clock: 5  # 4274
+  nonce: '4274'  # 4274
+  message: "PlazaFlow bakeoff confirms cross-language edges as #1 gap across 48 repos. Top targets: wasm_bindgen, Tauri IPC, NAPI. Each needs its own focused linker."  # 4274
+- op: discuss  # 0527
+  at: '2026-03-11T02:00:07Z'  # 0527
+  by: human  # 0527
+  actor: jgstern  # 0527
+  clock: 6  # 0527
+  nonce: '0527'  # 0527
+  message: "Please double-check that new items were added to the tracker to accomplish this item. If they were, you can mark this item as done."  # 0527
+- op: update  # 2e63
+  at: '2026-03-11T02:00:13Z'  # 2e63
+  by: human  # 2e63
+  actor: jgstern  # 2e63
+  clock: 7  # 2e63
+  nonce: '2e63'  # 2e63
+  set:  # 2e63
+    status: todo_soft  # 2e63
+- op: update  # de05
+  at: '2026-03-11T05:02:26Z'  # de05
+  by: agent  # de05
+  actor: jgstern_agent  # de05
+  clock: 8  # de05
+  nonce: de05  # de05
+  set:  # de05
+    status: done  # de05
+- op: discuss  # 94b4
+  at: '2026-03-11T05:02:26Z'  # 94b4
+  by: agent  # 94b4
+  actor: jgstern_agent  # 94b4
+  clock: 9  # 94b4
+  nonce: 94b4  # 94b4
+  message: "Sub-items all completed: WI-bajir (Tauri IPC), WI-dovas (NAPI), WI-fikab (wasm_bindgen), WI-mihul (gRPC/protobuf), WI-nudok (Proto-to-Go), WI-kogir (Tauri specta). These cover the top cross-language linking targets identified in the PlazaFlow bakeoff. Remaining gap (generic REST API path matching) tracked separately in WI-zulok."  # 94b4
+- op: discuss  # 0494
+  at: '2026-03-11T05:02:30Z'  # 0494
+  by: agent  # 0494
+  actor: jgstern_agent  # 0494
+  clock: 10  # 0494
+  nonce: '0494'  # 0494
+  message: "Confirmed: all sub-items exist and are done. wasm_bindgen (WI-fikab), Tauri IPC (WI-bajir + WI-kogir for specta patterns), NAPI (WI-dovas), gRPC/protobuf (WI-mihul + WI-nudok). Marking done. Generic REST API path matching is a separate, harder problem tracked in WI-zulok."  # 0494

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Ruby FFI linker for connecting Ruby FFI gem calls and C extension registrations
 to C/C++ function implementations.
 

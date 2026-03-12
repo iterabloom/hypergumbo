@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for YAML/Ansible analyzer."""
 from pathlib import Path
 
@@ -183,6 +184,193 @@ class TestAnsibleIncludeEdges:
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
+
+class TestAnsibleFileNodes:
+    """Tests for file-level node creation and edge resolution."""
+
+    def test_file_level_nodes_created(self, tmp_path: Path) -> None:
+        """Each processed Ansible file gets a file-level node."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- name: Install package
+  yum: name=nginx
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        file_nodes = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_nodes) >= 1
+        assert any("main.yml" in s.path for s in file_nodes)
+
+    def test_edge_dst_resolves_to_file_node(self, tmp_path: Path) -> None:
+        """include_tasks edge dst resolves to the target file's node ID."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- include_tasks: common.yml
+- import_tasks: setup.yml
+""")
+        (tasks_dir / "common.yml").write_text("""
+- name: Common task
+  debug: msg="common"
+""")
+        (tasks_dir / "setup.yml").write_text("""
+- name: Setup task
+  debug: msg="setup"
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        # File nodes should exist for all 3 files
+        file_nodes = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_nodes) >= 3
+
+        # Edge dst should be a valid node ID (not raw filename)
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 2
+
+        node_ids = {s.id for s in result.symbols}
+        for edge in import_edges:
+            assert edge.src in node_ids, f"Edge src {edge.src} not in node set"
+            assert edge.dst in node_ids, f"Edge dst {edge.dst} not in node set"
+
+    def test_unresolvable_edge_dst_kept_with_lower_confidence(self, tmp_path: Path) -> None:
+        """Edges to non-existent files are kept but with lower confidence."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- include_tasks: "{{ dynamic_path }}/tasks.yml"
+- include_tasks: nonexistent.yml
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
+        # Unresolvable edges get lower confidence
+        for edge in import_edges:
+            assert edge.confidence < 0.95
+
+    def test_include_role_resolves_to_role_main(self, tmp_path: Path) -> None:
+        """include_role with name= resolves to roles/<name>/tasks/main.yml."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- include_role: name=basessh
+""")
+        # Create the target role structure
+        role_dir = tmp_path / "roles" / "basessh" / "tasks"
+        role_dir.mkdir(parents=True)
+        (role_dir / "main.yml").write_text("""
+- name: Base SSH setup
+  debug: msg="ssh"
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        import_edges = [e for e in result.edges if e.evidence_type == "include_role"]
+        assert len(import_edges) == 1
+        # Should resolve to the role's main.yml node
+        node_ids = {s.id for s in result.symbols}
+        assert import_edges[0].dst in node_ids
+
+    def test_multiple_files_same_basename_prefers_same_dir(self, tmp_path: Path) -> None:
+        """When multiple files have the same name, prefer same-directory match."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        # Create two common.yml in different dirs
+        tasks_a = tmp_path / "roles" / "a" / "tasks"
+        tasks_a.mkdir(parents=True)
+        tasks_b = tmp_path / "roles" / "b" / "tasks"
+        tasks_b.mkdir(parents=True)
+
+        (tasks_a / "main.yml").write_text("""
+- include_tasks: common.yml
+""")
+        (tasks_a / "common.yml").write_text("""
+- name: Common A
+  debug: msg="a"
+""")
+        (tasks_b / "common.yml").write_text("""
+- name: Common B
+  debug: msg="b"
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        # Should resolve to the common.yml in the same directory (roles/a/tasks/)
+        assert len(import_edges) >= 1
+        resolved_edge = import_edges[0]
+        node_ids = {s.id for s in result.symbols}
+        assert resolved_edge.dst in node_ids
+        # The dst should point to the common.yml in roles/a/tasks/
+        assert "roles/a/tasks/common.yml" in resolved_edge.dst
+
+    def test_include_role_missing_role_unresolvable(self, tmp_path: Path) -> None:
+        """include_role with name= for missing role gets lower confidence."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- include_role: name=nonexistent_role
+""")
+
+        result = analyze_ansible(tmp_path)
+
+        import_edges = [e for e in result.edges if e.evidence_type == "include_role"]
+        assert len(import_edges) == 1
+        # Should be unresolvable → lower confidence
+        assert import_edges[0].confidence == 0.50
+
+    def test_multiple_files_same_basename_different_dir_fallback(self, tmp_path: Path) -> None:
+        """When source is in a different dir from all candidates, fall back to first."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        # Source file in one dir, two candidates in other dirs
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "main.yml").write_text("""
+- include_tasks: common.yml
+""")
+
+        # Both candidates in different dirs from source
+        dir_x = tmp_path / "roles" / "x" / "tasks"
+        dir_x.mkdir(parents=True)
+        dir_y = tmp_path / "roles" / "y" / "tasks"
+        dir_y.mkdir(parents=True)
+        (dir_x / "common.yml").write_text("- name: X\n  debug: msg=x\n")
+        (dir_y / "common.yml").write_text("- name: Y\n  debug: msg=y\n")
+
+        result = analyze_ansible(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
+        # Should resolve to one of the candidates (fallback to first)
+        node_ids = {s.id for s in result.symbols}
+        assert import_edges[0].dst in node_ids
+
+    def test_no_ansible_files_returns_empty(self, tmp_path: Path) -> None:
+        """Empty directory with no Ansible files returns empty result."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        # Create a non-ansible file
+        (tmp_path / "readme.md").write_text("# Hello")
+
+        result = analyze_ansible(tmp_path)
+        assert len(result.symbols) == 0
+        assert len(result.edges) == 0
+
 
 class TestAnsibleVariableExtraction:
     """Tests for extracting Ansible variables."""

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Go analyzer."""
 import pytest
 from pathlib import Path
@@ -932,6 +933,54 @@ func authMiddleware() {}
         # The closure can't be named, so the named identifier before it is used
         assert routes[0].name == "authMiddleware"
 
+    def test_anonymous_closure_handler_creates_route(self, tmp_path: Path) -> None:
+        """Routes with anonymous closure handlers should still be detected.
+
+        Pattern: r.Get("/path", func(w http.ResponseWriter, r *http.Request) {...})
+        Common in alertmanager, prometheus, and other Go projects that register
+        routes inline without named handler functions.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "net/http"
+
+func main() {
+    r.Get("/-/healthy", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    })
+    r.Get("/-/ready", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+    r.Post("/-/reload", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes}
+        assert "/-/healthy" in route_paths
+        assert "/-/ready" in route_paths
+        assert "/-/reload" in route_paths
+        assert len(routes) >= 3
+
+        # Verify the route symbols have a descriptive name
+        for route in routes:
+            assert route.name is not None
+            assert len(route.name) > 0
+
+        # Verify UsageContexts are also created
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+        assert "/-/healthy" in ctx_paths
+        assert "/-/ready" in ctx_paths
+        assert "/-/reload" in ctx_paths
+
     def test_group_prefix_composition(self, tmp_path: Path) -> None:
         """Routes inside Group() closures get the group prefix prepended.
 
@@ -1400,6 +1449,195 @@ func listPosts() {}
         stable_ids = [s.stable_id for s in routes]
         assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
 
+    def test_handlefunc_closure_handler(self, tmp_path: Path) -> None:
+        """Gorilla mux HandleFunc with anonymous closure handler creates route."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "net/http"
+
+func main() {
+    r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta["route_path"] == "/health"
+        assert routes[0].name == "<closure>"
+
+
+    def test_handlefunc_string_concat_path(self, tmp_path: Path) -> None:
+        """HandleFunc with variable + string literal path extracts the literal suffix.
+
+        Pattern: r.HandleFunc(baseUrl + "/users", handler) should detect
+        the route with path suffix "/users" even when the prefix is a variable.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    baseUrl := "/app"
+    r := mux.NewRouter()
+    r.HandleFunc(baseUrl + "/users", listUsers)
+    r.HandleFunc(baseUrl + "/users/{id}", getUser)
+    r.HandleFunc(baseUrl + "/cart", viewCart)
+}
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+func getUser(w http.ResponseWriter, r *http.Request) {}
+func viewCart(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes}
+
+        # Should detect routes with literal suffixes
+        assert any("/users" in p for p in route_paths), (
+            f"Expected route containing '/users', got: {route_paths}"
+        )
+        assert len(routes) >= 3, f"Expected 3 routes, got {len(routes)}: {route_paths}"
+
+    def test_go122_stdlib_method_path_pattern(self, tmp_path: Path) -> None:
+        """Go 1.22+ stdlib mux: Handle("POST /path", handler) combined method-path.
+
+        Go 1.22 introduced method-path routing in http.ServeMux where the
+        HTTP method and path are combined in a single string argument:
+        mux.Handle("POST /v1/data/{path...}", handler)
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "net/http"
+
+func main() {
+    mux := http.NewServeMux()
+    mux.Handle("POST /v1/data/{path...}", dataPostHandler)
+    mux.Handle("GET /v1/data/{path...}", dataGetHandler)
+    mux.HandleFunc("DELETE /v1/policies/{path...}", deletePolicyHandler)
+    mux.Handle("/health", healthHandler)
+}
+
+func dataPostHandler(w http.ResponseWriter, r *http.Request) {}
+func dataGetHandler(w http.ResponseWriter, r *http.Request) {}
+func deletePolicyHandler(w http.ResponseWriter, r *http.Request) {}
+func healthHandler(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_meta = {s.meta["route_path"]: s.meta for s in routes}
+
+        # Method-path routes should extract both method and path
+        assert "/v1/data/{path...}" in route_meta, (
+            f"Expected /v1/data/{{path...}}, got: {list(route_meta.keys())}"
+        )
+        post_route = route_meta["/v1/data/{path...}"]
+        # The first match for this path is POST
+        assert post_route["http_method"] in ("POST", "GET"), (
+            f"Expected POST or GET, got: {post_route['http_method']}"
+        )
+
+        # DELETE route
+        assert "/v1/policies/{path...}" in route_meta, (
+            f"Expected /v1/policies/{{path...}}, got: {list(route_meta.keys())}"
+        )
+        delete_meta = route_meta["/v1/policies/{path...}"]
+        assert delete_meta["http_method"] == "DELETE"
+
+        # Plain /health route should still work (no method prefix)
+        assert "/health" in route_meta
+        assert route_meta["/health"]["http_method"] == "ANY"
+
+    def test_single_arg_get_not_route(self, tmp_path: Path) -> None:
+        """Single-arg .Get("/key") calls (cache, headers) are not routes.
+
+        Go code like cache.Get("/A"), field.Tag.Get("/metric"),
+        Header.Get("/Authorization") should NOT create route UsageContexts
+        because they have no handler argument.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    // These should NOT be detected as routes
+    val := cache.Get("/A")
+    tag := field.Tag.Get("/metric")
+    auth := req.Header.Get("/Authorization")
+
+    // This SHOULD be detected as a route (has handler arg)
+    r.Get("/health", healthHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+
+        # Only the real route should be detected
+        assert "/health" in ctx_paths
+        assert "/A" not in ctx_paths
+        assert "/metric" not in ctx_paths
+        assert "/Authorization" not in ctx_paths
+
+
+    def test_gin_group_variable_prefix_composition(self, tmp_path: Path) -> None:
+        """Gin-style variable-based router groups compose full route paths.
+
+        Pattern: api := r.Group("/api"); api.GET("/users", handler)
+        should produce route path /api/users. Nested groups should also
+        compose: v1 := api.Group("/v1"); v1.GET("/items", handler) → /api/v1/items.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    api := r.Group("/api")
+    api.GET("/users", listUsers)
+    api.POST("/users", createUser)
+
+    v1 := api.Group("/v1")
+    v1.GET("/items", listItems)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+
+        assert "/api/users" in route_paths, f"Expected /api/users, got {route_paths}"
+        assert "/api/v1/items" in route_paths, f"Expected /api/v1/items, got {route_paths}"
+
+        # Also check usage contexts have the composed prefix
+        contexts = [c for c in result.usage_contexts if c.kind == "call"]
+        ctx_paths = {c.metadata.get("route_path") for c in contexts}
+        assert "/api/users" in ctx_paths
+        assert "/api/v1/items" in ctx_paths
+
 
 class TestGoRouteMountDetection:
     """Tests for Go route mount point detection.
@@ -1719,6 +1957,126 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+
+class TestGoSwaggerHandlerWiring:
+    """Tests for go-swagger handler wiring pattern detection.
+
+    go-swagger generates handler wiring in a separate file from route registration.
+    The wiring pattern assigns typed handler funcs to handler interface fields:
+        openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    When the handler cache route has a handler_field matching the wiring's field name,
+    the route's handler_name should be updated to the actual implementation.
+    """
+
+    def test_handler_cache_extracts_handler_field(self, tmp_path: Path) -> None:
+        """Handler cache extraction stores handler_field from constructor args."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta.get("handler_field") == "AlertGetAlertsHandler"
+
+    def test_handler_wiring_resolves_handler_name(self, tmp_path: Path) -> None:
+        """Handler wiring in separate file updates route handler_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: handler cache (route registration)
+        ops_dir = tmp_path / "operations"
+        ops_dir.mkdir()
+        (ops_dir / "api.go").write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+    o.handlers["POST"]["/alerts"] = alert.NewPostAlerts(o.context, o.AlertPostAlertsHandler)
+}
+""")
+
+        # File 2: handler wiring (connects interface field to implementation)
+        (tmp_path / "api.go").write_text("""
+package api
+
+func NewAPI(openAPI *operations.API) *API {
+    api := &API{}
+    openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+    openAPI.AlertPostAlertsHandler = alert_ops.PostAlertsHandlerFunc(api.postAlertsHandler)
+    return api
+}
+
+func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Responder {
+    return nil
+}
+
+func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.Responder {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 2
+
+        get_alerts = next(r for r in routes if r.meta["http_method"] == "GET")
+        post_alerts = next(r for r in routes if r.meta["http_method"] == "POST")
+
+        # handler_name should be updated to actual implementation
+        assert get_alerts.meta["handler_name"] == "api.getAlertsHandler"
+        assert post_alerts.meta["handler_name"] == "api.postAlertsHandler"
+
+    def test_handler_wiring_no_match_keeps_original(self, tmp_path: Path) -> None:
+        """Routes without matching wiring keep their original handler_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/health"] = NewHealthCheck(o.context, o.HealthHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        # No wiring pattern in this file, so handler_name stays as constructor
+        assert routes[0].meta["handler_name"] == "NewHealthCheck"
+
+    def test_handler_wiring_ignores_non_handler_func_assignments(self, tmp_path: Path) -> None:
+        """Assignments that don't match HandlerFunc pattern are ignored."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package api
+
+func setup(o *API) {
+    o.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+    o.SomeField = someValue
+    o.Config = loadConfig()
+    o.ErrorHandler = errors.NewErrorProcessor(api.handleError)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        # No routes should be created from wiring-only code
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
 
@@ -3436,6 +3794,45 @@ func indirect() {
             f"lower than direct call confidence ({direct_call.confidence})"
         )
 
+    def test_local_variable_not_treated_as_function_reference(self, tmp_path: Path) -> None:
+        """Local variables passed as args must not create false function reference edges.
+
+        When a local variable shares a name with a function (e.g., ``start``
+        used as a time value vs ``start()`` as a method), the analyzer must
+        not create a call edge from the variable usage to the function.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "time"
+
+func start() {}
+
+func doWork() {
+    start := time.Now()
+    elapsed := time.Since(start)
+    _ = elapsed
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # doWork should NOT have a function_reference_arg edge to start()
+        false_ref = next(
+            (e for e in call_edges
+             if "doWork" in e.src and "start" in e.dst
+             and e.evidence_type == "function_reference_arg"),
+            None,
+        )
+        assert false_ref is None, (
+            f"Local variable 'start' should not create a function reference edge "
+            f"to start(). Found: {false_ref}"
+        )
+
 
 class TestGoAmbiguousMethodCallGuard:
     """Tests for the ambiguous method call resolution guard.
@@ -3749,11 +4146,12 @@ func handler() {
                 f"got '{edge.evidence_type}'"
             )
 
-    def test_selector_operand_ambiguous(self, tmp_path: Path) -> None:
-        """resp.Body.Close() with 3+ types → unresolved edge.
+    def test_selector_operand_resolved_via_field_chain(self, tmp_path: Path) -> None:
+        """resp.Body.Close() with known field type → typed_field_call edge.
 
-        When the operand is a nested selector expression (field access),
-        the receiver type cannot be inferred. The guard should still fire.
+        When the operand is a nested selector expression (field access)
+        and the field type registry can resolve the chain, a typed_field_call
+        edge is created instead of an ambiguous_method_call.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -3787,15 +4185,13 @@ func process(resp Response) {
             f"process should have a call edge for Close(), found: {process_calls}"
         )
 
-        # Should be unresolved — NOT resolved to any specific type
+        # Field chain resolves: resp → Response → Body → Server → Server.Close
         for edge in close_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
-                f"Selector operand Close() with 3+ candidates should be "
-                f"ambiguous_method_call, got '{edge.evidence_type}'"
+            assert edge.evidence_type == "typed_field_call", (
+                f"resp.Body.Close() should resolve via field chain, "
+                f"got '{edge.evidence_type}'"
             )
-            assert "Server.Close" not in edge.dst
-            assert "Client.Close" not in edge.dst
-            assert "Worker.Close" not in edge.dst
+            assert "Server.Close" in edge.dst
 
     def test_index_operand_ambiguous(self, tmp_path: Path) -> None:
         """items[0].Close() with 3+ types → unresolved edge.
@@ -4900,3 +5296,731 @@ type Config struct {
         result = analyze_go(tmp_path)
         config = next(s for s in result.symbols if s.name == "Config")
         assert config.lines_of_code == 5
+
+
+class TestGoStructuralInterfaceMatching:
+    """Tests for structural interface satisfaction detection.
+
+    Go uses structural typing: a struct satisfies an interface if it has
+    all the interface's methods, WITHOUT needing an explicit assertion like
+    ``var _ Interface = &Struct{}``. The analyzer should detect this
+    automatically by comparing interface method sets with struct method sets.
+    """
+
+    def test_struct_satisfies_interface_without_assertion(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct with matching methods gets base_classes for interface."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+}
+
+type EmailNotifier struct{}
+
+func (e *EmailNotifier) Notify(msg string) error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next(
+            (s for s in result.symbols if s.name == "EmailNotifier"), None
+        )
+        assert struct_sym is not None, "Should find EmailNotifier struct"
+        assert struct_sym.meta is not None, (
+            "EmailNotifier should have meta with base_classes"
+        )
+        assert "base_classes" in struct_sym.meta, (
+            f"Should have base_classes, got: {struct_sym.meta}"
+        )
+        assert "Notifier" in struct_sym.meta["base_classes"]
+
+    def test_struct_missing_method_does_not_match(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct missing an interface method should NOT get base_classes."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type ReadWriter interface {
+    Read(p []byte) (int, error)
+    Write(p []byte) (int, error)
+}
+
+type OnlyReader struct{}
+
+func (r *OnlyReader) Read(p []byte) (int, error) {
+    return 0, nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next(
+            (s for s in result.symbols if s.name == "OnlyReader"), None
+        )
+        assert struct_sym is not None
+        # Should NOT have ReadWriter in base_classes
+        if struct_sym.meta and "base_classes" in struct_sym.meta:
+            assert "ReadWriter" not in struct_sym.meta["base_classes"]
+
+    def test_multiple_structs_satisfy_same_interface(
+        self, tmp_path: Path
+    ) -> None:
+        """Multiple structs can satisfy the same interface."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type Stringer interface {
+    String() string
+}
+
+type Foo struct{}
+func (f Foo) String() string { return "foo" }
+
+type Bar struct{}
+func (b *Bar) String() string { return "bar" }
+""")
+
+        result = analyze_go(tmp_path)
+
+        foo = next((s for s in result.symbols if s.name == "Foo"), None)
+        bar = next((s for s in result.symbols if s.name == "Bar"), None)
+        assert foo is not None
+        assert bar is not None
+        assert foo.meta and "Stringer" in foo.meta.get("base_classes", [])
+        assert bar.meta and "Stringer" in bar.meta.get("base_classes", [])
+
+    def test_cross_file_structural_matching(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct in one file should match interface in another file."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        # Interface in interface.go
+        (tmp_path / "interface.go").write_text("""package main
+
+type Queryable interface {
+    Querier() Querier
+}
+""")
+        # Struct in db.go that implements Queryable
+        (tmp_path / "db.go").write_text("""package main
+
+type DB struct{}
+
+func (db *DB) Querier() Querier {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        db_sym = next(
+            (s for s in result.symbols if s.name == "DB" and s.kind == "struct"),
+            None,
+        )
+        assert db_sym is not None, "Should find DB struct"
+        assert db_sym.meta is not None, (
+            "DB should have meta with base_classes from cross-file matching"
+        )
+        assert "base_classes" in db_sym.meta, (
+            f"DB should have base_classes, got: {db_sym.meta}"
+        )
+        assert "Queryable" in db_sym.meta["base_classes"], (
+            f"DB should implement Queryable, got: {db_sym.meta['base_classes']}"
+        )
+
+
+class TestGoInterfaceMethodSymbols:
+    """Tests for extracting method symbols from Go interface definitions.
+
+    Go interfaces define method signatures that need to be extracted as
+    Symbol objects (kind=method, name=InterfaceName.MethodName) so that
+    the type hierarchy linker can create dispatches_to edges from
+    interface methods to concrete struct methods.
+    """
+
+    def test_interface_methods_extracted_as_symbols(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface methods become method symbols named InterfaceName.MethodName."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "iface.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+    Close() error
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Interface itself should exist
+        iface = next(
+            (s for s in result.symbols if s.name == "Notifier" and s.kind == "interface"),
+            None,
+        )
+        assert iface is not None, "Should find Notifier interface"
+
+        # Each interface method should be a symbol
+        notify_method = next(
+            (s for s in result.symbols
+             if s.name == "Notifier.Notify" and s.kind == "method"),
+            None,
+        )
+        assert notify_method is not None, (
+            "Should find Notifier.Notify method symbol; "
+            f"got: {[s.name for s in result.symbols if s.kind == 'method']}"
+        )
+        assert notify_method.language == "go"
+        assert notify_method.path == str(tmp_path / "iface.go")
+
+        close_method = next(
+            (s for s in result.symbols
+             if s.name == "Notifier.Close" and s.kind == "method"),
+            None,
+        )
+        assert close_method is not None, "Should find Notifier.Close method symbol"
+
+    def test_empty_interface_no_method_symbols(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty interfaces (interface{}) produce no method symbols."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "empty.go").write_text("""package main
+
+type Any interface{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # No method symbols should exist for empty interface
+        iface_methods = [
+            s for s in result.symbols
+            if s.kind == "method" and s.name.startswith("Any.")
+        ]
+        assert len(iface_methods) == 0
+
+    def test_interface_method_symbols_enable_dispatches_to(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface method symbols + struct methods enable dispatches_to via linkers.
+
+        Validates the full pipeline: Go analyzer extracts interface method symbols,
+        containment linker connects interface→method, type hierarchy linker creates
+        dispatches_to edges from interface method to struct method.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+        from hypergumbo_core.linkers.containment import link_containment
+        from hypergumbo_core.linkers.type_hierarchy import link_type_hierarchy
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "dispatch.go").write_text("""package main
+
+type Handler interface {
+    Handle(req string) string
+}
+
+type EchoHandler struct{}
+
+func (h *EchoHandler) Handle(req string) string {
+    return req
+}
+""")
+
+        result = analyze_go(tmp_path)
+        symbols = list(result.symbols)
+        edges = list(result.edges)
+
+        # Step 1: Run containment linker to create interface→method contains edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        containment_result = link_containment(ctx)
+        edges.extend(containment_result.edges)
+
+        # Step 2: Run inheritance linker to create implements edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        inheritance_result = link_inheritance(ctx)
+        edges.extend(inheritance_result.edges)
+
+        # Step 3: Run type hierarchy linker to create dispatches_to edges
+        ctx = LinkerContext(symbols=symbols, edges=edges, repo_root=tmp_path)
+        hierarchy_result = link_type_hierarchy(ctx)
+
+        dispatches = [e for e in hierarchy_result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatches) >= 1, (
+            f"Should have dispatches_to edge from Handler.Handle to EchoHandler.Handle; "
+            f"got edges: {[(e.src, e.dst, e.edge_type) for e in hierarchy_result.edges]}"
+        )
+
+
+class TestGoStructFieldTypePopulation:
+    """Tests that Go struct analysis populates class_field_types."""
+
+    @staticmethod
+    def _parse_file(tmp_path: Path, source: str):
+        from hypergumbo_lang_mainstream.go import (
+            _extract_symbols_from_file,
+            is_go_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        if not is_go_tree_sitter_available():
+            pytest.skip("tree-sitter-go not available")
+
+        import tree_sitter_go
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_go.language())
+        parser = tree_sitter.Parser(lang)
+        run = AnalysisRun.create(pass_id="test", version="test")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text(source)
+        return _extract_symbols_from_file(go_file, parser, run)
+
+    def test_populates_class_field_types_basic(self, tmp_path: Path) -> None:
+        """Named struct fields produce class_field_types entries."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Integration struct {
+    Name string
+}
+
+type RetryStage struct {
+    integration Integration
+    metrics     *Metrics
+}
+
+type Metrics struct {
+    counter int
+}
+""")
+        # RetryStage should have integration→Integration and metrics→Metrics
+        assert "RetryStage" in result.class_field_types
+        fields = result.class_field_types["RetryStage"]
+        assert fields["integration"] == "Integration"
+        assert fields["metrics"] == "Metrics"
+
+    def test_excludes_builtin_types(self, tmp_path: Path) -> None:
+        """Built-in types (string, int, bool, error) are excluded."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Config struct {
+    name    string
+    count   int
+    enabled bool
+    err     error
+    handler Handler
+}
+
+type Handler struct{}
+""")
+        fields = result.class_field_types.get("Config", {})
+        # Only handler should be present (non-builtin)
+        assert fields == {"handler": "Handler"}
+
+    def test_qualified_type_uses_unqualified_name(self, tmp_path: Path) -> None:
+        """pkg.Type fields use the unqualified type name."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+import "net/http"
+
+type Server struct {
+    client http.Client
+}
+""")
+        fields = result.class_field_types.get("Server", {})
+        assert fields.get("client") == "Client"
+
+    def test_pointer_to_qualified_type(self, tmp_path: Path) -> None:
+        """*pkg.Type fields unwrap pointer and extract unqualified name."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+import "net/http"
+
+type Server struct {
+    client *http.Client
+}
+""")
+        fields = result.class_field_types.get("Server", {})
+        assert fields.get("client") == "Client"
+
+    def test_embedding_excluded(self, tmp_path: Path) -> None:
+        """Embedded types (no field name) are not included in class_field_types."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Base struct{}
+
+type Child struct {
+    Base
+    handler Handler
+}
+
+type Handler struct{}
+""")
+        fields = result.class_field_types.get("Child", {})
+        # Base is embedded (no name), should not appear; handler should
+        assert "Base" not in fields
+        assert fields == {"handler": "Handler"}
+
+    def test_only_builtins_produces_empty(self, tmp_path: Path) -> None:
+        """Struct with only builtin-typed fields produces no class_field_types entry."""
+        result = self._parse_file(tmp_path, """\
+package main
+
+type Config struct {
+    name    string
+    count   int
+    enabled bool
+}
+""")
+        assert "Config" not in result.class_field_types
+
+
+class TestGoTypedFieldCallEdges:
+    """Tests for chained field access resolution via class_field_types.
+
+    When a Go method calls r.integration.Notify(), where r's type has a field
+    ``integration`` of type ``Integration``, the edge should resolve to
+    ``Integration.Notify`` with evidence_type "typed_field_call".
+    """
+
+    def test_chained_field_call(self, tmp_path: Path) -> None:
+        """r.integration.Notify() resolves to Integration.Notify."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Integration struct{}
+
+func (i *Integration) Notify() {}
+
+type RetryStage struct {
+    integration Integration
+}
+
+func (r *RetryStage) exec() {
+    r.integration.Notify()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+
+        exec_sym = next(s for s in result.symbols if s.name == "RetryStage.exec")
+        notify_sym = next(s for s in result.symbols if s.name == "Integration.Notify")
+        assert edge.src == exec_sym.id
+        assert edge.dst == notify_sym.id
+        assert edge.confidence == 0.88
+        assert edge.edge_type == "calls"
+
+    def test_pointer_field_call(self, tmp_path: Path) -> None:
+        """r.metrics.Record() where metrics is *Metrics resolves correctly."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Metrics struct{}
+
+func (m *Metrics) Record() {}
+
+type Server struct {
+    metrics *Metrics
+}
+
+func (s *Server) handle() {
+    s.metrics.Record()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].confidence == 0.88
+
+    def test_cross_file_field_call(self, tmp_path: Path) -> None:
+        """Chained field call resolves via global symbols across files."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""\
+package main
+
+type Cache struct{}
+
+func (c *Cache) Get() {}
+""")
+        (tmp_path / "main.go").write_text("""\
+package main
+
+type App struct {
+    cache Cache
+}
+
+func (a *App) handle() {
+    a.cache.Get()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+        assert "Cache.Get" in edge.dst
+
+    def test_call_root_chain_no_edge(self, tmp_path: Path) -> None:
+        """getX().field.Method() — chain root is call, not identifier.
+
+        Exercises _resolve_field_chain: root is call_expression → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+type Holder struct {
+    foo Foo
+}
+
+func getHolder() Holder { return Holder{} }
+
+func run() {
+    getHolder().foo.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        # getHolder().foo.Bar() — root is call, not resolvable
+        assert len(typed_edges) == 0
+
+    def test_unresolvable_root_type_no_edge(self, tmp_path: Path) -> None:
+        """Chained call with unknown root type → no typed_field_call.
+
+        Exercises _resolve_field_chain: var_types.get(root_name) → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+type Other struct {
+    foo Foo
+}
+
+func run() {
+    // unknown is not a typed variable — it's a package-level var
+    // with no type annotation visible to var_types extraction.
+    unknown.foo.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_type_not_in_registry_no_edge(self, tmp_path: Path) -> None:
+        """Chained call where root type has no fields in registry → no typed_field_call.
+
+        Exercises _resolve_field_chain: field_type_registry.get(current_type) → None.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+// Other has fields so field_type_registry is non-empty
+type Other struct {
+    foo Foo
+}
+
+// Container has only builtin fields → NOT in field_type_registry
+type Container struct {
+    name string
+}
+
+func run(c Container) {
+    c.name.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_field_not_in_type_no_edge(self, tmp_path: Path) -> None:
+        """Chained call where field is not in type's registry → no typed_field_call.
+
+        Exercises _resolve_field_chain: fields.get(field_name) → None.
+        The struct is in the registry but the accessed field isn't (e.g.,
+        a method return field accessed via syntax Go wouldn't actually compile).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+// Holder has field 'foo' (registered) but NOT 'missing'
+type Holder struct {
+    foo Foo
+}
+
+func (h *Holder) run() {
+    // h.missing doesn't exist in Holder's field types
+    h.missing.Bar()
+}
+
+func main() {}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+
+class TestGoConstructorTypeInference:
+    """Tests for NewXxx() constructor return type inference in var_types.
+
+    Go convention: NewFoo() returns *Foo. When we see x := NewFoo(...),
+    we infer x has type Foo, enabling typed_receiver_call edges.
+    """
+
+    def test_local_constructor_infers_type(self, tmp_path: Path) -> None:
+        """x := NewServer(...) → x has type Server."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+type Server struct{}
+
+func NewServer() *Server { return &Server{} }
+
+func (s *Server) Run() {}
+
+func main() {
+    s := NewServer()
+    s.Run()
+}
+""")
+        result = analyze_go(tmp_path)
+
+        typed_calls = [
+            e for e in result.edges
+            if e.evidence_type == "typed_receiver_call"
+            and "Server.Run" in e.dst
+        ]
+        assert len(typed_calls) == 1
+
+    def test_package_constructor_infers_type(self, tmp_path: Path) -> None:
+        """d := dispatch.NewDispatcher(...) → d has type Dispatcher."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "dispatcher.go").write_text("""\
+package main
+
+type Dispatcher struct{}
+
+func NewDispatcher() *Dispatcher { return &Dispatcher{} }
+
+func (d *Dispatcher) Run() {}
+""")
+        (tmp_path / "main.go").write_text("""\
+package main
+
+func main() {
+    d := NewDispatcher()
+    go d.Run()
+}
+""")
+        result = analyze_go(tmp_path)
+
+        run_calls = [
+            e for e in result.edges
+            if "Dispatcher.Run" in e.dst
+            and e.edge_type == "calls"
+        ]
+        assert len(run_calls) >= 1
+        assert any(e.evidence_type == "typed_receiver_call" for e in run_calls)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """R language analysis pass using tree-sitter.
 
 This analyzer parses R source files and extracts:
@@ -366,8 +367,7 @@ def _extract_r_edges(
                         dst_id = f"r:builtin:{func_name}"
                     confidence = 0.75 if path_hint else 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                edge = Edge.create(
                     src=caller.id,
                     dst=dst_id,
                     edge_type="calls",

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """F# analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse F# files and extract:

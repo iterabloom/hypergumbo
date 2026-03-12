@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # hypergumbo
 
 [![CI](https://codeberg.org/iterabloom/hypergumbo/badges/workflows/ci.yml/badge.svg?branch=dev)](https://codeberg.org/iterabloom/hypergumbo/actions)
@@ -25,64 +26,74 @@ Output:
 ```bash
 # hypergumbo
 
-hypergumbo hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels.
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
 
 ## Overview
-Python (88%), Markdown (6%), Yaml (4%)
-495 files    (321 non-test + 174 test)
-~186,506 LOC (~96,384 non-test + ~90,122 test)
+Python (91%), Markdown (4%), Yaml (3%)
+728 files    (383 non-test + 345 test)
+~320,798 LOC (~129,172 non-test + ~191,626 test)
 
 ## Structure
 
 ` ` `
 hypergumbo/
 ├── .agent
-│   ├── stop_reflect.md
-│   └── [and 3 other items]
+│   └── [and 6 other items]
+├── .gitea
+│   ├── SQUASH_TEMPLATE.md
+│   └── [and 1 other items]
 ├── .githooks
 │   ├── commit-msg
-│   └── [and 7 other items]
+│   └── [and 9 other items]
 ├── docs
-│   ├── future
-│   │   └── registry-factory-vision.md
-│   └── [and 23 other items]
+│   ├── CACHE.md
+│   └── [and 22 other items]
 ├── packages
-│   ├── hypergumbo
-│   │   ├── pyproject.toml
-│   │   └── [and 2 other items]
 │   ├── hypergumbo-core
 │   │   ├── src
 │   │   │   └── hypergumbo_core
+│   │   │       ├── analyze
+│   │   │       │   ├── base.py
+│   │   │       │   └── [and 3 other items]
+│   │   │       ├── __main__.py
 │   │   │       ├── cli.py
 │   │   │       ├── ir.py
-│   │   │       └── [and 27 other items]
+│   │   │       └── [and 26 other items]
 │   │   ├── tests
 │   │   │   ├── test_framework_patterns.py
-│   │   │   └── [and 63 other items]
-│   │   ├── pyproject.toml
-│   │   └── [and 1 other items]
-│   └── [and 3 other items]
+│   │   │   └── [and 94 other items]
+│   │   └── [and 2 other items]
+│   ├── hypergumbo-tracker
+│   │   ├── src
+│   │   │   └── hypergumbo_tracker
+│   │   │       ├── cli.py
+│   │   │       └── [and 13 other items]
+│   │   └── [and 5 other items]
+│   └── [and 4 other items]
 ├── scripts
-│   ├── hypergumbo_diag.py
-│   └── [and 24 other items]
-├── .gitignore
-├── ALLOWED_WEBSITES.md
-├── README.md
+│   ├── lib
+│   │   └── forgejo-api.sh
+│   └── [and 33 other items]
+├── tests
+│   ├── test_bakeoff_features_reflect.py
+│   └── [and 2 other items]
 ├── conftest.py
 ├── pyproject.toml
-└── [and 18 other items]
+├── setup.py
+└── [and 21 other items]
 ` ` `
 
 ## Frameworks
 
 - pytest
+- pytorch
 - transformers
 
 ## Tests
 
-174 test files · pytest, unittest
+345 test files · cargo test, pytest, unittest
 
-*~90% estimated coverage (1960/2179 functions called by tests)*
+*~95% estimated coverage (2693/2847 functions called by tests)*
 
 ## Configuration
 [...]

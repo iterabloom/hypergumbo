@@ -1,0 +1,50 @@
+- op: create  # 7d35
+  at: '2026-03-04T21:48:57Z'  # 7d35
+  by: agent  # 7d35
+  actor: jgstern_agent  # 7d35
+  clock: 1  # 7d35
+  nonce: 7d35  # 7d35
+  data:  # 7d35
+    kind: work_item  # 7d35
+    title: "Add pre-commit hook blocking direct commits to dev/main"  # 7d35
+    status: todo_soft  # 7d35
+    priority: 1  # 7d35
+    parent:  # 7d35
+    tags:  # 7d35
+    - ci_infrastructure  # 7d35
+    before: []  # 7d35
+    duplicate_of: []  # 7d35
+    not_duplicate_of: []  # 7d35
+    pr_ref:  # 7d35
+    description: "Agent accidentally committed to dev (transcript line ~6000). A pre-commit hook checking branch name would catch this. Cheaper than post-hoc git reset."  # 7d35
+    fields: {}  # 7d35
+- op: update  # a2a2
+  at: '2026-03-06T00:24:39Z'  # a2a2
+  by: agent  # a2a2
+  actor: jgstern_agent  # a2a2
+  clock: 2  # a2a2
+  nonce: a2a2  # a2a2
+  set:  # a2a2
+    status: needs_human_review  # a2a2
+- op: discuss  # bc2e
+  at: '2026-03-06T00:24:40Z'  # bc2e
+  by: agent  # bc2e
+  actor: jgstern_agent  # bc2e
+  clock: 3  # bc2e
+  nonce: bc2e  # bc2e
+  message: "PR #1774 created. Governance file change (.githooks/pre-commit) requires human approval."  # bc2e
+- op: update  # 01b3
+  at: '2026-03-06T00:47:22Z'  # 01b3
+  by: agent  # 01b3
+  actor: jgstern_agent  # 01b3
+  clock: 4  # 01b3
+  nonce: 01b3  # 01b3
+  set:  # 01b3
+    status: done  # 01b3
+- op: discuss  # 71cd
+  at: '2026-03-06T00:47:22Z'  # 71cd
+  by: agent  # 71cd
+  actor: jgstern_agent  # 71cd
+  clock: 5  # 71cd
+  nonce: 71cd  # 71cd
+  message: "Merged in PR #1774 (manually by human after CI confusion). Pre-commit hook now blocks direct commits to dev/main with stash+branch instructions."  # 71cd

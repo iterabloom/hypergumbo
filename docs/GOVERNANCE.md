@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Governance
 
 This document describes contributor trust, review policies, and release processes for hypergumbo.

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ALLOWED_WEBSITES.md
 # Security boundary: outbound network access is restricted to these domains only. If a link redirects to a non-allowlisted domain, do not follow it.
 # Changes to this file require human approval.

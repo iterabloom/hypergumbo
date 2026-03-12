@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """reStructuredText analyzer using tree-sitter.
 
 reStructuredText (RST) is the standard documentation format for Python projects,

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 hypergumbo_diag.py - Unified diagnostic script for hypergumbo bakeoff analysis
 
@@ -196,21 +197,24 @@ def node_lang(n: dict) -> str:
 
 
 def is_route_node(n: dict) -> bool:
-    """Check if a node represents an HTTP route."""
+    """Check if a node represents an HTTP route definition.
+
+    Returns True for actual route symbols (kind=route) and nodes with explicit
+    http_method+route_path metadata. Does NOT return True for handler functions
+    that merely have a 'route' concept — those are the targets of routes_to
+    edges, not route definitions themselves.
+    """
+    # Explicit route kind
+    if n.get("kind") == "route":
+        return True
+
+    # Direct http fields on the node or its metadata
     meta = n.get("meta") or {}
-    concepts = meta.get("concepts") or []
-    
-    for c in concepts:
-        if isinstance(c, dict):
-            if c.get("concept") == "route" or c.get("name") == "route":
-                return True
-    
-    # Fallback: direct http fields
     if meta.get("http_method") and meta.get("route_path"):
         return True
     if n.get("http_method") and n.get("route_path"):
         return True
-    
+
     return False
 
 
@@ -282,6 +286,7 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
     idx = {}
     lang_hist = {}
     route_nodes = set()
+    test_route_nodes = set()
     route_sigs = {}
     nodes_with_path = 0
     nodes_test = 0
@@ -313,6 +318,8 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
         
         if is_route:
             route_nodes.add(nid)
+            if p and is_test_path(p):
+                test_route_nodes.add(nid)
             sig = route_signature(n)
             if sig:
                 route_sigs[nid] = sig
@@ -347,14 +354,23 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
                     if pu != pv:
                         calls_crossfile += 1
     
-    # Route → handler linking
-    route_has_nonroute_edge = set()
+    # Route → handler linking: count routes with routes_to edges or outgoing
+    # edges to non-route nodes (routes_to is the primary signal).
+    # Exclude test-file routes from the metric — test suites (e.g., bun's
+    # Express compatibility tests) define routes with inline anonymous handlers
+    # that can't be linked, inflating the denominator.
+    prod_route_nodes = route_nodes - test_route_nodes
+    route_has_handler = set()
     for e in edges:
         u, v = edge_src(e), edge_dst(e)
-        if u in route_nodes and v in idx and v not in route_nodes:
-            route_has_nonroute_edge.add(u)
-    
-    route_link_pct = pct(len(route_has_nonroute_edge), len(route_nodes))
+        t = e.get("type", "")
+        if u in prod_route_nodes:
+            if t == "routes_to":
+                route_has_handler.add(u)
+            elif v in idx and v not in route_nodes:
+                route_has_handler.add(u)
+
+    route_link_pct = pct(len(route_has_handler), len(prod_route_nodes))
     
     # Analyze entrypoints
     ep_rows = []
@@ -395,9 +411,9 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
     flags = []
     if calls_total == 0 and len(nodes) > 10:
         flags.append("NO_CALL_EDGES")
-    if len(route_nodes) == 0 and any(x in repo_name.lower() for x in ROUTE_EXPECTED_REPOS):
+    if len(prod_route_nodes) == 0 and any(x in repo_name.lower() for x in ROUTE_EXPECTED_REPOS):
         flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
-    if len(route_nodes) > 0 and route_link_pct < 25.0:
+    if len(prod_route_nodes) > 0 and route_link_pct < 25.0:
         flags.append("ROUTES_WEAKLY_LINKED_TO_HANDLERS")
     if len(entrypoints) > 100 and ep_test_pct > 50.0:
         flags.append("ENTRYPOINTS_DOMINATED_BY_TESTS")
@@ -408,7 +424,7 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
     
     # Find http-ish symbols for repos missing routes
     httpish_symbols = []
-    if len(route_nodes) == 0 and any(x in repo_name.lower() for x in ROUTE_EXPECTED_REPOS):
+    if len(prod_route_nodes) == 0 and any(x in repo_name.lower() for x in ROUTE_EXPECTED_REPOS):
         for n in nodes:
             name = n.get("name") or ""
             if any(k in name.lower() for k in ["http", "router", "route", "handler", "serve", "listen", "mux"]):
@@ -433,7 +449,8 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
         "calls_pathed_pct": pct(calls_pathed, calls_resolved),
         "calls_crossfile": calls_crossfile,
         "calls_crossfile_pct": pct(calls_crossfile, calls_pathed),
-        "routes": len(route_nodes),
+        "routes": len(prod_route_nodes),
+        "routes_test": len(test_route_nodes),
         "routes_unique": len(set(route_sigs.values())),
         "route_link_pct": route_link_pct,
         "entrypoints": len(entrypoints),

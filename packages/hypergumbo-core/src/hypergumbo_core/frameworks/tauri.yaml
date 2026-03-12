@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Tauri framework patterns (ADR-0003)
+#
+# Detects Tauri IPC command handlers in Rust code. Functions annotated with
+# #[tauri::command] are IPC endpoints callable from the TypeScript/JavaScript
+# frontend via invoke(). These are analogous to HTTP routes in web frameworks.
+#
+# The tauri_ipc linker handles cross-language edge creation; this file provides
+# concept enrichment for entrypoint detection and routes.txt output.
+
+id: tauri
+language: rust
+
+patterns:
+  # Tauri command handler — #[tauri::command]
+  # These are IPC endpoints that act as the application's "API routes"
+  - concept: ipc_handler
+    annotation: "^tauri::command$"
+
+  # Tauri command with rename — #[tauri::command(rename_all = "camelCase")]
+  - concept: ipc_handler
+    annotation: "^tauri::command$"
+
+linkers:
+  - tauri_ipc

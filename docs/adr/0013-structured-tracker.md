@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 13. Structured Tracker
 
 Date: 2026-02-13

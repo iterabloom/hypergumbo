@@ -58,6 +58,7 @@ from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.events import Click, Resize
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -2126,7 +2127,10 @@ class TrackerApp(App):
             drift = self._tracker_set.drift_check(item.id)
             if drift:
                 lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
-        content = self.query_one("#std-detail-content", Static)
+        try:
+            content = self.query_one("#std-detail-content", Static)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         content.update("\n".join(lines))
         self._update_chain_summary(item_id)
         if self._layout_tier == "wide":
@@ -2156,7 +2160,10 @@ class TrackerApp(App):
         """Remove italic ghost rows from previous chain selection."""
         if not self._ghost_row_ids:
             return
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         for rid in list(self._ghost_row_ids):
             try:
                 table.remove_row(rid)
@@ -2172,7 +2179,10 @@ class TrackerApp(App):
         at the bottom of the table.  Ghost rows are tracked in
         ``_ghost_row_ids`` so they can be removed when the cursor moves.
         """
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         hidden = self._hidden_ids()
         if not hidden:
             return
@@ -2260,7 +2270,10 @@ class TrackerApp(App):
             return
         # Manage ghost rows: remove old ones, append new ones
         self._remove_ghost_rows()
-        table = self.query_one("#std-table", DataTable)
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
         if table.row_count == 0:
             return
 

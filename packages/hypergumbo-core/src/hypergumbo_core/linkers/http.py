@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """HTTP client-server linker for detecting cross-language API calls.
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
@@ -90,6 +91,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
+from ..analyze.base import make_route_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -847,7 +849,9 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             end_col=0,
         ),
         language=call.language,
-        stable_id=call.method,
+        stable_id=make_route_stable_id(
+            call.method, _extract_path_from_url(call.url) or call.url
+        ),
         meta={
             "http_method": call.method,
             "url_path": _extract_path_from_url(call.url) or call.url,
@@ -897,6 +901,27 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
         except (OSError, IOError):  # pragma: no cover
             pass
 
+    # Pre-extract route metadata once to avoid per-call re-extraction.
+    # Each entry is (route_path, route_method, route_symbol).
+    route_info: list[tuple[str, str, Symbol]] = []
+    for route in route_symbols:
+        concept_path, concept_method = _get_route_info_from_concept(route)
+        route_path = concept_path or ""
+        route_method = concept_method or ""
+        if route_path:
+            route_info.append((route_path, route_method, route))
+
+    # Group routes by HTTP method for faster filtering.
+    # "ANY" or empty-method routes go into every method bucket.
+    routes_by_method: dict[str, list[tuple[str, Symbol]]] = {}
+    for route_path, route_method, route in route_info:
+        method_key = route_method.upper() if route_method else ""
+        if method_key and method_key != "ANY":
+            routes_by_method.setdefault(method_key, []).append((route_path, route))
+        else:
+            # Wildcard route: add to a special "" bucket
+            routes_by_method.setdefault("", []).append((route_path, route))
+
     # Create symbols for each client call
     for call in all_calls:
         client_symbol = _create_client_symbol(call, root)
@@ -907,55 +932,52 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
         if not call_path:  # pragma: no cover
             continue
 
-        for route in route_symbols:
-            # Try concept metadata first (FRAMEWORK_PATTERNS phase)
-            concept_path, concept_method = _get_route_info_from_concept(route)
+        # Check method-specific routes first, then wildcard routes
+        call_method_upper = call.method.upper()
+        candidates = routes_by_method.get(call_method_upper, [])
+        wildcard_candidates = routes_by_method.get("", [])
 
-            # Extract route info ONLY from concept metadata (single source of truth).
-            # If concepts are missing, route matching will fail - this is intentional
-            # to make enrichment failures visible rather than masking them.
-            route_path = concept_path or ""
-            route_method = concept_method or ""
-
-            # Must match HTTP method
-            if route_method and route_method.upper() != call.method.upper():
-                continue
-
-            # Must match route path
-            if not route_path:  # pragma: no cover
-                continue
-
+        matched_route: Symbol | None = None
+        for route_path, route in candidates:
             if _match_route_pattern(call_path, route_path):
-                # Create edge from client to server
-                is_cross_language = client_symbol.language != route.language
-                is_variable_url = call.url_type == "variable"
+                matched_route = route
+                break
 
-                # Lower confidence for variable URLs (can't verify at static analysis)
-                if is_variable_url:
-                    base_confidence = 0.65
-                elif is_cross_language:
-                    base_confidence = 0.8
-                else:
-                    base_confidence = 0.9
+        if matched_route is None:
+            for route_path, route in wildcard_candidates:
+                if _match_route_pattern(call_path, route_path):
+                    matched_route = route
+                    break
 
-                edge = Edge.create(
-                    src=client_symbol.id,
-                    dst=route.id,
-                    edge_type="http_calls",
-                    line=call.line,
-                    confidence=base_confidence,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="http_url_match",
-                )
-                edge.meta = {
-                    "http_method": call.method,
-                    "url_path": call_path,
-                    "cross_language": is_cross_language,
-                    "url_type": call.url_type,
-                }
-                edges.append(edge)
-                break  # Only link to first matching route
+        if matched_route is not None:
+            is_cross_language = client_symbol.language != matched_route.language
+            is_variable_url = call.url_type == "variable"
+
+            # Lower confidence for variable URLs (can't verify at static analysis)
+            if is_variable_url:
+                base_confidence = 0.65
+            elif is_cross_language:
+                base_confidence = 0.8
+            else:
+                base_confidence = 0.9
+
+            edge = Edge.create(
+                src=client_symbol.id,
+                dst=matched_route.id,
+                edge_type="http_calls",
+                line=call.line,
+                confidence=base_confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="http_url_match",
+            )
+            edge.meta = {
+                "http_method": call.method,
+                "url_path": call_path,
+                "cross_language": is_cross_language,
+                "url_type": call.url_type,
+            }
+            edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned

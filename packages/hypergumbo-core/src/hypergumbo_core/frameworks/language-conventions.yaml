@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Language-specific convention patterns for analyzers without framework patterns
 #
 # These patterns add concept metadata to symbols from specialized analyzers

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # check-package-coverage: Verify each package achieves 100% coverage in isolation
 #
 # This script mimics CI's per-package test isolation. It catches issues where:

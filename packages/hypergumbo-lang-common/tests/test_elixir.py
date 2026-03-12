@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Elixir analyzer."""
 import pytest
 from pathlib import Path
@@ -379,7 +380,7 @@ class TestElixirEdgeCases:
         assert result.run is not None
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
-        """Detects function calls across files."""
+        """Detects function calls across files when import is present."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         # File 1: defines helper
@@ -391,9 +392,11 @@ defmodule Helper do
 end
 """)
 
-        # File 2: calls helper
+        # File 2: imports helper and calls bare greet
         (tmp_path / "main.ex").write_text("""
 defmodule Main do
+  import Helper
+
   def run() do
     greet("world")
   end
@@ -403,7 +406,7 @@ end
         result = analyze_elixir(tmp_path)
 
 
-        # Should have cross-file call edge
+        # Should have cross-file call edge (import makes it valid)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
@@ -594,6 +597,111 @@ end
         # Should not crash, and no call edges from module-level code
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 0
+
+    def test_dot_call_aliased_module_resolver_uses_expanded_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """Aliased module name expands before checking if module is known.
+
+        When code uses ``alias App.Helpers.Svc, as: S`` and calls
+        ``S.process()``, steps 1-2 fail because ``S.process`` is not in
+        global_symbols and ``App.Helpers.Svc.process`` is not in
+        global_symbols either (the function is named ``do_process`` in
+        source).  Without alias expansion, "S." won't match any global
+        symbol key and the resolver would be skipped (treating it as
+        external).  With expansion, "App.Helpers.Svc." IS found in global
+        symbols (``App.Helpers.Svc.do_process`` exists), so the resolver
+        is tried.
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        # Module exists and has a function, but not named "process"
+        (tmp_path / "svc.ex").write_text("""
+defmodule App.Helpers.Svc do
+  def do_process(x), do: x
+end
+""")
+
+        # Caller uses short alias and calls a function that doesn't exist
+        # under the exact qualified name
+        (tmp_path / "caller.ex").write_text("""
+defmodule Caller do
+  alias App.Helpers.Svc, as: S
+
+  def run() do
+    S.process("data")
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The call should produce some edge (resolved or unresolved).
+        # The key is that the alias expansion ran (line 958 covered) and
+        # the module was recognized as known so the resolver was tried.
+        edges_from_run = [
+            e for e in call_edges if "Caller.run" in e.src
+        ]
+        assert len(edges_from_run) >= 1, (
+            f"Expected at least 1 edge from Caller.run, "
+            f"got {len(edges_from_run)}"
+        )
+
+    def test_dot_call_external_module_no_false_positive(self, tmp_path: Path) -> None:
+        """Module-qualified call to external module does not match bare name.
+
+        When code calls Plug.Builder.compile(), and Plug.Builder is not part
+        of the project, the resolver should NOT match a local function named
+        "compile" in a different module (e.g., Phoenix.Digester.compile).
+        Instead, it should create an unresolved edge.
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        # A local module with a function named "compile"
+        (tmp_path / "digester.ex").write_text("""
+defmodule Phoenix.Digester do
+  def compile(input) do
+    {:ok, input}
+  end
+end
+""")
+
+        # A caller that invokes Plug.Builder.compile — an external module
+        (tmp_path / "router.ex").write_text("""
+defmodule Phoenix.Router do
+  def build() do
+    Plug.Builder.compile(env, [])
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should NOT have a resolved edge to Phoenix.Digester.compile
+        false_positives = [
+            e for e in call_edges
+            if "Router.build" in e.src and "Digester.compile" in e.dst
+        ]
+        assert len(false_positives) == 0, (
+            "Plug.Builder.compile() should not resolve to "
+            "Phoenix.Digester.compile. "
+            f"Got: {[(e.src, e.dst) for e in false_positives]}"
+        )
+
+        # Should have an unresolved edge for Plug.Builder.compile
+        unresolved = [
+            e for e in call_edges
+            if "Router.build" in e.src
+            and "Plug.Builder" in e.dst
+            and e.evidence_type == "unresolved_module_call"
+        ]
+        assert len(unresolved) == 1, (
+            "Expected 1 unresolved edge for Plug.Builder.compile, "
+            f"got {len(unresolved)}. "
+            f"All: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
 
     def test_simple_function_definition(self, tmp_path: Path) -> None:
         """Extracts simple function definition without parentheses."""
@@ -1424,6 +1532,90 @@ end
         assert len(callback_edges) == 3  # mount, update, render
 
 
+    def test_behaviour_attribute_creates_callback_edges(self, tmp_path: Path) -> None:
+        """@behaviour Module creates invokes_callback edges like use Module."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "middleware.ex").write_text('''
+defmodule MyApp.AuthMiddleware do
+  @behaviour NexAI.Middleware
+
+  def call(req, opts) do
+    {:ok, req}
+  end
+
+  def init(opts) do
+    opts
+  end
+end
+''')
+        # NexAI.Middleware isn't in BEHAVIOUR_CALLBACKS, but Plug is
+        # and Plug has init/call. @behaviour Plug should work too.
+        (tmp_path / "plug_mid.ex").write_text('''
+defmodule MyApp.PlugMiddleware do
+  @behaviour Plug
+
+  def init(opts), do: opts
+  def call(conn, _opts), do: conn
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next(
+            (s for s in result.symbols
+             if s.name == "MyApp.PlugMiddleware" and s.kind == "module"),
+            None,
+        )
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            dst_sym = next((s for s in result.symbols if s.id == e.dst), None)
+            if dst_sym:
+                dst_names.add(dst_sym.name.split(".")[-1])
+        assert "init" in dst_names
+        assert "call" in dst_names
+
+    def test_websock_behaviour_callbacks(self, tmp_path: Path) -> None:
+        """WebSock callbacks are detected via use WebSock."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "socket.ex").write_text('''
+defmodule MyApp.LiveSocket do
+  use WebSock
+
+  def init(state), do: {:ok, state}
+  def handle_in({msg, _opts}, state), do: {:push, {:text, msg}, state}
+  def terminate(_reason, _state), do: :ok
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next(
+            (s for s in result.symbols
+             if s.name == "MyApp.LiveSocket" and s.kind == "module"),
+            None,
+        )
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            dst_sym = next((s for s in result.symbols if s.id == e.dst), None)
+            if dst_sym:
+                dst_names.add(dst_sym.name.split(".")[-1])
+        assert "init" in dst_names
+        assert "handle_in" in dst_names
+        assert "terminate" in dst_names
+
+
 class TestElixirMultiClauseEdges:
     """Tests for multi-clause function edge resolution.
 
@@ -1496,6 +1688,8 @@ end
 
         (tmp_path / "caller.ex").write_text('''
 defmodule MyApp.Caller do
+  import MyApp.Handler
+
   def run do
     process(:ok)
   end
@@ -1553,6 +1747,561 @@ end
             assert clause_sym.id in edge_dsts, (
                 f"Missing callback edge to init clause at line {clause_sym.span.start_line}"
             )
+
+
+class TestMultiClauseGuardExtraction:
+    """Tests for multi-clause functions with guard clauses.
+
+    Elixir functions can have guard clauses:
+        def humanize(atom) when is_atom(atom), do: ...
+        def humanize(bin) when is_binary(bin), do: ...
+
+    Tree-sitter wraps guarded heads in a ``binary_operator`` node
+    (``func(x) when guard``), which the symbol extractor must unwrap
+    to find the function name and signature.
+    """
+
+    def test_guarded_multi_clause_all_nodes_present(self, tmp_path: Path) -> None:
+        """Multi-clause def with when guards must appear as separate symbol nodes."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "naming.ex").write_text('''
+defmodule Phoenix.Naming do
+  def humanize(atom) when is_atom(atom), do: atom |> to_string() |> humanize()
+  def humanize(bin) when is_binary(bin) do
+    bin
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        humanize_syms = [s for s in result.symbols if "humanize" in s.name and s.kind == "function"]
+        assert len(humanize_syms) == 2, (
+            f"Expected 2 humanize clauses, got {len(humanize_syms)}. "
+            f"All symbols: {[s.name for s in result.symbols]}"
+        )
+
+        # Both should have the full module-qualified name
+        for sym in humanize_syms:
+            assert sym.name == "Phoenix.Naming.humanize"
+
+    def test_guarded_function_signature_includes_params(self, tmp_path: Path) -> None:
+        """Guarded functions should still have correct parameter signatures."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "parser.ex").write_text('''
+defmodule MyApp.Parser do
+  def parse(input) when is_binary(input) do
+    String.split(input, ",")
+  end
+
+  def parse(input) when is_list(input) do
+    input
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        parse_syms = [s for s in result.symbols if "parse" in s.name and s.kind == "function"]
+        assert len(parse_syms) == 2
+
+        # Each clause should have a signature with the parameter
+        for sym in parse_syms:
+            assert sym.signature is not None, f"Missing signature for clause at line {sym.span.start_line}"
+            assert "input" in sym.signature, f"Signature should contain 'input', got: {sym.signature}"
+
+    def test_guarded_private_function(self, tmp_path: Path) -> None:
+        """defp with when guard should also be extracted."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "helper.ex").write_text('''
+defmodule MyApp.Helper do
+  defp format(val) when is_integer(val), do: Integer.to_string(val)
+  defp format(val) when is_float(val), do: Float.to_string(val)
+
+  def run(x), do: format(x)
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        format_syms = [s for s in result.symbols if "format" in s.name and s.kind == "function"]
+        assert len(format_syms) == 2
+        assert all("private" in s.modifiers for s in format_syms)
+
+    def test_guarded_call_edges_target_all_clauses(self, tmp_path: Path) -> None:
+        """Call to a guarded multi-clause function creates edges to all clauses."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "converter.ex").write_text('''
+defmodule MyApp.Converter do
+  def convert(val) when is_binary(val), do: String.to_integer(val)
+  def convert(val) when is_integer(val), do: val
+
+  def process(x) do
+    convert(x)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        convert_syms = [s for s in result.symbols if "convert" in s.name and s.kind == "function"]
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+
+        assert len(convert_syms) == 2
+        assert process_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == process_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        for clause in convert_syms:
+            assert clause.id in edge_dsts, (
+                f"Missing edge to convert clause at line {clause.span.start_line}"
+            )
+
+
+class TestElixirStdlibExclusion:
+    """Tests that Elixir stdlib/Kernel functions don't create false edges.
+
+    Bare calls to Kernel functions like ``inspect(data)`` should NOT resolve
+    to project-defined functions with the same name in other modules.
+    """
+
+    def test_inspect_not_resolved_to_project_function(self, tmp_path: Path) -> None:
+        """inspect() call should not create an edge to a project inspect function."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "message.ex").write_text('''
+defmodule MyApp.Message do
+  def inspect(msg) do
+    "Message: #{msg}"
+  end
+end
+''')
+
+        (tmp_path / "caller.ex").write_text('''
+defmodule MyApp.Caller do
+  def run(data) do
+    inspect(data)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        inspect_sym = next((s for s in result.symbols if "inspect" in s.name), None)
+
+        assert run_sym is not None
+        assert inspect_sym is not None
+
+        # inspect() is a Kernel builtin — should NOT resolve to MyApp.Message.inspect
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert inspect_sym.id not in edge_dsts, (
+            "Kernel.inspect() should not resolve to MyApp.Message.inspect"
+        )
+
+    def test_to_string_not_resolved_cross_module(self, tmp_path: Path) -> None:
+        """to_string() should not resolve to project-defined to_string."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "converter.ex").write_text('''
+defmodule MyApp.Converter do
+  def to_string(val) do
+    "#{val}"
+  end
+end
+''')
+
+        (tmp_path / "user.ex").write_text('''
+defmodule MyApp.User do
+  def display(name) do
+    to_string(name)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        display_sym = next((s for s in result.symbols if "display" in s.name), None)
+        to_string_sym = next((s for s in result.symbols if "to_string" in s.name), None)
+
+        assert display_sym is not None
+        assert to_string_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == display_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert to_string_sym.id not in edge_dsts, (
+            "Kernel.to_string() should not resolve to MyApp.Converter.to_string"
+        )
+
+    def test_local_inspect_still_resolved(self, tmp_path: Path) -> None:
+        """A local inspect function (same module) should still create edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.Server do
+  defp inspect(state) do
+    IO.puts("State: #{state}")
+  end
+
+  def run(state) do
+    inspect(state)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        inspect_sym = next((s for s in result.symbols if "inspect" in s.name), None)
+
+        assert run_sym is not None
+        assert inspect_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        # Local defp inspect should still be resolved
+        assert inspect_sym.id in edge_dsts, (
+            "Local inspect should still be resolved (same module)"
+        )
+
+    def test_pipe_to_stdlib_not_resolved(self, tmp_path: Path) -> None:
+        """Piping to a stdlib function should not create false edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "formatter.ex").write_text('''
+defmodule MyApp.Formatter do
+  def to_string(val), do: "#{val}"
+end
+''')
+
+        (tmp_path / "pipeline.ex").write_text('''
+defmodule MyApp.Pipeline do
+  def run(data) do
+    data |> to_string
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        to_string_sym = next((s for s in result.symbols if "to_string" in s.name), None)
+
+        assert run_sym is not None
+        assert to_string_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert to_string_sym.id not in edge_dsts, (
+            "Kernel.to_string pipe should not resolve to MyApp.Formatter.to_string"
+        )
+
+
+class TestElixirImportGating:
+    """Tests for import-gated bare call resolution (WI-dadid).
+
+    In Elixir, bare function calls (without module prefix) to functions in
+    other modules require an ``import`` directive. Without an import, bare
+    calls to non-stdlib functions should NOT resolve to cross-module targets.
+    """
+
+    def test_bare_call_without_import_not_resolved(self, tmp_path: Path) -> None:
+        """Bare create() should NOT resolve to Sites.create without import."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "sites.ex").write_text('''
+defmodule MyApp.Sites do
+  def create(params) do
+    {:ok, params}
+  end
+end
+''')
+
+        (tmp_path / "migration.ex").write_text('''
+defmodule MyApp.Migration do
+  def up() do
+    create("users")
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        create_sym = next(
+            (s for s in result.symbols if "create" in s.name and "Sites" in s.name),
+            None,
+        )
+        up_sym = next(
+            (s for s in result.symbols if "up" in s.name),
+            None,
+        )
+        assert create_sym is not None
+        assert up_sym is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == up_sym.id
+            and e.dst == create_sym.id
+        ]
+        assert len(false_edges) == 0, (
+            "Bare create() should NOT resolve to MyApp.Sites.create "
+            "without an import directive"
+        )
+
+    def test_bare_call_with_import_resolved(self, tmp_path: Path) -> None:
+        """Bare create() SHOULD resolve when module is imported."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "sites.ex").write_text('''
+defmodule MyApp.Sites do
+  def create(params) do
+    {:ok, params}
+  end
+end
+''')
+
+        (tmp_path / "migration.ex").write_text('''
+defmodule MyApp.Migration do
+  import MyApp.Sites
+
+  def up() do
+    create("users")
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        create_sym = next(
+            (s for s in result.symbols if "create" in s.name and "Sites" in s.name),
+            None,
+        )
+        up_sym = next(
+            (s for s in result.symbols if "up" in s.name),
+            None,
+        )
+        assert create_sym is not None
+        assert up_sym is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == up_sym.id
+            and e.dst == create_sym.id
+        ]
+        assert len(edges) == 1, (
+            "Bare create() should resolve to MyApp.Sites.create "
+            "when import MyApp.Sites is present"
+        )
+
+
+class TestPipeOperatorCallEdges:
+    """Tests for pipe operator (|>) call edge resolution.
+
+    Elixir pipe calls without parentheses (``data |> transform``) are
+    idiomatic but tree-sitter parses the right-hand side as an identifier
+    rather than a call node.  The edge extractor must handle this.
+    """
+
+    def test_pipe_to_local_function_creates_edge(self, tmp_path: Path) -> None:
+        """Piping to a local function without parens creates a call edge."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "digester.ex").write_text('''
+defmodule Phoenix.Digester do
+  def compile(path) do
+    path
+    |> scan_files()
+    |> fixup_sourcemaps
+  end
+
+  defp fixup_sourcemaps(files) do
+    Enum.map(files, & &1)
+  end
+
+  defp scan_files(path) do
+    [path]
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        compile_sym = next((s for s in result.symbols if "compile" in s.name), None)
+        fixup_sym = next((s for s in result.symbols if "fixup_sourcemaps" in s.name), None)
+        scan_sym = next((s for s in result.symbols if "scan_files" in s.name), None)
+
+        assert compile_sym is not None
+        assert fixup_sym is not None
+        assert scan_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == compile_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+
+        # scan_files() has parens — should already work
+        assert scan_sym.id in edge_dsts, "Missing edge to scan_files (with parens)"
+        # fixup_sourcemaps has NO parens — pipe-only call
+        assert fixup_sym.id in edge_dsts, "Missing edge to fixup_sourcemaps (pipe, no parens)"
+
+    def test_pipe_chain_creates_multiple_edges(self, tmp_path: Path) -> None:
+        """A chain of pipes creates edges to each piped function."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "pipeline.ex").write_text('''
+defmodule MyApp.Pipeline do
+  def run(data) do
+    data
+    |> validate
+    |> transform
+    |> persist
+  end
+
+  defp validate(d), do: d
+  defp transform(d), do: d
+  defp persist(d), do: d
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        assert run_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+
+        for func_name in ("validate", "transform", "persist"):
+            func_sym = next((s for s in result.symbols if func_name in s.name), None)
+            assert func_sym is not None, f"Missing symbol for {func_name}"
+            assert func_sym.id in edge_dsts, f"Missing pipe edge to {func_name}"
+
+    def test_pipe_cross_file_creates_edge(self, tmp_path: Path) -> None:
+        """Piping to a function defined in another file creates a call edge."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "formatter.ex").write_text('''
+defmodule MyApp.Formatter do
+  def prettify(data), do: data
+end
+''')
+
+        (tmp_path / "processor.ex").write_text('''
+defmodule MyApp.Processor do
+  def run(data) do
+    data |> prettify
+  end
+
+  defp prettify(d), do: d
+end
+''')
+
+        # This tests the local path (not cross-file) for a bare pipe.
+        # Cross-file bare pipes fall through to the global_multi lookup.
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        prettify_syms = [s for s in result.symbols if "prettify" in s.name]
+
+        assert run_sym is not None
+        assert len(prettify_syms) >= 1  # At least the local defp
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        local_prettify = next(
+            (s for s in prettify_syms if "Processor" in s.name), None
+        )
+        assert local_prettify is not None
+        assert local_prettify.id in edge_dsts, "Missing pipe edge to local prettify"
+
+    def test_pipe_cross_file_global_lookup(self, tmp_path: Path) -> None:
+        """Piping to a function only in another file uses global multi-clause lookup."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "utils.ex").write_text('''
+defmodule MyApp.Utils do
+  def sanitize(data), do: data
+end
+''')
+
+        (tmp_path / "handler.ex").write_text('''
+defmodule MyApp.Handler do
+  import MyApp.Utils
+
+  def process(data) do
+    data |> sanitize
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+        sanitize_sym = next((s for s in result.symbols if "sanitize" in s.name), None)
+
+        assert process_sym is not None
+        assert sanitize_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == process_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert sanitize_sym.id in edge_dsts, "Missing cross-file pipe edge to sanitize"
+
+    def test_pipe_to_module_qualified_function(self, tmp_path: Path) -> None:
+        """Piping to a module-qualified function: data |> Mod.func.
+
+        Tree-sitter wraps ``Mod.func`` in a call node even without parens,
+        so this is handled by the existing dot-call path (not the pipe handler).
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "caller.ex").write_text('''
+defmodule MyApp.Caller do
+  def run(data) do
+    data |> MyApp.Helper.process
+  end
+end
+''')
+
+        (tmp_path / "helper.ex").write_text('''
+defmodule MyApp.Helper do
+  def process(data), do: data
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        process_sym = next((s for s in result.symbols if "process" in s.name), None)
+
+        assert run_sym is not None
+        assert process_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        assert process_sym.id in edge_dsts, "Missing pipe edge to module-qualified function"
 
 
 class TestPhoenixRouteAliasResolution:

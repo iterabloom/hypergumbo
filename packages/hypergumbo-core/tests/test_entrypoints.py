@@ -1,8 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for entrypoint detection heuristics."""
 import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
+    _is_frontend_file,
     compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
@@ -1492,11 +1494,19 @@ class TestConnectivityBasedRanking:
 
     def test_entrypoints_sorted_by_connectivity(self) -> None:
         """Entrypoints with edges rank higher than those without."""
-        # Create three route handlers with same base confidence
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_a = make_symbol("route_a", path="a.py", language="python", meta=route_concepts)
-        route_b = make_symbol("route_b", path="b.py", language="python", meta=route_concepts)
-        route_c = make_symbol("route_c", path="c.py", language="python", meta=route_concepts)
+        # Create three route handlers with same base confidence (distinct paths)
+        route_a = make_symbol(
+            "route_a", path="a.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/a"}]},
+        )
+        route_b = make_symbol(
+            "route_b", path="b.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/b"}]},
+        )
+        route_c = make_symbol(
+            "route_c", path="c.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/c"}]},
+        )
 
         # Create helper functions that route_b and route_c call
         helper1 = make_symbol("helper1", path="helpers.py", language="python")
@@ -1531,9 +1541,14 @@ class TestConnectivityBasedRanking:
 
     def test_connectivity_boost_increases_confidence(self) -> None:
         """Entrypoints with more edges should have higher confidence scores."""
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_isolated = make_symbol("route_isolated", path="isolated.py", language="python", meta=route_concepts)
-        route_connected = make_symbol("route_connected", path="connected.py", language="python", meta=route_concepts)
+        route_isolated = make_symbol(
+            "route_isolated", path="isolated.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/isolated"}]},
+        )
+        route_connected = make_symbol(
+            "route_connected", path="connected.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/connected"}]},
+        )
         helper = make_symbol("helper", path="helper.py", language="python")
 
         nodes = [route_isolated, route_connected, helper]
@@ -1553,10 +1568,12 @@ class TestConnectivityBasedRanking:
 
     def test_all_entrypoints_still_returned(self) -> None:
         """Connectivity ranking should not filter out any entrypoints."""
-        # Create many route handlers with concept metadata
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
+        # Create many route handlers with concept metadata (distinct paths)
         routes = [
-            make_symbol(f"route_{i}", path=f"file{i}.py", language="python", start_line=i, meta=route_concepts)
+            make_symbol(
+                f"route_{i}", path=f"file{i}.py", language="python", start_line=i,
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/test/{i}"}]},
+            )
             for i in range(10)
         ]
         helper = make_symbol("helper", path="helper.py", language="python")
@@ -1574,9 +1591,14 @@ class TestConnectivityBasedRanking:
 
     def test_incoming_edges_not_counted(self) -> None:
         """Only outgoing edges should affect ranking, not incoming edges."""
-        route_concepts = {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]}
-        route_caller = make_symbol("route_caller", path="caller.py", language="python", meta=route_concepts)
-        route_callee = make_symbol("route_callee", path="callee.py", language="python", meta=route_concepts)
+        route_caller = make_symbol(
+            "route_caller", path="caller.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/caller"}]},
+        )
+        route_callee = make_symbol(
+            "route_callee", path="callee.py", language="python",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/callee"}]},
+        )
         other = make_symbol("other", path="other.py", language="python")
 
         nodes = [route_caller, route_callee, other]
@@ -2083,15 +2105,19 @@ class TestEntrypointRankingPenalties:
         assert source_ep.confidence > derived_ep.confidence
         assert derived_ep.confidence == pytest.approx(0.80 * 0.3, rel=0.01)
 
-    def test_connectivity_boost_still_applies_after_penalty(self) -> None:
-        """Connectivity boost is applied after penalties."""
-        # Test file main with high connectivity
+    def test_test_file_main_no_connectivity_boost(self) -> None:
+        """MAIN_FUNCTION in test files skips connectivity boost.
+
+        Without the fix, a test-file main with 10 outgoing edges would get
+        0.80 * 0.1 (test penalty) = 0.08 base + ~0.24 boost = 0.32,
+        passing the MIN_ENTRYPOINT_CONFIDENCE (0.10) filter.  With the fix,
+        the boost is skipped and 0.08 is below the threshold.
+        """
         test_main = make_symbol(
             "main",
             path="tests/test_main.py",
             meta={"concepts": [{"concept": "main_function"}]},
         )
-        # Create edges to give it connectivity
         edges = [
             Edge.create(
                 src=test_main.id,
@@ -2101,20 +2127,45 @@ class TestEntrypointRankingPenalties:
                 origin="test",
                 origin_run_id="test",
             )
-            for i in range(10)  # 10 outgoing edges
+            for i in range(10)
         ]
-        nodes = [test_main]
 
-        entrypoints = detect_entrypoints(nodes, edges)
+        entrypoints = detect_entrypoints([test_main], edges)
 
-        assert len(entrypoints) == 1
-        ep = entrypoints[0]
+        # Filtered out: 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10)
+        assert len(entrypoints) == 0
 
-        # Base 0.80 * 0.1 (test penalty) = 0.08
-        # Plus connectivity boost: min(0.25, log(1 + 10) / 10) ≈ 0.24
-        # Total: 0.08 + 0.24 = 0.32
-        assert ep.confidence > 0.08  # Should be boosted
-        assert ep.confidence < 0.50  # But still well below production
+    def test_test_function_no_connectivity_boost(self) -> None:
+        """TEST_FUNCTION entrypoints skip the connectivity boost.
+
+        Test functions are entrypoints for test runners, not architectural
+        entrypoints. Their connectivity should not lift them above the
+        confidence threshold. Without this fix, a test function with
+        0.80 * 0.1 = 0.08 base + 0.25 boost = 0.33 would pass the
+        MIN_ENTRYPOINT_CONFIDENCE filter, flooding entries.txt with
+        hundreds of test functions.
+        """
+        sym = make_symbol(
+            "test_user_login", kind="function", path="tests/test_auth.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+        edges = [
+            Edge.create(
+                src=sym.id,
+                dst=f"python:tests/helper.py:{i}-{i+1}:func{i}:function",
+                edge_type="calls",
+                line=i,
+                origin="test",
+                origin_run_id="test",
+            )
+            for i in range(50)  # 50 outgoing edges — max boost
+        ]
+
+        entrypoints = detect_entrypoints([sym], edges)
+
+        # Should be filtered out — TEST_FUNCTION skips connectivity boost,
+        # so 0.80 * 0.1 = 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10)
+        assert len(entrypoints) == 0
 
     def test_ranking_order_respects_penalties(self) -> None:
         """Final ranking correctly orders by penalized confidence.
@@ -2154,6 +2205,106 @@ class TestEntrypointRankingPenalties:
         assert len(entrypoints) == 2
         assert entrypoints[0].symbol_id == prod_route.id
         assert entrypoints[1].symbol_id == vendor_route.id
+
+
+class TestGoUtilityMainDemotion:
+    """Tests for Go utility main() demotion (INV-mahap).
+
+    In Go repos with many main() functions, deeply nested cmd/ directories
+    (plugin shims, tool binaries) should be demoted relative to top-level
+    cmd/ entries (the actual application binaries).
+    """
+
+    def test_deeply_nested_cmd_main_demoted(self) -> None:
+        """Main in builtin/logical/consul/cmd/ is demoted vs cmd/vault/."""
+        # Top-level cmd/ main (the actual server binary)
+        server_main = make_symbol(
+            "main",
+            path="cmd/vault/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # Deeply nested cmd/ main (plugin shim binary)
+        plugin_main = make_symbol(
+            "main",
+            path="builtin/logical/consul/cmd/consul/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([server_main, plugin_main], [])
+
+        server_ep = next(e for e in entrypoints if "cmd/vault" in e.symbol_id)
+        plugin_ep = next(e for e in entrypoints if "builtin" in e.symbol_id)
+
+        # Server main should rank higher than plugin shim main
+        assert server_ep.confidence > plugin_ep.confidence
+
+    def test_pkg_cmd_not_demoted(self) -> None:
+        """Main in pkg/cmd/grafana/ is NOT demoted (standard Go layout)."""
+        grafana_main = make_symbol(
+            "main",
+            path="pkg/cmd/grafana/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([grafana_main], [])
+
+        assert len(entrypoints) == 1
+        # pkg/cmd/ is at depth 1 — should NOT be penalized
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_top_level_cmd_not_demoted(self) -> None:
+        """Main in cmd/prometheus/ is NOT demoted."""
+        prom_main = make_symbol(
+            "main",
+            path="cmd/prometheus/main.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([prom_main], [])
+
+        assert len(entrypoints) == 1
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_codegen_filename_demoted_via_utility(self) -> None:
+        """Main in gen.go files is demoted via utility file penalty."""
+        codegen_main = make_symbol(
+            "main",
+            path="kinds/gen.go",
+            language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        server_main = make_symbol(
+            "main",
+            path="cmd/server/main.go",
+            language="go",
+            start_line=10,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([codegen_main, server_main], [])
+
+        codegen_ep = next(e for e in entrypoints if "gen.go" in e.symbol_id)
+        server_ep = next(e for e in entrypoints if "cmd/server" in e.symbol_id)
+
+        # Codegen should be demoted below server
+        assert server_ep.confidence > codegen_ep.confidence
+        # Utility penalty: 0.80 * 0.5 = 0.40
+        assert codegen_ep.confidence == pytest.approx(0.40, rel=0.01)
+
+    def test_non_go_main_not_affected_by_nested_cmd(self) -> None:
+        """The nested-cmd penalty only applies to Go main_function entries."""
+        java_main = make_symbol(
+            "main",
+            path="module/submodule/cmd/tool/Main.java",
+            language="java",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([java_main], [])
+
+        assert len(entrypoints) == 1
+        # Java main should NOT get the nested-cmd penalty
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
 
 class TestConnectivityFallback:
@@ -2702,7 +2853,7 @@ class TestApplicationLibraryExportDemotion:
         assert len(export_eps) == 0
 
     def test_library_export_demoted_when_commands_exist(self) -> None:
-        """library_export filtered when CLI commands exist.
+        """library_export filtered when same-language CLI commands exist.
 
         Demotion (90%) drops from 0.80 to 0.08 < threshold.
         """
@@ -2712,8 +2863,8 @@ class TestApplicationLibraryExportDemotion:
             meta={"concepts": [{"concept": "command_by_name"}]},
         )
         export = make_symbol(
-            "Parse", path="lib/parse.go", kind="function",
-            language="go", start_line=10,
+            "Parse", path="lib/parse.c", kind="function",
+            language="c", start_line=10,
             meta={"concepts": [{"concept": "library_export"}]},
         )
         nodes = [command, export]
@@ -2797,11 +2948,11 @@ class TestApplicationLibraryExportDemotion:
         assert len(export_eps) == 1
         assert export_eps[0].confidence >= 0.70
 
-    def test_demotion_not_language_specific(self) -> None:
-        """Demotion applies regardless of language.
+    def test_same_language_demotion_works_in_polyglot(self) -> None:
+        """Same-language demotion applies in polyglot repos.
 
         A Python app with Flask routes and library_export entries should
-        also see the demotion. Exports at 0.08 are filtered out.
+        see the demotion. Exports at 0.08 are filtered out.
         """
         route = make_symbol(
             "get_users", path="src/api/routes.py", kind="function",
@@ -2819,6 +2970,55 @@ class TestApplicationLibraryExportDemotion:
 
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(export_eps) == 0
+
+    def test_dominant_lang_exports_not_demoted_by_minority_semantic(self) -> None:
+        """Dominant language library_export NOT demoted by minority language main().
+
+        ArkLib scenario: 95% Lean library (163 files) with 5% Python helper
+        scripts (6 files with main()). Python main() should NOT trigger
+        demotion of Lean library_export entries — Lean exports ARE the
+        real entrypoints for this repo.
+
+        Fix for WI-sirim: minority-language semantic entrypoints must not
+        suppress majority-language library exports.
+        """
+        # Lean is the dominant language (many symbols)
+        lean_exports = [
+            make_symbol(
+                f"LeanDef{i}", path=f"ArkLib/Def{i}.lean", kind="function",
+                language="lean", start_line=i,
+                meta={"concepts": [{"concept": "library_export"}]},
+            )
+            for i in range(20)
+        ]
+        # Python is the minority language (few symbols)
+        py_mains = [
+            make_symbol(
+                "main", path=f"scripts/helper{i}.py", kind="function",
+                language="python", start_line=1 + i,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(3)
+        ]
+        nodes = lean_exports + py_mains
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lean_eps = [
+            e for e in entrypoints
+            if e.kind == EntrypointKind.LIBRARY_EXPORT
+        ]
+        # Lean exports should survive — not demoted by Python main()
+        assert len(lean_eps) >= 10, (
+            f"Expected >= 10 Lean library_export entries to survive, "
+            f"got {len(lean_eps)}. Minority-language main() should not "
+            f"demote dominant-language library exports."
+        )
+        for ep in lean_eps:
+            assert ep.confidence >= 0.50, (
+                f"Lean export {ep.label} confidence {ep.confidence:.2f} "
+                f"too low — should not be demoted by Python main()"
+            )
 
     def test_forgejo_scale_scenario(self) -> None:
         """Simulate forgejo: 772 routes + 7474 library_exports.
@@ -2852,6 +3052,130 @@ class TestApplicationLibraryExportDemotion:
             assert ep.kind == EntrypointKind.HTTP_ROUTE, (
                 f"Top 20 should be routes, but found {ep.kind.value}: {ep.label}"
             )
+
+
+    def test_example_routes_dont_trigger_library_export_demotion(self) -> None:
+        """Routes from example/ directories should not trigger library_export demotion.
+
+        Library repos like livekit client-sdk-js have example code with HTTP
+        routes (e.g., examples/rpc/api.ts) that are NOT real application
+        entrypoints. These example routes should not cause library_export
+        entries (e.g., Room class) to be demoted.
+        """
+        # Library export: the core class
+        lib_export = make_symbol(
+            "Room", path="src/room/Room.ts", kind="class",
+            language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # Example route: exists in examples/ directory
+        example_route = make_symbol(
+            "getToken", path="examples/rpc/api.ts", kind="function",
+            language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "route", "path": "/api/get-token", "method": "POST"}]},
+        )
+        nodes = [lib_export, example_route]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) >= 1, (
+            "Library export should survive when only example routes exist"
+        )
+        assert export_eps[0].confidence >= 0.50, (
+            f"Library export confidence {export_eps[0].confidence:.2f} too low — "
+            f"example routes should not trigger demotion"
+        )
+
+    def test_infrastructure_exports_dampened_more_than_api_exports(self) -> None:
+        """Library exports from infrastructure paths (telemetry/, metrics/, logging/)
+        should be dampened more aggressively than API exports.
+
+        In gemini-cli, 77 of 111 entrypoints were telemetry exports from
+        packages/core/src/telemetry/*.ts. With connectivity boost, these
+        survive the standard 0.1x demotion at ~0.14 confidence. Infrastructure-
+        path exports get an additional dampening, dropping them below threshold.
+        """
+        route = make_symbol(
+            "handle_mcp", path="src/server.ts", kind="function",
+            language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "route", "path": "/mcp", "method": "POST"}]},
+        )
+        # Infrastructure export: telemetry plumbing
+        telemetry_export = make_symbol(
+            "ClearcutLogger", path="packages/core/src/telemetry/clearcut-logger.ts",
+            kind="class", language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # API export: developer-facing class
+        api_export = make_symbol(
+            "McpClient", path="packages/core/src/mcp/client.ts",
+            kind="class", language="typescript", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        # Helpers called by exports (for connectivity boost)
+        helper1 = make_symbol("helper1", path="src/utils.ts", start_line=50, language="typescript")
+        helper2 = make_symbol("helper2", path="src/utils.ts", start_line=60, language="typescript")
+        nodes = [route, telemetry_export, api_export, helper1, helper2]
+
+        # Give both exports outgoing edges so they get connectivity boost
+        # (without boost, 0.80 * 0.1 = 0.08 < threshold and both are filtered)
+        edges = [
+            Edge.create(src=telemetry_export.id, dst=helper1.id, edge_type="calls", line=1),
+            Edge.create(src=telemetry_export.id, dst=helper2.id, edge_type="calls", line=2),
+            Edge.create(src=api_export.id, dst=helper1.id, edge_type="calls", line=1),
+            Edge.create(src=api_export.id, dst=helper2.id, edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        export_eps = {
+            ep.symbol_id: ep
+            for ep in entrypoints if ep.kind == EntrypointKind.LIBRARY_EXPORT
+        }
+
+        assert len(route_eps) == 1
+
+        # Both exports get standard demotion (0.1x) from semantic entrypoints.
+        # With connectivity boost, base 0.80 + boost -> ~1.0+, * 0.1 -> ~0.10+
+        # API export should survive, infra export should be dampened further.
+        api_ep = export_eps.get(api_export.id)
+        telemetry_ep = export_eps.get(telemetry_export.id)
+
+        # API export survives
+        assert api_ep is not None, "API export should survive demotion"
+
+        # Telemetry export should be filtered out (below MIN_ENTRYPOINT_CONFIDENCE)
+        assert telemetry_ep is None, (
+            f"Telemetry export should be filtered out, but has confidence "
+            f"{telemetry_ep.confidence:.3f}" if telemetry_ep else ""
+        )
+
+    def test_infrastructure_exports_not_dampened_without_semantic_entrypoints(self) -> None:
+        """In a pure library, infrastructure exports should NOT be dampened.
+
+        If there are no routes/commands/main, the repo is a library and ALL
+        exports are meaningful, even from telemetry/ paths.
+        """
+        telemetry_export = make_symbol(
+            "Logger", path="src/telemetry/logger.ts",
+            kind="class", language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        api_export = make_symbol(
+            "Client", path="src/client.ts",
+            kind="class", language="typescript", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [telemetry_export, api_export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 2, (
+            "Both exports should survive in a pure library (no semantic demotion)"
+        )
 
 
 class TestDeclarationDedup:
@@ -2895,6 +3219,79 @@ class TestDeclarationDedup:
 
         cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
         assert len(cmd_add_eps) == 1
+
+
+class TestRouteLabelDedup:
+    """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
+
+    def test_same_route_from_multiple_symbols_deduplicated(self) -> None:
+        """Multiple symbols producing HTTP POST /-/quit should yield one entry."""
+        # Route symbol from route registration
+        route_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Handler method symbol with route concept
+        handler_sym = make_symbol(
+            "Handler.quit", path="web/web.go", kind="method",
+            language="go", start_line=923,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Another route registration at a different line
+        route_sym2 = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=574,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([route_sym, handler_sym, route_sym2], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label and "POST" in ep.label]
+        assert len(quit_eps) == 1, (
+            f"Expected 1 POST /-/quit entrypoint, got {len(quit_eps)}: "
+            f"{[ep.label for ep in quit_eps]}"
+        )
+
+    def test_different_methods_same_path_not_deduplicated(self) -> None:
+        """POST /-/quit and PUT /-/quit are different entrypoints."""
+        post_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        put_sym = make_symbol(
+            "PUT /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=566,
+            meta={"concepts": [{"concept": "route", "method": "PUT", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([post_sym, put_sym], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label]
+        assert len(quit_eps) == 2
+
+    def test_route_dedup_keeps_highest_confidence(self) -> None:
+        """When deduplicating routes, the highest confidence entry is kept."""
+        # Non-test file route (high confidence)
+        prod_sym = make_symbol(
+            "POST /-/quit", path="web/web.go", kind="route",
+            language="go", start_line=565,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+        # Test file route (will get confidence penalty)
+        test_sym = make_symbol(
+            "POST /-/quit", path="web/web_test.go", kind="route",
+            language="go", start_line=100,
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
+        )
+
+        entrypoints = detect_entrypoints([prod_sym, test_sym], [])
+
+        quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label and "POST" in ep.label]
+        assert len(quit_eps) == 1
+        # Should keep the production one (higher confidence)
+        assert quit_eps[0].symbol_id == prod_sym.id
 
 
 class TestEntrypointConfidenceFiltering:
@@ -2952,7 +3349,7 @@ class TestEntrypointConfidenceFiltering:
             nodes.append(make_symbol(
                 f"route_{i}", path=f"src/routes_{i}.py",
                 start_line=1,
-                meta={"concepts": [{"concept": "route"}]},
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/r/{i}"}]},
             ))
 
         entrypoints = detect_entrypoints(nodes, [])
@@ -2970,7 +3367,7 @@ class TestEntrypointConfidenceFiltering:
             nodes.append(make_symbol(
                 f"route_{i}", path=f"src/routes_{i}.py",
                 start_line=1,
-                meta={"concepts": [{"concept": "route"}]},
+                meta={"concepts": [{"concept": "route", "method": "GET", "path": f"/api/{i}"}]},
             ))
         for i in range(19800):
             nodes.append(make_symbol(
@@ -3046,3 +3443,414 @@ class TestComputeEntrypointCap:
     def test_just_above_threshold(self) -> None:
         """At 5100 nodes, cap scales to 51."""
         assert compute_entrypoint_cap(5100) == 51
+
+
+class TestFrontendFileDetection:
+    """Tests for _is_frontend_file (WI-ronik)."""
+
+    def test_tsx_file_is_frontend(self) -> None:
+        """TSX files (React) are detected as frontend."""
+        sym = make_symbol("handleRemove", path="src/components/Settings.tsx")
+        assert _is_frontend_file(sym) is True
+
+    def test_jsx_file_is_frontend(self) -> None:
+        """JSX files (React) are detected as frontend."""
+        sym = make_symbol("onClick", path="app/components/Button.jsx")
+        assert _is_frontend_file(sym) is True
+
+    def test_vue_file_is_frontend(self) -> None:
+        """Vue files are detected as frontend."""
+        sym = make_symbol("handleClick", path="src/views/UserList.vue")
+        assert _is_frontend_file(sym) is True
+
+    def test_svelte_file_is_frontend(self) -> None:
+        """Svelte files are detected as frontend."""
+        sym = make_symbol("onMount", path="src/routes/Dashboard.svelte")
+        assert _is_frontend_file(sym) is True
+
+    def test_components_dir_is_frontend(self) -> None:
+        """Files in components/ directory are frontend."""
+        sym = make_symbol("render", path="src/components/Table.ts")
+        assert _is_frontend_file(sym) is True
+
+    def test_server_ts_not_frontend(self) -> None:
+        """Regular .ts files in non-frontend dirs are not frontend."""
+        sym = make_symbol("handleRequest", path="src/api/users.ts")
+        assert _is_frontend_file(sym) is False
+
+    def test_python_not_frontend(self) -> None:
+        """Python files are not frontend."""
+        sym = make_symbol("get_users", path="src/views.py")
+        assert _is_frontend_file(sym) is False
+
+    def test_react_import_is_frontend(self) -> None:
+        """Files importing React are detected via imports."""
+        sym = make_symbol(
+            "handler", path="src/utils/hooks.ts",
+            meta={"imports": [{"module": "react", "name": "useState"}]},
+        )
+        assert _is_frontend_file(sym) is True
+
+    def test_angular_import_is_frontend(self) -> None:
+        """Files importing Angular are detected via imports."""
+        sym = make_symbol(
+            "onClick", path="src/app.service.ts",
+            meta={"imports": [{"module": "@angular/core", "name": "Component"}]},
+        )
+        assert _is_frontend_file(sym) is True
+
+
+class TestFrontendRouteSupression:
+    """Tests for frontend route suppression in entrypoint detection (WI-ronik)."""
+
+    def test_frontend_route_gets_low_confidence(self) -> None:
+        """Route concept in a React component file gets near-zero confidence."""
+        sym = make_symbol(
+            "handleRemove", path="src/components/Settings.tsx",
+            language="typescript",
+            meta={"concepts": [{"concept": "route", "method": "DELETE", "path": "/:uid"}]},
+        )
+        eps = detect_entrypoints([sym], [])
+        route_eps = [e for e in eps if e.kind == EntrypointKind.HTTP_ROUTE]
+        # Should either be absent (below threshold) or have very low confidence
+        if route_eps:
+            assert route_eps[0].confidence <= 0.10, (
+                f"Frontend route should have confidence <= 0.10, got {route_eps[0].confidence}"
+            )
+
+    def test_backend_route_unaffected(self) -> None:
+        """Route concept in a backend file keeps normal confidence."""
+        sym = make_symbol(
+            "getUsers", path="src/api/users.ts",
+            language="typescript",
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}]},
+        )
+        eps = detect_entrypoints([sym], [])
+        route_eps = [e for e in eps if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].confidence == 0.95
+
+
+class TestEntrypointConceptDetection:
+    """Tests for generic 'entrypoint' concept -> entrypoint mapping.
+
+    The 'entrypoint' concept is used by electron.yaml, cli.yaml, cli-go.yaml,
+    cli-ruby.yaml, and akka-http.yaml but was previously silently ignored by
+    _detect_from_concepts(). These tests verify it is now handled.
+    """
+
+    def test_entrypoint_concept_electron(self) -> None:
+        """entrypoint concept with electron framework -> ELECTRON_MAIN."""
+        sym = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.ELECTRON_MAIN]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "electron" in ep[0].label.lower()
+
+    def test_entrypoint_concept_generic(self) -> None:
+        """entrypoint concept without specific framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "bootstrap",
+            path="src/app.py",
+            language="python",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "cli"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_entrypoint_concept_no_framework(self) -> None:
+        """entrypoint concept with no framework field -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "init",
+            path="src/init.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_duplicate_entrypoint_concepts_deduplicated(self) -> None:
+        """Multiple entrypoint concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "main",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "entrypoint", "framework": "electron"},
+                {"concept": "entrypoint", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        main_eps = [e for e in entrypoints
+                    if e.kind in (EntrypointKind.ELECTRON_MAIN, EntrypointKind.MAIN_FUNCTION)]
+        assert len(main_eps) == 1
+
+
+class TestSpaBootstrapConceptDetection:
+    """Tests for SPA bootstrap entrypoint detection.
+
+    SPA frameworks bootstrap via createRoot(), ReactDOM.render(), hydrateRoot().
+    These should be detected as app_bootstrap concepts and mapped to
+    SPA_BOOTSTRAP entrypoint kind.
+    """
+
+    def test_app_bootstrap_concept(self) -> None:
+        """app_bootstrap concept -> SPA_BOOTSTRAP entrypoint."""
+        sym = make_symbol(
+            "main",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "bootstrap" in ep[0].label.lower() or "spa" in ep[0].label.lower()
+
+    def test_app_bootstrap_no_framework(self) -> None:
+        """app_bootstrap concept without framework uses generic label."""
+        sym = make_symbol(
+            "init",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+
+    def test_duplicate_app_bootstrap_deduplicated(self) -> None:
+        """Multiple app_bootstrap concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "root",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+
+
+    def test_solid_preferred_over_react_for_bare_createroot(self) -> None:
+        """When both React and Solid claim app_bootstrap, prefer Solid.
+
+        Solid.js uses bare createRoot() for reactive scope creation. React
+        also matches bare createRoot() via its pattern. When both are present,
+        the label should say "Solid" not "React" because Solid's createRoot
+        is the more specific match.
+        """
+        sym = make_symbol(
+            "app",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+        assert "react" not in ep[0].label.lower()
+
+    def test_solid_wins_even_when_react_is_first(self) -> None:
+        """Framework priority applies regardless of concept order."""
+        sym = make_symbol(
+            "app",
+            path="src/main.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+
+    def test_react_only_uses_react_label(self) -> None:
+        """When only React claims app_bootstrap, label says React."""
+        sym = make_symbol(
+            "root",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "react"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "react" in ep[0].label.lower()
+
+    def test_solid_only_uses_solid_label(self) -> None:
+        """When only Solid claims app_bootstrap, label says Solid."""
+        sym = make_symbol(
+            "entry",
+            path="src/index.tsx",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "app_bootstrap", "framework": "solid"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.SPA_BOOTSTRAP]
+        assert len(ep) == 1
+        assert "solid" in ep[0].label.lower()
+
+
+class TestPickBestBootstrapFramework:
+    """Unit tests for _pick_best_bootstrap_framework helper."""
+
+    def test_empty_concepts(self) -> None:
+        """No concepts returns empty string."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        assert _pick_best_bootstrap_framework([]) == ""
+
+    def test_single_framework(self) -> None:
+        """Single app_bootstrap returns that framework."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [{"concept": "app_bootstrap", "framework": "vue"}]
+        assert _pick_best_bootstrap_framework(concepts) == "vue"
+
+    def test_solid_beats_react(self) -> None:
+        """Solid takes priority over React."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "react"},
+            {"concept": "app_bootstrap", "framework": "solid"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "solid"
+
+    def test_svelte_beats_react(self) -> None:
+        """Svelte takes priority over React."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "react"},
+            {"concept": "app_bootstrap", "framework": "svelte"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "svelte"
+
+    def test_non_bootstrap_concepts_ignored(self) -> None:
+        """Non-app_bootstrap concepts don't affect the result."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "route", "framework": "express"},
+            {"concept": "app_bootstrap", "framework": "react"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "react"
+
+    def test_non_dict_concepts_ignored(self) -> None:
+        """Non-dict entries in concepts are skipped."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            "not a dict",
+            {"concept": "app_bootstrap", "framework": "solid"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "solid"
+
+    def test_unknown_frameworks_use_first(self) -> None:
+        """When frameworks aren't in priority list, use first."""
+        from hypergumbo_core.entrypoints import _pick_best_bootstrap_framework
+        concepts = [
+            {"concept": "app_bootstrap", "framework": "alpine"},
+            {"concept": "app_bootstrap", "framework": "preact"},
+        ]
+        assert _pick_best_bootstrap_framework(concepts) == "alpine"
+
+
+class TestIpcHandlerConceptDetection:
+    """Tests for ipc_handler concept -> EVENT_HANDLER entrypoint mapping.
+
+    The ipc_handler concept is used by electron.yaml (ipcMain.on/handle)
+    and tauri.yaml (#[tauri::command]) for cross-language IPC handlers.
+    """
+
+    def test_ipc_handler_concept_tauri(self) -> None:
+        """ipc_handler concept with tauri framework -> EVENT_HANDLER."""
+        sym = make_symbol(
+            "greet",
+            path="src-tauri/src/main.rs",
+            language="rust",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "tauri"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "tauri" in ep[0].label.lower()
+        assert "ipc" in ep[0].label.lower()
+
+    def test_ipc_handler_concept_electron(self) -> None:
+        """ipc_handler concept with electron framework -> EVENT_HANDLER."""
+        sym = make_symbol(
+            "handleFileOpen",
+            path="src/main.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "electron"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert "electron" in ep[0].label.lower()
+
+    def test_ipc_handler_no_framework(self) -> None:
+        """ipc_handler concept without framework uses generic label."""
+        sym = make_symbol(
+            "handleMessage",
+            path="src/handler.ts",
+            language="typescript",
+            meta={"concepts": [
+                {"concept": "ipc_handler"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1
+        assert "ipc" in ep[0].label.lower()
+
+    def test_duplicate_ipc_handler_deduplicated(self) -> None:
+        """Multiple ipc_handler concepts on same symbol produce one entry."""
+        sym = make_symbol(
+            "greet",
+            path="src-tauri/src/main.rs",
+            language="rust",
+            meta={"concepts": [
+                {"concept": "ipc_handler", "framework": "tauri"},
+                {"concept": "ipc_handler", "framework": "tauri"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
+        assert len(ep) == 1

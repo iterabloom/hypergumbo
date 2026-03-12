@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Lean analyzer.
 
 Lean analysis uses tree-sitter to extract:
@@ -141,6 +142,68 @@ def foo := 42
         targets = [e.dst for e in import_edges]
         assert any("Mathlib" in t for t in targets)
 
+    def test_intra_repo_import_resolves_to_file_id(self, tmp_path: Path) -> None:
+        """Import of an in-repo module resolves to the file node ID.
+
+        When file A imports module Foo.Bar and Foo/Bar.lean exists in the
+        repo, the import edge dst should use the file ID format
+        (lean:Foo/Bar.lean:1-1:file:file), NOT the module format
+        (lean:Foo.Bar:0-0:module:module). This fixes 440+ dangling edges
+        in repos like ArkLib where intra-repo imports were unreachable.
+        """
+        # Create two files: Lib/Utils.lean and Main.lean importing it
+        (tmp_path / "Lib").mkdir()
+        make_lean_file(tmp_path, "Lib/Utils.lean", """
+def helper := 42
+""")
+        make_lean_file(tmp_path, "Main.lean", """
+import Lib.Utils
+
+def main := helper
+""")
+
+        result = analyze_lean(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        # Should have at least one import edge from Main.lean → Lib/Utils.lean
+        assert len(import_edges) >= 1
+
+        main_imports = [e for e in import_edges
+                        if "Main.lean" in e.src]
+        assert len(main_imports) == 1, (
+            f"Expected 1 import from Main.lean, got {len(main_imports)}: "
+            f"{[e.dst for e in main_imports]}"
+        )
+        edge = main_imports[0]
+        # Must resolve to file ID, not module ID
+        assert edge.dst == "lean:Lib/Utils.lean:1-1:file:file", (
+            f"Expected file ID 'lean:Lib/Utils.lean:1-1:file:file', "
+            f"got '{edge.dst}'"
+        )
+
+    def test_external_import_keeps_module_id(self, tmp_path: Path) -> None:
+        """Import of an external module keeps the module ID format.
+
+        When the imported module doesn't correspond to a file in the repo
+        (e.g., Mathlib.Data.Nat.Basic), the edge dst should stay as a
+        module ID (lean:Mathlib.Data.Nat.Basic:0-0:module:module).
+        """
+        make_lean_file(tmp_path, "Example.lean", """
+import Mathlib.Data.Nat.Basic
+
+def foo := 42
+""")
+
+        result = analyze_lean(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
+        edge = import_edges[0]
+        # External import: keeps module ID format
+        assert edge.dst == "lean:Mathlib.Data.Nat.Basic:0-0:module:module", (
+            f"Expected module ID for external import, got '{edge.dst}'"
+        )
+
 
 class TestLeanAnalyzerWhenUnavailable:
     """Tests for graceful handling when tree-sitter-lean unavailable."""
@@ -205,3 +268,205 @@ def answer : Nat := 42
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "answer"]
         assert len(funcs) == 1
         assert funcs[0].signature == ": Nat"
+
+
+class TestLeanReferenceEdges:
+    """Tests for reference edge extraction in Lean."""
+
+    def test_def_references(self, tmp_path: Path) -> None:
+        """Def bodies create reference edges to used symbols."""
+        make_lean_file(tmp_path, "Example.lean", """\
+def double (n : Nat) : Nat :=
+  n + n
+
+def quadruple (n : Nat) : Nat :=
+  double (double n)
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        double_sym = next(s for s in result.symbols if s.name == "double")
+        quad_sym = next(s for s in result.symbols if s.name == "quadruple")
+        # quadruple → double reference
+        assert any(
+            e.src == quad_sym.id and e.dst == double_sym.id
+            for e in ref_edges
+        ), f"Expected quadruple→double reference, got: {[(e.src, e.dst) for e in ref_edges]}"
+
+    def test_cross_file_reference(self, tmp_path: Path) -> None:
+        """References across files are resolved."""
+        make_lean_file(tmp_path, "Lib.lean", """\
+def helper (n : Nat) : Nat :=
+  n + 1
+""")
+        make_lean_file(tmp_path, "Main.lean", """\
+import Lib
+
+def caller (x : Nat) : Nat :=
+  helper x
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # Should have at least one reference edge
+        assert len(ref_edges) >= 1
+
+    def test_type_signature_references(self, tmp_path: Path) -> None:
+        """Type signatures create reference edges (WI-juviz)."""
+        make_lean_file(tmp_path, "Types.lean", """\
+structure MyNat where
+  val : Nat
+
+def mkNat (n : Nat) : MyNat :=
+  { val := n }
+
+theorem natId (x : MyNat) : MyNat :=
+  x
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        my_nat_sym = next(
+            (s for s in result.symbols if s.name == "MyNat"), None
+        )
+        assert my_nat_sym is not None, "MyNat structure should be detected"
+        # mkNat and natId both reference MyNat in their type signatures
+        refs_to_mynat = [e for e in ref_edges if e.dst == my_nat_sym.id]
+        assert len(refs_to_mynat) >= 2, (
+            f"Expected >= 2 references to MyNat from type signatures, "
+            f"got {len(refs_to_mynat)}: {[(e.src, e.dst) for e in refs_to_mynat]}"
+        )
+
+    def test_instance_creates_outgoing_references(self, tmp_path: Path) -> None:
+        """Instance declarations create outgoing reference edges.
+
+        Lean instance declarations like `instance myAdd : Add Nat` reference
+        symbols in their body. Without scanning instance nodes for references,
+        instance symbols become orphans.
+        In the clean repo, 23 instance symbols were orphaned.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+def double (n : Nat) : Nat :=
+  n + n
+
+instance myAdd : Add Nat where
+  add a b := double a
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        instance_syms = [s for s in result.symbols if s.kind == "instance"]
+        double_sym = next(
+            (s for s in result.symbols if s.name == "double"), None
+        )
+        assert double_sym is not None
+        # The instance should exist and have outgoing reference to double
+        assert len(instance_syms) >= 1, "Should detect instance symbol"
+        instance_ids = {s.id for s in instance_syms}
+        instance_refs = [
+            e for e in ref_edges if e.src in instance_ids
+        ]
+        assert len(instance_refs) >= 1, (
+            f"Instance should have outgoing references (e.g., to 'double'), "
+            f"got {len(instance_refs)} from instance IDs {instance_ids}"
+        )
+
+    def test_unnamed_instance_detected(self, tmp_path: Path) -> None:
+        """Unnamed instances (instance : Typeclass Type) are detected.
+
+        Lean allows unnamed instances where the compiler generates a name.
+        These should still be detected as symbols using the typeclass name.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+instance : Add Nat where
+  add a b := a
+""")
+        result = analyze_lean(tmp_path)
+        instance_syms = [s for s in result.symbols if s.kind == "instance"]
+        assert len(instance_syms) >= 1, (
+            f"Unnamed instance should be detected, got: "
+            f"{[s.kind + ':' + s.name for s in result.symbols]}"
+        )
+
+    def test_structure_creates_outgoing_references(self, tmp_path: Path) -> None:
+        """Structure declarations create outgoing reference edges.
+
+        When a structure's field types reference other defined symbols,
+        the structure symbol should have outgoing reference edges.
+        Without scanning structure nodes, structure symbols become orphans.
+        In the clean repo, 22 structure symbols were orphaned.
+        """
+        make_lean_file(tmp_path, "Example.lean", """\
+structure Config where
+  name : String
+  value : Nat
+
+structure AppState where
+  config : Config
+  count : Nat
+""")
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        config_sym = next(
+            (s for s in result.symbols if s.name == "Config"), None
+        )
+        appstate_sym = next(
+            (s for s in result.symbols if s.name == "AppState"), None
+        )
+        assert config_sym is not None
+        assert appstate_sym is not None
+        # AppState should reference Config via its field type
+        appstate_refs = [
+            e for e in ref_edges
+            if e.src == appstate_sym.id and e.dst == config_sym.id
+        ]
+        assert len(appstate_refs) >= 1, (
+            f"AppState should reference Config, "
+            f"got refs from AppState: {[(e.src, e.dst) for e in ref_edges if e.src == appstate_sym.id]}"
+        )
+
+    def test_cross_file_ref_requires_import(self, tmp_path: Path) -> None:
+        """References to symbols in non-imported files are suppressed.
+
+        When file A defines ``pSpec`` and file B uses the identifier ``pSpec``
+        without importing A, no reference edge should be created. This
+        prevents massive false-positive cross-file edges (e.g., pSpec with
+        119 false in-edges in ArkLib from name collisions with local vars).
+        """
+        (tmp_path / "Lib").mkdir()
+        make_lean_file(tmp_path, "Lib/Defs.lean", """\
+def pSpec := 42
+""")
+        # File that uses `pSpec` but does NOT import Lib.Defs
+        make_lean_file(tmp_path, "Other.lean", """\
+def caller := pSpec
+""")
+        # File that uses `pSpec` AND imports Lib.Defs
+        make_lean_file(tmp_path, "Good.lean", """\
+import Lib.Defs
+
+def user := pSpec
+""")
+
+        result = analyze_lean(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        pspec_sym = next(
+            (s for s in result.symbols if s.name == "pSpec"), None
+        )
+        assert pspec_sym is not None, "pSpec should be detected"
+
+        # Other.lean → pSpec: should NOT have a reference edge (no import)
+        other_refs = [
+            e for e in ref_edges
+            if e.dst == pspec_sym.id and "Other.lean" in e.src
+        ]
+        assert len(other_refs) == 0, (
+            f"Other.lean should NOT reference pSpec (no import), "
+            f"but got {len(other_refs)} edges"
+        )
+
+        # Good.lean → pSpec: SHOULD have a reference edge (imports Lib.Defs)
+        good_refs = [
+            e for e in ref_edges
+            if e.dst == pspec_sym.id and "Good.lean" in e.src
+        ]
+        assert len(good_refs) >= 1, (
+            f"Good.lean should reference pSpec (imports Lib.Defs), "
+            f"but got {len(good_refs)} edges"
+        )

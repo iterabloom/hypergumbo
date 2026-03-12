@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JS/TS module resolution linker for cross-file import edges.
 
 The JS/TS analyzer creates `imports` edges with synthetic dst IDs like
@@ -684,6 +685,12 @@ def link_js_modules(
         if parsed is None:
             continue
         lang, import_path = parsed
+
+        # Only process JS/TS imports — other languages (Rust, etc.) use the
+        # same :0-0:module:module suffix but should not create npm_package
+        # phantom nodes for their unresolved crate/module references.
+        if lang not in _JS_LANGUAGES:
+            continue
 
         # Skip dynamic imports
         if _is_dynamic_import(import_path):

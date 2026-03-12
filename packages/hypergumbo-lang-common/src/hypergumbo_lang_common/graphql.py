@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """GraphQL schema analysis pass using tree-sitter-graphql.
 
 This analyzer uses tree-sitter to parse GraphQL schema and query files and extract:

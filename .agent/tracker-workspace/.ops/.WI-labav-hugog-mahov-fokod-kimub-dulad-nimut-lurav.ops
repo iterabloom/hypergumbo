@@ -1,0 +1,86 @@
+- op: create  # e9ca
+  at: '2026-03-04T21:49:10Z'  # e9ca
+  by: agent  # e9ca
+  actor: jgstern_agent  # e9ca
+  clock: 1  # e9ca
+  nonce: e9ca  # e9ca
+  data:  # e9ca
+    kind: work_item  # e9ca
+    title: "Stop hook: add guidance file cleanup policy"  # e9ca
+    status: todo_soft  # e9ca
+    priority: 4  # e9ca
+    parent:  # e9ca
+    tags: []  # e9ca
+    before: []  # e9ca
+    duplicate_of: []  # e9ca
+    not_duplicate_of: []  # e9ca
+    pr_ref:  # e9ca
+    description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, delete older."  # e9ca
+    fields: {}  # e9ca
+- op: update  # 90ca
+  at: '2026-03-05T23:40:04Z'  # 90ca
+  by: human  # 90ca
+  actor: jgstern  # 90ca
+  clock: 2  # 90ca
+  nonce: 90ca  # 90ca
+  set:  # 90ca
+    description: "guidance_log/ directory accumulates files forever. Add cleanup: keep last 10, move older to \"older_guidance\" subdir"  # 90ca
+- op: update  # 7387
+  at: '2026-03-06T05:47:08Z'  # 7387
+  by: agent  # 7387
+  actor: jgstern_agent  # 7387
+  clock: 3  # 7387
+  nonce: '7387'  # 7387
+  set:  # 7387
+    status: needs_human_review  # 7387
+- op: discuss  # 8408
+  at: '2026-03-06T05:47:08Z'  # 8408
+  by: agent  # 8408
+  actor: jgstern_agent  # 8408
+  clock: 4  # 8408
+  nonce: '8408'  # 8408
+  message: "Governance file (.agent/hooks or guidance_log). Proposed: add age-based cleanup of old guidance files in ~/hypergumbo_lab_notebook/guidance_log/ to prevent unbounded growth. Requesting approval."  # 8408
+- op: discuss  # 99a7
+  at: '2026-03-06T05:56:11Z'  # 99a7
+  by: human  # 99a7
+  actor: jgstern  # 99a7
+  clock: 5  # 99a7
+  nonce: 99a7  # 99a7
+  message: "Improving organization by moving older files to an \"older_guidance\" folder is fine. however, you must not build something that would delete such files. do you understand?"  # 99a7
+- op: discuss  # 5858
+  at: '2026-03-06T07:37:09Z'  # 5858
+  by: agent  # 5858
+  actor: jgstern_agent  # 5858
+  clock: 6  # 5858
+  nonce: '5858'  # 5858
+  message: "Understood. Will move older guidance files to an 'older_guidance' subfolder for organization. Will NOT delete any guidance files. The policy will be move-only, never delete."  # 5858
+- op: discuss  # add7
+  at: '2026-03-06T07:57:32Z'  # add7
+  by: human  # add7
+  actor: jgstern  # add7
+  clock: 7  # add7
+  nonce: add7  # add7
+  message: "I approve"  # add7
+- op: update  # 2842
+  at: '2026-03-06T07:57:39Z'  # 2842
+  by: human  # 2842
+  actor: jgstern  # 2842
+  clock: 8  # 2842
+  nonce: '2842'  # 2842
+  set:  # 2842
+    status: todo_soft  # 2842
+- op: update  # 0f12
+  at: '2026-03-06T08:12:45Z'  # 0f12
+  by: agent  # 0f12
+  actor: jgstern_agent  # 0f12
+  clock: 9  # 0f12
+  nonce: 0f12  # 0f12
+  set:  # 0f12
+    status: done  # 0f12
+- op: discuss  # abde
+  at: '2026-03-06T08:12:45Z'  # abde
+  by: agent  # abde
+  actor: jgstern_agent  # abde
+  clock: 10  # abde
+  nonce: abde  # abde
+  message: "Fixed in PR #1825. Stop hook now moves guidance files older than the 10 most recent to guidance_log/older_guidance/ subfolder. Move-only policy, never deletes."  # abde

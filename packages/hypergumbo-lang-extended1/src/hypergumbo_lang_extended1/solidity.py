@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Solidity analysis pass using tree-sitter-solidity.
 
 This analyzer uses tree-sitter to parse Solidity smart contract files and extract:
@@ -85,28 +86,44 @@ def _get_enclosing_function_solidity(
     source: bytes,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
+    symbols_by_span: Optional[dict[tuple[int, int], Symbol]] = None,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/constructor/modifier."""
+    """Walk up the tree to find the enclosing function/constructor/modifier.
+
+    Uses position-based matching (symbols_by_span) when available to correctly
+    handle Solidity function overloading. Without it, overloaded functions
+    (same name, different parameters) would resolve to the last-registered
+    overload because symbol_by_name can only hold one entry per name.
+    """
     current = node.parent
     while current is not None:
-        if current.type == "function_definition":
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                func_name = node_text(name_node, source)
-                sym = local_symbols.get(func_name) or global_symbols.get(func_name)
+        if current.type in ("function_definition", "constructor_definition", "modifier_definition"):
+            start_line = current.start_point[0] + 1
+            end_line = current.end_point[0] + 1
+            # Prefer position-based match (handles overloads correctly)
+            if symbols_by_span is not None:
+                sym = symbols_by_span.get((start_line, end_line))
                 if sym:
                     return sym
-        elif current.type == "constructor_definition":  # pragma: no cover - constructor calls rare
-            sym = local_symbols.get("constructor") or global_symbols.get("constructor")
-            if sym:
-                return sym
-        elif current.type == "modifier_definition":
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                mod_name = node_text(name_node, source)
-                sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
+            # Fall back to name-based lookup (when symbols_by_span not provided)
+            if current.type == "function_definition":  # pragma: no cover - position match preferred
+                name_node = _find_child_by_field(current, "name")
+                if name_node:
+                    func_name = node_text(name_node, source)
+                    sym = local_symbols.get(func_name) or global_symbols.get(func_name)
+                    if sym:
+                        return sym
+            elif current.type == "constructor_definition":  # pragma: no cover - constructor calls rare
+                sym = local_symbols.get("constructor") or global_symbols.get("constructor")
                 if sym:
                     return sym
+            elif current.type == "modifier_definition":  # pragma: no cover - modifier calls rare
+                name_node = _find_child_by_field(current, "name")
+                if name_node:
+                    mod_name = node_text(name_node, source)
+                    sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
+                    if sym:
+                        return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -179,6 +196,25 @@ def _extract_import_aliases(
     return import_path, aliases
 
 
+def _extract_visibility_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract visibility and state mutability modifiers from a Solidity function.
+
+    Solidity functions can have:
+    - Visibility: public, external, internal, private
+    - State mutability: view, pure, payable
+
+    These are direct children of function_definition nodes with types
+    'visibility' and 'state_mutability' in the tree-sitter-solidity grammar.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "visibility":
+            modifiers.append(node_text(child, source))
+        elif child.type == "state_mutability":
+            modifiers.append(node_text(child, source))
+    return modifiers
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     run_id: str, analysis: FileAnalysis,
@@ -190,6 +226,7 @@ def _extract_symbols_from_tree(
         node: "tree_sitter.Node",
         prefix: str = "",
         signature: Optional[str] = None,
+        modifiers: Optional[list[str]] = None,
     ) -> Symbol:
         """Helper to create and register a symbol."""
         start_line = node.start_point[0] + 1
@@ -211,6 +248,7 @@ def _extract_symbols_from_tree(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            modifiers=modifiers or [],
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
@@ -246,7 +284,8 @@ def _extract_symbols_from_tree(
                 func_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
-                add_symbol(func_name, "function", node, current_contract, signature=signature)
+                modifiers = _extract_visibility_modifiers(node, source)
+                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers)
 
         # Constructor definition
         elif node.type == "constructor_definition":
@@ -274,19 +313,46 @@ def _extract_edges_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
     run_id: str, resolver: NameResolver,
+    all_local_symbols: Optional[list[Symbol]] = None,
 ) -> tuple[list[Edge], dict[str, str]]:
     """Extract edges (calls, imports) from a Solidity file's parse tree.
 
     Returns (edges, import_aliases) where import_aliases maps alias names
     to import paths for path_hint resolution.
+
+    The all_local_symbols parameter provides the full list of symbols for
+    position-based lookup, needed to correctly resolve overloaded functions
+    (where symbol_by_name would only return the last-registered overload).
     """
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
     file_id = make_file_id("solidity", file_path)
 
+    # Build position-based symbol index for overload-safe enclosing function lookup.
+    # Maps (start_line, end_line) -> Symbol for functions/constructors/modifiers.
+    symbols_by_span: dict[tuple[int, int], Symbol] = {}
+    if all_local_symbols:
+        for sym in all_local_symbols:
+            if sym.kind in ("function", "constructor", "modifier"):
+                symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
+
+    # Collect `using Library for Type` directives per contract.
+    # Maps contract_name -> set of library names, used to resolve
+    # implicit library calls like x.add(y) -> SafeMath.add(x, y).
+    using_libraries: dict[str, set[str]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type == "using_directive":
+            contract_name = _get_enclosing_contract(node, source) or ""
+            # Extract library name from type_alias child (using Lib for Type)
+            for child in node.children:
+                if child.type == "type_alias":
+                    id_node = find_child_by_type(child, "identifier")
+                    if id_node:
+                        lib_name = node_text(id_node, source)
+                        using_libraries.setdefault(contract_name, set()).add(lib_name)
+
     # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
-        if node.type == "import_directive":
             import_path, aliases = _extract_import_aliases(node, source)
             if import_path:
                 edge = Edge.create(
@@ -301,16 +367,47 @@ def _extract_edges_from_tree(
                 edges.append(edge)
                 import_aliases.update(aliases)
 
-    # Second pass: extract call edges with alias resolution
+    # Second pass: extract inheritance and call edges
     for node in iter_tree(tree.root_node):
+        # Contract/interface inheritance: contract A is B, C { ... }
+        if node.type in ("contract_declaration", "interface_declaration"):
+            name_node = find_child_by_type(node, "identifier")
+            if name_node:
+                child_name = node_text(name_node, source)
+                child_sym = local_symbols.get(child_name) or global_symbols.get(child_name)
+                if child_sym:
+                    for child in node.children:
+                        if child.type == "inheritance_specifier":
+                            parent_type_node = find_child_by_type(child, "user_defined_type")
+                            if parent_type_node:
+                                parent_name = node_text(parent_type_node, source)
+                                parent_sym = local_symbols.get(parent_name) or global_symbols.get(parent_name)
+                                if parent_sym:
+                                    edge = Edge.create(
+                                        src=child_sym.id,
+                                        dst=parent_sym.id,
+                                        edge_type="inherits",
+                                        line=child.start_point[0] + 1,
+                                        confidence=0.95,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    )
+                                    edges.append(edge)
+
         # Function call
-        if node.type == "call_expression":
+        elif node.type == "call_expression":
             func_node = _find_child_by_field(node, "function")
             current_function = _get_enclosing_function_solidity(
-                node, source, local_symbols, global_symbols
+                node, source, local_symbols, global_symbols,
+                symbols_by_span=symbols_by_span,
             )
             if func_node and current_function:
                 call_name = node_text(func_node, source)
+                # Strip super./this. prefix — these resolve to the same
+                # contract's methods (super dispatches to parent, this
+                # dispatches to the current contract via external call).
+                if call_name.startswith(("super.", "this.")):
+                    call_name = call_name.split(".", 1)[1]
                 # Try to resolve the called function - local first
                 target = local_symbols.get(call_name)
                 if target:
@@ -340,6 +437,115 @@ def _extract_edges_from_tree(
                             origin_run_id=run_id,
                         )
                         edges.append(edge)
+                    elif "." in call_name:
+                        # Member access fallback: IERC20(token).transfer(...)
+                        # or contract.method() — try the method name after the
+                        # last dot against local/global symbols.
+                        method_name = call_name.rsplit(".", 1)[1]
+                        # Prefer library-qualified lookup via using directives.
+                        # This correctly resolves x.add(y) -> SafeMath.add
+                        # when 'using SafeMath for uint256' is declared.
+                        enclosing_contract = _get_enclosing_contract(
+                            node, source,
+                        ) or ""
+                        member_target = None
+                        for lib_name in using_libraries.get(enclosing_contract, ()):
+                            qualified = f"{lib_name}.{method_name}"
+                            candidate = (
+                                local_symbols.get(qualified)
+                                or global_symbols.get(qualified)
+                            )
+                            if candidate and candidate.kind == "function":
+                                member_target = candidate
+                                break
+                        if not member_target:
+                            member_target = (
+                                local_symbols.get(method_name)
+                                or global_symbols.get(method_name)
+                            )
+                        if member_target:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=member_target.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.60,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            )
+                            edges.append(edge)
+
+        # Emit statement: emit Transfer(...) → emits edge to event definition
+        elif node.type == "emit_statement":
+            # emit_statement children: "emit", expression (event name), "(", args, ")"
+            event_name_node = find_child_by_type(node, "expression")
+            current_function = _get_enclosing_function_solidity(
+                node, source, local_symbols, global_symbols,
+                symbols_by_span=symbols_by_span,
+            )
+            if event_name_node and current_function:
+                event_name = node_text(event_name_node, source)
+                event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
+                if event_sym and event_sym.kind == "event":
+                    edge = Edge.create(
+                        src=current_function.id,
+                        dst=event_sym.id,
+                        edge_type="emits",
+                        line=node.start_point[0] + 1,
+                        confidence=0.95,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    )
+                    edges.append(edge)
+
+    # Third pass: override edges.
+    # For each contract that inherits from parents, connect child functions
+    # to parent functions with the same unqualified name.
+    for node in iter_tree(tree.root_node):
+        if node.type not in ("contract_declaration", "interface_declaration"):
+            continue
+        name_node = find_child_by_type(node, "identifier")
+        if not name_node:
+            continue  # pragma: no cover - defensive
+        child_contract = node_text(name_node, source)
+
+        # Collect parent contract names from inheritance_specifier
+        parent_names: list[str] = []
+        for child in node.children:
+            if child.type == "inheritance_specifier":
+                parent_type_node = find_child_by_type(child, "user_defined_type")
+                if parent_type_node:
+                    parent_names.append(node_text(parent_type_node, source))
+
+        if not parent_names:
+            continue
+
+        # Collect functions defined in this contract
+        child_functions: dict[str, Symbol] = {}
+        for sym in (all_local_symbols or []):
+            if sym.kind == "function" and sym.name.startswith(f"{child_contract}."):
+                unqualified = sym.name[len(child_contract) + 1:]
+                child_functions[unqualified] = sym
+
+        # Create override edges for matching parent functions
+        for func_name, child_sym in child_functions.items():
+            for parent_name in parent_names:
+                parent_qualified = f"{parent_name}.{func_name}"
+                parent_sym = (
+                    local_symbols.get(parent_qualified)
+                    or global_symbols.get(parent_qualified)
+                )
+                if parent_sym and parent_sym.kind == "function":
+                    edge = Edge.create(
+                        src=child_sym.id,
+                        dst=parent_sym.id,
+                        edge_type="overrides",
+                        line=child_sym.span.start_line,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    )
+                    edges.append(edge)
 
     return edges, import_aliases
 
@@ -350,11 +556,21 @@ def _extract_edges_from_tree(
 
 
 class SolidityAnalyzer(TreeSitterAnalyzer):
-    """Analyzer for Solidity smart contract files using TreeSitterAnalyzer base class."""
+    """Analyzer for Solidity smart contract files using TreeSitterAnalyzer base class.
+
+    Stores per-file symbol lists between Pass 1 and Pass 2 to enable
+    position-based enclosing function resolution. This is needed because
+    Solidity supports function overloading (same name, different params),
+    and the name-based symbol_by_name dict can only hold one entry per name.
+    """
 
     lang = "solidity"
     file_patterns: ClassVar[list[str]] = ["*.sol"]
     grammar_module = "tree_sitter_solidity"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._file_symbols: dict[str, list[Symbol]] = {}
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -365,6 +581,8 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         _extract_symbols_from_tree(
             tree, source, str(file_path), run.execution_id, analysis,
         )
+        # Store full symbol list for position-based lookup in Pass 2
+        self._file_symbols[str(file_path)] = list(analysis.symbols)
         return analysis
 
     def extract_edges_from_file(
@@ -375,10 +593,12 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and import edges from a single Solidity file."""
+        all_local = self._file_symbols.get(str(file_path))
         edges, _aliases = _extract_edges_from_tree(
             tree, source, str(file_path),
             local_symbols, global_symbols,
             run.execution_id, resolver,
+            all_local_symbols=all_local,
         )
         return edges
 

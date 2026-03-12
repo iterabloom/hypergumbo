@@ -41,14 +41,23 @@ Usage:
     # Run hypergumbo on current cohort
     ./scripts/bakeoff run
 
+    # Run all unanalyzed cohorts in batch
+    ./scripts/bakeoff run --all
+    ./scripts/bakeoff run --some 3
+
     # Diagnose and generate issue report
     ./scripts/bakeoff diagnose
+
+    # Diagnose all cohorts (default: current only)
+    ./scripts/bakeoff diagnose --all
+    ./scripts/bakeoff diagnose --some 3
 
     # Check convergence status
     ./scripts/bakeoff status
 
     # Full cycle: run + diagnose
     ./scripts/bakeoff cycle
+    ./scripts/bakeoff cycle --all
 
     # List detected issues (machine-readable)
     ./scripts/bakeoff issues --format json
@@ -331,10 +340,14 @@ def _find_latest_session(base_workdir: str, prefix: str = "broad-") -> Optional[
 
 
 def cmd_init(args):
-    """Initialize a new bakeoff session (idempotent).
+    """Initialize a new bakeoff session.
 
-    If a session already exists, reuses it instead of creating a new one.
-    Use ``--force`` to create a fresh session regardless.
+    Always creates a new timestamped session by default. Use ``--resume``
+    to explicitly continue working with the most recent existing session.
+
+    Previous behavior (silent reuse) was dangerous: it encouraged deleting
+    completed outputs to "re-run" instead of creating a new session for
+    before/after comparison.
     """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
     base_workdir = resolve_workdir(args.workdir, auto_discover=False)
@@ -343,23 +356,38 @@ def cmd_init(args):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
         return 1
 
-    # Idempotent: reuse existing session unless --force
-    if not getattr(args, "force", False):
+    # Explicit resume: reuse existing session
+    if getattr(args, "resume", False):
         existing = _find_latest_session(base_workdir, prefix="broad-")
         if existing:
             state = load_state(existing)
             if state:
                 if state.pool_path != pool_path:
                     print(f"Warning: --pool {pool_path} differs from session pool "
-                          f"{state.pool_path} (use --force to create a new session)",
-                          file=sys.stderr)
-                print(f"Reusing existing session: {state.session_id}")
+                          f"{state.pool_path}", file=sys.stderr)
+                out_dir = os.path.join(existing, "out")
+                completed = 0
+                if os.path.isdir(out_dir):
+                    completed = len([d for d in os.listdir(out_dir)
+                                     if os.path.isdir(os.path.join(out_dir, d))
+                                     and os.listdir(os.path.join(out_dir, d))])
+                print(f"Resuming existing session: {state.session_id}")
                 print(f"  Workdir: {existing}")
                 print(f"  Pool: {state.pool_path}")
                 print(f"  Cohorts: {state.cohort_number}")
+                if completed:
+                    print(f"  Completed outputs: {completed} cohort(s)")
+                    print()
+                    print("NOTE: This session has completed outputs. Subsequent")
+                    print("`run` commands will skip cohorts that already have output.")
+                    print("To re-run with code changes, create a NEW session instead:")
+                    print(f"  ./scripts/bakeoff init --pool {pool_path}")
                 print()
                 print("Next: Run `bakeoff cohort` to select repos for testing")
                 return 0
+        print("No existing session found. Creating a new one.")
+
+    # Backward compat: --force is now the default behavior, accept silently
 
     # Create timestamped session directory to prevent artifact overwrites
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -388,6 +416,17 @@ def cmd_init(args):
     return 0
 
 
+def _load_cohort_metadata(workdir: str, cohort_num: int) -> list | None:
+    """Load repo list from cohort metadata file. Returns None if not found."""
+    meta_path = os.path.join(workdir, "cohorts", f"cohort-{cohort_num:03d}", "metadata.json")
+    try:
+        with open(meta_path) as f:
+            data = json.load(f)
+        return [r["name"] for r in data.get("repos", [])]
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None
+
+
 def cmd_cohort(args):
     """Select next cohort of repos."""
     workdir = resolve_workdir(args.workdir)
@@ -400,81 +439,121 @@ def cmd_cohort(args):
 
     pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
 
-    # Scan pool for available repos
-    print(f"Scanning pool: {pool_path}")
-    available = []
+    explicit_repos = getattr(args, "repos", None)
+    if explicit_repos:
+        # Explicit repo selection: bypass size filters and auto-selection
+        repo_names = [n.strip() for n in explicit_repos.split(",") if n.strip()]
+        print(f"Pool: {pool_path}")
+        print(f"  Explicit repos: {', '.join(repo_names)}")
+        print()
 
-    for entry in os.scandir(pool_path):
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith("."):
-            continue
-        if entry.name in state.tested_repos:
-            continue
+        cohort = []
+        missing = []
+        for name in repo_names:
+            repo_path = os.path.join(pool_path, name)
+            if not os.path.isdir(repo_path):
+                missing.append(name)
+                continue
+            size_bytes = get_dir_size(repo_path)
+            size_mb = size_bytes / (1024 * 1024)
+            cohort.append(RepoInfo(
+                name=name,
+                path=repo_path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                languages=detect_languages(repo_path),
+            ))
 
-        size_bytes = get_dir_size(entry.path)
-        size_mb = size_bytes / (1024 * 1024)
+        if missing:
+            print(f"Error: repos not found in pool: {', '.join(missing)}", file=sys.stderr)
+            return 1
 
-        if size_mb > MAX_REPO_SIZE_MB:
-            continue
+        if not cohort:
+            print("Error: no repos specified", file=sys.stderr)
+            return 1
+    else:
+        # Mark previous cohort repos as tested BEFORE scanning, so they
+        # are excluded from the available pool.
+        if state.current_cohort:
+            for repo in state.current_cohort:
+                if repo not in state.tested_repos:
+                    state.tested_repos.append(repo)
 
-        available.append(RepoInfo(
-            name=entry.name,
-            path=entry.path,
-            size_bytes=size_bytes,
-            size_mb=size_mb,
-            languages=detect_languages(entry.path),
-        ))
+        # Auto-selection: scan pool and pick by size/language diversity
+        print(f"Scanning pool: {pool_path}")
+        available = []
 
-    # Sort by size (smallest first)
-    available.sort(key=lambda r: r.size_bytes)
+        for entry in os.scandir(pool_path):
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("."):
+                continue
+            if entry.name in state.tested_repos:
+                continue
 
-    # Strategic selection: try to get language diversity within size constraints
-    count = args.count or DEFAULT_COHORT_SIZE
-    cohort = []
-    seen_langs = set()
-    size_limit_mb = 20  # Start with small repos
+            size_bytes = get_dir_size(entry.path)
+            size_mb = size_bytes / (1024 * 1024)
 
-    # Phase 1: Pick repos that add new languages
-    for r in available:
-        if len(cohort) >= count:
-            break
-        if r.size_mb > size_limit_mb:
-            continue
+            if size_mb > MAX_REPO_SIZE_MB:
+                continue
 
-        primary_lang = r.languages[0] if r.languages else None
-        if primary_lang and primary_lang not in seen_langs:
-            cohort.append(r)
-            seen_langs.add(primary_lang)
+            available.append(RepoInfo(
+                name=entry.name,
+                path=entry.path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                languages=detect_languages(entry.path),
+            ))
 
-    # Phase 2: Fill remaining slots with smallest remaining repos
-    if len(cohort) < count:
+        # Sort by size (smallest first)
+        available.sort(key=lambda r: r.size_bytes)
+
+        # Strategic selection: try to get language diversity within size constraints
+        count = args.count or DEFAULT_COHORT_SIZE
+        cohort = []
+        seen_langs = set()
+        size_limit_mb = 20  # Start with small repos
+
+        # Phase 1: Pick repos that add new languages
         for r in available:
             if len(cohort) >= count:
                 break
-            if r not in cohort and r.size_mb <= size_limit_mb:
-                cohort.append(r)
+            if r.size_mb > size_limit_mb:
+                continue
 
-    # Phase 3: If still not enough, expand size limit
-    if len(cohort) < count:
-        size_limit_mb = 50
-        for r in available:
-            if len(cohort) >= count:
-                break
-            if r not in cohort and r.size_mb <= size_limit_mb:
+            primary_lang = r.languages[0] if r.languages else None
+            if primary_lang and primary_lang not in seen_langs:
                 cohort.append(r)
+                seen_langs.add(primary_lang)
 
-    # Phase 4: Take whatever's left
-    if len(cohort) < count:
-        for r in available:
-            if len(cohort) >= count:
-                break
-            if r not in cohort:
-                cohort.append(r)
+        # Phase 2: Fill remaining slots with smallest remaining repos
+        if len(cohort) < count:
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort and r.size_mb <= size_limit_mb:
+                    cohort.append(r)
 
-    if not cohort:
-        print("No more repos available in pool!")
-        return 1
+        # Phase 3: If still not enough, expand size limit
+        if len(cohort) < count:
+            size_limit_mb = 50
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort and r.size_mb <= size_limit_mb:
+                    cohort.append(r)
+
+        # Phase 4: Take whatever's left
+        if len(cohort) < count:
+            for r in available:
+                if len(cohort) >= count:
+                    break
+                if r not in cohort:
+                    cohort.append(r)
+
+        if not cohort:
+            print("No more repos available in pool!")
+            return 1
 
     # Update state
     state.cohort_number += 1
@@ -500,15 +579,16 @@ def cmd_cohort(args):
         langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
         print(f"  {r.name:40s} {r.size_mb:6.1f}MB  [{langs}]")
 
-    print()
-    print(f"Remaining in pool: {len(available) - len(cohort)}")
+    if not explicit_repos:
+        print()
+        print(f"Remaining in pool: {len(available) - len(cohort)}")
     print()
     print("Next: Run `bakeoff run` to analyze these repos")
     return 0
 
 
 def cmd_run(args):
-    """Run hypergumbo on current cohort."""
+    """Run hypergumbo on current cohort, or multiple cohorts with --all/--some."""
     workdir = resolve_workdir(args.workdir)
     print(f"Workdir: {workdir}")
     state = load_state(workdir)
@@ -522,6 +602,112 @@ def cmd_run(args):
         return 1
 
     pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
+
+    # --all / --some N: run multiple cohorts in batch.
+    #   --all:    every cohort with metadata but no output
+    #   --some N: up to N unanalyzed cohorts (same filter, capped)
+    batch_count = None
+    if getattr(args, "all", False):
+        batch_count = float("inf")
+    elif getattr(args, "some", None):
+        batch_count = args.some
+
+    if batch_count is not None:
+        cohorts_base = os.path.join(workdir, "cohorts")
+        if not os.path.isdir(cohorts_base):
+            print("Error: No cohorts directory found.", file=sys.stderr)
+            return 1
+        cohort_nums = sorted(
+            int(d.split("-")[1])
+            for d in os.listdir(cohorts_base)
+            if d.startswith("cohort-") and os.path.isdir(os.path.join(cohorts_base, d))
+        )
+        if not cohort_nums:
+            print("Error: No cohorts found.", file=sys.stderr)
+            return 1
+        label = "all" if batch_count == float("inf") else f"up to {batch_count}"
+        print(f"Running {label} of {len(cohort_nums)} cohort(s)")
+        overall_rc = 0
+        ran_count = 0
+        for cohort_num in cohort_nums:
+            if ran_count >= batch_count:
+                break
+            repos = _load_cohort_metadata(workdir, cohort_num)
+            if not repos:
+                print(f"\n[cohort-{cohort_num:03d}] No metadata — skipping")
+                continue
+            # Check if already analysed
+            out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
+            if os.path.isdir(out_dir) and os.listdir(out_dir):
+                print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
+                print(f"  To re-run with code changes, create a NEW session:")
+                print(f"    ./scripts/bakeoff init --pool {pool_path}")
+                print()
+                print(f"  IMPORTANT NOTE: If you are tempted to DELETE the existing output")
+                print(f"  directory to force a re-run, STOP. You are about to ERASE RESULTS")
+                print(f"  OF A SCIENCE EXPERIMENT. Unless you are REALLY CERTAIN you know what")
+                print(f"  you're doing, create a new session instead. Bakeoff artifacts are DATA,")
+                print(f"  not temp files — they exist for before/after comparison.")
+                continue
+            # Temporarily point state at this cohort
+            state.cohort_number = cohort_num
+            state.current_cohort = repos
+            state.iteration = 0
+            state.iteration += 1
+            iter_dir = os.path.join(out_dir, f"iter-{state.iteration:03d}")
+            os.makedirs(iter_dir, exist_ok=True)
+            save_state(state)
+            print(f"\n{'='*60}")
+            print(f"Cohort #{cohort_num} ({len(repos)} repos), iteration #{state.iteration}")
+            print(f"Output: {iter_dir}")
+            print(f"{'='*60}")
+            for repo_name in repos:
+                repo_path = os.path.join(pool_path, repo_name)
+                repo_out = os.path.join(iter_dir, repo_name)
+                os.makedirs(repo_out, exist_ok=True)
+                print(f"[{repo_name}]")
+                start_time = time.time()
+                commands = [
+                    ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
+                    ("routes", ["hypergumbo", "routes", "--input", os.path.join(repo_out, "hg.json")]),
+                    ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
+                    ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
+                    ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+                ]
+                hg_path = os.path.join(repo_out, "hg.json")
+                for cmd_name, cmd in commands:
+                    print(f"  {cmd_name}...", end=" ", flush=True)
+                    rc, stdout, stderr = run_cmd(cmd, timeout=3600)
+                    if stdout:
+                        with open(os.path.join(repo_out, f"{cmd_name}.txt"), "w") as f:
+                            f.write(stdout)
+                    if stderr:
+                        with open(os.path.join(repo_out, f"{cmd_name}.err"), "w") as f:
+                            f.write(stderr)
+                    with open(os.path.join(repo_out, f"{cmd_name}.exit"), "w") as f:
+                        f.write(str(rc))
+                    print("OK" if rc == 0 else f"FAIL({rc})")
+                if os.path.exists(hg_path):
+                    hg_size_mb = os.path.getsize(hg_path) / (1024 * 1024)
+                    if hg_size_mb > COMPACT_THRESHOLD_MB:
+                        print(f"  compact (hg.json={hg_size_mb:.1f}MB)...", end=" ", flush=True)
+                        rc, _, stderr = run_cmd([
+                            "hypergumbo", "compact",
+                            "--input", hg_path,
+                            "--max-symbols", "100",
+                            "--out", os.path.join(repo_out, "hg.compact.json"),
+                        ])
+                        print("OK" if rc == 0 else f"FAIL({rc})")
+                elapsed = time.time() - start_time
+                with open(os.path.join(repo_out, "time.txt"), "w") as f:
+                    f.write(f"{elapsed:.1f}s\n")
+                print(f"  done ({elapsed:.1f}s)")
+                print()
+            ran_count += 1
+            if ran_count < batch_count:
+                overall_rc = max(overall_rc, 0)
+        print(f"\nBatch complete: ran {ran_count} cohort(s)")
+        return overall_rc
 
     # Increment iteration first, then create output directory
     state.iteration += 1
@@ -596,23 +782,13 @@ def cmd_run(args):
     return 0
 
 
-def cmd_diagnose(args):
-    """Diagnose issues from current run."""
-    workdir = resolve_workdir(args.workdir)
-    print(f"Workdir: {workdir}")
-    state = load_state(workdir)
-
-    if not state:
-        print("Error: No bakeoff session found.", file=sys.stderr)
-        return 1
-
-    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
-    diag_dir = os.path.join(workdir, "diag", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
+    """Diagnose a single cohort's output. Returns list of Issues found."""
     os.makedirs(diag_dir, exist_ok=True)
 
     if not os.path.isdir(out_dir):
-        print(f"Error: No output found at {out_dir}. Run `bakeoff run` first.", file=sys.stderr)
-        return 1
+        print(f"Warning: No output found at {out_dir} — skipping")
+        return []
 
     print(f"Diagnosing: {out_dir}")
     print(f"Output: {diag_dir}")
@@ -621,7 +797,6 @@ def cmd_diagnose(args):
     # Try to run hypergumbo_diag.py if available
     diag_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "hypergumbo_diag.py")
     if not os.path.exists(diag_script):
-        # Look in bakeoff dir
         diag_script = os.path.join(workdir, "hypergumbo_diag.py")
 
     if os.path.exists(diag_script):
@@ -630,10 +805,9 @@ def cmd_diagnose(args):
         if rc != 0:
             print(f"Warning: diag script failed: {stderr[:200]}")
 
-    # Parse hg.json files directly to extract issues
     issues = []
 
-    for repo_name in state.current_cohort:
+    for repo_name in repos:
         hg_path = os.path.join(out_dir, repo_name, "hg.json")
         if not os.path.exists(hg_path):
             continue
@@ -649,7 +823,6 @@ def cmd_diagnose(args):
         edges = data.get("edges", [])
         entrypoints = data.get("entrypoints", [])
 
-        # Compute metrics
         lang_count = {}
         for n in nodes:
             lang = n.get("language", "")
@@ -665,10 +838,12 @@ def cmd_diagnose(args):
             if t == "calls":
                 calls_total += 1
 
-        # Concepts can be strings ("route") or dicts ({"concept": "route", ...})
-        routes = sum(1 for n in nodes if any(
-            (c == "route" if isinstance(c, str) else c.get("concept") == "route")
-            for c in ((n.get("meta") or {}).get("concepts") or [])
+        routes = sum(1 for n in nodes if (
+            n.get("kind") == "route"
+            or any(
+                (c == "route" if isinstance(c, str) else c.get("concept") == "route")
+                for c in ((n.get("meta") or {}).get("concepts") or [])
+            )
         ))
 
         metrics = {
@@ -680,26 +855,53 @@ def cmd_diagnose(args):
             "dominant_language": dom_lang,
         }
 
-        # Detect flags
         flags = []
 
-        # NO_CALL_EDGES: Only flag if dominant language should have calls
-        if calls_total == 0 and len(nodes) > 10:
+        func_count = sum(
+            1 for n in nodes if n.get("kind") in ("function", "method")
+        )
+        if calls_total == 0 and len(nodes) > 10 and func_count >= 3:
             if dom_lang.lower() in CALL_EDGE_EXPECTED_LANGS:
                 flags.append("NO_CALL_EDGES")
-            # If dom_lang is in NOT_EXPECTED, this is fine - don't flag
 
-        # GraphQL frameworks use resolvers instead of traditional HTTP routes
+        # Only flag missing routes when name suggests a web app AND
+        # there's supporting evidence (route edges or framework signals).
+        # Bare name matching ("web" in "webtunnel") causes false positives.
+        has_route_edges = any(
+            e.get("type", "") in ("routes_to", "handles_route")
+            for e in edges
+        )
+        # Only count web-serving framework signals (not event emitters,
+        # CLI frameworks, test frameworks, etc.) as evidence of expected
+        # routes.  Non-web frameworks like "emitter" cause false positives.
+        # Also exclude event-sourcing nodes (have "event_name" in meta) —
+        # these come from the event_sourcing linker and don't imply routes.
+        _NON_WEB_FRAMEWORKS = frozenset({
+            "emitter", "cli", "celery", "electron", "kafka-connect",
+            "qt", "test", "logging", "naming", "config", "library",
+            "main", "android", "guice", "jakarta-cdi", "mcp",
+        })
+        has_framework_signal = any(
+            n.get("meta", {}).get("framework")
+            and n["meta"]["framework"] not in _NON_WEB_FRAMEWORKS
+            and "event_name" not in n.get("meta", {})
+            for n in nodes
+            if isinstance(n.get("meta"), dict)
+        )
         is_graphql_repo = any(x in repo_name.lower() for x in ["graphql", "apollo"])
-        if routes == 0 and not is_graphql_repo and any(x in repo_name.lower() for x in ["api", "server", "web", "http", "rest"]):
+        name_suggests_web = any(
+            x in repo_name.lower() for x in ["api", "server", "http", "rest"]
+        )
+        if routes == 0 and not is_graphql_repo and (
+            name_suggests_web or has_route_edges or has_framework_signal
+        ):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
 
-        # Create issues
         for flag in flags:
             severity = FLAG_SEVERITY.get(flag, SEVERITY_MEDIUM)
             hint = FLAG_CODE_HINTS.get(flag, "").format(lang=dom_lang, framework="unknown")
 
-            issue_id = hashlib.sha256(f"{repo_name}:{flag}:{state.cohort_number}".encode()).hexdigest()[:8]
+            issue_id = hashlib.sha256(f"{repo_name}:{flag}:{cohort_number}".encode()).hexdigest()[:8]
 
             issues.append(Issue(
                 id=issue_id,
@@ -713,8 +915,102 @@ def cmd_diagnose(args):
                 first_seen_iteration=state.iteration,
             ))
 
+    # Write issues to file
+    issues_path = os.path.join(diag_dir, "issues.json")
+    with open(issues_path, "w") as f:
+        json.dump([asdict(i) for i in issues], f, indent=2)
+
+    return issues
+
+
+def cmd_diagnose(args):
+    """Diagnose issues from current run, or multiple cohorts with --all/--some."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No bakeoff session found.", file=sys.stderr)
+        return 1
+
+    # Discover cohort output directories for batch mode
+    out_base = os.path.join(workdir, "out")
+
+    # --all / --some N: diagnose multiple cohorts; default: current only
+    batch_mode = getattr(args, "all", False) or getattr(args, "some", None)
+
+    if batch_mode:
+        if not os.path.isdir(out_base):
+            print(f"Error: No output found at {out_base}. Run `bakeoff run` first.", file=sys.stderr)
+            return 1
+
+        all_cohort_dirs = sorted(
+            d for d in os.listdir(out_base)
+            if d.startswith("cohort-") and os.path.isdir(os.path.join(out_base, d))
+        )
+
+        if not all_cohort_dirs:
+            print("Error: No cohort output directories found.", file=sys.stderr)
+            return 1
+
+        if getattr(args, "all", False):
+            cohort_dirs = all_cohort_dirs
+            print(f"Diagnosing all {len(cohort_dirs)} cohort(s)")
+        else:
+            cohort_dirs = all_cohort_dirs[-args.some:]
+            print(f"Diagnosing latest {len(cohort_dirs)} cohort(s)")
+        print()
+
+        all_issues = []
+        for cohort_dir_name in cohort_dirs:
+            cohort_path = os.path.join(out_base, cohort_dir_name)
+            # Find latest iteration
+            iter_dirs = sorted(
+                d for d in os.listdir(cohort_path)
+                if d.startswith("iter-") and os.path.isdir(os.path.join(cohort_path, d))
+            )
+            if not iter_dirs:
+                continue
+            latest_iter = iter_dirs[-1]
+            out_dir = os.path.join(cohort_path, latest_iter)
+            diag_dir = os.path.join(workdir, "diag", cohort_dir_name, latest_iter)
+
+            # Get cohort number and repo list
+            cohort_num = int(cohort_dir_name.split("-")[1])
+            repos = _load_cohort_metadata(workdir, cohort_num)
+            if not repos:
+                # Fall back to listing output subdirs
+                repos = sorted(
+                    d for d in os.listdir(out_dir)
+                    if os.path.isdir(os.path.join(out_dir, d))
+                )
+
+            print(f"{'='*60}")
+            print(f"Cohort #{cohort_num} ({len(repos)} repos)")
+            print(f"{'='*60}")
+            issues = _diagnose_cohort(state, workdir, cohort_num, repos, out_dir, diag_dir)
+            all_issues.extend(issues)
+
+        # Update state with all issues
+        existing_ids = {i.id for i in state.issues}
+        new_issues = [i for i in all_issues if i.id not in existing_ids]
+        state.issues.extend(new_issues)
+        save_state(state)
+
+        print(f"\nTotal issues across all cohorts: {len(all_issues)} ({len(new_issues)} new)")
+        return 0
+
+    # Single-cohort mode (default)
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    diag_dir = os.path.join(workdir, "diag", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+
+    if not os.path.isdir(out_dir):
+        print(f"Error: No output found at {out_dir}. Run `bakeoff run` first.", file=sys.stderr)
+        return 1
+
+    issues = _diagnose_cohort(state, workdir, state.cohort_number, state.current_cohort, out_dir, diag_dir)
+
     # Update state with issues
-    # Check for recurring issues
     existing_ids = {i.id for i in state.issues}
     new_issues = [i for i in issues if i.id not in existing_ids]
 
@@ -732,11 +1028,6 @@ def cmd_diagnose(args):
     }
     state.convergence_history.append(convergence_point)
     save_state(state)
-
-    # Write issues to file
-    issues_path = os.path.join(diag_dir, "issues.json")
-    with open(issues_path, "w") as f:
-        json.dump([asdict(i) for i in issues], f, indent=2)
 
     # Print summary
     print(f"\nIssues found: {len(issues)} ({len(new_issues)} new)")
@@ -1150,21 +1441,31 @@ def main():
     p_init = subparsers.add_parser("init", help="Initialize bakeoff session")
     p_init.add_argument("--pool", required=True, help="Path to repo pool")
     p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
+    p_init.add_argument("--resume", action="store_true",
+                         help="Resume the most recent existing session instead of creating a new one")
     p_init.add_argument("--force", action="store_true",
-                         help="Create a new session even if one already exists")
+                         help="(deprecated, now default behavior) Create a new session")
 
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
     p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
+    p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection and size filter)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run
     p_run = subparsers.add_parser("run", help="Run hypergumbo on cohort")
     p_run.add_argument("--workdir", help="Override workdir")
+    p_run.add_argument("--all", action="store_true",
+                        help="Run all cohorts that have metadata but no output yet (batch mode)")
+    p_run.add_argument("--some", type=int, metavar="N",
+                        help="Run up to N unanalyzed cohorts (like --all but capped)")
 
     # diagnose
     p_diag = subparsers.add_parser("diagnose", help="Diagnose issues")
     p_diag.add_argument("--workdir", help="Override workdir")
+    p_diag.add_argument("--all", action="store_true", help="Diagnose all cohorts (default: current only)")
+    p_diag.add_argument("--some", type=int, metavar="N",
+                        help="Diagnose up to N cohorts (latest N, like --all but capped)")
 
     # status
     p_status = subparsers.add_parser("status", help="Show session status")
@@ -1178,6 +1479,10 @@ def main():
     # cycle
     p_cycle = subparsers.add_parser("cycle", help="Run full cycle")
     p_cycle.add_argument("--workdir", help="Override workdir")
+    p_cycle.add_argument("--all", action="store_true",
+                        help="Run + diagnose all unanalyzed cohorts (batch mode)")
+    p_cycle.add_argument("--some", type=int, metavar="N",
+                        help="Run + diagnose up to N unanalyzed cohorts")
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan repo pool")

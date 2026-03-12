@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 r"""LaTeX analyzer using tree-sitter.
 
 This module provides static analysis of LaTeX documents to extract

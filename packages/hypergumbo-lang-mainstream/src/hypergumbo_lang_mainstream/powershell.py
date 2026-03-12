@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PowerShell analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse PowerShell files and extract:
@@ -36,7 +37,6 @@ PowerShell-Specific Considerations
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -64,11 +64,6 @@ PASS_ID = make_pass_id("powershell")
 def find_powershell_files(repo_root: Path) -> Iterator[Path]:
     """Yield all PowerShell files in the repository."""
     yield from find_files(repo_root, ["*.ps1", "*.psm1", "*.psd1"])
-
-
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:powershell:{uuid.uuid4().hex[:12]}"
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -200,8 +195,7 @@ def _process_import_module(
             if child.type == "generic_token":
                 module_text = node_text(child, source).strip()
                 if module_text and not module_text.startswith("-"):
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=make_file_id("powershell", file_path),
                         dst=f"powershell:?:?:{module_text}:module",
                         edge_type="imports",
@@ -226,8 +220,7 @@ def _process_using_command(
         ]
         if len(tokens) >= 2 and tokens[0].lower() == "module":
             module_name = tokens[1]
-            edges.append(Edge(
-                id=_make_edge_id(),
+            edges.append(Edge.create(
                 src=make_file_id("powershell", file_path),
                 dst=f"powershell:?:?:{module_name}:module",
                 edge_type="imports",
@@ -279,8 +272,10 @@ def _extract_powershell_edges(
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
+    module_symbol: Optional[Symbol] = None,
 ) -> None:
     """Extract edges from a parsed PowerShell file (pass 2)."""
+    _caller_path = str(file_path)
     for node in iter_tree(tree.root_node):
         if node.type == "command":
             command_name_node = find_child_by_type(node, "command_name")
@@ -292,11 +287,11 @@ def _extract_powershell_edges(
                 elif command_name.lower() == "using":
                     _process_using_command(node, source, file_path, edges)
                 else:
-                    # Check if inside a function
-                    caller = _find_enclosing_function_powershell(node, source, local_symbols)
+                    # Check if inside a function, fall back to module symbol
+                    caller = _find_enclosing_function_powershell(node, source, local_symbols) or module_symbol
                     if caller:
                         # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(command_name)
+                        lookup_result = resolver.lookup(command_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence
@@ -305,8 +300,7 @@ def _extract_powershell_edges(
                             dst_id = f"powershell:external:{command_name}:function"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=_make_edge_id(),
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",
@@ -340,6 +334,21 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
         symbol_registry: dict[str, Symbol] = {}
 
+        # Create module-level symbol for top-level code attribution
+        module_name = file_path.name
+        end_line = tree.root_node.end_point[0] + 1
+        module_sym = Symbol(
+            id=make_symbol_id("powershell", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
+            name=f"<module:{module_name}>",
+            kind="module",
+            language="powershell",
+            path=rel_path,
+            span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        analysis.symbols.append(module_sym)
+
         _extract_powershell_symbols(
             tree, source, rel_path, run.execution_id,
             analysis.symbols, symbol_registry,
@@ -367,8 +376,11 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a PowerShell file."""
         edges: list[Edge] = []
+        mod_sym_name = f"<module:{file_path.name}>"
+        module_symbol = global_symbols.get(mod_sym_name)
         _extract_powershell_edges(
             tree, source, rel_path, edges, local_symbols, resolver,
+            module_symbol=module_symbol,
         )
         return edges
 

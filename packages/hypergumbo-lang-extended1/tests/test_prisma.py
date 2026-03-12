@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Prisma analyzer.
 
 Tests for the tree-sitter-based Prisma schema analyzer, verifying model extraction,

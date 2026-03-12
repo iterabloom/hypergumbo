@@ -135,14 +135,22 @@ def _make_tracker_set(tmp_path: Path) -> TrackerSet:
 async def _wait_for_table(pilot: Any, app: Any, max_rounds: int = 50) -> None:
     """Wait for the DataTable to be populated.
 
-    Coverage tracing slows Textual's event loop, so on_mount may not have
-    completed by the time run_test yields the pilot. This helper retries
-    pilot.pause() until the table has rows or max_rounds is reached.
+    Coverage tracing and CI load can delay Textual's compose/mount cycle,
+    so ``#item-table`` may not exist yet when run_test yields the pilot.
+    This helper retries with ``NoMatches`` tolerance until the widget
+    appears and has rows, or max_rounds is reached.
     """
-    table = app.query_one("#item-table")
+    from textual.css.query import NoMatches
+
+    table = None
     for _ in range(max_rounds):
         await pilot.pause()
-        if table.row_count > 0:
+        if table is None:
+            try:
+                table = app.query_one("#item-table")
+            except NoMatches:
+                continue
+        if table is not None and table.row_count > 0:
             return
     # If we get here, the table still has no rows — let the assertion fail naturally
 
@@ -1173,11 +1181,24 @@ class TestCmdTui:
 
 
 async def _wait_for_std_table(pilot: Any, app: Any, max_rounds: int = 50) -> None:
-    """Wait for the standard DataTable to be populated."""
-    table = app.query_one("#std-table")
+    """Wait for the standard DataTable to be populated.
+
+    Coverage tracing and CI load can delay Textual's compose/mount cycle,
+    so ``#std-table`` may not exist yet when run_test yields the pilot.
+    This helper retries ``query_one`` with ``NoMatches`` tolerance until
+    the widget appears and has rows.
+    """
+    from textual.css.query import NoMatches
+
+    table = None
     for _ in range(max_rounds):
         await pilot.pause()
-        if table.row_count > 0:
+        if table is None:
+            try:
+                table = app.query_one("#std-table")
+            except NoMatches:
+                continue
+        if table is not None and table.row_count > 0:
             return
 
 

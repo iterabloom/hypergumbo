@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for HLSL (DirectX shader) analysis pass.
 
 Tests verify that the HLSL analyzer correctly extracts:

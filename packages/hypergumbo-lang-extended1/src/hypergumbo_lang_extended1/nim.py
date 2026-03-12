@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Nim language analysis pass using tree-sitter.
 
 Detects:
@@ -31,7 +32,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -221,8 +221,7 @@ def _extract_import_edges(
             if child.type == "identifier":
                 import_name = node_text(child, source)
                 edges.append(
-                    Edge(
-                        id=f"edge:nim:{uuid.uuid4().hex[:12]}",
+                    Edge.create(
                         src=file_stable_id,
                         dst=f"nim:?:{import_name}:module",
                         edge_type="imports",
@@ -237,8 +236,7 @@ def _extract_import_edges(
                     if subchild.type == "identifier":
                         import_name = node_text(subchild, source)
                         edges.append(
-                            Edge(
-                                id=f"edge:nim:{uuid.uuid4().hex[:12]}",
+                            Edge.create(
                                 src=file_stable_id,
                                 dst=f"nim:?:{import_name}:module",
                                 edge_type="imports",
@@ -372,8 +370,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
                             dst_id = f"nim:external:{target_name}:function"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=f"edge:nim:{uuid.uuid4().hex[:12]}",
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gitignore file analyzer using tree-sitter.
 
 .gitignore files specify intentionally untracked files that Git should ignore.

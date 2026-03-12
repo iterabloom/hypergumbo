@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for sparql.py analyzer.
 
 Tests specific branch paths in the SPARQL analyzer that may not be covered

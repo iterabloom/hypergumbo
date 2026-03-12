@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """XML configuration analysis pass using tree-sitter-xml.
 
 This analyzer parses XML configuration files and extracts:
@@ -197,8 +198,7 @@ def _process_maven_dependency(
 
         # Create dependency edge from project to dependency
         if project_id:
-            edge = Edge(
-                id=_make_edge_id(project_id, symbol_id, "depends_on"),
+            edge = Edge.create(
                 src=project_id,
                 dst=symbol_id,
                 edge_type="depends_on",
@@ -208,6 +208,31 @@ def _process_maven_dependency(
                 evidence_type="static",
             )
             edges.append(edge)
+
+
+def _java_class_to_path(class_name: str) -> str:
+    """Convert a fully qualified Java class name to a file path.
+
+    e.g. ``com.example.Main`` → ``com/example/Main.java``
+    """
+    return class_name.replace(".", "/") + ".java"
+
+
+def _find_elements_recursive(
+    node: "tree_sitter.Node", source: bytes, tag_name: str,
+) -> list:
+    """Find elements with the given tag name anywhere in the subtree."""
+    results = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == "element":
+            if _get_element_name(current, source) == tag_name:
+                results.append(current)
+        for child in current.children:
+            if child.type in ("content", "element"):
+                stack.append(child)
+    return results
 
 
 def _process_maven_pom(
@@ -280,6 +305,26 @@ def _process_maven_pom(
     for deps_elem in _find_child_elements(project_node, source, "dependencies"):
         for dep_elem in _find_child_elements(deps_elem, source, "dependency"):
             _process_maven_dependency(dep_elem, source, rel_path, symbols, edges, project_id)
+
+    # Extract <mainClass> from plugin configurations.
+    # Appears in maven-jar-plugin (archive/manifest/mainClass),
+    # exec-maven-plugin (configuration/mainClass), and Spring Boot plugin.
+    src_id = project_id or make_symbol_id("xml", rel_path, 1, 1, "project", "module")
+    for main_class_elem in _find_elements_recursive(project_node, source, "mainClass"):
+        class_name = _get_text_content(main_class_elem, source)
+        if class_name:
+            target_path = _java_class_to_path(class_name)
+            line = main_class_elem.start_point[0] + 1
+            edges.append(
+                Edge.create(
+                    src=src_id,
+                    dst=target_path,
+                    edge_type="defines_target",
+                    line=line,
+                    confidence=1.0,
+                    origin=PASS_ID,
+                )
+            )
 
 
 def _process_android_manifest(

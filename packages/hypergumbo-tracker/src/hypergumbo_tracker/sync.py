@@ -2,7 +2,7 @@
 """Streamlined PR workflow for tracker-only changes.
 
 Provides ``htrac sync`` — a purpose-built command that pushes tracker ops
-files via a lightweight PR workflow: branch → commit → push → poll CI →
+files via a lightweight PR workflow: plumbing commit → push → poll CI →
 merge → cleanup.  Completes in ~45-60 seconds vs ~3.5 minutes for the
 general-purpose ``auto-pr`` script.
 
@@ -12,12 +12,21 @@ configurable threshold of accumulated changes.
 
 Design:
 - All git calls go through ``_git()`` for testability (single mock point).
+  ``_git()`` accepts an optional ``env`` dict for plumbing calls that need
+  custom environment variables (e.g. ``GIT_INDEX_FILE``).
 - All Forgejo API calls go through ``_api_call()`` using only stdlib
   ``urllib.request`` (no ``requests`` dependency).
 - Gate files (``.git/TRACKER_SYNC_PENDING``) provide mutual exclusion with
   ``auto-pr`` (which uses ``.git/PR_PENDING``).
 - Preflight checks fail fast on the first problem (sequential, short-circuit).
-- ``do_sync()`` uses try/finally for gate file and branch cleanup.
+- ``do_sync()`` uses git plumbing (read-tree/write-tree/commit-tree) with a
+  temporary index file to build the sync commit on top of ``origin/dev``
+  *without* checking out a branch.  This is critical: the editable install
+  means the Python interpreter uses whatever branch is checked out, so
+  switching branches during a running bakeoff or test would break things.
+  The plumbing approach builds the commit in a separate index, creates a
+  branch ref with ``update-ref``, pushes, then cleans up — the working tree
+  never changes.  try/finally ensures gate file and temp index cleanup.
 
 See the plan document for the full design specification.
 """
@@ -58,6 +67,7 @@ class PreflightResult:
         api_base: Forgejo API base URL for this repo.
         forgejo_user: Forgejo username from environment.
         forgejo_token: Forgejo API token from environment.
+        push_remote: Git remote to push to (``origin`` or ``selfh`` during failover).
     """
 
     ok: bool
@@ -69,6 +79,7 @@ class PreflightResult:
     api_base: str = ""
     forgejo_user: str = ""
     forgejo_token: str = ""
+    push_remote: str = "origin"
 
 
 @dataclass
@@ -126,6 +137,60 @@ def _load_env(repo_root: Path) -> dict[str, str]:
     return result
 
 
+@dataclass
+class _FailoverState:
+    """CI failover state parsed from ``.git/CI_FAILOVER_ACTIVE``."""
+
+    active: bool = False
+    api_base: str = ""
+    push_remote: str = "origin"
+    token: str = ""
+    user: str = ""
+
+
+def _detect_failover(git_dir: Path, env_vars: dict[str, str]) -> _FailoverState:
+    """Detect active CI failover and return override state.
+
+    Reads the ``.git/CI_FAILOVER_ACTIVE`` JSON flag file written by
+    ``ci-failover engage``. When active, overrides API base, credentials,
+    and push remote to target the self-hosted Forgejo instance.
+    """
+    flag_file = git_dir / "CI_FAILOVER_ACTIVE"
+    if not flag_file.is_file():
+        return _FailoverState()
+
+    try:
+        data = json.loads(flag_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return _FailoverState()
+
+    local_url = data.get("selfhosted_forgejo_url", "")
+    local_repo = data.get("selfhosted_forgejo_repo", "")
+    if not local_url or not local_repo:
+        return _FailoverState()
+
+    token = (
+        env_vars.get("SELFHOSTED_FORGEJO_TOKEN")
+        or os.environ.get("SELFHOSTED_FORGEJO_TOKEN", "")
+        or env_vars.get("FORGEJO_TOKEN")
+        or os.environ.get("FORGEJO_TOKEN", "")
+    )
+    user = (
+        env_vars.get("SELFHOSTED_FORGEJO_USER")
+        or os.environ.get("SELFHOSTED_FORGEJO_USER", "")
+        or env_vars.get("FORGEJO_USER")
+        or os.environ.get("FORGEJO_USER", "")
+    )
+
+    return _FailoverState(
+        active=True,
+        api_base=f"{local_url}/api/v1/repos/{local_repo}",
+        push_remote="selfh",
+        token=token,
+        user=user,
+    )
+
+
 def _detect_api_base(repo_root: Path) -> str:
     """Extract Forgejo API base URL from git remote ``origin``.
 
@@ -162,6 +227,7 @@ def _git(
     repo_root: Path,
     *args: str,
     check: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command and return the result.
 
@@ -171,16 +237,21 @@ def _git(
         repo_root: Working directory for the git command.
         *args: Git subcommand and arguments.
         check: If True, raise CalledProcessError on non-zero exit.
+        env: Extra environment variables merged with os.environ.
 
     Returns:
         CompletedProcess with stdout/stderr captured as text.
     """
+    run_env = None
+    if env is not None:
+        run_env = {**os.environ, **env}
     return subprocess.run(  # noqa: S603  # nosec B603, B607
         ["git", *args],  # noqa: S607
         capture_output=True,
         text=True,
         cwd=str(repo_root),
         check=check,
+        env=run_env,
     )
 
 
@@ -480,18 +551,34 @@ def _sum_added_lines(numstat_output: str) -> int:
 
 
 def pending_sync_lines(repo_root: Path) -> int:
-    """Count pending tracker ops lines (staged + unstaged + untracked).
+    """Count pending tracker ops lines (not yet synced to origin/dev).
 
-    Uses ``git diff HEAD --numstat`` for tracked file changes, plus
-    ``git ls-files --others --exclude-standard`` for new untracked ops
-    files (counts their line count directly).
+    Diffs working tree ops against ``origin/dev`` (the sync target) rather
+    than ``HEAD``.  This prevents re-syncing ops that were already merged
+    to ``origin/dev`` by a previous ``do_sync()`` call — the plumbing
+    approach leaves ops dirty relative to the local branch HEAD, which
+    caused duplicate sync PRs when the function diffed against HEAD.
+
+    Falls back to ``HEAD`` when ``origin/dev`` doesn't exist (fresh clone,
+    disconnected state, or non-standard remote setup).
+
+    Also counts untracked ops files (new files not yet in any commit).
 
     Returns 0 if git fails or no changes exist.
     """
     total = 0
 
-    # 1. Tracked changes (staged + unstaged) relative to HEAD
-    numstat_args = ["diff", "HEAD", "--numstat", "--"]
+    # 0. Determine diff base: prefer origin/dev (the sync target),
+    #    fall back to HEAD if origin/dev doesn't exist.
+    diff_base = "HEAD"
+    rev_result = _git(
+        repo_root, "rev-parse", "--verify", "origin/dev", check=False,
+    )
+    if rev_result.returncode == 0 and rev_result.stdout.strip():
+        diff_base = "origin/dev"
+
+    # 1. Tracked changes (staged + unstaged) relative to diff base
+    numstat_args = ["diff", diff_base, "--numstat", "--"]
     numstat_args.extend(_OPS_PATHS)
     result = _git(repo_root, *numstat_args, check=False)
     if result.returncode == 0 and result.stdout.strip():
@@ -630,6 +717,16 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     forgejo_user = env_vars.get("FORGEJO_USER") or os.environ.get(
         "FORGEJO_USER", ""
     )
+
+    # 6a. Failover detection — override credentials, API base, push remote
+    failover = _detect_failover(git_dir, env_vars)
+    push_remote = "origin"
+    if failover.active:
+        forgejo_token = failover.token
+        forgejo_user = failover.user
+        push_remote = failover.push_remote
+        _log("[SELF-HOSTED] Failover active — targeting self-hosted Forgejo")
+
     if not forgejo_token:
         return PreflightResult(
             ok=False,
@@ -650,14 +747,20 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         )
 
     # 8. Remote exists
-    remote_result = _git(repo_root, "remote", "get-url", "origin", check=False)
+    target_remote = push_remote
+    remote_result = _git(
+        repo_root, "remote", "get-url", target_remote, check=False,
+    )
     if remote_result.returncode != 0:
         return PreflightResult(
-            ok=False, error="no remote 'origin' configured"
+            ok=False, error=f"no remote '{target_remote}' configured",
         )
 
-    # 9. API base
-    api_base = _detect_api_base(repo_root)
+    # 9. API base — failover overrides origin-based detection
+    if failover.active:
+        api_base = failover.api_base
+    else:
+        api_base = _detect_api_base(repo_root)
     if not api_base:
         return PreflightResult(
             ok=False,
@@ -673,6 +776,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         api_base=api_base,
         forgejo_user=forgejo_user,
         forgejo_token=forgejo_token,
+        push_remote=push_remote,
     )
 
 
@@ -683,10 +787,12 @@ def do_sync(
     ci_poll_interval: int = 10,
     ci_timeout: int = 300,
 ) -> SyncResult:
-    """Execute the full sync workflow: branch → commit → push → poll → merge.
+    """Execute the full sync workflow: commit → push → poll → merge.
 
-    Uses try/finally to ensure gate file cleanup and branch restoration
-    regardless of errors or timeouts.
+    Uses git plumbing (read-tree/write-tree/commit-tree) with a temporary
+    index to build the sync commit on top of origin/dev without checking
+    out a branch.  This prevents feature branch code from leaking into the
+    tracker sync PR.  try/finally ensures gate file and temp index cleanup.
 
     Args:
         repo_root: Git repository root.
@@ -706,40 +812,111 @@ def do_sync(
     gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
     file_count = len(preflight.changed_files)
 
+    # Temporary index file for plumbing — avoids checkout, keeps working
+    # tree on the feature branch.  Build the commit on top of origin/dev
+    # so the PR diff contains *only* tracker ops, not feature branch code.
+    tmp_index = str(preflight.git_dir / "tmp-sync-index")
+    idx_env = {"GIT_INDEX_FILE": tmp_index}
+
     try:
-        # 1. Create branch
-        result = _git(repo_root, "checkout", "-b", sync_branch, check=False)
-        if result.returncode != 0:
+        # 0a. Create gate file immediately to prevent concurrent syncs.
+        # Previously this was done at step 8 (after commit creation),
+        # leaving a window where concurrent _maybe_auto_sync calls could
+        # all pass preflight and create duplicate PRs.
+        gate_file.write_text("sync\n")
+
+        # 0b. Fetch latest base branch (non-fatal if offline — we'll use
+        #     the local ref which may be slightly stale but still correct).
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
+
+        # 1. Resolve base ref
+        base_ref = f"{preflight.push_remote}/{base_branch}"
+        rev_result = _git(
+            repo_root, "rev-parse", base_ref, check=False,
+        )
+        if rev_result.returncode != 0:
             return SyncResult(
                 success=False,
-                error=f"failed to create branch {sync_branch}: {result.stderr.strip()}",
+                error=f"cannot resolve {base_ref}: {rev_result.stderr.strip()}",
+                exit_code=1,
+            )
+        base_sha = rev_result.stdout.strip()
+
+        # 2. Populate temporary index from base tree
+        read_result = _git(
+            repo_root, "read-tree", base_sha,
+            check=False, env=idx_env,
+        )
+        if read_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"read-tree failed: {read_result.stderr.strip()}",
                 exit_code=1,
             )
 
-        # 2. Stage tracker files
+        # 3. Stage tracker ops into the temporary index
         stage_args = ["add", "--"]
         stage_args.extend(_TRACKER_PATHS)
-        _git(repo_root, *stage_args, check=False)
+        _git(repo_root, *stage_args, check=False, env=idx_env)
 
-        # 3. Commit with sign-off (disable GPG signing — tracker commits
-        # are machine-generated metadata, not code changes)
-        commit_msg = f"tracker: sync {file_count} file(s)"
+        # 4. Write tree from the temporary index
+        write_result = _git(
+            repo_root, "write-tree",
+            check=False, env=idx_env,
+        )
+        if write_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"write-tree failed: {write_result.stderr.strip()}",
+                exit_code=1,
+            )
+        tree_sha = write_result.stdout.strip()
+
+        # 5. Build sign-off trailer (mirrors git commit -s)
+        name_r = _git(repo_root, "config", "user.name", check=False)
+        email_r = _git(repo_root, "config", "user.email", check=False)
+        signoff = ""
+        if name_r.returncode == 0 and email_r.returncode == 0:
+            signoff = (
+                f"\n\nSigned-off-by: "
+                f"{name_r.stdout.strip()} <{email_r.stdout.strip()}>"
+            )
+
+        # 6. Create commit object (parent = base_sha)
+        commit_msg = f"tracker: sync {file_count} file(s){signoff}"
         commit_result = _git(
-            repo_root, "-c", "commit.gpgSign=false",
-            "commit", "-s", "-m", commit_msg, check=False
+            repo_root,
+            "-c", "commit.gpgSign=false",
+            "commit-tree", tree_sha, "-p", base_sha, "-m", commit_msg,
+            check=False,
         )
         if commit_result.returncode != 0:
             return SyncResult(
                 success=False,
-                error=f"commit failed: {commit_result.stderr.strip()}",
+                error=f"commit-tree failed: {commit_result.stderr.strip()}",
+                exit_code=1,
+            )
+        commit_sha = commit_result.stdout.strip()
+        # 7. Create branch ref pointing to the new commit
+        ref_name = f"refs/heads/{sync_branch}"
+        ref_result = _git(
+            repo_root, "update-ref", ref_name, commit_sha,
+            check=False,
+        )
+        if ref_result.returncode != 0:
+            return SyncResult(
+                success=False,
+                error=f"update-ref failed: {ref_result.stderr.strip()}",
                 exit_code=1,
             )
 
-        # 4. Create gate file
-        gate_file.write_text("sync\n")
+        # 8. (Gate file already created at step 0a.)
 
-        # 5. Push with retries
-        push_ref = f"HEAD:refs/for/{base_branch}/{sync_branch}"
+        # 9. Push with retries
+        push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
         push_title = f"tracker: sync {file_count} file(s)"
         push_success = False
         cred_helper = (
@@ -751,7 +928,7 @@ def do_sync(
             push_result = _git(
                 repo_root,
                 "-c", f"credential.helper={cred_helper}",
-                "push", "origin", push_ref,
+                "push", preflight.push_remote, push_ref,
                 "-o", f"title={push_title}",
                 "-o", "description=Automated tracker data sync",
                 check=False,
@@ -769,7 +946,7 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 6. Find PR (with brief initial delay)
+        # 10. Find PR (with brief initial delay)
         time.sleep(2)
         pr_info = _find_open_pr(
             preflight.api_base,
@@ -785,10 +962,10 @@ def do_sync(
             )
         pr_num, head_sha = pr_info
 
-        # 7. Update gate file with PR number
+        # 11. Update gate file with PR number
         gate_file.write_text(f"{pr_num}\n")
 
-        # 8. Poll CI
+        # 12. Poll CI
         ci_result = _poll_ci(
             preflight.api_base,
             preflight.forgejo_token,
@@ -811,7 +988,69 @@ def do_sync(
                 exit_code=2,
             )
 
-        # 9. Merge PR (with retries for status check propagation)
+        # 13. Rebase if dev advanced during CI polling
+        # Re-fetch origin/dev; if it moved since step 1, rebuild the
+        # sync commit on the new base and force-push so the PR is
+        # mergeable.  This prevents "head behind base branch" 405s.
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
+        new_base_result = _git(
+            repo_root, "rev-parse", base_ref, check=False,
+        )
+        new_base_sha = (
+            new_base_result.stdout.strip()
+            if new_base_result.returncode == 0
+            else base_sha
+        )
+        if new_base_sha != base_sha:
+            _log(
+                f"dev advanced during CI "
+                f"({base_sha[:8]}→{new_base_sha[:8]}), rebasing"
+            )
+            # Rebuild: read new base tree → stage ops → write → commit
+            rb_read = _git(
+                repo_root, "read-tree", new_base_sha,
+                check=False, env=idx_env,
+            )
+            if rb_read.returncode == 0:
+                _git(
+                    repo_root, "add", "--", *_TRACKER_PATHS,
+                    check=False, env=idx_env,
+                )
+                rb_tree = _git(
+                    repo_root, "write-tree",
+                    check=False, env=idx_env,
+                )
+                if rb_tree.returncode == 0:
+                    rb_commit = _git(
+                        repo_root,
+                        "-c", "commit.gpgSign=false",
+                        "commit-tree", rb_tree.stdout.strip(),
+                        "-p", new_base_sha, "-m", commit_msg,
+                        check=False,
+                    )
+                    if rb_commit.returncode == 0:
+                        new_sha = rb_commit.stdout.strip()
+                        _git(
+                            repo_root, "update-ref",
+                            ref_name, new_sha,
+                            check=False,
+                        )
+                        # Force-push the rebased branch
+                        _git(
+                            repo_root,
+                            "-c", f"credential.helper={cred_helper}",
+                            "push", "--force",
+                            preflight.push_remote, push_ref,
+                            check=False,
+                        )
+                        _log("rebased and force-pushed sync branch")
+                        # Brief delay for Forgejo to process
+                        time.sleep(3)
+
+        # 14. Merge PR (with retries for status check propagation)
         # After CI passes, the required commit status may take a few
         # seconds to propagate.  Retry the merge cascade on 405 responses.
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
@@ -840,9 +1079,9 @@ def do_sync(
             )
 
         # Construct PR URL
-        host_match = re.match(r"https?://([^/]+)/", preflight.api_base)
-        host = host_match.group(1) if host_match else "codeberg.org"
-        pr_url = f"https://{host}/{repo_slug}/pulls/{pr_num}"
+        base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
+        base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
+        pr_url = f"{base_url}/{repo_slug}/pulls/{pr_num}"
 
         return SyncResult(
             success=True,
@@ -853,16 +1092,26 @@ def do_sync(
         )
 
     finally:
-        # 10. Cleanup
+        # Cleanup — plumbing approach never leaves the original branch,
+        # so ops files remain in the working tree regardless of outcome.
         # Remove gate file
         if gate_file.exists():
             gate_file.unlink()
 
-        # Restore original branch
-        _git(repo_root, "checkout", preflight.original_branch, check=False)
+        # Remove temporary index file
+        tmp_index_path = Path(tmp_index)
+        if tmp_index_path.exists():
+            tmp_index_path.unlink()
 
-        # Pull latest (non-fatal)
-        _git(repo_root, "pull", "origin", base_branch, check=False)
+        # Fetch latest remote ref (non-fatal).  We deliberately do NOT
+        # ``git pull`` here because that merges into the currently checked-out
+        # branch, which is likely a feature branch — not ``base_branch``.
+        # A fetch is sufficient: it updates ``origin/dev`` so the next
+        # ``do_sync`` or ``auto-pr`` sees the latest base.
+        _git(
+            repo_root, "fetch", preflight.push_remote, base_branch,
+            check=False,
+        )
 
-        # Delete sync branch (non-fatal)
+        # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)

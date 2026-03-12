@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lua analysis pass using tree-sitter-lua.
 
 This analyzer uses tree-sitter to parse Lua files and extract:
@@ -458,6 +459,7 @@ def _extract_edges_from_file(
             from the file→module path mapping.
     """
     edges: list[Edge] = []
+    _caller_path = str(file_path)
     file_id = make_file_id("lua", file_path)
 
     # Build local symbol map for this file (name -> symbol)
@@ -579,7 +581,7 @@ def _extract_edges_from_file(
                         if receiver_name and receiver_name in var_types:
                             receiver_type = var_types[receiver_name]
                             qualified_name = f"{receiver_type}.{callee_name}"
-                            typed_lookup = resolver.lookup(qualified_name)
+                            typed_lookup = resolver.lookup(qualified_name, caller_path=_caller_path)
                             if typed_lookup.found:
                                 confidence = CONFIDENCE_TYPED_METHOD_CALL * typed_lookup.confidence
                                 edge = Edge.create(
@@ -597,7 +599,7 @@ def _extract_edges_from_file(
 
                         if not typed_resolved:
                             # Fallback: name-only resolution
-                            lookup_result = resolver.lookup(callee_name)
+                            lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                             callee = lookup_result.symbol if lookup_result.found else None
                             base = CONFIDENCE_METHOD_CALL
                             confidence = base * lookup_result.confidence if lookup_result.found else 0.50
@@ -631,7 +633,7 @@ def _extract_edges_from_file(
                         # Dot call without require alias — try qualified name
                         if receiver_name:
                             qualified = f"{receiver_name}.{callee_name}"
-                            lookup_result = resolver.lookup(qualified)
+                            lookup_result = resolver.lookup(qualified, caller_path=_caller_path)
                             if lookup_result.found:
                                 confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence
                                 edge = Edge.create(
@@ -660,7 +662,7 @@ def _extract_edges_from_file(
                                 edges.append(edge)
                     else:
                         # Direct call: func(args)
-                        lookup_result = resolver.lookup(callee_name)
+                        lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                         callee = lookup_result.symbol if lookup_result.found else None
                         confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence if lookup_result.found else 0.50
                         if callee:

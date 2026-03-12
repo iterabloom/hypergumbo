@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Spring Framework patterns (ADR-0003 v1.0.x)
 #
 # Matches Spring Boot/Spring MVC annotations for controllers, routes, services.

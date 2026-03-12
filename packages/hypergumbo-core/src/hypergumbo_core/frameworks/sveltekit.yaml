@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # SvelteKit framework patterns (ADR-0003)
 #
 # SvelteKit is a meta-framework for Svelte, providing file-based routing,

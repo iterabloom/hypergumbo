@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo v1.0 Validation Gates (Historical)
 
 > **Note**: This document archives the original success criteria and validation gates planned for Hypergumbo v1.0. These were aspirational metrics defined before launch. The project shipped successfully without formal A/B testing or independent evaluation protocols.

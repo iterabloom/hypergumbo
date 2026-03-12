@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """IPC linker for detecting inter-process communication patterns.
 
 This linker detects IPC patterns in JavaScript/TypeScript code and creates
@@ -5,13 +6,32 @@ message_send and message_receive edges for cross-process communication.
 
 Detected Patterns
 -----------------
-Electron IPC:
+Electron IPC (renderer → main):
 - ipcRenderer.send('channel', data) -> message_send
 - ipcRenderer.invoke('channel', data) -> message_send
+- ipcRenderer.sendSync('channel', data) -> message_send
 - ipcRenderer.send(channelVar, data) -> message_send (variable channel)
+
+Electron IPC (main → renderer):
+- webContents.send('channel', data) -> message_send
+- event.sender.send('channel', data) -> message_send
+
+Electron IPC (main-side receive):
 - ipcMain.on('channel', handler) -> message_receive
 - ipcMain.handle('channel', handler) -> message_receive
+- ipcMain.handleOnce('channel', handler) -> message_receive
 - ipcMain.handle(channelVar, handler) -> message_receive (variable channel)
+
+Electron IPC (renderer-side receive):
+- ipcRenderer.on('channel', handler) -> message_receive
+- ipcRenderer.once('channel', handler) -> message_receive
+
+Electron contextBridge (preload → renderer):
+- contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
+  Detects bridge definitions, then scans for window.ns.method() calls in renderer
+  files. Creates bridge_invokes edges from renderer call sites to the IPC send
+  symbols in the preload file, enabling end-to-end traceability from UI code through
+  the preload bridge into the main process handler.
 
 Web Workers / postMessage:
 - worker.postMessage(data) -> message_send
@@ -34,12 +54,17 @@ How It Works
 2. Scan each file for IPC patterns using regex
 3. Extract channel names (literals) or variable names from patterns
 4. Create edges linking files with matching channels/variables
+5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts,
+   then scan other files for window.namespace.method() calls and create
+   bridge_invokes edges linking those calls to the IPC send symbols
 
 Why This Design
 ---------------
 - Regex-based detection is fast and doesn't require tree-sitter
 - Channel-based matching enables cross-file IPC graph construction
 - Variable detection catches patterns missed by literal-only matching
+- contextBridge resolution closes the "last mile" gap where renderer code
+  calls a bridge method but the linker can't see through to the IPC channel
 - Separate linker keeps language analyzers focused on their language
 """
 from __future__ import annotations
@@ -98,14 +123,29 @@ _CHANNEL_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
 
 # Regex patterns for IPC detection
 # Electron IPC send patterns - matches both literals and variables
+# Covers: ipcRenderer.send, ipcRenderer.invoke, ipcRenderer.sendSync
 ELECTRON_SEND_PATTERN = re.compile(
-    rf"ipcRenderer\s*\.\s*(send|invoke)\s*\(\s*{_CHANNEL_ARG}",
+    rf"ipcRenderer\s*\.\s*(send|invoke|sendSync)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
 # Electron IPC receive patterns - matches both literals and variables
+# Covers: ipcMain.on, ipcMain.handle, ipcMain.handleOnce
 ELECTRON_RECEIVE_PATTERN = re.compile(
-    rf"ipcMain\s*\.\s*(on|handle)\s*\(\s*{_CHANNEL_ARG}",
+    rf"ipcMain\s*\.\s*(on|handle|handleOnce)\s*\(\s*{_CHANNEL_ARG}",
+    re.MULTILINE,
+)
+
+# Electron main-to-renderer push: webContents.send('channel', data)
+# Covers: win.webContents.send, event.sender.send, <expr>.webContents.send
+WEBCONTENTS_SEND_PATTERN = re.compile(
+    rf"(?:webContents|sender)\s*\.\s*send\s*\(\s*{_CHANNEL_ARG}",
+    re.MULTILINE,
+)
+
+# Electron renderer-side receive: ipcRenderer.on('channel', handler)
+ELECTRON_RENDERER_RECEIVE_PATTERN = re.compile(
+    rf"ipcRenderer\s*\.\s*(on|once)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
@@ -120,6 +160,64 @@ MESSAGE_LISTENER_PATTERN = re.compile(
     r"addEventListener\s*\(\s*['\"]message['\"]",
     re.MULTILINE,
 )
+
+# contextBridge.exposeInMainWorld('namespace', { ... }) pattern
+# Captures the namespace (group 1) and the entire object body (group 2).
+# Uses DOTALL so the object body can span multiple lines.
+_CONTEXT_BRIDGE_PATTERN = re.compile(
+    r"""contextBridge\s*\.\s*exposeInMainWorld\s*\(\s*"""
+    r"""['"](\w+)['"]\s*,\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}""",
+    re.DOTALL,
+)
+
+# Inside a bridge object body, match method definitions that call ipcRenderer:
+#   methodName: (...) => ipcRenderer.invoke('channel', ...)
+#   methodName(...) { return ipcRenderer.send('channel', ...) }
+_BRIDGE_METHOD_PATTERN = re.compile(
+    r"""(\w+)\s*(?::\s*(?:\([^)]*\)\s*=>|function\s*\([^)]*\)\s*\{)|"""
+    r"""\([^)]*\)\s*\{)\s*"""
+    r"""(?:return\s+)?ipcRenderer\s*\.\s*(send|invoke|sendSync)\s*\(\s*"""
+    r"""['"]([^'"]+)['"]""",
+)
+
+
+def detect_context_bridge_wrappers(
+    source: bytes,
+) -> list[tuple[str, dict[str, tuple[str, str]]]]:
+    """Detect contextBridge.exposeInMainWorld wrapper definitions.
+
+    Parses preload scripts for patterns like::
+
+        contextBridge.exposeInMainWorld('api', {
+            openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+            saveFile: (data) => ipcRenderer.send('save-file', data),
+        });
+
+    Args:
+        source: Source code bytes.
+
+    Returns:
+        List of (namespace, methods_dict) tuples, where methods_dict maps
+        method_name -> (channel_name, ipc_method).
+    """
+    text = source.decode("utf-8", errors="replace")
+    results: list[tuple[str, dict[str, tuple[str, str]]]] = []
+
+    for bridge_match in _CONTEXT_BRIDGE_PATTERN.finditer(text):
+        namespace = bridge_match.group(1)
+        body = bridge_match.group(2)
+        methods: dict[str, tuple[str, str]] = {}
+
+        for method_match in _BRIDGE_METHOD_PATTERN.finditer(body):
+            method_name = method_match.group(1)
+            ipc_method = method_match.group(2)
+            channel = method_match.group(3)
+            methods[method_name] = (channel, ipc_method)
+
+        if methods:
+            results.append((namespace, methods))
+
+    return results
 
 
 def _extract_channel_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
@@ -176,10 +274,39 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
             "method": method,
         })
 
-    # Detect Electron ipcMain.on/handle
+    # Detect Electron ipcMain.on/handle/handleOnce
     # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_RECEIVE_PATTERN.finditer(text):
-        method = match.group(1)  # 'on' or 'handle'
+        method = match.group(1)  # 'on' or 'handle' or 'handleOnce'
+        channel, channel_type = _extract_channel_from_match(match, 2, 3)
+        line = text[:match.start()].count("\n") + 1
+        patterns.append({
+            "type": "receive",
+            "channel": channel,
+            "channel_type": channel_type,
+            "line": line,
+            "pattern_type": "electron",
+            "method": method,
+        })
+
+    # Detect Electron main-to-renderer push: webContents.send / sender.send
+    # Groups: 1=literal channel, 2=variable channel
+    for match in WEBCONTENTS_SEND_PATTERN.finditer(text):
+        channel, channel_type = _extract_channel_from_match(match, 1, 2)
+        line = text[:match.start()].count("\n") + 1
+        patterns.append({
+            "type": "send",
+            "channel": channel,
+            "channel_type": channel_type,
+            "line": line,
+            "pattern_type": "electron",
+            "method": "webcontents_send",
+        })
+
+    # Detect Electron renderer-side receive: ipcRenderer.on/once
+    # Groups: 1=method, 2=literal channel, 3=variable channel
+    for match in ELECTRON_RENDERER_RECEIVE_PATTERN.finditer(text):
+        method = match.group(1)  # 'on' or 'once'
         channel, channel_type = _extract_channel_from_match(match, 2, 3)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
@@ -378,6 +505,131 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 edge.meta = {
                     "channel": channel,
                     "channel_type": "variable" if is_variable_match else "literal",
+                }
+                edges.append(edge)
+
+    # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
+    # For each preload file with bridge definitions, scan other files for
+    # window.<namespace>.<method>() calls and create bridge_invokes edges.
+
+    # Collect bridge wrapper definitions from all scanned files
+    bridge_maps: dict[str, dict[str, tuple[str, str, str]]] = {}
+    # namespace -> { method_name: (channel, ipc_method, preload_file_path) }
+
+    file_contents: dict[str, str] = {}  # file_path -> content (cached for Phase 3)
+
+    for file_path in _find_js_files(repo_root):
+        try:
+            source = file_path.read_bytes()
+        except (OSError, IOError):
+            continue
+
+        file_str = str(file_path)
+        content = source.decode("utf-8", errors="replace")
+        file_contents[file_str] = content
+
+        wrappers = detect_context_bridge_wrappers(source)
+        for namespace, methods in wrappers:
+            if namespace not in bridge_maps:
+                bridge_maps[namespace] = {}
+            for method_name, (channel, ipc_method) in methods.items():
+                bridge_maps[namespace][method_name] = (channel, ipc_method, file_str)
+
+    # Scan all files for window.<namespace>.<method>() calls
+    seen_bridge_edges: set[tuple[str, str, str]] = set()  # (file, namespace, method)
+
+    for file_str, content in file_contents.items():
+        for namespace, method_map in bridge_maps.items():
+            # Build pattern for this namespace: window.api.methodName(
+            ns_call_pattern = re.compile(
+                rf"window\s*\.\s*{re.escape(namespace)}\s*\.\s*(\w+)\s*\(",
+            )
+            for call_match in ns_call_pattern.finditer(content):
+                method_name = call_match.group(1)
+                if method_name not in method_map:
+                    continue
+
+                dedup_key = (file_str, namespace, method_name)
+                if dedup_key in seen_bridge_edges:
+                    continue
+                seen_bridge_edges.add(dedup_key)
+
+                channel, ipc_method, preload_file = method_map[method_name]
+                call_line = content[:call_match.start()].count("\n") + 1
+
+                # Relativize file path
+                rel_path = file_str
+                try:
+                    rel_path = str(Path(file_str).relative_to(repo_root))
+                except ValueError:  # pragma: no cover - files always under repo_root
+                    pass
+
+                # Create synthetic bridge caller symbol
+                caller_id = (
+                    f"ipc:bridge_caller:{rel_path}:{call_line}"
+                    f":{namespace}.{method_name}"
+                )
+                if caller_id not in created_symbol_ids:
+                    symbols.append(Symbol(
+                        id=caller_id,
+                        name=f"window.{namespace}.{method_name}",
+                        kind="ipc_bridge_caller",
+                        language=_get_language(Path(file_str)),
+                        path=rel_path,
+                        span=Span(
+                            start_line=call_line,
+                            end_line=call_line,
+                            start_col=0,
+                            end_col=0,
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        meta={
+                            "namespace": namespace,
+                            "bridge_method": method_name,
+                            "channel": channel,
+                        },
+                    ))
+                    created_symbol_ids.add(caller_id)
+
+                # Find or create the IPC send symbol in the preload file for dst
+                preload_send_id = _make_symbol_id(
+                    IpcPattern(
+                        type="send",
+                        channel=channel,
+                        line=0,
+                        file_path=preload_file,
+                        pattern_type="electron",
+                        channel_type="literal",
+                    ),
+                    channel,
+                )
+                _ensure_symbol(
+                    IpcPattern(
+                        type="send",
+                        channel=channel,
+                        line=0,
+                        file_path=preload_file,
+                        pattern_type="electron",
+                        channel_type="literal",
+                    ),
+                    channel,
+                )
+
+                edge = Edge.create(
+                    src=caller_id,
+                    dst=preload_send_id,
+                    edge_type="bridge_invokes",
+                    line=call_line,
+                    confidence=0.80,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="context_bridge_wrapper",
+                )
+                edge.meta = {
+                    "channel": channel,
+                    "method": method_name,
+                    "namespace": namespace,
                 }
                 edges.append(edge)
 

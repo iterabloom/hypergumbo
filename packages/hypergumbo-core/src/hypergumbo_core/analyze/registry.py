@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Analyzer registry for decorator-based dynamic dispatch.
 
 This module provides the canonical registration system for language analyzers,
@@ -186,7 +187,8 @@ def run_analyzer(
     """
     analyzer = _ANALYZER_REGISTRY.get(name)
     if analyzer is None:
-        raise KeyError(f"Unknown analyzer: {name}")
+        available = ", ".join(sorted(_ANALYZER_REGISTRY)) or "none registered"
+        raise KeyError(f"Unknown analyzer: {name!r}. Available: {available}")
     return analyzer.get_func()(repo_root, **kwargs)
 
 

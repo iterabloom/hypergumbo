@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Limits tracking for behavior map output.
 
 Tracks known limitations and failures during analysis:

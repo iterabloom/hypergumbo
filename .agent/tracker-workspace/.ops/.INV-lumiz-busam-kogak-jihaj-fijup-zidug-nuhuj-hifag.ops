@@ -29,3 +29,17 @@
   nonce: b8f9  # b8f9
   set:  # b8f9
     status: holding  # b8f9
+- op: update  # 867c
+  at: '2026-03-09T08:58:03Z'  # 867c
+  by: agent  # 867c
+  actor: jgstern_agent  # 867c
+  clock: 3  # 867c
+  nonce: 867c  # 867c
+  set: {}  # 867c
+- op: discuss  # 04f3
+  at: '2026-03-09T08:58:03Z'  # 04f3
+  by: agent  # 04f3
+  actor: jgstern_agent  # 04f3
+  clock: 4  # 04f3
+  nonce: 04f3  # 04f3
+  message: "Already fixed. main-functions.yaml uses qualified-name regex patterns. Tests in TestJavaQualifiedMainDetection verify."  # 04f3

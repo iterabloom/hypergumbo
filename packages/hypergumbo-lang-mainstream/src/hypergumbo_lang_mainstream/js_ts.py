@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
@@ -497,6 +498,41 @@ def _is_cross_package(file_path: Path, target_path: str) -> bool:
 # not calls to user-defined functions.  Skip these during call resolution
 # to prevent false-positive edges to user-defined components that shadow
 # built-in names (e.g., a React component named `Number`).
+# Built-in method names that should not be resolved via the method name
+# fallback (Case 4).  These are methods on Array, Map, Set, Object, etc.
+# that appear on virtually every JS object.  Without this blocklist,
+# `items.forEach(cb)` resolves to a user-defined class that happens to
+# define `forEach`, inflating its in-degree and corrupting centrality.
+# Analogous to Rust's _RUST_GENERIC_TRAIT_METHODS blocklist.
+JS_BUILTIN_METHODS: frozenset[str] = frozenset({
+    # Array methods
+    "push", "pop", "shift", "unshift", "splice", "slice",
+    "concat", "join", "reverse", "sort", "indexOf", "lastIndexOf",
+    "find", "findIndex", "includes", "every", "some",
+    "filter", "map", "reduce", "reduceRight", "flat", "flatMap",
+    "fill", "copyWithin", "entries", "keys", "values",
+    "forEach", "at",
+    # Map/Set methods
+    "get", "set", "has", "delete", "clear",
+    # Object methods
+    "hasOwnProperty", "toString", "valueOf", "toJSON",
+    "toLocaleString",
+    # Promise methods
+    "then", "catch", "finally",
+    # EventEmitter (handled by event sourcing linker)
+    "emit", "on", "once", "off", "addListener", "removeListener",
+    "addEventListener", "removeEventListener",
+    # String methods
+    "trim", "split", "replace", "match", "search", "startsWith",
+    "endsWith", "padStart", "padEnd", "repeat", "substring",
+    "charAt", "charCodeAt", "normalize",
+    # Iterator / generator
+    "next", "return", "throw",
+    # Console / logging — ubiquitous methods that resolve to wrong targets
+    # (e.g., this.logger.warn() → test file's warn:method)
+    "log", "warn", "error", "info", "debug", "trace",
+})
+
 JS_BUILTIN_NAMES: set[str] = {
     # Primitives / wrapper constructors
     "Number", "String", "Boolean", "Symbol", "BigInt",
@@ -711,6 +747,93 @@ def _extract_param_types(
     return param_types
 
 
+def _detect_jsx_route(
+    node: "tree_sitter.Node", source: bytes,
+) -> tuple[str | None, str | None]:
+    """Detect React Router <Route path="..." /> JSX elements.
+
+    Returns (route_path, component_name) if the node is a Route JSX element
+    with a path attribute, else (None, None).
+
+    Supported patterns:
+    - <Route path="/users" element={<Users />} />
+    - <Route path="/users" component={Users} />
+    - <Route path="/users">...</Route>
+    - <Route path="/" />  (index route)
+
+    The tag name must be exactly "Route" (case-sensitive). The path attribute
+    must have a string value. The component name is extracted from the element
+    or component prop if present.
+    """
+    # Handle both self-closing and opening elements
+    if node.type == "jsx_self_closing_element":
+        tag_node = node
+    elif node.type == "jsx_element":
+        # Get the opening tag
+        tag_node = None
+        for child in node.children:
+            if child.type == "jsx_opening_element":
+                tag_node = child
+                break
+        if tag_node is None:  # pragma: no cover - valid JSX always has opening tag
+            return None, None
+    else:
+        return None, None  # pragma: no cover - only called for JSX node types
+
+    # Check the tag name is "Route"
+    tag_name = None
+    for child in tag_node.children:
+        if child.type == "identifier":
+            tag_name = _node_text(child, source)
+            break
+        elif child.type == "member_expression":
+            # e.g., ReactRouter.Route
+            tag_name = _node_text(child, source)
+            if tag_name and tag_name.endswith(".Route"):
+                tag_name = "Route"
+            break
+
+    if tag_name != "Route":
+        return None, None
+
+    # Extract path and component/element attributes
+    route_path = None
+    component_name = None
+
+    for child in tag_node.children:
+        if child.type != "jsx_attribute":
+            continue
+
+        attr_name = None
+        attr_value = None
+        for attr_child in child.children:
+            if attr_child.type == "property_identifier":
+                attr_name = _node_text(attr_child, source)
+            elif attr_child.type == "string":
+                attr_value = _node_text(attr_child, source).strip("'\"")
+            elif attr_child.type == "jsx_expression":
+                # {<Users />} or {Users}
+                for expr_child in attr_child.children:
+                    if expr_child.type == "jsx_self_closing_element":
+                        # <Users /> — extract tag name
+                        for jsx_child in expr_child.children:
+                            if jsx_child.type == "identifier":
+                                attr_value = _node_text(jsx_child, source)
+                                break
+                    elif expr_child.type == "identifier":
+                        attr_value = _node_text(expr_child, source)
+
+        if attr_name == "path" and attr_value is not None:
+            route_path = attr_value
+        elif attr_name in ("element", "component") and attr_value is not None:
+            component_name = attr_value
+
+    if route_path is None:
+        return None, None
+
+    return route_path, component_name
+
+
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Find route path from a .route('/path') call in a chained expression.
 
@@ -845,6 +968,13 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     # If no path in arguments, check for chained .route('/path') syntax
     if route_path is None:
         route_path = _find_route_path_in_chain(callee_node, source)
+
+    # No string path found — not a route registration. In Express, route
+    # handlers always require a path argument. Calls like NestJS
+    # app.get(AppService) (DI lookup) have no string path and should not
+    # be detected as routes.
+    if route_path is None:
+        return None, None
 
     # Return uppercase HTTP method for consistency with other analyzers
     return method_name.upper() if method_name else None, route_path
@@ -1426,7 +1556,7 @@ def _extract_library_export_contexts(
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
-            elif child.type == "class_declaration":
+            elif child.type in ("class_declaration", "abstract_class_declaration"):
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
@@ -1504,6 +1634,125 @@ def _extract_library_export_contexts(
                     },
                 )
                 contexts.append(ctx)
+
+    return contexts
+
+
+# App bootstrap function names that indicate application initialization.
+# These are module-level calls (not decorators) that mount a component tree
+# or initialize an application framework.
+_APP_BOOTSTRAP_NAMES: frozenset[str] = frozenset({
+    # React 18+
+    "createRoot",
+    "hydrateRoot",
+    # React 17 and earlier (qualified: ReactDOM.render)
+    "render",
+    "hydrate",
+    # React Router v6 app-level router creation
+    "createBrowserRouter",
+    "createHashRouter",
+    "createMemoryRouter",
+})
+
+# Qualified forms where the callee is a member expression (e.g., ReactDOM.render).
+# Maps receiver.method -> context_name.
+_APP_BOOTSTRAP_QUALIFIED: dict[str, str] = {
+    "ReactDOM.render": "ReactDOM.render",
+    "ReactDOM.hydrate": "ReactDOM.hydrate",
+    "ReactDOM.createRoot": "ReactDOM.createRoot",
+    "ReactDOM.hydrateRoot": "ReactDOM.hydrateRoot",
+    # Electron app lifecycle
+    "app.whenReady": "app.whenReady",
+    "app.on": "app.on",
+    "app.once": "app.once",
+}
+
+
+def _extract_app_bootstrap_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    module_symbol: Symbol,
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for app bootstrap and lifecycle calls.
+
+    Detects module-level calls to functions like createRoot(), ReactDOM.render(),
+    hydrateRoot(), createBrowserRouter() (React SPA), and app.whenReady(),
+    app.on('ready') (Electron). These initialize the application and serve
+    as entry points.
+
+    The UsageContext has symbol_ref pointing to the module symbol, so that
+    framework YAML usage patterns can assign concepts (app_bootstrap, entrypoint)
+    to the module, enabling entrypoint detection in entrypoints.py.
+
+    Args:
+        tree: The parsed tree-sitter tree
+        source: Source file bytes
+        file_path: Path to the source file
+        module_symbol: The module symbol for this file
+        line_offset: Line offset for Svelte/Vue script blocks
+
+    Returns:
+        List of UsageContext records for SPA bootstrap calls.
+    """
+    contexts: list[UsageContext] = []
+    seen_names: set[str] = set()  # Deduplicate (e.g., two createRoot calls)
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        # Get the callee node (first child of call_expression)
+        callee = node.children[0] if node.children else None
+        if callee is None:
+            continue  # pragma: no cover
+
+        context_name: str | None = None
+
+        if callee.type == "identifier":
+            # Bare call: createRoot(...), hydrateRoot(...)
+            name = _node_text(callee, source)
+            if name in _APP_BOOTSTRAP_NAMES:
+                context_name = name
+        elif callee.type == "member_expression":
+            # Qualified call: ReactDOM.render(...), ReactDOM.createRoot(...)
+            qualified = _node_text(callee, source)
+            if qualified in _APP_BOOTSTRAP_QUALIFIED:
+                context_name = _APP_BOOTSTRAP_QUALIFIED[qualified]
+            else:
+                # Check if the method name alone matches (e.g., someAlias.createRoot)
+                for child in callee.children:
+                    if child.type == "property_identifier":
+                        method_name = _node_text(child, source)
+                        if method_name in _APP_BOOTSTRAP_NAMES:
+                            context_name = f"{_node_text(callee, source)}"
+                        break
+
+        if context_name is None or context_name in seen_names:
+            continue
+
+        seen_names.add(context_name)
+
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=context_name,
+            position="caller",  # The module is the caller, not a handler
+            path=str(file_path),
+            span=span,
+            symbol_ref=module_symbol.id,
+            metadata={
+                "bootstrap_function": context_name,
+            },
+        )
+        contexts.append(ctx)
 
     return contexts
 
@@ -1653,6 +1902,167 @@ def _extract_inheritance_edges(
                         evidence_type="ast_implements",
                     )
                     edges.append(edge)
+
+    return edges
+
+
+# TypeScript built-in types that should not generate type_ref edges.
+_TS_BUILTIN_TYPES = frozenset({
+    "string", "number", "boolean", "void", "null", "undefined",
+    "never", "any", "unknown", "object", "symbol", "bigint",
+    "String", "Number", "Boolean", "Object", "Symbol", "BigInt",
+    "Array", "Promise", "Map", "Set", "Record", "Partial", "Readonly",
+    "Pick", "Omit", "Exclude", "Extract", "Required", "NonNullable",
+    "ReturnType", "Parameters", "ConstructorParameters", "InstanceType",
+    "ThisType", "Awaited", "Uppercase", "Lowercase", "Capitalize",
+    "Uncapitalize",
+})
+
+
+def _collect_type_identifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Recursively collect type_identifier names from an AST subtree.
+
+    Walks all descendants looking for type_identifier nodes (user-defined type
+    references in TypeScript type expressions). Excludes built-in types like
+    string, number, boolean, etc.
+    """
+    names: list[str] = []
+    if node.type == "type_identifier":
+        name = _node_text(node, source)
+        if name and name not in _TS_BUILTIN_TYPES:
+            names.append(name)
+    for child in node.children:
+        names.extend(_collect_type_identifiers(child, source))
+    return names
+
+
+def _extract_type_reference_edges(
+    symbols: list[Symbol],
+    parsed_files: list["_ParsedFile"],
+    run: "AnalysisRun",
+) -> list[Edge]:
+    """Extract type_ref edges from TypeScript type alias bodies and interface signatures.
+
+    For each type alias declaration (``type Foo = Bar & Baz``), creates type_ref
+    edges from the Foo symbol to Bar and Baz symbols. For each interface declaration,
+    creates type_ref edges from the interface to user-defined types referenced in
+    method signatures and property types.
+
+    This enables refactoring blast radius analysis: changing type User affects all
+    type aliases and interfaces that reference it.
+
+    Built-in types (string, number, boolean, etc.) are excluded.
+    """
+    edges: list[Edge] = []
+
+    # Build lookup: (file_path, type_name) -> Symbol for resolution
+    types_by_name: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if sym.kind in ("type", "interface", "class", "enum"):
+            if sym.name not in types_by_name:
+                types_by_name[sym.name] = []
+            types_by_name[sym.name].append(sym)
+
+    # Also build symbol lookup by (path, name) for disambiguation
+    symbols_by_path_name: dict[tuple[str, str], Symbol] = {}
+    for sym in symbols:
+        if sym.kind in ("type", "interface", "class", "enum"):
+            symbols_by_path_name[(sym.path, sym.name)] = sym
+
+    for pf in parsed_files:
+        file_path_str = str(pf.path)
+
+        for node in pf.tree.root_node.children:
+            if node.type == "export_statement":
+                # Unwrap: export type Foo = ...
+                for child in node.children:
+                    if child.type in ("type_alias_declaration", "interface_declaration"):
+                        node = child
+                        break
+
+            if node.type == "type_alias_declaration":
+                # Find the declaration name and the type body
+                decl_name = None
+                body_node = None
+                for child in node.children:
+                    if child.type == "type_identifier" and decl_name is None:
+                        decl_name = _node_text(child, pf.source)
+                    elif child.type not in ("type", "=", ";", "type_identifier",
+                                             "type_parameters"):
+                        # This is the type body (after the =)
+                        body_node = child
+
+                if decl_name and body_node:
+                    # Find the source symbol
+                    src_sym = symbols_by_path_name.get((file_path_str, decl_name))
+                    if src_sym is None:  # pragma: no cover - defensive
+                        continue
+
+                    ref_names = _collect_type_identifiers(body_node, pf.source)
+                    seen: set[str] = set()
+                    for ref_name in ref_names:
+                        if ref_name == decl_name or ref_name in seen:
+                            continue
+                        seen.add(ref_name)
+
+                        # Resolve to target symbol — prefer same file
+                        candidates = types_by_name.get(ref_name, [])
+                        if not candidates:
+                            continue
+                        dst_sym = (
+                            symbols_by_path_name.get((file_path_str, ref_name))
+                            or candidates[0]
+                        )
+                        edges.append(Edge.create(
+                            src=src_sym.id,
+                            dst=dst_sym.id,
+                            edge_type="type_ref",
+                            line=src_sym.span.start_line if src_sym.span else 0,
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_type_ref",
+                        ))
+
+            elif node.type == "interface_declaration":
+                # Find the interface name and body
+                decl_name = None
+                body_node = None
+                for child in node.children:
+                    if child.type == "type_identifier" and decl_name is None:
+                        decl_name = _node_text(child, pf.source)
+                    elif child.type == "interface_body":
+                        body_node = child
+
+                if decl_name and body_node:
+                    src_sym = symbols_by_path_name.get((file_path_str, decl_name))
+                    if src_sym is None:  # pragma: no cover - defensive
+                        continue
+
+                    ref_names = _collect_type_identifiers(body_node, pf.source)
+                    seen: set[str] = set()
+                    for ref_name in ref_names:
+                        if ref_name == decl_name or ref_name in seen:
+                            continue
+                        seen.add(ref_name)
+
+                        candidates = types_by_name.get(ref_name, [])
+                        if not candidates:
+                            continue
+                        dst_sym = (
+                            symbols_by_path_name.get((file_path_str, ref_name))
+                            or candidates[0]
+                        )
+                        edges.append(Edge.create(
+                            src=src_sym.id,
+                            dst=dst_sym.id,
+                            edge_type="type_ref",
+                            line=src_sym.span.start_line if src_sym.span else 0,
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_type_ref",
+                        ))
 
     return edges
 
@@ -1824,7 +2234,7 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     """
     current = node.parent
     while current is not None:
-        if current.type == "class_declaration":
+        if current.type in ("class_declaration", "abstract_class_declaration"):
             name = _find_name_in_children(current, source)
             if name:
                 return name
@@ -1969,15 +2379,42 @@ def _extract_decorators(
     return decorators
 
 
+def _unwrap_paren_extends(
+    paren_node: "tree_sitter.Node", source: bytes,
+) -> str:
+    """Extract the base class name from a parenthesized extends expression.
+
+    TypeScript allows cast expressions in extends clauses::
+
+        class Room extends (EventEmitter as new () => TypedEmitter<Callbacks>) {}
+
+    The AST is: parenthesized_expression > as_expression > identifier.
+    This function walks down to find the first identifier, which is the
+    actual base class being extended.
+    """
+    for child in paren_node.children:
+        if child.type in ("identifier", "type_identifier"):
+            return _node_text(child, source)  # pragma: no cover — bare (Foo) not seen in practice
+        if child.type == "as_expression":
+            # as_expression: first child is the value being cast
+            for as_child in child.children:
+                if as_child.type in ("identifier", "type_identifier"):
+                    return _node_text(as_child, source)
+                if as_child.type == "member_expression":  # pragma: no cover
+                    return _node_text(as_child, source)
+    return ""  # pragma: no cover
+
+
 def _extract_base_classes(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
-    """Extract base classes from a class_declaration node.
+    """Extract base classes from a class_declaration or abstract_class_declaration node.
 
     Handles:
     - extends clause: class Foo extends Bar
     - implements clause: class Foo implements IBar, IBaz
     - generic types: class Foo extends Bar<T>
+    - parenthesized cast: class Foo extends (Bar as new () => Baz<T>)
 
     Supports both TypeScript (nested extends_clause) and JavaScript (flat) grammars.
 
@@ -2003,6 +2440,10 @@ def _extract_base_classes(
                         elif extends_child.type == "generic_type":
                             # Explicit generic type like Repository<User>
                             base_name = _node_text(extends_child, source)  # pragma: no cover
+                        elif extends_child.type == "parenthesized_expression":
+                            # Cast expression: (EventEmitter as new () => TypedEmitter<T>)
+                            # Unwrap to find the first identifier (the actual base class)
+                            base_name = _unwrap_paren_extends(extends_child, source)
                         elif extends_child.type == "type_arguments":
                             # Separate type arguments like <User>
                             type_args = _node_text(extends_child, source)
@@ -2046,6 +2487,28 @@ def _extract_symbols(
         line_offset: Line offset for Svelte script blocks
     """
     symbols: list[Symbol] = []
+
+    # Create module-level symbol for top-level code attribution
+    module_name = file_path.name
+    end_line = tree.root_node.end_point[0] + 1 + line_offset
+    module_span = Span(
+        start_line=1 + line_offset,
+        end_line=end_line,
+        start_col=0,
+        end_col=0,
+    )
+    module_symbol = Symbol(
+        id=_make_symbol_id(str(file_path), 1 + line_offset, end_line, f"<module:{module_name}>", "module", lang),
+        name=f"<module:{module_name}>",
+        kind="module",
+        language=lang,
+        path=str(file_path),
+        span=module_span,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    )
+    symbols.append(module_symbol)
+
     # Track nodes we've already processed as route handlers (to avoid duplicates)
     processed_handlers: set[int] = set()
 
@@ -2115,6 +2578,36 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
                     continue  # Skip further processing of this call_expression
+
+        # React Router JSX route detection: <Route path="/users" element={<Users />} />
+        if node.type in ("jsx_self_closing_element", "jsx_element"):
+            route_path, component_name = _detect_jsx_route(node, source)
+            if route_path is not None:
+                handler_name = component_name or f"_route{route_path.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
+                    name=handler_name,
+                    kind="route",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=make_route_stable_id("GET", route_path),
+                    meta={
+                        "route_path": route_path,
+                        "http_method": "GET",
+                        "handler_ref": component_name,
+                    },
+                )
+                symbols.append(symbol)
+                # Don't continue — let tree walk also process child nodes
 
         # Function declarations (skip if inside an export_statement - handled below)
         if node.type == "function_declaration":
@@ -2203,8 +2696,8 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
 
-        # Class declarations
-        elif node.type == "class_declaration":
+        # Class declarations (including abstract classes)
+        elif node.type in ("class_declaration", "abstract_class_declaration"):
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -2584,6 +3077,7 @@ def _extract_edges(
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
     named_imports: dict[str, str] | None = None,
     symbols_by_name: dict[str, list[Symbol]] | None = None,
+    module_symbol: Symbol | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -2618,6 +3112,7 @@ def _extract_edges(
         method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -2708,7 +3203,7 @@ def _extract_edges(
                         pass  # fall through to callback/middleware handling below
                     elif _is_shadowed_by_param(node, func_name, source):
                         pass  # local parameter shadows global — skip resolution
-                    elif (current_function := _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)):
+                    elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
                         # Try import-path disambiguation first (cross-package
                         # same-name functions, e.g. two packages both export
                         # ``process()`` but main.js imports from one specific
@@ -2733,7 +3228,7 @@ def _extract_edges(
                             if callee is not None:
                                 edge_confidence = 0.85  # same-package heuristic
                         if callee is None:
-                            lookup_result = resolver.lookup(func_name)
+                            lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: the resolver fallback
                                 # should not cross npm packages (import-path
@@ -2774,7 +3269,7 @@ def _extract_edges(
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -2793,7 +3288,7 @@ def _extract_edges(
                         # Case 1: this.method()
                         if is_this_call and current_class_name:
                             full_name = f"{current_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(full_name)
+                            lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
@@ -2832,7 +3327,7 @@ def _extract_edges(
                                         import_module, file_path, full_name, symbols_by_name,
                                     )
                                 if callee is None:
-                                    lookup_result = resolver.lookup(full_name)
+                                    lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                                     if lookup_result.found and lookup_result.symbol is not None:
                                         callee = lookup_result.symbol
                                 if callee is not None:
@@ -2855,7 +3350,7 @@ def _extract_edges(
                             # Resolve via global symbols using import path as hint
                             # to disambiguate when same name exists in multiple modules
                             import_path = namespace_imports[obj_name]
-                            lookup_result = resolver.lookup(method_name, path_hint=import_path)
+                            lookup_result = resolver.lookup(method_name, path_hint=import_path, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: block resolution when
                                 # the target lives in a different npm package.
@@ -2888,7 +3383,7 @@ def _extract_edges(
                                     import_module, file_path, full_name, symbols_by_name,
                                 )
                             if callee is None:
-                                lookup_result = resolver.lookup(full_name)
+                                lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     callee = lookup_result.symbol
                             if callee is not None:
@@ -2909,7 +3404,10 @@ def _extract_edges(
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout where
                         # every class with the same method name gets linked.
-                        if not edge_added:
+                        # Skip built-in method names (get, set, forEach, etc.)
+                        # that exist on Array/Map/Set/Object — resolving these
+                        # to user-defined classes inflates in-degree.
+                        if not edge_added and method_name not in JS_BUILTIN_METHODS:
                             lookup_result = method_resolver.lookup(method_name)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: low-confidence method
@@ -2935,7 +3433,7 @@ def _extract_edges(
                 current_function = _get_enclosing_function(
                     node, source, file_path, global_symbols,
                     symbol_by_position, line_offset,
-                )
+                ) or module_symbol
                 if current_function is not None:
                     for arg in args_node.children:
                         if arg.type != "identifier":
@@ -2963,7 +3461,7 @@ def _extract_edges(
                         if target is None:
                             target = global_symbols.get(arg_name)
                         if target is None:  # pragma: no cover - defensive resolver fallback
-                            lookup_result = resolver.lookup(arg_name)
+                            lookup_result = resolver.lookup(arg_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 target = lookup_result.symbol
                         # Route symbols can shadow function symbols in
@@ -3063,7 +3561,7 @@ def _extract_edges(
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
@@ -3140,7 +3638,7 @@ def _extract_edges(
                 ref_name = _node_text(value_node, source)
                 target = global_symbols.get(ref_name)
                 if target is None:  # pragma: no cover - defensive resolver fallback
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         target = lookup_result.symbol
                 # Cross-package guard: object field refs should not
@@ -3153,7 +3651,7 @@ def _extract_edges(
                     current_function = _get_enclosing_function(
                         node, source, file_path, global_symbols,
                         symbol_by_position, line_offset,
-                    )
+                    ) or module_symbol
                     if current_function is not None and target.id != current_function.id:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -3171,7 +3669,7 @@ def _extract_edges(
             ref_name = _node_text(node, source)
             target = global_symbols.get(ref_name)
             if target is None:  # pragma: no cover - defensive resolver fallback
-                lookup_result = resolver.lookup(ref_name)
+                lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target = lookup_result.symbol
             # Cross-package guard: shorthand props should not cross packages
@@ -3183,7 +3681,7 @@ def _extract_edges(
                 current_function = _get_enclosing_function(
                     node, source, file_path, global_symbols,
                     symbol_by_position, line_offset,
-                )
+                ) or module_symbol
                 if current_function is not None and target.id != current_function.id:
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -3229,7 +3727,10 @@ def _extract_symbols_and_edges(
         elif sym.kind == "class":
             global_classes[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes)
+    # Find module symbol for top-level call attribution
+    mod_sym = next((s for s in symbols if s.kind == "module"), None)
+    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes,
+                           module_symbol=mod_sym)
     return symbols, edges
 
 
@@ -3441,6 +3942,12 @@ def _analyze_javascript_impl(
 
         try:
             source = file_path.read_bytes()
+            # Skip binary files: .ts extension is ambiguous between TypeScript
+            # and MPEG Transport Stream.  Null bytes in the first 8 KB indicate
+            # binary content (same heuristic git uses).
+            if b"\x00" in source[:8192]:
+                files_skipped += 1
+                continue
             tree = parser.parse(source)
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)
@@ -3555,6 +4062,9 @@ def _analyze_javascript_impl(
     class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
+        # Look up module symbol for this file (top-level call attribution)
+        mod_sym_name = f"<module:{pf.path.name}>"
+        file_mod_sym = global_symbols.get(mod_sym_name)
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
@@ -3563,6 +4073,7 @@ def _analyze_javascript_impl(
             symbol_by_position,
             pf.named_imports or {},
             symbols_by_name,
+            module_symbol=file_mod_sym,
         )
         all_edges.extend(edges)
 
@@ -3594,6 +4105,15 @@ def _analyze_javascript_impl(
         )
         all_usage_contexts.extend(library_contexts)
 
+        # SPA bootstrap calls (createRoot, ReactDOM.render, hydrateRoot, etc.)
+        mod_sym_name = f"<module:{pf.path.name}>"
+        file_mod_sym = global_symbols.get(mod_sym_name)
+        if file_mod_sym is not None:
+            bootstrap_contexts = _extract_app_bootstrap_contexts(
+                pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
+            )
+            all_usage_contexts.extend(bootstrap_contexts)
+
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     # Build multi-value class lookup for disambiguation (INV-015)
     classes_by_name: dict[str, list[Symbol]] = {}
@@ -3610,6 +4130,10 @@ def _analyze_javascript_impl(
     # Extract decorator edges (INV-012: decorators metadata -> decorated_by edges)
     decorator_edges = _extract_decorator_edges(all_symbols, global_symbols, run)
     all_edges.extend(decorator_edges)
+
+    # Extract type reference edges (WI-jivip: type-level dependency tracking)
+    type_ref_edges = _extract_type_reference_edges(all_symbols, parsed_files, run)
+    all_edges.extend(type_ref_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

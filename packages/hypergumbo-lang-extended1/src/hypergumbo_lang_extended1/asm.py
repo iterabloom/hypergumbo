@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Assembly language analysis pass using tree-sitter.
 
 Extracts labels (functions), data symbols, and call edges from assembly source
@@ -31,7 +32,6 @@ Assembly-Specific Considerations
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -55,6 +55,24 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("asm")
 
+# CPU register names to exclude from call targets. Indirect calls through
+# registers (e.g., `call rax`) are valid assembly but create false external
+# call edges since registers aren't function names. Covers x86 (eax..r15),
+# ARM (r0..r15, lr, sp, pc), and common aliases.
+_REGISTER_NAMES: frozenset[str] = frozenset({
+    # x86-64 general purpose (64-bit)
+    "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    # x86 general purpose (32-bit)
+    "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp",
+    # x86 general purpose (16-bit)
+    "ax", "bx", "cx", "dx", "si", "di", "bp", "sp",
+    # ARM general purpose
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+    # ARM aliases
+    "lr", "pc", "ip", "fp",
+})
+
 
 def find_asm_files(repo_root: Path) -> Iterator[Path]:
     """Yield all assembly files in the repository."""
@@ -64,12 +82,6 @@ def find_asm_files(repo_root: Path) -> Iterator[Path]:
 def is_asm_tree_sitter_available() -> bool:
     """Check if tree-sitter with asm grammar is available."""
     return _analyzer._check_grammar_available()
-
-
-def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
-    """Generate deterministic edge ID."""
-    content = f"{edge_type}:{src}:{dst}"
-    return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 def _determine_label_kind(current_section: str) -> str:
@@ -201,6 +213,11 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                 continue  # pragma: no cover - defensive
             target_name = node_text(target_node, source)
 
+            # Skip register names — indirect calls through registers are
+            # valid assembly but don't represent named function calls
+            if target_name.lower() in _REGISTER_NAMES:
+                continue
+
             # Find enclosing label (function) for this call instruction
             call_line = node.start_point[0] + 1
             caller = _find_enclosing_label(call_line, file_labels)
@@ -216,8 +233,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                 dst_id = f"asm:external:{target_name}:function"
                 confidence = 0.70
 
-            edges.append(Edge(
-                id=_make_edge_id(caller.id, dst_id, "calls"),
+            edges.append(Edge.create(
                 src=caller.id,
                 dst=dst_id,
                 edge_type="calls",

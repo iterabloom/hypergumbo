@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # ------------------------------------------------------------------
 # forgejo-api.sh: Shared library for Forgejo/Gitea API interactions
 #
@@ -51,6 +52,24 @@ detect_api_base() {
 		API_BASE="https://$host/api/v1/repos/$REPO_SLUG"
 	else
 		API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+	fi
+}
+
+# ------------------------------------------------------------------
+# apply_failover_overrides: Override API_BASE / REPO_SLUG / FORGEJO_TOKEN
+# when CI failover is active. Call after detect_api_base().
+# Sets FAILOVER_ACTIVE=true/false for callers to check.
+# ------------------------------------------------------------------
+apply_failover_overrides() {
+	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
+	FAILOVER_ACTIVE=false
+	if [[ -f "$failover_file" ]]; then
+		FAILOVER_ACTIVE=true
+		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_url'])")
+		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_repo'])")
+		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
+		REPO_SLUG="$FAILOVER_REPO"
+		export FORGEJO_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
 	fi
 }
 
@@ -205,6 +224,7 @@ poll_ci() {
 	# Track how long ci-complete has been the sole holdout (Scenario A)
 	local ci_complete_sole_holdout_since=0
 	local poll_count=0
+	local prev_summary=""
 
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
@@ -356,11 +376,14 @@ except Exception:
 			ci_complete_sole_holdout_since=0
 		fi
 
-		# Telemetry: every 3rd pass, print job summary (reuses API_RESPONSE,
+		# Telemetry: only print when job statuses change (reuses API_RESPONSE,
 		# no extra API call — be considerate of Codeberg as a community resource)
-		if (( poll_count % 3 == 0 )); then
+		local cur_summary
+		cur_summary=$(ci_job_summary)
+		if [[ "$cur_summary" != "$prev_summary" ]]; then
 			echo ""
-			echo "  [${elapsed}s] $(ci_job_summary)"
+			echo "  [${elapsed}s] $cur_summary"
+			prev_summary="$cur_summary"
 		else
 			printf "."
 		fi
@@ -380,14 +403,30 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     statuses = data.get('statuses', [])
-    parts = []
+    done = 0
+    pending = []
+    failed = []
     for s in statuses:
         ctx = s.get('context', '?')
         name = ctx.split(' / ')[-1].split(' (')[0] if ' / ' in ctx else ctx
         st = s.get('state', '?')
-        marker = '✅' if st == 'success' else '❌' if st in ('failure', 'error') else '⏳'
-        parts.append(f'{marker}{name}')
-    print(' '.join(parts) if parts else '(no jobs yet)')
+        if st == 'success':
+            done += 1
+        elif st in ('failure', 'error'):
+            failed.append(name)
+        else:
+            pending.append(name)
+    total = len(statuses)
+    pending.sort()
+    failed.sort()
+    parts = []
+    if done:
+        parts.append(f'{done}/{total} passed')
+    if pending:
+        parts.append(f'waiting: {\" \".join(pending)}')
+    if failed:
+        parts.append(f'failed: {\" \".join(failed)}')
+    print(', '.join(parts) if parts else '(no jobs yet)')
 except Exception:
     print('(unavailable)')
 " 2>/dev/null || echo "(unavailable)"
@@ -509,7 +548,11 @@ if best:
 
 # ------------------------------------------------------------------
 # do_merge PR_NUM TITLE DESC ORIG_SHA [--squash]
-#   Merge helper: tries fast-forward, falls back to squash if requested.
+#   Merge helper: tries fast-forward, falls back to rebase on divergence,
+#   or squash if --squash is explicitly requested.
+#   When merge fails with "head behind base branch" (e.g., tracker
+#   auto-sync advanced dev during CI), rebases locally + force-pushes
+#   + retries the merge automatically.
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
@@ -545,42 +588,213 @@ do_merge() {
 		return 1
 	fi
 
-	# Default: try fast-forward merge
+	# Default: try fast-forward merge with retry on transient failures
 	echo "🚀 Attempting fast-forward merge (preserves commit bodies)..."
 
 	local merge_payload='{"do": "fast-forward-only", "delete_branch_after_merge": true}'
+	local max_retries=3
+	local attempt
 
-	if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
-		echo "✅ Fast-forward merged! (commit bodies preserved)"
-		rm -f "$tmp_file"
-		return 0
-	fi
+	for attempt in $(seq 1 $max_retries); do
+		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
+			# HTTP 2xx — verify the PR was actually merged (Forgejo sometimes
+			# returns 200 with merged:false when branch protection blocks it)
+			if _check_pr_merged "$pr_num"; then
+				echo "✅ Fast-forward merged! (commit bodies preserved)"
+				rm -f "$tmp_file"
+				return 0
+			fi
+			# HTTP 200 but not merged — likely branch protection race condition
+			if [[ $attempt -lt $max_retries ]]; then
+				echo "⚠️  Merge returned success but PR not yet merged (attempt $attempt/$max_retries)"
+				sleep $((attempt * 5))
+				continue
+			fi
+			echo "❌ Merge returned HTTP 200 but PR was not merged after $max_retries attempts"
+			echo "   This usually means branch protection is blocking (e.g., a failed status check)."
+			echo ""
+			echo "Recovery: ./scripts/merge-pr $pr_num"
+			rm -f "$tmp_file"
+			return 1
+		fi
 
-	# Check if it's a divergence error
-	if echo "$API_RESPONSE" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
-		echo ""
-		echo "❌ Fast-forward not possible: branch has diverged"
-		echo ""
-		echo "Please rebase and retry:"
-		echo "  git fetch origin dev"
-		echo "  git rebase origin/dev"
-		echo "  ./scripts/auto-pr"
-		echo ""
-		echo "Or, if you must squash (loses commit body details):"
-		echo "  ./scripts/auto-pr --squash"
-		rm -f "$tmp_file"
-		return 1
-	fi
+		# Save merge error before _check_pr_merged overwrites globals
+		local merge_http_code="$API_HTTP_CODE"
+		local merge_response="$API_RESPONSE"
 
-	# Check if PR was actually merged despite error code
-	if _check_pr_merged "$pr_num"; then
-		echo "✅ Verified: PR was successfully merged!"
-		rm -f "$tmp_file"
-		return 0
-	fi
+		# Check if it's a divergence error (not retryable with FF)
+		if echo "$merge_response" | grep -qi "not fast-forward\|cannot fast-forward\|branch has diverged"; then
+			echo ""
+			echo "⚠️  Fast-forward not possible: branch has diverged"
+			echo "   Trying rebase merge (preserves individual commits)..."
 
-	echo "❌ Merge failed (HTTP $API_HTTP_CODE)"
-	echo "Response: $API_RESPONSE"
+			local rebase_payload='{"do": "rebase", "delete_branch_after_merge": true}'
+			if api_post "$API_BASE/pulls/$pr_num/merge" "$rebase_payload"; then
+				if _check_pr_merged "$pr_num"; then
+					echo "✅ Rebase merged! (commits rebased onto $BASE_BRANCH)"
+					rm -f "$tmp_file"
+					return 0
+				fi
+			fi
+
+			# Rebase merge also failed — give up with recovery instructions
+			echo "❌ Rebase merge also failed"
+			echo ""
+			echo "Please rebase locally and retry:"
+			echo "  git fetch origin dev"
+			echo "  git rebase origin/dev"
+			echo "  ./scripts/auto-pr"
+			echo ""
+			echo "Or, if you must squash (loses commit body details):"
+			echo "  ./scripts/auto-pr --squash"
+			rm -f "$tmp_file"
+			return 1
+		fi
+
+		# Check if head is behind base (e.g., tracker auto-sync advanced
+		# dev while CI was running).  Rebase locally and force-push so the
+		# next retry attempt can fast-forward.
+		if echo "$merge_response" | grep -qi "head behind base branch\|is behind"; then
+			echo ""
+			echo "⚠️  Head branch is behind base — rebasing locally..."
+			local cur_branch
+			cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+			local base_branch="${BASE_BRANCH:-dev}"
+
+			if [[ -z "$cur_branch" || "$cur_branch" == "HEAD" ]]; then
+				echo "❌ Cannot determine current branch for local rebase"
+				rm -f "$tmp_file"
+				return 1
+			fi
+
+			# Back up tracker .ops files that would block rebase, then
+			# restore them afterward so no pending operations are lost.
+			local ops_backup
+			ops_backup=$(mktemp -d /tmp/ops-backup-XXXXXX)
+			local had_ops_backup=false
+			local ops_dir
+			for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+				if [[ -d "$ops_dir" ]]; then
+					local backup_subdir="$ops_backup/$ops_dir"
+					mkdir -p "$backup_subdir"
+					# Back up untracked .ops files
+					for f in "$ops_dir"/.*ops "$ops_dir"/*.ops; do
+						[[ -f "$f" ]] || continue
+						if ! git ls-files --error-unmatch "$f" &>/dev/null; then
+							cp "$f" "$backup_subdir/"
+							rm -f "$f"
+							had_ops_backup=true
+						fi
+					done
+					# Back up modified tracked .ops files (diff from HEAD)
+					if git diff --quiet -- "$ops_dir" 2>/dev/null; then
+						:  # No modifications
+					else
+						for f in "$ops_dir"/.*ops "$ops_dir"/*.ops; do
+							[[ -f "$f" ]] || continue
+							if git diff --quiet -- "$f" 2>/dev/null; then
+								:  # This file is clean
+							else
+								cp "$f" "$backup_subdir/$(basename "$f").modified"
+								had_ops_backup=true
+							fi
+						done
+					fi
+				fi
+			done
+			# Revert tracked .ops files to HEAD so rebase can proceed cleanly
+			git checkout -- .agent/tracker-workspace/.ops/ 2>/dev/null || true
+			git checkout -- .agent/tracker/.ops/ 2>/dev/null || true
+
+			if git fetch origin "$base_branch" --quiet 2>/dev/null \
+			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
+				# Restore backed-up .ops files so no pending operations are lost.
+				# Ops files are append-only, so restoring the pre-rebase copy
+				# (which has the latest appended ops) is safe — the rebased
+				# version from dev is a subset of what we backed up.
+				if [[ "$had_ops_backup" == true ]]; then
+					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+						local backup_subdir="$ops_backup/$ops_dir"
+						[[ -d "$backup_subdir" ]] || continue
+						mkdir -p "$ops_dir"
+						for f in "$backup_subdir"/*; do
+							[[ -f "$f" ]] || continue
+							local base
+							base=$(basename "$f")
+							# Strip .modified suffix for tracked-file backups
+							local target_name="${base%.modified}"
+							cp "$f" "$ops_dir/$target_name"
+						done
+					done
+					echo "   Restored backed-up .ops files from $ops_backup"
+				fi
+				rm -rf "$ops_backup" 2>/dev/null || true
+				echo "   Rebase succeeded — force-pushing..."
+				# Push via refs/for/ (Forgejo AGit) to update the PR head ref.
+				# Pushing to the named branch alone doesn't update PRs created
+				# via refs/for/dev/branch.
+				if git push origin "HEAD:refs/for/$base_branch/$cur_branch" -o force-push=true --quiet 2>/dev/null; then
+					echo "   Force-push succeeded — retrying merge..."
+					sleep 3  # Give Forgejo a moment to update PR head
+					# Retry fast-forward merge after rebase
+					if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
+						if _check_pr_merged "$pr_num"; then
+							echo "✅ Fast-forward merged after local rebase!"
+							rm -f "$tmp_file"
+							return 0
+						fi
+					fi
+					echo "⚠️  Merge not accepted after rebase (CI may need to re-run on new SHA)"
+					echo ""
+					echo "Recovery: ./scripts/merge-pr $pr_num --wait-for-ci"
+				else
+					echo "❌ Force-push failed after rebase"
+				fi
+			else
+				# Restore backed-up .ops files even on rebase failure
+				if [[ "$had_ops_backup" == true ]]; then
+					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
+						local backup_subdir="$ops_backup/$ops_dir"
+						[[ -d "$backup_subdir" ]] || continue
+						mkdir -p "$ops_dir"
+						for f in "$backup_subdir"/*; do
+							[[ -f "$f" ]] || continue
+							cp "$f" "$ops_dir/$(basename "$f")"
+						done
+					done
+					echo "   Restored backed-up .ops files from $ops_backup"
+				fi
+				rm -rf "$ops_backup" 2>/dev/null || true
+				echo "❌ Local rebase failed (conflicts?)"
+				echo "   Resolve manually:"
+				echo "     git fetch origin $base_branch"
+				echo "     git rebase origin/$base_branch"
+				echo "     git push origin HEAD:refs/for/$base_branch/$cur_branch -o force-push=true"
+				echo "     ./scripts/merge-pr $pr_num --wait-for-ci"
+			fi
+			rm -f "$tmp_file"
+			return 1
+		fi
+
+		# Check if PR was actually merged despite error code
+		if _check_pr_merged "$pr_num"; then
+			echo "✅ Verified: PR was successfully merged!"
+			rm -f "$tmp_file"
+			return 0
+		fi
+
+		# Transient failure — retry with backoff
+		if [[ $attempt -lt $max_retries ]]; then
+			echo "⚠️  Merge failed (HTTP $merge_http_code, attempt $attempt/$max_retries) — retrying in $((attempt * 5))s..."
+			sleep $((attempt * 5))
+		else
+			echo "❌ Merge failed after $max_retries attempts (last HTTP $merge_http_code)"
+			echo "Response: $merge_response"
+			rm -f "$tmp_file"
+			return 1
+		fi
+	done
+
 	rm -f "$tmp_file"
 	return 1
 }

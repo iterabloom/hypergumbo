@@ -1,0 +1,34 @@
+- op: create  # a446
+  at: '2026-03-11T18:52:34Z'  # a446
+  by: agent  # a446
+  actor: jgstern_agent  # a446
+  clock: 1  # a446
+  nonce: a446  # a446
+  data:  # a446
+    kind: work_item  # a446
+    title: "Reverse slice seed identity in rslice JSON output"  # a446
+    status: todo_soft  # a446
+    priority: 3  # a446
+    parent:  # a446
+    tags: []  # a446
+    before: []  # a446
+    duplicate_of: []  # a446
+    not_duplicate_of: []  # a446
+    pr_ref:  # a446
+    description: "DEEP bakeoff: multiple assessments note that rslice JSON feature data does not include the seed symbol identity. Consumers must cross-reference rslice_seeds.json separately. Surface the seed symbol name/ID directly in each rslice feature."  # a446
+    fields: {}  # a446
+- op: update  # 062a
+  at: '2026-03-11T18:56:29Z'  # 062a
+  by: agent  # 062a
+  actor: jgstern_agent  # 062a
+  clock: 2  # 062a
+  nonce: 062a  # 062a
+  set:  # 062a
+    status: done  # 062a
+- op: discuss  # 24e0
+  at: '2026-03-11T18:56:29Z'  # 24e0
+  by: agent  # 24e0
+  actor: jgstern_agent  # 24e0
+  clock: 3  # 24e0
+  nonce: '24e0'  # 24e0
+  message: "Investigation shows the seed IS already surfaced: rslice JSON has 'name' (symbol name) and 'entry_nodes' (full node IDs). The assessment was incorrect about this being missing. No code change needed."  # 24e0

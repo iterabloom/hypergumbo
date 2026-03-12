@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Apex language analyzer.
 
 This module analyzes Salesforce Apex files (.cls, .trigger) using tree-sitter.

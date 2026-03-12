@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Catalog of available analysis passes.
 
 The catalog provides a registry of all analysis components available in

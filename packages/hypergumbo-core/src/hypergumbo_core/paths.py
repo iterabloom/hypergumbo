@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Centralized path handling utilities for hypergumbo.
 
 This module provides consistent path normalization and comparison functions
@@ -159,30 +160,94 @@ def is_utility_file(path: str) -> bool:
     normalized = normalize_path(path)
     path_parts = normalized.split("/")
 
+    # Always-utility: these names are unambiguously non-production
+    # regardless of where they appear in the path.
     utility_dirs = {
         # Documentation
         "docs_src", "docs", "documentation", "doc",
         # Examples
         "examples", "example", "samples", "sample", "demos", "demo",
-        # Scripts/tools
-        "scripts", "tools", "bin", "utils", "utilities",
-        # Dev/contrib (e.g., Airflow dev/, Kubernetes hack/, contrib/ dirs)
-        "dev", "contrib", "hack",
+        # Scripts
+        "scripts",
+        # Contrib (e.g., Kubernetes contrib/ dirs)
+        "contrib", "hack",
         # Build systems
         "vcbuild", "cmake",
         # Benchmarks
-        "benchmarks", "benchmark", "bench", "perf",
+        "benchmarks", "benchmark", "benches", "bench", "perf",
+        # Dev environment (e.g., Grafana devenv/)
+        "devenv",
     }
+
+    # Ambiguous names: at the project root these are tooling directories
+    # (e.g., dev/check_providers.py, tools/build.py, bin/run.sh), but
+    # inside source roots they are legitimate modules (e.g.,
+    # src/dev/gates.rs, src/utils/helpers.py, src/bin/main.rs).
+    _AMBIGUOUS_UTILITY_DIRS = {"dev", "tools", "bin", "utils", "utilities"}
+    _SOURCE_ROOTS = {"src", "lib", "app", "crates", "packages"}
+    seen_source_root = False
 
     for part in path_parts[:-1]:  # Exclude filename
         lower = part.lower()
+        if lower in _SOURCE_ROOTS:
+            seen_source_root = True
         if lower in utility_dirs:
+            return True
+        # Ambiguous dirs are utility only at project root
+        if lower in _AMBIGUOUS_UTILITY_DIRS and not seen_source_root:
             return True
         # devel-common/, devel-tools/, etc. — CI/dev tooling directories
         if lower.startswith("devel"):
             return True
 
+    # Filename-level build script detection:
+    # Cargo's build.rs is a compile-time build script, not user-facing code.
+    filename = path_parts[-1].lower() if path_parts else ""
+    if filename == "build.rs":
+        return True
+
+    # Go codegen scripts: gen.go, generate.go, *_gen.go, *_generate.go
+    # These are code generation programs, not production application code.
+    # Scoped to .go files to avoid false positives in other languages.
+    if filename.endswith(".go") and (
+        filename in ("gen.go", "generate.go")
+        or filename.endswith("_gen.go")
+        or filename.endswith("_generate.go")
+    ):
+        return True
+
     return False
+
+
+# Infrastructure directory names that indicate internal plumbing, not
+# developer-facing API.  Exports from these paths are dampened in
+# entrypoint ranking when semantic entrypoints (routes, commands) exist.
+_INFRASTRUCTURE_DIRS = frozenset({
+    "telemetry", "metrics", "instrumentation",
+    "logging", "logger", "loggers",
+    "tracing", "observability",
+    "internal",
+})
+
+
+def is_infrastructure_path(path: str) -> bool:
+    """Check if a path is in an infrastructure directory.
+
+    Infrastructure directories contain internal plumbing (telemetry, logging,
+    metrics, tracing) that is production code but not developer-facing API.
+    In gemini-cli, 77 of 111 entrypoints were telemetry exports from
+    packages/core/src/telemetry/*.ts — internal infrastructure that dominated
+    the entrypoint list over actual API classes.
+
+    Args:
+        path: File path to check
+
+    Returns:
+        True if any directory component matches an infrastructure pattern
+    """
+    normalized = normalize_path(path)
+    parts = normalized.split("/")
+    return any(part.lower() in _INFRASTRUCTURE_DIRS for part in parts[:-1])
 
 
 def is_test_file(path: str) -> bool:
@@ -227,6 +292,12 @@ def is_test_file(path: str) -> bool:
     if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
         return True
 
+    # Rust co-located test modules: tests.rs and testonly.rs live alongside
+    # production code (e.g., core/lib/dal/src/consensus/tests.rs).  These are
+    # test-only modules that should be excluded from production slices.
+    if filename_lower in ("tests.rs", "testonly.rs"):
+        return True
+
     # Mock/fake filename patterns (any language)
     name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
     if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
@@ -239,17 +310,23 @@ def is_test_file(path: str) -> bool:
     path_parts = normalized.split("/")
     test_dirs = {
         "tests", "test", "t", "__tests__",  # Test directories
-        "testing",  # Go convention (e.g., harbor src/testing/, argo-cd utils/testing/)
+        "testing", "testsuite",  # Go/Java convention (e.g., keycloak testsuite/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils", "testutil",  # Test support directories
         "testhelper", "testhelpers",  # Test helper directories
+        "fv", "harnesses",  # Formal verification / test harness directories
+        "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories
     }
-    # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
+    # Also match compound names like "transportfakes" that end with "fakes"/"mocks",
+    # directories starting with "test-" (test-artifacts, test-fixtures, test-data),
+    # and directories starting with "testsuite" (testsuite-providers, etc.).
     for part in path_parts:
         part_lower = part.lower()
         if part_lower in test_dirs:
             return True
         if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
+            return True
+        if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
             return True
 
     # spec/ only matches as the first path component (Ruby RSpec convention).

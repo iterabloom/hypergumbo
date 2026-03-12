@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Cross-Language Linkers
 
 Hypergumbo includes linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
@@ -11,6 +12,8 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | Python FFI | Python `ctypes`/`cffi` calls ↔ C/C++ functions, PyO3 Rust ↔ Python |
 | Ruby FFI | Ruby FFI gem `attach_function` ↔ C/C++ functions, `rb_define_method` C extensions |
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
+| Tauri IPC | TypeScript/JavaScript `invoke()` → Rust `#[tauri::command]` functions |
+| wasm_bindgen | JS/TS imports from wasm-pack `pkg/` → Rust `#[wasm_bindgen]` exports |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
 | OTP | Elixir GenServer.call/cast → handle_call/handle_cast dispatch |
@@ -29,7 +32,8 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | Inheritance | `base_classes` metadata → `extends`/`implements` edges across all languages |
 | Route Handler | Route symbols → handler functions (Rails, Phoenix, Laravel, Express, Django) |
 | Type Hierarchy | Interface/abstract methods → concrete implementations (`dispatches_to` edges) |
-| DI Resolution | Interface methods → DI-bound implementation methods (`di_resolves` edges). Supports Guice, Spring, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python injector, Java SPI. Heuristic fallbacks for single-impl and naming conventions. |
+| DI Resolution | Interface methods → DI-bound implementation methods (`di_resolves` edges). Supports Guice, Spring, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python injector, Java SPI. Heuristic fallbacks for single-impl and naming conventions. NestJS `@Module({providers, controllers})` → `di_registers` edges. |
+| React Component | JSX `<Component />` usage → component definitions (`renders_component` edges) |
 
 ## How Linkers Work
 

@@ -1,0 +1,55 @@
+- op: create  # 6b57
+  at: '2026-03-04T02:32:47Z'  # 6b57
+  by: agent  # 6b57
+  actor: jgstern_agent  # 6b57
+  clock: 1  # 6b57
+  nonce: 6b57  # 6b57
+  data:  # 6b57
+    kind: work_item  # 6b57
+    title: "Rust method-name resolution conflates methods across receiver types (.load(), .map())"  # 6b57
+    status: todo_hard  # 6b57
+    priority: 2  # 6b57
+    parent:  # 6b57
+    tags: []  # 6b57
+    before: []  # 6b57
+    duplicate_of: []  # 6b57
+    not_duplicate_of: []  # 6b57
+    pr_ref:  # 6b57
+    description: ""  # 6b57
+    fields: {}  # 6b57
+- op: discuss  # 49e0
+  at: '2026-03-04T02:35:11Z'  # 49e0
+  by: agent  # 49e0
+  actor: jgstern_agent  # 49e0
+  clock: 2  # 49e0
+  nonce: '49e0'  # 49e0
+  message: "DEEP bakeoff: jolt rslice.1.prod for JoltDevice::load has 22/29 false positive depth=1 callers. All are AtomicU64.load(Ordering::Relaxed) and AtomicU8.load() calls in counters.rs conflated with JoltDevice.load(). sp1: test function has in-degree 157 because 131 test functions named generate_trace/fibonacci/etc. incorrectly linked to docker.rs::test. Root cause: Rust analyzer resolves method calls by name alone without receiver type discrimination."  # 49e0
+- op: update  # 3247
+  at: '2026-03-04T03:38:02Z'  # 3247
+  by: agent  # 3247
+  actor: jgstern_agent  # 3247
+  clock: 3  # 3247
+  nonce: '3247'  # 3247
+  set:  # 3247
+    status: done  # 3247
+- op: discuss  # c55d
+  at: '2026-03-04T03:38:02Z'  # c55d
+  by: agent  # c55d
+  actor: jgstern_agent  # c55d
+  clock: 4  # c55d
+  nonce: c55d  # c55d
+  message: "Partially addressed in PR #1722: expanded method blocklist with 30 additional ubiquitous Rust methods (load, store, map, filter, collect, and_then, map_err, new, build, send, recv, etc). Directly fixes the .load() false positive (22/29 jolt callers) and .map_err() centrality issue (zksync-era). Remaining structural limitation: receiver type discrimination is not implemented and won't be — name-only resolution with conservative guards (blocklist + ambiguity threshold) is the intended design."  # c55d
+- op: discuss  # c557
+  at: '2026-03-04T04:03:52Z'  # c557
+  by: human  # c557
+  actor: jgstern  # c557
+  clock: 5  # c557
+  nonce: c557  # c557
+  message: "might an analogous issue affect other language analyzers in hypergumbo?"  # c557
+- op: discuss  # e59b
+  at: '2026-03-04T04:43:02Z'  # e59b
+  by: agent  # e59b
+  actor: jgstern_agent  # e59b
+  clock: 6  # e59b
+  nonce: e59b  # e59b
+  message: "Good question. Analogous method-name ambiguity could affect: (1) Python — method calls like x.get() could conflate dict.get() with custom .get() methods, though Python's dynamic dispatch makes this less impactful since most calls are correctly ambiguous anyway. (2) Java/Kotlin — method overloading means the same name can have different signatures; currently resolved by name alone. (3) Go — interface methods (e.g., .Read(), .Write(), .Close()) are ubiquitous across types. (4) C++ — virtual methods and overloads. The Rust blocklist approach could be ported to other analyzers. Created WI-ronoj to track Rust trait-aware resolution as a future improvement; the blocklist workaround is sufficient for now. See also WI-ronoj human message about cross-language applicability."  # e59b

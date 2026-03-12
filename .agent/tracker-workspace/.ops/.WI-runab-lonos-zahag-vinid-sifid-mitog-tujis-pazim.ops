@@ -1,0 +1,71 @@
+- op: create  # 2c8e
+  at: '2026-03-11T17:31:13Z'  # 2c8e
+  by: agent  # 2c8e
+  actor: jgstern_agent  # 2c8e
+  clock: 1  # 2c8e
+  nonce: 2c8e  # 2c8e
+  data:  # 2c8e
+    kind: work_item  # 2c8e
+    title: "Solidity-to-TypeScript ABI bridge linker"  # 2c8e
+    status: todo_soft  # 2c8e
+    priority: 4  # 2c8e
+    parent:  # 2c8e
+    tags: []  # 2c8e
+    before: []  # 2c8e
+    duplicate_of: []  # 2c8e
+    not_duplicate_of: []  # 2c8e
+    pr_ref:  # 2c8e
+    description: "osx repo has 0 TS-Solidity edges. Need linker matching ethers.js/viem calls to Solidity function defs. Parent: WI-zulok."  # 2c8e
+    fields: {}  # 2c8e
+- op: discuss  # 44f0
+  at: '2026-03-11T22:43:58Z'  # 44f0
+  by: agent  # 44f0
+  actor: jgstern_agent  # 44f0
+  clock: 2  # 44f0
+  nonce: 44f0  # 44f0
+  message: ""  # 44f0
+- op: update  # 2f42
+  at: '2026-03-11T23:30:35Z'  # 2f42
+  by: agent  # 2f42
+  actor: jgstern_agent  # 2f42
+  clock: 3  # 2f42
+  nonce: 2f42  # 2f42
+  set:  # 2f42
+    status: done  # 2f42
+- op: discuss  # a00b
+  at: '2026-03-11T23:30:35Z'  # a00b
+  by: agent  # a00b
+  actor: jgstern_agent  # a00b
+  clock: 4  # a00b
+  nonce: a00b  # a00b
+  message: "Fixed in PR (pending merge). New solidity_abi linker detects ethers.js method calls and viem config patterns, creates abi_call edges to Solidity function definitions."  # a00b
+- op: update  # 43aa
+  at: '2026-03-11T23:35:35Z'  # 43aa
+  by: agent  # 43aa
+  actor: jgstern_agent  # 43aa
+  clock: 5  # 43aa
+  nonce: 43aa  # 43aa
+  set:  # 43aa
+    pr_ref: '#2179'  # 43aa
+- op: discuss  # 2eec
+  at: '2026-03-11T23:39:09Z'  # 2eec
+  by: agent  # 2eec
+  actor: jgstern_agent  # 2eec
+  clock: 6  # 2eec
+  nonce: 2eec  # 2eec
+  message: "Validation on osx repo: only 1 abi_call edge found. Root cause: Solidity functions have qualified names (e.g., 'PermissionManager._grant') while TS calls use unqualified names ('contract.applyMultiTargetPermissions'). The linker matches by exact name, so qualified Solidity names don't match unqualified TS calls. Fix: strip contract prefix from Solidity function names when building the match map."  # 2eec
+- op: update  # 6b67
+  at: '2026-03-11T23:40:45Z'  # 6b67
+  by: agent  # 6b67
+  actor: jgstern_agent  # 6b67
+  clock: 7  # 6b67
+  nonce: 6b67  # 6b67
+  set:  # 6b67
+    status: todo_soft  # 6b67
+- op: discuss  # d41a
+  at: '2026-03-11T23:40:45Z'  # d41a
+  by: agent  # d41a
+  actor: jgstern_agent  # d41a
+  clock: 8  # d41a
+  nonce: d41a  # d41a
+  message: "Reopened: linker works for simple names but fails on qualified Solidity names (ContractName.function). Need to strip contract prefix for matching."  # d41a

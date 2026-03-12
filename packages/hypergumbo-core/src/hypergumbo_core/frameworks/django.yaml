@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Django framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches Django and Django REST Framework decorators, base classes, annotations,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Build tree-sitter grammars from source for languages not available on PyPI.
 

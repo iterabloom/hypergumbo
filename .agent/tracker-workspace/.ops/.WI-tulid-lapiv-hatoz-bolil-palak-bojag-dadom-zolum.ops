@@ -1,0 +1,34 @@
+- op: create  # 37c1
+  at: '2026-03-06T09:01:11Z'  # 37c1
+  by: agent  # 37c1
+  actor: jgstern_agent  # 37c1
+  clock: 1  # 37c1
+  nonce: 37c1  # 37c1
+  data:  # 37c1
+    kind: work_item  # 37c1
+    title: "Rust trait impl relationships not captured in graph edges"  # 37c1
+    status: todo_soft  # 37c1
+    priority: 2  # 37c1
+    parent:  # 37c1
+    tags: []  # 37c1
+    before: []  # 37c1
+    duplicate_of: []  # 37c1
+    not_duplicate_of: []  # 37c1
+    pr_ref:  # 37c1
+    description: "Rust trait implementations invisible in graph. Should show implements edge when struct X impl Trait. TDD: test that impl block for a trait produces an implements edge. See notebookjournal_03062026_0900.md."  # 37c1
+    fields: {}  # 37c1
+- op: update  # a92e
+  at: '2026-03-06T09:52:12Z'  # a92e
+  by: agent  # a92e
+  actor: jgstern_agent  # a92e
+  clock: 2  # a92e
+  nonce: a92e  # a92e
+  set:  # a92e
+    status: done  # a92e
+- op: discuss  # b014
+  at: '2026-03-06T09:52:12Z'  # b014
+  by: agent  # b014
+  actor: jgstern_agent  # b014
+  clock: 3  # b014
+  nonce: b014  # b014
+  message: "Already working. Verified across 23 repos: candle=584, zed=2766, codex=255 implements edges."  # b014

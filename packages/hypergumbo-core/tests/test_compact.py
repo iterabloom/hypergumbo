@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for compact output mode.
 
 This module tests the coverage-based truncation and bag-of-words
@@ -1404,12 +1405,13 @@ class TestForceIncludeEntrypoints:
             assert ep_sym.id in included_ids, f"Entrypoint {ep_sym.name} should be included"
 
     def test_entrypoints_capped_when_exceeding_budget(self):
-        """When entrypoints exceed max_symbols/2, they are capped to leave room for bridges."""
+        """When entrypoints far exceed max_symbols, they are capped aggressively
+        to leave room for bridge nodes."""
         # Create 20 entrypoint symbols (simulating many main() functions)
         entrypoint_syms = [make_symbol(f"main_{i}") for i in range(20)]
         helper_syms = [make_symbol(f"helper_{i}") for i in range(30)]
 
-        # Set confidence so main_0 through main_4 have highest confidence
+        # Set confidence so main_0 through main_2 have highest confidence
         behavior_map = {
             "nodes": [s.to_dict() for s in entrypoint_syms + helper_syms],
             "edges": [],
@@ -1419,8 +1421,8 @@ class TestForceIncludeEntrypoints:
             ],
         }
 
-        # With max_symbols=10, only 5 entrypoints (max_symbols // 2) should be forced
-        # This leaves room for 5 bridge/helper nodes
+        # With max_symbols=10 and 20 entrypoints (> max_symbols), adaptive cap
+        # kicks in: max_symbols // 3 = 3 forced entrypoints.
         config = CompactConfig(min_symbols=10, max_symbols=10)
         result = format_compact_behavior_map(
             behavior_map,
@@ -1433,13 +1435,14 @@ class TestForceIncludeEntrypoints:
         included_ids = {n["id"] for n in result["nodes"]}
         entrypoints_included = [s for s in entrypoint_syms if s.id in included_ids]
 
-        # Should have capped entrypoints to 5 (max_symbols // 2)
+        # Should have capped entrypoints to 3 (max_symbols // 3) since
+        # 20 entrypoints > max_symbols (10)
         assert len(entrypoints_included) <= 5, (
             f"Expected at most 5 entrypoints, got {len(entrypoints_included)}"
         )
 
-        # The highest-confidence entrypoints should be included (main_0 through main_4)
-        for i in range(5):
+        # The highest-confidence entrypoints should be included (main_0 through main_2)
+        for i in range(3):
             assert entrypoint_syms[i].id in included_ids, (
                 f"Entrypoint main_{i} (high confidence) should be included"
             )
@@ -2645,4 +2648,478 @@ class TestTieredTokenBudget:
             f"C is the dominant language (100 nodes, {len(c_edges)} edges) "
             f"but was underrepresented because its entrypoint had zero "
             f"frontier edges. Language-proportional seeding should fix this."
+        )
+
+
+    def test_tiered_excludes_boundary_nodes(self):
+        """Boundary nodes (external_symbol) should not appear in tiered output.
+
+        Boundary nodes exist in all_symbols for slice traversal but are filtered
+        from the full behavior_map["nodes"]. The tiered view should also exclude
+        them. Without this fix, when no high-confidence entrypoints exist, the
+        connectivity selection picks boundary nodes (high in-degree from imports)
+        instead of first-party code nodes.
+        """
+        # First-party function nodes
+        func_a = make_symbol("processData", path="src/process.js", language="javascript")
+        func_b = make_symbol("loadConfig", path="src/config.js", language="javascript")
+
+        # Boundary node: unresolved external import target
+        boundary = Symbol(
+            id="javascript:lodash:0-0:module:module",
+            name="module",
+            kind="external_symbol",
+            language="javascript",
+            path="<external>",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            meta={"external_boundary": True},
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
+        )
+
+        # Edges: both functions import the boundary node (high in-degree)
+        edge_a = make_edge(func_a.id, boundary.id, edge_type="imports")
+        edge_b = make_edge(func_b.id, boundary.id, edge_type="imports")
+        edge_ab = make_edge(func_a.id, func_b.id, edge_type="calls")
+
+        all_symbols = [func_a, func_b, boundary]
+        all_edges = [edge_a, edge_b, edge_ab]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [func_a, func_b]],  # Full view excludes boundary
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        result_nodes = result["nodes"]
+        # No boundary nodes in output
+        boundary_in_output = [
+            n for n in result_nodes
+            if n.get("kind") == "external_symbol"
+            or (n.get("meta") or {}).get("external_boundary")
+        ]
+        assert len(boundary_in_output) == 0, (
+            f"Boundary nodes should be excluded from tiered output, "
+            f"found {len(boundary_in_output)}: "
+            f"{[n.get('name') for n in boundary_in_output]}"
+        )
+
+        # First-party nodes should be present
+        first_party = [n for n in result_nodes if n.get("supply_chain", {}).get("tier") == 1]
+        assert len(first_party) >= 1, "At least one first-party node should be in tiered output"
+
+    def test_tiered_excludes_cfg_test_annotated_nodes(self):
+        """Symbols with cfg(test) annotation should be excluded from tiered output.
+
+        Rust idiomatically puts test code inside ``#[cfg(test)] mod tests { ... }``
+        within source files (not test files). The Rust analyzer annotates these
+        symbols with cfg(test) in their metadata. The compact view must use
+        ``is_test_node(path, meta)`` (which checks both path and annotations)
+        rather than ``is_test_path(path)`` (path-only), so test infrastructure
+        like ``StubClient::new`` doesn't dominate centrality rankings.
+        """
+        # Production symbols
+        prod_a = make_symbol("CodexAgent::new", path="src/agent.rs", language="rust", kind="method")
+        prod_b = make_symbol("setup", path="src/thread.rs", language="rust", kind="function")
+
+        # Test infrastructure: cfg(test) annotated but in a production file path
+        test_stub = Symbol(
+            id="rust:src/thread.rs:3692-3696:StubClient::new:method",
+            name="StubClient::new",
+            kind="method",
+            language="rust",
+            path="src/thread.rs",
+            span=Span(start_line=3692, end_line=3696, start_col=0, end_col=1),
+            meta={"annotations": [{"name": "cfg", "args": ["test"], "kwargs": {}}]},
+            supply_chain_tier=1,
+        )
+
+        # StubClient::new has high in-degree (called from many tests)
+        edges = [
+            make_edge(f"test_{i}", test_stub.id) for i in range(20)
+        ] + [
+            make_edge(prod_a.id, prod_b.id),
+        ]
+
+        all_symbols = [prod_a, prod_b, test_stub]
+        all_edges = edges
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        result_names = [n["name"] for n in result["nodes"]]
+        # Test stub should NOT appear in output despite high in-degree
+        assert "StubClient::new" not in result_names, (
+            f"cfg(test)-annotated StubClient::new should be excluded from "
+            f"tiered output, but found in: {result_names}"
+        )
+        # Production nodes should be present
+        assert "CodexAgent::new" in result_names or "setup" in result_names, (
+            f"At least one production node should be in tiered output, got: {result_names}"
+        )
+
+    def test_select_by_tokens_excludes_cfg_test_annotated(self):
+        """select_by_tokens should exclude cfg(test) annotated symbols when exclude_tests=True."""
+        prod = make_symbol("handle_request", path="src/server.rs", language="rust")
+        test_helper = Symbol(
+            id="rust:src/server.rs:500-510:make_stub:function",
+            name="make_stub",
+            kind="function",
+            language="rust",
+            path="src/server.rs",  # NOT a test path
+            span=Span(start_line=500, end_line=510, start_col=0, end_col=1),
+            meta={"annotations": [{"name": "cfg", "args": ["test"], "kwargs": {}}]},
+            supply_chain_tier=1,
+        )
+
+        symbols = [prod, test_helper]
+        edges = [make_edge("caller", test_helper.id) for _ in range(10)]
+
+        result = select_by_tokens(
+            symbols, edges,
+            target_tokens=4000,
+            exclude_tests=True,
+            exclude_examples=True,
+            exclude_non_code=True,
+        )
+
+        selected_names = [s.name for s in result.included.symbols]
+        assert "make_stub" not in selected_names, (
+            f"cfg(test)-annotated make_stub should be excluded, got: {selected_names}"
+        )
+        assert "handle_request" in selected_names
+
+
+class TestCrossCuttingEdgeSeeding:
+    """Tests for cross-cutting edge endpoint seeding (INV-posun).
+
+    Compact mode must retain cross-cutting edge types (routes_to, http_calls,
+    dispatches_to, di_resolves, ffi_calls) by pre-seeding their endpoints
+    into the node selection.
+    """
+
+    def test_routes_to_edges_preserved(self):
+        """routes_to edges survive compact when endpoints are seeded."""
+        # High-centrality hub (will be selected by centrality)
+        hub = make_symbol("hub")
+        # Route node (zero in-degree, would be excluded by centrality)
+        route = make_symbol("route_get_users", kind="route")
+        # Handler that hub calls
+        handler = make_symbol("get_users_handler")
+
+        edges = [
+            make_edge(hub.id, handler.id),  # hub calls handler
+            make_edge(route.id, handler.id, edge_type="routes_to"),  # route → handler
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [hub, route, handler]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, [hub, route, handler], edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "routes_to" in edge_types, (
+            "routes_to edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_dispatches_to_edges_preserved(self):
+        """dispatches_to edges survive compact when endpoints are seeded."""
+        # Interface method (called by many → high centrality)
+        interface = make_symbol("IService_process", kind="method")
+        # Concrete implementations (low centrality individually)
+        impl_a = make_symbol("ConcreteA_process", kind="method")
+        impl_b = make_symbol("ConcreteB_process", kind="method")
+        # Callers to give interface high centrality
+        callers = [make_symbol(f"caller_{i}") for i in range(5)]
+
+        edges = [
+            *[make_edge(c.id, interface.id) for c in callers],
+            make_edge(interface.id, impl_a.id, edge_type="dispatches_to"),
+            make_edge(interface.id, impl_b.id, edge_type="dispatches_to"),
+        ]
+
+        all_symbols = [interface, impl_a, impl_b] + callers
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # Budget large enough for callers + interface + at least one impl
+        config = CompactConfig(min_symbols=5, max_symbols=8)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "dispatches_to" in edge_types, (
+            "dispatches_to edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_http_calls_edges_preserved(self):
+        """http_calls edges survive compact when endpoints are seeded."""
+        # Client function making HTTP call
+        client = make_symbol("fetch_users")
+        # Server handler
+        server = make_symbol("handle_users")
+        # Hub to anchor centrality
+        hub = make_symbol("main")
+
+        edges = [
+            make_edge(hub.id, client.id),
+            make_edge(hub.id, server.id),
+            make_edge(client.id, server.id, edge_type="http_calls"),
+        ]
+
+        all_symbols = [hub, client, server]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=3, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        edge_types = {e["type"] for e in result["edges"]}
+        assert "http_calls" in edge_types, (
+            "http_calls edge should be preserved via cross-cutting seeding"
+        )
+
+    def test_cross_cutting_seeds_capped(self):
+        """Cross-cutting seeds don't exceed 25% of max_symbols budget."""
+        from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
+
+        # Create many dispatch targets (more than budget allows)
+        interface = make_symbol("interface")
+        impls = [make_symbol(f"impl_{i}", path=f"src/impl_{i}.py") for i in range(50)]
+
+        edges = [
+            make_edge(interface.id, impl.id, edge_type="dispatches_to")
+            for impl in impls
+        ]
+        # Add a call so interface has centrality
+        caller = make_symbol("caller")
+        edges.append(make_edge(caller.id, interface.id))
+
+        all_symbols = [interface, caller] + impls
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # max_symbols=20, so cross-cutting cap = 20//4 = 5
+        config = CompactConfig(min_symbols=5, max_symbols=20)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=False,
+        )
+
+        # Should have at most 20 nodes
+        assert len(result["nodes"]) <= 20
+
+    def test_cross_cutting_with_nonexistent_endpoint_ignored(self):
+        """Cross-cutting edges with endpoints not in symbols are ignored."""
+        hub = make_symbol("hub")
+        real = make_symbol("real_handler")
+        edges_list = [
+            make_edge(hub.id, real.id),
+            # Edge pointing to non-existent symbol
+            make_edge("phantom::nonexistent", real.id, edge_type="ffi_calls"),
+        ]
+
+        all_symbols = [hub, real]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges_list],
+            "entrypoints": [],
+        }
+
+        config = CompactConfig(min_symbols=2, max_symbols=2)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges_list, config,
+            force_include_entrypoints=False,
+        )
+
+        # Should not crash, should include real nodes
+        included_ids = {n["id"] for n in result["nodes"]}
+        assert real.id in included_ids
+
+    def test_cross_cutting_constant_values(self):
+        """CROSS_CUTTING_EDGE_TYPES contains the expected edge types."""
+        from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
+
+        assert "routes_to" in CROSS_CUTTING_EDGE_TYPES
+        assert "http_calls" in CROSS_CUTTING_EDGE_TYPES
+        assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
+        assert "di_resolves" in CROSS_CUTTING_EDGE_TYPES
+        assert "ffi_calls" in CROSS_CUTTING_EDGE_TYPES
+        # Regular edges should NOT be in the set
+        assert "calls" not in CROSS_CUTTING_EDGE_TYPES
+        assert "imports" not in CROSS_CUTTING_EDGE_TYPES
+
+
+class TestCompactSeedBudget:
+    """Tests for seed budget management in compact mode.
+
+    Large repos (keycloak: 79k nodes, 500 entrypoints) produce fragmented
+    compact output when forced seeds consume most of the node budget, leaving
+    insufficient room for bridge nodes.  The fix caps total forced seeds
+    (entrypoints + cross-cutting endpoints) to at most 1/3 of max_symbols,
+    reserving 2/3 for frontier expansion.
+    """
+
+    def test_many_entrypoints_limited_for_bridging(self):
+        """With many isolated entrypoints, compact mode caps forced seeds
+        to leave room for bridge nodes that reduce singletons."""
+        from hypergumbo_core.compact import (
+            format_compact_behavior_map,
+            CompactConfig,
+        )
+
+        # Simulate keycloak-like: 200 isolated entrypoints, each with its
+        # own private helper.  Only every 10th helper connects to core.
+        all_symbols = []
+        edges = []
+        for i in range(200):
+            ep = make_symbol(f"Resource{i}", kind="method",
+                             path=f"src/r{i}.java", language="java")
+            helper = make_symbol(f"Helper{i}", kind="function",
+                                 path=f"src/h{i}.java", language="java")
+            all_symbols.extend([ep, helper])
+            edges.append(make_edge(ep.id, helper.id))
+
+        core = make_symbol("SessionManager", kind="class",
+                           path="src/core.java", language="java")
+        all_symbols.append(core)
+        for i in range(0, 200, 10):
+            edges.append(make_edge(all_symbols[i * 2 + 1].id, core.id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": all_symbols[i * 2].id,
+                 "kind": "route_handler", "confidence": 0.9}
+                for i in range(200)
+            ],
+        }
+
+        config = CompactConfig(max_symbols=100)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=True,
+            connectivity_aware=True,
+        )
+
+        nodes = result["nodes"]
+        result_edges = result["edges"]
+
+        # Count singletons (nodes with 0 edges in the induced subgraph)
+        adj: dict = {n["id"]: set() for n in nodes}
+        for e in result_edges:
+            src, dst = e["src"], e["dst"]
+            if src in adj and dst in adj:
+                adj[src].add(dst)
+                adj[dst].add(src)
+        singletons = sum(1 for nid in adj if not adj[nid])
+
+        # Key assertion: zero singletons.  With proper seed budget, every
+        # forced entrypoint has room for its helper to be pulled in by
+        # the frontier, so no node is disconnected.
+        assert singletons == 0, (
+            f"Singletons: {singletons}/{len(nodes)} = "
+            f"{singletons / len(nodes):.0%}. "
+            f"Every forced seed should have at least one edge."
+        )
+
+    def test_total_forced_seeds_capped(self):
+        """Total forced seeds (entrypoints + cross-cutting) don't exceed
+        1/3 of max_symbols, leaving 2/3 for frontier expansion."""
+        from hypergumbo_core.compact import (
+            format_compact_behavior_map,
+            CompactConfig,
+        )
+
+        # 100 entrypoints + 60 cross-cutting edge endpoints
+        entrypoint_syms = [
+            make_symbol(f"Ep{i}", kind="method",
+                        path=f"src/ep{i}.java", language="java")
+            for i in range(100)
+        ]
+        handler_syms = [
+            make_symbol(f"Handler{i}", kind="function",
+                        path=f"src/h{i}.java", language="java")
+            for i in range(60)
+        ]
+        bridge_syms = [
+            make_symbol(f"Bridge{i}", kind="class",
+                        path=f"src/b{i}.java", language="java")
+            for i in range(40)
+        ]
+        all_symbols = entrypoint_syms + handler_syms + bridge_syms
+
+        edges = []
+        # Cross-cutting edges: routes_to from entrypoints to handlers
+        for i, ep in enumerate(entrypoint_syms[:60]):
+            edges.append(make_edge(ep.id, handler_syms[i].id,
+                                   edge_type="routes_to"))
+        # Bridge edges: handlers call bridges
+        for i, h in enumerate(handler_syms):
+            edges.append(make_edge(h.id, bridge_syms[i % len(bridge_syms)].id))
+        # Bridge chain
+        for i in range(len(bridge_syms) - 1):
+            edges.append(make_edge(bridge_syms[i].id, bridge_syms[i + 1].id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": ep.id, "kind": "route_handler",
+                 "confidence": 0.9}
+                for ep in entrypoint_syms
+            ],
+        }
+
+        config = CompactConfig(max_symbols=100)
+        result = format_compact_behavior_map(
+            behavior_map, all_symbols, edges, config,
+            force_include_entrypoints=True,
+            connectivity_aware=True,
+        )
+
+        nodes = result["nodes"]
+        included_ids = {n["id"] for n in nodes}
+
+        # At least some bridge nodes should be included (frontier expansion)
+        bridge_count = sum(1 for b in bridge_syms if b.id in included_ids)
+        assert bridge_count > 0, (
+            "No bridge nodes included — forced seeds consumed all budget"
         )

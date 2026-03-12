@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Metrics computation for behavior map output.
 
 Computes summary statistics from nodes and edges:

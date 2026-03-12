@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Inheritance linker for creating extends/implements edges.
 
 This linker creates graph edges from base_classes metadata, providing a single

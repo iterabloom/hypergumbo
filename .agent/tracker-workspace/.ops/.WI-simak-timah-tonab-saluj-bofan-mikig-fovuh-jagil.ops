@@ -1,0 +1,94 @@
+- op: create  # 0dc9
+  at: '2026-03-06T08:59:47Z'  # 0dc9
+  by: agent  # 0dc9
+  actor: jgstern_agent  # 0dc9
+  clock: 1  # 0dc9
+  nonce: 0dc9  # 0dc9
+  data:  # 0dc9
+    kind: work_item  # 0dc9
+    title: "Cargo/npm entrypoint nodes have no edge to main(): forward slices dead ends"  # 0dc9
+    status: todo_soft  # 0dc9
+    priority: 1  # 0dc9
+    parent:  # 0dc9
+    tags: []  # 0dc9
+    before: []  # 0dc9
+    duplicate_of: []  # 0dc9
+    not_duplicate_of: []  # 0dc9
+    pr_ref:  # 0dc9
+    description: "Cargo binary entrypoints and npm bin fields create nodes but no edges to main(). Forward slices from top entrypoints contain 1-2 nodes. Need edge from cargo:binary:X to rust:src/main.rs:main, and npm bin dist/ resolution through tsconfig to src/. TDD: test that cargo binary entrypoint has edge to main(). See notebookjournal_03062026_0900.md."  # 0dc9
+    fields: {}  # 0dc9
+- op: update  # f77a
+  at: '2026-03-06T09:02:42Z'  # f77a
+  by: agent  # f77a
+  actor: jgstern_agent  # f77a
+  clock: 2  # f77a
+  nonce: f77a  # f77a
+  set: {}  # f77a
+  add:  # f77a
+    not_duplicate_of: [INV-posun-jovup-pusug-fuhuj-dotuh-sojum-sorom-kutug]  # f77a
+- op: update  # 6ef7
+  at: '2026-03-06T09:52:12Z'  # 6ef7
+  by: agent  # 6ef7
+  actor: jgstern_agent  # 6ef7
+  clock: 3  # 6ef7
+  nonce: 6ef7  # 6ef7
+  set:  # 6ef7
+    status: done  # 6ef7
+- op: discuss  # e3c3
+  at: '2026-03-06T09:52:12Z'  # e3c3
+  by: agent  # e3c3
+  actor: jgstern_agent  # e3c3
+  clock: 4  # e3c3
+  nonce: e3c3  # e3c3
+  message: "Fixed in PR #1838: build-target linker connects Cargo/npm entrypoints to main()."  # e3c3
+- op: discuss  # e124
+  at: '2026-03-06T18:14:39Z'  # e124
+  by: human  # e124
+  actor: jgstern  # e124
+  clock: 5  # e124
+  nonce: e124  # e124
+  message: "Is the bug that was identified here something that might be unaddressed for any other hypergumbo-supported languages?"  # e124
+- op: discuss  # dadb
+  at: '2026-03-06T19:48:57Z'  # dadb
+  by: agent  # dadb
+  actor: jgstern_agent  # dadb
+  clock: 6  # dadb
+  nonce: dadb  # dadb
+  message: "The same pattern (build target → main function disconnected) could affect: (1) Python: pyproject.toml console_scripts/gui_scripts entry points → __main__.py or main() functions, (2) Java/Kotlin: Maven pom.xml <mainClass> or Gradle application { mainClass } → main() methods, (3) C#: .csproj <StartupObject> → Program.Main(). Go is not affected (package main + func main() is direct, no build manifest indirection). Currently only Cargo [[bin]] (Rust) and npm bin (JS/TS) emit defines_target edges. The others would need similar support in their config file analyzers."  # dadb
+- op: discuss  # 5209
+  at: '2026-03-06T23:06:03Z'  # 5209
+  by: human  # 5209
+  actor: jgstern  # 5209
+  clock: 7  # 5209
+  nonce: '5209'  # 5209
+  message: "Hypergumbo supports over 100 languages. Are you sure those three plus rust are the only ones implicated by this pattern?"  # 5209
+- op: discuss  # 9773
+  at: '2026-03-07T00:50:56Z'  # 9773
+  by: agent  # 9773
+  actor: jgstern_agent  # 9773
+  clock: 8  # 9773
+  nonce: '9773'  # 9773
+  message: "You're right, I was too narrow. Beyond Rust (Cargo) and JS/TS (npm), the build-target-to-main-function pattern applies to any language with a build manifest that declares an executable entry point. A more thorough enumeration:\n\nAlready supported: Rust (Cargo [[bin]]), JS/TS (npm bin).\n\nLikely affected (have build manifests with entry point declarations):\n- Python: pyproject.toml [project.scripts]/[project.gui-scripts], setup.py console_scripts\n- Java: Maven pom.xml <mainClass>, Gradle application { mainClass }\n- Kotlin: Gradle application { mainClass } (same as Java)\n- C#: .csproj <StartupObject> or <OutputType>Exe</OutputType>\n- Dart: pubspec.yaml executables\n- Swift: Package.swift .executableTarget\n- Haskell: .cabal executable stanzas (main-is field)\n- Elixir: mix.exs escript[:main_module]\n- Ruby: gemspec executables/bindir\n- Scala: build.sbt mainClass\n- OCaml: dune (executable) stanzas\n- Zig: build.zig b.addExecutable\n- Nim: .nimble bin field\n\nNot affected (entry point is implicit/direct, no manifest indirection):\n- Go: package main + func main() — direct, no manifest indirection\n- C/C++: Makefile/CMakeLists.txt targets, but main() is by convention\n- PHP: No build manifest concept for CLI entry points\n- Shell/Bash: Direct execution, no manifest\n\nI haven't checked which of these hypergumbo currently parses config files for. Creating a scope expansion tracker item for the full set."  # 9773
+- op: discuss  # d2b3
+  at: '2026-03-07T01:46:50Z'  # d2b3
+  by: human  # d2b3
+  actor: jgstern  # d2b3
+  clock: 9  # d2b3
+  nonce: d2b3  # d2b3
+  message: "presumably there is some commonality amongst those dozen-plus affected languages that we should be interacting with upstream of the language analyzer step (e.g. in a new or existing base class)?"  # d2b3
+- op: discuss  # b926
+  at: '2026-03-07T02:03:44Z'  # b926
+  by: agent  # b926
+  actor: jgstern_agent  # b926
+  clock: 10  # b926
+  nonce: b926  # b926
+  message: "Good point. The build-target-to-main edge logic lives in the build_target linker (linkers/build_target.py), which runs post-analysis across all languages. The per-language analyzers just need to emit build-target symbols with the right metadata (entry_point flag, build system references). The commonality is in the linker, not in a base class — it already handles Cargo, npm, pip, Go modules generically. The dozen-plus languages from WI-mifid are about adding build-target symbol extraction to those analyzers (detecting their package manifests), which then automatically get linked by the existing linker. No new base class needed — just consistent metadata emission."  # b926
+- op: update  # 7b10
+  at: '2026-03-07T06:42:00Z'  # 7b10
+  by: human  # 7b10
+  actor: jgstern  # 7b10
+  clock: 11  # 7b10
+  nonce: 7b10  # 7b10
+  set: {}  # 7b10
+  add:  # 7b10
+    before: [WI-mifid-juhod-pirud-minad-zoziz-fokir-pogis-luzuf]  # 7b10

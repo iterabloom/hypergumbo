@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for TreeSitterAnalyzer base class.
 
 Tests the two-pass analysis framework that subclasses can use to
@@ -110,6 +111,26 @@ class StubAnalyzer(TreeSitterAnalyzer):
     ):
         """Create no edges by default."""
         return []
+
+
+class FieldTypeAnalyzer(StubAnalyzer):
+    """Analyzer that populates class_field_types for testing."""
+
+    def extract_symbols_from_file(self, tree, source, file_path, rel_path, run):
+        analysis = super().extract_symbols_from_file(
+            tree, source, file_path, rel_path, run,
+        )
+        # Populate field types based on filename convention
+        stem = Path(rel_path).stem
+        if stem == "server":
+            analysis.class_field_types = {
+                "Server": {"app": "App", "db": "Database"},
+            }
+        elif stem == "app":
+            analysis.class_field_types = {
+                "App": {"handler": "Handler"},
+            }
+        return analysis
 
 
 class SkippedAnalyzer(StubAnalyzer):
@@ -1167,3 +1188,302 @@ class TestExtractDecoratorNames:
         ])
         # Empty name is filtered since _decorator_node_name returns ""
         assert self.analyzer._extract_decorator_names(node) == []
+
+
+# ---------------------------------------------------------------------------
+# Field type registry and resolve_receiver_type tests
+# ---------------------------------------------------------------------------
+
+
+class TestFileAnalysisFieldTypes:
+    """Tests for FileAnalysis.class_field_types field."""
+
+    def test_defaults_to_empty_dict(self) -> None:
+        """class_field_types defaults to empty dict."""
+        analysis = FileAnalysis()
+        assert analysis.class_field_types == {}
+
+    def test_independent_instances(self) -> None:
+        """Each FileAnalysis gets its own class_field_types dict."""
+        a = FileAnalysis()
+        b = FileAnalysis()
+        a.class_field_types["Foo"] = {"bar": "Baz"}
+        assert b.class_field_types == {}
+
+
+class TestFieldTypeRegistryAggregation:
+    """Tests for field type aggregation in analyze()."""
+
+    def test_aggregates_across_files(self, tmp_path: Path) -> None:
+        """analyze() merges class_field_types from multiple files."""
+        (tmp_path / "server.stub").write_text("content")
+        (tmp_path / "app.stub").write_text("content")
+
+        analyzer = FieldTypeAnalyzer()
+        analyzer.analyze(tmp_path)
+
+        # Registry is cleared after analyze(), so test via a subclass
+        # that captures it during Pass 2.
+        captured = {}
+
+        class CapturingAnalyzer(FieldTypeAnalyzer):
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._field_type_registry)
+                return []
+
+        analyzer = CapturingAnalyzer()
+        analyzer.analyze(tmp_path)
+
+        assert "Server" in captured
+        assert captured["Server"] == {"app": "App", "db": "Database"}
+        assert "App" in captured
+        assert captured["App"] == {"handler": "Handler"}
+
+    def test_registry_cleared_after_analyze(self, tmp_path: Path) -> None:
+        """_field_type_registry is cleared after analyze() completes."""
+        (tmp_path / "server.stub").write_text("content")
+
+        analyzer = FieldTypeAnalyzer()
+        analyzer.analyze(tmp_path)
+        assert analyzer._field_type_registry == {}
+
+    def test_first_field_type_wins(self, tmp_path: Path) -> None:
+        """When two files declare the same class+field, first-seen wins."""
+        (tmp_path / "a.stub").write_text("content")
+        (tmp_path / "b.stub").write_text("content")
+
+        captured = {}
+
+        class DuplicateAnalyzer(StubAnalyzer):
+            call_count = 0
+
+            def extract_symbols_from_file(self, tree, source, file_path,
+                                          rel_path, run):
+                analysis = super().extract_symbols_from_file(
+                    tree, source, file_path, rel_path, run,
+                )
+                DuplicateAnalyzer.call_count += 1
+                # Both files claim Widget.size, with different types
+                if DuplicateAnalyzer.call_count == 1:
+                    analysis.class_field_types = {
+                        "Widget": {"size": "Size2D"},
+                    }
+                else:
+                    analysis.class_field_types = {
+                        "Widget": {"size": "Dimension"},
+                    }
+                return analysis
+
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._field_type_registry)
+                return []
+
+        DuplicateAnalyzer.call_count = 0
+        analyzer = DuplicateAnalyzer()
+        analyzer.analyze(tmp_path)
+
+        # setdefault means first-seen wins
+        assert captured["Widget"]["size"] in ("Size2D", "Dimension")
+
+    def test_empty_when_no_field_types(self, tmp_path: Path) -> None:
+        """Registry stays empty when no subclass populates class_field_types."""
+        (tmp_path / "hello.stub").write_text("content")
+
+        captured = {}
+
+        class CapturingAnalyzer(StubAnalyzer):
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._field_type_registry)
+                return []
+
+        analyzer = CapturingAnalyzer()
+        analyzer.analyze(tmp_path)
+        assert captured == {}
+
+
+class TestResolveReceiverType:
+    """Tests for TreeSitterAnalyzer.resolve_receiver_type()."""
+
+    def setup_method(self) -> None:
+        """Set up analyzer with a populated field type registry."""
+        self.analyzer = StubAnalyzer()
+        self.analyzer._field_type_registry = {
+            "Server": {"app": "App", "db": "Database"},
+            "App": {"handler": "Handler"},
+        }
+
+    def _make_field_expr(self, chain: list[str]) -> tuple[MagicMock, bytes]:
+        """Build a mock field_expression chain and matching source bytes.
+
+        chain=["self", "app", "handler"] produces:
+          source = b"self.app.handler"
+          field_expression(value=field_expression(value="self", field="app"),
+                           field="handler")
+
+        Returns (top_node, source_bytes).
+        """
+        # Build source: "self.app.handler"
+        source_str = ".".join(chain)
+        source = source_str.encode()
+
+        # Compute byte offsets for each token in "self.app.handler"
+        offsets: list[tuple[int, int]] = []
+        pos = 0
+        for token in chain:
+            offsets.append((pos, pos + len(token)))
+            pos += len(token) + 1  # +1 for the dot
+
+        # Build root node (the self keyword)
+        root = MagicMock()
+        root.type = "identifier"
+        root.start_byte = offsets[0][0]
+        root.end_byte = offsets[0][1]
+
+        current = root
+        for i, _field_name in enumerate(chain[1:], start=1):
+            parent = MagicMock()
+            parent.type = "field_expression"
+
+            field_node = MagicMock()
+            field_node.start_byte = offsets[i][0]
+            field_node.end_byte = offsets[i][1]
+
+            def make_child_fn(v, f):
+                def child_by_field_name(name):
+                    if name == "value":
+                        return v
+                    if name == "field":
+                        return f
+                    return None
+                return child_by_field_name
+
+            parent.child_by_field_name = make_child_fn(current, field_node)
+            current = parent
+
+        return current, source
+
+    def test_simple_self_field(self) -> None:
+        """self.app resolves to App type."""
+        node, source = self._make_field_expr(["self", "app"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result == "App"
+
+    def test_nested_chain(self) -> None:
+        """self.app.handler resolves through chain: Server→App→Handler."""
+        node, source = self._make_field_expr(["self", "app", "handler"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result == "Handler"
+
+    def test_non_self_root_returns_none(self) -> None:
+        """Non-self receiver root returns None."""
+        node, source = self._make_field_expr(["other", "app"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_unknown_field_returns_none(self) -> None:
+        """Unknown field name returns None."""
+        node, source = self._make_field_expr(["self", "unknown"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_intermediate_type_not_in_registry(self) -> None:
+        """self.app.handler fails when App is not in the registry."""
+        # Only Server→app→App is in registry; App→handler isn't
+        self.analyzer._field_type_registry = {
+            "Server": {"app": "App"},
+            # App is NOT in registry — so the second step fails
+        }
+        node, source = self._make_field_expr(["self", "app", "handler"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_no_enclosing_type_returns_none(self) -> None:
+        """None enclosing_type returns None."""
+        node, source = self._make_field_expr(["self", "app"])
+        result = self.analyzer.resolve_receiver_type(node, source, None)
+        assert result is None
+
+    def test_empty_registry_returns_none(self) -> None:
+        """Empty registry returns None."""
+        self.analyzer._field_type_registry = {}
+        node, source = self._make_field_expr(["self", "app"])
+        result = self.analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_no_registry_attr_returns_none(self) -> None:
+        """Missing _field_type_registry attribute returns None."""
+        analyzer = StubAnalyzer()  # Fresh, no registry set
+        node, source = self._make_field_expr(["self", "app"])
+        result = analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_custom_self_keywords(self) -> None:
+        """Analyzer with self_keywords={'this'} resolves 'this.app'."""
+
+        class ThisAnalyzer(StubAnalyzer):
+            self_keywords = frozenset({"this"})
+
+        analyzer = ThisAnalyzer()
+        analyzer._field_type_registry = {
+            "Server": {"app": "App"},
+        }
+        node, source = self._make_field_expr(["this", "app"])
+        result = analyzer.resolve_receiver_type(node, source, "Server")
+        assert result == "App"
+
+    def test_custom_self_keywords_rejects_self(self) -> None:
+        """Analyzer with self_keywords={'this'} rejects 'self.app'."""
+
+        class ThisAnalyzer(StubAnalyzer):
+            self_keywords = frozenset({"this"})
+
+        analyzer = ThisAnalyzer()
+        analyzer._field_type_registry = {
+            "Server": {"app": "App"},
+        }
+        node, source = self._make_field_expr(["self", "app"])
+        result = analyzer.resolve_receiver_type(node, source, "Server")
+        assert result is None
+
+    def test_field_child_missing_returns_none(self) -> None:
+        """If field_expression has no 'field' child, returns None."""
+        node = MagicMock()
+        node.type = "field_expression"
+        node.child_by_field_name = lambda name: None
+        result = self.analyzer.resolve_receiver_type(node, b"", "Server")
+        assert result is None
+
+    def test_value_child_missing_returns_none(self) -> None:
+        """If field_expression has no 'value' child, returns None."""
+        field_mock = MagicMock()
+        field_mock.start_byte = 0
+        field_mock.end_byte = 3
+
+        node = MagicMock()
+        node.type = "field_expression"
+
+        def child_by_field_name(name):
+            if name == "field":
+                return field_mock
+            return None
+        node.child_by_field_name = child_by_field_name
+
+        result = self.analyzer.resolve_receiver_type(node, b"app", "Server")
+        assert result is None
+
+
+class TestSelfKeywordsDefault:
+    """Tests for self_keywords class attribute."""
+
+    def test_default_is_self(self) -> None:
+        """Default self_keywords is frozenset({'self'})."""
+        assert StubAnalyzer.self_keywords == frozenset({"self"})

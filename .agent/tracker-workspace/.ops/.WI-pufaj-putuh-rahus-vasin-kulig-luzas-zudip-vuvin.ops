@@ -1,0 +1,41 @@
+- op: create  # 38ef
+  at: '2026-03-04T18:21:26Z'  # 38ef
+  by: agent  # 38ef
+  actor: jgstern_agent  # 38ef
+  clock: 1  # 38ef
+  nonce: 38ef  # 38ef
+  data:  # 38ef
+    kind: work_item  # 38ef
+    title: "C# field type resolution using base-class hook"  # 38ef
+    status: todo_soft  # 38ef
+    priority: 3  # 38ef
+    parent:  # 38ef
+    tags: []  # 38ef
+    before: []  # 38ef
+    duplicate_of: []  # 38ef
+    not_duplicate_of: []  # 38ef
+    pr_ref:  # 38ef
+    description: "C# already extracts field types (csharp.py lines 937-961) but never uses them for method chaining. Adopt the new base-class pattern from PR #1729: populate FileAnalysis.class_field_types from existing extraction, set self_keywords to this, use resolve_receiver_type() in edge extraction. Quick win since extraction already exists."  # 38ef
+    fields: {}  # 38ef
+- op: discuss  # 1ca0
+  at: '2026-03-05T23:36:55Z'  # 1ca0
+  by: human  # 1ca0
+  actor: jgstern  # 1ca0
+  clock: 2  # 1ca0
+  nonce: 1ca0  # 1ca0
+  message: "Implemented in PR 1770. Pass 1 extracts class_field_types, analyze() aggregates into registry, Pass 2 uses _resolve_member_chain for this.field1.field2.Method() patterns."  # 1ca0
+- op: update  # 81db
+  at: '2026-03-05T23:37:23Z'  # 81db
+  by: human  # 81db
+  actor: jgstern  # 81db
+  clock: 3  # 81db
+  nonce: 81db  # 81db
+  set:  # 81db
+    status: done  # 81db
+- op: discuss  # 8d20
+  at: '2026-03-05T23:45:46Z'  # 8d20
+  by: agent  # 8d20
+  actor: jgstern_agent  # 8d20
+  clock: 4  # 8d20
+  nonce: 8d20  # 8d20
+  message: "Acknowledged — C# field type resolution implemented in PR 1770 via class_field_types registry and _resolve_member_chain."  # 8d20

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Compact output mode with coverage-based truncation and residual summarization.
 
 This module provides LLM-friendly output formatting that:
@@ -54,9 +55,10 @@ from .ranking import compute_centrality, apply_tier_weights
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,
-    is_test_path as _is_test_path,
+    is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
 )
+from .paths import is_test_node as _is_test_node
 from .selection.language_proportional import (
     allocate_language_budget,
     find_underrepresented_language_seeds,
@@ -77,6 +79,20 @@ __all__ = [
     "EXAMPLE_PATH_PATTERNS",
     "parse_tier_spec",
 ]
+
+# Edge types that represent cross-cutting concerns (linker-produced edges that
+# connect nodes across language, service, or abstraction boundaries).  These are
+# the primary value proposition of the linker pipeline.  Compact mode must
+# seed their endpoints into the node selection so that these edges survive the
+# induced-subgraph filter — without this, centrality-based selection drops the
+# peripheral nodes that are endpoints of these edges.
+CROSS_CUTTING_EDGE_TYPES = frozenset({
+    "routes_to",       # Web route → handler function
+    "http_calls",      # HTTP client call → server endpoint
+    "dispatches_to",   # Interface/abstract method → concrete implementation
+    "di_resolves",     # DI interface → bound implementation
+    "ffi_calls",       # Code → foreign language function
+})
 
 
 @dataclass
@@ -904,11 +920,19 @@ def format_compact_behavior_map(
             if sid and sid in symbol_ids:
                 entrypoints_with_ids.append(ep)
 
-        # Cap entrypoints to leave room for bridge nodes in connectivity mode
-        # Without this cap, repos with many entrypoints (e.g., 158 main() functions)
-        # leave no room for nodes that connect them, resulting in 0 edges.
-        # Use at least 1 to handle edge case where max_symbols is very small.
-        max_forced = max(1, config.max_symbols // 2)
+        # Cap entrypoints to leave room for bridge nodes in connectivity mode.
+        # Without this cap, repos with many entrypoints (e.g., keycloak with
+        # 500 JAX-RS handlers) consume most of the node budget, leaving
+        # insufficient room for frontier expansion.  This causes fragmentation:
+        # keycloak had 30 components and 19 singletons in 100-node compact.
+        #
+        # Use adaptive cap: when entrypoints exceed max_symbols (indicating a
+        # large repo with many entry points), cap aggressively (1/3) to leave
+        # room for bridging.  Otherwise use the gentler 1/2 cap.
+        if len(entrypoints_with_ids) > config.max_symbols:
+            max_forced = max(1, config.max_symbols // 3)
+        else:
+            max_forced = max(1, config.max_symbols // 2)
         if len(entrypoints_with_ids) > max_forced:
             # Sort by confidence (descending) and take top entries
             sorted_eps = sorted(
@@ -918,6 +942,41 @@ def format_compact_behavior_map(
             entrypoints_with_ids = sorted_eps[:max_forced]
 
         force_include_ids = {ep.get("symbol_id") for ep in entrypoints_with_ids}
+
+    # Seed cross-cutting edge endpoints so linker-produced edges survive
+    # the induced-subgraph filter.  Without this, centrality-based selection
+    # drops peripheral nodes (route definitions, dispatch targets, FFI endpoints)
+    # that are endpoints of these high-value edges.
+    symbol_id_set = {s.id for s in symbols}
+    cross_cutting_ids: set = set()
+    for e in behavior_map.get("edges", []):
+        # Edge dicts use "type" key (from Edge.to_dict()), not "edge_type"
+        if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
+            src, dst = e.get("src"), e.get("dst")
+            if src in symbol_id_set:
+                cross_cutting_ids.add(src)
+            if dst in symbol_id_set:
+                cross_cutting_ids.add(dst)
+
+    # Cap cross-cutting seeds to avoid dominating the budget.  The combined
+    # total of entrypoints + cross-cutting seeds must leave at least half of
+    # max_symbols for frontier expansion.
+    remaining_seed_budget = max(0, config.max_symbols // 2 - len(force_include_ids))
+    if len(cross_cutting_ids) > remaining_seed_budget:
+        # Prefer endpoints with higher edge count (more cross-cutting connections)
+        cc_edge_count: Counter = Counter()
+        for e in behavior_map.get("edges", []):
+            if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
+                src, dst = e.get("src"), e.get("dst")
+                if src in cross_cutting_ids:
+                    cc_edge_count[src] += 1
+                if dst in cross_cutting_ids:
+                    cc_edge_count[dst] += 1
+        # Sort by edge count descending, then alphabetically for stability
+        ranked = sorted(cross_cutting_ids, key=lambda x: (-cc_edge_count[x], x))
+        cross_cutting_ids = set(ranked[:remaining_seed_budget])
+
+    force_include_ids |= cross_cutting_ids
 
     if connectivity_aware:
         # Use connectivity-aware selection
@@ -1041,7 +1100,10 @@ def select_by_tokens(
     if exclude_non_code:
         eligible_symbols = [s for s in eligible_symbols if s.kind not in EXCLUDED_KINDS]
     if exclude_tests:
-        eligible_symbols = [s for s in eligible_symbols if not _is_test_path(s.path)]
+        eligible_symbols = [
+            s for s in eligible_symbols
+            if not _is_test_node(s.path, s.meta)
+        ]
     if exclude_examples:
         eligible_symbols = [s for s in eligible_symbols if not _is_example_path(s.path)]
 
@@ -1254,12 +1316,16 @@ def format_tiered_behavior_map(
     max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
 
     # Filter symbols the same way select_by_tokens does: exclude tests,
-    # non-code, and example paths so they don't pollute the tiered view.
+    # non-code, example paths, and boundary nodes so they don't pollute
+    # the tiered view.  Boundary nodes (external_symbol, path=<external>)
+    # exist in all_symbols for slice traversal but are filtered from the
+    # full behavior_map["nodes"] output — the tiered view must match.
     eligible_symbols = [
         s for s in symbols
         if s.kind not in EXCLUDED_KINDS
-        and not _is_test_path(s.path)
+        and not _is_test_node(s.path, s.meta)
         and not _is_example_path(s.path)
+        and not (s.meta and s.meta.get("external_boundary"))
     ]
 
     # Language-proportional seeding: inject seeds for dominant languages

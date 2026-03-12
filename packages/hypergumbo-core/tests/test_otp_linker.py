@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for OTP GenServer dispatch linker.
 
 Tests linking of GenServer.call/cast sites to handle_call/handle_cast/handle_info

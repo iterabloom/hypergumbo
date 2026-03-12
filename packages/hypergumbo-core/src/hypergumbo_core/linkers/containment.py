@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Containment linker for creating `contains` edges between containers and members.
 
 This linker connects container symbols (classes, interfaces, structs, traits,

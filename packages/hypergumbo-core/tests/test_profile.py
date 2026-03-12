@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for repo profile detection."""
 import json
 from pathlib import Path
@@ -2228,6 +2229,37 @@ def test_detects_guice_from_gradle(tmp_path: Path) -> None:
     assert "guice" in data["profile"]["frameworks"]
 
 
+def test_detects_jaxrs_from_auxiliary_gradle_file(tmp_path: Path) -> None:
+    """Should detect JAX-RS from gradle/dependencies.gradle (auxiliary Gradle files).
+
+    Multi-module Gradle projects like Apache Kafka declare dependencies in
+    files like gradle/dependencies.gradle rather than in build.gradle directly.
+    The framework detector must scan *.gradle files in the gradle/ directory.
+    """
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    # Root build.gradle exists but doesn't declare JAX-RS
+    (tmp_path / "build.gradle").write_text("""plugins {
+    id 'java'
+}""")
+    # JAX-RS dependency declared in gradle/dependencies.gradle (Kafka pattern)
+    gradle_dir = tmp_path / "gradle"
+    gradle_dir.mkdir()
+    (gradle_dir / "dependencies.gradle").write_text("""
+ext {
+    versions = [jakartaRs: "3.1.0"]
+    libs = [
+        jakartaRsApi: "jakarta.ws.rs:jakarta.ws.rs-api:$versions.jakartaRs",
+    ]
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "jax-rs" in data["profile"]["frameworks"]
+
+
 def test_bare_graphql_package_does_not_trigger_framework(tmp_path: Path) -> None:
     """Bare 'graphql' npm package should NOT activate graphql framework (WI-rofiz).
 
@@ -2287,3 +2319,66 @@ def test_detects_stapler_from_maven(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "stapler" in data["profile"]["frameworks"]
+
+
+def test_detects_protobuf_framework_from_proto_files(tmp_path: Path) -> None:
+    """Protobuf framework detected when .proto files are present."""
+    from hypergumbo_core.profile import _detect_protobuf
+
+    (tmp_path / "user.proto").write_text(
+        'syntax = "proto3";\nservice UserService { rpc GetUser(Req) returns (Resp); }\n'
+    )
+
+    detected = _detect_protobuf(tmp_path)
+    assert detected == ["protobuf"]
+
+
+def test_no_protobuf_without_proto_files(tmp_path: Path) -> None:
+    """No protobuf framework when no .proto files exist."""
+    from hypergumbo_core.profile import _detect_protobuf
+
+    (tmp_path / "app.py").write_text("print('hello')\n")
+
+    detected = _detect_protobuf(tmp_path)
+    assert detected == []
+
+
+def test_detects_grpc_go_framework(tmp_path: Path) -> None:
+    """gRPC detected from Go go.mod dependency."""
+    from hypergumbo_core.profile import _detect_go_frameworks
+
+    (tmp_path / "go.mod").write_text(
+        "module example.com/myapp\n\nrequire google.golang.org/grpc v1.60.0\n"
+    )
+
+    detected = _detect_go_frameworks(tmp_path)
+    assert "grpc" in detected
+
+
+def test_detects_grpc_python_framework(tmp_path: Path) -> None:
+    """gRPC detected from Python requirements."""
+    from hypergumbo_core.profile import _detect_python_frameworks
+
+    (tmp_path / "requirements.txt").write_text("grpcio==1.60.0\n")
+
+    detected = _detect_python_frameworks(tmp_path)
+    assert "grpc" in detected
+
+
+def test_detects_grpc_java_framework(tmp_path: Path) -> None:
+    """gRPC detected from Java pom.xml dependency."""
+    from hypergumbo_core.profile import _detect_java_frameworks
+
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-core</artifactId>
+        </dependency>
+    </dependencies>
+</project>"""
+    )
+
+    detected = _detect_java_frameworks(tmp_path)
+    assert "grpc" in detected

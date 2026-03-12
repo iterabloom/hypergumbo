@@ -1,0 +1,72 @@
+- op: create  # 2faf
+  at: '2026-03-04T21:48:34Z'  # 2faf
+  by: agent  # 2faf
+  actor: jgstern_agent  # 2faf
+  clock: 1  # 2faf
+  nonce: 2faf  # 2faf
+  data:  # 2faf
+    kind: work_item  # 2faf
+    title: "auto-pr: auto-retry merge on HTTP 200 + merged:false"  # 2faf
+    status: todo_soft  # 2faf
+    priority: 2  # 2faf
+    parent:  # 2faf
+    tags:  # 2faf
+    - ci_infrastructure  # 2faf
+    before: []  # 2faf
+    duplicate_of: []  # 2faf
+    not_duplicate_of: []  # 2faf
+    pr_ref:  # 2faf
+    description: "Codeberg/Forgejo FF merge sometimes returns HTTP 200 but merged:false. auto-pr should retry (up to 3 with backoff) before cherry-pick fallback. Observed: PR #1757 required manual cherry-pick, ~15 min + 50 tool calls wasted."  # 2faf
+    fields: {}  # 2faf
+- op: update  # d9c8
+  at: '2026-03-06T00:52:20Z'  # d9c8
+  by: agent  # d9c8
+  actor: jgstern_agent  # d9c8
+  clock: 2  # d9c8
+  nonce: d9c8  # d9c8
+  set:  # d9c8
+    status: needs_human_review  # d9c8
+- op: discuss  # e4e6
+  at: '2026-03-06T00:52:20Z'  # e4e6
+  by: agent  # e4e6
+  actor: jgstern_agent  # e4e6
+  clock: 3  # e4e6
+  nonce: e4e6  # e4e6
+  message: "Requires modifying scripts/auto-pr or scripts/merge-pr (governance files). Requesting approval."  # e4e6
+- op: discuss  # d5f2
+  at: '2026-03-06T00:54:42Z'  # d5f2
+  by: human  # d5f2
+  actor: jgstern  # d5f2
+  clock: 4  # d5f2
+  nonce: d5f2  # d5f2
+  message: "I approve"  # d5f2
+- op: update  # 16bd
+  at: '2026-03-06T00:54:51Z'  # 16bd
+  by: human  # 16bd
+  actor: jgstern  # 16bd
+  clock: 5  # 16bd
+  nonce: 16bd  # 16bd
+  set:  # 16bd
+    status: todo_soft  # 16bd
+- op: discuss  # 907d
+  at: '2026-03-06T01:34:07Z'  # 907d
+  by: agent  # 907d
+  actor: jgstern_agent  # 907d
+  clock: 6  # 907d
+  nonce: 907d  # 907d
+  message: "Acknowledged approval. Will implement auto-retry merge cascade on HTTP 200 + merged:false."  # 907d
+- op: update  # 2680
+  at: '2026-03-06T03:02:10Z'  # 2680
+  by: agent  # 2680
+  actor: jgstern_agent  # 2680
+  clock: 7  # 2680
+  nonce: '2680'  # 2680
+  set:  # 2680
+    status: done  # 2680
+- op: discuss  # b913
+  at: '2026-03-06T03:02:10Z'  # b913
+  by: agent  # b913
+  actor: jgstern_agent  # b913
+  clock: 8  # b913
+  nonce: b913  # b913
+  message: "Fixed in PR #1784. Added 3-attempt retry with backoff for HTTP 200 + merged:false. Also fixed misleading error reporting where _check_pr_merged overwrote API globals."  # b913

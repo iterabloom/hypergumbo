@@ -39,6 +39,7 @@ from hypergumbo_tracker.setup import (
     _check_gitignore,
     _check_group_permissions,
     _check_home_traversable,
+    _check_shared_repository,
     _check_hooks_path,
     _check_ops_writable,
     _check_precommit_hook,
@@ -1948,6 +1949,165 @@ class TestCheckGroupPermissions:
 
 
 # ---------------------------------------------------------------------------
+# Check #12b: core.sharedRepository
+# ---------------------------------------------------------------------------
+
+
+class TestCheckSharedRepository:
+    """Tests for _check_shared_repository (check #12b)."""
+
+    def test_no_repo_root(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        result = _check_shared_repository(root, repo_root=None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_single_user_setup(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup._detect_shared_group", return_value=None
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "single-user" in result.message
+
+    def test_already_set_group(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="group\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "'group'" in result.message
+
+    def test_already_set_numeric_1(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="1\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_already_set_true(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(stdout="true\n", returncode=0),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_auto_fix_local(self, tmp_path: Path) -> None:
+        """Not set → auto-fix with local config succeeds."""
+        root = _make_full_agent_dir(tmp_path)
+        # First call: git config --get returns empty (not set)
+        # Second call: git config set succeeds
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get returns empty
+                    MagicMock(returncode=0),  # local set succeeds
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        assert "local" in result.message
+
+    def test_auto_fix_global_fallback(self, tmp_path: Path) -> None:
+        """Local config write fails → falls back to --global."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get: not set
+                    subprocess.CalledProcessError(1, "git"),  # local set fails
+                    MagicMock(returncode=0),  # global set succeeds
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        assert "global" in result.message
+
+    def test_both_fix_attempts_fail(self, tmp_path: Path) -> None:
+        """Both local and global set fail → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(stdout="\n", returncode=1),  # --get: not set
+                    subprocess.CalledProcessError(1, "git"),  # local fails
+                    subprocess.CalledProcessError(1, "git"),  # global fails
+                ],
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+        assert "permission denied" in result.message
+
+    def test_read_config_oserror(self, tmp_path: Path) -> None:
+        """OSError reading git config → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=OSError("git not found"),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+        assert "Could not read" in result.message
+
+    def test_read_config_timeout(self, tmp_path: Path) -> None:
+        """TimeoutExpired reading git config → warn."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired("git", 5),
+            ),
+        ):
+            result = _check_shared_repository(root, repo_root=tmp_path)
+        assert result.status == "warn"
+
+
+# ---------------------------------------------------------------------------
 # Check #12: .ops/ writable
 # ---------------------------------------------------------------------------
 
@@ -2768,9 +2928,16 @@ class TestCheckReflectionState:
         assert result.status == "ok"
         assert "skipped" in result.message
 
+    def _write_state(self, tmp_path: Path, content: str) -> None:
+        """Write state to the primary (lab notebook) location within tmp_path."""
+        nb_dir = tmp_path / "hypergumbo_lab_notebook"
+        nb_dir.mkdir(exist_ok=True)
+        (nb_dir / "last_stop_check.json").write_text(content)
+
     def test_no_state_file(self, tmp_path: Path) -> None:
         (tmp_path / ".agent").mkdir()
-        result = _check_reflection_state(tmp_path)
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "ok"
         assert "no reflection state" in result.message.lower()
 
@@ -2778,8 +2945,7 @@ class TestCheckReflectionState:
         """A valid state file with a recent timestamp should be ok."""
         from datetime import datetime, timezone
 
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         state = {
             "last_completed_utc": now,
@@ -2790,14 +2956,35 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
+        assert result.status == "ok"
+
+    def test_fallback_to_agent_dir(self, tmp_path: Path) -> None:
+        """Falls back to .agent/last_stop_check.json when primary doesn't exist."""
+        from datetime import datetime, timezone
+
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state = {
+            "last_completed_utc": now,
+            "branch": "dev",
+            "last_pr": 0,
+            "last_pr_state": "none",
+            "pending_hard_todos": 0,
+            "pending_soft_todos": 0,
+            "notes": "",
+        }
         (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "ok"
 
     def test_stale_state(self, tmp_path: Path) -> None:
         """A state file > 7 days old should warn."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "2020-01-01T00:00:00Z",
             "branch": "dev",
@@ -2807,52 +2994,50 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "stale" in result.message.lower()
 
     def test_unparseable_json(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        (agent_dir / "last_stop_check.json").write_text("not json{{{")
-        result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, "not json{{{")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "parse" in result.message.lower() or "invalid" in result.message.lower()
 
     def test_non_dict_json(self, tmp_path: Path) -> None:
         """JSON file that parses but isn't an object (e.g., a list)."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        (agent_dir / "last_stop_check.json").write_text("[1, 2, 3]")
-        result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, "[1, 2, 3]")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "not a json object" in result.message.lower()
 
     def test_missing_required_keys(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {"branch": "dev"}  # missing last_completed_utc
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "missing" in result.message.lower() or "key" in result.message.lower()
 
     def test_permission_denied(self, tmp_path: Path) -> None:
         """OSError when reading state file should degrade gracefully."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        state_file = agent_dir / "last_stop_check.json"
-        state_file.write_text('{"branch": "dev"}')
-        # Mock read_text to raise PermissionError (chmod 0o000 doesn't work as root in CI)
-        with patch.object(type(state_file), "read_text", side_effect=PermissionError("Permission denied")):
-            result = _check_reflection_state(tmp_path)
+        (tmp_path / ".agent").mkdir()
+        self._write_state(tmp_path, '{"branch": "dev"}')
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            with patch("pathlib.Path.read_text", side_effect=PermissionError("Permission denied")):
+                result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "permission" in result.message.lower()
 
     def test_unparseable_timestamp(self, tmp_path: Path) -> None:
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "not-a-date",
             "branch": "dev",
@@ -2862,8 +3047,9 @@ class TestCheckReflectionState:
             "pending_soft_todos": 0,
             "notes": "",
         }
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        result = _check_reflection_state(tmp_path)
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "timestamp" in result.message.lower() or "parse" in result.message.lower()
 
@@ -2882,8 +3068,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (24 total, including sync prerequisites + hooks_path)
-        assert len(results) == 24
+        # Should have one result per check (25 total, including sync prerequisites + hooks_path)
+        assert len(results) == 25
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"

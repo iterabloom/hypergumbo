@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# MCP (Model Context Protocol) framework patterns (ADR-0003)
+#
+# Patterns for MCP servers and clients using the official SDKs:
+# - TypeScript: @modelcontextprotocol/sdk
+# - Python: mcp (FastMCP), anthropic MCP
+#
+# MCP is a protocol for AI agents to expose and consume tools, resources,
+# and prompts. Detecting MCP patterns helps hypergumbo understand AI agent
+# tool dispatch architecture.
+
+id: mcp
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+
+  # MCP Server tool registration - server.tool('name', handler)
+  - concept: tool_handler
+    usage:
+      kind: "^call$"
+      name: "^(server|mcpServer|mcp)\\.tool$"
+      position: "^args\\[last\\]$"
+
+  # MCP Server resource registration - server.resource('name', handler)
+  - concept: resource_handler
+    usage:
+      kind: "^call$"
+      name: "^(server|mcpServer|mcp)\\.resource$"
+      position: "^args\\[last\\]$"
+
+  # MCP Server prompt registration - server.prompt('name', handler)
+  - concept: prompt_handler
+    usage:
+      kind: "^call$"
+      name: "^(server|mcpServer|mcp)\\.prompt$"
+      position: "^args\\[last\\]$"
+
+  # MCP setRequestHandler - server.setRequestHandler(schema, handler)
+  - concept: protocol_handler
+    usage:
+      kind: "^call$"
+      name: "^(server|mcpServer)\\.setRequestHandler$"
+      position: "^args\\[last\\]$"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+
+  # MCP Server instantiation classes
+  - concept: mcp_server
+    base_class: "^(McpServer|Server)$"
+
+  # MCP Client instantiation classes
+  - concept: mcp_client
+    base_class: "^(McpClient|Client)$"
+
+  # MCP Transport classes
+  - concept: mcp_transport
+    base_class: "^(StdioServerTransport|SSEServerTransport|StreamableHTTPServerTransport|StdioClientTransport|SSEClientTransport|WebSocketTransport)$"
+
+  # MCP Tool result types
+  - concept: mcp_schema
+    base_class: "^(McpToolResult|McpResource|McpPrompt|McpServer|McpServerConfig)$"

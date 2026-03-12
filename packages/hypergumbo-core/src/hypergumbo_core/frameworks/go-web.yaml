@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Go Web Framework patterns (ADR-0003 v1.0.x + v1.1.x)
 #
 # Matches common Go web frameworks: Gin, Echo, Fiber, Chi, net/http, go-restful.

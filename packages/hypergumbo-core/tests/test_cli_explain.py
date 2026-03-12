@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo explain command."""
 import json
 from pathlib import Path
@@ -1748,3 +1749,117 @@ init_value = 42
     assert "def foo():" in out
     # Module-level callee should be omitted first
     assert "module-level call(s) omitted" in out
+
+
+def test_cmd_explain_finds_symbol_by_node_id(tmp_path: Path, capsys) -> None:
+    """Explain finds symbol by full node ID (WI-gipop)."""
+    node_id = "python:src/main.py:1-10:foo:function"
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": node_id,
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = node_id  # Full node ID as input
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+    args.with_source = False
+    args.tokens = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "foo" in out
+    assert "function" in out
+
+
+def test_cmd_explain_finds_symbol_by_path(tmp_path: Path, capsys) -> None:
+    """Explain finds symbol by file path suffix (WI-gipop)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api/users.py:1-10:get_users:function",
+                "name": "get_users",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api/users.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api/users.py:12-20:create_user:function",
+                "name": "create_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api/users.py",
+                "span": {"start_line": 12, "end_line": 20, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "api/users.py"  # Path suffix (not exact — triggers suffix match)
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+    args.with_source = False
+    args.tokens = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Both functions in the file should be shown
+    assert "get_users" in out
+    assert "create_user" in out
+
+
+def test_cmd_explain_finds_symbol_by_partial_name(tmp_path: Path, capsys) -> None:
+    """Explain finds symbol by partial name match."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:UserService.findUser:method",
+                "name": "UserService.findUser",
+                "kind": "method",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "findUser"  # Partial name
+    args.path = str(tmp_path)
+    args.input = None
+    args.exclude_tests = False
+    args.with_source = False
+    args.tokens = None
+
+    result = cmd_explain(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "findUser" in out

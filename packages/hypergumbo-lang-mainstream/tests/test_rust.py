@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Rust analyzer."""
 import pytest
 from pathlib import Path
@@ -1632,6 +1633,145 @@ class TestRustMethodCallAmbiguity:
         # With 20 candidates and ambiguity_threshold=3, no edge should be created
         assert len(call_edges) == 0
 
+    def test_method_call_prefers_same_module(self, tmp_path: Path) -> None:
+        """Method call prefers candidate from the same module path.
+
+        When foo.prove() is called from nova/mod.rs and there are two
+        candidates (nova/nifs.rs::NIFS::prove, neutron/nifs.rs::NIFS::prove),
+        the resolver should prefer the one in the same module tree (nova/).
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.prove();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:nova/mod.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="nova/mod.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Two candidates named "prove" in different modules
+        nova_prove = Symbol(
+            id="rust:nova/nifs.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="nova/nifs.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        neutron_prove = Symbol(
+            id="rust:neutron/nifs.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="neutron/nifs.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry = {"caller": caller}
+        method_reg: dict[str, list[Symbol]] = {
+            "prove": [nova_prove, neutron_prove],
+        }
+        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        resolver = NameResolver(registry)
+        span_idx = {(1, 3): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "nova/mod.rs",
+            registry, {"caller": caller, "NIFS::prove": nova_prove},
+            "run1", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Should prefer nova/nifs.rs (same module tree) over neutron/nifs.rs
+        assert call_edges[0].dst == nova_prove.id, (
+            f"Expected nova/nifs.rs::NIFS::prove, got {call_edges[0].dst}"
+        )
+
+    def test_cross_crate_single_candidate_method_resolves(self, tmp_path: Path) -> None:
+        """A method call with a single cross-crate candidate still resolves.
+
+        When x.serve() is called from crates/core/src/app.rs and the only
+        candidate is in crates/util/tower/src/lib.rs, the call should
+        resolve (with reduced confidence) rather than being rejected.
+        This tests the soft_hint=True behavior in the Rust analyzer.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.serve();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:crates/core/src/app.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="crates/core/src/app.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Single candidate in a different crate
+        tower_serve = Symbol(
+            id="rust:crates/util/tower/src/lib.rs:1-10:Server::serve:method",
+            name="Server::serve", kind="method", language="rust",
+            path="crates/util/tower/src/lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry = {"caller": caller}
+        method_reg: dict[str, list[Symbol]] = {
+            "serve": [tower_serve],
+        }
+        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        resolver = NameResolver(registry)
+        span_idx = {(1, 3): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "crates/core/src/app.rs",
+            registry, {"caller": caller, "Server::serve": tower_serve},
+            "run1", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            "Single cross-crate method candidate should resolve, not be rejected"
+        )
+        assert call_edges[0].dst == tower_serve.id
+
     def test_function_call_not_penalized(self, tmp_path: Path) -> None:
         """Regular function calls (not method calls) keep normal confidence.
 
@@ -1687,8 +1827,10 @@ class TestRustMethodCallAmbiguity:
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
-        # Regular function calls use standard confidence: 0.80 * 0.70 = 0.56
-        assert call_edges[0].confidence >= 0.50
+        # Regular function calls use 0.80 * ambiguous_confidence.
+        # Ambiguous confidence scales as 0.70/sqrt(N) where N=5 candidates,
+        # giving 0.80 * 0.313 ≈ 0.25.
+        assert call_edges[0].confidence >= 0.20
 
     def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
         """Method call with 2 candidates keeps moderate confidence.
@@ -1766,13 +1908,25 @@ class TestRustScopedIdentifierResolution:
         self, source_text: bytes,
         local_symbols: dict, global_symbols: dict,
         use_aliases: dict | None = None,
+        *,
+        with_method_resolver: bool = False,
     ) -> list:
-        """Helper: parse Rust source and extract edges."""
+        """Helper: parse Rust source and extract edges.
+
+        Args:
+            with_method_resolver: If True, build a ListNameResolver with
+                ambiguity_threshold=3 (matching real analysis flow).
+                Required for tests that exercise ambiguous short names
+                (e.g., multiple ::new methods).
+        """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.symbol_resolution import NameResolver
+        from hypergumbo_core.symbol_resolution import (
+            ListNameResolver,
+            NameResolver,
+        )
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -1786,9 +1940,19 @@ class TestRustScopedIdentifierResolution:
 
         resolver = NameResolver(global_symbols)
 
+        mr = None
+        if with_method_resolver:
+            global_methods: dict[str, list] = {}
+            for sym in global_symbols.values():
+                if sym.kind in ("method", "function"):
+                    short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
+                    global_methods.setdefault(short, []).append(sym)
+            mr = ListNameResolver(global_methods, ambiguity_threshold=3)
+
         return _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, global_symbols,
             "run", resolver, use_aliases or {},
+            method_resolver=mr,
         )
 
     def _make_rust_symbol(self, name: str, kind: str = "method"):
@@ -1951,6 +2115,205 @@ class TestRustScopedIdentifierResolution:
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].dst == target.id
+
+    def test_module_qualified_call_strips_module_prefix(self, tmp_path: Path) -> None:
+        """mod_name::Type::method() resolves by stripping the module prefix.
+
+        When code calls codex_agent::CodexAgent::new(), the full scoped name
+        is "codex_agent::CodexAgent::new" but the registry has "CodexAgent::new".
+        The analyzer should try stripping module prefixes from the scoped name.
+
+        This test includes multiple ::new symbols to trigger the ambiguity guard
+        on the bare "new" fallback, ensuring the module-stripped "CodexAgent::new"
+        path is what actually resolves.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:run_main:function",
+            name="run_main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:codex_agent.rs:1-10:CodexAgent::new:method",
+            name="CodexAgent::new", kind="method", language="rust",
+            path="codex_agent.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::new symbols to trigger ambiguity guard on bare "new"
+        other1 = Symbol(
+            id="rust:thread.rs:1-10:Thread::new:method",
+            name="Thread::new", kind="method", language="rust",
+            path="thread.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:spawner.rs:1-10:Spawner::new:method",
+            name="Spawner::new", kind="method", language="rust",
+            path="spawner.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:client.rs:1-10:Client::new:method",
+            name="Client::new", kind="method", language="rust",
+            path="client.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn run_main() {\n    codex_agent::CodexAgent::new(config);\n}\n"
+        global_symbols = {
+            "CodexAgent::new": target,
+            "Thread::new": other1,
+            "Spawner::new": other2,
+            "Client::new": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"run_main": caller}, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for module-qualified call, got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_deeply_module_qualified_call(self, tmp_path: Path) -> None:
+        """a::b::Type::method() resolves by stripping module prefixes.
+
+        Tests that even with multiple module segments (a::b::Type::method),
+        the analyzer can resolve to Type::method in the registry.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:config.rs:1-10:Config::load:method",
+            name="Config::load", kind="method", language="rust",
+            path="config.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::load symbols to trigger ambiguity guard
+        other1 = Symbol(
+            id="rust:other.rs:1-10:Other::load:method",
+            name="Other::load", kind="method", language="rust",
+            path="other.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:db.rs:1-10:Db::load:method",
+            name="Db::load", kind="method", language="rust",
+            path="db.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:cache.rs:1-10:Cache::load:method",
+            name="Cache::load", kind="method", language="rust",
+            path="cache.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    codex_core::config::Config::load();\n}\n"
+        global_symbols = {
+            "Config::load": target,
+            "Other::load": other1,
+            "Db::load": other2,
+            "Cache::load": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for deeply qualified call, got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_module_qualified_call_via_local_symbols(self, tmp_path: Path) -> None:
+        """mod::Type::method() resolves via local_symbols when target is local.
+
+        Exercises the local_symbols lookup path in Strategy 1b (module prefix
+        stripping). When the target is in the same file's local_symbols dict,
+        it should resolve without needing the global resolver.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:run_main:function",
+            name="run_main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:test.rs:10-20:Agent::init:method",
+            name="Agent::init", kind="method", language="rust",
+            path="test.rs",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        # Multiple ::init symbols to trigger ambiguity
+        other1 = Symbol(
+            id="rust:a.rs:1-10:Server::init:method",
+            name="Server::init", kind="method", language="rust",
+            path="a.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other2 = Symbol(
+            id="rust:b.rs:1-10:Client::init:method",
+            name="Client::init", kind="method", language="rust",
+            path="b.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        other3 = Symbol(
+            id="rust:c.rs:1-10:Db::init:method",
+            name="Db::init", kind="method", language="rust",
+            path="c.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn run_main() {\n    my_mod::Agent::init();\n}\n"
+        local_symbols = {"run_main": caller, "Agent::init": target}
+        global_symbols = {
+            "Agent::init": target,
+            "Server::init": other1,
+            "Client::init": other2,
+            "Db::init": other3,
+        }
+
+        edges = self._parse_and_extract(
+            source, local_symbols, global_symbols,
+            with_method_resolver=True,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+        # local_symbols path should give confidence 0.85
+        assert call_edges[0].confidence == 0.85
 
 
 class TestRustEnclosingFunctionQualified:
@@ -2279,3 +2642,1950 @@ class TestRustScopedFallbackAmbiguity:
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].dst == target.id
+
+
+class TestRustTraitImplEdges:
+    """Tests for Rust trait implementation edges.
+
+    `impl Trait for Struct` should produce an 'implements' edge from
+    the struct symbol to the trait symbol.
+    """
+
+    def test_impl_trait_for_struct(self, tmp_path: Path) -> None:
+        """impl Circuit for MyCircuit → implements edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "trait Circuit {\n"
+            "    fn synthesize(&self);\n"
+            "}\n"
+            "\n"
+            "struct MyCircuit;\n"
+            "\n"
+            "impl Circuit for MyCircuit {\n"
+            "    fn synthesize(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+
+        # Find the trait and struct symbols
+        trait_sym = next(s for s in result.symbols if s.name == "Circuit" and s.kind == "trait")
+        struct_sym = next(s for s in result.symbols if s.name == "MyCircuit" and s.kind == "struct")
+
+        # Edge goes from struct → trait (struct implements the trait)
+        assert impl_edges[0].src == struct_sym.id
+        assert impl_edges[0].dst == trait_sym.id
+
+    def test_impl_without_trait_no_edge(self, tmp_path: Path) -> None:
+        """impl MyStruct (no trait) should not produce an implements edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyStruct;\n"
+            "\n"
+            "impl MyStruct {\n"
+            "    fn new() -> Self { MyStruct }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 0
+
+    def test_multiple_impl_trait(self, tmp_path: Path) -> None:
+        """Multiple structs implementing the same trait produce multiple edges."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "trait Drawable {\n"
+            "    fn draw(&self);\n"
+            "}\n"
+            "\n"
+            "struct Circle;\n"
+            "struct Square;\n"
+            "\n"
+            "impl Drawable for Circle {\n"
+            "    fn draw(&self) {}\n"
+            "}\n"
+            "\n"
+            "impl Drawable for Square {\n"
+            "    fn draw(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 2
+
+        trait_sym = next(s for s in result.symbols if s.name == "Drawable")
+        dsts = {e.dst for e in impl_edges}
+        assert all(d == trait_sym.id for d in dsts)
+
+        srcs = {e.src for e in impl_edges}
+        circle = next(s for s in result.symbols if s.name == "Circle")
+        square = next(s for s in result.symbols if s.name == "Square")
+        assert circle.id in srcs
+        assert square.id in srcs
+
+
+    def test_impl_qualified_trait_resolves_short_name(self, tmp_path: Path) -> None:
+        """impl module::Trait for Struct resolves to the short trait name.
+
+        gRPC/tonic pattern: impl service_server::MyService for Server.
+        The trait is defined as 'MyService' but referenced with a qualified
+        path. The implements edge should still be created.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "mod service_server {\n"
+            "    pub trait QueryService {\n"
+            "        fn query(&self);\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "struct Server;\n"
+            "\n"
+            "impl service_server::QueryService for Server {\n"
+            "    fn query(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+
+        struct_sym = next(s for s in result.symbols if s.name == "Server")
+        trait_sym = next(
+            s for s in result.symbols
+            if s.name == "QueryService" and s.kind == "trait"
+        )
+        assert impl_edges[0].src == struct_sym.id
+        assert impl_edges[0].dst == trait_sym.id
+
+
+    def test_impl_unresolved_trait_creates_edge(self, tmp_path: Path) -> None:
+        """impl UnresolvedTrait for Struct creates an unresolved implements edge.
+
+        When a trait is imported from an external/generated module (e.g.,
+        tonic gRPC QueryService) and its definition file wasn't analyzed,
+        the trait symbol won't be in the registry. The analyzer should still
+        create an implements edge to an unresolved target at lower confidence,
+        so the relationship is captured in the behavior map.
+
+        This is critical for penumbra-style repos where tonic QueryService
+        traits are generated from .proto files and not directly analyzed.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # File 1: only has the struct and the impl, NOT the trait definition.
+        # The trait is imported from an external module (simulated by a use statement
+        # to a module that doesn't exist in the analyzed files).
+        (tmp_path / "server.rs").write_text(
+            "use external_proto::query_service_server::QueryService;\n"
+            "\n"
+            "pub struct Server;\n"
+            "\n"
+            "impl QueryService for Server {\n"
+            "    fn query(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Should have 1 unresolved implements edge
+        assert len(impl_edges) == 1, (
+            f"Expected 1 implements edge for unresolved trait, got {len(impl_edges)}"
+        )
+
+        struct_sym = next(s for s in result.symbols if s.name == "Server")
+        edge = impl_edges[0]
+        assert edge.src == struct_sym.id
+        # Dst should reference QueryService (unresolved)
+        assert "QueryService" in edge.dst
+        # Lower confidence for unresolved
+        assert edge.confidence < 0.95
+
+    def test_impl_std_trait_no_unresolved_edge(self, tmp_path: Path) -> None:
+        """impl Clone for Struct should NOT create an unresolved implements edge.
+
+        Standard library traits (Clone, Debug, Default, etc.) are ubiquitous
+        and not architecturally meaningful. Creating unresolved edges for them
+        would be pure noise.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyStruct;\n"
+            "\n"
+            "impl Clone for MyStruct {\n"
+            "    fn clone(&self) -> Self { MyStruct }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Clone is a std trait — no unresolved edge should be created
+        assert len(impl_edges) == 0
+
+    def test_error_type_display_from_not_blocklisted(self, tmp_path: Path) -> None:
+        """impl Display/From/Error for *Error types creates unresolved edges.
+
+        Error-handling traits (Display, From, Error) are normally blocklisted,
+        but when the implementing type is an error type (name contains 'Error'
+        or 'Err'), these impls reveal error propagation architecture.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "error.rs").write_text(
+            "struct ParseError;\n"
+            "\n"
+            "impl std::fmt::Display for ParseError {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"parse error\")\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "impl From<std::io::Error> for ParseError {\n"
+            "    fn from(e: std::io::Error) -> Self { ParseError }\n"
+            "}\n"
+            "\n"
+            "impl std::error::Error for ParseError {}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # All three: Display, From, Error should create unresolved edges
+        trait_names = {e.dst.split(":")[-2] for e in impl_edges}
+        assert "Display" in trait_names, f"Display edge missing, got {trait_names}"
+        assert "From" in trait_names, f"From edge missing, got {trait_names}"
+        assert "Error" in trait_names, f"Error edge missing, got {trait_names}"
+
+    def test_non_error_type_still_blocklisted(self, tmp_path: Path) -> None:
+        """impl Display for non-error type remains blocklisted.
+
+        Only error types get the exemption. Regular types implementing
+        Display/From/Error are still suppressed.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyConfig;\n"
+            "\n"
+            "impl std::fmt::Display for MyConfig {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"config\")\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # Display for non-error type should still be blocked
+        assert len(impl_edges) == 0
+
+    def test_error_type_with_err_suffix(self, tmp_path: Path) -> None:
+        """Types ending with 'Err' also get the exemption."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "err.rs").write_text(
+            "struct IoErr;\n"
+            "\n"
+            "impl std::fmt::Display for IoErr {\n"
+            "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n"
+            "        write!(f, \"io err\")\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        trait_names = {e.dst.split(":")[-2] for e in impl_edges}
+        assert "Display" in trait_names
+
+
+class TestIsErrorTypeName:
+    """Unit tests for _is_error_type_name heuristic."""
+
+    def test_error_suffix(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("ParseError") is True
+
+    def test_err_suffix(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("IoErr") is True
+
+    def test_non_error(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("MyConfig") is False
+
+    def test_just_error(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("Error") is True
+
+    def test_just_err(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("Err") is True
+
+    def test_empty(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _is_error_type_name
+        assert _is_error_type_name("") is False
+
+
+class TestRustGenericTraitMethodBlocklist:
+    """Tests for generic trait method blocklist (false-positive suppression).
+
+    Generic trait methods like ``.into()``, ``.clone()``, ``.len()`` create
+    massive false-positive in-degree when resolved via ``method_resolver``
+    because, without receiver type information, ``x.into()`` resolves to
+    an arbitrary concrete ``Into`` implementation.  The blocklist prevents
+    short-name resolution for these methods while preserving fully-scoped
+    resolution (``StatusRow::into()`` via Strategy 1).
+    """
+
+    def test_blocked_into_single_candidate_no_edge(self, tmp_path: Path) -> None:
+        """x.into() with a single candidate produces no edge.
+
+        Even with only 1 candidate (below the ambiguity threshold), a
+        blocked method name should not resolve.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.into();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Single candidate — would normally resolve without the blocklist
+        target = Symbol(
+            id="rust:lib.rs:1-5:StatusRow::into:method",
+            name="StatusRow::into", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"StatusRow::into": target}
+        method_reg: dict[str, list[Symbol]] = {"into": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .into() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
+
+    def test_blocked_load_prevents_atomic_false_positives(self, tmp_path: Path) -> None:
+        """x.load() produces no edge — prevents AtomicU64.load() false positives.
+
+        WI-bakak: jolt's JoltDevice::load rslice had 22/29 false positive
+        depth=1 callers from AtomicU64.load(Ordering::Relaxed) conflated
+        with JoltDevice.load().
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")  # pragma: no cover
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = (
+            b"use std::sync::atomic::Ordering;\n"
+            b"fn caller() {\n"
+            b"    counter.load(Ordering::Relaxed);\n"
+            b"}\n"
+        )
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:counters.rs:2-4:caller:function",
+            name="caller", kind="function", language="rust",
+            path="counters.rs",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # JoltDevice::load — a domain-specific load fn that should NOT
+        # attract edges from AtomicU64.load() calls
+        jolt_load = Symbol(
+            id="rust:device.rs:1-10:JoltDevice::load:function",
+            name="JoltDevice::load", kind="function", language="rust",
+            path="device.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"JoltDevice::load": jolt_load}
+        method_reg: dict[str, list[Symbol]] = {"load": [jolt_load]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "counters.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .load() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
+
+    def test_nonblocked_prove_still_resolves(self, tmp_path: Path) -> None:
+        """x.prove() with candidates still resolves (not in blocklist)."""
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.prove();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"NIFS::prove": target}
+        method_reg: dict[str, list[Symbol]] = {"prove": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_blocklist_contains_expected_names(self) -> None:
+        """Constant contains core trait methods and collection methods."""
+        from hypergumbo_lang_mainstream.rust import _RUST_GENERIC_TRAIT_METHODS
+
+        # Core convert traits
+        for name in ("into", "from", "try_into", "try_from"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Clone / Eq / Hash
+        for name in ("clone", "eq", "ne", "hash", "cmp"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Collection methods
+        for name in ("len", "push", "pop", "get", "insert", "remove"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Serde
+        for name in ("serialize", "deserialize"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Atomic / sync methods (WI-bakak: .load() false positives)
+        for name in ("load", "store", "fetch_add", "fetch_sub",
+                      "compare_exchange", "swap"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Iterator / Option / Result combinators
+        for name in ("map", "filter", "fold", "collect", "flat_map",
+                      "find", "any", "all", "for_each", "map_err",
+                      "and_then", "or_else", "unwrap_or", "unwrap_or_else",
+                      "ok", "err", "expect", "ok_or", "ok_or_else"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # IO traits
+        for name in ("read", "write", "flush"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Display / ToString
+        for name in ("to_string",):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Constructor / builder (new is ubiquitous)
+        for name in ("new", "build"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Channel / async
+        for name in ("send", "recv"):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Extend trait
+        for name in ("extend",):
+            assert name in _RUST_GENERIC_TRAIT_METHODS, f"{name} missing"
+
+        # Domain-specific names should NOT be in the blocklist
+        for name in ("prove", "synthesize", "verify", "compute", "serve"):
+            assert name not in _RUST_GENERIC_TRAIT_METHODS, (
+                f"{name} should not be blocked"
+            )
+
+    def test_scoped_into_still_resolves_via_strategy1(
+        self, tmp_path: Path,
+    ) -> None:
+        """StatusRow::into() with full match in registry still resolves.
+
+        The blocklist only affects short-name fallback via method_resolver.
+        When the full scoped name ``StatusRow::into`` exists in global_symbols,
+        Strategy 1 resolves it before the blocklist is consulted.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        # Scoped call: StatusRow::into() — Strategy 1 should find it
+        source_text = b"fn caller() {\n    StatusRow::into(x);\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:StatusRow::into:method",
+            name="StatusRow::into", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Full scoped name is in global_symbols — Strategy 1 resolves it
+        registry: dict[str, Symbol] = {"StatusRow::into": target}
+        method_reg: dict[str, list[Symbol]] = {"into": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for scoped StatusRow::into() but got "
+            f"{len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+
+class TestRustTurbofishCalls:
+    """Tests for turbofish / fully-qualified generic call resolution (WI-jabut).
+
+    Rust turbofish syntax (``PublicParams::<E1,E2>::setup()``) and generic
+    method calls (``x.collect::<Vec<i32>>()``) wrap the inner function node
+    inside a ``generic_function`` tree-sitter node.  The analyzer must unwrap
+    this to extract the callee name and resolve edges correctly.  For scoped
+    turbofish calls, type arguments must be stripped from ``full_scoped_name``
+    so registry lookup succeeds (e.g., ``PublicParams::setup`` not
+    ``PublicParams::<E1,E2>::setup``).
+    """
+
+    def test_scoped_turbofish_resolves(self, tmp_path: Path) -> None:
+        """PublicParams::<E1,E2>::setup() resolves to PublicParams::setup.
+
+        Type arguments are stripped from the scoped name so Strategy 1
+        matches the registry key.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    PublicParams::<E1, E2>::setup();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:PublicParams::setup:function",
+            name="PublicParams::setup", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"PublicParams::setup": target}
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(
+            {"setup": [target]}, ambiguity_threshold=3,
+        )
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for PublicParams::<E1,E2>::setup() "
+            f"but got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_method_turbofish_resolves(self, tmp_path: Path) -> None:
+        """x.prove::<E1>() resolves to the prove method.
+
+        The generic_function wrapper around field_expression must be
+        unwrapped so the method call is detected correctly.
+        Uses 'prove' (not in blocklist) to verify turbofish unwrapping.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.prove::<E1>();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-10:NIFS::prove:method",
+            name="NIFS::prove", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"NIFS::prove": target}
+        method_reg: dict[str, list[Symbol]] = {"prove": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1, (
+            f"Expected 1 call edge for x.prove::<E1>() "
+            f"but got {len(call_edges)}"
+        )
+        assert call_edges[0].dst == target.id
+
+    def test_plain_scoped_call_still_works(self, tmp_path: Path) -> None:
+        """Vec::new() (no turbofish) still resolves correctly.
+
+        Regression check: the turbofish handling must not break plain
+        scoped identifiers.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    Vec::new();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:Vec::new:function",
+            name="Vec::new", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"Vec::new": target}
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(
+            {"new": [target]}, ambiguity_threshold=3,
+        )
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_turbofish_method_blocklist_still_applies(
+        self, tmp_path: Path,
+    ) -> None:
+        """x.clone::<T>() is still blocked by the generic trait blocklist.
+
+        Turbofish unwrapping should expose the field_expression so the
+        blocklist check on the short method name still fires.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    x.clone::<T>();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        target = Symbol(
+            id="rust:lib.rs:1-5:Foo::clone:method",
+            name="Foo::clone", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"Foo::clone": target}
+        method_reg: dict[str, list[Symbol]] = {"clone": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+            method_resolver=method_resolver,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges for blocked .clone::<T>() but got "
+            f"{len(call_edges)}: {[e.dst for e in call_edges]}"
+        )
+
+
+class TestRustCfgTestInheritance:
+    """Tests for #[cfg(test)] annotation inheritance (WI-sijim).
+
+    Functions inside ``#[cfg(test)] mod tests { ... }`` should inherit the
+    ``cfg(test)`` annotation so that ``is_test_node`` in the slicer correctly
+    excludes them from production slices, even when the individual function
+    doesn't carry its own ``#[test]`` attribute.
+    """
+
+    def test_helper_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Helper function inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub fn real_function() {}\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    fn helper() {}\n"
+            "\n"
+            "    #[test]\n"
+            "    fn test_something() {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_fn = next(s for s in result.symbols if s.name == "real_function")
+        helper_fn = next(s for s in result.symbols if s.name == "helper")
+        test_fn = next(
+            s for s in result.symbols if s.name == "test_something"
+        )
+
+        # real_function should NOT have cfg(test)
+        real_anns = (real_fn.meta or {}).get("annotations", [])
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+        assert cfg_test not in real_anns
+
+        # helper should inherit cfg(test) from enclosing module
+        helper_anns = (helper_fn.meta or {}).get("annotations", [])
+        assert cfg_test in helper_anns, (
+            f"helper inside #[cfg(test)] mod should have cfg(test) "
+            f"annotation, got: {helper_anns}"
+        )
+
+        # test_something already has #[test]; should also have cfg(test)
+        test_anns = (test_fn.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_struct_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Struct inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub struct RealStruct;\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    struct TestFixture;\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_struct = next(
+            s for s in result.symbols if s.name == "RealStruct"
+        )
+        test_struct = next(
+            s for s in result.symbols if s.name == "TestFixture"
+        )
+
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+
+        real_anns = (real_struct.meta or {}).get("annotations", [])
+        assert cfg_test not in real_anns
+
+        test_anns = (test_struct.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_enum_inside_cfg_test_module_gets_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        """Enum inside #[cfg(test)] mod inherits cfg(test)."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "pub enum RealEnum { A, B }\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    enum TestEnum { X, Y }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_enum = next(s for s in result.symbols if s.name == "RealEnum")
+        test_enum = next(s for s in result.symbols if s.name == "TestEnum")
+
+        cfg_test = {"name": "cfg", "args": ["test"], "kwargs": {}}
+
+        real_anns = (real_enum.meta or {}).get("annotations", [])
+        assert cfg_test not in real_anns
+
+        test_anns = (test_enum.meta or {}).get("annotations", [])
+        assert cfg_test in test_anns
+
+    def test_is_test_node_detects_cfg_test_helper(
+        self, tmp_path: Path,
+    ) -> None:
+        """is_test_node returns True for helper inside #[cfg(test)] mod.
+
+        End-to-end test: the inherited annotation must be in the format
+        that is_test_node / _has_test_annotation recognizes.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+        from hypergumbo_core.paths import is_test_node
+
+        (tmp_path / "lib.rs").write_text(
+            "pub fn real_function() {}\n"
+            "\n"
+            "#[cfg(test)]\n"
+            "mod tests {\n"
+            "    fn helper() {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+
+        real_fn = next(s for s in result.symbols if s.name == "real_function")
+        helper_fn = next(s for s in result.symbols if s.name == "helper")
+
+        # real_function in src/ is NOT a test node
+        assert not is_test_node(real_fn.path, real_fn.meta)
+
+        # helper inside #[cfg(test)] IS a test node
+        assert is_test_node(helper_fn.path, helper_fn.meta), (
+            f"helper inside #[cfg(test)] should be detected as test node, "
+            f"meta={helper_fn.meta}"
+        )
+
+
+class TestUnwrapDerefType:
+    """Tests for _unwrap_deref_type helper."""
+
+    @staticmethod
+    def _parse_field_type(source: bytes) -> str:
+        """Parse source and return unwrapped type of the first field_declaration."""
+        from hypergumbo_lang_mainstream.rust import _unwrap_deref_type
+        from hypergumbo_core.analyze.base import iter_tree
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "field_declaration":
+                type_node = node.child_by_field_name("type")
+                if type_node:
+                    return _unwrap_deref_type(type_node, source)
+        pytest.fail("No field_declaration found")
+
+    def test_simple_type(self) -> None:
+        """Plain type identifier returns as-is."""
+        assert self._parse_field_type(b"struct S { field: App }") == "App"
+
+    def test_box_unwrap(self) -> None:
+        """Box<App> unwraps to App."""
+        assert self._parse_field_type(b"struct S { field: Box<App> }") == "App"
+
+    def test_arc_unwrap(self) -> None:
+        """Arc<Client> unwraps to Client."""
+        assert self._parse_field_type(
+            b"struct S { field: Arc<Client> }",
+        ) == "Client"
+
+    def test_nested_wrapper(self) -> None:
+        """Arc<Mutex<App>> unwraps to App."""
+        assert self._parse_field_type(
+            b"struct S { field: Arc<Mutex<App>> }",
+        ) == "App"
+
+    def test_reference_unwrap(self) -> None:
+        """&App unwraps to App."""
+        assert self._parse_field_type(
+            b"struct S<'a> { field: &'a App }",
+        ) == "App"
+
+    def test_non_wrapper_generic(self) -> None:
+        """HashMap<String, i32> returns HashMap (not a Deref wrapper)."""
+        assert self._parse_field_type(
+            b"struct S { field: HashMap<String, i32> }",
+        ) == "HashMap"
+
+    def test_scoped_type_generic(self) -> None:
+        """Scoped wrapper type returns scoped name (not unwrapped)."""
+        # std::sync::Mutex is a scoped_type_identifier, not in
+        # _RUST_DEREF_WRAPPERS (which uses simple names).
+        assert self._parse_field_type(
+            b"struct S { field: std::sync::Mutex<App> }",
+        ) == "std::sync::Mutex"
+
+    def test_scoped_type_plain(self) -> None:
+        """Plain scoped type (no generics) returns full path."""
+        assert self._parse_field_type(
+            b"struct S { field: std::io::Error }",
+        ) == "std::io::Error"
+
+
+class TestExtractStructFieldTypes:
+    """Tests for _extract_struct_field_types helper."""
+
+    @staticmethod
+    def _parse(source: bytes) -> dict:
+        """Parse Rust source and return struct field types."""
+        from hypergumbo_lang_mainstream.rust import _extract_struct_field_types
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source)
+        return _extract_struct_field_types(tree, source)
+
+    def test_simple_struct(self) -> None:
+        """Extracts field types from a simple struct."""
+        result = self._parse(b"""
+struct Server {
+    app: App,
+    db: Database,
+}
+""")
+        assert "Server" in result
+        assert result["Server"] == {"app": "App", "db": "Database"}
+
+    def test_box_field_unwrapped(self) -> None:
+        """Box<App> field type is unwrapped to App."""
+        result = self._parse(b"""
+struct Server {
+    app: Box<App>,
+    client: Arc<Client>,
+}
+""")
+        assert result["Server"]["app"] == "App"
+        assert result["Server"]["client"] == "Client"
+
+    def test_tuple_struct_skipped(self) -> None:
+        """Tuple structs (no named fields) are skipped."""
+        result = self._parse(b"struct Wrapper(App);")
+        assert "Wrapper" not in result
+
+    def test_multiple_structs(self) -> None:
+        """Extracts from multiple structs in one file."""
+        result = self._parse(b"""
+struct Server { app: App }
+struct App { handler: Handler }
+""")
+        assert len(result) == 2
+        assert result["Server"] == {"app": "App"}
+        assert result["App"] == {"handler": "Handler"}
+
+    def test_empty_struct(self) -> None:
+        """Struct with no fields produces no entry."""
+        result = self._parse(b"struct Empty {}")
+        assert "Empty" not in result
+
+
+class TestRustFieldTypePopulation:
+    """Tests that _extract_symbols_from_file populates class_field_types."""
+
+    def test_populates_class_field_types(self, tmp_path: Path) -> None:
+        """class_field_types is populated from struct declarations."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Server {
+    app: App,
+    db: Box<Database>,
+}
+
+struct App {
+    handler: Handler,
+}
+
+fn main() {}
+""")
+        # We verify indirectly — the full integration test below
+        # checks that edges are created. Here we verify the analyze
+        # function doesn't crash with field type population.
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+
+class TestRustStructFieldTypeResolution:
+    """Integration tests for self.field.method() → typed_field_call edges.
+
+    Tests Strategy 1.5 in _extract_edges_from_file: resolve self.field
+    receivers via the field type registry to create typed call edges.
+    """
+
+    def test_basic_field_call(self, tmp_path: Path) -> None:
+        """self.app.run() where app: App creates App::run edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+
+        # Verify source is Server::start
+        start_sym = next(s for s in result.symbols if s.name == "Server::start")
+        run_sym = next(s for s in result.symbols if s.name == "App::run")
+        assert edge.src == start_sym.id
+        assert edge.dst == run_sym.id
+        assert edge.confidence == 0.88
+        assert edge.edge_type == "calls"
+
+    def test_box_field_call(self, tmp_path: Path) -> None:
+        """self.app.run() where app: Box<App> unwraps to App::run."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: Box<App>,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].confidence == 0.88
+
+    def test_nested_field_chain(self, tmp_path: Path) -> None:
+        """self.inner.app.run() resolves through Outer→Inner→App."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Inner {
+    app: App,
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+impl Outer {
+    fn start(&self) {
+        self.inner.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        run_sym = next(s for s in result.symbols if s.name == "App::run")
+        assert typed_edges[0].dst == run_sym.id
+
+    def test_unknown_field_no_typed_edge(self, tmp_path: Path) -> None:
+        """self.unknown.run() with unknown field falls through gracefully."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.unknown.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 0
+
+    def test_non_self_receiver_not_resolved(self, tmp_path: Path) -> None:
+        """other.app.run() is not resolved by Strategy 1.5."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct App {}
+
+impl App {
+    fn run(&self) {}
+}
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self, other: Server) {
+        other.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        # other.app isn't rooted at self, so Strategy 1.5 doesn't fire
+        assert len(typed_edges) == 0
+
+    def test_blocklisted_method_resolves_with_type(self, tmp_path: Path) -> None:
+        """self.client.send() resolves even though 'send' is blocklisted.
+
+        Strategy 1.5 fires before the _RUST_GENERIC_TRAIT_METHODS check
+        because known receiver type makes it unambiguous.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Client {}
+
+impl Client {
+    fn send(&self) {}
+}
+
+struct Server {
+    client: Client,
+}
+
+impl Server {
+    fn dispatch(&self) {
+        self.client.send();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        send_sym = next(s for s in result.symbols if s.name == "Client::send")
+        assert typed_edges[0].dst == send_sym.id
+
+    def test_cross_file_field_resolution(self, tmp_path: Path) -> None:
+        """Field types from one file resolve methods defined in another."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "app.rs").write_text("""
+pub struct App {}
+
+impl App {
+    pub fn run(&self) {}
+}
+""")
+        (tmp_path / "server.rs").write_text("""
+use crate::app::App;
+
+struct Server {
+    app: App,
+}
+
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) >= 1
+
+    def test_resolver_fallback_for_field_call(self) -> None:
+        """Strategy 1.5 uses resolver.lookup() when target not in symbols dicts.
+
+        Exercises the fallback path where typed_name (e.g. "App::run") is
+        absent from both local_symbols and global_symbols but found via
+        the resolver's suffix index.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+            RustAnalyzer,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source = b"""
+impl Server {
+    fn start(&self) {
+        self.app.run();
+    }
+}
+"""
+        tree = parser.parse(source)
+
+        caller = Symbol(
+            id="rust:test.rs:2-4:Server::start:method",
+            name="Server::start", kind="method", language="rust",
+            path="test.rs",
+            span=Span(start_line=2, end_line=4, start_col=4, end_col=5),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:app.rs:1-5:App::run:method",
+            name="App::run", kind="method", language="rust",
+            path="app.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        local_symbols = {"Server::start": caller, "start": caller}
+        # Deliberately NOT including "App::run" in global_symbols
+        # so the resolver.lookup fallback path fires.
+        global_symbols = {"Server::start": caller}
+        resolver = NameResolver({"App::run": target})
+
+        analyzer = RustAnalyzer()
+        analyzer._field_type_registry = {
+            "Server": {"app": "App"},
+        }
+
+        method_syms = {"run": [target]}
+        mr = ListNameResolver(method_syms, ambiguity_threshold=3)
+
+        span_idx = {(2, 4): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source, "test.rs",
+            local_symbols, global_symbols,
+            "run", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+            field_type_registry=analyzer._field_type_registry,
+            analyzer=analyzer,
+        )
+
+        typed_edges = [e for e in edges if e.evidence_type == "typed_field_call"]
+        assert len(typed_edges) == 1
+        assert typed_edges[0].dst == target.id
+        assert typed_edges[0].confidence == 0.88
+
+
+class TestRustSelfResolution:
+    """Self:: calls inside impl blocks should resolve to the actual type."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_self_method_call_resolves(self, tmp_path: Path) -> None:
+        """Self::helper() inside impl Foo should resolve to Foo::helper."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Server;
+
+impl Server {
+    fn run(&self) {
+        Self::process();
+    }
+
+    fn process() {
+        // do work
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Self::process() should resolve to Server::process
+        run_to_process = [
+            e for e in call_edges
+            if "run" in e.src and "process" in e.dst
+        ]
+        assert len(run_to_process) >= 1
+
+    def test_self_new_call_resolves(self, tmp_path: Path) -> None:
+        """Self::new() inside impl should resolve to the actual type."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Config;
+
+impl Config {
+    fn new() -> Self {
+        Config
+    }
+
+    fn default_config() -> Config {
+        Self::new()
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Self::new() should resolve to Config::new
+        default_to_new = [
+            e for e in call_edges
+            if "default_config" in e.src and "new" in e.dst
+        ]
+        assert len(default_to_new) >= 1
+
+
+class TestRustAsyncSpawnDetection:
+    """tokio::spawn / rayon::spawn should create edges to the spawned task,
+    not to spawn itself."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_spawn_with_call_expression(self, tmp_path: Path) -> None:
+        """tokio::spawn(do_work()) — the inner call_expression is the target,
+        not spawn itself."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn do_work() {
+    // actual work
+}
+
+async fn main() {
+    tokio::spawn(do_work());
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have main -> do_work, NOT main -> spawn
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"Should not create edge to spawn: {spawn_edges}"
+
+        work_edges = [
+            e for e in call_edges
+            if "main" in e.src and "do_work" in e.dst
+        ]
+        assert len(work_edges) >= 1, (
+            f"Should have main->do_work edge, got: {call_edges}"
+        )
+
+    def test_spawn_with_bare_identifier(self, tmp_path: Path) -> None:
+        """tokio::spawn(my_task) — bare function reference should create
+        an async_spawn edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+async fn my_task() {
+    // task body
+}
+
+async fn orchestrator() {
+    tokio::spawn(my_task);
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should NOT have an edge to spawn itself
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"Should not create edge to spawn: {spawn_edges}"
+
+        # Should have an async_spawn edge to my_task
+        task_edges = [
+            e for e in call_edges
+            if "orchestrator" in e.src and "my_task" in e.dst
+        ]
+        assert len(task_edges) >= 1, (
+            f"Should have orchestrator->my_task edge, got: {call_edges}"
+        )
+        assert task_edges[0].evidence_type == "async_spawn"
+
+    def test_spawn_blocking_detected(self, tmp_path: Path) -> None:
+        """tokio::task::spawn_blocking also suppresses spawn edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn heavy_compute() -> i32 {
+    42
+}
+
+async fn handler() {
+    tokio::task::spawn_blocking(heavy_compute);
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn_blocking" in e.dst]
+        assert len(spawn_edges) == 0
+
+    def test_spawn_with_async_block(self, tmp_path: Path) -> None:
+        """tokio::spawn(async { ... }) — async block body is traversed by
+        iter_tree; spawn itself should not appear as a callee."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn do_io() {}
+
+async fn server() {
+    tokio::spawn(async {
+        do_io();
+    });
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0, f"No edge to spawn: {spawn_edges}"
+
+        # do_io() inside the async block should still be attributed
+        io_edges = [e for e in call_edges if "do_io" in e.dst]
+        assert len(io_edges) >= 1
+
+    def test_spawn_bare_identifier_cross_file(self, tmp_path: Path) -> None:
+        """tokio::spawn(my_task) where my_task is defined in another file
+        should resolve via the cross-file resolver."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        task_code = """\
+pub async fn background_job() {
+    // does work
+}
+"""
+        main_code = """\
+use crate::tasks::background_job;
+
+async fn start() {
+    tokio::spawn(background_job);
+}
+"""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.rs").write_text(main_code)
+        (src / "tasks.rs").write_text(task_code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        spawn_edges = [e for e in call_edges if "spawn" in e.dst]
+        assert len(spawn_edges) == 0
+
+    def test_normal_call_unaffected(self, tmp_path: Path) -> None:
+        """Regular function calls should still resolve normally."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn helper() -> i32 { 42 }
+
+fn main() {
+    let x = helper();
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [
+            e for e in call_edges
+            if "main" in e.src and "helper" in e.dst
+        ]
+        assert len(helper_edges) >= 1
+
+
+class TestRustMacroBodyCallDetection:
+    """Calls inside macro bodies (tokio::select!, assert!, etc.) should be
+    detected even though tree-sitter parses them as flat token_tree."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_rust")
+
+    def test_select_self_method_call(self, tmp_path: Path) -> None:
+        """Self::method() inside tokio::select! should resolve."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Server;
+
+impl Server {
+    async fn run(&self) {
+        tokio::select! {
+            msg = rx.recv() => {
+                Self::handle(msg);
+            }
+        }
+    }
+
+    fn handle(msg: Message) {
+        // process
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handle_edges = [
+            e for e in call_edges
+            if "run" in e.src and "handle" in e.dst
+        ]
+        assert len(handle_edges) >= 1, (
+            f"Should detect Self::handle inside select!, got: {call_edges}"
+        )
+        # Check evidence type
+        macro_edges = [e for e in handle_edges if e.evidence_type == "macro_body_call"]
+        assert len(macro_edges) >= 1
+
+    def test_select_simple_function_call(self, tmp_path: Path) -> None:
+        """Simple function call inside tokio::select! should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn process_data(x: i32) -> i32 { x + 1 }
+
+async fn event_loop() {
+    tokio::select! {
+        val = stream.next() => {
+            process_data(val);
+        }
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        data_edges = [
+            e for e in call_edges
+            if "event_loop" in e.src and "process_data" in e.dst
+        ]
+        assert len(data_edges) >= 1
+
+    def test_select_method_call_on_self(self, tmp_path: Path) -> None:
+        """self.method() inside tokio::select! should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+struct Handler;
+
+impl Handler {
+    async fn run(&self) {
+        tokio::select! {
+            _ = signal => {
+                self.shutdown();
+            }
+        }
+    }
+
+    fn shutdown(&self) {}
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        shutdown_edges = [
+            e for e in call_edges
+            if "run" in e.src and "shutdown" in e.dst
+        ]
+        assert len(shutdown_edges) >= 1
+
+    def test_assert_macro_call_detected(self, tmp_path: Path) -> None:
+        """Calls inside assert! macros should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn validate(x: i32) -> bool { x > 0 }
+
+fn test_it() {
+    assert!(validate(42));
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        validate_edges = [
+            e for e in call_edges
+            if "test_it" in e.src and "validate" in e.dst
+        ]
+        assert len(validate_edges) >= 1
+
+    def test_scoped_call_in_macro_short_name_fallback(self, tmp_path: Path) -> None:
+        """Module::func() in macro should fall back to short name ``func``."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+mod utils {
+    pub fn compute() -> i32 { 42 }
+}
+
+fn caller() {
+    println!("{}", utils::compute());
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        compute_edges = [
+            e for e in call_edges
+            if "caller" in e.src and "compute" in e.dst
+        ]
+        assert len(compute_edges) >= 1, f"Should find caller->compute: {call_edges}"
+
+    def test_macro_call_cross_file_resolver(self, tmp_path: Path) -> None:
+        """Call in macro body resolved via cross-file resolver."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        helper_code = """\
+pub fn remote_helper() -> i32 { 1 }
+"""
+        main_code = """\
+use crate::helpers::remote_helper;
+
+fn driver() {
+    assert!(remote_helper() > 0);
+}
+"""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.rs").write_text(main_code)
+        (src / "helpers.rs").write_text(helper_code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [
+            e for e in call_edges
+            if "driver" in e.src and "remote_helper" in e.dst
+        ]
+        assert len(helper_edges) >= 1, f"Should find driver->remote_helper: {call_edges}"
+
+    def test_nested_token_tree(self, tmp_path: Path) -> None:
+        """Calls in nested token_tree branches should be detected."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        code = """\
+fn cleanup() {}
+fn save() {}
+
+async fn main_loop() {
+    tokio::select! {
+        _ = a => { cleanup(); }
+        _ = b => { save(); }
+    }
+}
+"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.rs").write_text(code)
+        result = analyze_rust(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_edges = [
+            e for e in call_edges
+            if "main_loop" in e.src and "cleanup" in e.dst
+        ]
+        save_edges = [
+            e for e in call_edges
+            if "main_loop" in e.src and "save" in e.dst
+        ]
+        assert len(cleanup_edges) >= 1, f"cleanup not found: {call_edges}"
+        assert len(save_edges) >= 1, f"save not found: {call_edges}"

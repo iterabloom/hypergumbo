@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pony language analyzer using tree-sitter.
 
 Pony is an actor-model programming language with capabilities-secure type system,

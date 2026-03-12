@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Graph slicing for LLM context extraction.
 
 This module implements BFS-based graph traversal to extract relevant
@@ -75,20 +76,21 @@ from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
 # Structural edges excluded from forward slice BFS traversal.
-# These cause BFS explosion through shared ancestors, containment, or
-# polymorphic dispatch:
+# These cause BFS explosion through shared ancestors or containment:
 # - extends/implements: forward-slicing from VoiceController would follow
 #   "extends" to ApplicationController, then fan out to ALL other controllers.
 # - contains: reaching a class via forward BFS would fan out to ALL member
 #   methods, even siblings unrelated to the slice entry point.
-# - dispatches_to: reaching an interface method would fan out to ALL
-#   implementations (e.g., OutputFile.create → S3FileIO, GCSFileIO, ADLS…).
-# Reverse slices still follow these (useful for "who inherits from this?",
-# "who contains this?", and "which interface does this implement?").
+# dispatches_to is NOT excluded: forward slices should traverse from
+# interface methods to concrete implementations. Without this, forward
+# slices dead-end at every interface call site. The hub_threshold
+# parameter handles fan-out for interfaces with many implementations.
+# Reverse slices still follow extends/implements (useful for "who inherits
+# from this?" and "which interface does this implement?").
 # When the entry point IS a container type, forward slice class expansion
 # seeds the BFS with member methods so they are still reachable.
 _STRUCTURAL_EDGE_TYPES = frozenset({
-    "extends", "implements", "contains", "dispatches_to",
+    "extends", "implements", "contains",
 })
 
 
@@ -146,6 +148,13 @@ class SliceQuery:
                         output. This produces a call-graph-only slice, removing
                         file-level package dependencies that can constitute 60%+
                         of edges in large codebases. Default False.
+        pass_through_kinds: Node kinds to traverse through during BFS but
+                           exclude from the output node_ids. These are typically
+                           synthetic routing nodes (event_publisher, event_subscriber)
+                           that connect real code through IPC channels. The BFS
+                           still follows their edges, but the final slice only
+                           contains real code nodes. Edges touching filtered nodes
+                           are also excluded. Default: {event_publisher, event_subscriber}.
     """
 
     entrypoint: str
@@ -160,6 +169,9 @@ class SliceQuery:
     language: str | None = None
     hub_threshold: int | None = 50
     exclude_imports: bool = False
+    pass_through_kinds: frozenset[str] = frozenset({
+        "event_publisher", "event_subscriber",
+    })
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -180,6 +192,8 @@ class SliceQuery:
             result["hub_threshold"] = self.hub_threshold
         if self.exclude_imports:
             result["exclude_imports"] = True
+        if self.pass_through_kinds:
+            result["pass_through_kinds"] = sorted(self.pass_through_kinds)
         return result
 
 
@@ -201,6 +215,7 @@ class SliceResult:
     query: SliceQuery
     limits_hit: List[str] = field(default_factory=list)
     node_depths: Dict[str, int] = field(default_factory=dict)
+    node_tiers: Dict[str, int] = field(default_factory=dict)
 
     @property
     def feature_id(self) -> str:
@@ -222,6 +237,8 @@ class SliceResult:
         }
         if self.node_depths:
             result["node_depths"] = dict(sorted(self.node_depths.items()))
+        if self.node_tiers:
+            result["node_tiers"] = dict(sorted(self.node_tiers.items()))
         return result
 
 
@@ -358,6 +375,7 @@ def slice_graph(
     limits_hit: List[str] = []
     entry_node_ids: Set[str] = {n.id for n in entry_nodes}
     node_depths: Dict[str, int] = {}
+    node_tiers: Dict[str, int] = {}
 
     def add_file_imports(file_path: str) -> None:
         """Add import edges from the file node(s) for the given path."""
@@ -392,6 +410,7 @@ def slice_graph(
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         node_depths[entry.id] = 0
+        node_tiers[entry.id] = getattr(entry, 'supply_chain_tier', 1)
         files_seen.add(entry.path)
         # Add import edges from this file (forward only, unless imports excluded)
         if not query.reverse and not query.exclude_imports:
@@ -421,6 +440,7 @@ def slice_graph(
             if member.id not in visited_nodes:
                 visited_nodes.add(member.id)
                 node_depths[member.id] = 0
+                node_tiers[member.id] = getattr(member, 'supply_chain_tier', 1)
                 files_seen.add(member.path)
                 queue.append((member.id, 0))
                 if not query.reverse and not query.exclude_imports:
@@ -448,25 +468,49 @@ def slice_graph(
         # Entry nodes and their immediate neighbors (depth ≤ 1) are exempt.
         # This prevents the common "main → run()" pattern from producing
         # nearly-empty slices when run() is a large orchestrator function.
+        # dispatches_to edges are exempt from the count: they represent
+        # intentional architectural fan-out (registry dispatch), not noisy
+        # utility calls. Without this exemption, dispatch sites like
+        # run_all_analyzers (100+ handlers) get hub-pruned and the slice
+        # misses all registered handlers.
         if (
             query.hub_threshold is not None
-            and len(relevant_edges) > query.hub_threshold
             and current_id not in entry_node_ids
             and hop >= 2
         ):
-            if "hub_pruned" not in limits_hit:
-                limits_hit.append("hub_pruned")
-            continue
+            non_dispatch_edges = [
+                e for e in relevant_edges
+                if e.edge_type != "dispatches_to"
+            ]
+            if len(non_dispatch_edges) > query.hub_threshold:
+                if "hub_pruned" not in limits_hit:
+                    limits_hit.append("hub_pruned")
+                # Still follow dispatches_to edges even when hub-pruned
+                relevant_edges = [
+                    e for e in relevant_edges
+                    if e.edge_type == "dispatches_to"
+                ]
+                if not relevant_edges:
+                    continue
 
         for edge in relevant_edges:
             # Filter by confidence
             if edge.confidence < query.min_confidence:
                 continue
 
-            # Skip structural IS-A edges in forward slices to prevent
-            # BFS explosion through shared ancestors (e.g., all controllers
-            # sharing ApplicationController as a base class).
+            # Skip structural edges to prevent BFS explosion:
+            # - Forward: structural edges (extends, implements, contains)
+            #   are excluded to prevent fan-out through shared ancestors
+            #   (e.g., all controllers sharing ApplicationController).
+            #   Note: dispatches_to is NOT structural — it IS followed.
+            # - Reverse: 'contains' edges are excluded to prevent false positives.
+            #   Without this, reverse slice from method M would traverse
+            #   M → Class (via contains) → unrelated callers of Class.
+            #   extends/implements are kept in reverse (useful for "who
+            #   inherits from this?" queries).
             if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+                continue
+            if query.reverse and edge.edge_type == "contains":
                 continue
 
             # Skip import edges when exclude_imports is set.
@@ -516,11 +560,37 @@ def slice_graph(
             if next_node.id not in visited_nodes:
                 visited_nodes.add(next_node.id)
                 node_depths[next_node.id] = hop + 1
+                node_tiers[next_node.id] = getattr(
+                    next_node, 'supply_chain_tier', 1,
+                )
                 queue.append((next_node.id, hop + 1))
                 # Add import edges from the visited file (forward only,
                 # unless imports excluded)
                 if not query.reverse and not query.exclude_imports:
                     add_file_imports(next_node.path)
+
+    # Filter pass-through synthetic nodes: they were traversed during BFS
+    # but should not appear in the output (they represent IPC channels,
+    # not real code).  Edges touching filtered nodes are also removed.
+    if query.pass_through_kinds:
+        pass_through_ids = {
+            nid for nid in visited_nodes
+            if node_by_id.get(nid) is not None
+            and node_by_id[nid].kind in query.pass_through_kinds
+        }
+        if pass_through_ids:
+            visited_nodes -= pass_through_ids
+            # Build edge lookup for fast membership check
+            edge_by_id = {e.id: e for e in edges}
+            visited_edges = {
+                eid for eid in visited_edges
+                if eid in edge_by_id
+                and edge_by_id[eid].src not in pass_through_ids
+                and edge_by_id[eid].dst not in pass_through_ids
+            }
+            for nid in pass_through_ids:
+                node_depths.pop(nid, None)
+                node_tiers.pop(nid, None)
 
     return SliceResult(
         entry_nodes=[n.id for n in entry_nodes],
@@ -529,6 +599,7 @@ def slice_graph(
         query=query,
         limits_hit=limits_hit,
         node_depths=node_depths,
+        node_tiers=node_tiers,
     )
 
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """C# analysis pass using tree-sitter-c-sharp.
 
 This analyzer uses tree-sitter to parse C# files and extract:
@@ -8,7 +9,7 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Method declarations (inside classes/structs)
 - Constructor declarations
 - Property declarations
-- Function call relationships
+- Function call relationships (including chained field type resolution)
 - Using directives (imports)
 - Object instantiation
 
@@ -822,6 +823,31 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
+        # Field declarations — populate class_field_types for chained resolution
+        elif node.type == "field_declaration":
+            enclosing = _get_enclosing_class(node, source)
+            if enclosing:
+                var_decl = find_child_by_type(node, "variable_declaration")
+                if var_decl:
+                    type_name = None
+                    type_id = find_child_by_type(var_decl, "identifier")
+                    if type_id:
+                        type_name = node_text(type_id, source)
+                    else:
+                        gen_name = find_child_by_type(var_decl, "generic_name")
+                        if gen_name:
+                            gen_id = find_child_by_type(gen_name, "identifier")
+                            if gen_id:
+                                type_name = node_text(gen_id, source)
+                    var_declarator = find_child_by_type(var_decl, "variable_declarator")
+                    if type_name and var_declarator:
+                        name_node = find_child_by_type(var_declarator, "identifier")
+                        if name_node:
+                            field_name = node_text(name_node, source)
+                            if enclosing not in analysis.class_field_types:
+                                analysis.class_field_types[enclosing] = {}
+                            analysis.class_field_types[enclosing][field_name] = type_name
+
     return analysis
 
 
@@ -856,6 +882,67 @@ def _get_enclosing_method(
     return None  # pragma: no cover - defensive
 
 
+def _resolve_member_chain(
+    node: "tree_sitter.Node",
+    source: bytes,
+    field_type_registry: dict[str, dict[str, str]],
+    enclosing_class: str | None,
+) -> str | None:
+    """Resolve a chained member_access_expression rooted at ``this`` to a type.
+
+    Walks nested ``member_access_expression`` nodes to decompose a receiver like
+    ``this._inner._db`` into segments [``_inner``, ``_db``], then iteratively
+    resolves through ``field_type_registry`` starting from ``enclosing_class``.
+
+    Returns the resolved type name, or None if resolution fails at any step.
+    """
+    if not field_type_registry or enclosing_class is None:
+        return None  # pragma: no cover - caller checks registry exists
+
+    # Decompose the chain leaf-to-root.
+    segments: list[str] = []
+    cur = node
+    while cur.type == "member_access_expression":
+        ids = _find_children_by_type(cur, "identifier")
+        if ids:
+            segments.append(node_text(ids[-1], source))
+        else:
+            return None  # pragma: no cover - valid C# always has identifiers
+        # Descend into the nested member_access_expression (the receiver part)
+        inner = find_child_by_type(cur, "member_access_expression")
+        if inner:
+            cur = inner
+        else:
+            # Check if the remaining child is ``this``
+            this_node = find_child_by_type(cur, "this")
+            if this_node:
+                break
+            return None  # pragma: no cover - non-this base (e.g. foo._x)
+
+    # Must be rooted at ``this``
+    if cur.type == "member_access_expression":
+        if not find_child_by_type(cur, "this"):
+            return None  # pragma: no cover - defensive
+    elif cur.type != "this":  # pragma: no cover - defensive
+        return None
+
+    # Segments were collected leaf-to-root; reverse to walk root-to-leaf.
+    segments.reverse()
+
+    # Walk the chain starting from enclosing class.
+    current_type = enclosing_class
+    for field_name in segments:
+        fields = field_type_registry.get(current_type)
+        if fields is None:
+            return None
+        next_type = fields.get(field_name)
+        if next_type is None:
+            return None
+        current_type = next_type
+
+    return current_type
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -865,6 +952,7 @@ def _extract_edges_from_file(
     resolver: NameResolver | None = None,
     using_aliases: dict[str, str] | None = None,
     method_resolver: ListNameResolver | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -876,6 +964,7 @@ def _extract_edges_from_file(
 
     Args:
         using_aliases: Optional dict mapping type names to namespace paths for disambiguation.
+        field_type_registry: Aggregated class→{field→type} map for chained field resolution.
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
@@ -887,6 +976,7 @@ def _extract_edges_from_file(
     except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
         return []
 
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("csharp", str(file_path))
     # Track variable types for type inference: var_name -> class_name
@@ -967,6 +1057,58 @@ def _extract_edges_from_file(
                 # Check for member_access_expression (receiver.method() pattern)
                 member_access = find_child_by_type(node, "member_access_expression")
                 if member_access:
+                    # Try chained field resolution: this._a._b.Method()
+                    # The receiver (everything except the final identifier) is
+                    # walked through the field_type_registry to resolve the type.
+                    if field_type_registry:
+                        chain_ids = _find_children_by_type(member_access, "identifier")
+                        if chain_ids:
+                            method_name_chain = node_text(chain_ids[-1], source)
+                            receiver_node = find_child_by_type(
+                                member_access, "member_access_expression"
+                            )
+                            if receiver_node:
+                                enclosing_cls = _get_enclosing_class(node, source)
+                                resolved_type = _resolve_member_chain(
+                                    receiver_node, source,
+                                    field_type_registry, enclosing_cls,
+                                )
+                                if resolved_type and method_name_chain:
+                                    qname = f"{resolved_type}.{method_name_chain}"
+                                    if qname in local_symbols:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=local_symbols[qname].id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="method_call_field_chain",
+                                            confidence=0.80,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                        ))
+                                        _track_csharp_return_type(
+                                            local_symbols[qname], node, source,
+                                            var_types, local_symbols,
+                                        )
+                                        continue
+                                    lookup = resolver.lookup(qname, caller_path=_caller_path)
+                                    if lookup.found and lookup.symbol is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=lookup.symbol.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="method_call_field_chain",
+                                            confidence=0.75 * lookup.confidence,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                        ))
+                                        _track_csharp_return_type(
+                                            lookup.symbol, node, source,
+                                            var_types, local_symbols,
+                                        )
+                                        continue
+
                     # Extract receiver and method name
                     identifiers = _find_children_by_type(member_access, "identifier")
                     receiver_name = None
@@ -1015,7 +1157,7 @@ def _extract_edges_from_file(
                             else:
                                 # Use type's import path for disambiguation
                                 import_hint = using_aliases.get(class_name)
-                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint)
+                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -1061,7 +1203,7 @@ def _extract_edges_from_file(
                     # Check global symbols via resolver
                     else:
                         import_hint = using_aliases.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1101,7 +1243,7 @@ def _extract_edges_from_file(
                 else:
                     # Use import path for disambiguation
                     import_hint = using_aliases.get(type_name)
-                    lookup_result = resolver.lookup(type_name, path_hint=import_hint)
+                    lookup_result = resolver.lookup(type_name, path_hint=import_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -1143,7 +1285,7 @@ def _extract_edges_from_file(
                 ref_name = node_text(id_node, source)
                 target = local_symbols.get(ref_name)
                 if target is None and resolver is not None:
-                    lookup = resolver.lookup(ref_name)
+                    lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup.found and lookup.symbol is not None:
                         target = lookup.symbol
                 if target is not None and target.kind in ("function", "method"):
@@ -1174,7 +1316,7 @@ def _extract_edges_from_file(
                     ref_name = node_text(rhs, source)
                     target = local_symbols.get(ref_name)
                     if target is None and resolver is not None:
-                        lookup = resolver.lookup(ref_name)
+                        lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                         if lookup.found and lookup.symbol is not None:
                             target = lookup.symbol
                     if target is not None and target.kind in ("function", "method"):
@@ -1197,6 +1339,31 @@ def _extract_edges_from_file(
                             ))
 
     return edges
+
+
+# Standard .NET/C# attributes that carry no architectural information.
+# Suppressed from unresolved decorated_by edges to avoid dangling edges (WI-divob).
+_STANDARD_CSHARP_ATTRIBUTES = frozenset({
+    # System
+    "Obsolete", "Serializable", "NonSerialized", "Flags",
+    "CLSCompliant", "ThreadStatic", "MTAThread", "STAThread",
+    # System.Diagnostics
+    "Conditional", "DebuggerDisplay", "DebuggerStepThrough",
+    "DebuggerHidden", "DebuggerBrowsable",
+    # System.Runtime
+    "MethodImpl", "DllImport", "StructLayout", "MarshalAs",
+    # System.ComponentModel
+    "Description", "Category", "Browsable", "EditorBrowsable",
+    "DefaultValue",
+    # Testing
+    "Test", "TestFixture", "SetUp", "TearDown", "TestCase",
+    "Fact", "Theory", "InlineData", "ClassData",
+    # Code analysis
+    "SuppressMessage", "ExcludeFromCodeCoverage",
+    # Compiler
+    "CallerMemberName", "CallerFilePath", "CallerLineNumber",
+    "CompilerGenerated",
+})
 
 
 def _extract_attribute_edges(
@@ -1258,9 +1425,11 @@ def _extract_attribute_edges(
                     evidence_type="ast_attribute",
                 )
                 edges.append(edge)
-            else:
-                # Emit unresolved edge for attributes we can't resolve
-                # This helps track framework attributes like [ApiController]
+            elif attr_name not in _STANDARD_CSHARP_ATTRIBUTES:
+                # Only emit unresolved edges for non-standard attributes
+                # (likely framework attributes like [ApiController]).
+                # Standard attributes ([Obsolete], [Test], etc.) carry no
+                # architectural information and would create dangling edges.
                 dst_id = f"csharp:unresolved:0-0:{attr_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,
@@ -1361,6 +1530,15 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                     short = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
                     global_methods.setdefault(short, []).append(symbol)
 
+        # Aggregate field type registry for chained this.field.field.Method()
+        field_type_registry: dict[str, dict[str, str]] = {}
+        for analysis in file_analyses.values():
+            for class_name, fields in analysis.class_field_types.items():
+                if class_name not in field_type_registry:
+                    field_type_registry[class_name] = {}
+                for fname, ftype in fields.items():
+                    field_type_registry[class_name].setdefault(fname, ftype)
+
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
         method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
@@ -1374,6 +1552,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
                 using_aliases=analysis.import_aliases,
                 method_resolver=method_resolver,
+                field_type_registry=field_type_registry,
             )
             all_edges.extend(edges)
 

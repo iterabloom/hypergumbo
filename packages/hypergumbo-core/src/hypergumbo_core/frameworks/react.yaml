@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# React framework patterns (ADR-0003)
+#
+# Detects React SPA bootstrap patterns. These are the functions that mount
+# the React component tree into the DOM, serving as the application entry
+# point in single-page applications.
+#
+# Bootstrap detection uses USAGE-BASED patterns (v1.1.x) because createRoot()
+# and ReactDOM.render() are module-level call expressions, not decorators on
+# symbol definitions. The JS/TS analyzer emits UsageContext records for these
+# calls (kind="call", position="caller"), which are matched here to assign
+# the app_bootstrap concept to the module symbol.
+#
+# Patterns detected:
+# - createRoot() / ReactDOM.createRoot() — React 18+ bootstrap
+# - ReactDOM.render() — React 17 and earlier bootstrap
+# - hydrateRoot() / ReactDOM.hydrate() — SSR hydration bootstrap
+# - createBrowserRouter() — React Router v6 app-level router
+#
+# Note: Bare createRoot() and hydrateRoot() collide with Solid.js which uses
+# the same function names. When both React and Solid patterns match the same
+# symbol, entrypoints.py disambiguates by preferring the more specific
+# framework match (e.g., Solid for render(), React for createBrowserRouter).
+
+id: react
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match UsageContext records emitted by the JS/TS analyzer for
+  # module-level SPA bootstrap calls. The symbol_ref points to the module
+  # symbol, so the module gets the app_bootstrap concept.
+
+  # React 18+ createRoot() / ReactDOM.createRoot()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^(createRoot|ReactDOM\\.createRoot)$"
+      position: "^caller$"
+
+  # React 17 ReactDOM.render()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^ReactDOM\\.render$"
+      position: "^caller$"
+
+  # SSR hydration: hydrateRoot() / ReactDOM.hydrateRoot() / ReactDOM.hydrate()
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^(hydrateRoot|ReactDOM\\.hydrateRoot|ReactDOM\\.hydrate)$"
+      position: "^caller$"
+
+  # React Router v6 createBrowserRouter / createHashRouter / createMemoryRouter
+  - concept: app_bootstrap
+    usage:
+      kind: "^call$"
+      name: "^create(Browser|Hash|Memory)Router$"
+      position: "^caller$"
+
+  # ==================== DEFINITION-BASED PATTERNS ====================
+  # Legacy decorator-based patterns retained for symbols that have decorator
+  # metadata (e.g., custom decorators wrapping React bootstrap).
+
+  # React component definition patterns
+  - concept: component
+    decorator: "^React\\.createElement$"
+
+  # React hooks (for symbol classification, not entrypoint detection)
+  - concept: hook
+    decorator: "^(useState|useEffect|useContext|useReducer|useMemo|useCallback|useRef|useLayoutEffect|useImperativeHandle|useDebugValue|useDeferredValue|useTransition|useId|useSyncExternalStore|useInsertionEffect)$"

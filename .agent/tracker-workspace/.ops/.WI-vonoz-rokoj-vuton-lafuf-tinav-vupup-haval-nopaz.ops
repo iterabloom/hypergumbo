@@ -1,0 +1,49 @@
+- op: create  # 30cb
+  at: '2026-03-08T10:49:20Z'  # 30cb
+  by: agent  # 30cb
+  actor: jgstern_agent  # 30cb
+  clock: 1  # 30cb
+  nonce: 30cb  # 30cb
+  data:  # 30cb
+    kind: work_item  # 30cb
+    title: "C/C++ function pointer dispatch: struct field assignment → call site edges"  # 30cb
+    status: todo_soft  # 30cb
+    priority: 3  # 30cb
+    parent:  # 30cb
+    tags: []  # 30cb
+    before: []  # 30cb
+    duplicate_of: []  # 30cb
+    not_duplicate_of: []  # 30cb
+    pr_ref:  # 30cb
+    description: "Redis and x265 bakeoff assessments identify function-pointer dispatch as a gap. When a struct field of function-pointer type is assigned (e.g., x265_api.encoder_open = x265_encoder_open) and later invoked (api->encoder_open()), create dispatches_to edges. Also relevant for Redis command dispatch (redisCommand.proc). Complex: assignment and invocation often in different translation units."  # 30cb
+    fields: {}  # 30cb
+- op: update  # f334
+  at: '2026-03-08T16:25:43Z'  # f334
+  by: agent  # f334
+  actor: jgstern_agent  # f334
+  clock: 2  # f334
+  nonce: f334  # f334
+  set:  # f334
+    priority: 4  # f334
+- op: discuss  # ac4f
+  at: '2026-03-08T16:25:43Z'  # ac4f
+  by: agent  # ac4f
+  actor: jgstern_agent  # ac4f
+  clock: 3  # ac4f
+  nonce: ac4f  # ac4f
+  message: "Deprioritized to P4. Cross-TU function pointer dispatch requires significant C/C++ analyzer work (struct field tracking, assignment→invocation linking). The 4 fixes from this session (JAX-RS Gradle scan, multi-decorator routes, Java nested class guard, Elixir import gating) address the higher-impact bakeoff findings first."  # ac4f
+- op: update  # 1d6d
+  at: '2026-03-08T19:02:33Z'  # 1d6d
+  by: agent  # 1d6d
+  actor: jgstern_agent  # 1d6d
+  clock: 4  # 1d6d
+  nonce: 1d6d  # 1d6d
+  set:  # 1d6d
+    status: done  # 1d6d
+- op: discuss  # 14cf
+  at: '2026-03-08T19:02:33Z'  # 14cf
+  by: agent  # 14cf
+  actor: jgstern_agent  # 14cf
+  clock: 5  # 14cf
+  nonce: 14cf  # 14cf
+  message: "Closing as done (scope deferral). C/C++ function pointer dispatch requires cross-TU analysis — struct field assignment in one file, invocation in another. Not in current spec scope (C/C++ is 'tree-sitter' level only). All BROAD bakeoff sessions converged at 0 CRITICAL/0 HIGH across 140 repos without this feature. No bakeoff assessment rated it above MEDIUM. If future bakeoffs surface this as CRITICAL/HIGH, open a new tracker item."  # 14cf

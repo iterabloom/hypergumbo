@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Post-checkout hook: Repair pytest wrapper and .agent/ permissions
 #
 # After branch switches or file checkouts:

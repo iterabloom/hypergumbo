@@ -64,3 +64,11 @@
   clock: 7  # c947
   nonce: c947  # c947
   message: "[migrated from justification field] Deferred: P4 niche language. DTS files found in kernel repos but not in current bakeoff cohorts."  # c947
+- op: update  # 7350
+  at: '2026-03-06T23:57:09Z'  # 7350
+  by: human  # 7350
+  actor: jgstern  # 7350
+  clock: 8  # 7350
+  nonce: '7350'  # 7350
+  set:  # 7350
+    status: wont_do  # 7350

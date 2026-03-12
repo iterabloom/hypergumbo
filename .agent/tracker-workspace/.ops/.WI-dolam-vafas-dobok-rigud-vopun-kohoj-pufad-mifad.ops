@@ -1,0 +1,81 @@
+- op: create  # 1a47
+  at: '2026-03-10T06:52:37Z'  # 1a47
+  by: agent  # 1a47
+  actor: jgstern_agent  # 1a47
+  clock: 1  # 1a47
+  nonce: 1a47  # 1a47
+  data:  # 1a47
+    kind: work_item  # 1a47
+    title: "React component entrypoints, JSX composition edges, and React Router routes"  # 1a47
+    status: todo_hard  # 1a47
+    priority: 2  # 1a47
+    parent:  # 1a47
+    tags:  # 1a47
+    - framework  # 1a47
+    before: []  # 1a47
+    duplicate_of: []  # 1a47
+    not_duplicate_of: []  # 1a47
+    pr_ref:  # 1a47
+    description: "PlazaFlow Cohorts 1, 2, 3, 4, 6: React is the most common frontend framework in the corpus but hypergumbo has no React-specific detection. Three gaps: (1) ReactDOM.createRoot/render not detected as entrypoints, (2) no component-renders-component edges from JSX usage, (3) no React Router client-side route detection. These affect understanding, refactoring, and new-feature scores across the majority of repos."  # 1a47
+    fields: {}  # 1a47
+- op: update  # 2dae
+  at: '2026-03-10T11:51:01Z'  # 2dae
+  by: agent  # 2dae
+  actor: jgstern_agent  # 2dae
+  clock: 2  # 2dae
+  nonce: 2dae  # 2dae
+  set:  # 2dae
+    status: in_progress  # 2dae
+- op: update  # eb65
+  at: '2026-03-10T12:28:00Z'  # eb65
+  by: agent  # eb65
+  actor: jgstern_agent  # eb65
+  clock: 3  # eb65
+  nonce: eb65  # eb65
+  set:  # eb65
+    status: done  # eb65
+- op: discuss  # c282
+  at: '2026-03-10T12:28:00Z'  # c282
+  by: agent  # c282
+  actor: jgstern_agent  # c282
+  clock: 4  # c282
+  nonce: c282  # c282
+  message: "Merged in PR #2108. React component linker creates renders_component edges from JSX usage to component definitions. 40 tests, 100% coverage. Addresses Gap 2 (component composition) which was the highest-impact gap. Gaps 1 (ReactDOM entrypoints) and 3 (React Router routes) remain but are lower priority."  # c282
+- op: discuss  # 87e4
+  at: '2026-03-11T16:36:28Z'  # 87e4
+  by: human  # 87e4
+  actor: jgstern  # 87e4
+  clock: 5  # 87e4
+  nonce: '87e4'  # 87e4
+  message: "Please also address gap 1 and gap 3"  # 87e4
+- op: update  # c0b4
+  at: '2026-03-11T16:39:21Z'  # c0b4
+  by: human  # c0b4
+  actor: jgstern  # c0b4
+  clock: 6  # c0b4
+  nonce: c0b4  # c0b4
+  set:  # c0b4
+    status: todo_soft  # c0b4
+    priority: 3  # c0b4
+- op: discuss  # 5eb6
+  at: '2026-03-11T17:28:35Z'  # 5eb6
+  by: agent  # 5eb6
+  actor: jgstern_agent  # 5eb6
+  clock: 7  # 5eb6
+  nonce: 5eb6  # 5eb6
+  message: "Both gaps 1 and 3 were already addressed in prior PRs:\n\n**Gap 1 (ReactDOM.createRoot/render entrypoints):** Fixed in commit 1c6393ef \"feat: React SPA bootstrap entrypoint detection via UsageContext\" and commit ac0a2fcb \"feat: SPA/Electron entrypoint detection via concept mapping\". ReactDOM.createRoot() and ReactDOM.render() are now detected as SPA bootstrap entrypoints via the concept mapping system. Commit 200fcae2 also fixed SPA bootstrap framework disambiguation between Solid and React.\n\n**Gap 3 (React Router routes):** Fixed in commit 9929cd88 \"feat: React Router JSX route detection in JS/TS analyzer\" and commit 7277c3bb \"fix: route-handler linker resolves class/module components and suffix names\". React Router <Route path=\"/foo\" component={Bar}/> and <Route path=\"/foo\" element={<Bar/>}/> patterns are now detected and produce routes_to edges.\n\nAll three gaps from the original WI-dolam description are now addressed. Updating status to done."  # 5eb6
+- op: update  # 2a7f
+  at: '2026-03-11T17:28:35Z'  # 2a7f
+  by: agent  # 2a7f
+  actor: jgstern_agent  # 2a7f
+  clock: 8  # 2a7f
+  nonce: 2a7f  # 2a7f
+  set:  # 2a7f
+    status: done  # 2a7f
+- op: discuss  # 9a06
+  at: '2026-03-11T18:17:36Z'  # 9a06
+  by: agent  # 9a06
+  actor: jgstern_agent  # 9a06
+  clock: 9  # 9a06
+  nonce: 9a06  # 9a06
+  message: "Both remaining gaps already addressed: Gap 1 (ReactDOM entrypoints) in PR #2108 + commits 1c6393ef, ac0a2fcb, 200fcae2. Gap 3 (React Router routes) in PR #2127 (9929cd88) + PR #2136 (7277c3bb). All 3 gaps from original description now complete. Status: done."  # 9a06

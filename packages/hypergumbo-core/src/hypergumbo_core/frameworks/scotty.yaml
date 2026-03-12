@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Scotty framework patterns (ADR-0003 v1.1.x)
 #
 # Scotty is a Haskell web micro-framework inspired by Ruby's Sinatra.

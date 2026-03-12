@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """BibTeX bibliography analyzer using tree-sitter.
 
 BibTeX is the standard bibliography format for LaTeX documents, widely used

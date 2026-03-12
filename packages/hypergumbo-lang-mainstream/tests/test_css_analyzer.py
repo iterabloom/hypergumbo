@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for CSS analyzer using tree-sitter-css.
 
 Tests verify that the analyzer correctly extracts:
@@ -19,7 +20,7 @@ from hypergumbo_lang_mainstream.css import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "css-v1"
-    assert PASS_VERSION == "2.0.2"
+    assert PASS_VERSION == "2.2.0"
 
 def test_analyze_import(tmp_path):
     """Test detection of @import statements."""

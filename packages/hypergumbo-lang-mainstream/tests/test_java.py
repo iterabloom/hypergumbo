@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Java analyzer."""
 import sys
 from pathlib import Path
@@ -1444,7 +1445,9 @@ public class UserResource {
         route_concepts = [c for c in method.meta.get("concepts", []) if c.get("concept") == "route"]
         assert len(route_concepts) == 1
         assert route_concepts[0]["method"] == "GET"
-        # JAX-RS path is extracted from @Path annotation via resource_path concept
+        # Route path combines class @Path("/users") + method @Path("/{id}")
+        assert route_concepts[0].get("path") == "/users/{id}"
+        # Method's own resource_path concept retains just the method-level path
         path_concept = next(
             (c for c in method.meta["concepts"] if c.get("concept") == "resource_path"),
             None
@@ -1495,6 +1498,54 @@ public class ResourceController {
 
         assert len(methods_with_routes) == 5
         assert http_methods == {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+    def test_jaxrs_path_with_constant_reference(self, tmp_path: Path) -> None:
+        """JAX-RS @Path with constant reference extracts the reference as path."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
+
+        java_file = tmp_path / "AccountResource.java"
+        java_file.write_text("""
+@Path(JaxrsResource.ACCOUNTS_PATH)
+public class AccountResource {
+    @GET
+    @Path("/{id}")
+    public void getById() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
+
+        # Class should have resource_path with constant reference
+        cls = next((s for s in enriched if s.kind == "class"), None)
+        assert cls is not None
+        path_concept = next(
+            (c for c in cls.meta.get("concepts", []) if c.get("concept") == "resource_path"),
+            None,
+        )
+        assert path_concept is not None
+        assert path_concept.get("path") == "JaxrsResource.ACCOUNTS_PATH"
+
+        # Method should have resource_path with /{id}
+        method = next((s for s in enriched if s.kind == "method"), None)
+        assert method is not None
+        method_path = next(
+            (c for c in method.meta.get("concepts", []) if c.get("concept") == "resource_path"),
+            None,
+        )
+        assert method_path is not None
+        assert method_path.get("path") == "/{id}"
+
+        # Route concept combines class + method paths
+        route_concept = next(
+            (c for c in method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        assert route_concept.get("path") == "/JaxrsResource.ACCOUNTS_PATH/{id}"
 
 
 class TestJavaModifiersCapture:
@@ -2544,6 +2595,53 @@ public class User {
         # Check kwargs has ignoreUnknown
         assert "ignoreUnknown" in decorators[0]["kwargs"]
 
+    def test_annotation_with_constant_ref_arg(self, tmp_path: Path) -> None:
+        """Extracts annotation with constant reference as positional argument."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "AccountResource.java").write_text("""
+@Path(JaxrsResource.ACCOUNTS_PATH)
+public class AccountResource {
+    @GET
+    @Path("/{id}")
+    public void getById() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        classes = [s for s in result.symbols if s.kind == "class"]
+        assert len(classes) == 1
+        meta = classes[0].meta or {}
+        decorators = meta.get("decorators", [])
+        path_dec = next((d for d in decorators if d["name"] == "Path"), None)
+        assert path_dec is not None
+        # Constant reference captured as positional arg
+        assert path_dec["args"] == ["JaxrsResource.ACCOUNTS_PATH"]
+
+    def test_annotation_with_concatenation_arg(self, tmp_path: Path) -> None:
+        """Extracts annotation with string concatenation as positional argument."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Resource.java").write_text("""
+public class Resource {
+    @Path("/{accountId:" + UUID_PATTERN + "}")
+    public void getAccount() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) == 1
+        meta = methods[0].meta or {}
+        decorators = meta.get("decorators", [])
+        path_dec = next((d for d in decorators if d["name"] == "Path"), None)
+        assert path_dec is not None
+        # Concatenation captured as raw text
+        assert len(path_dec["args"]) == 1
+        assert "accountId" in str(path_dec["args"][0])
+
     def test_interface_annotation(self, tmp_path: Path) -> None:
         """Extracts annotation from interface."""
         from hypergumbo_lang_mainstream.java import analyze_java
@@ -3425,6 +3523,112 @@ class TestClassNameCollision:
         )
 
 
+    def test_nested_class_not_resolved_from_bare_name_without_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """new Properties() should NOT resolve to Log4jConfiguration.Properties.
+
+        When a file uses a bare class name like Properties without any import,
+        and the only matching symbol is a nested class (Log4jConfiguration.Properties),
+        the edge should be skipped. In Java, you can't use a bare inner class name
+        from outside the outer class — you'd need Log4jConfiguration.Properties.
+        This is the Kafka bakeoff false positive scenario (WI-bunul).
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with nested class named Properties
+        (tmp_path / "Log4jConfiguration.java").write_text(
+            "package kafka.docker;\n"
+            "public class Log4jConfiguration {\n"
+            "    public static class Properties {\n"
+            "        public String getProperty(String key) { return null; }\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that uses bare Properties (meaning java.util.Properties, not the nested one)
+        (tmp_path / "WordCount.java").write_text(
+            "package kafka.streams;\n"
+            "import java.util.*;\n"
+            "public class WordCount {\n"
+            "    public static void main(String[] args) {\n"
+            "        Properties props = new Properties();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        nested_props = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.Properties"),
+            None,
+        )
+        assert nested_props is not None, "Nested Properties class should be extracted"
+
+        wc_main = next(
+            (s for s in result.symbols if s.name == "WordCount.main"), None,
+        )
+        assert wc_main is not None, "WordCount.main should be extracted"
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == wc_main.id
+            and e.dst == nested_props.id
+        ]
+        assert len(false_edges) == 0, (
+            f"new Properties() should NOT resolve to Log4jConfiguration.Properties "
+            f"— bare name cannot refer to a nested class from outside the outer class "
+            f"(got {len(false_edges)} false edges)"
+        )
+
+    def test_nested_class_resolved_from_same_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """new Properties() SHOULD resolve to nested Properties when in the same file.
+
+        Inside the outer class's file, bare inner class names are valid Java.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Log4jConfiguration.java").write_text(
+            "package kafka.docker;\n"
+            "public class Log4jConfiguration {\n"
+            "    public static class Properties {\n"
+            "        public String getProperty(String key) { return null; }\n"
+            "    }\n"
+            "    public void configure() {\n"
+            "        Properties p = new Properties();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        nested_props = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.Properties"),
+            None,
+        )
+        assert nested_props is not None
+
+        configure = next(
+            (s for s in result.symbols
+             if s.name == "Log4jConfiguration.configure"),
+            None,
+        )
+        assert configure is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == configure.id
+            and e.dst == nested_props.id
+        ]
+        assert len(edges) == 1, (
+            "new Properties() inside Log4jConfiguration should resolve to "
+            "the nested Properties class"
+        )
+
+
 class TestJavaAmbiguousMethodGuard:
     """Tests for AMB-METHOD invariant in Java.
 
@@ -3492,4 +3696,501 @@ public class Orchestrator {
                 )
                 assert "Worker.process" not in edge.dst, (
                     f"Should not resolve to Worker.process: {edge.dst}"
+                )
+
+
+class TestJavaInferredReturnType:
+    """Tests for inferring concrete return types from method bodies.
+
+    When a Java method declares return type Object but the body only contains
+    'return new TokenEndpoint(...)', the concrete type 'TokenEndpoint' should
+    be inferred and stored as 'inferred_return_type' in symbol metadata.
+    This enables JAX-RS subresource locator path chaining for methods that
+    return Object (common in keycloak/jersey projects).
+    """
+
+    def test_infer_return_type_from_new_expression(self, tmp_path: Path) -> None:
+        """When return type is Object, infer concrete type from return new X()."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "ProtocolService.java"
+        java_file.write_text("""
+import javax.ws.rs.*;
+
+@Path("/protocol")
+public class ProtocolService {
+    @Path("token")
+    public Object token() {
+        return new TokenEndpoint(session, tokenManager);
+    }
+
+    @Path("auth")
+    public Object auth() {
+        return new AuthorizationEndpoint(session, event);
+    }
+
+    @GET
+    @Path("status")
+    public Response getStatus() {
+        return Response.ok().build();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        # Find the token() method
+        token_method = next(
+            (s for s in result.symbols if "token" in s.name and s.kind == "method"),
+            None,
+        )
+        assert token_method is not None, "Expected token method"
+        assert token_method.meta is not None
+
+        # Should have inferred_return_type = "TokenEndpoint"
+        assert token_method.meta.get("inferred_return_type") == "TokenEndpoint", (
+            f"Expected inferred_return_type='TokenEndpoint', got "
+            f"{token_method.meta.get('inferred_return_type')}"
+        )
+
+        # auth() should also have inferred return type
+        auth_method = next(
+            (s for s in result.symbols if "auth" in s.name and s.kind == "method"),
+            None,
+        )
+        assert auth_method is not None
+        assert auth_method.meta.get("inferred_return_type") == "AuthorizationEndpoint"
+
+        # getStatus() returns Response (concrete), should NOT have inferred_return_type
+        status_method = next(
+            (s for s in result.symbols if "getStatus" in s.name and s.kind == "method"),
+            None,
+        )
+        assert status_method is not None
+        assert "inferred_return_type" not in (status_method.meta or {})
+
+    def test_no_infer_for_abstract_method(self, tmp_path: Path) -> None:
+        """Abstract methods have no body, so inference returns None."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "AbstractService.java"
+        java_file.write_text("""
+public abstract class AbstractService {
+    @javax.ws.rs.Path("sub")
+    public abstract Object getSub();
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_bare_return(self, tmp_path: Path) -> None:
+        """Bare 'return;' in an Object method should not infer a type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub() {
+        return;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_variable_return(self, tmp_path: Path) -> None:
+        """When method returns a variable (not new X()), don't infer type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub() {
+        Object result = createEndpoint();
+        return result;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+    def test_no_infer_for_multiple_different_types(self, tmp_path: Path) -> None:
+        """When method returns different types, don't infer."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    @javax.ws.rs.Path("sub")
+    public Object getSub(boolean flag) {
+        if (flag) {
+            return new EndpointA();
+        }
+        return new EndpointB();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        method = next(
+            (s for s in result.symbols if "getSub" in s.name and s.kind == "method"),
+            None,
+        )
+        assert method is not None
+        assert "inferred_return_type" not in (method.meta or {})
+
+
+class TestJavaInheritedMethodResolution:
+    """Tests for resolving inherited method calls via this.method() or bare method().
+
+    When a class extends a parent and calls a method defined in the parent
+    (not overridden in the child), Case 1 of _extract_edges should walk
+    up the extends chain to find the method in the parent class.
+    """
+
+    def test_bare_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
+        """bare method() call resolves to parent class method via extends chain."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "BaseResource.java").write_text("""
+public class BaseResource {
+    protected void verifyNonNull(Object obj) {
+        if (obj == null) throw new IllegalArgumentException();
+    }
+}
+""")
+        (tmp_path / "AccountResource.java").write_text("""
+public class AccountResource extends BaseResource {
+    public void createAccount(String name) {
+        verifyNonNull(name);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        create_method = next(
+            (s for s in result.symbols if "createAccount" in s.name), None
+        )
+        verify_method = next(
+            (s for s in result.symbols if "verifyNonNull" in s.name), None
+        )
+
+        assert create_method is not None, "Should find createAccount"
+        assert verify_method is not None, "Should find verifyNonNull"
+
+        # Should have a call edge from createAccount to verifyNonNull
+        call_edges = [
+            e for e in result.edges
+            if e.src == create_method.id
+            and e.dst == verify_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from createAccount to verifyNonNull (inherited), "
+            f"got {len(call_edges)}. "
+            f"All edges from createAccount: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create_method.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited"
+        assert call_edges[0].confidence <= 0.90  # Slightly lower than direct
+
+    def test_this_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
+        """this.method() call resolves to parent class method via extends chain."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "BaseController.java").write_text("""
+public class BaseController {
+    protected String formatResponse(Object data) {
+        return data.toString();
+    }
+}
+""")
+        (tmp_path / "UserController.java").write_text("""
+public class UserController extends BaseController {
+    public String getUser(int id) {
+        return this.formatResponse(id);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        get_user = next(
+            (s for s in result.symbols if "getUser" in s.name), None
+        )
+        format_resp = next(
+            (s for s in result.symbols if "formatResponse" in s.name), None
+        )
+
+        assert get_user is not None
+        assert format_resp is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == get_user.id
+            and e.dst == format_resp.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from getUser to formatResponse (inherited), "
+            f"got {len(call_edges)}. "
+            f"All edges: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == get_user.id]}"
+        )
+
+    def test_grandparent_method_resolves(self, tmp_path: Path) -> None:
+        """Method defined in grandparent class resolves through two extends."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Base.java").write_text("""
+public class Base {
+    protected void validate() {}
+}
+""")
+        (tmp_path / "Middle.java").write_text("""
+public class Middle extends Base {
+    protected void transform() {}
+}
+""")
+        (tmp_path / "Child.java").write_text("""
+public class Child extends Middle {
+    public void process() {
+        validate();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        process_method = next(
+            (s for s in result.symbols if "process" in s.name), None
+        )
+        validate_method = next(
+            (s for s in result.symbols if "validate" in s.name), None
+        )
+
+        assert process_method is not None
+        assert validate_method is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == process_method.id
+            and e.dst == validate_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            "Expected edge from process to validate (inherited from grandparent)"
+        )
+
+    def test_own_method_preferred_over_parent(self, tmp_path: Path) -> None:
+        """When method exists in both child and parent, child method is preferred."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Parent.java").write_text("""
+public class Parent {
+    protected void doWork() {}
+}
+""")
+        (tmp_path / "Child.java").write_text("""
+public class Child extends Parent {
+    protected void doWork() {}
+    public void run() {
+        doWork();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if "run" in s.name), None
+        )
+        child_dowork = next(
+            (s for s in result.symbols
+             if "doWork" in s.name and "Child" in s.name), None
+        )
+
+        assert run_method is not None
+        assert child_dowork is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_method.id
+            and e.dst == child_dowork.id
+            and e.edge_type == "calls"
+        ]
+        # Should resolve to Child.doWork (direct), not Parent.doWork
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_direct"
+
+    def test_inherited_field_method_call(self, tmp_path: Path) -> None:
+        """Call on field declared in parent class resolves via inheritance."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "AccountUserApi.java").write_text("""
+public interface AccountUserApi {
+    void createAccount(String name);
+}
+""")
+        (tmp_path / "BaseResource.java").write_text("""
+public class BaseResource {
+    protected AccountUserApi accountApi;
+}
+""")
+        (tmp_path / "AccountResource.java").write_text("""
+public class AccountResource extends BaseResource {
+    public void create(String name) {
+        accountApi.createAccount(name);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        create = next(
+            (s for s in result.symbols if "AccountResource" in s.name and "create" in s.name and s.kind == "method"),
+            None,
+        )
+        api_method = next(
+            (s for s in result.symbols if "createAccount" in s.name), None
+        )
+
+        assert create is not None, "Should find AccountResource.create"
+        assert api_method is not None, "Should find AccountUserApi.createAccount"
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == create.id
+            and e.dst == api_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected edge from create to createAccount via inherited field, "
+            f"got {len(call_edges)}. "
+            f"All edges from create: "
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited_field"
+        assert call_edges[0].confidence <= 0.85
+
+    def test_inherited_field_from_grandparent(self, tmp_path: Path) -> None:
+        """Field declared in grandparent resolves through two extends levels."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Logger.java").write_text("""
+public class Logger {
+    public void info(String msg) {}
+}
+""")
+        (tmp_path / "GrandBase.java").write_text("""
+public class GrandBase {
+    protected Logger logger;
+}
+""")
+        (tmp_path / "MiddleBase.java").write_text("""
+public class MiddleBase extends GrandBase {
+}
+""")
+        (tmp_path / "Service.java").write_text("""
+public class Service extends MiddleBase {
+    public void run() {
+        logger.info("started");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        run_method = next(
+            (s for s in result.symbols if "Service" in s.name and "run" in s.name),
+            None,
+        )
+        info_method = next(
+            (s for s in result.symbols if "Logger.info" in s.name), None
+        )
+
+        assert run_method is not None
+        assert info_method is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_method.id
+            and e.dst == info_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_inherited_field"
+
+
+class TestJavaTestPathPreference:
+    """Tests for preferring non-test symbols over test symbols in resolution.
+
+    When production code calls a method like ``server.startup()``, the
+    resolver should prefer ``Server.startup`` over ``LogCleanerTest.startup``
+    if both exist. This prevents false positives from test class methods
+    polluting call graphs of production code.
+    """
+
+    def test_prod_code_prefers_prod_symbol(self, tmp_path: Path) -> None:
+        """Production caller resolves to production method, not test method."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Production file with a Server class
+        (tmp_path / "Server.java").write_text("""
+public class Server {
+    public void startup() {}
+}
+""")
+        # Test file with same method name
+        test_dir = tmp_path / "src" / "test" / "java"
+        test_dir.mkdir(parents=True)
+        (test_dir / "ServerTest.java").write_text("""
+public class ServerTest {
+    public void startup() {}
+}
+""")
+        # Production caller
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Server server = new Server();
+        server.startup();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "startup" in e.dst
+        ]
+
+        # Should resolve to Server.startup, not ServerTest.startup
+        for edge in call_edges:
+            if "run" in edge.src:
+                assert "ServerTest" not in edge.dst, (
+                    f"Production code should not resolve to test class. "
+                    f"Got dst={edge.dst}"
                 )

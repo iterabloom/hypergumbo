@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Allow running hypergumbo as a module: python -m hypergumbo."""
 from hypergumbo_core.cli import main
 

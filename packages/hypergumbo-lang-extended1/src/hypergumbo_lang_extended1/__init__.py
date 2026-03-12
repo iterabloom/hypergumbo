@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo extended language analyzers (set 1).
 
 This package provides analyzers for specialized and emerging languages,
@@ -5,7 +6,7 @@ including systems programming alternatives, proof assistants, blockchain,
 hardware description languages, and niche domain-specific languages.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
@@ -30,6 +31,7 @@ ANALYZER_MODULES = [
 
     # Blockchain and smart contracts
     "hypergumbo_lang_extended1.solidity",
+    "hypergumbo_lang_extended1.circom",
 
     # Hardware description
     "hypergumbo_lang_extended1.verilog",

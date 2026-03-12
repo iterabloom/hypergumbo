@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the analyze.registry module.
 
 Tests the decorator-based analyzer registration system, mirroring the
@@ -319,7 +320,7 @@ class TestRunAnalyzer:
 
     def test_raises_for_unknown(self) -> None:
         """Raises KeyError for unregistered analyzer name."""
-        with pytest.raises(KeyError, match="Unknown analyzer: missing"):
+        with pytest.raises(KeyError, match=r"Unknown analyzer: 'missing'\. Available:"):
             run_analyzer("missing", Path("/test"))
 
 
@@ -739,3 +740,215 @@ class TestCollectAnalyzerResult:
         assert len(limits.skipped_passes) == 1
         assert limits.skipped_passes[0]["pass"] == "lean-ts-v1"
         assert "grammar not available" in limits.skipped_passes[0]["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Path normalization in run_all_analyzers (facade)
+# ---------------------------------------------------------------------------
+
+
+class TestRunAllAnalyzersPathNormalization:
+    """Tests that run_all_analyzers normalizes absolute paths to relative."""
+
+    def test_absolute_symbol_paths_are_relativized(self) -> None:
+        """Symbol paths that are absolute and under repo_root become relative."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+
+        repo_root = Path("/home/user/myrepo")
+
+        sym_absolute = Symbol(
+            id="java:/home/user/myrepo/src/Main.java:1-10:Main:class",
+            name="Main",
+            kind="class",
+            language="java",
+            path="/home/user/myrepo/src/Main.java",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="java-v1",
+            origin_run_id="run1",
+        )
+        sym_relative = Symbol(
+            id="rust:src/lib.rs:1-5:foo:function",
+            name="foo",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[sym_absolute, sym_relative],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_abs_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+
+        # Absolute path should be relativized
+        assert symbols[0].path == "src/Main.java"
+        # Already-relative path should be unchanged
+        assert symbols[1].path == "src/lib.rs"
+
+    def test_absolute_usage_context_paths_are_relativized(self) -> None:
+        """UsageContext paths that are absolute and under repo_root become relative."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, UsageContext
+
+        repo_root = Path("/home/user/myrepo")
+
+        uc = UsageContext(
+            id="uc1",
+            kind="call",
+            context_name="register",
+            symbol_ref=None,
+            position="args[0]",
+            metadata={},
+            path="/home/user/myrepo/routes/web.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[],
+            edges=[],
+            usage_contexts=[uc],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_uc_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, usage_contexts, _, _ = facade_run_all(repo_root)
+
+        assert usage_contexts[0].path == "routes/web.py"
+
+    def test_path_outside_repo_root_unchanged(self) -> None:
+        """Absolute paths NOT under repo_root are left unchanged."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+
+        repo_root = Path("/home/user/myrepo")
+
+        sym = Symbol(
+            id="c:/usr/include/stdlib.h:1-5:malloc:function",
+            name="malloc",
+            kind="function",
+            language="c",
+            path="/usr/include/stdlib.h",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+
+        result = AnalysisResult(
+            symbols=[sym],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_outside_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+
+        # Path outside repo_root should be left as-is
+        assert symbols[0].path == "/usr/include/stdlib.h"
+
+
+class TestRunAllAnalyzersTruncatedFiles:
+    """Tests that run_all_analyzers wires file-skip tracking to limits."""
+
+    def test_truncated_files_populated_via_global_callback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Oversized files discovered by find_files() are recorded in limits."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.discovery import find_files, set_max_file_bytes
+        from hypergumbo_core.ir import AnalysisRun
+
+        # Create a large file that exceeds the limit
+        large = tmp_path / "big.py"
+        large.write_text("x" * 5000)
+        small = tmp_path / "ok.py"
+        small.write_text("x = 1\n")
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-trunc-v1"}
+        run.pass_id = "test-trunc-v1"
+
+        # Analyzer that calls find_files — the global callback should fire
+        @register_analyzer("test_trunc")
+        def analyze_trunc(root: Path) -> AnalysisResult:
+            list(find_files(root, ["*.py"]))
+            return AnalysisResult(run=run, skipped=False)
+
+        try:
+            set_max_file_bytes(100)
+            with patch(
+                "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+            ):
+                _, _, _, _, limits, _ = facade_run_all(tmp_path)
+
+            assert len(limits.truncated_files) == 1
+            assert "big.py" in limits.truncated_files[0]["path"]
+            assert limits.truncated_files[0]["size_bytes"] > 100
+            assert "exceeds" in limits.truncated_files[0]["reason"]
+        finally:
+            set_max_file_bytes(None)
+
+    def test_global_callback_cleared_after_run(self) -> None:
+        """Global on_file_skipped callback is cleared after run_all_analyzers."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.discovery import _global_on_file_skipped
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            facade_run_all(Path("/test"))
+
+        # Import the module-level variable directly
+        import hypergumbo_core.discovery as disc_mod
+        assert disc_mod._global_on_file_skipped is None

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OCaml analysis pass using tree-sitter-ocaml.
 
 This analyzer uses tree-sitter to parse OCaml files and extract:

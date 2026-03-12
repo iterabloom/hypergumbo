@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Token estimation and budget management for LLM-aware output.
 
 This module provides utilities for estimating token counts and managing

@@ -1,0 +1,36 @@
+- op: create  # 8e03
+  at: '2026-03-02T21:56:53Z'  # 8e03
+  by: agent  # 8e03
+  actor: jgstern_agent  # 8e03
+  clock: 1  # 8e03
+  nonce: '8e03'  # 8e03
+  data:  # 8e03
+    kind: work_item  # 8e03
+    title: "Revalidation: run C3 Folding + Recursion (4 repos)"  # 8e03
+    status: todo_soft  # 8e03
+    priority: 2  # 8e03
+    parent:  # 8e03
+    tags:  # 8e03
+    - bakeoff-revalidation  # 8e03
+    before:  # 8e03
+    - WI-rihof-rupik-sosak-misug-gakik-lonoz-kozup-ragun  # 8e03
+    duplicate_of: []  # 8e03
+    not_duplicate_of: []  # 8e03
+    pr_ref:  # 8e03
+    description: "Run Cohort 3 of the OptAttest curriculum: Folding Schemes + Recursion.\n\nCommands:\n  ./scripts/bakeoff-features cohort --repos Nova,sonobe,plonky2,proof-systems\n  ./scripts/bakeoff-features run\n  ./scripts/bakeoff-features diagnose\n\nRepos (4): Nova, sonobe, plonky2, proof-systems\nLanguages: Rust (all)\n\nInitial run results: 2 GOOD (proof-systems, sonobe), 2 WARN (Nova, plonky2).\nLLM reflect: 0 USEFUL, 4 PARTIALLY_USEFUL.\nNova was later cherry-pick tested and improved to GOOD after blocklist fixes.\nplonky2 and proof-systems were never re-validated.\nThese repos have deeply nested generic trait bounds and cross-module proof structures."  # 8e03
+    fields: {}  # 8e03
+- op: update  # edc6
+  at: '2026-03-03T21:33:13Z'  # edc6
+  by: agent  # edc6
+  actor: jgstern_agent  # edc6
+  clock: 2  # edc6
+  nonce: edc6  # edc6
+  set:  # edc6
+    status: done  # edc6
+- op: discuss  # a3a3
+  at: '2026-03-03T21:33:13Z'  # a3a3
+  by: agent  # a3a3
+  actor: jgstern_agent  # a3a3
+  clock: 3  # a3a3
+  nonce: a3a3  # a3a3
+  message: "C3 completed (4 repos: Nova, sonobe, plonky2, proof-systems)."  # a3a3

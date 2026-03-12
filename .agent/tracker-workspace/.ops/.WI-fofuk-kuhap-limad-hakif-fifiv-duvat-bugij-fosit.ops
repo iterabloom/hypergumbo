@@ -1,0 +1,64 @@
+- op: create  # f855
+  at: '2026-03-06T00:34:07Z'  # f855
+  by: agent  # f855
+  actor: jgstern_agent  # f855
+  clock: 1  # f855
+  nonce: f855  # f855
+  data:  # f855
+    kind: work_item  # f855
+    title: "AGENTS.md: governance PRs should use needs_human_review, not manual PRs"  # f855
+    status: needs_human_review  # f855
+    priority: 2  # f855
+    parent:  # f855
+    tags:  # f855
+    - ci_infrastructure  # f855
+    before: []  # f855
+    duplicate_of: []  # f855
+    not_duplicate_of: []  # f855
+    pr_ref:  # f855
+    description: "When autonomous mode is active and a change touches governance files requiring human approval, the agent should NOT create a manual PR and let it sit. Instead: (1) update the tracker item to needs_human_review, (2) add a discussion message requesting explicit approval, (3) only create the PR via auto-pr after receiving approval. This prevents orphaned PRs. Requires adding guidance to AGENTS.md governance section."  # f855
+    fields: {}  # f855
+- op: discuss  # e96e
+  at: '2026-03-06T00:34:13Z'  # e96e
+  by: agent  # e96e
+  actor: jgstern_agent  # e96e
+  clock: 2  # e96e
+  nonce: e96e  # e96e
+  message: "Requesting human approval to add this guidance to AGENTS.md. Proposed text for the Governance Files section: 'When a task requires changes to governance files, do NOT create a PR preemptively. Instead, set the tracker item to needs_human_review with a discussion message explaining the proposed change and requesting explicit approval. Only proceed with implementation (via auto-pr) after human approval is received.' This is itself a governance file change."  # e96e
+- op: discuss  # 22c6
+  at: '2026-03-06T00:58:26Z'  # 22c6
+  by: human  # 22c6
+  actor: jgstern  # 22c6
+  clock: 3  # 22c6
+  nonce: 22c6  # 22c6
+  message: "I approve"  # 22c6
+- op: update  # 3df1
+  at: '2026-03-06T00:58:33Z'  # 3df1
+  by: human  # 3df1
+  actor: jgstern  # 3df1
+  clock: 4  # 3df1
+  nonce: 3df1  # 3df1
+  set:  # 3df1
+    status: todo_soft  # 3df1
+- op: discuss  # 80db
+  at: '2026-03-06T01:34:07Z'  # 80db
+  by: agent  # 80db
+  actor: jgstern_agent  # 80db
+  clock: 5  # 80db
+  nonce: 80db  # 80db
+  message: "Acknowledged approval. Will add AGENTS.md guidance for governance PR workflow."  # 80db
+- op: update  # 6728
+  at: '2026-03-06T03:43:18Z'  # 6728
+  by: agent  # 6728
+  actor: jgstern_agent  # 6728
+  clock: 6  # 6728
+  nonce: '6728'  # 6728
+  set:  # 6728
+    status: done  # 6728
+- op: discuss  # 5ca7
+  at: '2026-03-06T03:43:18Z'  # 5ca7
+  by: agent  # 5ca7
+  actor: jgstern_agent  # 5ca7
+  clock: 7  # 5ca7
+  nonce: 5ca7  # 5ca7
+  message: "Implemented in PR #1785 (awaiting merge due to CI runner issue). AGENTS.md updated with governance approval workflow."  # 5ca7

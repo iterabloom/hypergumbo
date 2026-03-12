@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for IPC linker."""
 from pathlib import Path
 
@@ -682,3 +683,513 @@ ipcMain.on(CHANNEL, handler);
 
         # No edges: literal 'open-file' != variable 'CHANNEL'
         assert len(result.edges) == 0
+
+
+class TestNewElectronPatterns:
+    """Tests for additional Electron IPC patterns (sendSync, handleOnce, webContents, renderer receive)."""
+
+    def test_detect_sendsync(self) -> None:
+        """Detects ipcRenderer.sendSync pattern."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+const result = ipcRenderer.sendSync('get-config', { key: 'theme' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        send_patterns = [p for p in patterns if p["type"] == "send"]
+        assert len(send_patterns) == 1
+        assert send_patterns[0]["channel"] == "get-config"
+        assert send_patterns[0]["method"] == "sendSync"
+
+    def test_detect_handle_once(self) -> None:
+        """Detects ipcMain.handleOnce pattern."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcMain.handleOnce('init-config', async () => {
+    return await loadConfig();
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        receive_patterns = [p for p in patterns if p["type"] == "receive"]
+        assert len(receive_patterns) == 1
+        assert receive_patterns[0]["channel"] == "init-config"
+        assert receive_patterns[0]["method"] == "handleOnce"
+
+    def test_detect_webcontents_send(self) -> None:
+        """Detects webContents.send pattern (main-to-renderer push)."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+mainWindow.webContents.send('update-available', { version: '2.0' });
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        send_patterns = [p for p in patterns if p["type"] == "send"]
+        assert len(send_patterns) == 1
+        assert send_patterns[0]["channel"] == "update-available"
+        assert send_patterns[0]["method"] == "webcontents_send"
+
+    def test_detect_event_sender_send(self) -> None:
+        """Detects event.sender.send pattern (reply in ipcMain handler)."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcMain.on('request-data', (event) => {
+    event.sender.send('response-data', { result: 42 });
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        send_patterns = [p for p in patterns if p["type"] == "send"]
+        # Should detect both: ipcRenderer-style won't match here, but sender.send should
+        sender_sends = [p for p in send_patterns if p["method"] == "webcontents_send"]
+        assert len(sender_sends) == 1
+        assert sender_sends[0]["channel"] == "response-data"
+
+    def test_detect_ipcrenderer_on(self) -> None:
+        """Detects ipcRenderer.on pattern (renderer-side receive)."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.on('update-available', (event, data) => {
+    showNotification(data.version);
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        receive_patterns = [p for p in patterns if p["type"] == "receive"]
+        assert len(receive_patterns) == 1
+        assert receive_patterns[0]["channel"] == "update-available"
+
+    def test_detect_ipcrenderer_once(self) -> None:
+        """Detects ipcRenderer.once pattern (one-time renderer-side receive)."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+ipcRenderer.once('init-complete', () => {
+    hideLoadingScreen();
+});
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        receive_patterns = [p for p in patterns if p["type"] == "receive"]
+        assert len(receive_patterns) == 1
+        assert receive_patterns[0]["channel"] == "init-complete"
+
+    def test_sendsync_links_to_handler(self, tmp_path: Path) -> None:
+        """sendSync links to ipcMain.on handler on same channel."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+const config = ipcRenderer.sendSync('get-config');
+""")
+        main = tmp_path / "main.js"
+        main.write_text("""
+ipcMain.on('get-config', (event) => {
+    event.returnValue = getConfig();
+});
+""")
+        result = link_ipc(tmp_path)
+        assert len(result.edges) >= 1
+
+    def test_webcontents_links_to_renderer_on(self, tmp_path: Path) -> None:
+        """webContents.send links to ipcRenderer.on on same channel."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        main = tmp_path / "main.ts"
+        main.write_text("""
+win.webContents.send('theme-changed', { theme: 'dark' });
+""")
+        renderer = tmp_path / "renderer.ts"
+        renderer.write_text("""
+ipcRenderer.on('theme-changed', (_event, data) => {
+    applyTheme(data.theme);
+});
+""")
+        result = link_ipc(tmp_path)
+        # Should have edges linking main push to renderer receive
+        assert len(result.edges) >= 1
+
+    def test_webcontents_send_with_variable(self) -> None:
+        """webContents.send with variable channel name."""
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
+
+        source = b"""
+mainWindow.webContents.send(CHANNEL_NAME, payload);
+"""
+        patterns = detect_ipc_patterns(source, "javascript")
+        wc_sends = [p for p in patterns if p.get("method") == "webcontents_send"]
+        assert len(wc_sends) == 1
+        assert wc_sends[0]["channel_type"] == "variable"
+
+
+class TestContextBridgeDetection:
+    """Tests for contextBridge.exposeInMainWorld wrapper resolution.
+
+    Electron's contextBridge.exposeInMainWorld() creates a safe bridge between
+    the preload script and the renderer process. The preload script maps method
+    names to IPC channels:
+
+        contextBridge.exposeInMainWorld('api', {
+            openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+        });
+
+    Then renderer code calls window.api.openFile(). This test class verifies
+    that the linker detects the wrapper map and creates bridge_invokes edges.
+    """
+
+    def test_detect_context_bridge_wrapper(self) -> None:
+        """Detects contextBridge.exposeInMainWorld wrapper definitions."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+    saveFile: (data) => ipcRenderer.send('save-file', data),
+});
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 1
+        ns, methods = wrappers[0]
+        assert ns == "api"
+        assert methods["openFile"] == ("open-file", "invoke")
+        assert methods["saveFile"] == ("save-file", "send")
+
+    def test_detect_multiple_namespaces(self) -> None:
+        """Detects multiple exposeInMainWorld calls."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+contextBridge.exposeInMainWorld('api', {
+    getData: () => ipcRenderer.invoke('get-data'),
+});
+contextBridge.exposeInMainWorld('store', {
+    saveItem: (item) => ipcRenderer.send('store-save', item),
+});
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 2
+        ns_names = {w[0] for w in wrappers}
+        assert ns_names == {"api", "store"}
+
+    def test_detect_sendsync_in_bridge(self) -> None:
+        """Detects ipcRenderer.sendSync in bridge wrappers."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+contextBridge.exposeInMainWorld('electron', {
+    getConfig: () => ipcRenderer.sendSync('get-config'),
+});
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 1
+        ns, methods = wrappers[0]
+        assert methods["getConfig"] == ("get-config", "sendSync")
+
+    def test_no_bridge_in_regular_code(self) -> None:
+        """Returns empty for code without contextBridge patterns."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+const api = {
+    openFile: (path) => fetch('/api/open', { body: path }),
+};
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+        assert len(wrappers) == 0
+
+    def test_bridge_with_arrow_and_regular_functions(self) -> None:
+        """Detects both arrow functions and regular function shorthand."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+contextBridge.exposeInMainWorld('myApi', {
+    method1: (...args) => ipcRenderer.invoke('chan-1', ...args),
+    method2(...args) { return ipcRenderer.invoke('chan-2', ...args) },
+});
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 1
+        _, methods = wrappers[0]
+        assert methods["method1"] == ("chan-1", "invoke")
+        assert methods["method2"] == ("chan-2", "invoke")
+
+    def test_bridge_linking_creates_edges(self, tmp_path: Path) -> None:
+        """contextBridge wrappers create bridge_invokes edges in link_ipc."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        # Preload file with bridge definition
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+});
+""")
+
+        # Renderer file that calls the bridge method
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.openFile('/path/to/file');
+""")
+
+        # Main process handler
+        main = tmp_path / "main.js"
+        main.write_text("""
+ipcMain.handle('open-file', async (event, path) => {
+    return fs.readFile(path);
+});
+""")
+
+        result = link_ipc(tmp_path)
+
+        # Should have bridge_invokes edge from renderer call to preload bridge
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) >= 1
+
+        # The bridge edge should reference the open-file channel
+        bridge_edge = bridge_edges[0]
+        assert bridge_edge.meta.get("channel") == "open-file"
+        assert bridge_edge.meta.get("method") == "openFile"
+        assert bridge_edge.meta.get("namespace") == "api"
+
+    def test_bridge_linking_with_multiple_methods(self, tmp_path: Path) -> None:
+        """Multiple bridge methods create separate edges."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.ts"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+    saveFile: (data) => ipcRenderer.send('save-file', data),
+    getConfig: () => ipcRenderer.sendSync('get-config'),
+});
+""")
+        renderer = tmp_path / "renderer.ts"
+        renderer.write_text("""
+window.api.openFile('/path');
+window.api.saveFile(data);
+window.api.getConfig();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        channels = {e.meta.get("channel") for e in bridge_edges}
+        assert "open-file" in channels
+        assert "save-file" in channels
+        assert "get-config" in channels
+
+    def test_bridge_call_creates_symbol(self, tmp_path: Path) -> None:
+        """Bridge call sites create synthetic ipc_bridge_caller symbols."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    getData: () => ipcRenderer.invoke('get-data'),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+const data = await window.api.getData();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_syms = [s for s in result.symbols if s.kind == "ipc_bridge_caller"]
+        assert len(bridge_syms) >= 1
+        assert bridge_syms[0].meta.get("namespace") == "api"
+        assert bridge_syms[0].meta.get("bridge_method") == "getData"
+
+    def test_bridge_no_call_site_no_edge(self, tmp_path: Path) -> None:
+        """No bridge_invokes edge if no renderer calls the bridge method."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+});
+""")
+        # Renderer file that doesn't call window.api.anything
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+console.log('no bridge calls here');
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) == 0
+
+    def test_bridge_unknown_method_no_edge(self, tmp_path: Path) -> None:
+        """window.api.unknownMethod() does not create edge if not in bridge map."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.unknownMethod();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) == 0
+
+    def test_bridge_different_namespace_no_match(self, tmp_path: Path) -> None:
+        """window.other.method() doesn't match window.api namespace."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.other.openFile('/path');
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) == 0
+
+    def test_bridge_dedup_same_call_same_file(self, tmp_path: Path) -> None:
+        """Duplicate window.api.method() calls in same file produce one edge."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    getData: () => ipcRenderer.invoke('get-data'),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.getData();
+window.api.getData();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        # Only one edge per (file, namespace, method) tuple
+        assert len(bridge_edges) == 1
+
+    def test_bridge_call_links_to_ipc_send_symbol(self, tmp_path: Path) -> None:
+        """bridge_invokes edge dst is the ipc_send symbol for the channel."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.openFile('/path');
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) == 1
+
+        # The dst should be the ipc_send symbol created for the invoke in preload
+        dst_id = bridge_edges[0].dst
+        dst_sym = next((s for s in result.symbols if s.id == dst_id), None)
+        assert dst_sym is not None
+        assert dst_sym.kind == "ipc_send"
+
+    def test_bridge_confidence(self, tmp_path: Path) -> None:
+        """bridge_invokes edges have 0.80 confidence."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    getData: () => ipcRenderer.invoke('get-data'),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.getData();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) == 1
+        assert bridge_edges[0].confidence == 0.80
+
+    def test_bridge_works_through_registry(self, tmp_path: Path) -> None:
+        """contextBridge detection works via the linker registry."""
+        from hypergumbo_core.linkers.ipc import ipc_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        preload = tmp_path / "preload.js"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('api', {
+    getData: () => ipcRenderer.invoke('get-data'),
+});
+""")
+        renderer = tmp_path / "renderer.js"
+        renderer.write_text("""
+window.api.getData();
+""")
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = ipc_linker(ctx)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) >= 1
+
+    def test_bridge_multiline_object(self) -> None:
+        """Detects bridge wrappers spanning multiple lines."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b"""
+contextBridge.exposeInMainWorld(
+    'electronAPI',
+    {
+        setTitle: (title) => ipcRenderer.send('set-title', title),
+        getVersion: () => ipcRenderer.invoke('get-version'),
+    }
+);
+"""
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 1
+        ns, methods = wrappers[0]
+        assert ns == "electronAPI"
+        assert methods["setTitle"] == ("set-title", "send")
+        assert methods["getVersion"] == ("get-version", "invoke")
+
+    def test_bridge_double_quoted_namespace(self) -> None:
+        """Detects bridge with double-quoted namespace."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
+
+        source = b'''
+contextBridge.exposeInMainWorld("myApi", {
+    doStuff: () => ipcRenderer.invoke("do-stuff"),
+});
+'''
+        wrappers = detect_context_bridge_wrappers(source)
+
+        assert len(wrappers) == 1
+        assert wrappers[0][0] == "myApi"
+        assert wrappers[0][1]["doStuff"] == ("do-stuff", "invoke")

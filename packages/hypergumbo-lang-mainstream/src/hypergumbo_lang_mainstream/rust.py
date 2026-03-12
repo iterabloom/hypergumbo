@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Rust analysis pass using tree-sitter-rust.
 
 This analyzer uses tree-sitter to parse Rust files and extract:
@@ -17,8 +18,10 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations
-2. Pass 2: Extract call edges, use edges, and Axum usage contexts
+1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations;
+   extract struct field types for the base-class field type registry
+2. Pass 2: Extract call edges (including self.field.method() via Strategy 1.5),
+   use edges, and Axum usage contexts
 3. Post-process: Extract decorated_by edges from attribute metadata
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -54,7 +57,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
-from hypergumbo_core.symbol_resolution import ListNameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -62,6 +65,25 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("rust")
+
+# Standard library wrapper types that implement Deref to their inner type.
+# When resolving struct field types, these are unwrapped to expose the
+# effective dispatch type (e.g. Box<App> → App, Arc<Client> → Client).
+_RUST_DEREF_WRAPPERS: frozenset[str] = frozenset({
+    "Box", "Arc", "Rc", "Mutex", "RwLock", "RefCell", "Cell",
+    "Pin", "MutexGuard", "RwLockReadGuard", "RwLockWriteGuard",
+})
+
+# Async spawn functions that schedule a task on an executor.
+# When we see e.g. tokio::spawn(my_task), the interesting call target
+# is ``my_task``, not ``spawn`` itself.
+_SPAWN_FUNCTIONS: frozenset[str] = frozenset({
+    "tokio::spawn", "tokio::task::spawn",
+    "tokio::task::spawn_blocking",
+    "rayon::spawn", "rayon::spawn_fifo",
+    "async_std::task::spawn",
+    "async_std::task::spawn_blocking",
+})
 
 # Axum HTTP method functions that define route handlers
 # Used by _extract_axum_usage_contexts for YAML pattern matching
@@ -379,6 +401,135 @@ def _extract_modifiers_rust(node: "tree_sitter.Node", source: bytes) -> list[str
     return modifiers
 
 
+def _is_inside_cfg_test(
+    node: "tree_sitter.Node", source: bytes,
+) -> bool:
+    """Check whether *node* is nested inside a ``#[cfg(test)]`` module.
+
+    Walks ancestor nodes looking for a ``mod_item`` whose preceding sibling
+    attributes include ``#[cfg(test)]``.  This catches the idiomatic Rust
+    pattern::
+
+        #[cfg(test)]
+        mod tests {
+            fn helper() { ... }   // <-- should be marked as test code
+        }
+
+    Individual functions already carry their own ``#[test]`` annotation, but
+    helper functions and other items inside the module do not.  This function
+    bridges that gap so that ``is_test_node`` in the slicer correctly
+    excludes them from production slices.
+    """
+    ancestor = node.parent
+    while ancestor is not None:
+        if ancestor.type == "mod_item":
+            for ann in _extract_rust_annotations(ancestor, source):
+                name = ann.get("name", "")
+                if name == "cfg" and "test" in ann.get("args", []):
+                    return True
+        ancestor = ancestor.parent
+    return False
+
+
+def _unwrap_deref_type(type_node: "tree_sitter.Node", source: bytes) -> str:
+    """Unwrap Deref-implementing wrapper types to get the inner type.
+
+    Recursively strips ``Box<Arc<T>>`` → ``T``.  When the outermost type
+    is not a known wrapper (or the node is a plain ``type_identifier``),
+    returns the type text as-is.  References (``&T``, ``&mut T``) are
+    also unwrapped.
+
+    Args:
+        type_node: A tree-sitter type node from a ``field_declaration``.
+        source: Source bytes for text extraction.
+
+    Returns:
+        The innermost non-wrapper type name string.
+    """
+    # Reference types: &T, &mut T → unwrap to inner type
+    if type_node.type == "reference_type":
+        inner = type_node.child_by_field_name("type")
+        if inner:
+            return _unwrap_deref_type(inner, source)
+        return node_text(type_node, source)  # pragma: no cover — defensive
+
+    # Generic type: Box<T>, Arc<Mutex<T>> → check if wrapper
+    if type_node.type == "generic_type":
+        base = type_node.child_by_field_name("type")
+        if base:
+            base_name = node_text(base, source)
+            if base_name in _RUST_DEREF_WRAPPERS:
+                # Find the type_arguments child and extract the first argument
+                args_node = find_child_by_type(type_node, "type_arguments")
+                if args_node:
+                    for child in args_node.children:
+                        if child.is_named:
+                            return _unwrap_deref_type(child, source)
+            return base_name
+        return node_text(type_node, source)  # pragma: no cover — defensive
+
+    # type_identifier: plain type name
+    if type_node.type == "type_identifier":
+        return node_text(type_node, source)
+
+    # scoped_type_identifier: e.g. std::sync::Mutex
+    if type_node.type == "scoped_type_identifier":
+        return node_text(type_node, source)
+
+    return node_text(type_node, source)
+
+
+def _extract_struct_field_types(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> dict[str, dict[str, str]]:
+    """Extract field name → type mappings from struct declarations.
+
+    Walks all ``struct_item`` nodes and their ``field_declaration_list``
+    children. Wrapper types (``Box``, ``Arc``, etc.) are unwrapped via
+    ``_unwrap_deref_type`` so the registry contains effective dispatch types.
+
+    Tuple structs (``struct Foo(Bar)``) are skipped — their fields are
+    positional, not named, so ``self.0.method()`` patterns don't apply.
+
+    Args:
+        tree: Parsed tree-sitter tree for a single file.
+        source: Source bytes for text extraction.
+
+    Returns:
+        Mapping of struct_name → {field_name → type_name}.
+    """
+    result: dict[str, dict[str, str]] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "struct_item":
+            continue
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            continue  # pragma: no cover — defensive; struct_item always has name
+        struct_name = node_text(name_node, source)
+
+        # Find the field_declaration_list (named struct, not tuple struct)
+        body = find_child_by_type(node, "field_declaration_list")
+        if not body:
+            continue
+
+        fields: dict[str, str] = {}
+        for child in body.children:
+            if child.type != "field_declaration":
+                continue
+            field_name_node = child.child_by_field_name("name")
+            field_type_node = child.child_by_field_name("type")
+            if field_name_node and field_type_node:
+                fname = node_text(field_name_node, source)
+                ftype = _unwrap_deref_type(field_type_node, source)
+                fields[fname] = ftype
+
+        if fields:
+            result[struct_name] = fields
+
+    return result
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -413,6 +564,16 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
+
+                # Inherit #[cfg(test)] from enclosing module so slicer
+                # can exclude helper functions inside test modules.
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
+
                 meta: dict[str, object] | None = None
                 if annotations:
                     meta = {"annotations": annotations}
@@ -460,6 +621,12 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching (e.g., derive macros)
                 annotations = _extract_rust_annotations(node, source)
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
@@ -494,6 +661,12 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
+                if _is_inside_cfg_test(node, source):
+                    cfg_test_ann = {
+                        "name": "cfg", "args": ["test"], "kwargs": {},
+                    }
+                    if cfg_test_ann not in annotations:
+                        annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
@@ -551,6 +724,11 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[trait_name] = symbol
+
+    # Extract struct field types for base-class field type registry.
+    # Deref wrappers (Box, Arc, etc.) are unwrapped during extraction
+    # so the registry contains effective dispatch types.
+    analysis.class_field_types = _extract_struct_field_types(tree, source)
 
     return analysis
 
@@ -804,6 +982,75 @@ def _extract_use_aliases(
     return aliases
 
 
+def _extract_macro_call_names(
+    token_tree_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[tuple[str, int]]:
+    """Extract call-like patterns from a macro's token_tree.
+
+    Tree-sitter parses macro bodies (tokio::select!, println!, etc.) as flat
+    token sequences, not structured AST.  This function pattern-matches
+    token sequences to identify likely function/method calls.
+
+    Returns (callee_name, line) pairs.  ``callee_name`` may be qualified
+    (``Foo::bar``) or simple (``bar``).
+    """
+    results: list[tuple[str, int]] = []
+    children = token_tree_node.children
+    i = 0
+    while i < len(children):
+        child = children[i]
+        # Pattern: identifier ( ... ) — simple call
+        # Pattern: identifier :: identifier ( ... ) — scoped call
+        # Pattern: self . identifier ( ... ) — method call
+        if child.type == "identifier":
+            text = node_text(child, source)
+            line = child.start_point[0] + 1
+            # Look ahead for :: or (
+            if i + 1 < len(children):
+                nxt = children[i + 1]
+                if nxt.type == "::" and i + 3 < len(children):
+                    # scoped: Foo::bar(...) or Self::bar(...)
+                    name_node = children[i + 2]
+                    paren = children[i + 3] if i + 3 < len(children) else None
+                    if (
+                        name_node.type == "identifier"
+                        and paren is not None
+                        and paren.type == "token_tree"
+                    ):
+                        scope = text
+                        name = node_text(name_node, source)
+                        results.append((f"{scope}::{name}", line))
+                        i += 4
+                        continue
+                elif nxt.type == "token_tree":
+                    # simple call: foo(...)
+                    results.append((text, line))
+                    i += 2
+                    continue
+        # Handle lowercase self: self.method(...) or self::method(...)
+        # Tree-sitter gives lowercase self node type "self", not "identifier"
+        elif child.type == "self" and i + 3 < len(children):
+            line = child.start_point[0] + 1
+            nxt = children[i + 1]
+            if nxt.type == ".":
+                # self.method(...)
+                meth = children[i + 2]
+                paren = children[i + 3]
+                if meth.type == "identifier" and paren.type == "token_tree":
+                    results.append((node_text(meth, source), line))
+                    i += 4
+                    continue
+            # Note: self::foo() means module-relative path, not a method call.
+            # It would be handled as a scoped_identifier if tree-sitter
+            # parsed it, but inside token_tree it's ambiguous. Skip it.
+        # Recurse into nested token_tree (e.g., branches of select!)
+        if child.type == "token_tree":
+            results.extend(_extract_macro_call_names(child, source))
+        i += 1
+    return results
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -815,6 +1062,8 @@ def _extract_edges_from_file(
     use_aliases: dict[str, str],
     method_resolver: ListNameResolver | None = None,
     span_index: dict[tuple[int, int], Symbol] | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
+    analyzer: "RustAnalyzer | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -822,18 +1071,72 @@ def _extract_edges_from_file(
 
     Args:
         use_aliases: Dict mapping local names to import paths for disambiguation.
+        field_type_registry: Aggregated struct field types for receiver resolution.
+        analyzer: RustAnalyzer instance for resolve_receiver_type() calls.
         method_resolver: Optional ListNameResolver with ambiguity_threshold for
             method-specific lookups.  When provided, used for method calls
             (``foo.bar()``) to guard against 3+ ambiguous candidates.
         span_index: Optional line-span index for enclosing function detection.
             Built from global_symbols to avoid name collisions in symbol_by_name.
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
 
     for node in iter_tree(tree.root_node):
+        # Detect trait implementations: impl Trait for Struct → implements edge
+        if node.type == "impl_item":
+            trait_node = node.child_by_field_name("trait")
+            type_node = node.child_by_field_name("type")
+            if trait_node and type_node:
+                trait_name = _extract_base_type_name(trait_node, source)
+                impl_type_name = _extract_base_type_name(type_node, source)
+                if trait_name and impl_type_name:
+                    trait_sym = local_symbols.get(trait_name) or global_symbols.get(trait_name)
+                    # Fallback: for qualified names like module::Trait, try short name
+                    if not trait_sym and "::" in trait_name:
+                        short_trait = trait_name.rsplit("::", 1)[-1]
+                        trait_sym = local_symbols.get(short_trait) or global_symbols.get(short_trait)
+                    impl_sym = local_symbols.get(impl_type_name) or global_symbols.get(impl_type_name)
+                    if trait_sym and impl_sym:
+                        edges.append(Edge.create(
+                            src=impl_sym.id,
+                            dst=trait_sym.id,
+                            edge_type="implements",
+                            line=node.start_point[0] + 1,
+                            evidence_type="trait_impl",
+                            confidence=0.95,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+                    elif not trait_sym and impl_sym:
+                        # Unresolved trait: definition not in analyzed files
+                        # (e.g., tonic gRPC traits generated from .proto).
+                        # Create a lower-confidence edge so the relationship
+                        # is captured even when the trait source isn't available.
+                        short_name = trait_name.rsplit("::", 1)[-1] if "::" in trait_name else trait_name
+                        # Allow error-related traits through for error types
+                        is_exempt = (
+                            short_name in _ERROR_TRAIT_EXEMPTIONS
+                            and _is_error_type_name(impl_type_name)
+                        )
+                        if short_name not in _RUST_STD_TRAIT_NAMES or is_exempt:
+                            unresolved_id = make_symbol_id(
+                                "rust", "unresolved", 0, 0, short_name, "trait",
+                            )
+                            edges.append(Edge.create(
+                                src=impl_sym.id,
+                                dst=unresolved_id,
+                                edge_type="implements",
+                                line=node.start_point[0] + 1,
+                                evidence_type="trait_impl_unresolved",
+                                confidence=0.70,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+
         # Detect use statements
-        if node.type == "use_declaration":
+        elif node.type == "use_declaration":
             # Extract the path being imported
             path_node = find_child_by_type(node, "scoped_identifier")
             if not path_node:
@@ -862,37 +1165,109 @@ def _extract_edges_from_file(
             if current_function is not None:
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
+                    # Unwrap generic_function (turbofish):
+                    # x.collect::<Vec<i32>>() wraps a field_expression
+                    # inside a generic_function node; similarly
+                    # Foo::<T>::bar() wraps a scoped_identifier.
+                    inner = func_node
+                    if inner.type == "generic_function":
+                        for child in inner.children:
+                            if child.type in (
+                                "identifier", "field_expression",
+                                "scoped_identifier",
+                            ):
+                                inner = child
+                                break
                     # Get the function name being called
                     is_method_call = False
                     full_scoped_name = None
-                    if func_node.type == "identifier":
-                        callee_name = node_text(func_node, source)
-                    elif func_node.type == "field_expression":
+                    if inner.type == "identifier":
+                        callee_name = node_text(inner, source)
+                    elif inner.type == "field_expression":
                         # method call like foo.bar()
                         is_method_call = True
-                        field_node = _find_child_by_field(func_node, "field")
+                        field_node = _find_child_by_field(inner, "field")
                         if field_node:
                             callee_name = node_text(field_node, source)
                         else:
                             callee_name = None
-                    elif func_node.type == "scoped_identifier":
-                        # Qualified call like Foo::bar() or module::func().
+                    elif inner.type == "scoped_identifier":
+                        # Qualified call like Foo::bar() or
+                        # Foo::<T>::bar() (turbofish).
                         # Extract full qualified name for precise lookup.
-                        full_scoped_name = node_text(func_node, source)
-                        name_node = _find_child_by_field(func_node, "name")
+                        name_node = _find_child_by_field(inner, "name")
+                        path_node = _find_child_by_field(inner, "path")
                         if name_node:
                             callee_name = node_text(name_node, source)
                         else:
-                            callee_name = full_scoped_name
+                            callee_name = node_text(inner, source)
+                        # Build clean scoped name stripping type args:
+                        # "PublicParams::<E1,E2>::setup" → "PublicParams::setup"
+                        if path_node and path_node.type == "generic_type":
+                            type_id = next(
+                                (c for c in path_node.children
+                                 if c.type == "type_identifier"),
+                                None,
+                            )
+                            if type_id and callee_name:
+                                full_scoped_name = (
+                                    f"{node_text(type_id, source)}"
+                                    f"::{callee_name}"
+                                )
+                        if full_scoped_name is None:
+                            full_scoped_name = node_text(inner, source)
+                        # Resolve Self:: to actual type name from enclosing impl block
+                        if full_scoped_name and full_scoped_name.startswith("Self::"):
+                            impl_type = _get_impl_target(node, source)
+                            if impl_type:
+                                full_scoped_name = f"{impl_type}::{full_scoped_name[6:]}"
                     else:
                         callee_name = None
 
                     if callee_name:
                         resolved = False
 
+                        # Async spawn detection: tokio::spawn(task()),
+                        # tokio::task::spawn(task()), rayon::spawn(task())
+                        # Create a call edge to the spawned task, not to spawn itself.
+                        if full_scoped_name in _SPAWN_FUNCTIONS:
+                            args_node = _find_child_by_field(node, "arguments")
+                            if args_node:
+                                for arg_child in args_node.children:
+                                    if arg_child.type == "call_expression":
+                                        # The spawned task is itself a call — it will
+                                        # be processed when iter_tree reaches it, so
+                                        # just skip creating an edge to spawn().
+                                        pass
+                                    elif arg_child.type == "async_block":
+                                        # async { ... } — calls inside will be
+                                        # visited by iter_tree normally.
+                                        pass
+                                    elif arg_child.type == "identifier":
+                                        # tokio::spawn(my_task) — bare function ref
+                                        ref_name = node_text(arg_child, source)
+                                        target = local_symbols.get(ref_name)
+                                        if target is None:
+                                            lr = resolver.lookup(ref_name, caller_path=_caller_path)
+                                            if lr.found and lr.symbol is not None:
+                                                target = lr.symbol
+                                        if target is not None:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=target.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="async_spawn",
+                                                confidence=0.85,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                            # Don't resolve spawn itself as a callee
+                            resolved = True
+
                         # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
                         # This gives precise resolution for qualified calls.
-                        if full_scoped_name and full_scoped_name != callee_name:
+                        if not resolved and full_scoped_name and full_scoped_name != callee_name:
                             if full_scoped_name in local_symbols:
                                 callee = local_symbols[full_scoped_name]
                                 edges.append(Edge.create(
@@ -909,7 +1284,7 @@ def _extract_edges_from_file(
                             else:
                                 import_hint = use_aliases.get(callee_name)
                                 lookup_result = resolver.lookup(
-                                    full_scoped_name, path_hint=import_hint,
+                                    full_scoped_name, path_hint=import_hint, caller_path=_caller_path,
                                 )
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
@@ -923,6 +1298,89 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                     ))
                                     resolved = True
+
+                                # Strategy 1b: Strip module prefixes from
+                                # the scoped name.  For
+                                # codex_agent::CodexAgent::new, try
+                                # "CodexAgent::new" before falling back to
+                                # bare "new" (which has many ambiguous
+                                # candidates).
+                                if not resolved:
+                                    parts = full_scoped_name.split("::")
+                                    for i in range(1, len(parts) - 1):
+                                        suffix = "::".join(parts[i:])
+                                        if suffix in local_symbols:
+                                            callee = local_symbols[suffix]
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=callee.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="function_call",
+                                                confidence=0.85,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                                            resolved = True
+                                            break
+                                        lr = resolver.lookup(
+                                            suffix, path_hint=import_hint, caller_path=_caller_path,
+                                        )
+                                        if lr.found and lr.symbol is not None:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=lr.symbol.id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="function_call",
+                                                confidence=0.80 * lr.confidence,
+                                                origin=PASS_ID,
+                                                origin_run_id=run_id,
+                                            ))
+                                            resolved = True
+                                            break
+
+                        # Strategy 1.5: Resolve self.field.method() via
+                        # field type registry.  Fires for method calls where
+                        # the receiver is a field_expression rooted at self.
+                        # Known receiver type makes even blocklisted methods
+                        # (e.g. Client::send) unambiguous.
+                        if (
+                            not resolved
+                            and is_method_call
+                            and analyzer is not None
+                            and field_type_registry
+                        ):
+                            value_node = inner.child_by_field_name("value")
+                            if value_node is not None:
+                                impl_target = _get_impl_target(
+                                    node, source,
+                                )
+                                receiver_type = analyzer.resolve_receiver_type(
+                                    value_node, source, impl_target,
+                                )
+                                if receiver_type is not None:
+                                    typed_name = f"{receiver_type}::{callee_name}"
+                                    target = (
+                                        local_symbols.get(typed_name)
+                                        or global_symbols.get(typed_name)
+                                    )
+                                    if target is None:
+                                        lookup = resolver.lookup(typed_name, caller_path=_caller_path)
+                                        if lookup.found and lookup.symbol:
+                                            target = lookup.symbol
+                                    if target is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=target.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="typed_field_call",
+                                            confidence=0.88,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                        ))
+                                        resolved = True
 
                         # Strategy 2: Fall back to short name
                         if not resolved:
@@ -950,10 +1408,30 @@ def _extract_edges_from_file(
                                     is_method_call or full_scoped_name is not None
                                 )
                                 if use_method_guard and method_resolver is not None:
-                                    lookup_result = method_resolver.lookup(callee_name)
+                                    if callee_name in _RUST_GENERIC_TRAIT_METHODS:
+                                        # Generic trait methods (.into(), .clone(),
+                                        # .len(), etc.) cannot be resolved without
+                                        # receiver type info — skip lookup to avoid
+                                        # false edges.
+                                        lookup_result = LookupResult(symbol=None)
+                                    else:
+                                        # Pass the caller's directory as path_hint
+                                        # to prefer same-module methods over
+                                        # cross-module ones with the same name
+                                        # (e.g., nova/nifs.rs over
+                                        # neutron/nifs.rs when called from nova/).
+                                        caller_dir = (
+                                            file_path.rsplit("/", 1)[0]
+                                            if "/" in file_path else ""
+                                        )
+                                        lookup_result = method_resolver.lookup(
+                                            callee_name,
+                                            path_hint=caller_dir if caller_dir else None,
+                                            soft_hint=True,
+                                        )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
-                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     confidence = 0.80 * lookup_result.confidence
                                     edges.append(Edge.create(
@@ -966,6 +1444,46 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
+
+        # Detect calls inside macro bodies (tokio::select!, assert!, etc.).
+        # Tree-sitter parses macro bodies as flat token_tree, not structured
+        # AST, so call_expression nodes are never created.  We pattern-match
+        # token sequences to extract likely calls.
+        elif node.type == "macro_invocation":
+            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            if current_function is not None:
+                tt = None
+                for child in node.children:
+                    if child.type == "token_tree":
+                        tt = child
+                        break
+                if tt is not None:
+                    for callee_name, call_line in _extract_macro_call_names(tt, source):
+                        # Resolve Self:: to actual type
+                        if callee_name.startswith("Self::"):
+                            impl_type = _get_impl_target(node, source)
+                            if impl_type:
+                                callee_name = f"{impl_type}::{callee_name[6:]}"
+                        # Try qualified name first, then short name
+                        target = local_symbols.get(callee_name)
+                        if target is None and "::" in callee_name:
+                            short = callee_name.rsplit("::", 1)[-1]
+                            target = local_symbols.get(short)
+                        if target is None:
+                            lr = resolver.lookup(callee_name, caller_path=_caller_path)
+                            if lr.found and lr.symbol is not None:
+                                target = lr.symbol
+                        if target is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="calls",
+                                line=call_line,
+                                evidence_type="macro_body_call",
+                                confidence=0.75,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
 
     return edges
 
@@ -1003,7 +1521,123 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
     # Runtime
     "panic_handler", "global_allocator", "windows_subsystem",
     # Common ecosystem proc-macro crate names (not user functions)
-    "serde", "tokio", "async_trait",
+    "serde", "tokio", "async_trait", "tracing", "instrument",
+})
+
+# Generic trait method names that create false-positive in-degree when resolved
+# via method_resolver.  Without receiver type information, calls like `x.into()`
+# or `v.push()` resolve to arbitrary concrete implementations (e.g.,
+# `StatusRow::into` absorbing 817 `.into()` edges in penumbra).  These method
+# names are blocked from short-name resolution; fully-scoped calls like
+# `StatusRow::into()` still resolve via Strategy 1.
+_RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
+    # core::convert
+    "into", "from", "try_into", "try_from",
+    # core::fmt / Display / ToString
+    "fmt", "to_string",
+    # core::default
+    "default",
+    # core::clone
+    "clone", "clone_from",
+    # core::cmp / core::hash
+    "eq", "ne", "partial_cmp", "cmp", "hash",
+    # core::ops
+    "deref", "deref_mut", "drop",
+    # core::iter — combinators are on Iterator, Option, Result
+    "next", "into_iter", "map", "filter", "fold", "collect", "flat_map",
+    "find", "any", "all", "for_each",
+    # core::convert (ref)
+    "as_ref", "as_mut",
+    # std collection methods (ambiguous without receiver type)
+    "len", "is_empty", "push", "pop", "get", "insert", "remove", "contains",
+    "iter", "iter_mut", "extend",
+    # Option / Result combinators
+    "and_then", "or_else", "map_err", "unwrap_or", "unwrap_or_else",
+    "ok", "err", "expect", "ok_or", "ok_or_else",
+    # serde
+    "serialize", "deserialize",
+    # core::str / parsing
+    "from_str", "parse", "unwrap",
+    # std::sync::atomic — .load()/.store() on AtomicU64, AtomicU8, etc.
+    # Without receiver type info, x.load() conflates AtomicU64.load()
+    # with domain-specific load() methods (WI-bakak: 22 false positives).
+    "load", "store", "fetch_add", "fetch_sub", "compare_exchange", "swap",
+    # std::io — Read/Write trait methods
+    "read", "write", "flush",
+    # Constructor / builder — ubiquitous across types
+    "new", "build",
+    # Channel / async
+    "send", "recv",
+    # Command — .output() conflates with test utilities (ripgrep bakeoff)
+    "output", "status", "spawn",
+    # Logging — ubiquitous across log/tracing crates
+    "warn", "error", "info", "debug", "trace",
+})
+
+
+# Traits that are normally blocklisted but should be allowed through when the
+# implementing type is an error type.  Error types commonly implement Display
+# (for user-facing messages), From (for error conversion chains), Error (the
+# std::error::Error trait itself), and Default.  These impls are architecturally
+# meaningful: they define how errors compose and propagate.
+_ERROR_TRAIT_EXEMPTIONS: frozenset[str] = frozenset({
+    "Display", "From", "Error", "Default",
+})
+
+
+def _is_error_type_name(name: str) -> bool:
+    """Check if a type name suggests an error type.
+
+    Heuristic: the name ends with ``Error`` or ``Err`` (e.g. ``ParseError``,
+    ``MyErr``).  This covers the overwhelming majority of Rust error types
+    without requiring trait resolution.
+    """
+    return name.endswith("Error") or name.endswith("Err")
+
+
+# Standard library trait names that should NOT generate unresolved implements
+# edges.  These are ubiquitous auto-derived or manually-impl'd traits whose
+# definitions are in std/core and won't be in the project's symbol registry.
+# Creating unresolved edges for them would be pure noise — a developer never
+# needs to know "MyStruct implements Clone" in the call graph.
+#
+# Exception: traits in _ERROR_TRAIT_EXEMPTIONS are allowed through when the
+# implementing type is an error type (see _is_error_type_name).
+_RUST_STD_TRAIT_NAMES: frozenset[str] = frozenset({
+    # core::marker
+    "Copy", "Send", "Sync", "Sized", "Unpin",
+    # core::clone
+    "Clone",
+    # core::cmp
+    "PartialEq", "Eq", "PartialOrd", "Ord",
+    # core::fmt
+    "Debug", "Display",
+    # core::hash
+    "Hash",
+    # core::default
+    "Default",
+    # core::convert
+    "From", "Into", "TryFrom", "TryInto", "AsRef", "AsMut",
+    # core::ops
+    "Deref", "DerefMut", "Drop", "Add", "Sub", "Mul", "Div", "Rem",
+    "Neg", "Not", "BitAnd", "BitOr", "BitXor", "Shl", "Shr",
+    "Index", "IndexMut", "Fn", "FnMut", "FnOnce",
+    "AddAssign", "SubAssign", "MulAssign", "DivAssign",
+    # core::iter
+    "Iterator", "IntoIterator", "FromIterator", "ExactSizeIterator",
+    "DoubleEndedIterator",
+    # core::future
+    "Future",
+    # std::io
+    "Read", "Write", "Seek", "BufRead",
+    # std::error
+    "Error",
+    # serde (extremely common, not architectural)
+    "Serialize", "Deserialize", "Serializer", "Deserializer",
+    # std::string
+    "ToString",
+    # std::borrow
+    "Borrow", "BorrowMut", "ToOwned",
 })
 
 
@@ -1053,8 +1687,14 @@ def _extract_attribute_edges(
             # Built-in attributes must never resolve to user symbols.
             # Skip entirely — they have no user-space definition, and even
             # unresolved edges create noise (derive gets 175 in-edges).
+            # For qualified names like "tracing::instrument", check both
+            # the full name and the crate name (first path component).
             if attr_name in _BUILTIN_RUST_ATTRIBUTES:
                 continue
+            if "::" in attr_name:
+                crate_name = attr_name.split("::", 1)[0]
+                if crate_name in _BUILTIN_RUST_ATTRIBUTES:
+                    continue
 
             # Try to resolve the attribute to a symbol
             # For qualified names like "actix_web::get", try both full and short name
@@ -1169,6 +1809,8 @@ class RustAnalyzer(TreeSitterAnalyzer):
             run.execution_id, resolver, import_aliases,
             method_resolver=mr,
             span_index=span_idx,
+            field_type_registry=self._field_type_registry,
+            analyzer=self,
         )
 
     def extract_usage_contexts_from_file(

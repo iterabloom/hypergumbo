@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for PHP analyzer."""
 import pytest
 import sys
@@ -684,9 +685,10 @@ helper();
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # The call at top level shouldn't create an edge
-        # (no source function for the edge)
-        assert len(result.edges) == 0
+        # Top-level call is now attributed to <module:filename> symbol
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert "<module:" in call_edges[0].src
 
     def test_nested_class_method(self, tmp_path: Path) -> None:
         """Handles nested method calls."""
@@ -727,9 +729,9 @@ class Outer {
 
         symbols = _extract_symbols(tree, source, tmp_path / "test.php", run)
 
-        # Should extract as function
-        assert len(symbols) >= 1
-        assert symbols[0].kind == "function"
+        # Should extract function (module symbol also present)
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) >= 1
 
     def test_analyze_php_file_success(self, tmp_path: Path) -> None:
         """_analyze_php_file returns symbols and edges on success."""

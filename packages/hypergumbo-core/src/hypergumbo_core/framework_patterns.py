@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework pattern matching for symbol enrichment (ADR-0003).
 
 This module provides data-driven framework detection using YAML pattern files.
@@ -223,8 +224,30 @@ class Pattern:
             re.compile(self.symbol_path) if self.symbol_path else None
         )
 
+    def _check_filters(self, symbol: Symbol) -> bool:
+        """Check language, path, and modifier filters.
+
+        Returns True if the symbol passes all filters, False to reject.
+        """
+        if self._language_re:
+            if not symbol.language or not self._language_re.match(symbol.language):
+                return False
+        if self._symbol_path_re:
+            if not symbol.path or not self._symbol_path_re.search(symbol.path):
+                return False
+        if self._modifiers_re:
+            if not symbol.modifiers:
+                return False
+            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
+                return False
+        if self._modifiers_exclude_re and symbol.modifiers:
+            for modifier in symbol.modifiers:
+                if self._modifiers_exclude_re.match(modifier):
+                    return False
+        return True
+
     def matches(self, symbol: Symbol) -> dict[str, Any] | None:
-        """Check if this pattern matches the given symbol.
+        """Check if this pattern matches the given symbol (first match only).
 
         Args:
             symbol: The symbol to check against this pattern
@@ -233,31 +256,25 @@ class Pattern:
             Dict with extracted data if matched, None otherwise.
             The dict always includes 'concept' and may include 'path', 'method', etc.
         """
-        # Language filter: if specified, symbol's language must match (AND'd with other conditions)
-        if self._language_re:
-            if not symbol.language or not self._language_re.match(symbol.language):
-                return None
+        all_matches = self.matches_all(symbol)
+        return all_matches[0] if all_matches else None
 
-        # File path filter: if specified, symbol's file path must match
-        # Used for Python __init__.py library export detection
-        if self._symbol_path_re:
-            if not symbol.path or not self._symbol_path_re.search(symbol.path):
-                return None
+    def matches_all(self, symbol: Symbol) -> list[dict[str, Any]]:
+        """Check this pattern against the symbol, returning all matches.
 
-        # Modifiers positive filter: require at least one modifier to match
-        # Used for Python re-exported symbols (re_exported modifier)
-        if self._modifiers_re:
-            if not symbol.modifiers:
-                return None
-            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
-                return None
+        When a symbol has multiple decorators or annotations that match the
+        same pattern, each produces a separate result. For example, a function
+        with both @app.get('/path') and @app.options('/path') produces two
+        route concepts with different HTTP methods.
 
-        # Modifiers exclusion filter: reject symbols with any matching modifier
-        # Used to exclude private functions (defp in Elixir, etc.)
-        if self._modifiers_exclude_re and symbol.modifiers:
-            for modifier in symbol.modifiers:
-                if self._modifiers_exclude_re.match(modifier):
-                    return None
+        Args:
+            symbol: The symbol to check against this pattern
+
+        Returns:
+            List of match result dicts. Empty if no matches.
+        """
+        if not self._check_filters(symbol):
+            return []
 
         # Get symbol metadata for matching
         decorators = symbol.meta.get("decorators", []) if symbol.meta else []
@@ -265,51 +282,55 @@ class Pattern:
         annotations = symbol.meta.get("annotations", []) if symbol.meta else []
         parameters = symbol.meta.get("parameters", []) if symbol.meta else []
 
-        result: dict[str, Any] = {"concept": self.concept}
+        results: list[dict[str, Any]] = []
 
-        # Try decorator match
+        # Try decorator match — collect ALL matching decorators
         if self._decorator_re:
             for dec in decorators:
                 dec_name = dec.get("name", "") if isinstance(dec, dict) else str(dec)
                 match = self._decorator_re.match(dec_name)
                 if match:
+                    result: dict[str, Any] = {"concept": self.concept}
                     result["matched_decorator"] = dec_name
                     if self.extract_path and isinstance(dec, dict):
                         path = self._extract_value(dec, self.extract_path)
-                        # Always set path when extract_path is configured - empty string
-                        # for decorators with no path arg (like @Get()) so that
-                        # prefix_from_parent can still combine with controller prefix
                         result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method(dec, match, dec_name)
                         if method:
                             result["method"] = method
-                    return result
+                    results.append(result)
+            if results:
+                return results
 
         # Try base class match
         if self._base_class_re:
             for base in base_classes:
                 if self._base_class_re.match(base):
-                    result["matched_base_class"] = base
-                    return result
+                    return [{"concept": self.concept, "matched_base_class": base}]
 
-        # Try annotation match (Java)
+        # Try annotation match (Java) — collect ALL matching annotations
         if self._annotation_re:
             for ann in annotations:
                 ann_name = ann.get("name", "") if isinstance(ann, dict) else str(ann)
                 match = self._annotation_re.match(ann_name)
                 if match:
-                    result["matched_annotation"] = ann_name
+                    result = {"concept": self.concept, "matched_annotation": ann_name}
                     if self.extract_path and isinstance(ann, dict):
                         path = self._extract_value(ann, self.extract_path)
-                        # Always set path when extract_path is configured - empty string
-                        # for annotations with no path arg so that prefix combination works
                         result["path"] = path if path else ""
                     if self.extract_method:
                         method = self._extract_http_method_from_annotation(ann, match, ann_name)
                         if method:
                             result["method"] = method
-                    return result
+                    results.append(result)
+            if results:
+                return results
+
+        # Single-result match types below: parameter_type, symbol_name,
+        # symbol_kind, parent_base_class, method_name. These produce at most
+        # one match per symbol, so wrap in a list.
+        result: dict[str, Any] = {"concept": self.concept}
 
         # Try parameter type match
         if self._param_type_re:
@@ -319,7 +340,7 @@ class Pattern:
                 )
                 if param_type and self._param_type_re.match(param_type):
                     result["matched_parameter_type"] = param_type
-                    return result
+                    return [result]
 
         # Try symbol_name + symbol_kind combined match (for language conventions like main())
         # When both are specified, both must match (AND semantics)
@@ -339,12 +360,12 @@ class Pattern:
                 if self._symbol_kind_re:
                     if self._symbol_kind_re.match(symbol.kind):
                         result["matched_symbol_kind"] = symbol.kind
-                        return result
+                        return [result]
                     # symbol_kind specified but doesn't match
                     # Don't match this pattern
                 else:
                     # Only symbol_name specified, and it matches
-                    return result
+                    return [result]
 
         # Try symbol_kind match (alone, without any other specific match field).
         # If decorator/base_class/annotation/param_type were specified but didn't
@@ -362,7 +383,7 @@ class Pattern:
         ):
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
-                return result
+                return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
         # Both conditions must match when both are specified
@@ -404,9 +425,9 @@ class Pattern:
                     result["matched_parent_base_class"] = matched_parent_base
                 if matched_method:
                     result["matched_method_name"] = matched_method
-                return result
+                return [result]
 
-        return None
+        return []
 
     def _extract_value(self, metadata: dict[str, Any], path: str) -> str | None:
         """Extract a value from metadata using a simple path expression.
@@ -830,8 +851,7 @@ def match_patterns(
     results = []
     for pattern_def in pattern_defs:
         for pattern in pattern_def.patterns:
-            match = pattern.matches(symbol)
-            if match:
+            for match in pattern.matches_all(symbol):
                 match["framework"] = pattern_def.id
                 results.append(match)
 
@@ -1022,7 +1042,13 @@ def _apply_subresource_locator_paths(
 
         if has_resource_path and not has_route:
             return_type = sym.meta.get("return_type")
-            if return_type:
+            # When return type is generic (Object), use inferred type from
+            # "return new X(...)" in the method body.  Common in JAX-RS
+            # subresource locators (keycloak: token() returns Object but
+            # body constructs TokenEndpoint).
+            if return_type == "Object":
+                return_type = sym.meta.get("inferred_return_type", return_type)
+            if return_type and return_type != "Object":
                 # Get parent class's resource_path
                 parent_name = _get_parent_class_name(sym)
                 if parent_name:
@@ -1119,12 +1145,12 @@ def _apply_subresource_locator_paths(
                         # If stripping left nothing but method has its own
                         # @Path, Phase 3 only prepended parent path — we need
                         # to re-attach the method's own path segment.
-                        if not method_segment and method_own_path is not None:
+                        if not method_segment and method_own_path is not None:  # pragma: no cover - Phase 2 now includes method @Path
                             method_segment = method_own_path
                         c["path"] = _combine_route_paths(
                             full_class_prefix, method_segment,
                         )
-                    elif method_own_path is not None:
+                    elif method_own_path is not None:  # pragma: no cover - Phase 2 now sets path from method @Path
                         # Route has no path but method has @Path annotation
                         c["path"] = _combine_route_paths(
                             full_class_prefix, method_own_path,
@@ -1218,6 +1244,21 @@ def enrich_symbols(
                 symbol.meta = {}
             symbol.meta["concepts"] = matches
 
+    # Phase 1.5: APIRouter prefix composition
+    # When a Python function has router_prefix in its metadata (from a prefixed
+    # APIRouter), compose the prefix with any route concept paths extracted from
+    # its decorators (e.g., @v2_router.get("/models") with prefix="/v2"
+    # becomes path="/v2/models").
+    for symbol in symbols:
+        if not symbol.meta:
+            continue
+        router_prefix = symbol.meta.get("router_prefix")
+        if not router_prefix or "concepts" not in symbol.meta:
+            continue
+        for concept in symbol.meta["concepts"]:
+            if concept.get("concept") == "route" and "path" in concept:
+                concept["path"] = _combine_route_paths(router_prefix, concept["path"])
+
     # Phase 2: Parent path inheritance (v1.3.x prefix_from_parent)
     # After all symbols have their concepts, resolve parent prefixes
     if patterns_with_prefix:
@@ -1260,11 +1301,23 @@ def enrich_symbols(
                 #   @Controller() + @Get('test') -> /test
                 #   @Controller('users') + @Get() -> /users
                 method_path = concept.get("path")
+                # JAX-RS: route concept from @GET has no path, but the method
+                # may have its own @Path("/{id}") producing a resource_path
+                # concept.  Combine: class @Path + method @Path + @GET.
+                if not method_path and matched_pattern.prefix_from_parent:
+                    own_resource_path = _get_concept_path_from_symbol(
+                        symbol, matched_pattern.prefix_from_parent
+                    )
+                    if own_resource_path:
+                        method_path = own_resource_path
                 # Only skip if parent_path is None (no concept) vs "" (empty concept)
                 if parent_path is not None:
                     combined_path = _combine_route_paths(parent_path, method_path)
                     if combined_path:
                         concept["path"] = combined_path
+                elif method_path:
+                    # No parent class path, but method has its own @Path
+                    concept["path"] = _combine_route_paths(None, method_path)
 
     # Phase 2b: JAX-RS subresource locator path chaining
     # Methods with @Path (resource_path concept) and a return_type that matches
@@ -1300,9 +1353,19 @@ def enrich_symbols(
                 if symbol.meta is None:
                     symbol.meta = {}
 
-                # Append to existing concepts or create new list
+                # Append to existing concepts, deduplicating.
+                # Both definition-based (Phase 1) and usage-based (Phase 3)
+                # can produce the same concept (e.g., Go route handlers
+                # matched by both decorator and UsageContext patterns).
                 existing = symbol.meta.get("concepts", [])
-                symbol.meta["concepts"] = existing + matches
+                existing_keys = {
+                    tuple(sorted(c.items())) for c in existing
+                }
+                for m in matches:
+                    if tuple(sorted(m.items())) not in existing_keys:
+                        existing.append(m)
+                        existing_keys.add(tuple(sorted(m.items())))
+                symbol.meta["concepts"] = existing
 
     return symbols
 
@@ -1478,6 +1541,114 @@ def _extract_resolution_hints(ctx: UsageContext) -> dict[str, str | None]:
             hints["module_path"] = module_hint
 
     return hints
+
+
+def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
+    """Create kind='route' symbols for enriched route handler methods.
+
+    After ``enrich_symbols()`` tags handler methods with ``concept: route``,
+    this function creates corresponding route IR nodes that the
+    ``route_handler`` linker can use to produce ``routes_to`` edges.
+
+    This is needed for annotation-based frameworks (JAX-RS, Spring MVC,
+    ASP.NET) where route info is distributed across class/method annotations
+    rather than centralized in a routing DSL.  Language analyzers for Go
+    and JS/TS already create route symbols directly; this function fills the
+    gap for frameworks that rely on YAML pattern enrichment.
+
+    Args:
+        symbols: All symbols (already enriched by ``enrich_symbols``).
+
+    Returns:
+        List of new route Symbol objects to extend the symbol list.
+        Does NOT modify the input list.
+    """
+    from .analyze.base import make_route_stable_id
+    from .ir import Span, Symbol as SymbolCls, make_pass_id
+
+    pass_id = make_pass_id("route-materializer")
+    new_route_symbols: list[SymbolCls] = []
+    seen_routes: set[str] = set()  # Dedupe by (method, path)
+
+    for sym in symbols:
+        if not sym.meta:
+            continue
+        concepts = sym.meta.get("concepts", [])
+        if not concepts:
+            continue
+
+        for concept in concepts:
+            if not isinstance(concept, dict):  # pragma: no cover
+                continue
+            if concept.get("concept") != "route":
+                continue
+
+            # Already has a kind="route" symbol (e.g., Go/JS analyzers created one)
+            if sym.kind == "route":
+                continue
+
+            method = (concept.get("method") or "").upper()
+            path = concept.get("path") or ""
+
+            # Stapler convention: doXxx → POST /xxx, getXxx → GET /xxx
+            # When the YAML pattern matches method_name but doesn't set
+            # extract_method, we can derive method + path from the name.
+            if not method and sym.name:
+                short_name = sym.name.split(".")[-1]
+                if short_name.startswith("do") and len(short_name) > 2 and short_name[2].isupper():
+                    method = "POST"
+                    path = "/" + short_name[2].lower() + short_name[3:]
+                elif short_name.startswith("get") and len(short_name) > 3 and short_name[3].isupper():
+                    method = "GET"
+                    path = "/" + short_name[3].lower() + short_name[4:]
+
+            # Need at least a method to create a meaningful route node
+            if not method:
+                continue
+
+            # Dedupe: same (method, path) pair already materialized
+            route_key = f"{method}:{path}"
+            if route_key in seen_routes:
+                continue
+            seen_routes.add(route_key)
+
+            # Build route name
+            if path:
+                route_name = f"{method} {path}"
+            else:
+                route_name = f"{method} route"
+
+            stable_id = make_route_stable_id(method, path) if path else None
+
+            # Create route symbol at the same location as the handler
+            route_id = (
+                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
+                f"{sym.span.end_line}:{route_name}:route"
+            )
+            route_sym = SymbolCls(
+                id=route_id,
+                name=route_name,
+                kind="route",
+                language=sym.language,
+                path=sym.path,
+                span=Span(
+                    start_line=sym.span.start_line,
+                    end_line=sym.span.end_line,
+                    start_col=sym.span.start_col,
+                    end_col=sym.span.end_col,
+                ),
+                origin=pass_id,
+                stable_id=stable_id,
+                meta={
+                    "route_path": path,
+                    "http_method": method,
+                    "handler_ref": sym.name,
+                    "materialized_from": sym.id,
+                },
+            )
+            new_route_symbols.append(route_sym)
+
+    return new_route_symbols
 
 
 def clear_pattern_cache() -> None:

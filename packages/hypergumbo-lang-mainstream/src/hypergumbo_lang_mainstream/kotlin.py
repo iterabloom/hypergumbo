@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Kotlin analysis pass using tree-sitter-kotlin.
 
 This analyzer uses tree-sitter to parse Kotlin files and extract:
@@ -723,6 +724,7 @@ def _extract_edges_from_file(
     except (OSError, IOError):
         return []
 
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
 
@@ -831,7 +833,7 @@ def _extract_edges_from_file(
                         enclosing_class = _get_enclosing_class(node, source)
                         if enclosing_class:
                             candidate = f"{enclosing_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -860,7 +862,7 @@ def _extract_edges_from_file(
                                 candidate = f"{type_name}.{method_name}"
                                 import_hint = imports.get(type_name)
                                 lookup_result = resolver.lookup(
-                                    candidate, path_hint=import_hint
+                                    candidate, path_hint=import_hint, caller_path=_caller_path,
                                 )
                                 if (
                                     lookup_result.found
@@ -892,7 +894,7 @@ def _extract_edges_from_file(
                             candidate = f"{receiver_name}.{method_name}"
                             # Use import path as hint for disambiguation
                             import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -913,7 +915,7 @@ def _extract_edges_from_file(
                             candidate = f"{type_class_name}.{method_name}"
                             # Use import path of the type as hint for disambiguation
                             import_hint = imports.get(type_class_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -953,7 +955,7 @@ def _extract_edges_from_file(
                             candidate = f"{receiver_name}.{method_name}"
                             # Use import path as hint if receiver is an imported name
                             import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint)
+                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -995,7 +997,7 @@ def _extract_edges_from_file(
                     # Check global symbols via resolver
                     else:
                         import_hint = imports.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1049,9 +1051,9 @@ def _extract_edges_from_file(
                 target_name = (
                     f"{enclosing_class}.{ref_name}" if enclosing_class else ref_name
                 )
-                lookup_result = resolver.lookup(target_name)
+                lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
                 if not (lookup_result.found and lookup_result.symbol is not None):
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -1094,7 +1096,7 @@ def _extract_edges_from_file(
                         receiver_name = node_text(receiver_node, source)
                         target = f"{receiver_name}.{method_name}"
 
-                    lookup_result = resolver.lookup(target)
+                    lookup_result = resolver.lookup(target, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -1253,6 +1255,30 @@ def _extract_inheritance_edges(
     return edges
 
 
+# Standard JVM annotations that carry no architectural information.
+# Shared concept with Java's _STANDARD_JAVA_ANNOTATIONS — Kotlin uses the
+# same JVM annotation ecosystem.  Suppressed from unresolved decorated_by
+# edges to avoid dangling edges to nonexistent nodes (WI-divob).
+_STANDARD_JVM_ANNOTATIONS = frozenset({
+    # java.lang / kotlin.jvm
+    "Override", "Deprecated", "SuppressWarnings", "SafeVarargs",
+    "FunctionalInterface", "JvmStatic", "JvmOverloads", "JvmField",
+    "JvmName", "JvmSynthetic", "JvmDefault", "JvmRecord",
+    # java.lang.annotation
+    "Retention", "Target", "Documented", "Inherited", "Repeatable",
+    # javax.annotation / jakarta.annotation
+    "Nullable", "Nonnull", "NonNull", "CheckForNull",
+    "Generated", "PostConstruct", "PreDestroy", "Resource",
+    # Common testing annotations
+    "Test", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+    "ParameterizedTest", "RepeatedTest", "DisplayName", "Disabled",
+    "Nested", "Tag", "ExtendWith", "RunWith",
+    # Common quality/nullability annotations
+    "NotNull", "NotEmpty", "NotBlank", "Valid",
+    "VisibleForTesting", "Beta", "Internal",
+})
+
+
 def _extract_annotation_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -1306,8 +1332,10 @@ def _extract_annotation_edges(
                     evidence_type="ast_annotation",
                 )
                 edges.append(edge)
-            else:
-                # Unresolved edge for external annotations (e.g., @Service, @Entity)
+            elif dec_name not in _STANDARD_JVM_ANNOTATIONS:
+                # Only emit unresolved edges for non-standard annotations.
+                # Standard JVM annotations (@Override, @Deprecated, etc.) carry
+                # no architectural information and would create dangling edges.
                 dst_id = f"kotlin:unresolved:0-0:{dec_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,

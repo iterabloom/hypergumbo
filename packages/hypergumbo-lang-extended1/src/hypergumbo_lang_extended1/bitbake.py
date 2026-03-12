@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """BitBake analyzer using tree-sitter.
 
 BitBake is the build tool used by Yocto Project and OpenEmbedded for embedded

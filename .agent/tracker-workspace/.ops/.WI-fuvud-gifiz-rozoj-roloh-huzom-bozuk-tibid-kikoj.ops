@@ -71,3 +71,11 @@
   clock: 8  # cc34
   nonce: cc34  # cc34
   message: "[migrated from justification field] Deferred: P4 niche language. No bakeoff signal showing Rego analysis gaps. Higher-priority items addressed first."  # cc34
+- op: update  # da71
+  at: '2026-03-06T23:56:54Z'  # da71
+  by: human  # da71
+  actor: jgstern  # da71
+  clock: 9  # da71
+  nonce: da71  # da71
+  set:  # da71
+    status: wont_do  # da71

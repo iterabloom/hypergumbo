@@ -64,3 +64,11 @@
   clock: 7  # ddf0
   nonce: ddf0  # ddf0
   message: "[migrated from justification field] Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # ddf0
+- op: update  # 5823
+  at: '2026-03-06T23:57:01Z'  # 5823
+  by: human  # 5823
+  actor: jgstern  # 5823
+  clock: 8  # 5823
+  nonce: '5823'  # 5823
+  set:  # 5823
+    status: wont_do  # 5823

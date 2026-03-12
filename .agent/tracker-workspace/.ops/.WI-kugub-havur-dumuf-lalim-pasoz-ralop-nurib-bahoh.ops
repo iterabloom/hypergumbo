@@ -1,0 +1,36 @@
+- op: create  # c0e2
+  at: '2026-03-02T22:00:36Z'  # c0e2
+  by: agent  # c0e2
+  actor: jgstern_agent  # c0e2
+  clock: 1  # c0e2
+  nonce: c0e2  # c0e2
+  data:  # c0e2
+    kind: work_item  # c0e2
+    title: "Revalidation: triage WARN/FAIL verdicts into actionable items"  # c0e2
+    status: todo_soft  # c0e2
+    priority: 2  # c0e2
+    parent:  # c0e2
+    tags:  # c0e2
+    - bakeoff-revalidation  # c0e2
+    before:  # c0e2
+    - WI-muzuh-difib-bikiz-vusot-lutaz-kilub-rumar-dulih  # c0e2
+    duplicate_of: []  # c0e2
+    not_duplicate_of: []  # c0e2
+    pr_ref:  # c0e2
+    description: "Review all WARN and FAIL verdicts from the revalidation session. For each repo:\n\n1. Is it a known gap? (e.g., formal methods languages with structural analyzer limitations\n   tracked in WI-juviz, WI-kujuf, WI-zijos) → Document as known gap, no new item needed.\n2. Is it a regression? (was GOOD in initial run, now WARN) → Create todo_hard tracker item.\n3. Is it a new fix opportunity? (was WARN before, still WARN, but the diagnose report\n   points to a specific fixable issue) → Create todo_hard or todo_soft tracker item\n   depending on severity.\n4. Is it a \"close enough\" case? (metrics improved but didn't cross GOOD threshold) →\n   Note in lab notebook, no item needed unless there's a clear low-hanging fix.\n\nAlso review the LLM reflect improvement_ideas from item 9. Group them by theme and\nfrequency. Create tracker items for recurring themes that appear in 3+ repos.\n\nRecord all triage decisions in the lab notebook entry (item 12)."  # c0e2
+    fields: {}  # c0e2
+- op: update  # e2d5
+  at: '2026-03-03T21:55:06Z'  # e2d5
+  by: agent  # e2d5
+  actor: jgstern_agent  # e2d5
+  clock: 2  # e2d5
+  nonce: e2d5  # e2d5
+  set:  # e2d5
+    status: done  # e2d5
+- op: discuss  # 2053
+  at: '2026-03-03T21:55:06Z'  # 2053
+  by: agent  # 2053
+  actor: jgstern_agent  # 2053
+  clock: 3  # 2053
+  nonce: '2053'  # 2053
+  message: "Triage complete. 24 WARN repos, 0 FAIL. Issue breakdown:\n\nBENIGN (not actionable):\n- HIGH_TIER1_PCT (10): Pure first-party repos (Lean/Agda/Wolfram) naturally have 100% tier1\n- HIGH_SLICE_COVERAGE_PCT (9): Small focused repos where slices cover >10% naturally\n- LOW_SLICE_COVERAGE_PCT (1): ZeroKnowledgeProofs (Wolfram) - very small codebase\n\nLANGUAGE-SPECIFIC (requires analyzer improvement):\n- LOW_CROSS_FILE_RATIO (5): All Lean/Agda repos — cross-file module resolution needs work\n- LOW_AVG_SLICE_NODES (10): Lean/Agda repos + TS repos — slice depth limited by module resolution\n\nSTRUCTURAL (may warrant fixes):\n- HIGH_ORPHAN_RATE (10): Mixed — Circom 54.6%, clean 33%, openzeppelin-contracts 26.1%\n- LOW_TIER1_PCT (3): didkit 27%, osx 35%, sp1-contract-call 40% — tier classification may be too aggressive\n\nMost WARNs are benign (pure first-party repos with no third-party deps score HIGH_TIER1_PCT). The actionable categories are orphan rate (circom/solidity) and cross-file resolution (Lean/Agda)."  # 2053

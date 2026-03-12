@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for schema compliance with the hypergumbo spec."""
 import json
 from pathlib import Path

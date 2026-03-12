@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Release script - creates a new release.
 #
 # NOTE: If your main branch has push protection (common on Codeberg/GitHub),

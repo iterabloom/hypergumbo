@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Vue component linker.
 
 The Vue component linker resolves `imports_component` edges from the Vue

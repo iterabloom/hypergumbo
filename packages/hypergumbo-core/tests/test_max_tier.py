@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for --max-tier CLI flag.
 
 Tests for filtering analysis scope by supply chain tier:

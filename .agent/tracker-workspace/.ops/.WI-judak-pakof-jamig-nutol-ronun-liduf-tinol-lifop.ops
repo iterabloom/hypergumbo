@@ -1,0 +1,43 @@
+- op: create  # b856
+  at: '2026-03-04T21:49:10Z'  # b856
+  by: agent  # b856
+  actor: jgstern_agent  # b856
+  clock: 1  # b856
+  nonce: b856  # b856
+  data:  # b856
+    kind: work_item  # b856
+    title: "Stop hook: tiered cooldown messaging based on elapsed time"  # b856
+    status: todo_soft  # b856
+    priority: 4  # b856
+    parent:  # b856
+    tags: []  # b856
+    before:  # b856
+    - WI-duzun-varod-pilaf-mavas-kuroz-sovut-gitan-zitav  # b856
+    duplicate_of: []  # b856
+    not_duplicate_of: []  # b856
+    pr_ref:  # b856
+    description: "Current cooldown is binary (30 min threshold). Could tier: <10min=terse, 10-30min=moderate, >30min=full reflection. Depends on template separation for clean implementation."  # b856
+    fields: {}  # b856
+- op: update  # b977
+  at: '2026-03-06T05:46:20Z'  # b977
+  by: agent  # b977
+  actor: jgstern_agent  # b977
+  clock: 2  # b977
+  nonce: b977  # b977
+  set:  # b977
+    status: needs_human_review  # b977
+- op: discuss  # 80cf
+  at: '2026-03-06T05:46:20Z'  # 80cf
+  by: agent  # 80cf
+  actor: jgstern_agent  # 80cf
+  clock: 3  # 80cf
+  nonce: 80cf  # 80cf
+  message: "Governance file (.agent/hooks). Proposed: variable cooldown messaging in stop hook based on elapsed time since last approved stop (short: gentle, long: more insistent). Requesting approval."  # 80cf
+- op: update  # 31b4
+  at: '2026-03-08T21:47:48Z'  # 31b4
+  by: human  # 31b4
+  actor: jgstern  # 31b4
+  clock: 4  # 31b4
+  nonce: 31b4  # 31b4
+  set:  # 31b4
+    status: wont_do  # 31b4

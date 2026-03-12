@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Vue.js component analyzer using tree-sitter.
 
 Vue.js is a progressive JavaScript framework for building user interfaces.

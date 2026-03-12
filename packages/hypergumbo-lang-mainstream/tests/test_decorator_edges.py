@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for decorator edge detection (INV-012).
 
 Verifies that decorator applications create edges in the call graph:

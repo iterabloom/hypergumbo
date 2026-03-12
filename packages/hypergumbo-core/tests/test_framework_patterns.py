@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for framework pattern matching (ADR-0003 v0.8.x).
 
 Tests the YAML-based framework pattern system that enriches symbols
@@ -21,6 +22,7 @@ from hypergumbo_core.framework_patterns import (
     load_framework_patterns,
     match_patterns,
     match_usage_patterns,
+    materialize_route_symbols,
     resolve_deferred_symbol_refs,
 )
 from hypergumbo_core.ir import Span, Symbol, UsageContext
@@ -842,6 +844,52 @@ class TestMatchPatterns:
         assert results == []
 
 
+    def test_matches_multiple_decorators_same_pattern(self) -> None:
+        """Multiple decorators on one symbol should each produce a match result.
+
+        When a function has @app.options('/v1/models') AND @app.get('/v1/models'),
+        both should produce route concepts (one OPTIONS, one GET). Previously
+        only the first matching decorator was captured.
+        """
+        pattern_def = FrameworkPatternDef(
+            id="fastapi",
+            language="python",
+            patterns=[
+                Pattern(
+                    concept="route",
+                    decorator=r"^app\.(get|post|put|delete|patch|options|head)$",
+                    extract_path="args[0]",
+                    extract_method="decorator_suffix",
+                ),
+            ],
+        )
+
+        symbol = Symbol(
+            id="test:serve.py:542:models_handler:function",
+            name="models_handler",
+            kind="function",
+            language="python",
+            path="serve.py",
+            span=Span(542, 550, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.options", "args": ["/v1/models"]},
+                    {"name": "app.get", "args": ["/v1/models"]},
+                ]
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 2
+        methods = {r["method"] for r in results}
+        assert methods == {"OPTIONS", "GET"}
+        for r in results:
+            assert r["concept"] == "route"
+            assert r["path"] == "/v1/models"
+            assert r["framework"] == "fastapi"
+
+
 class TestEnrichSymbols:
     """Tests for enrich_symbols function."""
 
@@ -879,6 +927,46 @@ patterns:
         assert len(enriched) == 1
         assert "concepts" in enriched[0].meta
         assert enriched[0].meta["concepts"][0]["concept"] == "route"
+
+    def test_router_prefix_composes_with_route_path(self, tmp_path: Path) -> None:
+        """Phase 1.5: router_prefix in symbol meta composes with route path."""
+        clear_pattern_cache()
+
+        yaml_content = """
+id: test_fw
+language: python
+patterns:
+  - concept: route
+    decorator: "^\\\\w+_router\\\\.get$"
+    extract_path: "args[0]"
+    extract_method: "decorator_suffix"
+"""
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(yaml_content)
+
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="list_models",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [{"name": "v2_router.get", "args": ["/models"], "kwargs": {}}],
+                "router_prefix": "/v2",
+            },
+        )
+
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            enriched = enrich_symbols([symbol], {"test_fw"})
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta["concepts"]
+        route_concept = next(c for c in concepts if c["concept"] == "route")
+        assert route_concept["path"] == "/v2/models"
 
     def test_no_enrichment_for_unknown_frameworks(self) -> None:
         """Skips enrichment when no patterns found for framework."""
@@ -6755,6 +6843,70 @@ class TestJaxRsPatterns:
             f"Expected /api/sub/items/{{id}}, got: {route.get('path')}"
         )
 
+
+
+    def test_jaxrs_subresource_object_return_with_inferred_type(self) -> None:
+        """Subresource locator returning Object uses inferred_return_type.
+
+        Keycloak pattern: token() returns Object but body constructs
+        TokenEndpoint.  The inferred_return_type enables path composition.
+        """
+        clear_pattern_cache()
+
+        # Parent class with @Path("/protocol/openid-connect")
+        parent = Symbol(
+            id="test:OIDCService.java:1-100:OIDCService:class",
+            name="OIDCService", kind="class", language="java",
+            path="OIDCService.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/protocol/openid-connect"], "kwargs": {}}]},
+        )
+
+        # Subresource locator: @Path("token") public Object token()
+        # return_type is Object, inferred_return_type is TokenEndpoint
+        locator = Symbol(
+            id="test:OIDCService.java:20-30:OIDCService.token:method",
+            name="OIDCService.token", kind="method", language="java",
+            path="OIDCService.java", span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["token"], "kwargs": {}}],
+                "return_type": "Object",
+                "inferred_return_type": "TokenEndpoint",
+            },
+        )
+
+        # Target class: TokenEndpoint (no class-level @Path)
+        target_class = Symbol(
+            id="test:TokenEndpoint.java:1-100:TokenEndpoint:class",
+            name="TokenEndpoint", kind="class", language="java",
+            path="TokenEndpoint.java", span=Span(1, 100, 0, 0),
+            meta={},
+        )
+
+        # Route method on target: @POST
+        grant_method = Symbol(
+            id="test:TokenEndpoint.java:20-30:TokenEndpoint.processGrant:method",
+            name="TokenEndpoint.processGrant", kind="method", language="java",
+            path="TokenEndpoint.java", span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [{"name": "POST", "args": [], "kwargs": {}}],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent, locator, target_class, grant_method],
+            {"jax-rs"},
+        )
+
+        grant = enriched[3]
+        route = next(
+            (c for c in grant.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None, "Expected route concept on POST method"
+        # Full path: /protocol/openid-connect/token (from parent + locator)
+        assert route["path"] == "/protocol/openid-connect/token", (
+            f"Expected /protocol/openid-connect/token, got: {route.get('path')}"
+        )
 
 
 class TestMicronautPatterns:
@@ -15921,6 +16073,161 @@ class TestRustLibraryExportPatterns:
         assert len(lib_exports) == 1
 
 
+class TestSolidityLibraryExportPatterns:
+    """Tests for Solidity library export YAML patterns.
+
+    Solidity smart contracts expose their ABI through public and external
+    functions. These are the callable surface from external accounts and
+    other contracts. The Solidity analyzer extracts visibility modifiers:
+    public, external, internal, private.
+    """
+
+    def test_public_function_matches_library_export(self) -> None:
+        """Solidity public function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:5-10:Token.transfer:function",
+            name="Token.transfer",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(5, 10, 0, 80),
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_external_function_matches_library_export(self) -> None:
+        """Solidity external function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:12-18:Token.approve:function",
+            name="Token.approve",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(12, 18, 0, 80),
+            modifiers=["external"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_internal_function_no_match(self) -> None:
+        """Solidity internal functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:20-25:Token._mint:function",
+            name="Token._mint",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(20, 25, 0, 80),
+            modifiers=["internal"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_private_function_no_match(self) -> None:
+        """Solidity private functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:30-35:Token._secret:function",
+            name="Token._secret",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(30, 35, 0, 80),
+            modifiers=["private"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_contract_matches_library_export(self) -> None:
+        """Solidity contracts match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:Token.sol:1-100:Token:contract",
+            name="Token",
+            kind="contract",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(1, 100, 0, 1),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_interface_matches_library_export(self) -> None:
+        """Solidity interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="solidity:IERC20.sol:1-20:IERC20:interface",
+            name="IERC20",
+            kind="interface",
+            language="solidity",
+            path="contracts/IERC20.sol",
+            span=Span(1, 20, 0, 1),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_solidity_enrichment_without_framework(self) -> None:
+        """Solidity library exports are enriched even without framework detection."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="solidity:Token.sol:5-10:Token.transfer:function",
+            name="Token.transfer",
+            kind="function",
+            language="solidity",
+            path="contracts/Token.sol",
+            span=Span(5, 10, 0, 80),
+            modifiers=["public"],
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
 class TestOpenRestyPhaseHandlerPatterns:
     """Tests for OpenResty/nginx phase handler definition-based patterns.
 
@@ -17605,3 +17912,1022 @@ class TestStaplerPatterns:
         pattern_def = load_framework_patterns("jenkins")
         assert pattern_def is not None
         assert pattern_def.id == "stapler"
+
+
+class TestMaterializeRouteSymbols:
+    """Tests for materialize_route_symbols (WI-lodik)."""
+
+    def _make_handler(
+        self, name: str, method: str, path: str = "",
+        language: str = "java", file_path: str = "src/Api.java",
+    ) -> Symbol:
+        """Create a handler symbol with route concept metadata."""
+        return Symbol(
+            id=f"{language}:{file_path}:10-20:{name}:method",
+            name=name,
+            kind="method",
+            language=language,
+            path=file_path,
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": method, "path": path},
+                ],
+            },
+        )
+
+    def test_creates_route_symbol_from_enriched_handler(self) -> None:
+        """A handler method with concept=route gets a materialized route symbol."""
+        handler = self._make_handler("getUsers", "GET", "/api/users")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        route = routes[0]
+        assert route.kind == "route"
+        assert route.name == "GET /api/users"
+        assert route.meta["route_path"] == "/api/users"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta["handler_ref"] == "getUsers"
+        assert route.meta["materialized_from"] == handler.id
+
+    def test_stable_id_assigned(self) -> None:
+        """Materialized route has a collision-free stable_id."""
+        handler = self._make_handler("createUser", "POST", "/api/users")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].stable_id is not None
+        assert len(routes[0].stable_id) == 64  # sha256 hex
+
+    def test_no_path_still_creates_route(self) -> None:
+        """Route with method but no path still gets materialized."""
+        handler = self._make_handler("deleteItem", "DELETE")
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].name == "DELETE route"
+        assert routes[0].stable_id is None  # No path → no stable_id
+
+    def test_no_method_skips(self) -> None:
+        """Route concept without a method is skipped."""
+        sym = Symbol(
+            id="java:Api.java:10-20:handler:method",
+            name="handler", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "path": "/api"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+    def test_existing_route_kind_skipped(self) -> None:
+        """Symbols already with kind='route' are not duplicated."""
+        sym = Symbol(
+            id="go:main.go:10-20:GET /users:route",
+            name="GET /users", kind="route", language="go",
+            path="main.go",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+    def test_deduplicates_same_method_path(self) -> None:
+        """Same (method, path) from different handlers produces one route."""
+        h1 = self._make_handler("getUsersV1", "GET", "/api/users", file_path="v1/Api.java")
+        h2 = self._make_handler("getUsersV2", "GET", "/api/users", file_path="v2/Api.java")
+        routes = materialize_route_symbols([h1, h2])
+        assert len(routes) == 1
+
+    def test_different_methods_same_path_are_distinct(self) -> None:
+        """GET /users and POST /users produce distinct route symbols."""
+        h1 = self._make_handler("getUsers", "GET", "/api/users")
+        h2 = self._make_handler("createUser", "POST", "/api/users")
+        routes = materialize_route_symbols([h1, h2])
+        assert len(routes) == 2
+        names = {r.name for r in routes}
+        assert "GET /api/users" in names
+        assert "POST /api/users" in names
+
+    def test_symbols_without_concepts_ignored(self) -> None:
+        """Symbols without concept metadata are ignored."""
+        sym = Symbol(
+            id="java:Main.java:1-5:main:method",
+            name="main", kind="method", language="java",
+            path="Main.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+    def test_stapler_doXxx_convention(self) -> None:
+        """Stapler doXxx methods get POST /xxx route (WI-fokok)."""
+        sym = Symbol(
+            id="java:Jenkins.java:100-120:Jenkins.doQuietDown:method",
+            name="Jenkins.doQuietDown", kind="method", language="java",
+            path="Jenkins.java",
+            span=Span(start_line=100, end_line=120, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 1
+        assert routes[0].name == "POST /quietDown"
+        assert routes[0].meta["http_method"] == "POST"
+        assert routes[0].meta["route_path"] == "/quietDown"
+
+    def test_stapler_getXxx_convention(self) -> None:
+        """Stapler getXxx methods get GET /xxx route (WI-fokok)."""
+        sym = Symbol(
+            id="java:Jenkins.java:50-70:Jenkins.getComputer:method",
+            name="Jenkins.getComputer", kind="method", language="java",
+            path="Jenkins.java",
+            span=Span(start_line=50, end_line=70, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 1
+        assert routes[0].name == "GET /computer"
+        assert routes[0].meta["http_method"] == "GET"
+        assert routes[0].meta["route_path"] == "/computer"
+
+    def test_stapler_non_convention_name_skipped(self) -> None:
+        """Route concept on non-doXxx/getXxx method with no method is skipped."""
+        sym = Symbol(
+            id="java:Api.java:10-20:Api.handle:method",
+            name="Api.handle", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        routes = materialize_route_symbols([sym])
+        assert len(routes) == 0
+
+
+class TestLeanLibraryExportPatterns:
+    """Lean 4 definitions, structures, and inductives match library_export."""
+
+    def test_lean_function_matches_library_export(self) -> None:
+        """Lean 4 def/theorem/lemma (kind=function) matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Security.lean:10-15:soundness:function",
+            name="soundness",
+            kind="function",
+            language="lean",
+            path="ArkLib/Security.lean",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_lean_structure_matches_library_export(self) -> None:
+        """Lean 4 structure matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Types.lean:5-20:ProofSystem:structure",
+            name="ProofSystem",
+            kind="structure",
+            language="lean",
+            path="ArkLib/Types.lean",
+            span=Span(5, 20, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_lean_inductive_matches_library_export(self) -> None:
+        """Lean 4 inductive type matches library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lean:ArkLib/Types.lean:25-30:Color:inductive",
+            name="Color",
+            kind="inductive",
+            language="lean",
+            path="ArkLib/Types.lean",
+            span=Span(25, 30, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestAgdaLibraryExportPatterns:
+    """Agda functions, data types, and records match library_export."""
+
+    def test_agda_function_matches_library_export(self) -> None:
+        """Agda function definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Proofs.agda:10-15:add-comm:function",
+            name="add-comm",
+            kind="function",
+            language="agda",
+            path="src/Proofs.agda",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_agda_data_matches_library_export(self) -> None:
+        """Agda data type definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Types.agda:5-10:Nat:data",
+            name="Nat",
+            kind="data",
+            language="agda",
+            path="src/Types.agda",
+            span=Span(5, 10, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_agda_record_matches_library_export(self) -> None:
+        """Agda record definitions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="agda:src/Algebra.agda:20-30:Monoid:record",
+            name="Monoid",
+            kind="record",
+            language="agda",
+            path="src/Algebra.agda",
+            span=Span(20, 30, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestWolframLibraryExportPatterns:
+    """Wolfram functions and variables should match library_export patterns.
+
+    Wolfram Language packages export public functions via BeginPackage/EndPackage.
+    Since the analyzer doesn't track package scoping, all top-level definitions
+    (SetDelayed := for functions, Set = for variables) are treated as library
+    exports, matching the same approach used for Lean/Agda/Circom.
+    """
+
+    def test_wolfram_function_matches_library_export(self) -> None:
+        """Wolfram function definitions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/ZKP.wl:10-15:GenerateProof:function",
+            name="GenerateProof",
+            kind="function",
+            language="wolfram",
+            path="Kernel/ZKP.wl",
+            span=Span(10, 15, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_wolfram_variable_matches_library_export(self) -> None:
+        """Wolfram variable definitions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/Config.wl:5-5:DefaultOptions:variable",
+            name="DefaultOptions",
+            kind="variable",
+            language="wolfram",
+            path="Kernel/Config.wl",
+            span=Span(5, 5, 0, 40),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_wolfram_class_does_not_match_library_export(self) -> None:
+        """Wolfram symbols with unexpected kinds don't match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="wolfram:Kernel/ZKP.wl:1-50:ZKP:class",
+            name="ZKP",
+            kind="class",
+            language="wolfram",
+            path="Kernel/ZKP.wl",
+            span=Span(1, 50, 0, 50),
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+
+class TestConceptDeduplication:
+    """Tests that duplicate concepts are not added when both definition-based
+    and usage-based matching produce the same concept for a symbol.
+
+    This happens with Go web routes where the handler is matched by both
+    decorator patterns (Phase 1) and UsageContext patterns (Phase 3),
+    producing duplicate {concept: route, path: /status} entries.
+    """
+
+    def test_usage_phase_deduplicates_concepts(self) -> None:
+        """Usage-based matching does not duplicate concepts already present."""
+        handler = Symbol(
+            id="go:handler.go:1-10:deprecationHandler:function",
+            name="deprecationHandler",
+            kind="function",
+            language="go",
+            path="handler.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "framework": "go-web",
+                     "method": "GET", "path": "/status"},
+                ],
+            },
+        )
+
+        # Create a usage context that would produce the same concept
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="router.GET",
+            position="args[last]",
+            symbol_ref=handler.id,
+            metadata={"route_path": "/status", "http_method": "GET"},
+            path="routes.go",
+            span=Span(42, 42, 0, 40),
+        )
+
+        enriched = enrich_symbols([handler], {"go-web"}, usage_contexts=[ctx])
+        concepts = enriched[0].meta["concepts"]
+
+        # Count route concepts for /status — should be exactly 1
+        status_routes = [
+            c for c in concepts
+            if c.get("concept") == "route" and c.get("path") == "/status"
+        ]
+        assert len(status_routes) == 1, (
+            f"Expected 1 route concept for /status, got {len(status_routes)}: {concepts}"
+        )
+
+
+class TestLitPatterns:
+    """Tests for Lit web component framework patterns.
+
+    Lit uses decorators (@customElement, @property, @state, @query) and
+    lifecycle hooks (connectedCallback, firstUpdated, render, etc.).
+    """
+
+    def test_custom_element_decorator(self) -> None:
+        """@customElement('my-element') matches component pattern with tag name."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None, "Lit patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:my-element.ts:5:MyElement:class",
+            name="MyElement",
+            kind="class",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(5, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "customElement", "args": ["my-element"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        component = [r for r in results if r["concept"] == "component"]
+        assert len(component) >= 1
+        assert component[0]["path"] == "my-element"
+
+    def test_lit_element_base_class(self) -> None:
+        """class extends LitElement matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:3:MyElement:class",
+            name="MyElement",
+            kind="class",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(3, 20, 0, 0),
+            meta={"base_classes": ["LitElement"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        component = [r for r in results if r["concept"] == "component"]
+        assert len(component) >= 1
+
+    def test_property_decorator(self) -> None:
+        """@property() matches reactive_property concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:10:name:property",
+            name="name",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(10, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "property", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        props = [r for r in results if r["concept"] == "reactive_property"]
+        assert len(props) == 1
+
+    def test_state_decorator(self) -> None:
+        """@state() matches internal_state concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:12:count:property",
+            name="count",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(12, 12, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "state", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        states = [r for r in results if r["concept"] == "internal_state"]
+        assert len(states) == 1
+
+    def test_query_decorator(self) -> None:
+        """@query('#input') matches dom_query concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:14:inputEl:property",
+            name="inputEl",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(14, 14, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "query", "args": ["#input"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        queries = [r for r in results if r["concept"] == "dom_query"]
+        assert len(queries) == 1
+
+    def test_query_all_decorator(self) -> None:
+        """@queryAll('.items') matches dom_query concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:16:items:property",
+            name="items",
+            kind="property",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(16, 16, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "queryAll", "args": [".items"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        queries = [r for r in results if r["concept"] == "dom_query"]
+        assert len(queries) == 1
+
+    def test_render_method(self) -> None:
+        """render() matches render_method concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:20:render:method",
+            name="render",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(20, 30, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        renders = [r for r in results if r["concept"] == "render_method"]
+        assert len(renders) == 1
+
+    def test_connected_callback(self) -> None:
+        """connectedCallback matches lifecycle_hook concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:32:connectedCallback:method",
+            name="connectedCallback",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(32, 35, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        hooks = [r for r in results if r["concept"] == "lifecycle_hook"]
+        assert len(hooks) == 1
+
+    def test_first_updated(self) -> None:
+        """firstUpdated matches lifecycle_hook concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:38:firstUpdated:method",
+            name="firstUpdated",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(38, 42, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        hooks = [r for r in results if r["concept"] == "lifecycle_hook"]
+        assert len(hooks) == 1
+
+    def test_should_update(self) -> None:
+        """shouldUpdate matches update_control concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:45:shouldUpdate:method",
+            name="shouldUpdate",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(45, 48, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controls = [r for r in results if r["concept"] == "update_control"]
+        assert len(controls) == 1
+
+    def test_non_lit_method_no_match(self) -> None:
+        """Regular methods don't match Lit patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:50:handleClick:method",
+            name="handleClick",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(50, 55, 0, 0),
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0
+
+    def test_event_options_decorator(self) -> None:
+        """@eventOptions({capture: true}) matches event_config concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("lit")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:my-element.ts:60:onClick:method",
+            name="onClick",
+            kind="method",
+            language="typescript",
+            path="my-element.ts",
+            span=Span(60, 65, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "eventOptions", "args": [], "kwargs": {"capture": "true"}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        events = [r for r in results if r["concept"] == "event_config"]
+        assert len(events) == 1
+
+
+class TestReactPatterns:
+    """Tests for react.yaml SPA bootstrap patterns."""
+
+    def test_react_yaml_loads(self) -> None:
+        """react.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+        assert pattern_def.id == "react"
+        assert len(pattern_def.patterns) > 0
+
+    def test_create_root_usage_matches_app_bootstrap(self) -> None:
+        """createRoot() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="createRoot",
+            position="caller",
+            path="src/index.tsx",
+            span=Span(4, 4, 0, 50),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_reactdom_render_usage_matches_app_bootstrap(self) -> None:
+        """ReactDOM.render() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="ReactDOM.render",
+            position="caller",
+            path="src/index.tsx",
+            span=Span(5, 5, 0, 60),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_hydrate_root_usage_matches_app_bootstrap(self) -> None:
+        """hydrateRoot() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="hydrateRoot",
+            position="caller",
+            path="src/entry-client.tsx",
+            span=Span(4, 4, 0, 55),
+            symbol_ref="test:src/entry-client.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_create_browser_router_usage_matches_app_bootstrap(self) -> None:
+        """createBrowserRouter() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="createBrowserRouter",
+            position="caller",
+            path="src/main.tsx",
+            span=Span(4, 4, 0, 70),
+            symbol_ref="test:src/main.tsx:1-6:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_non_bootstrap_call_not_matched(self) -> None:
+        """Regular function calls don't match app_bootstrap usage patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="someOtherFunction",
+            position="caller",
+            path="src/utils.ts",
+            span=Span(1, 1, 0, 30),
+            symbol_ref="test:src/utils.ts:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 0
+
+    def test_reactdom_createroot_qualified_usage(self) -> None:
+        """ReactDOM.createRoot() qualified UsageContext matches."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("react")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="ReactDOM.createRoot",
+            position="caller",
+            path="src/main.tsx",
+            span=Span(4, 4, 0, 65),
+            symbol_ref="test:src/main.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+
+class TestElectronEntrypointConcept:
+    """Tests that electron.yaml entrypoint concept is correctly loaded."""
+
+    def test_electron_app_when_ready_usage_matches_entrypoint(self) -> None:
+        """app.whenReady() UsageContext matches entrypoint concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.whenReady",
+            position="caller",
+            path="src/main.ts",
+            span=Span(3, 3, 0, 40),
+            symbol_ref="test:src/main.ts:1-10:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 1
+
+    def test_electron_app_on_usage_matches_entrypoint(self) -> None:
+        """app.on('ready') UsageContext matches entrypoint concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.on",
+            position="caller",
+            path="src/main.ts",
+            span=Span(3, 3, 0, 35),
+            symbol_ref="test:src/main.ts:1-10:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 1
+
+    def test_electron_non_app_call_not_matched(self) -> None:
+        """Non-app calls should not match entrypoint concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("electron")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="someOtherFunction",
+            position="caller",
+            path="src/utils.ts",
+            span=Span(1, 1, 0, 30),
+            symbol_ref="test:src/utils.ts:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        entrypoints = [r for r in results if r["concept"] == "entrypoint"]
+        assert len(entrypoints) == 0
+
+
+class TestSolidPatterns:
+    """Tests for solid.yaml Solid.js framework patterns."""
+
+    def test_solid_yaml_loads(self) -> None:
+        """solid.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+        assert pattern_def.id == "solid"
+        assert len(pattern_def.patterns) > 0
+
+    def test_render_usage_matches_app_bootstrap(self) -> None:
+        """Solid render() UsageContext matches app_bootstrap concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="render",
+            position="caller",
+            path="src/index.tsx",
+            span=Span(4, 4, 0, 40),
+            symbol_ref="test:src/index.tsx:1-5:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        bootstrap = [r for r in results if r["concept"] == "app_bootstrap"]
+        assert len(bootstrap) == 1
+
+    def test_create_signal_matches_state(self) -> None:
+        """createSignal() matches state concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/Counter.tsx:5:Counter:function",
+            name="Counter",
+            kind="function",
+            language="typescript",
+            path="src/Counter.tsx",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createSignal", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        state = [r for r in results if r["concept"] == "state"]
+        assert len(state) == 1
+
+    def test_create_effect_matches_effect(self) -> None:
+        """createEffect() matches effect concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:App:function",
+            name="App",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createEffect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        effects = [r for r in results if r["concept"] == "effect"]
+        assert len(effects) == 1
+
+    def test_create_resource_matches_data_source(self) -> None:
+        """createResource() matches data_source concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/Users.tsx:5:Users:function",
+            name="Users",
+            kind="function",
+            language="typescript",
+            path="src/Users.tsx",
+            span=Span(5, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "createResource", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        data = [r for r in results if r["concept"] == "data_source"]
+        assert len(data) == 1
+
+    def test_on_mount_matches_lifecycle(self) -> None:
+        """onMount() matches lifecycle concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/App.tsx:10:App:function",
+            name="App",
+            kind="function",
+            language="typescript",
+            path="src/App.tsx",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "onMount", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        lifecycle = [r for r in results if r["concept"] == "lifecycle"]
+        assert len(lifecycle) == 1
+
+    def test_non_solid_call_not_matched(self) -> None:
+        """Regular function calls don't match Solid patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("solid")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/utils.ts:1:helper:function",
+            name="helper",
+            kind="function",
+            language="typescript",
+            path="src/utils.ts",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "someRandomFunction", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0
+
+
+class TestTauriPatterns:
+    """Tests for tauri.yaml IPC command patterns."""
+
+    def test_tauri_yaml_loads(self) -> None:
+        """tauri.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+        assert pattern_def.id == "tauri"
+
+    def test_tauri_command_matches_ipc_handler(self) -> None:
+        """#[tauri::command] annotation matches ipc_handler concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src-tauri/src/main.rs:10:greet:function",
+            name="greet",
+            kind="function",
+            language="rust",
+            path="src-tauri/src/main.rs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "tauri::command", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ipc_handlers = [r for r in results if r["concept"] == "ipc_handler"]
+        assert len(ipc_handlers) >= 1
+
+    def test_non_tauri_annotation_ignored(self) -> None:
+        """Other Rust annotations don't match tauri ipc_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("tauri")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:src/lib.rs:5:my_func:function",
+            name="my_func",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 15, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "derive", "args": ["Debug"], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ipc_handlers = [r for r in results if r["concept"] == "ipc_handler"]
+        assert len(ipc_handlers) == 0

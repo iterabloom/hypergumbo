@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CMake analysis pass using tree-sitter-cmake.
 
 This analyzer uses tree-sitter to parse CMakeLists.txt files and extract:
@@ -237,8 +238,7 @@ def _process_cmake_tree(
                             dst_id = f"cmake:external:{dep}:library"
                             confidence = 0.70
 
-                        edge = Edge(
-                            id=_make_edge_id(src_id, dst_id, "links"),
+                        edge = Edge.create(
                             src=src_id,
                             dst=dst_id,
                             edge_type="links",

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Python AST analysis - detecting functions and classes."""
 import json
 from pathlib import Path
@@ -1017,6 +1018,148 @@ def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None
 
 
 # ============================================================================
+# Flask-RESTful add_resource UsageContext Tests
+# ============================================================================
+
+
+def test_flask_restful_add_resource_usage_context(tmp_path: Path) -> None:
+    """Flask-RESTful api.add_resource(ClassName, '/path') emits UsageContext."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "from flask_restful import Api, Resource\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "api = Api(app)\n"
+        "\n"
+        "class TodoList(Resource):\n"
+        "    def get(self):\n"
+        "        return []\n"
+        "\n"
+        "    def post(self):\n"
+        "        return {}, 201\n"
+        "\n"
+        "class Todo(Resource):\n"
+        "    def get(self, todo_id):\n"
+        "        return {}\n"
+        "\n"
+        "    def delete(self, todo_id):\n"
+        "        return '', 204\n"
+        "\n"
+        "api.add_resource(TodoList, '/todos')\n"
+        "api.add_resource(Todo, '/todos/<string:todo_id>')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) >= 2
+
+    ctx_paths = {c.metadata.get("route_path") for c in contexts}
+    assert "/todos" in ctx_paths
+    assert "/todos/<string:todo_id>" in ctx_paths
+
+    # The view_name should be the class name
+    ctx_names = {c.metadata.get("view_name") for c in contexts}
+    assert "TodoList" in ctx_names
+    assert "Todo" in ctx_names
+
+    # Route symbols should be created for each add_resource call
+    route_syms = [s for s in result.symbols if s.kind == "route"]
+    assert len(route_syms) >= 2
+    route_paths = {s.meta.get("route_path") for s in route_syms}
+    assert "/todos" in route_paths
+    assert "/todos/<string:todo_id>" in route_paths
+
+
+def test_flask_restful_add_resource_attribute_class(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with attribute class (views.TodoList)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "import views\n"
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(views.TodoList, '/todos')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 1
+    assert contexts[0].metadata["view_name"] == "TodoList"
+    assert contexts[0].metadata["route_path"] == "/todos"
+
+
+def test_flask_restful_add_resource_with_prefix(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with APIRouter prefix composition."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "from flask_restful import Api, Resource\n"
+        "from fastapi import APIRouter\n"
+        "\n"
+        "api = APIRouter(prefix='/v1')\n"
+        "\n"
+        "class Users(Resource):\n"
+        "    def get(self):\n"
+        "        return []\n"
+        "\n"
+        "api.add_resource(Users, '/users')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) >= 1
+    # Should compose prefix /v1 with /users
+    paths = {c.metadata.get("route_path") for c in contexts}
+    assert "/v1/users" in paths
+
+
+def test_flask_restful_add_resource_too_few_args(tmp_path: Path) -> None:
+    """Flask-RESTful add_resource with only class arg (no path) is skipped."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(TodoList)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 0
+
+
+def test_flask_restful_add_resource_non_name_class(tmp_path: Path) -> None:
+    """add_resource with a non-Name/Attribute first arg (e.g. call) is skipped."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "from flask_restful import Api\n"
+        "\n"
+        "api = Api()\n"
+        "api.add_resource(get_resource_class(), '/todos')\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    contexts = [c for c in result.usage_contexts if c.kind == "call"]
+    assert len(contexts) == 0
+
+
+# ============================================================================
 # FastAPI add_api_route UsageContext Tests
 # ============================================================================
 
@@ -1116,6 +1259,233 @@ def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
     ctx = usage_contexts[0]
     assert ctx["metadata"]["view_name"] == "root"
     assert ctx["metadata"]["methods"] == ["GET"]  # default
+
+
+def test_fastapi_apirouter_prefix_composition_literal(tmp_path: Path) -> None:
+    """APIRouter(prefix='/v2') composes prefix with add_api_route paths."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "v2_endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "def health():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter(tags=['V2'], prefix='/v2')\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+        "v2_router.add_api_route('/health/ready', health, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 2
+    paths = {ctx["metadata"]["route_path"] for ctx in usage_contexts}
+    assert "/v2/models/{model_name}/infer" in paths
+    assert "/v2/health/ready" in paths
+
+
+def test_fastapi_apirouter_prefix_composition_same_file_constant(tmp_path: Path) -> None:
+    """APIRouter(prefix=CONST) resolves same-file string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "V2_PREFIX = '/v2'\n"
+        "\n"
+        "def list_models():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=V2_PREFIX)\n"
+        "router.add_api_route('/models', list_models, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/v2/models"
+
+
+def test_fastapi_apirouter_prefix_composition_imported_constant(tmp_path: Path) -> None:
+    """APIRouter(prefix=IMPORTED_CONST) resolves cross-file string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    # Create the constants module
+    pkg_dir = tmp_path / "myapp"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "constants.py").write_text("V2_ROUTE_PREFIX = '/v2'\n")
+
+    # Create the endpoints file that imports the constant
+    (pkg_dir / "endpoints.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from myapp.constants import V2_ROUTE_PREFIX\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter(prefix=V2_ROUTE_PREFIX)\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Find usage contexts from the endpoints file
+    usage_contexts = [
+        uc.to_dict()
+        for uc in result.usage_contexts
+        if "endpoints.py" in uc.path
+    ]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/v2/models/{model_name}/infer"
+
+
+def test_fastapi_apirouter_prefix_composition_relative_import(tmp_path: Path) -> None:
+    """APIRouter(prefix=CONST) resolves relative import string constants."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    # Create package structure: myapp/constants.py and myapp/api/endpoints.py
+    pkg_dir = tmp_path / "myapp"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "constants.py").write_text("API_PREFIX = '/api/v2'\n")
+
+    api_dir = pkg_dir / "api"
+    api_dir.mkdir()
+    (api_dir / "__init__.py").write_text("")
+    (api_dir / "endpoints.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from ..constants import API_PREFIX\n"
+        "\n"
+        "def handler():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=API_PREFIX)\n"
+        "router.add_api_route('/items', handler, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [
+        uc.to_dict()
+        for uc in result.usage_contexts
+        if "endpoints.py" in uc.path
+    ]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/api/v2/items"
+
+
+def test_fastapi_apirouter_prefix_decorator_route(tmp_path: Path) -> None:
+    """APIRouter prefix composes with @router.get decorator routes."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "v2_router = APIRouter(prefix='/v2')\n"
+        "\n"
+        "@v2_router.get('/models')\n"
+        "def list_models():\n"
+        "    return []\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # The function symbol should have router_prefix in metadata
+    func = next(
+        (s for s in result.symbols if s.name == "list_models"),
+        None,
+    )
+    assert func is not None
+    assert func.meta is not None
+    assert func.meta.get("router_prefix") == "/v2"
+
+
+def test_fastapi_apirouter_prefix_unresolvable_import(tmp_path: Path) -> None:
+    """APIRouter(prefix=IMPORTED_CONST) with unresolvable import leaves paths unchanged."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "from nonexistent.module import MISSING_PREFIX\n"
+        "\n"
+        "def handler():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter(prefix=MISSING_PREFIX)\n"
+        "router.add_api_route('/items', handler, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    # Prefix couldn't be resolved, so path stays unchanged
+    assert ctx["metadata"]["route_path"] == "/items"
+
+
+def test_fastapi_apirouter_prefix_class_method(tmp_path: Path) -> None:
+    """APIRouter prefix is attached to class methods with prefixed router decorators."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "v2_router = APIRouter(prefix='/v2')\n"
+        "\n"
+        "class Endpoints:\n"
+        "    @v2_router.get('/models')\n"
+        "    def list_models(self):\n"
+        "        return []\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    # Find the method symbol
+    method = next(
+        (s for s in result.symbols if s.name == "Endpoints.list_models"),
+        None,
+    )
+    assert method is not None
+    assert method.meta is not None
+    assert method.meta.get("router_prefix") == "/v2"
+
+
+def test_fastapi_apirouter_no_prefix_unchanged(tmp_path: Path) -> None:
+    """APIRouter() without prefix leaves route paths unchanged."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def root():\n"
+        "    pass\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/health', root, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["route_path"] == "/health"
 
 
 # ============================================================================
@@ -4798,3 +5168,199 @@ class TestPythonFunctionReferences:
         ]
         assert len(ref_edges) == 1, f"Expected cross-file reference edge: {ref_edges}"
         assert "handlers.py" in ref_edges[0]["dst"]
+
+
+# ── Constant propagation for dynamic route paths ──
+
+
+def test_django_path_string_concatenation(tmp_path: Path) -> None:
+    """Django path() with string concatenation should resolve the full route path."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'BASE = "/api/v1"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(BASE + '/users/', views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v1/users/", f"Expected '/api/v1/users/', got {route_path!r}"
+
+
+def test_django_path_module_constant(tmp_path: Path) -> None:
+    """Django path() with a module-level constant variable should resolve."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'USERS_ROUTE = "users/"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(USERS_ROUTE, views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/users/", f"Expected '/users/', got {route_path!r}"
+
+
+def test_flask_add_url_rule_string_concatenation(tmp_path: Path) -> None:
+    """Flask add_url_rule() with string concatenation should resolve."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        'PREFIX = "/api"\n'
+        "\n"
+        "def list_users():\n"
+        "    pass\n"
+        "\n"
+        "app.add_url_rule(PREFIX + '/users', 'users', list_users)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    assert len(result.usage_contexts) == 1
+    ctx = result.usage_contexts[0]
+    assert ctx.metadata["route_path"] == "/api/users", (
+        f"Expected '/api/users', got {ctx.metadata['route_path']!r}"
+    )
+
+
+def test_django_path_imported_constant(tmp_path: Path) -> None:
+    """Django path() with an imported constant should resolve via cross-file lookup."""
+    consts_file = tmp_path / "constants.py"
+    consts_file.write_text('API_BASE = "/api/v1"\n')
+
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from constants import API_BASE\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(API_BASE + '/items/', views.item_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v1/items/", f"Expected '/api/v1/items/', got {route_path!r}"
+
+
+def test_django_path_unresolvable_variable_skipped(tmp_path: Path) -> None:
+    """Django path() with an unresolvable variable should skip the route."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(get_dynamic_path(), views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for unresolvable call, got {len(routes)}"
+
+
+def test_django_path_partial_concatenation_skipped(tmp_path: Path) -> None:
+    """Django path() with partially resolvable concatenation should skip."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(get_base() + '/users/', views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for partial resolution, got {len(routes)}"
+
+
+def test_django_path_undefined_name_skipped(tmp_path: Path) -> None:
+    """Django path() with an undefined name variable should skip."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path(UNDEFINED_VAR, views.user_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 0, f"Expected 0 routes for undefined var, got {len(routes)}"
+
+
+def test_django_path_nested_concatenation(tmp_path: Path) -> None:
+    """Django path() with nested concatenation (A + B + C) should resolve."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        'API = "/api"\n'
+        'VERSION = "/v2"\n'
+        "\n"
+        "urlpatterns = [\n"
+        "    path(API + VERSION + '/items/', views.item_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
+    route_path = routes[0].get("meta", {}).get("route_path")
+    assert route_path == "/api/v2/items/", f"Expected '/api/v2/items/', got {route_path!r}"

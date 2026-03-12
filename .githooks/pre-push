@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Pre-push hook: Prevent accidental pushes to protected branches (dev, main)
 #
 # Git invokes pre-push with the remote name and URL as arguments, and feeds

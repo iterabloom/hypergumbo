@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Pre-release validation script for multi-package hypergumbo.
 #
 # Runs all checks required before a release can proceed.
@@ -95,6 +96,8 @@ if [[ "$LOCAL" == "$REMOTE" ]]; then
     pass "Branch up to date with origin"
 elif [[ "$REMOTE" == "none" ]]; then
     warn "No remote tracking branch"
+elif git merge-base --is-ancestor "$REMOTE" "$LOCAL" 2>/dev/null; then
+    warn "Branch is ahead of origin (unpushed commits — expected during prepare-release)"
 else
     fail "Branch not in sync with origin (pull or push needed)"
 fi
@@ -197,7 +200,7 @@ fi
 # Check for secrets
 echo "  Scanning for secrets..."
 if command -v gitleaks &>/dev/null; then
-    if gitleaks detect --source . --no-git --quiet 2>/dev/null; then
+    if gitleaks detect --source . --no-git --no-banner 2>/dev/null; then
         pass "No secrets detected (gitleaks)"
     else
         fail "Potential secrets detected (run 'gitleaks detect' for details)"
@@ -226,10 +229,10 @@ section "4. Code Quality"
 
 # Linting
 echo "  Running Ruff..."
-if ruff check src/ tests/ packages/*/src/ --quiet 2>/dev/null; then
+if ruff check packages/*/src packages/*/tests tests/ --quiet 2>/dev/null; then
     pass "Linting passed (Ruff)"
 else
-    fail "Linting issues detected (run 'ruff check src/ tests/')"
+    fail "Linting issues detected (run 'ruff check packages/*/src packages/*/tests tests/')"
 fi
 
 # Type checking (if configured)
@@ -248,7 +251,7 @@ section "5. Test Suite"
 
 # Run tests with coverage
 echo "  Running pytest with coverage..."
-if pytest --cov=src --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-fail-under=100 --quiet 2>/dev/null; then
+if pytest --full --cov-fail-under=100 --quiet 2>/dev/null; then
     pass "All tests passed with 100% coverage"
 else
     fail "Tests failed or coverage < 100%"
@@ -268,7 +271,8 @@ for pkg in "${PACKAGES[@]}"; do
         echo "    Building $pkg..."
         if pip wheel "$pkg" --no-deps --wheel-dir dist/ --quiet 2>/dev/null; then
             PKG_NAME=$(basename "$pkg")
-            WHEEL=$(ls dist/*"$PKG_NAME"*.whl 2>/dev/null | head -1 || echo "")
+            PKG_NAME_UNDER="${PKG_NAME//-/_}"
+            WHEEL=$(ls dist/*"$PKG_NAME_UNDER"*.whl 2>/dev/null | head -1 || echo "")
             if [[ -n "$WHEEL" ]]; then
                 pass "  Built: $(basename "$WHEEL")"
             else

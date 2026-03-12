@@ -1,0 +1,102 @@
+- op: create  # d3ba
+  at: '2026-03-06T00:47:15Z'  # d3ba
+  by: agent  # d3ba
+  actor: jgstern_agent  # d3ba
+  clock: 1  # d3ba
+  nonce: d3ba  # d3ba
+  data:  # d3ba
+    kind: work_item  # d3ba
+    title: "auto-pr: force-push after rebase creates new CI run that blocks merge"  # d3ba
+    status: todo_hard  # d3ba
+    priority: 2  # d3ba
+    parent:  # d3ba
+    tags:  # d3ba
+    - ci_infrastructure  # d3ba
+    before: []  # d3ba
+    duplicate_of: []  # d3ba
+    not_duplicate_of: []  # d3ba
+    pr_ref:  # d3ba
+    description: "When auto-pr rebases and force-pushes, the new commit SHA triggers a fresh CI run. If a tracker auto-sync also merges around the same time, its pending statuses can block the real PR. Observed with PR #1774: original SHA 53de7318 passed CI, but rebase produced 95ccf0e3 which triggered new CI run 4615 that never completed, blocking merge. The tracker sync PR also triggered ci.yml (not just tracker-ci.yml) because the commit contained both ops and code files. Root cause: rebased commits lose their CI status, and concurrent tracker syncs can interfere."  # d3ba
+    fields: {}  # d3ba
+- op: update  # b95e
+  at: '2026-03-06T00:49:14Z'  # b95e
+  by: agent  # b95e
+  actor: jgstern_agent  # b95e
+  clock: 2  # b95e
+  nonce: b95e  # b95e
+  set:  # b95e
+    status: needs_human_review  # b95e
+- op: discuss  # 6435
+  at: '2026-03-06T00:49:14Z'  # 6435
+  by: agent  # 6435
+  actor: jgstern_agent  # 6435
+  clock: 3  # 6435
+  nonce: '6435'  # 6435
+  message: "Root cause analysis complete. Fix would require changes to scripts/auto-pr (governance file). The fix: auto-pr should not force-push rebased commits to existing PRs when a tracker sync may be in flight. Instead, it should check for TRACKER_SYNC_PENDING before rebasing. Requesting approval to modify scripts/auto-pr."  # 6435
+- op: discuss  # 1ef4
+  at: '2026-03-06T01:01:00Z'  # 1ef4
+  by: human  # 1ef4
+  actor: jgstern  # 1ef4
+  clock: 4  # 1ef4
+  nonce: 1ef4  # 1ef4
+  message: "I am mystified as to why we are still getting tracker ops mixed with code changes in the same PR. I thought we fixed this. Maybe we only fixed it recently or some weird branch changes happened at the wrong time. idk. In any case I approve you making the changes needed to address this item, including to governance files."  # 1ef4
+- op: update  # d29e
+  at: '2026-03-06T01:01:16Z'  # d29e
+  by: human  # d29e
+  actor: jgstern  # d29e
+  clock: 5  # d29e
+  nonce: d29e  # d29e
+  set:  # d29e
+    status: todo_soft  # d29e
+- op: discuss  # 12ad
+  at: '2026-03-06T01:34:07Z'  # 12ad
+  by: agent  # 12ad
+  actor: jgstern_agent  # 12ad
+  clock: 6  # 12ad
+  nonce: 12ad  # 12ad
+  message: "Acknowledged approval. Will investigate the tracker ops + code mixing in PRs and fix the race condition."  # 12ad
+- op: update  # 017c
+  at: '2026-03-06T05:33:22Z'  # 017c
+  by: agent  # 017c
+  actor: jgstern_agent  # 017c
+  clock: 7  # 017c
+  nonce: 017c  # 017c
+  set:  # 017c
+    status: done  # 017c
+- op: discuss  # 6e97
+  at: '2026-03-06T05:33:22Z'  # 6e97
+  by: agent  # 6e97
+  actor: jgstern_agent  # 6e97
+  clock: 8  # 6e97
+  nonce: '6e97'  # 6e97
+  message: "Fixed in PR #1789. Root cause: tracker auto-sync created its branch from HEAD (feature branch), causing the sync PR to include feature branch code. Fix uses git plumbing (read-tree/write-tree/commit-tree) with a temporary index to build the commit on top of origin/dev without checkout."  # 6e97
+- op: update  # 5367
+  at: '2026-03-06T05:59:51Z'  # 5367
+  by: human  # 5367
+  actor: jgstern  # 5367
+  clock: 9  # 5367
+  nonce: '5367'  # 5367
+  set:  # 5367
+    status: todo_soft  # 5367
+- op: discuss  # 4162
+  at: '2026-03-06T05:59:54Z'  # 4162
+  by: human  # 4162
+  actor: jgstern  # 4162
+  clock: 10  # 4162
+  nonce: '4162'  # 4162
+  message: "is this method explained sufficiently in docs and/or inline comments? please check and improve explanation/documentation as needed."  # 4162
+- op: discuss  # e0b7
+  at: '2026-03-06T07:31:48Z'  # e0b7
+  by: agent  # e0b7
+  actor: jgstern_agent  # e0b7
+  clock: 11  # e0b7
+  nonce: e0b7  # e0b7
+  message: "Checked and improved documentation. PR #1813 updated the module docstring in sync.py to accurately describe the plumbing approach: explains read-tree/write-tree/commit-tree with temporary index, and WHY plumbing is critical (editable install means branch checkout affects running Python processes). The do_sync() function docstring was already correct from the implementation PR."  # e0b7
+- op: update  # d811
+  at: '2026-03-06T07:33:07Z'  # d811
+  by: agent  # d811
+  actor: jgstern_agent  # d811
+  clock: 12  # d811
+  nonce: d811  # d811
+  set:  # d811
+    status: done  # d811

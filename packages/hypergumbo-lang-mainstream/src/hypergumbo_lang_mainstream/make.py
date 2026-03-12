@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Makefile analysis pass using tree-sitter-make.
 
 This analyzer uses tree-sitter to parse Makefiles and extract:
@@ -231,8 +232,7 @@ def _process_make_tree(
                                 dst_id = f"make:external:{prereq}:target"
                                 confidence = 0.70
 
-                            edge = Edge(
-                                id=_make_edge_id(symbol_id, dst_id, "depends_on"),
+                            edge = Edge.create(
                                 src=symbol_id,
                                 dst=dst_id,
                                 edge_type="depends_on",

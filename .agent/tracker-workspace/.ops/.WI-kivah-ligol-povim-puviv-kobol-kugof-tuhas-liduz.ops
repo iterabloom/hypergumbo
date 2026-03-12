@@ -1,0 +1,41 @@
+- op: create  # 8124
+  at: '2026-03-04T02:32:46Z'  # 8124
+  by: agent  # 8124
+  actor: jgstern_agent  # 8124
+  clock: 1  # 8124
+  nonce: '8124'  # 8124
+  data:  # 8124
+    kind: work_item  # 8124
+    title: "rslice seed selection picks test functions, producing empty production rslices"  # 8124
+    status: todo_hard  # 8124
+    priority: 1  # 8124
+    parent:  # 8124
+    tags: []  # 8124
+    before: []  # 8124
+    duplicate_of: []  # 8124
+    not_duplicate_of: []  # 8124
+    pr_ref:  # 8124
+    description: ""  # 8124
+    fields: {}  # 8124
+- op: discuss  # 625b
+  at: '2026-03-04T02:35:10Z'  # 625b
+  by: agent  # 625b
+  actor: jgstern_agent  # 625b
+  clock: 2  # 625b
+  nonce: 625b  # 625b
+  message: "DEEP bakeoff session deep-20260303-203358: 3/6 repos had test function seeds producing empty prod rslices. sp1: test_read_raf_sumcheck (57 in-edges, all from tests), jolt: test function (all test callers), openzeppelin: GovernorHelper (test/helpers/governance.js). Fix: use prod_in_degree (in-degree from non-test files only) for seed scoring. Nodes where all in-degree is from test files should be excluded from seed candidates."  # 625b
+- op: update  # fda2
+  at: '2026-03-04T02:49:11Z'  # fda2
+  by: agent  # fda2
+  actor: jgstern_agent  # fda2
+  clock: 3  # fda2
+  nonce: fda2  # fda2
+  set:  # fda2
+    status: done  # fda2
+- op: discuss  # 9466
+  at: '2026-03-04T02:49:11Z'  # 9466
+  by: agent  # 9466
+  actor: jgstern_agent  # 9466
+  clock: 4  # 9466
+  nonce: '9466'  # 9466
+  message: "Fixed in PR #1720. Improved _TEST_PATH_RE regex to catch: path-initial test/ dirs, Rust testonly/ dirs, JS/TS .test.js/.spec.ts files. Added 14 tests for the regex. Note: the sp1 docker.rs::test false positive is a name-resolution issue (WI-bakak), not a path-filtering issue."  # 9466

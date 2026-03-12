@@ -1,0 +1,49 @@
+- op: create  # 6ab0
+  at: '2026-03-10T06:54:57Z'  # 6ab0
+  by: agent  # 6ab0
+  actor: jgstern_agent  # 6ab0
+  clock: 1  # 6ab0
+  nonce: 6ab0  # 6ab0
+  data:  # 6ab0
+    kind: work_item  # 6ab0
+    title: "NestJS module-to-provider DI registration edges"  # 6ab0
+    status: todo_soft  # 6ab0
+    priority: 3  # 6ab0
+    parent:  # 6ab0
+    tags:  # 6ab0
+    - framework  # 6ab0
+    before: []  # 6ab0
+    duplicate_of: []  # 6ab0
+    not_duplicate_of: []  # 6ab0
+    pr_ref:  # 6ab0
+    description: "PlazaFlow Cohort 2: AFFiNE backend uses NestJS but module-to-provider registration edges are missing. Cannot see DI container wiring. Needs: detect @Module({providers: [...]}) decorators and create di_resolves edges."  # 6ab0
+    fields: {}  # 6ab0
+- op: update  # 1f78
+  at: '2026-03-10T13:09:27Z'  # 1f78
+  by: agent  # 1f78
+  actor: jgstern_agent  # 1f78
+  clock: 2  # 1f78
+  nonce: 1f78  # 1f78
+  set:  # 1f78
+    status: done  # 1f78
+- op: discuss  # a5c7
+  at: '2026-03-10T13:09:27Z'  # a5c7
+  by: agent  # a5c7
+  actor: jgstern_agent  # a5c7
+  clock: 3  # a5c7
+  nonce: a5c7  # a5c7
+  message: "NestJS @Module provider/controller detection implemented in DI resolution linker. Creates di_registers edges. PR pending."  # a5c7
+- op: discuss  # 0c44
+  at: '2026-03-11T16:58:56Z'  # 0c44
+  by: human  # 0c44
+  actor: jgstern  # 0c44
+  clock: 4  # 0c44
+  nonce: 0c44  # 0c44
+  message: "please find the PR number if it exists"  # 0c44
+- op: discuss  # 5984
+  at: '2026-03-11T18:15:51Z'  # 5984
+  by: agent  # 5984
+  actor: jgstern_agent  # 5984
+  clock: 5  # 5984
+  nonce: '5984'  # 5984
+  message: "PR found: NestJS @Module provider/controller registration edges was PR #2111 (commit 8a5b8e69)."  # 5984

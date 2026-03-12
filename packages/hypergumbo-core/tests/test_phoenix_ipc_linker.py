@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Phoenix Channels IPC linker.
 
 Tests detection of Phoenix Channel patterns in Elixir code:

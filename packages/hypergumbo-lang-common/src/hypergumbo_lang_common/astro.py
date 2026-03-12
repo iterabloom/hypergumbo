@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Astro component analyzer using tree-sitter.
 
 Astro is a modern web framework for building content-focused websites.

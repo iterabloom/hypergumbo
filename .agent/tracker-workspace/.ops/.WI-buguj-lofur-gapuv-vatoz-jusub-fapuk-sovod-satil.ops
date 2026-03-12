@@ -1,0 +1,56 @@
+- op: create  # 0836
+  at: '2026-03-10T06:56:06Z'  # 0836
+  by: agent  # 0836
+  actor: jgstern_agent  # 0836
+  clock: 1  # 0836
+  nonce: '0836'  # 0836
+  data:  # 0836
+    kind: work_item  # 0836
+    title: "GraphQL schema-to-resolver linking via @Resolver() decorators"  # 0836
+    status: todo_soft  # 0836
+    priority: 3  # 0836
+    parent:  # 0836
+    tags:  # 0836
+    - framework  # 0836
+    before: []  # 0836
+    duplicate_of: []  # 0836
+    not_duplicate_of: []  # 0836
+    pr_ref:  # 0836
+    description: "PlazaFlow Cohort 2: 482 GraphQL schema nodes and 414 resolver entrypoints exist independently with no edges between them. Needs: link @Resolver('TypeName') decorators to their corresponding schema type definitions. Affects AFFiNE and other GraphQL-heavy repos."  # 0836
+    fields: {}  # 0836
+- op: update  # ea1e
+  at: '2026-03-10T13:19:47Z'  # ea1e
+  by: agent  # ea1e
+  actor: jgstern_agent  # ea1e
+  clock: 2  # ea1e
+  nonce: ea1e  # ea1e
+  set:  # ea1e
+    status: done  # ea1e
+- op: discuss  # f638
+  at: '2026-03-10T13:19:47Z'  # f638
+  by: agent  # f638
+  actor: jgstern_agent  # f638
+  clock: 3  # f638
+  nonce: f638  # f638
+  message: "NestJS/TypeGraphQL @Resolver() decorator detection added to graphql_resolver linker. PR pending."  # f638
+- op: discuss  # 40ca
+  at: '2026-03-11T16:59:25Z'  # 40ca
+  by: human  # 40ca
+  actor: jgstern  # 40ca
+  clock: 4  # 40ca
+  nonce: 40ca  # 40ca
+  message: "please find the PR number if it exists"  # 40ca
+- op: discuss  # b638
+  at: '2026-03-11T17:37:08Z'  # b638
+  by: agent  # b638
+  actor: jgstern_agent  # b638
+  clock: 5  # b638
+  nonce: b638  # b638
+  message: "PR found: GraphQL @Resolver() decorator detection was PR #2112 (commit c7cb0a54)."  # b638
+- op: discuss  # f260
+  at: '2026-03-11T18:17:36Z'  # f260
+  by: agent  # f260
+  actor: jgstern_agent  # f260
+  clock: 6  # f260
+  nonce: f260  # f260
+  message: "PR found: GraphQL @Resolver() decorator detection was PR #2112 (commit c7cb0a54)."  # f260

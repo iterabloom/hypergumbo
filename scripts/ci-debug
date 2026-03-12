@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # ------------------------------------------------------------------
 # CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs
 #
@@ -20,8 +21,15 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 detect_api_base
+apply_failover_overrides
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+  echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
+fi
 
 TOKEN="${FORGEJO_TOKEN:-}"
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+  TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
+fi
 if [[ -z "$TOKEN" ]]; then
   echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
   exit 1

@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Lit web component framework patterns
+#
+# Lit (https://lit.dev) is a library for building fast, lightweight web
+# components.  It uses decorators for component registration, reactive
+# properties, and DOM queries.  Lifecycle hooks follow the custom element
+# spec (connectedCallback, etc.) plus Lit-specific additions (firstUpdated,
+# willUpdate, updated).
+#
+# Detection: "lit" in package.json dependencies (see profile.py)
+
+id: lit
+language: javascript
+
+patterns:
+  # ==================== COMPONENT DEFINITION ====================
+
+  # @customElement('my-element') — registers a custom HTML element tag
+  - concept: component
+    decorator: "^customElement$"
+    extract_path: "args[0]"
+
+  # class MyElement extends LitElement — base class inheritance
+  - concept: component
+    base_class: "^(Lit)?Element$"
+
+  # ==================== REACTIVE PROPERTIES ====================
+
+  # @property() — reactive property (triggers re-render on change)
+  - concept: reactive_property
+    decorator: "^property$"
+
+  # @state() — internal reactive state (not exposed as attribute)
+  - concept: internal_state
+    decorator: "^state$"
+
+  # ==================== DOM QUERIES ====================
+
+  # @query('#selector') — cached DOM query
+  - concept: dom_query
+    decorator: "^query$"
+
+  # @queryAll('.selector') — cached querySelectorAll
+  - concept: dom_query
+    decorator: "^queryAll$"
+
+  # @queryAsync('#selector') — async DOM query (resolves after update)
+  - concept: dom_query
+    decorator: "^queryAsync$"
+
+  # ==================== EVENT HANDLING ====================
+
+  # @eventOptions({capture: true}) — configures event listener
+  - concept: event_config
+    decorator: "^eventOptions$"
+
+  # ==================== LIFECYCLE HOOKS ====================
+
+  # connectedCallback — element added to DOM (custom element spec)
+  - concept: lifecycle_hook
+    method_name: "^connectedCallback$"
+    symbol_kind: "^method$"
+
+  # disconnectedCallback — element removed from DOM
+  - concept: lifecycle_hook
+    method_name: "^disconnectedCallback$"
+    symbol_kind: "^method$"
+
+  # firstUpdated — called after first render completes
+  - concept: lifecycle_hook
+    method_name: "^firstUpdated$"
+    symbol_kind: "^method$"
+
+  # updated — called after every render
+  - concept: lifecycle_hook
+    method_name: "^updated$"
+    symbol_kind: "^method$"
+
+  # willUpdate — called before update, can read but not set properties
+  - concept: lifecycle_hook
+    method_name: "^willUpdate$"
+    symbol_kind: "^method$"
+
+  # ==================== RENDER ====================
+
+  # render() — returns the component's template
+  - concept: render_method
+    method_name: "^render$"
+    symbol_kind: "^method$"
+
+  # ==================== UPDATE CONTROL ====================
+
+  # shouldUpdate — controls whether re-render happens
+  - concept: update_control
+    method_name: "^shouldUpdate$"
+    symbol_kind: "^method$"
+
+  # requestUpdate — manually trigger an update
+  - concept: update_control
+    method_name: "^requestUpdate$"
+    symbol_kind: "^method$"
+
+  # performUpdate — override to batch/defer updates
+  - concept: update_control
+    method_name: "^performUpdate$"
+    symbol_kind: "^method$"
+
+linkers: []

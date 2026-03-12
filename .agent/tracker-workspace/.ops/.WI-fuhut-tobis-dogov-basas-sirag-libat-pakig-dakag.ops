@@ -1,0 +1,65 @@
+- op: create  # 4b1c
+  at: '2026-03-04T21:48:46Z'  # 4b1c
+  by: agent  # 4b1c
+  actor: jgstern_agent  # 4b1c
+  clock: 1  # 4b1c
+  nonce: 4b1c  # 4b1c
+  data:  # 4b1c
+    kind: work_item  # 4b1c
+    title: "AGENTS.md: add TaskOutput guidance for background auto-pr"  # 4b1c
+    status: todo_soft  # 4b1c
+    priority: 3  # 4b1c
+    parent:  # 4b1c
+    tags:  # 4b1c
+    - developer_experience  # 4b1c
+    before: []  # 4b1c
+    duplicate_of: []  # 4b1c
+    not_duplicate_of: []  # 4b1c
+    pr_ref:  # 4b1c
+    description: "Document that agents should not block on TaskOutput for auto-pr. Use run_in_background and continue with other work."  # 4b1c
+    fields: {}  # 4b1c
+- op: update  # 3bb9
+  at: '2026-03-06T05:40:52Z'  # 3bb9
+  by: agent  # 3bb9
+  actor: jgstern_agent  # 3bb9
+  clock: 2  # 3bb9
+  nonce: 3bb9  # 3bb9
+  set:  # 3bb9
+    status: needs_human_review  # 3bb9
+- op: discuss  # fb59
+  at: '2026-03-06T05:40:52Z'  # fb59
+  by: agent  # fb59
+  actor: jgstern_agent  # fb59
+  clock: 3  # fb59
+  nonce: fb59  # fb59
+  message: "Governance file (AGENTS.md). Proposed change: add guidance that agents should use run_in_background for auto-pr and not block on TaskOutput. Requesting approval."  # fb59
+- op: discuss  # 50cc
+  at: '2026-03-06T05:50:01Z'  # 50cc
+  by: human  # 50cc
+  actor: jgstern  # 50cc
+  clock: 4  # 50cc
+  nonce: 50cc  # 50cc
+  message: "what's the benefit of this? does it outweigh the risk of starting a new feature branch off of a trunk with the unmerged PR and then having git struggles?"  # 50cc
+- op: discuss  # 237b
+  at: '2026-03-06T07:34:28Z'  # 237b
+  by: agent  # 237b
+  actor: jgstern_agent  # 237b
+  clock: 5  # 237b
+  nonce: 237b  # 237b
+  message: "Good question. The benefit is marginal — it avoids idle blocking while CI runs. But you're right, the risk of starting work off a trunk with unmerged PR is real (git conflicts, divergence). The safer approach is the current one: wait for auto-pr to finish. Recommending we close this as wontfix since the current behavior (block until merge) is safer."  # 237b
+- op: update  # c73b
+  at: '2026-03-06T07:35:21Z'  # c73b
+  by: agent  # c73b
+  actor: jgstern_agent  # c73b
+  clock: 6  # c73b
+  nonce: c73b  # c73b
+  set:  # c73b
+    status: wont_do  # c73b
+- op: lock  # 2bf1
+  at: '2026-03-06T07:59:57Z'  # 2bf1
+  by: human  # 2bf1
+  actor: jgstern  # 2bf1
+  clock: 7  # 2bf1
+  nonce: 2bf1  # 2bf1
+  lock:  # 2bf1
+  - status  # 2bf1

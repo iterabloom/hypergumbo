@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Migration Guide: hypergumbo 1.x to 2.0
 
 This guide covers the changes needed when upgrading from hypergumbo 1.x to 2.0.

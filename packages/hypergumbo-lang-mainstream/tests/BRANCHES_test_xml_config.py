@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for xml_config.py analyzer.
 
 Tests specific branch paths in the XML config analyzer that may not be covered

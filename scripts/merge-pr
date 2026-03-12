@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -euo pipefail
 
 # ------------------------------------------------------------------
@@ -26,6 +27,10 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 detect_api_base
+apply_failover_overrides
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+	echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
+fi
 
 # ------------------------------------------------------------------
 # Parse arguments
@@ -92,6 +97,9 @@ fi
 # Validate credentials
 # ------------------------------------------------------------------
 TOKEN="${FORGEJO_TOKEN:-}"
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+	TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
+fi
 if [[ -z "$TOKEN" ]]; then
 	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
 	exit 1
@@ -232,15 +240,26 @@ fi
 echo ""
 echo "🧹 Cleaning up..."
 
+if [[ -f "$REPO_ROOT/.git/PR_PENDING" ]]; then
+	echo "🏛️  Governance gate cleared."
+fi
 rm -f "$REPO_ROOT/.git/PR_PENDING"
 
 # Try to update local branch
+pull_remote="origin"
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+	pull_remote="selfh"
+fi
 if git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
 	git checkout "$BASE_BRANCH" 2>/dev/null || true
-	git pull origin "$BASE_BRANCH" 2>/dev/null || true
+	git pull "$pull_remote" "$BASE_BRANCH" 2>/dev/null || true
 	git branch -d "$HEAD_BRANCH" 2>/dev/null || true
 fi
 
 echo ""
 echo "✅ PR #$PR_NUM merged successfully!"
-echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+	echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
+else
+	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+fi

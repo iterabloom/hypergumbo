@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for view template linker.
 
 The view template linker creates renders edges from Rails controller action

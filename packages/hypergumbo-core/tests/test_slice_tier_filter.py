@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for slice tier filtering (--max-tier flag).
 
 Tests that BFS traversal respects supply chain tier boundaries,
@@ -293,3 +294,68 @@ class TestSliceHubPruningDepthExempt:
             assert caller.id in result.node_ids, (
                 f"Caller {caller.name} should be in reverse slice"
             )
+
+
+class TestSliceNodeTierPropagation:
+    """Tests for supply_chain tier propagation into slice results (WI-fonif).
+
+    SliceResult.node_tiers maps each node ID to its supply_chain_tier
+    integer, enabling tier-based filtering in downstream tooling without
+    requiring the full behavior map.
+    """
+
+    def test_node_tiers_populated_for_all_nodes(self):
+        """Every node in the slice gets a tier entry."""
+        entry = make_symbol("main", path="src/app.py", supply_chain_tier=1)
+        dep = make_symbol("helper", path="src/utils.py", supply_chain_tier=1)
+        ext = make_symbol("lodash", path="node_modules/lodash.js",
+                          supply_chain_tier=3)
+
+        edges = [make_edge(entry, dep), make_edge(dep, ext)]
+        query = SliceQuery(entrypoint="main", max_hops=5)
+        result = slice_graph([entry, dep, ext], edges, query)
+
+        assert entry.id in result.node_tiers
+        assert dep.id in result.node_tiers
+        assert ext.id in result.node_tiers
+
+    def test_node_tiers_reflect_symbol_tier(self):
+        """Tier values match the supply_chain_tier from the Symbol."""
+        t1 = make_symbol("main", path="src/app.py", supply_chain_tier=1)
+        t2 = make_symbol("internal", path="lib/pkg.py", supply_chain_tier=2)
+        t3 = make_symbol("ext", path="vendor/ext.py", supply_chain_tier=3)
+
+        edges = [make_edge(t1, t2), make_edge(t2, t3)]
+        query = SliceQuery(entrypoint="main", max_hops=5)
+        result = slice_graph([t1, t2, t3], edges, query)
+
+        assert result.node_tiers[t1.id] == 1
+        assert result.node_tiers[t2.id] == 2
+        assert result.node_tiers[t3.id] == 3
+
+    def test_node_tiers_in_to_dict(self):
+        """node_tiers appears in serialized output."""
+        entry = make_symbol("main", path="src/app.py", supply_chain_tier=1)
+        dep = make_symbol("dep", path="vendor/dep.py", supply_chain_tier=3)
+
+        edges = [make_edge(entry, dep)]
+        query = SliceQuery(entrypoint="main", max_hops=5)
+        result = slice_graph([entry, dep], edges, query)
+
+        d = result.to_dict()
+        assert "node_tiers" in d
+        assert d["node_tiers"][entry.id] == 1
+        assert d["node_tiers"][dep.id] == 3
+
+    def test_node_tiers_empty_when_no_nodes(self):
+        """Empty slice has empty node_tiers."""
+        # Entry excluded by test filter → empty slice
+        entry = make_symbol("test_main", path="tests/test_main.py",
+                            supply_chain_tier=1)
+        query = SliceQuery(entrypoint="test_main", exclude_tests=True)
+        result = slice_graph([entry], [], query)
+
+        assert result.node_tiers == {}
+        # to_dict should omit empty node_tiers
+        d = result.to_dict()
+        assert "node_tiers" not in d

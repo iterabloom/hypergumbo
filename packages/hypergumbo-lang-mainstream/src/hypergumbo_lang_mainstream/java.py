@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Java analysis pass using tree-sitter-java.
 
 This analyzer uses tree-sitter-java to parse Java files and extract:
@@ -266,6 +267,70 @@ def _extract_java_return_type_name(signature: str | None) -> str | None:
     if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
         return ret_part
     return None
+
+
+def _infer_return_type_from_body(
+    method_node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Infer concrete return type from 'return new X(...)' in a method body.
+
+    When a Java method declares return type Object but always returns a specific
+    type via 'return new TokenEndpoint(...)', infer 'TokenEndpoint' as the
+    concrete type.  This enables JAX-RS subresource locator path chaining for
+    methods like keycloak's OIDCLoginProtocolService.token() which returns
+    Object but constructs a TokenEndpoint.
+
+    Only infers when ALL return statements in the method body return the same
+    concrete type via 'new X(...)'.  Returns None if there are multiple
+    different types or non-new returns.
+    """
+    body = method_node.child_by_field_name("body")
+    if body is None:
+        return None
+
+    inferred_type: str | None = None
+    for child in _walk_tree(body):
+        if child.type != "return_statement":
+            continue
+        # return_statement children: "return" keyword, then the expression
+        expr = None
+        for rc in child.children:
+            if rc.type not in ("return", ";"):
+                expr = rc
+                break
+        if expr is None:
+            # Bare "return;" — can't infer
+            return None
+        if expr.type == "object_creation_expression":
+            # "new X(...)" — extract X
+            type_node = expr.child_by_field_name("type")
+            if type_node is None:  # pragma: no cover
+                return None
+            type_name = _node_text(type_node, source)
+            if inferred_type is None:
+                inferred_type = type_name
+            elif inferred_type != type_name:
+                # Multiple different types — can't infer a single one
+                return None
+        else:
+            # Non-new return (e.g., return someVariable;) — can't infer
+            return None
+
+    return inferred_type
+
+
+def _walk_tree(node: "tree_sitter.Node"):
+    """Yield all descendant nodes (depth-first) without recursion.
+
+    Used by _infer_return_type_from_body to find return statements in a
+    method body without deep recursion on large ASTs.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        # Reverse children so left-to-right order is preserved
+        stack.extend(reversed(current.children))
 
 
 def _extract_param_types(
@@ -550,10 +615,7 @@ def _extract_annotation_info(
             name = _node_text(child, source)
         elif child.type == "annotation_argument_list":
             for arg_child in child.children:
-                if arg_child.type == "string_literal":
-                    # Simple string argument: @Annotation("value")
-                    args.append(_java_value_to_python(arg_child, source))
-                elif arg_child.type == "element_value_pair":
+                if arg_child.type == "element_value_pair":
                     # Named argument: @Annotation(key = value)
                     key = None
                     value = None
@@ -567,6 +629,10 @@ def _extract_annotation_info(
                                 value = _java_value_to_python(pair_child, source)
                     if key and value is not None:
                         kwargs[key] = value
+                elif arg_child.type not in ("(", ")", ","):
+                    # Positional argument: @Annotation("value"),
+                    # @Annotation(CONSTANT), @Annotation("a" + "b")
+                    args.append(_java_value_to_python(arg_child, source))
 
     return {"name": name, "args": args, "kwargs": kwargs}
 
@@ -806,6 +872,15 @@ def _extract_symbols(
                         meta = {}
                     meta["return_type"] = ret_type_name
 
+                    # When return type is Object, infer concrete type from
+                    # "return new X(...)" in the method body.  Common in JAX-RS
+                    # subresource locators (keycloak: token() returns Object but
+                    # body is "return new TokenEndpoint(...)").
+                    if ret_type_name == "Object":
+                        inferred = _infer_return_type_from_body(node, source)
+                        if inferred:
+                            meta["inferred_return_type"] = inferred
+
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
@@ -913,6 +988,7 @@ def _is_import_class_mismatch(
     type_name: str,
     resolved_sym: "Symbol",
     imports: dict[str, str],
+    caller_file: str = "",
 ) -> bool:
     """Check if a resolved class symbol conflicts with the file's imports.
 
@@ -921,12 +997,30 @@ def _is_import_class_mismatch(
     the developer intended the external library class. This prevents false
     edges that inflate centrality of inner/nested classes (INV-finak).
 
-    Returns True when the edge should be **skipped** (import points elsewhere).
+    Also rejects nested class resolution from bare names when the caller is
+    outside the outer class's file. In Java, ``new Properties()`` cannot refer
+    to ``Log4jConfiguration.Properties`` from outside Log4jConfiguration —
+    you'd need the qualified name ``new Log4jConfiguration.Properties()``.
+    This prevents false edges from JDK class name collisions (WI-bunul).
 
-    The check: if the file has an import for ``type_name`` whose FQN path
-    segments do NOT match the resolved symbol's file path, the import refers
-    to a different class.
+    Returns True when the edge should be **skipped** (import points elsewhere).
     """
+    # Check 1: Nested class guard — if the resolved symbol is a nested class
+    # (name contains "." AND kind is class/interface/enum) but the lookup used
+    # a bare name, and the caller is not in the same file as the nested class,
+    # it's almost certainly wrong. In Java, bare inner class names are only
+    # valid inside the outer class.
+    resolved_name = resolved_sym.name
+    if (
+        "." in resolved_name
+        and "." not in type_name
+        and resolved_sym.kind in ("class", "interface", "enum")
+    ):
+        resolved_path = resolved_sym.path or ""
+        if caller_file != resolved_path:
+            return True  # Bare name can't refer to nested class from outside
+
+    # Check 2: Explicit import mismatch (original INV-finak check)
     if type_name not in imports:
         return False  # No import → can't disprove; allow the edge
 
@@ -1033,6 +1127,8 @@ def _extract_edges(
     class_by_name: dict[str, list[Symbol]] | None = None,
     sym_file_imports: dict[str, dict[str, str]] | None = None,
     method_resolver: ListNameResolver | None = None,
+    class_parents: dict[str, str] | None = None,
+    class_fields: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1045,6 +1141,7 @@ def _extract_edges(
     - Qualified method calls: ClassName.method()
     - Variable method calls: variable.method() (with type inference)
     - Object instantiation: new ClassName()
+    - Inherited method calls: walks extends chain when direct lookup fails
 
     Type inference tracks types from:
     - Constructor calls: stub = new Client() -> stub has type Client
@@ -1057,8 +1154,17 @@ def _extract_edges(
     if class_resolver is None:
         class_resolver = NameResolver(class_symbols)
     edges: list[Edge] = []
+    _caller_path = str(file_path)
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
+    # Track class inheritance: child_class_name -> parent_class_name
+    # Uses global map if provided (for cross-file inheritance), plus
+    # augmented with per-file extends relationships discovered during traversal.
+    if class_parents is None:
+        class_parents = {}
+    else:
+        # Copy to avoid mutating the shared dict
+        class_parents = dict(class_parents)
 
     for node in iter_tree(tree.root_node):
         # Check for extends (superclass) in class declarations
@@ -1098,6 +1204,8 @@ def _extract_edges(
                                             evidence_type="ast_extends",
                                         )
                                         edges.append(edge)
+                                        # Record parent for inherited method resolution
+                                        class_parents[current_class] = dst_sym.name
 
                     # Check for implements (interfaces)
                     if child.type == "super_interfaces":
@@ -1199,7 +1307,7 @@ def _extract_edges(
                     if receiver_name is None or receiver_name == "this":
                         if current_class:
                             candidate = f"{current_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found:
                                 # Scale confidence by resolver's confidence multiplier
                                 edge_confidence = 0.95 * lookup_result.confidence
@@ -1216,11 +1324,38 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
                                 resolved_sym = lookup_result.symbol
+                            else:
+                                # Walk extends chain to find inherited method
+                                parent = class_parents.get(current_class)
+                                depth = 0
+                                while parent and depth < 10:
+                                    candidate = f"{parent}.{method_name}"
+                                    lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
+                                    if lookup_result.found:
+                                        edge_confidence = (
+                                            0.90 * lookup_result.confidence
+                                        )
+                                        edge = Edge.create(
+                                            src=current_method.id,
+                                            dst=lookup_result.symbol.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            confidence=edge_confidence,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                            evidence_type="ast_call_inherited",
+                                        )
+                                        edges.append(edge)
+                                        edge_added = True
+                                        resolved_sym = lookup_result.symbol
+                                        break
+                                    parent = class_parents.get(parent)
+                                    depth += 1
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
                         candidate = f"{receiver_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate)
+                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         if lookup_result.found:
                             edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
@@ -1241,9 +1376,10 @@ def _extract_edges(
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate)
+                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         if lookup_result.found and not _is_import_class_mismatch(
-                            type_class_name, lookup_result.symbol, imports
+                            type_class_name, lookup_result.symbol, imports,
+                            caller_file=str(file_path),
                         ):
                             edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
@@ -1279,6 +1415,51 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
 
+                    # Case 3.5: inherited field.method() — receiver is a
+                    # field declared in a parent class, not in this file's
+                    # var_types.  Walk the extends chain to find the field
+                    # type, then resolve the method on that type.
+                    if (
+                        not edge_added
+                        and receiver_name
+                        and receiver_name not in var_types
+                        and receiver_name not in class_symbols
+                        and class_fields
+                        and current_class
+                    ):
+                        parent = class_parents.get(current_class)
+                        depth = 0
+                        while parent and depth < 10:
+                            parent_fields = class_fields.get(parent)
+                            if parent_fields and receiver_name in parent_fields:
+                                field_type = parent_fields[receiver_name]
+                                candidate = f"{field_type}.{method_name}"
+                                lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
+                                if (
+                                    lookup_result.found
+                                    and not _is_import_class_mismatch(
+                                        field_type, lookup_result.symbol,
+                                        imports,
+                                        caller_file=str(file_path),
+                                    )
+                                ):
+                                    edge = Edge.create(
+                                        src=current_method.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_call_inherited_field",
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
+                                    resolved_sym = lookup_result.symbol
+                                break
+                            parent = class_parents.get(parent)
+                            depth += 1
+
                     # Return type inference: if the resolved method has
                     # a return type and the call is in a variable assignment,
                     # track the variable's type from that return type.
@@ -1306,7 +1487,7 @@ def _extract_edges(
                             full_class = imports[receiver_name].split(".")[-1]
                             candidates.insert(0, f"{full_class}.{method_name}")
                         for candidate in candidates:
-                            lookup_result = resolver.lookup(candidate)
+                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edge = Edge.create(
                                     src=current_method.id,
@@ -1331,11 +1512,14 @@ def _extract_edges(
                 if child.type == "type_identifier":
                     type_name = _node_text(child, source)
                     if current_method:
-                        lookup_result = class_resolver.lookup(type_name)
+                        lookup_result = class_resolver.lookup(type_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             # INV-finak: skip edge if file imports an external
                             # class with the same simple name (e.g., Logger)
-                            if _is_import_class_mismatch(type_name, lookup_result.symbol, imports):
+                            if _is_import_class_mismatch(
+                                type_name, lookup_result.symbol, imports,
+                                caller_file=str(file_path),
+                            ):
                                 pass  # Import points elsewhere; skip false edge
                             else:
                                 edge = Edge.create(
@@ -1389,12 +1573,15 @@ def _extract_edges(
 
                 if class_name and method_name == "new":
                     # Constructor reference: try to resolve the class
-                    lookup_result = class_resolver.lookup(class_name)
+                    lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
                     if (
                         lookup_result.found
                         and lookup_result.symbol is not None
                         # INV-finak: skip if import points elsewhere
-                        and not _is_import_class_mismatch(class_name, lookup_result.symbol, imports)
+                        and not _is_import_class_mismatch(
+                            class_name, lookup_result.symbol, imports,
+                            caller_file=str(file_path),
+                        )
                     ):
                         edge = Edge.create(
                             src=current_method.id,
@@ -1418,7 +1605,7 @@ def _extract_edges(
                     else:
                         target_name = f"{class_name}.{method_name}"
 
-                    lookup_result = resolver.lookup(target_name)
+                    lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_method.id,
@@ -1433,6 +1620,33 @@ def _extract_edges(
                         edges.append(edge)
 
     return edges
+
+
+# Standard Java/JDK annotations that carry no architectural information.
+# Suppressed from unresolved decorated_by edges to avoid creating dangling
+# edges to nonexistent nodes (INV-miniz / WI-divob).
+_STANDARD_JAVA_ANNOTATIONS = frozenset({
+    # java.lang
+    "Override", "Deprecated", "SuppressWarnings", "SafeVarargs",
+    "FunctionalInterface",
+    # java.lang.annotation
+    "Retention", "Target", "Documented", "Inherited", "Repeatable",
+    # javax.annotation / jakarta.annotation
+    "Nullable", "Nonnull", "NonNull", "CheckForNull",
+    "Generated", "PostConstruct", "PreDestroy", "Resource",
+    # Common testing annotations (never architectural)
+    "Test", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+    "ParameterizedTest", "RepeatedTest", "DisplayName", "Disabled",
+    "Nested", "Tag", "ExtendWith", "RunWith",
+    # Common quality/nullability annotations
+    "NotNull", "NotEmpty", "NotBlank", "Valid",
+    "VisibleForTesting", "Beta", "Internal",
+    # Lombok (code generation, not architecture)
+    "Getter", "Setter", "Data", "Builder", "NoArgsConstructor",
+    "AllArgsConstructor", "RequiredArgsConstructor", "Value",
+    "ToString", "EqualsAndHashCode", "Slf4j", "Log", "Log4j",
+    "Log4j2", "CommonsLog",
+})
 
 
 def _extract_annotation_edges(
@@ -1490,9 +1704,12 @@ def _extract_annotation_edges(
                     evidence_type="ast_annotation",
                 )
                 edges.append(edge)
-            else:
-                # Emit unresolved edge for annotations we can't resolve
-                # This helps track framework annotations like @Service
+            elif dec_name not in _STANDARD_JAVA_ANNOTATIONS:
+                # Only emit unresolved edges for non-standard annotations
+                # (likely project or framework annotations like @Service).
+                # Standard annotations (@Override, @Deprecated, etc.) carry
+                # no architectural information and would create dangling edges
+                # to nonexistent nodes.
                 dst_id = f"java:unresolved:0-0:{dec_name}:unresolved"
                 edge = Edge.create(
                     src=sym.id,
@@ -1646,7 +1863,69 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                 if sym.path == str(pf.path):
                     sym_file_imports[sym.id] = file_imports
 
+    # Build global class inheritance map for inherited method resolution.
+    # Maps child class name -> parent class name (resolved to symbol name).
+    global_class_parents: dict[str, str] = {}
+    # Build global class field types for inherited field resolution.
+    # Maps class_name -> {field_name: type_name}
+    global_class_fields: dict[str, dict[str, str]] = {}
+    for pf in parsed_files:
+        for node in iter_tree(pf.tree.root_node):
+            if node.type == "class_declaration":
+                name = _get_class_name(node, pf.source)
+                if not name:  # pragma: no cover
+                    continue
+                ancestors = _get_class_ancestors(node, pf.source)
+                current = ".".join(ancestors + [name]) if ancestors else name
+                for child in node.children:
+                    if child.type == "superclass":
+                        for subchild in child.children:
+                            if subchild.type == "type_identifier":
+                                parent_name = _node_text(subchild, pf.source)
+                                # Resolve parent to its symbol name
+                                dst_sym = None
+                                src_sym = class_symbols.get(current)
+                                if (
+                                    src_sym is not None
+                                    and class_by_name is not None
+                                    and sym_file_imports is not None
+                                ):
+                                    dst_sym = _resolve_base_class_java(
+                                        parent_name, src_sym,
+                                        class_by_name, sym_file_imports,
+                                    )
+                                if dst_sym is None and parent_name in class_symbols:  # pragma: no cover
+                                    dst_sym = class_symbols[parent_name]
+                                if dst_sym is not None:
+                                    global_class_parents[current] = dst_sym.name
+                                break
+            # Collect field declarations per class
+            elif node.type == "field_declaration":
+                cls_ancestors = _get_class_ancestors(node, pf.source)
+                if cls_ancestors:
+                    cls_name = ".".join(cls_ancestors)
+                    type_node = None
+                    for child in node.children:
+                        if child.type == "type_identifier":
+                            type_node = child
+                        elif (
+                            child.type == "variable_declarator"
+                            and type_node is not None
+                        ):
+                            for vc in child.children:
+                                if vc.type == "identifier":
+                                    field_name = _node_text(vc, pf.source)
+                                    type_name = _node_text(type_node, pf.source)
+                                    if cls_name not in global_class_fields:
+                                        global_class_fields[cls_name] = {}
+                                    global_class_fields[cls_name][field_name] = type_name
+                                    break
+
     # Pass 2: Extract edges using global symbol registry
+    # Build resolvers ONCE and share across all files — the registry is frozen
+    # after Pass 1, so the suffix index only needs to be built once.
+    resolver = NameResolver(global_symbols)
+    class_resolver = NameResolver(class_symbols)
     method_resolver = ListNameResolver(
         global_methods, ambiguity_threshold=3,
     )
@@ -1655,10 +1934,14 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
             global_symbols, class_symbols, pf.imports or {},
+            resolver=resolver,
+            class_resolver=class_resolver,
             symbol_by_position=symbol_by_position,
             class_by_name=class_by_name,
             sym_file_imports=sym_file_imports,
             method_resolver=method_resolver,
+            class_parents=global_class_parents,
+            class_fields=global_class_fields,
         )
         all_edges.extend(edges)
 

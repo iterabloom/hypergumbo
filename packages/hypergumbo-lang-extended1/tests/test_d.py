@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for D language analysis pass.
 
 Tests verify that the D analyzer correctly extracts:

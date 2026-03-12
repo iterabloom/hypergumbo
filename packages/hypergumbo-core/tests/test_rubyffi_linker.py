@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Ruby FFI linker (Ruby-C/C++ interop).
 
 The Ruby FFI linker creates ffi_bridge edges between Ruby code that calls

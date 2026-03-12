@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 1. Portable Agent Instructions
 
 Date: 2025-12-20

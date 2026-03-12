@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Python AST analysis pass.
 
 This analyzer uses Python's built-in ast module to extract symbols and
@@ -264,7 +265,9 @@ DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 # FastAPI's add_api_route() registers routes programmatically instead of
 # using @router.get() decorators.  Both take a path string as the first
 # argument and a handler function as a subsequent argument.
-FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route"}
+# Flask-RESTful's add_resource() takes the resource class as the first
+# argument and URL path(s) as subsequent arguments.
+FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route", "add_resource"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -610,6 +613,9 @@ def _extract_django_usage_contexts(
     tree: ast.Module,
     file_path: str,
     symbol_by_name: dict[str, Symbol],
+    local_constants: dict[str, str] | None = None,
+    imports: dict[str, tuple[str, str]] | None = None,
+    repo_root: Path | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Django URL patterns.
 
@@ -617,10 +623,17 @@ def _extract_django_usage_contexts(
     in path(), re_path(), url() calls. These are matched against YAML
     patterns in the enrichment phase.
 
+    When ``local_constants`` and ``imports`` are provided, resolves
+    dynamic route paths built from string concatenation or module-level
+    constants (e.g., ``path(BASE + "/users/", view)``).
+
     Args:
         tree: The parsed AST module
         file_path: Path to the source file
         symbol_by_name: Lookup table for symbols defined in this file
+        local_constants: Module-level string constant assignments
+        imports: Imported names for cross-file constant resolution
+        repo_root: Repository root for cross-file constant resolution
 
     Returns:
         List of UsageContext records for Django URL patterns.
@@ -646,14 +659,16 @@ def _extract_django_usage_contexts(
             continue
 
         first_arg = node.args[0]
-        route_path = None
-        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            route_path = first_arg.value
-        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
-            continue  # Skip dynamic patterns (f-strings)
-
-        if route_path is None:  # pragma: no cover - unsupported pattern type
-            continue
+        route_path = _resolve_string_expr(
+            first_arg,
+            local_constants or {},
+            imports,
+            repo_root,
+        )
+        if route_path is None:
+            if isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+                continue  # Skip dynamic patterns (f-strings)
+            continue  # pragma: no cover - unsupported pattern type
 
         # Extract view reference from second argument
         view_ref = None
@@ -735,10 +750,242 @@ def _extract_django_usage_contexts(
     return contexts
 
 
+def _collect_module_constants(
+    tree: ast.Module,
+    repo_root: Path | None = None,
+    file_path: Path | None = None,
+) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    """Collect module-level string constants and import mappings from an AST.
+
+    Scans top-level assignments of the form ``NAME = "literal"`` and
+    ``from mod import NAME`` to build lookup tables for constant propagation.
+    Relative imports are resolved using ``file_path`` and ``repo_root``.
+
+    Used by ``_scan_router_prefixes`` for APIRouter prefix resolution and
+    by route path extraction for dynamic route resolution (e.g.,
+    ``path(BASE + "/users/", view)``).
+
+    Args:
+        tree: The parsed AST module.
+        repo_root: Repository root for resolving relative imports.
+        file_path: Path to the source file (for relative import resolution).
+
+    Returns:
+        Tuple of (local_constants, imports) where local_constants maps
+        variable names to string values and imports maps local names to
+        (module_path, original_name) tuples.
+    """
+    local_constants: dict[str, str] = {}
+    for node in ast.iter_child_nodes(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            local_constants[node.targets[0].id] = node.value.value
+
+    imports: dict[str, tuple[str, str]] = {}
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            module_path = node.module
+            if node.level > 0 and file_path is not None:
+                pkg_base = file_path.parent
+                for _ in range(node.level - 1):
+                    pkg_base = pkg_base.parent
+                resolved = pkg_base / Path(*node.module.split("."))
+                if repo_root is not None:
+                    try:
+                        rel = resolved.relative_to(repo_root)
+                        module_path = ".".join(rel.parts)
+                    except ValueError:  # pragma: no cover
+                        pass
+            for alias in node.names:
+                local_name = alias.asname or alias.name
+                imports[local_name] = (module_path, alias.name)
+
+    return local_constants, imports
+
+
+def _scan_router_prefixes(
+    tree: ast.Module,
+    repo_root: Path | None,
+    file_path: Path | None = None,
+) -> dict[str, str]:
+    """Scan for FastAPI APIRouter(prefix=X) assignments and resolve prefixes.
+
+    Finds assignments like ``v2_router = APIRouter(prefix="/v2")`` and builds
+    a mapping from variable name to prefix string.  Handles three cases:
+
+    1. Literal string: ``APIRouter(prefix="/v2")``
+    2. Same-file constant: ``PREFIX = "/v2"; APIRouter(prefix=PREFIX)``
+    3. Imported constant: ``from pkg.constants import PREFIX; APIRouter(prefix=PREFIX)``
+       (requires ``repo_root`` and ``file_path`` to resolve relative imports)
+
+    Args:
+        tree: The parsed AST module.
+        repo_root: Repository root for finding imported modules.
+        file_path: Path to the source file (for resolving relative imports).
+
+    Returns:
+        Dict mapping variable name (e.g. "v2_router") to prefix string (e.g. "/v2").
+    """
+    local_constants, imports = _collect_module_constants(tree, repo_root, file_path)
+
+    prefixes: dict[str, str] = {}
+
+    for node in ast.walk(tree):
+        # Match: var = APIRouter(prefix=X)
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
+        # Check the call is APIRouter(...)
+        call = node.value
+        func_name = None
+        if isinstance(call.func, ast.Name):
+            func_name = call.func.id
+        elif isinstance(call.func, ast.Attribute):
+            func_name = call.func.attr
+        if func_name != "APIRouter":
+            continue
+
+        # Extract prefix= keyword argument
+        prefix_value: str | None = None
+        for kw in call.keywords:
+            if kw.arg != "prefix":
+                continue
+            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                # Case 1: literal string
+                prefix_value = kw.value.value
+            elif isinstance(kw.value, ast.Name):
+                const_name = kw.value.id
+                # Case 2: same-file constant
+                if const_name in local_constants:
+                    prefix_value = local_constants[const_name]
+                # Case 3: imported constant
+                elif const_name in imports and repo_root is not None:
+                    prefix_value = _resolve_imported_string_constant(
+                        imports[const_name], repo_root
+                    )
+            break
+
+        if prefix_value is not None:
+            var_name = node.targets[0].id
+            prefixes[var_name] = prefix_value
+
+    return prefixes
+
+
+def _resolve_imported_string_constant(
+    import_info: tuple[str, str],
+    repo_root: Path,
+) -> str | None:
+    """Resolve a cross-file imported string constant.
+
+    Given an import like ``from pkg.constants import V2_PREFIX``, finds the
+    source file and extracts the value of ``V2_PREFIX = "/v2"``.
+
+    Only resolves simple module-level string literal assignments to keep
+    the implementation lightweight and predictable.
+
+    Args:
+        import_info: Tuple of (module_path, original_name) from the import.
+        repo_root: Repository root for finding source files.
+
+    Returns:
+        The string value if found, or None.
+    """
+    module_path, original_name = import_info
+    # Convert dotted module path to file path candidates
+    parts = module_path.split(".")
+    # Try both direct and src-layout paths
+    candidates = [
+        repo_root / Path(*parts).with_suffix(".py"),
+        repo_root / "src" / Path(*parts).with_suffix(".py"),
+    ]
+    # Also try as package/__init__.py
+    candidates.append(repo_root / Path(*parts) / "__init__.py")
+    candidates.append(repo_root / "src" / Path(*parts) / "__init__.py")
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            source = candidate.read_text()
+            mod = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover
+            continue
+        for node in ast.iter_child_nodes(mod):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == original_name
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                return node.value.value
+    return None
+
+
+def _resolve_string_expr(
+    node: ast.expr,
+    local_constants: dict[str, str],
+    imports: dict[str, tuple[str, str]] | None = None,
+    repo_root: Path | None = None,
+) -> str | None:
+    """Resolve a string expression from an AST node via constant propagation.
+
+    Handles three patterns that commonly appear in route path arguments:
+
+    1. Literal strings: ``"/users"`` → ``"/users"``
+    2. Name references: ``BASE_URL`` → value from ``local_constants`` or imports
+    3. String concatenation: ``BASE + "/users"`` → recursive resolution
+
+    Recursion is bounded by Python's AST depth (no cycles possible in a
+    single expression).  Only resolves module-level string literal
+    assignments; dynamic or runtime-computed values return None.
+
+    Args:
+        node: The AST expression node to resolve.
+        local_constants: Module-level ``NAME = "literal"`` assignments.
+        imports: Imported names mapping ``local_name → (module, original)``.
+        repo_root: Repository root for cross-file constant resolution.
+
+    Returns:
+        The resolved string value, or None if the expression cannot be
+        statically resolved.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        name = node.id
+        if name in local_constants:
+            return local_constants[name]
+        if imports and name in imports and repo_root is not None:
+            return _resolve_imported_string_constant(imports[name], repo_root)
+        return None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _resolve_string_expr(node.left, local_constants, imports, repo_root)
+        right = _resolve_string_expr(node.right, local_constants, imports, repo_root)
+        if left is not None and right is not None:
+            return left + right
+        return None
+    return None
+
+
 def _extract_flask_usage_contexts(
     tree: ast.Module,
     file_path: str,
     symbol_by_name: dict[str, Symbol],
+    router_prefixes: dict[str, str] | None = None,
+    local_constants: dict[str, str] | None = None,
+    imports: dict[str, tuple[str, str]] | None = None,
+    repo_root: Path | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
@@ -753,15 +1000,29 @@ def _extract_flask_usage_contexts(
     - router.add_api_route('/path', handler, methods=['GET'])
     - router.add_api_route('/path', handler, response_model=Model)
 
+    When ``router_prefixes`` is provided (from ``_scan_router_prefixes``),
+    routes registered on a prefixed APIRouter have the prefix composed with
+    the route path.
+
+    When ``local_constants`` and ``imports`` are provided, resolves
+    dynamic route paths built from string concatenation or module-level
+    constants (e.g., ``add_url_rule(PREFIX + '/users', ...)``).
+
     Args:
         tree: The parsed AST module
         file_path: Path to the source file
         symbol_by_name: Lookup table for symbols defined in this file
+        router_prefixes: Optional mapping of router variable names to their
+            APIRouter prefix strings.
+        local_constants: Module-level string constant assignments
+        imports: Imported names for cross-file constant resolution
+        repo_root: Repository root for cross-file constant resolution
 
     Returns:
         List of UsageContext records for Flask URL patterns.
     """
     contexts: list[UsageContext] = []
+    _prefixes = router_prefixes or {}
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -778,19 +1039,69 @@ def _extract_flask_usage_contexts(
         if func_name not in FLASK_URL_FUNCTIONS:
             continue
 
+        # Flask-RESTful add_resource: first arg is class, second+ is path(s)
+        # add_resource(TodoList, '/todos', '/todos/')
+        if func_name == "add_resource":
+            if len(node.args) < 2:
+                continue
+            # First arg is the resource class
+            resource_arg = node.args[0]
+            resource_name = None
+            if isinstance(resource_arg, ast.Name):
+                resource_name = resource_arg.id
+            elif isinstance(resource_arg, ast.Attribute):
+                resource_name = resource_arg.attr
+            if resource_name is None:
+                continue
+            resource_ref = None
+            if resource_name in symbol_by_name:
+                resource_ref = symbol_by_name[resource_name].id
+            # Second arg onwards are URL paths
+            for path_arg in node.args[1:]:
+                if isinstance(path_arg, ast.Constant) and isinstance(path_arg.value, str):
+                    rpath = path_arg.value
+                    normalized = rpath if rpath.startswith("/") else f"/{rpath}"
+                    if receiver_name and receiver_name in _prefixes:
+                        prefix = _prefixes[receiver_name].rstrip("/")
+                        normalized = prefix + normalized
+                    span = Span(
+                        start_line=node.lineno,
+                        end_line=getattr(node, "end_lineno", node.lineno),
+                        start_col=getattr(node, "col_offset", 0),
+                        end_col=getattr(node, "end_col_offset", 0),
+                    )
+                    call_name = f"{receiver_name}.{func_name}" if receiver_name else func_name
+                    ctx = UsageContext.create(
+                        kind="call",
+                        context_name=call_name,
+                        position="resource_class",
+                        path=file_path,
+                        span=span,
+                        symbol_ref=resource_ref,
+                        metadata={
+                            "route_path": normalized,
+                            "view_name": resource_name,
+                            "args": [resource_name, rpath],
+                        },
+                    )
+                    contexts.append(ctx)
+            continue
+
         # Extract the URL pattern from the first argument
         if not node.args:  # pragma: no cover
             continue
 
         first_arg = node.args[0]
-        route_path = None
-        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            route_path = first_arg.value
-        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
-            continue  # Skip dynamic patterns (f-strings)
-
-        if route_path is None:  # pragma: no cover - unsupported pattern type
-            continue
+        route_path = _resolve_string_expr(
+            first_arg,
+            local_constants or {},
+            imports,
+            repo_root,
+        )
+        if route_path is None:
+            if isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
+                continue  # Skip dynamic patterns (f-strings)
+            continue  # pragma: no cover - unsupported pattern type
 
         # Extract view function - can be:
         # 1. Third positional arg: add_url_rule('/path', 'name', view_func)
@@ -852,8 +1163,11 @@ def _extract_flask_usage_contexts(
             else:  # pragma: no cover
                 args_values.append("<expr>")
 
-        # Normalize route path
+        # Normalize route path and compose with APIRouter prefix if present
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        if receiver_name and receiver_name in _prefixes:
+            prefix = _prefixes[receiver_name].rstrip("/")
+            normalized_path = prefix + normalized_path
 
         span = Span(
             start_line=node.lineno,
@@ -1446,6 +1760,9 @@ def _extract_file_analysis(
     # Key: (start_line, name) tuple
     processed_functions: set[tuple[int, str]] = set()
 
+    # Scan for APIRouter prefix assignments (for route path composition)
+    router_prefixes = _scan_router_prefixes(tree, repo_root, py_file)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -1536,6 +1853,16 @@ def _extract_file_analysis(
                         method_meta["decorators"] = [
                             _extract_decorator_info(dec) for dec in item.decorator_list
                         ]
+                        # Check if any decorator references a prefixed APIRouter
+                        if router_prefixes:
+                            for dec_info in method_meta["decorators"]:
+                                dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                                dot_idx = dec_name.find(".")
+                                if dot_idx > 0:
+                                    receiver = dec_name[:dot_idx]
+                                    if receiver in router_prefixes:
+                                        method_meta["router_prefix"] = router_prefixes[receiver]
+                                        break
 
                     # Extract structured parameters (excluding self/cls)
                     params = _extract_parameters_info(item.args, exclude_self=True)
@@ -1603,6 +1930,16 @@ def _extract_file_analysis(
                     func_meta["decorators"] = [
                         _extract_decorator_info(dec) for dec in node.decorator_list
                     ]
+                    # Check if any decorator references a prefixed APIRouter
+                    if router_prefixes:
+                        for dec_info in func_meta["decorators"]:
+                            dec_name = dec_info.get("name", "") if isinstance(dec_info, dict) else ""
+                            dot_idx = dec_name.find(".")
+                            if dot_idx > 0:
+                                receiver = dec_name[:dot_idx]
+                                if receiver in router_prefixes:
+                                    func_meta["router_prefix"] = router_prefixes[receiver]
+                                    break
 
                 # Extract structured parameters
                 params = _extract_parameters_info(node.args, exclude_self=False)
@@ -1649,9 +1986,26 @@ def _extract_file_analysis(
     # route_handler linker, which needs kind="route" symbols to create routes_to
     # edges. See "Route Detection Architecture" in this module's docstring.
     usage_contexts: list[UsageContext] = []
-    django_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
+    # Collect module-level string constants for route path resolution.
+    # Enables constant propagation: path(BASE + "/users/", view) → "/api/v1/users/".
+    route_local_constants, route_imports = _collect_module_constants(
+        tree, repo_root, py_file,
+    )
+    django_contexts = _extract_django_usage_contexts(
+        tree, str(py_file), symbol_by_name,
+        local_constants=route_local_constants,
+        imports=route_imports,
+        repo_root=repo_root,
+    )
     usage_contexts.extend(django_contexts)
-    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
+    # router_prefixes already computed above (before the symbol extraction loop)
+    flask_contexts = _extract_flask_usage_contexts(
+        tree, str(py_file), symbol_by_name, router_prefixes,
+        local_constants=route_local_constants,
+        imports=route_imports,
+        repo_root=repo_root,
+    )
+    usage_contexts.extend(flask_contexts)
 
     # Create route symbols from Django usage contexts.
     for ctx in django_contexts:
@@ -1669,6 +2023,32 @@ def _extract_file_analysis(
                 "route_path": route_path,
                 "http_method": "GET",
                 "view_name": view_name,
+            },
+        )
+        symbols.append(symbol)
+
+    # Create route symbols from Flask-RESTful add_resource usage contexts.
+    # add_resource registers all HTTP methods the Resource class defines,
+    # but we don't know which methods at static analysis time, so we use
+    # ANY as the method.
+    for ctx in flask_contexts:
+        if ctx.position != "resource_class":
+            continue
+        route_path = ctx.metadata.get("route_path", "")
+        view_name = ctx.metadata.get("view_name")
+        symbol = Symbol(
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            name=f"{view_name or 'unknown'}",
+            kind="route",
+            language="python",
+            path=str(py_file),
+            span=ctx.span,
+            stable_id=make_route_stable_id("ANY", route_path),
+            meta={
+                "route_path": route_path,
+                "http_method": "ANY",
+                "view_name": view_name,
+                "handler_ref": ctx.symbol_ref,
             },
         )
         symbols.append(symbol)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """PHP analysis pass using tree-sitter-php.
 
 This analyzer uses tree-sitter-php to parse PHP files and extract:
@@ -594,6 +595,21 @@ def _extract_symbols(
     """Extract symbols from a parsed PHP tree (pass 1)."""
     symbols: list[Symbol] = []
 
+    # Create module-level symbol for top-level code attribution
+    module_name = file_path.name
+    end_line = tree.root_node.end_point[0] + 1
+    module_symbol = Symbol(
+        id=make_symbol_id("php", str(file_path), 1, end_line, f"<module:{module_name}>", "module"),
+        name=f"<module:{module_name}>",
+        kind="module",
+        language="php",
+        path=str(file_path),
+        span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    )
+    symbols.append(module_symbol)
+
     for node in iter_tree(tree.root_node):
         # Function declarations
         if node.type == "function_definition":
@@ -709,6 +725,7 @@ def _extract_edges(
     method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
     use_aliases: dict[str, str] | None = None,
+    module_symbol: Symbol | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed PHP tree (pass 2).
 
@@ -726,6 +743,7 @@ def _extract_edges(
     if use_aliases is None:  # pragma: no cover - defensive default
         use_aliases = {}
     edges: list[Edge] = []
+    _caller_path = str(file_path)
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name()
@@ -733,11 +751,11 @@ def _extract_edges(
             func_node = node.child_by_field_name("function")
             if func_node and func_node.type == "name":
                 callee_name = node_text(func_node, source)
-                current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
+                current_function = _get_enclosing_function_php(node, source, file_path, global_symbols) or module_symbol
                 if current_function:
                     # Use use_aliases for disambiguation
                     path_hint = use_aliases.get(callee_name)
-                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint)
+                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -768,7 +786,7 @@ def _extract_edges(
                     if is_this_call and current_class_name:
                         # Try to resolve to a method in the same class
                         full_name = f"{current_class_name}.{method_name}"
-                        lookup_result = symbol_resolver.lookup(full_name)
+                        lookup_result = symbol_resolver.lookup(full_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -818,7 +836,7 @@ def _extract_edges(
                     resolved_class = use_aliases.get(class_name, class_name)
                     full_name = f"{resolved_class}.{method_name}"
                     path_hint = use_aliases.get(class_name)
-                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint)
+                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
                             src=current_function.id,
@@ -842,7 +860,7 @@ def _extract_edges(
                         class_name = node_text(child, source)
                         # Use use_aliases for disambiguation
                         path_hint = use_aliases.get(class_name)
-                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint)
+                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -991,11 +1009,14 @@ class PHPAnalyzer(TreeSitterAnalyzer):
         class_resolver = NameResolver(global_classes)
         all_edges: list[Edge] = []
         for pf in parsed_files:
+            mod_sym_name = f"<module:{pf.path.name}>"
+            file_mod_sym = global_symbols.get(mod_sym_name)
             edges = _extract_edges(
                 pf.tree, pf.source, pf.path, run,
                 global_symbols, global_methods, global_classes,
                 symbol_resolver, method_resolver, class_resolver,
                 use_aliases=pf.use_aliases,
+                module_symbol=file_mod_sym,
             )
             all_edges.extend(edges)
 

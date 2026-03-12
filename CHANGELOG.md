@@ -1,13 +1,146 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Changelog
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.1.0
+- Released **tool** is at: v2.2.0
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [2.2.0] - 2026-03-12
+
+## [2.2.0] - 2026-03-12
+
+## [2.2.0] - 2026-03-12
+
+### Added
+
+#### Cross-language linkers
+
+- **Solidity ABI bridge**: `abi_call` edges between TS/JS contract calls (ethers.js, viem) and Solidity function definitions.
+- **Tauri IPC**: `ipc_calls` edges between TS/JS `invoke()` calls and Rust `#[tauri::command]` functions. Handles rename overrides, tauri-specta bindings, and plugin patterns.
+- **wasm_bindgen**: `wasm_bridge` edges between JS/TS wasm-pack imports and Rust `#[wasm_bindgen]` exports. Handles `js_name` renames and aliased imports.
+- **Electron IPC expansion**: Detects `sendSync`, `handleOnce`, `webContents.send` (main-to-renderer), and `ipcRenderer.on`/`once` (renderer-side).
+- **React component**: `renders_component` edges from JSX usage (`<Button />`) to component definitions.
+- **Decorator dispatch**: `dispatches_to` edges from registry-based dispatch sites to registered handlers, enabling forward slices through plugin patterns.
+- **Middleware chain**: `middleware_chain` edges between consecutive middleware symbols. Works with all 58 framework patterns that tag `concept: middleware`.
+
+#### gRPC
+
+- **Proto RPC route detection**: Proto RPC methods produce `kind="route"` symbols using HTTP/2 wire paths, visible in `routes.txt`.
+- **Proto-to-Go implementation linkage**: Go methods embedding `UnimplementedXxxServer` are linked to proto RPC routes via `implements_rpc` edges. Also supports ttrpc `RegisterXxxService` patterns.
+- **Server-to-service bridge**: `dispatches_to` edges connect server/servicer symbols to proto service definitions. Forward slices now traverse: stub → server → service → route → handler.
+
+#### Route detection
+
+- **React Router JSX**: `<Route path="..." element={<X />} />` produces route symbols with metadata.
+- **Go**: Anonymous closure handlers. String concatenation paths (`baseUrl + "/users"`). Variable-based router group prefixes (Gin/Echo/Fiber). Go 1.22+ `http.ServeMux` combined method-path patterns.
+- **Python**: Constant propagation for Django `path()`/Flask `add_url_rule()` with string concatenation and cross-file constant references. FastAPI `APIRouter` prefix composition. Flask-RESTful `add_resource()`.
+- **Rails**: Inline `on: :member`/`on: :collection` routes. `only:`/`except:` action filters for `resources`.
+- **Stapler**: Convention-based `doXxx` → POST, `getXxx` → GET for Jenkins handlers.
+
+#### Language analyzers
+
+- **Rust**: `implements` edges, turbofish/fully-qualified call resolution, generic trait method blocklist, `#[cfg(test)]` module inheritance, unresolved trait impl edges, `Self::method()` resolution, async spawn detection, macro body call detection, module-qualified call resolution.
+- **Solidity**: Call graph with inheritance, override, and emit edges. Visibility modifiers. `using Library for Type` resolution.
+- **Elixir**: `@behaviour` directive detection, WebSock callbacks, guard clause function extraction, pipe operator call edges, stdlib function exclusion.
+- **Go**: Structural interface matching (no explicit assertions needed), interface method symbols, chained field access resolution via `class_field_types` registry, constructor return type inference (`NewXxx()` → `*Xxx`).
+- **TypeScript**: Type reference edges (`type_ref`) from type aliases and interfaces. Abstract class support.
+- **Java**: Inherited method/field resolution via extends chain. Inferred concrete return type for `Object`-returning methods. Annotation positional argument extraction (constants, concatenation).
+- **C++/C#**: Chained field type resolution (`this->field->method()`) via `class_field_types` registry.
+- **Circom**: New tree-sitter analyzer for `.circom` zero-knowledge circuits.
+- **Formal methods**: Reference edges in Agda and Lean. Library export detection for Lean, Agda, and Wolfram.
+- **Ansible**: Include/import edges resolve to file-level node IDs via basename and role name lookup.
+
+#### Entrypoints and build targets
+
+- **Build target linker**: Connects manifest-declared build targets to entry functions across 15 ecosystems (Cargo, npm, pyproject.toml, Maven, Gradle, C#, Dart, Swift, Haskell, Elixir, Ruby, Scala, OCaml, Zig, Nim).
+- **package.json `exports`**: Subpath exports produce `export_entry` symbols and `defines_target` edges.
+- **React SPA bootstrap**: `createRoot()`, `ReactDOM.render()`, etc. produce `SPA_BOOTSTRAP` entrypoints.
+- **Electron main process**: `app.whenReady()` and `app.on('ready')` produce `ELECTRON_MAIN` entrypoints.
+- **Top-level call attribution**: JS/TS, Bash, PHP, Perl, PowerShell now attribute module-level calls to a `<module:filename>` symbol.
+- **CDI scope-annotated DI binding**: Java classes with `@ApplicationScoped` etc. that implement an interface produce explicit DI binding edges (0.85 confidence).
+
+#### Framework patterns
+
+- **MCP**: 8 TypeScript + 10 Python patterns for tool/resource/prompt registration.
+- **Solid.js**: 12 patterns (reactive primitives, stores, context, lifecycle, bootstrap).
+- **Lit**: `@customElement`, `@property`/`@state`, `@query`/`@queryAll`/`@queryAsync`, lifecycle hooks.
+- **NestJS/TypeGraphQL**: `@Resolver` + `@Query`/`@Mutation`/`@Subscription`/`@ResolveField`. `@Module` providers/controllers.
+- **Jakarta CDI `@Produces`**: Producer methods for interface-to-implementation resolution.
+
+#### CLI and output
+
+- **`--max-file-bytes`**: Skips oversized files. Recorded in `limits.truncated_files[]`.
+- **`--locale`**: Detects translated doc directories (GitLab/FastAPI conventions). Excludes translations by default.
+- **`--group-by-module` (slice)**: Groups inline slice nodes by file path with cross-file edge summary.
+- **Sketch harmonic budget**: `--with-source` uses harmonic weighting for proportionally deeper top-ranked files.
+- **Parallel execution**: Analyzers run concurrently; same-priority linkers run in parallel.
+- **Adaptive slice hop limit**: `--max-hops` default scales with graph size (10 for small graphs, 3 for large).
+
+### Fixed
+
+#### Slicing and graph traversal
+
+- **Forward slice traverses `dispatches_to`**: Slices follow interface methods to concrete implementations instead of dead-ending.
+- **Reverse slice ignores `contains`**: No longer follows `contains` edges up to parent classes, eliminating false positives.
+- **Event-driven traversal**: `event_subscribes` edges enable forward slices through publisher → subscriber → handler chains.
+- **Hub pruning exempts dispatch edges**: `dispatches_to` edges always followed even when `calls` edges are hub-pruned.
+- **Pass-through node filtering**: Synthetic IPC event nodes traversed during BFS but excluded from slice output.
+- **Linker pipeline accumulation**: Earlier linkers' output now visible to later linkers, unblocking `dispatches_to` creation from linker-produced inheritance edges.
+- **Slice `node_tiers`**: Supply chain tier propagated into slice output for tier-based filtering.
+
+#### Cross-language IPC/WASM
+
+- **Synthetic source nodes**: Tauri IPC and wasm_bindgen linkers create Symbol nodes for edge sources, fixing reverse slice traversal through bridges.
+- **Tauri specta wrappers**: Both standalone function exports and object-method wrappers (`export const commands = { ... }`) create `caller_invokes` edges from import sites.
+- **Electron contextBridge**: `contextBridge.exposeInMainWorld()` preload patterns resolved, creating `bridge_invokes` edges from renderer calls through to main process handlers.
+
+#### Route handler linking
+
+- **Symbol ID resolution**: Routes with full symbol ID `handler_ref` resolve directly instead of failing name-based lookup.
+- **JSX component linking**: `<Route element={<Users />} />` links to `class`/`module_file` symbols. Tries React naming suffixes on mismatch.
+- **Route deduplication**: Concepts deduplicated across matching phases. Dedup key scoped to (method, path, file) — different files preserved.
+- **Go-swagger handler wiring**: Resolves to implementation methods instead of constructors.
+- **JAX-RS `@Path` combination**: Class + method `@Path` composed (e.g., `/users/{id}`).
+- **Phoenix LiveView**: LIVE routes resolve to LiveView module by name suffix.
+- **False positive suppression**: NestJS `app.get(Service)` DI lookups, Go single-arg `.Get()` on caches/headers, and ambiguous SPA bootstrap names (Solid/Svelte/Vue prioritized over React).
+
+#### Ranking and centrality
+
+- **Confidence-based edge filtering**: Rankings exclude edges below 0.5 confidence. Ambiguous resolution scales as `0.70/sqrt(N)`. `dispatches_to` scales as `0.85/sqrt(N)`.
+- **Cross-file degree weighting**: Within-file edges contribute 0.3× to in-degree. Per-file cap of 5 edges per target.
+- **Dampening**: Utility/helper files (×0.1), FP primitives (`map`/`filter`/`reduce`/etc.), assertion/panic/exit builtins, leaf UI components (`Button`/`Icon`/`Modal`/etc.), pure sinks (out_degree=0, relaxed to 20 LOC), and sibling implementations (6+ same-name methods: top 3 keep full weight, rest ×0.15).
+- **Entrypoint selection**: `--entry auto` boosts `MAIN_FUNCTION`/`CLI_MAIN` 2× over route handlers. Connectivity boost skipped for test entrypoints. Telemetry/logging exports excluded from boost. Adaptive seed budget (max_symbols/3) reduces disconnected singletons.
+
+#### Symbol resolution
+
+- **Test-path preference**: Non-test callers prefer production candidates in suffix matching.
+- **Method blocklists**: JS/TS (60+ built-ins), Rust (logging + `output`/`status`/`spawn`), C++ (35 STL methods).
+- **C++ class qualification**: Inline methods get qualified names (`Parser::Initialize`), with key-based `path_hint` matching.
+- **Go local variable exclusion**: Scoped variables tracked and excluded from function reference matching.
+- **Java nested class guard**: `new Properties()` no longer resolves to `Log4jConfiguration.Properties` from other files.
+- **Elixir import-gated resolution**: Cross-module bare calls require explicit `import` directive.
+- **Binary `.ts` skip**: MPEG Transport Stream files (null bytes in first 8KB) skipped.
+
+#### Classification and output
+
+- **Tiered view boundary exclusion**: Compact views exclude external_symbol/tier=3 nodes.
+- **Test/utility classification**: `fv/`, `harnesses/` as test dirs; `build.rs` as utility; `bench/`/`benches/` excluded from production slices. `dev/`/`utils/` only match at project root, not inside source roots.
+- **Codegen classification**: `.serde.rs`, `.pb.go`, `_pb2.py` as derived (tier 4).
+- **Path normalization**: All symbol paths normalized to relative, fixing tier misclassification across 8 languages.
+- **TOML symbol IDs**: Location-based format instead of sha256 hashes.
+- **JSON reproducibility**: Sorted keys in all JSON output.
+- **ASM register filtering**: CPU register names no longer create false external call edges.
+- **Annotation-aware test exclusion**: `is_test_node()` checks `#[cfg(test)]`, `@Test`, `[Fact]` annotations, not just file paths.
+- **Lean import resolution**: Intra-repo imports resolve to file node IDs instead of dangling module IDs.
+
+### Changed
+
+- Migrated all `Edge()` constructor calls to `Edge.create()` for consistent edge_key generation.
 
 ## [2.1.0] - 2026-03-01
 
@@ -198,6 +331,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Ruby analyzer duplicate edge elimination**: Fixed duplicate edges being created for the same call site when an identifier was both processed as part of a `call` node and separately as a bare `identifier`. Now skips identifiers that are children of call-related nodes, reducing edge count noise by 10-30% in Ruby codebases.
 
 - **Bakeoff GraphQL false positive**: Fixed `EXPECTED_ROUTES_BUT_FOUND_0` false positive for GraphQL frameworks (apollo-server, etc.) that don't use traditional HTTP routes. Repos with "graphql" or "apollo" in name are now excluded from route expectations.
+- **Bakeoff diagnostic false positive reduction**: `NO_CALL_EDGES` now requires ≥3 function/method symbols (repos with 0-2 functions can't have meaningful call edges). `EXPECTED_ROUTES_BUT_FOUND_0` removed overly broad "web" keyword match (caught webtunnel, webpack, webrtc); now requires name keywords like "api", "server", "http", "rest" OR evidence of route edges/framework detection.
 
 - **GraphQL entrypoint detection**: Updated GraphQL framework patterns (graphql.yaml, graphql-python.yaml, graphql-ruby.yaml) to use `graphql_resolver` and `graphql_schema` concept names, enabling proper entrypoint detection for GraphQL resolvers in JavaScript/TypeScript, Python, and Ruby codebases.
 
@@ -559,15 +693,27 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
-| 1.0.0   | 2026-01-12 | Memory optimization (80% reduction), 100% YAML-driven entrypoints |
+| 2.1.0   | 2026-03-01 | 9 new linkers (DI, HTTP, FFI, Vue, ORM, etc.), 150+ framework patterns, smart test selection |
+| 2.0.2   | 2026-02-01 | Default token budget increased to 8000                       |
+| 2.0.1   | 2026-01-31 | `--files` flag for slice (smart test selection support)       |
+| 2.0.0   | 2026-01-31 | **Breaking:** modular package structure (5 packages), import paths changed |
+| 1.3.1   | 2026-01-29 | C++ test framework patterns, go-restful support              |
+| 1.3.0   | 2026-01-29 | Centralized inheritance linker, type hierarchy linker        |
+| 1.2.1   | 2026-01-29 | 37 new analyzers, route-handler linker, compact subcommand   |
+| 1.1.0   | 2026-01-24 | Breaking changes (not published to PyPI)                     |
+| 1.0.0   | 2026-01-12 | Memory optimization (80% reduction), YAML-driven entrypoints (not published to PyPI) |
 | 0.9.1   | 2026-01-09 | ADR-0003 implementation (was missing in 0.9.0)               |
 | 0.9.0   | 2026-01-09 | Schema 0.2.0, --frameworks flag, YAML patterns (incomplete)  |
 | 0.6.9   | 2026-01-07 | Fewer false positives, richer slice traversal                |
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.0.0...HEAD
-[1.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.0.0
+[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.1.0...HEAD
+[2.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
+[2.0.2]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
+[2.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
+[1.2.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
+[1.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
 [0.9.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
 [0.9.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
 [0.6.9]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9

@@ -1,0 +1,39 @@
+- op: create  # 2583
+  at: '2026-03-03T06:17:16Z'  # 2583
+  by: agent  # 2583
+  actor: jgstern_agent  # 2583
+  clock: 1  # 2583
+  nonce: '2583'  # 2583
+  data:  # 2583
+    kind: invariant  # 2583
+    title: "Compact mode must retain cross-cutting edge types (routes_to, http_calls, dispatches_to, di_resolves, ffi_calls)"  # 2583
+    status: violated  # 2583
+    priority: 1  # 2583
+    parent:  # 2583
+    tags:  # 2583
+    - structural  # 2583
+    - compact  # 2583
+    - external-bakeoff  # 2583
+    before: []  # 2583
+    duplicate_of: []  # 2583
+    not_duplicate_of: []  # 2583
+    pr_ref:  # 2583
+    description: "Independent external bakeoff (March 2026, 4 repos) found that compaction systematically\nloses the edge types that differentiate hypergumbo from simpler tools:\n\n| Repo     | Full routes_to | Compact routes_to | Full dispatches_to | Compact dispatches_to |\n|----------|--:|--:|--:|--:|\n| gitlab   | 1,275 | 37 (2.9%) | 5,791 | 2 (0.03%) |\n| grafana  | 474 | 30 (6.3%) | 124 | 0 (0%) |\n| keycloak | 0 | 0 | 10,812 | 0 (0%) |\n| bun      | 2 | 0 | 316 | 0 (0%) |\n\nhttp_calls: grafana has 39 in full, 0 in compact. bun has 211 in full, 0 in compact.\ndi_resolves and ffi_calls: zero across all repos in both full and compact.\n\nThe compact representation is the primary artifact LLM workflows consume — full behavior\nmaps range from 280 MB to 725 MB, far exceeding any context window. When compact drops\nall cross-cutting edges, the core value proposition of the linker pipeline is invisible\nto downstream consumers.\n\nRoot cause is structural: centrality-based node selection optimizes for call-graph\nimportance, but route/dispatch/http_calls edges connect to nodes that are structurally\nperipheral by design. Route nodes have in-degree=0 (nothing calls a route) and\nout-degree=1 (one routes_to edge to handler). They'll always be near the bottom of any\ncentrality ranking.\n\nAnalyst's proposed remediations:\n1. Seed compaction with special-edge endpoints (pre-include before centrality selection)\n2. Edge-type-aware coverage target (track special edge diversity alongside centrality mass)\n3. Separate special-edges section in compact output (emit edges with context even if nodes\n   aren't in the compact node set)\n\nThis is a design problem, not a bug — the compaction algorithm needs a different objective\nfunction that balances centrality coverage with edge-type diversity.\n\nSource: /home/jgstern_agent/hypergumbo_lab_notebook/hypergumbo-v2.1.0-bakeoff-gitlab-grafana-bun-keycloak-20260302.md"  # 2583
+    fields:  # 2583
+      statement: "The compact behavior map must retain a representative sample of each cross-cutting edge type present in the full graph, not just high-centrality calls/references edges"  # 2583
+      root_cause: "Compact mode selects top ~100 nodes by centrality (in_degree * (1 + ln(1 + out_degree))). Route nodes are structurally peripheral (in_degree=0, out_degree=1), so they're always excluded. http_calls endpoints are often leaf nodes. dispatches_to implementation endpoints are one of many alternatives with moderate centrality. The induced-subgraph step then drops all edges whose endpoints aren't in the selected set."  # 2583
+- op: update  # ddcd
+  at: '2026-03-03T07:13:01Z'  # ddcd
+  by: agent  # ddcd
+  actor: jgstern_agent  # ddcd
+  clock: 2  # ddcd
+  nonce: ddcd  # ddcd
+  set:  # ddcd
+    status: holding  # ddcd
+- op: discuss  # c0bd
+  at: '2026-03-03T07:13:01Z'  # c0bd
+  by: agent  # c0bd
+  actor: jgstern_agent  # c0bd
+  clock: 3  # c0bd
+  nonce: c0bd  # c0bd
+  message: "Fixed in PR batch. Compact mode seeds cross-cutting edge endpoints into node selection. Seeds capped at 25% of max_symbols."  # c0bd

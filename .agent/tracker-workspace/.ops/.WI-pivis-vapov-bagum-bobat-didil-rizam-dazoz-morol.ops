@@ -1,0 +1,50 @@
+- op: create  # 2770
+  at: '2026-03-10T06:53:15Z'  # 2770
+  by: agent  # 2770
+  actor: jgstern_agent  # 2770
+  clock: 1  # 2770
+  nonce: '2770'  # 2770
+  data:  # 2770
+    kind: work_item  # 2770
+    title: "Electron IPC linker: ipcMain/ipcRenderer and process boundaries"  # 2770
+    status: todo_hard  # 2770
+    priority: 2  # 2770
+    parent:  # 2770
+    tags:  # 2770
+    - cross_language  # 2770
+    before: []  # 2770
+    duplicate_of: []  # 2770
+    not_duplicate_of: []  # 2770
+    pr_ref:  # 2770
+    description: "PlazaFlow Cohort 6: Signal-Desktop and session-desktop have Electron process boundaries (.main.ts/.preload.ts/.dom.ts suffixes) that are invisible. ipcMain.handle/ipcRenderer.invoke pairs are unlinked (only 8 of hundreds detected). Needs: (1) detect ipcMain.on/handle registrations, (2) detect ipcRenderer.send/invoke calls, (3) create ipc_calls edges matching on channel name, (4) optionally detect process boundary from file naming conventions."  # 2770
+    fields: {}  # 2770
+- op: update  # dd4d
+  at: '2026-03-10T11:21:45Z'  # dd4d
+  by: agent  # dd4d
+  actor: jgstern_agent  # dd4d
+  clock: 2  # dd4d
+  nonce: dd4d  # dd4d
+  set:  # dd4d
+    status: in_progress  # dd4d
+- op: discuss  # aa64
+  at: '2026-03-10T11:22:42Z'  # aa64
+  by: agent  # aa64
+  actor: jgstern_agent  # aa64
+  clock: 3  # aa64
+  nonce: aa64  # aa64
+  message: "Investigation: The existing ipc.py linker already handles Electron ipcMain/ipcRenderer with channel matching (literal and variable), postMessage, and Web Workers. It runs unconditionally (always=True) and scans the filesystem directly. The bakeoff report said 'only 8 of hundreds detected' — this suggests the channel matching works but many channels might not have both send/receive pairs in the analyzed files, or the regex patterns miss some patterns (e.g., destructured ipcRenderer, contextBridge.exposeInMainWorld, or preload bridge patterns). Closing as the linker exists — if the detection rate is low, a follow-up investigation on specific Signal-Desktop patterns would be needed."  # aa64
+- op: update  # 7da2
+  at: '2026-03-10T11:47:30Z'  # 7da2
+  by: agent  # 7da2
+  actor: jgstern_agent  # 7da2
+  clock: 4  # 7da2
+  nonce: 7da2  # 7da2
+  set:  # 7da2
+    status: done  # 7da2
+- op: discuss  # 94fd
+  at: '2026-03-10T11:47:30Z'  # 94fd
+  by: agent  # 94fd
+  actor: jgstern_agent  # 94fd
+  clock: 5  # 94fd
+  nonce: 94fd  # 94fd
+  message: "Merged in PR #2105. Expanded Electron IPC detection: added sendSync, handleOnce, webContents.send, event.sender.send, ipcRenderer.on/once. The IPC linker already existed but missed several common bidirectional patterns."  # 94fd

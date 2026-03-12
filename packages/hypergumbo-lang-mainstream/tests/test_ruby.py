@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Ruby analyzer."""
 import pytest
 from pathlib import Path
@@ -1350,6 +1351,94 @@ end
         assert "audit_logs#show" in controller_actions
         assert "settings#show" in controller_actions
 
+    def test_resources_except_filter(self, tmp_path: Path) -> None:
+        """resources :users, except: [:destroy] omits the destroy route."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resources :users, path: :members, except: [:destroy, :edit]
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        actions = {s.meta["controller_action"] for s in route_symbols}
+
+        assert len(route_symbols) == 5  # 7 - 2 excluded
+        assert "users#destroy" not in actions
+        assert "users#edit" not in actions
+        assert "users#index" in actions
+        assert "users#show" in actions
+        assert "users#create" in actions
+
+    def test_resources_only_filter(self, tmp_path: Path) -> None:
+        """resources :posts, only: [:index, :show] limits to listed actions."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resources :posts, only: [:index, :show]
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        actions = {s.meta["controller_action"] for s in route_symbols}
+
+        assert len(route_symbols) == 2
+        assert "posts#index" in actions
+        assert "posts#show" in actions
+        assert "posts#create" not in actions
+        assert "posts#destroy" not in actions
+
+    def test_resource_singular_except_filter(self, tmp_path: Path) -> None:
+        """resource :profile, except: [:destroy] omits destroy from singular."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :profile, except: [:destroy]
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        actions = {s.meta["controller_action"] for s in route_symbols}
+
+        assert len(route_symbols) == 5  # 6 - 1 excluded
+        assert "profiles#destroy" not in actions
+        assert "profiles#show" in actions
+
+    def test_resource_singular_only_filter(self, tmp_path: Path) -> None:
+        """resource :session, only: [:create, :destroy] limits singular resource."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :session, only: [:create, :destroy]
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        actions = {s.meta["controller_action"] for s in route_symbols}
+
+        assert len(route_symbols) == 2
+        assert "sessions#create" in actions
+        assert "sessions#destroy" in actions
+        assert "sessions#show" not in actions
+
+    def test_resources_only_single_action(self, tmp_path: Path) -> None:
+        """resources :tags, only: :index works with single symbol (no array)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resources :tags, only: :index
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+        assert route_symbols[0].meta["controller_action"] == "tags#index"
+
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -1909,6 +1998,41 @@ end
         # Should just have the one explicit route
         assert len(route_syms) == 1
         assert route_syms[0].name == "GET /home"
+
+    def test_inline_on_member_keyword(self, tmp_path: Path) -> None:
+        """Routes with inline on: :member keyword (no member do block)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        # get :setup, on: :member → member route
+        # get :active, on: :collection → collection route
+        # match :special → no on: keyword, should be ignored (not a member/collection)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :domains do
+    get :setup, on: :member
+    post :check, on: :member
+    get :active, on: :collection
+    match :special
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        assert "GET /domains/:id/setup" in route_names
+        assert "POST /domains/:id/check" in route_names
+        assert "GET /domains/active" in route_names
+
+        # match :special without on: keyword should not create a route
+        assert not any("special" in name for name in route_names)
+
+        # Verify controller_action
+        setup = next(s for s in route_syms if s.name == "GET /domains/:id/setup")
+        assert setup.meta["controller_action"] == "domains#setup"
 
     def test_singular_resource_nested(self, tmp_path: Path) -> None:
         """Singular resource (no :id) doesn't use _id param for nesting."""

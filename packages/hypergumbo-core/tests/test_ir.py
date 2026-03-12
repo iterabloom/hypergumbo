@@ -1,7 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the internal representation (IR) layer."""
 from pathlib import Path
 
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, Span, Symbol, UsageContext, create_boundary_nodes,
+)
 from hypergumbo_lang_mainstream.py import analyze_python
 
 
@@ -901,3 +904,102 @@ def test_edge_from_dict_with_defaults() -> None:
     assert edge.id == ""  # Default
     assert edge.confidence == 0.85  # Default
     assert edge.evidence_type == "ast_call_direct"  # Default
+
+
+class TestCreateBoundaryNodes:
+    """Tests for create_boundary_nodes (WI-sikur / INV-miniz)."""
+
+    def _make_symbol(self, sym_id: str) -> Symbol:
+        return Symbol(
+            id=sym_id, name="x", kind="function", language="python",
+            path="x.py", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+
+    def test_no_dangling_edges_returns_empty(self):
+        """When all edges resolve, no boundary nodes are created."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        s2 = self._make_symbol("python:b.py:1-1:bar:function")
+        e = Edge.create(src=s1.id, dst=s2.id, edge_type="calls", line=1)
+        result = create_boundary_nodes([s1, s2], [e])
+        assert result == []
+
+    def test_dangling_dst_creates_boundary(self):
+        """Edges pointing to nonexistent dst get boundary nodes."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
+            edge_type="calls", line=5,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        node = result[0]
+        assert node.id == "go:fmt:0-0:Errorf:unresolved"
+        assert node.kind == "external_symbol"
+        assert node.language == "go"
+        assert node.name == "Errorf"
+        assert node.supply_chain_tier == 3
+        assert node.meta["external_boundary"] is True
+
+    def test_dangling_src_creates_boundary(self):
+        """Edges with nonexistent src also get boundary nodes."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src="external:lib:0-0:helper:unresolved", dst=s1.id,
+            edge_type="calls", line=1,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert result[0].id == "external:lib:0-0:helper:unresolved"
+
+    def test_multiple_dangling_deduped(self):
+        """Multiple edges to the same dangling target create only one node."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        s2 = self._make_symbol("python:b.py:1-1:bar:function")
+        dangling_id = "go:fmt:0-0:Println:unresolved"
+        e1 = Edge.create(src=s1.id, dst=dangling_id, edge_type="calls", line=1)
+        e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2)
+        result = create_boundary_nodes([s1, s2], [e1, e2])
+        assert len(result) == 1
+        assert result[0].id == dangling_id
+
+    def test_boundary_node_path_is_external(self):
+        """Boundary nodes have path '<external>'."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="lua:?:0-0:ngx.log:unresolved",
+            edge_type="calls", line=1,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert result[0].path == "<external>"
+
+    def test_boundary_node_zero_span(self):
+        """Boundary nodes have zero span."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="rust:std:0-0:println:unresolved",
+            edge_type="calls", line=1,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert result[0].span.start_line == 0
+        assert result[0].span.end_line == 0
+
+    def test_go_import_format_parsed(self):
+        """Go import edges (go:{path}:0-0:package:package) are handled."""
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:github.com/pkg/errors:0-0:package:package",
+            edge_type="imports", line=1,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert result[0].language == "go"
+        assert result[0].name == "package"
+
+    def test_sorted_output_deterministic(self):
+        """Boundary nodes are returned in sorted order for reproducibility."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e1 = Edge.create(src=s1.id, dst="z:z:0-0:z:unresolved", edge_type="calls", line=1)
+        e2 = Edge.create(src=s1.id, dst="a:a:0-0:a:unresolved", edge_type="calls", line=2)
+        result = create_boundary_nodes([s1], [e1, e2])
+        assert len(result) == 2
+        assert result[0].id < result[1].id

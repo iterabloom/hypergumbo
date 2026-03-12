@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Wolfram Language analysis pass using tree-sitter-wolfram.
 
 This analyzer uses tree-sitter to parse Wolfram Language files and extract:

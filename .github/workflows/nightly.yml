@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 name: Nightly Tests
 
 # Nightly workflow runs expensive cross-Python and integration tests.
@@ -48,7 +49,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
-                        -e "packages/hypergumbo-tracker[dev]" \
+                        -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo \
                         jsonschema
           else
@@ -97,8 +98,23 @@ jobs:
               --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
+      - name: Mark version as passed
+        if: success()
+        run: |
+          mkdir -p /tmp/matrix-result
+          echo "passed" > /tmp/matrix-result/py${{ matrix.python-version }}
+
+      - name: Upload pass marker
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: matrix-pass-py${{ matrix.python-version }}
+          path: /tmp/matrix-result/py${{ matrix.python-version }}
+          retention-days: 1
+
   # ─────────────────────────────────────────────────────────────
   # Test matrix retry (handles transient infra failures)
+  # Only retries Python versions where the primary job failed.
   # ─────────────────────────────────────────────────────────────
   test-matrix-retry:
     needs: [test-matrix]
@@ -117,12 +133,34 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      - name: Download pass marker
+        id: check-primary
+        uses: actions/download-artifact@v3
+        with:
+          name: matrix-pass-py${{ matrix.python-version }}
+          path: /tmp/matrix-result
+        continue-on-error: true
+
+      - name: Skip if primary passed
+        id: skip-check
+        run: |
+          if [ -f /tmp/matrix-result/py${{ matrix.python-version }} ]; then
+            echo "Primary job passed for Python ${{ matrix.python-version }} — skipping retry"
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Primary job failed for Python ${{ matrix.python-version }} — retrying"
+            echo "should_skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Node.js for JS-based actions
+        if: steps.skip-check.outputs.should_skip != 'true'
         run: apt-get update && apt-get install -y nodejs
 
       - uses: actions/checkout@v4
+        if: steps.skip-check.outputs.should_skip != 'true'
 
       - name: Install dependencies
+        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
@@ -130,7 +168,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
-                        -e "packages/hypergumbo-tracker[dev]" \
+                        -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo \
                         jsonschema
           else
@@ -138,9 +176,11 @@ jobs:
           fi
 
       - name: Build source-only grammars
+        if: steps.skip-check.outputs.should_skip != 'true'
         run: ./scripts/build-source-grammars
 
       - name: Check for sentence-transformers
+        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
             echo "sentence-transformers available"
@@ -151,6 +191,7 @@ jobs:
           fi
 
       - name: Run tests with coverage
+        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
             COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"

@@ -1,0 +1,34 @@
+- op: create  # 6c75
+  at: '2026-03-11T04:17:06Z'  # 6c75
+  by: agent  # 6c75
+  actor: jgstern_agent  # 6c75
+  clock: 1  # 6c75
+  nonce: 6c75  # 6c75
+  data:  # 6c75
+    kind: work_item  # 6c75
+    title: "Route-to-handler linking: JSX Route nodes have 0 outgoing edges"  # 6c75
+    status: todo_soft  # 6c75
+    priority: 1  # 6c75
+    parent:  # 6c75
+    tags: []  # 6c75
+    before: []  # 6c75
+    duplicate_of: []  # 6c75
+    not_duplicate_of: []  # 6c75
+    pr_ref:  # 6c75
+    description: "DEEP bakeoff assessment found that JSX Route nodes detected by the new React Router detection (PR #2127) have zero outgoing edges. Forward slices from route entrypoints are completely empty. Need to emit renders_component or calls edges from Route nodes to their handler components. Affects: hubs, element-call, snapshot-v1, and any React Router app. This is the single highest-impact fix for SPA codebase usefulness."  # 6c75
+    fields: {}  # 6c75
+- op: update  # 7297
+  at: '2026-03-11T04:36:30Z'  # 7297
+  by: agent  # 7297
+  actor: jgstern_agent  # 7297
+  clock: 2  # 7297
+  nonce: '7297'  # 7297
+  set:  # 7297
+    status: done  # 7297
+- op: discuss  # e0bd
+  at: '2026-03-11T04:36:30Z'  # e0bd
+  by: agent  # e0bd
+  actor: jgstern_agent  # e0bd
+  clock: 3  # e0bd
+  nonce: e0bd  # e0bd
+  message: "Fixed in PR #2136. Expanded is_handler to accept class/module_file kinds and added Component/View/Page/Screen/Container suffix matching."  # e0bd

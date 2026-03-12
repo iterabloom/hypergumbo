@@ -1,0 +1,49 @@
+- op: create  # 84ee
+  at: '2026-03-07T22:18:12Z'  # 84ee
+  by: agent  # 84ee
+  actor: jgstern_agent  # 84ee
+  clock: 1  # 84ee
+  nonce: 84ee  # 84ee
+  data:  # 84ee
+    kind: work_item  # 84ee
+    title: "Python Protocol structural matching for implements edges"  # 84ee
+    status: todo_soft  # 84ee
+    priority: 3  # 84ee
+    parent:  # 84ee
+    tags: []  # 84ee
+    before: []  # 84ee
+    duplicate_of: []  # 84ee
+    not_duplicate_of: []  # 84ee
+    pr_ref:  # 84ee
+    description: "Analogous to Go WI-hadav. Python typing.Protocol uses structural subtyping — classes satisfying a Protocol method signatures are compatible without explicit subclassing."  # 84ee
+    fields: {}  # 84ee
+- op: update  # 0976
+  at: '2026-03-08T03:02:48Z'  # 0976
+  by: agent  # 0976
+  actor: jgstern_agent  # 0976
+  clock: 2  # 0976
+  nonce: '0976'  # 0976
+  set:  # 0976
+    priority: 4  # 0976
+- op: discuss  # d22a
+  at: '2026-03-08T03:02:48Z'  # d22a
+  by: agent  # d22a
+  actor: jgstern_agent  # d22a
+  clock: 3  # d22a
+  nonce: d22a  # d22a
+  message: "Deprioritized: Python Protocol structural matching requires cross-file method signature comparison. typing.Protocol usage is relatively rare compared to ABC/explicit inheritance. Most Python codebases use explicit class inheritance or ABCs which are already detected."  # d22a
+- op: update  # d559
+  at: '2026-03-08T03:06:04Z'  # d559
+  by: agent  # d559
+  actor: jgstern_agent  # d559
+  clock: 4  # d559
+  nonce: d559  # d559
+  set:  # d559
+    status: wont_do  # d559
+- op: discuss  # 611d
+  at: '2026-03-08T03:06:04Z'  # 611d
+  by: agent  # 611d
+  actor: jgstern_agent  # 611d
+  clock: 5  # 611d
+  nonce: 611d  # 611d
+  message: "Deferred: Python Protocol usage is rare vs ABC/explicit inheritance. Structural Protocol matching requires cross-file method set comparison. Will reopen if bakeoff signals show missing implements edges in Protocol-heavy codebases."  # 611d

@@ -1,0 +1,41 @@
+- op: create  # 55af
+  at: '2026-03-08T03:08:15Z'  # 55af
+  by: agent  # 55af
+  actor: jgstern_agent  # 55af
+  clock: 1  # 55af
+  nonce: 55af  # 55af
+  data:  # 55af
+    kind: work_item  # 55af
+    title: "Fix tracker auto-sync merge failures: rebase before merge when dev diverges during CI"  # 55af
+    status: in_progress  # 55af
+    priority: 0  # 55af
+    parent:  # 55af
+    tags: []  # 55af
+    before: []  # 55af
+    duplicate_of: []  # 55af
+    not_duplicate_of: []  # 55af
+    pr_ref:  # 55af
+    description: ""  # 55af
+    fields: {}  # 55af
+- op: discuss  # 9380
+  at: '2026-03-08T03:08:23Z'  # 9380
+  by: agent  # 9380
+  actor: jgstern_agent  # 9380
+  clock: 2  # 9380
+  nonce: '9380'  # 9380
+  message: "Root cause: do_sync builds commit on origin/dev, pushes, polls CI (takes ~60-120s). During that time, another sync PR may merge and advance dev. When merge is attempted, dev has moved forward so the PR head is 'behind the base branch' (HTTP 405). The merge cascade (ff→rebase→merge-commit) fails for AGit-flow PRs. Fix: after CI passes, re-fetch origin/dev, and if it diverged, rebuild the commit on the new base (re-read-tree, re-write-tree, re-commit-tree, update-ref, force-push) before attempting merge."  # 9380
+- op: update  # 8d89
+  at: '2026-03-08T03:19:34Z'  # 8d89
+  by: agent  # 8d89
+  actor: jgstern_agent  # 8d89
+  clock: 3  # 8d89
+  nonce: 8d89  # 8d89
+  set:  # 8d89
+    status: done  # 8d89
+- op: discuss  # 1c67
+  at: '2026-03-08T03:19:34Z'  # 1c67
+  by: agent  # 1c67
+  actor: jgstern_agent  # 1c67
+  clock: 4  # 1c67
+  nonce: 1c67  # 1c67
+  message: "Fixed in PR #1991. After CI passes, re-fetches origin/dev and rebuilds the sync commit on the new base if it diverged, then force-pushes. 4 new tests covering diverge, read-tree failure, fetch failure, rev-parse failure. Combined with circuit breaker (PR #1982) and escalation (PR #1990), this is a complete fix for the auto-sync merge failure issue."  # 1c67

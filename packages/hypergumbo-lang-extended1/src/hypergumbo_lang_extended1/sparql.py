@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """SPARQL query analyzer using tree-sitter.
 
 SPARQL is a query language for RDF (Resource Description Framework) databases,

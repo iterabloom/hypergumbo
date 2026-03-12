@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for HTML script tag detection."""
 import json
 from pathlib import Path

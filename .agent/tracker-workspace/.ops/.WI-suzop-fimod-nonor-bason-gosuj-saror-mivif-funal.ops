@@ -1,0 +1,34 @@
+- op: create  # b7ce
+  at: '2026-03-08T14:32:44Z'  # b7ce
+  by: agent  # b7ce
+  actor: jgstern_agent  # b7ce
+  clock: 1  # b7ce
+  nonce: b7ce  # b7ce
+  data:  # b7ce
+    kind: work_item  # b7ce
+    title: "Multiple decorators per handler: capture all HTTP method routes"  # b7ce
+    status: todo_soft  # b7ce
+    priority: 3  # b7ce
+    parent:  # b7ce
+    tags: []  # b7ce
+    before: []  # b7ce
+    duplicate_of: []  # b7ce
+    not_duplicate_of: []  # b7ce
+    pr_ref:  # b7ce
+    description: "Transformers bakeoff assessment: @app.options + @app.get on same handler only captures first decorator route. Affects FastAPI and Flask handlers with multiple HTTP method decorators."  # b7ce
+    fields: {}  # b7ce
+- op: update  # 0e7e
+  at: '2026-03-08T15:16:18Z'  # 0e7e
+  by: agent  # 0e7e
+  actor: jgstern_agent  # 0e7e
+  clock: 2  # 0e7e
+  nonce: 0e7e  # 0e7e
+  set:  # 0e7e
+    status: done  # 0e7e
+- op: discuss  # 18c4
+  at: '2026-03-08T15:16:18Z'  # 18c4
+  by: agent  # 18c4
+  actor: jgstern_agent  # 18c4
+  clock: 3  # 18c4
+  nonce: 18c4  # 18c4
+  message: "Fixed in PR #2030. Pattern.matches_all() now collects all matching decorators/annotations instead of returning on first match. match_patterns() uses matches_all() so each decorator produces its own concept."  # 18c4

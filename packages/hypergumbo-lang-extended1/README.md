@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # hypergumbo-lang-extended1
 
 Specialized and emerging language analyzers for hypergumbo.

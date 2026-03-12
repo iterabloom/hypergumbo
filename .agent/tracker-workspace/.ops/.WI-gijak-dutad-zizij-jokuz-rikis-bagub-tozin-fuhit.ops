@@ -1,0 +1,71 @@
+- op: create  # b82e
+  at: '2026-03-11T04:19:09Z'  # b82e
+  by: agent  # b82e
+  actor: jgstern_agent  # b82e
+  clock: 1  # b82e
+  nonce: b82e  # b82e
+  data:  # b82e
+    kind: work_item  # b82e
+    title: "Symbol ranking: utility function call frequency inflates centrality"  # b82e
+    status: todo_soft  # b82e
+    priority: 2  # b82e
+    parent:  # b82e
+    tags: []  # b82e
+    before: []  # b82e
+    duplicate_of: []  # b82e
+    not_duplicate_of: []  # b82e
+    pr_ref:  # b82e
+    description: "DEEP bakeoff (8 cohorts, 48 repos) found that symbol ranking conflates architectural importance with call frequency. Examples: assert() ranked 6th in automerge, Button ranked above JobQueue.add in AFFiNE, logPanicAndDie dominates firecracker. The ranking dampening pipeline (PR #2129) handles test fixtures but not general utility/UI-primitive inflation. Consider: PageRank-style centrality, betweenness centrality, or edge-type weighting (renders_component vs calls)."  # b82e
+    fields: {}  # b82e
+- op: update  # 3bd6
+  at: '2026-03-11T05:21:30Z'  # 3bd6
+  by: agent  # 3bd6
+  actor: jgstern_agent  # 3bd6
+  clock: 2  # 3bd6
+  nonce: 3bd6  # 3bd6
+  set:  # 3bd6
+    status: done  # 3bd6
+- op: discuss  # 8512
+  at: '2026-03-11T05:21:30Z'  # 8512
+  by: agent  # 8512
+  actor: jgstern_agent  # 8512
+  clock: 3  # 8512
+  nonce: '8512'  # 8512
+  message: "Partially addressed in PR #2140. Added utility dampening for assert/panic/exit builtins and UI primitive components (Button, Icon, etc.). Remaining: edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes that would require a separate design effort."  # 8512
+- op: update  # 9898
+  at: '2026-03-11T16:54:58Z'  # 9898
+  by: human  # 9898
+  actor: jgstern  # 9898
+  clock: 4  # 9898
+  nonce: '9898'  # 9898
+  set:  # 9898
+    status: todo_soft  # 9898
+    priority: 3  # 9898
+- op: discuss  # 4694
+  at: '2026-03-11T16:55:02Z'  # 4694
+  by: human  # 4694
+  actor: jgstern  # 4694
+  clock: 5  # 4694
+  nonce: '4694'  # 4694
+  message: "you wrote \"edge-type weighting (renders_component vs calls) and PageRank/betweenness centrality are larger architectural changes\". Please search through all of the tracker items to find whether there are other items (marked done or any other Status) that would benefit or would have benefited from such \"larger architectural changes\". Also search through the lab notebook to investigate this question. when querying the tracker, be sure to only use the tracker tool and NOT grep through the raw ops files. (doing the latter will lead only to confusion and misery.) If you find the tracker tool awkward or unweildy for the sorts of queries you wish to run, then add new tracker items to expand the query capabilities of tracker, and mark them with a status of needs_human_review, and designate their `before` fields as the present item."  # 4694
+- op: discuss  # a0d7
+  at: '2026-03-11T18:15:50Z'  # a0d7
+  by: agent  # a0d7
+  actor: jgstern_agent  # a0d7
+  clock: 6  # a0d7
+  nonce: a0d7  # a0d7
+  message: "18 tracker items would benefit from edge-type weighting or PageRank/betweenness. Key items: INV-mosag (logging dampening), INV-mahap (entrypoint ranking), WI-luvaj (method collision), WI-kabom (dispatches_to N×N), WI-tukod (derive methods), WI-zojis (clone 6849 edges), WI-dugaf (Into/From), INV-posun (compact mode), WI-digir (rslice seeds), WI-nuraf (symbol ranking), WI-sivun (hub pruning). Lab notebook shows 8+ separate dampening heuristics in ranking.py — a unified PageRank/edge-type-weighting solution would subsume many. Created WI-sisaj (needs_human_review) for tracker search capability."  # a0d7
+- op: discuss  # c926
+  at: '2026-03-11T19:46:30Z'  # c926
+  by: human  # c926
+  actor: jgstern  # c926
+  clock: 7  # c926
+  nonce: c926  # c926
+  message: "does that imply that if we did implement a unified PageRank/edge-type-weighting solution, that we would also need to disable 8+ preexisting dampening heuristics in ranking.py?"  # c926
+- op: discuss  # c9ff
+  at: '2026-03-11T19:51:27Z'  # c9ff
+  by: agent  # c9ff
+  actor: jgstern_agent  # c9ff
+  clock: 8  # c9ff
+  nonce: c9ff  # c9ff
+  message: "Re: would we disable 8+ existing heuristics? No — only 3 of the 15 ranking heuristics would be subsumed by edge-type weighting:\n\n1. **Edge type filtering** (imports excluded, extends preserved) — hand-coded edge weights; directly replaceable with a weight map\n2. **Edge confidence filtering** (min_confidence threshold) — workaround for unreliable receiver_call edges; fixed by explicit per-type weights\n3. **Common method name dampening** (>10 symbols with same name) — symptom of unweighted low-confidence inferred edges\n\nThe other 12 heuristics are ORTHOGONAL and would remain:\n- **Scope topology**: within-file dampening (0.3x), per-file in-degree capping (max 5 per source)\n- **Node semantics**: utility symbol names (Logger, Button), test file dampening, noise paths (migrations), helper file/dir dampening, supply chain tier weighting\n- **Structural normalization**: hub saturation (in-degree > 100), out-degree connector boost, trivial sink dampening (out≤1 + LoC≤5)\n- **Interface polymorphism**: sibling implementation dampening (>6 same-name methods)\n- **Aggregation**: file density scoring (sum-of-top-K)\n\nThese address concerns PageRank/edge-weights can't: where a symbol lives (test? migration? utils?), what it's named (Logger? Button?), its code size, its role (connector vs sink), and interface polymorphism. Hub saturation is PARTIAL — edge weights would reduce some hub in-degree, but the log-saturation above 100 would still be needed as a safety net.\n\nBottom line: implementing edge-type weighting would replace 3 heuristics with a weight lookup table and simplify the code, but 12 heuristics stay. The 8+ dampening patches I mentioned earlier referred to incremental additions across multiple PRs — the actual conceptual categories are fewer, but the implementation has grown organically."  # c9ff

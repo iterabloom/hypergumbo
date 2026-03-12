@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Ruby analysis pass using tree-sitter-ruby.
 
 This analyzer uses tree-sitter to parse Ruby files and extract:
@@ -742,6 +743,71 @@ def _singularize(name: str) -> str:
     return name
 
 
+def _extract_on_keyword(args_node: "tree_sitter.Node", source: bytes) -> str | None:
+    """Extract the value of an ``on:`` keyword argument from a call's args.
+
+    Rails inline member/collection routes use ``on: :member`` or
+    ``on: :collection`` as keyword arguments instead of ``member do...end``
+    blocks.  E.g.::
+
+        get :setup, on: :member
+        match :verify, on: :member, via: [:get, :post]
+
+    Returns "member", "collection", or None if no ``on:`` keyword found.
+    """
+    for arg in args_node.children:
+        if arg.type == "pair":
+            # pair children: hash_key_symbol("on"), ":"(punctuation), simple_symbol(":member")
+            children = list(arg.children)
+            if len(children) >= 3:
+                key_child = children[0]
+                val_child = children[-1]
+                if key_child.type == "hash_key_symbol":
+                    key_text = node_text(key_child, source).strip(":")
+                    if key_text == "on" and val_child.type == "simple_symbol":
+                        return node_text(val_child, source).strip(":")
+    return None
+
+
+def _extract_resource_action_filter(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str | None, set[str]]:
+    """Extract ``only:`` or ``except:`` action filter from resource call args.
+
+    Rails resources support filtering generated routes::
+
+        resources :users, except: [:destroy]
+        resources :posts, only: [:index, :show]
+
+    Returns (filter_type, actions) where filter_type is "only", "except",
+    or None if no filter found.  Actions is a set of action name strings.
+    """
+    for arg in args_node.children:
+        if arg.type == "pair":
+            children = list(arg.children)
+            if len(children) < 3:  # pragma: no cover
+                continue
+            key_child = children[0]
+            val_child = children[-1]
+            if key_child.type != "hash_key_symbol":  # pragma: no cover
+                continue
+            key_text = node_text(key_child, source).strip(":")
+            if key_text not in ("only", "except"):
+                continue  # Skip other kwargs like path:, controller:, etc.
+            actions: set[str] = set()
+            if val_child.type == "array":
+                for el in val_child.children:
+                    if el.type == "simple_symbol":
+                        actions.add(node_text(el, source).strip(":"))
+            elif val_child.type == "simple_symbol":
+                # Single action: only: :index
+                actions.add(node_text(val_child, source).strip(":"))
+            if actions:
+                return key_text, actions
+    return None, set()
+
+
 def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -835,17 +901,43 @@ def _extract_rails_routes(
                 break
             # Symbol for HTTP method inside member/collection block
             # e.g., member do; post :activate; end → action_name = "activate"
+            # Also handles inline on: :member / on: :collection keyword args:
+            # e.g., get :setup, on: :member → GET /resources/:id/setup
             elif (
                 arg.type == "simple_symbol"
                 and method_name in HTTP_METHODS
-                and res_context in ("member", "collection")
+                and res_context in ("member", "collection", "nested")
             ):
                 action_name = node_text(arg, source).strip(":")
-                if res_context == "member":
-                    route_path = f"{res_path_prefix}/:id/{action_name}"
+                # Determine effective context: use inline on: keyword if present
+                effective_context = res_context
+                mc_path_prefix = res_path_prefix
+                mc_controller = res_controller
+                if res_context == "nested":
+                    # Check for on: :member or on: :collection keyword arg
+                    on_value = _extract_on_keyword(args_node, source)
+                    if on_value in ("member", "collection"):
+                        effective_context = on_value
+                        # For inline on: keyword, use the enclosing resource
+                        # block's own prefix (not the nested prefix which
+                        # includes :parent_id)
+                        innermost_rb = None
+                        for rb in resource_blocks:
+                            if rb.start_byte <= n.start_byte and n.end_byte <= rb.end_byte:
+                                if innermost_rb is None or rb.start_byte > innermost_rb.start_byte:
+                                    innermost_rb = rb
+                        if innermost_rb is not None:
+                            mc_path_prefix = innermost_rb.path_prefix
+                            mc_controller = innermost_rb.controller_name
+                    else:
+                        # Not a member/collection route — this is just a
+                        # symbol arg inside a nested resource, skip
+                        continue
+                if effective_context == "member":
+                    route_path = f"{mc_path_prefix}/:id/{action_name}"
                 else:  # collection
-                    route_path = f"{res_path_prefix}/{action_name}"
-                controller_action = f"{res_controller}#{action_name}"
+                    route_path = f"{mc_path_prefix}/{action_name}"
+                controller_action = f"{mc_controller}#{action_name}"
                 break
             # Handle "path" => "controller#action" syntax (pair with string key)
             elif arg.type == "pair" and method_name in HTTP_METHODS:
@@ -956,6 +1048,11 @@ def _extract_rails_routes(
         # This enables route detection and entrypoint detection for Rails apps
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
 
+        # Extract only:/except: action filter for resources/resource
+        filter_type, filter_actions = _extract_resource_action_filter(
+            args_node, source,
+        ) if method_name in ("resources", "resource") else (None, set())
+
         # For resources/resource, expand into all RESTful routes
         # This enables route-handler linking for all controller actions
         if method_name == "resources":
@@ -969,6 +1066,11 @@ def _extract_rails_routes(
                 ("PATCH", f"{normalized_path}/:id", "update"),  # PATCH /users/:id
                 ("DELETE", f"{normalized_path}/:id", "destroy"),  # DELETE /users/:id
             ]
+            # Apply only:/except: filter
+            if filter_type == "only":
+                restful_routes = [r for r in restful_routes if r[2] in filter_actions]
+            elif filter_type == "except":
+                restful_routes = [r for r in restful_routes if r[2] not in filter_actions]
             # Controller name from resource with namespace prefix
             # e.g., namespace :admin do resources :users end → admin/users
             assert resource_name is not None
@@ -1011,6 +1113,11 @@ def _extract_rails_routes(
                 ("PATCH", normalized_path, "update"),  # PATCH /profile
                 ("DELETE", normalized_path, "destroy"),  # DELETE /profile
             ]
+            # Apply only:/except: filter
+            if filter_type == "only":
+                restful_routes = [r for r in restful_routes if r[2] in filter_actions]
+            elif filter_type == "except":
+                restful_routes = [r for r in restful_routes if r[2] not in filter_actions]
             # Rails convention: resource :profile → ProfilesController (pluralized)
             # Don't double the 's' if name already ends in 's' (audit_logs, settings)
             assert resource_name is not None
@@ -1175,6 +1282,7 @@ def _extract_rails_callbacks(
 
     Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
 
     for node in iter_tree(tree.root_node):
@@ -1238,7 +1346,7 @@ def _extract_rails_callbacks(
                 # 4. Try resolver for fuzzy matching (steps 1-3 cover all normal cases;
                 #    this handles edge cases where method name differs from symbol key)
                 if callee is None:  # pragma: no cover — steps 1-3 resolve all known patterns
-                    lookup = resolver.lookup(callback_name)
+                    lookup = resolver.lookup(callback_name, caller_path=_caller_path)
                     if lookup.found and lookup.symbol is not None:
                         callee = lookup.symbol
 
@@ -2055,6 +2163,7 @@ def _extract_edges_from_file(
             method-specific lookups.  When provided, used instead of ``resolver``
             for method name lookups (bare calls and receiver call fallbacks).
     """
+    _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
     var_types = _extract_ruby_var_types(tree, source)
@@ -2127,7 +2236,7 @@ def _extract_edges_from_file(
                                 if target is None:
                                     target = local_symbols.get(ref_name)
                                 if target is None:
-                                    lookup = resolver.lookup(ref_name)
+                                    lookup = resolver.lookup(ref_name, caller_path=_caller_path)
                                     if lookup.found and lookup.symbol is not None:
                                         target = lookup.symbol
                                 if (
@@ -2220,7 +2329,7 @@ def _extract_edges_from_file(
                         elif receiver_node is None:
                             # Use require hints for disambiguation
                             path_hint = require_hints.get(callee_name)
-                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_method.id,
@@ -2296,7 +2405,7 @@ def _extract_edges_from_file(
                 elif not ambiguous:
                     # Use require hints for disambiguation
                     path_hint = require_hints.get(callee_name)
-                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                    lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         callee = lookup_result.symbol
                         if callee.kind == "method" and callee.id != current_method.id:
@@ -2329,7 +2438,7 @@ def _extract_edges_from_file(
                 ref_name = node_text(value_node, source)
                 target = local_symbols.get(ref_name) or global_symbols.get(ref_name)
                 if target is None:  # pragma: no cover - defensive resolver fallback
-                    lookup_result = resolver.lookup(ref_name)
+                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         target = lookup_result.symbol
                 if target is not None and target.kind == "method":

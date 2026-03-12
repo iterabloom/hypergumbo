@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Integration tests against real-world repositories.
 #
 # This script clones popular open source projects and runs hypergumbo

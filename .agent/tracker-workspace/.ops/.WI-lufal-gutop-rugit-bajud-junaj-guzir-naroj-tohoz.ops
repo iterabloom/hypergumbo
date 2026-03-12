@@ -1,0 +1,35 @@
+- op: create  # e6ab
+  at: '2026-03-04T21:50:26Z'  # e6ab
+  by: agent  # e6ab
+  actor: jgstern_agent  # e6ab
+  clock: 1  # e6ab
+  nonce: e6ab  # e6ab
+  data:  # e6ab
+    kind: work_item  # e6ab
+    title: "Tracker auto-sync: failed push should not discard local ops files"  # e6ab
+    status: todo_hard  # e6ab
+    priority: 1  # e6ab
+    parent:  # e6ab
+    tags:  # e6ab
+    - ci_infrastructure  # e6ab
+    before: []  # e6ab
+    duplicate_of: []  # e6ab
+    not_duplicate_of: []  # e6ab
+    pr_ref:  # e6ab
+    description: "When auto-sync threshold fires and push fails (e.g., remote outage), the sync appears to roll back locally committed ops files, causing data loss. Observed: 15 of 16 tracker items lost after auto-sync push failed 3 times during Codeberg outage. Expected: failed push should preserve local commits and retry on next mutation. Root cause needs investigation — may be a git reset during error recovery."  # e6ab
+    fields: {}  # e6ab
+- op: update  # 24c5
+  at: '2026-03-06T00:17:22Z'  # 24c5
+  by: agent  # 24c5
+  actor: jgstern_agent  # 24c5
+  clock: 2  # 24c5
+  nonce: 24c5  # 24c5
+  set:  # 24c5
+    status: done  # 24c5
+- op: discuss  # 37b6
+  at: '2026-03-06T00:17:22Z'  # 37b6
+  by: agent  # 37b6
+  actor: jgstern_agent  # 37b6
+  clock: 3  # 37b6
+  nonce: 37b6  # 37b6
+  message: "Fixed in PR #1772. Root cause: do_sync() finally block checked out original branch (discarding committed ops) then deleted sync branch (orphaning the commit). Fix: restore ops from sync branch via git checkout before branch deletion."  # 37b6

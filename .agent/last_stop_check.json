@@ -1,11 +1,9 @@
 {
-  "last_completed_utc": "2026-02-27T07:35:00Z",
+  "last_completed_utc": "2026-03-05T18:00:00Z",
   "branch": "dev",
-  "last_pr": 1552,
+  "last_pr": 1762,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
-  "unfixed_invariants": 0,
-  "notes": "PR #1552 merged: Guice @Provides + @ImplementedBy DI detection. PR #1551 merged: AngularJS $http + jQuery $.ajax HTTP client detection. PR #1550 open (CI pipeline revamp, governance, needs human review). Bakeoff cohort 9 re-ran same repos (guacamole-client, guacamole-server-main, tmux) with callback detection + $http detection. Results: guacamole-server-main avg_slice 21.7->50.3, orphan_rate 16.7%->15.0%. tmux edges 7327->7526, orphans 14.2%->13.3%. guacamole-client unchanged (LOW_AVG_SLICE_NODES 15.6). Next: investigate guacamole-client slice depth issue, or explore new bakeoff repos.",
-  "bakeoff_convergence": "NEEDS_WORK cohort=9 iter=1 good=0 warn=3 fail=0\n  guacamole-client: LOW_AVG_SLICE_NODES: 15.6 < 20; guacamole-server-main: HIGH_ORPHAN_RATE: 15.0% = 15%; tmux: HIGH_AVG_SLICE_NODES: 596.1 > 500, HIGH_SLICE_COVERAGE_PCT: 22.5% > 10%"
+  "notes": "CI failover system implemented and tested end-to-end. PR #1762 merged on Codeberg (ci-failover scripts, --gov flag, forgejo-api.sh apply_failover_overrides). Failover engaged targeting self-hosted Forgejo at 10.85.0.10:3000. Local PRs #1-6 merged (mirror handling, credential embedding, safe mirror restore, analyzer error message improvement). Local CI fully operational with runner labels local-ci, codeberg-small-lazy, self-hosted. Dev is 10+ commits ahead of origin/dev. Disengage when Codeberg recovers."
 }

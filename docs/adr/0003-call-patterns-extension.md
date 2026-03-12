@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0003 Extension: Call-Based Framework Patterns
 
 ## Status

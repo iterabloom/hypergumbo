@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Elixir analysis pass using tree-sitter-elixir.
 
 This analyzer uses tree-sitter to parse Elixir files and extract:
@@ -6,7 +7,7 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Macro declarations (defmacro/defmacrop)
 - Function call relationships
 - Import relationships (use/import/alias)
-- OTP/Phoenix behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
+- OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -72,7 +73,50 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     "Plug": ["init", "call"],
     "Plug.Builder": ["init", "call"],
     "Plug.Router": ["init", "call"],
+    "WebSock": ["init", "handle_in", "handle_control", "terminate"],
+    "WebSockex": [
+        "handle_connect", "handle_frame", "handle_cast",
+        "handle_info", "handle_ping", "handle_pong",
+        "handle_disconnect", "terminate",
+    ],
 }
+
+# Elixir Kernel and stdlib functions that are auto-imported into every
+# module.  Bare calls to these names (e.g., ``inspect(data)``) should
+# NOT resolve to project-defined functions with the same name in other
+# modules — they are almost always Kernel/stdlib calls.
+#
+# Local definitions shadow Kernel, so local_symbols_multi matches are
+# still allowed.  Only the cross-file (global_multi / resolver)
+# fallback is gated.
+_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
+    # Kernel — auto-imported, always available bare
+    "inspect", "to_string", "to_charlist", "is_atom", "is_binary",
+    "is_bitstring", "is_boolean", "is_float", "is_function",
+    "is_integer", "is_list", "is_map", "is_map_key", "is_nil",
+    "is_number", "is_pid", "is_port", "is_reference", "is_tuple",
+    "is_struct", "is_exception", "abs", "ceil", "floor", "round",
+    "trunc", "div", "rem", "max", "min", "hd", "tl", "length",
+    "elem", "put_elem", "tuple_size", "map_size", "bit_size",
+    "byte_size", "node", "self", "send", "spawn", "spawn_link",
+    "spawn_monitor", "exit", "throw", "raise", "reraise",
+    "apply", "function_exported?", "macro_exported?",
+    "struct", "struct!", "update_in", "put_in", "get_in",
+    "get_and_update_in", "pop_in", "match?", "dbg",
+    # Kernel.SpecialForms — technically macros but called bare
+    "import", "require", "alias", "use",
+    # IO — commonly called bare via import
+    "puts", "write", "gets",
+    # Enum — very common via import
+    "map", "filter", "reduce", "each", "sort", "flat_map",
+    "find", "reject", "any?", "all?", "count", "zip",
+    "uniq", "chunk_every", "group_by", "into",
+    # String — commonly imported
+    "split", "join", "trim", "replace", "starts_with?",
+    "ends_with?", "contains?", "downcase", "upcase",
+    # Logger
+    "debug", "info", "warn", "error",
+})
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -87,6 +131,16 @@ def find_elixir_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.ex", "*.exs"])
 
 
+
+
+def _symbol_module(name: str) -> str:
+    """Extract the module prefix from a qualified Elixir symbol name.
+
+    ``MyApp.Sites.create`` → ``MyApp.Sites``
+    ``create`` → ``""``  (bare name, no module)
+    """
+    dot_pos = name.rfind(".")
+    return name[:dot_pos] if dot_pos >= 0 else ""
 
 
 def _extract_alias_hints(
@@ -164,6 +218,37 @@ def _extract_alias_hints(
     return hints
 
 
+def _extract_imported_modules(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> set[str]:
+    """Extract the set of module names that appear in ``import`` directives.
+
+    In Elixir, ``import MyApp.Sites`` makes all public functions from
+    ``MyApp.Sites`` available as bare calls. This set is used to gate
+    cross-module bare call resolution: only functions from imported modules
+    should be resolved.
+    """
+    imported: set[str] = set()
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        if not target:  # pragma: no cover
+            continue
+        if node_text(target, source) != "import":
+            continue
+        args = find_child_by_type(node, "arguments")
+        if args:
+            for child in args.children:
+                if child.type == "alias":
+                    imported.add(node_text(child, source))
+                    break
+
+    return imported
+
+
 def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Walk up the tree to find all enclosing module names, innermost first."""
     modules: list[str] = []
@@ -220,20 +305,41 @@ def _get_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None
 
 
+def _unwrap_guard(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """Unwrap a guard clause's binary_operator to get the function head.
+
+    When a ``def`` has a ``when`` guard, tree-sitter wraps the head in a
+    ``binary_operator`` node: ``func(x) when guard(x)``.  This helper
+    returns the left-hand child (the function call) so callers can extract
+    the name and signature as if no guard were present.
+    """
+    if node.type == "binary_operator":
+        for child in node.children:
+            if child.type in ("call", "identifier"):
+                return child
+    return node
+
+
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract function name from def/defp/defmacro call."""
+    """Extract function name from def/defp/defmacro call.
+
+    Handles both plain heads (``def foo(a)``) and guarded heads
+    (``def foo(a) when is_atom(a)``).  In the guarded case the head is
+    wrapped in a ``binary_operator`` node which ``_unwrap_guard`` strips.
+    """
     # def has structure: (call target: (identifier "def") arguments: (arguments (call target: (identifier "func_name") ...)))
     args = find_child_by_type(node, "arguments")
     if args:
         for child in args.children:
-            if child.type == "call":
+            unwrapped = _unwrap_guard(child)
+            if unwrapped.type == "call":
                 # The function name is the target of this call
-                target = find_child_by_type(child, "identifier")
+                target = find_child_by_type(unwrapped, "identifier")
                 if target:
                     return node_text(target, source)
-            elif child.type == "identifier":
+            elif unwrapped.type == "identifier":
                 # Simple case: def foo, do: :ok
-                return node_text(child, source)
+                return node_text(unwrapped, source)
     return None
 
 
@@ -250,9 +356,10 @@ def _extract_elixir_signature(
         return "()"
 
     for child in args.children:
-        if child.type == "call":
+        unwrapped = _unwrap_guard(child)
+        if unwrapped.type == "call":
             # def foo(a, b) - parameters are in the arguments of the inner call
-            inner_args = find_child_by_type(child, "arguments")
+            inner_args = find_child_by_type(unwrapped, "arguments")
             if inner_args is None:  # pragma: no cover - rare
                 return "()"
 
@@ -285,7 +392,7 @@ def _extract_elixir_signature(
 
             return f"({', '.join(params)})"
 
-        elif child.type == "identifier":
+        elif unwrapped.type == "identifier":
             # Simple case: def foo, do: :ok (no parameters)
             return "()"
 
@@ -509,65 +616,80 @@ def _extract_behaviour_callbacks(
 ) -> list[Edge]:
     """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
 
-    When a module uses `use GenServer`, `use Phoenix.LiveView`, etc., the framework
-    invokes specific callback functions (init, handle_call, mount, render, ...).
-    Without these edges, callback functions appear as orphans.
+    When a module uses ``use GenServer``, ``use Phoenix.LiveView``, etc., or
+    declares ``@behaviour Plug``, the framework invokes specific callback
+    functions (init, handle_call, mount, render, ...).  Without these edges,
+    callback functions appear as orphans.
 
-    Detects `use Module` directives, maps to known behaviours via BEHAVIOUR_CALLBACKS,
-    and creates edges from the enclosing module to each implemented callback function.
+    Detects two directive forms:
+
+    1. ``use Module`` — e.g. ``use GenServer``, ``use WebSock``
+    2. ``@behaviour Module`` — e.g. ``@behaviour Plug``, ``@behaviour NexAI.Middleware``
+
+    Both forms are mapped to ``BEHAVIOUR_CALLBACKS`` and create edges from the
+    enclosing module symbol to each implemented callback function.
     """
     edges: list[Edge] = []
 
+    # Collect (behaviour_module_name, ast_node) pairs from both forms
+    behaviour_hits: list[tuple[str, "tree_sitter.Node"]] = []
+
     for node in iter_tree(tree.root_node):
-        if node.type != "call":
-            continue
+        # Form 1: `use Module`
+        if node.type == "call":
+            target = find_child_by_type(node, "identifier")
+            if target is not None and node_text(target, source) == "use":
+                args = find_child_by_type(node, "arguments")
+                if args is not None:
+                    for child in args.children:
+                        if child.type == "alias":
+                            used_module = node_text(child, source)
+                            if used_module in BEHAVIOUR_CALLBACKS:
+                                behaviour_hits.append((used_module, node))
+                            break
 
-        target = find_child_by_type(node, "identifier")
-        if target is None or node_text(target, source) != "use":
-            continue
+        # Form 2: `@behaviour Module`
+        # AST: unary_operator(@) → call(identifier="behaviour", arguments(alias=...))
+        elif node.type == "unary_operator":
+            op = find_child_by_type(node, "@")
+            if op is not None:
+                inner_call = find_child_by_type(node, "call")
+                if inner_call is not None:
+                    ident = find_child_by_type(inner_call, "identifier")
+                    if ident is not None and node_text(ident, source) == "behaviour":
+                        args = find_child_by_type(inner_call, "arguments")
+                        if args is not None:
+                            for child in args.children:
+                                if child.type == "alias":
+                                    beh_module = node_text(child, source)
+                                    if beh_module in BEHAVIOUR_CALLBACKS:
+                                        behaviour_hits.append(
+                                            (beh_module, node)
+                                        )
+                                    break
 
-        # Extract the used module name from arguments
-        args = find_child_by_type(node, "arguments")
-        if args is None:  # pragma: no cover — use always has arguments
-            continue
+    # Create callback edges for each behaviour hit
+    for used_module, node in behaviour_hits:
+        expected_callbacks = BEHAVIOUR_CALLBACKS[used_module]
 
-        used_module = None
-        for child in args.children:
-            if child.type == "alias":
-                used_module = node_text(child, source)
-                break
-
-        if used_module is None:  # pragma: no cover — use always takes alias arg
-            continue
-
-        # Check if used module matches a known behaviour
-        expected_callbacks = BEHAVIOUR_CALLBACKS.get(used_module)
-        if expected_callbacks is None:
-            continue
-
-        # Find the enclosing module
         enclosing_modules = _get_enclosing_modules(node, source)
         if not enclosing_modules:
-            continue  # pragma: no cover — use is always inside a module
+            continue  # pragma: no cover — use/@behaviour is always inside a module
 
         module_name = ".".join(enclosing_modules)
 
-        # Find the module symbol
         module_sym = file_symbols.get(module_name) or global_symbols.get(module_name)
         if module_sym is None:
             continue  # pragma: no cover — module always in file symbols
 
-        # Create edges for each implemented callback (all clauses)
         for callback_name in expected_callbacks:
             qualified = f"{module_name}.{callback_name}"
-            # Multi-clause: find all clauses of the callback function
             callees = (
                 (file_symbols_multi.get(qualified) if file_symbols_multi else None)
                 or (global_symbols_multi.get(qualified) if global_symbols_multi else None)
                 or (file_symbols_multi.get(callback_name) if file_symbols_multi else None)
             )
             if not callees:
-                # Fallback to single-match index
                 single = (
                     file_symbols.get(qualified)
                     or global_symbols.get(qualified)
@@ -729,11 +851,16 @@ def _extract_edges_from_tree(
     alias_hints: dict[str, str] | None = None,
     local_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
+    imported_modules: set[str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elixir tree.
 
     Args:
         alias_hints: Optional dict mapping short names to full module paths for disambiguation.
+        imported_modules: Set of module names from ``import`` directives. When
+            provided, bare cross-module calls are only resolved if the target
+            function's module was imported. This prevents false edges from
+            name collisions across unrelated modules.
     """
     if alias_hints is None:  # pragma: no cover - defensive default
         alias_hints = {}
@@ -813,10 +940,21 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))
-                        # Cross-file: multi-clause global lookup, then resolver
-                        else:
+                        # Cross-file: multi-clause global lookup, then resolver.
+                        # Skip for Kernel/stdlib names — bare ``inspect(x)`` is
+                        # almost always Kernel.inspect, not a project function.
+                        elif target_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(target_name) if global_symbols_multi else None
                             if global_multi:
+                                # Gate on imports: if imported_modules is
+                                # available, only allow targets from imported
+                                # modules. Bare calls in Elixir require an
+                                # ``import`` directive for cross-module access.
+                                if imported_modules is not None:
+                                    global_multi = [
+                                        s for s in global_multi
+                                        if _symbol_module(s.name) in imported_modules
+                                    ]
                                 for callee in global_multi:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -854,6 +992,56 @@ def _extract_edges_from_tree(
                         global_symbols, resolver, alias_hints, edges, run_id,
                     )
 
+        # Pipe operator: ``data |> func`` (no parens) is a binary_operator
+        # whose right child is an identifier, not a call.  When parens are
+        # present (``data |> func()``), tree-sitter emits a call node that
+        # the block above already handles.
+        elif node.type == "binary_operator":
+            children = node.children
+            # binary_operator has [left, operator, right]
+            if len(children) >= 3 and node_text(children[1], source) == "|>":
+                rhs = children[2]
+                if rhs.type == "identifier":
+                    func_name = node_text(rhs, source)
+                    current_function = _get_enclosing_function(node, source, local_symbols)
+                    if current_function is not None:
+                        local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
+                        if local_multi:
+                            for callee in local_multi:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="pipe_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                ))
+                        elif func_name not in _ELIXIR_STDLIB_FUNCTIONS:
+                            global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
+                            if global_multi:
+                                if imported_modules is not None:
+                                    global_multi = [
+                                        s for s in global_multi
+                                        if _symbol_module(s.name) in imported_modules
+                                    ]
+                                for callee in global_multi:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="pipe_call",
+                                        confidence=0.80,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    ))
+                # Note: ``data |> Mod.func`` (module-qualified pipe) does NOT
+                # produce a bare ``dot`` rhs — tree-sitter wraps it in a
+                # ``call`` node, which iter_tree visits separately.  So this
+                # branch is handled by the normal call/dot path above.
+
     return edges
 
 
@@ -867,12 +1055,14 @@ def _handle_dot_call(
     alias_hints: dict[str, str],
     edges: list[Edge],
     run_id: str,
+    evidence_type: str = "module_qualified_call",
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 
     Extracts the module alias and function name from a dot node, then resolves
     the function using the module-qualified name (e.g., "Helper.greet") against
-    the global symbol registry.
+    the global symbol registry.  The *evidence_type* parameter allows callers
+    (such as the pipe-operator handler) to supply a more specific tag.
     """
     # Extract module alias and function name from dot node
     alias_node = find_child_by_type(dot_node, "alias")
@@ -899,7 +1089,7 @@ def _handle_dot_call(
             dst=callee.id,
             edge_type="calls",
             line=call_node.start_point[0] + 1,
-            evidence_type="module_qualified_call",
+            evidence_type=evidence_type,
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run_id,
@@ -917,28 +1107,40 @@ def _handle_dot_call(
                 dst=callee.id,
                 edge_type="calls",
                 line=call_node.start_point[0] + 1,
-                evidence_type="module_qualified_call",
+                evidence_type=evidence_type,
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run_id,
             ))
             return
 
-    # Try resolver lookup with the function name and module as path hint
-    path_hint = alias_hints.get(module_name, module_name)
-    lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-    if lookup_result.found and lookup_result.symbol is not None:
-        edges.append(Edge.create(
-            src=current_function.id,
-            dst=lookup_result.symbol.id,
-            edge_type="calls",
-            line=call_node.start_point[0] + 1,
-            evidence_type="module_qualified_call",
-            confidence=0.75 * lookup_result.confidence,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        ))
-        return
+    # Try resolver lookup, but only when the module name plausibly belongs
+    # to this project.  If no global symbol key contains the module name as
+    # a prefix component (e.g., "Greeter." in "App.Helpers.Greeter.greet"),
+    # the call targets an external library and the resolver's bare-name
+    # suffix matching would produce false positives (e.g., bare "compile"
+    # matching Phoenix.Digester.compile when the source says
+    # Plug.Builder.compile).
+    module_dot = f"{module_name}."
+    alias_expanded = alias_hints.get(module_name)
+    if alias_expanded:
+        module_dot = f"{alias_expanded}."
+    module_known = any(module_dot in k for k in global_symbols)
+    if module_known:
+        path_hint = alias_hints.get(module_name, module_name)
+        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
+        if lookup_result.found and lookup_result.symbol is not None:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=lookup_result.symbol.id,
+                edge_type="calls",
+                line=call_node.start_point[0] + 1,
+                evidence_type=evidence_type,
+                confidence=0.75 * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+            return
 
     # Fallback: create an unresolved edge for cross-module calls
     # This allows linkers to match across files/languages
@@ -1034,12 +1236,15 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
                 if local_matches:
                     local_symbols_multi[name] = local_matches
 
+        file_imported_modules = _extract_imported_modules(tree, source)
+
         edges = _extract_edges_from_tree(
             tree, source, rel_path, local_symbols, global_symbols,
             run.execution_id, resolver,
             alias_hints=import_aliases,
             local_symbols_multi=local_symbols_multi,
             global_symbols_multi=global_multi,
+            imported_modules=file_imported_modules,
         )
 
         # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)

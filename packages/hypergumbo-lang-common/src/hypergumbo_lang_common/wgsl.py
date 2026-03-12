@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
 
 This analyzer uses tree-sitter to parse WebGPU Shading Language files and extract:
@@ -380,8 +381,7 @@ def _extract_wgsl_edges(
                     dst_id = f"wgsl:builtin:{func_name}"
                     confidence = 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                edge = Edge.create(
                     src=caller.id,
                     dst=dst_id,
                     edge_type="calls",

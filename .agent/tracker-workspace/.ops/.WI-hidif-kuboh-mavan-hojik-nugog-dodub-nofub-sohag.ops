@@ -1,0 +1,55 @@
+- op: create  # 4fe5
+  at: '2026-03-11T02:18:03Z'  # 4fe5
+  by: agent  # 4fe5
+  actor: jgstern_agent  # 4fe5
+  clock: 1  # 4fe5
+  nonce: 4fe5  # 4fe5
+  data:  # 4fe5
+    kind: work_item  # 4fe5
+    title: "Bakeoff init should default to new session, not reuse existing — prevents accidental data destruction"  # 4fe5
+    status: todo_hard  # 4fe5
+    priority: 1  # 4fe5
+    parent:  # 4fe5
+    tags: []  # 4fe5
+    before: []  # 4fe5
+    duplicate_of: []  # 4fe5
+    not_duplicate_of: []  # 4fe5
+    pr_ref:  # 4fe5
+    description: "When bakeoff-features init is called with the same pool, it silently reuses the existing session. This led to rm -rf of completed bakeoff outputs when trying to re-run with code fixes. Fixes needed: (1) init should create a new timestamped session by default, not reuse; (2) add --resume flag for explicit reuse; (3) when reusing, warn about existing outputs and suggest safe alternatives; (4) run --all should refuse to overwrite without --force."  # 4fe5
+    fields: {}  # 4fe5
+- op: discuss  # 4e3e
+  at: '2026-03-11T02:18:57Z'  # 4e3e
+  by: agent  # 4e3e
+  actor: jgstern_agent  # 4e3e
+  clock: 2  # 4e3e
+  nonce: 4e3e  # 4e3e
+  message: "Not a duplicate of WI-bunul (Java import resolution). SimHash collision."  # 4e3e
+- op: discuss  # 0c93
+  at: '2026-03-11T02:58:11Z'  # 0c93
+  by: human  # 0c93
+  actor: jgstern  # 0c93
+  clock: 3  # 0c93
+  nonce: 0c93  # 0c93
+  message: "when the script refuses to to things with out --force, it should use spicy language. Something like \"important NOTE: you are about to ERASE RESULTS OF A SCIENCE EXPERIMENT so unless you are REALLY FUCKING CERTAIN you know what your doing you should probably NOT use the force option\""  # 0c93
+- op: update  # 300b
+  at: '2026-03-11T04:44:57Z'  # 300b
+  by: agent  # 300b
+  actor: jgstern_agent  # 300b
+  clock: 4  # 300b
+  nonce: 300b  # 300b
+  set:  # 300b
+    status: done  # 300b
+- op: discuss  # 5dc5
+  at: '2026-03-11T04:44:57Z'  # 5dc5
+  by: agent  # 5dc5
+  actor: jgstern_agent  # 5dc5
+  clock: 5  # 5dc5
+  nonce: 5dc5  # 5dc5
+  message: "Fixed in PR #2137. init now creates new session by default; --resume for explicit reuse. Run warns against deleting outputs with strong language as requested."  # 5dc5
+- op: discuss  # e9e2
+  at: '2026-03-11T04:45:04Z'  # e9e2
+  by: agent  # e9e2
+  actor: jgstern_agent  # e9e2
+  clock: 6  # e9e2
+  nonce: e9e2  # e9e2
+  message: "Done in PR #2137. The warning now reads: 'IMPORTANT NOTE: If you are tempted to DELETE the existing output directory to force a re-run, STOP. You are about to ERASE RESULTS OF A SCIENCE EXPERIMENT. Unless you are REALLY CERTAIN you know what you'\\''re doing, create a new session instead. Bakeoff artifacts are DATA, not temp files — they exist for before/after comparison.' Also flipped the default: init now creates new sessions by default, with --resume for explicit reuse."  # e9e2

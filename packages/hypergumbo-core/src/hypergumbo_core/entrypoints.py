@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Entrypoint detection for code analysis using YAML-driven pattern matching.
 
 Detects entrypoints via semantic concepts from YAML framework patterns (ADR-0003):
@@ -64,8 +65,47 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
+import re
+
 from .ir import Symbol, Edge
-from .paths import is_test_file, is_utility_file
+from .paths import is_infrastructure_path, is_test_file, is_utility_file
+
+
+# File path patterns that indicate frontend UI code (React, Vue, Angular, Svelte).
+# Symbols in these paths should not be classified as server-side HTTP routes.
+_FRONTEND_PATH_RE = re.compile(
+    r"(?:^|/)(?:components|views|pages|layouts|widgets|screens|ui)/"
+    r"|\.(?:tsx|jsx|vue|svelte)$",
+    re.IGNORECASE,
+)
+
+# Import patterns that indicate frontend framework code.
+# If a symbol's file imports from these, it's UI code not server routes.
+_FRONTEND_IMPORT_PREFIXES = frozenset({
+    "react", "react-dom", "@angular/core", "@angular/common",
+    "vue", "svelte", "@sveltejs", "solid-js", "preact",
+    "next/link", "next/router", "next/navigation",
+    "@remix-run/react", "gatsby",
+})
+
+
+def _is_frontend_file(sym: Symbol) -> bool:
+    """Check if a symbol is in a frontend UI file.
+
+    Uses file path patterns and import metadata to detect React, Vue,
+    Angular, and Svelte component files.  Used to suppress false-positive
+    http_route classification on frontend event handlers (WI-ronik).
+    """
+    if sym.path and _FRONTEND_PATH_RE.search(sym.path):
+        return True
+    # Check imports in symbol metadata
+    if sym.meta:
+        imports = sym.meta.get("imports", [])
+        for imp in imports:
+            mod = imp.get("module", "") if isinstance(imp, dict) else str(imp)
+            if any(mod.startswith(prefix) for prefix in _FRONTEND_IMPORT_PREFIXES):
+                return True
+    return False
 
 # Minimum confidence threshold for entrypoint inclusion.
 # Entries below this threshold are filtered from detect_entrypoints() results.
@@ -156,6 +196,8 @@ class EntrypointKind(Enum):
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
     # Test/benchmark entry points (from test-frameworks.yaml patterns)
     TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
+    # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
+    SPA_BOOTSTRAP = "spa_bootstrap"  # SPA app bootstrap function
     # Connectivity-based fallback (no patterns matched)
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
@@ -186,6 +228,57 @@ class Entrypoint:
         }
 
 
+# Priority order for disambiguating app_bootstrap framework labels.
+# When multiple frameworks match the same bootstrap call (e.g., both React
+# and Solid match bare createRoot()), we prefer the more specific framework.
+# React is deprioritized because its patterns match Solid.js function names
+# (createRoot, hydrateRoot) — Solid uses the same names for different APIs.
+# Frameworks earlier in this list win over those later.
+_BOOTSTRAP_FRAMEWORK_PRIORITY: list[str] = [
+    "solid",    # Solid's createRoot/render are always Solid-specific
+    "svelte",   # Svelte's mount/hydrate are Svelte-specific
+    "vue",      # Vue's createApp is Vue-specific
+    "react",    # React patterns overlap with Solid (createRoot, hydrateRoot)
+]
+
+
+def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
+    """Pick the best framework label when multiple claim app_bootstrap.
+
+    When a symbol has app_bootstrap concepts from multiple frameworks (e.g.,
+    both React and Solid match bare createRoot()), this function picks the
+    most appropriate one based on framework priority.
+
+    Args:
+        concepts: The symbol's concept list (meta.concepts).
+
+    Returns:
+        Best framework name, or empty string if no app_bootstrap concepts.
+    """
+    bootstrap_fws: list[str] = []
+    for c in concepts:
+        if not isinstance(c, dict):
+            continue
+        if c.get("concept") == "app_bootstrap":
+            fw = c.get("framework", "")
+            if fw:
+                bootstrap_fws.append(fw)
+
+    if not bootstrap_fws:
+        return ""
+    if len(bootstrap_fws) == 1:
+        return bootstrap_fws[0]
+
+    # Multiple frameworks claim app_bootstrap — pick by priority
+    fw_set = set(bootstrap_fws)
+    for fw in _BOOTSTRAP_FRAMEWORK_PRIORITY:
+        if fw in fw_set:
+            return fw
+
+    # Fallback: return first framework found
+    return bootstrap_fws[0]
+
+
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
@@ -212,6 +305,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
     - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
     - "lifecycle_hook" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)
+
+    Detected concepts (generic entrypoint, confidence=0.90):
+    - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)
+    - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
     - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
@@ -258,10 +355,17 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"HTTP route {path}"
                 else:
                     label = "HTTP route"
+                # Suppress false-positive route classification on frontend
+                # UI code (WI-ronik).  React/Vue/Angular component event
+                # handlers syntactically resemble Express route handlers
+                # but are not server-side routes.
+                confidence = 0.95
+                if _is_frontend_file(sym):
+                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
                 entrypoints.append(Entrypoint(
                     symbol_id=sym.id,
                     kind=EntrypointKind.HTTP_ROUTE,
-                    confidence=0.95,
+                    confidence=confidence,
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.HTTP_ROUTE)
@@ -580,6 +684,75 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.TEST_FUNCTION)
 
+            # Generic entrypoint concept -> framework-specific or MAIN_FUNCTION
+            # Used by electron.yaml (app.whenReady), cli.yaml (fire.Fire,
+            # argparse.ArgumentParser), cli-go.yaml (kong.Parse),
+            # cli-ruby.yaml (OptionParser), akka-http.yaml (Http().newServerAt).
+            elif concept_type == "entrypoint":
+                # Map to framework-specific kind when possible
+                fw_lower = framework.lower() if framework else ""
+                if fw_lower == "electron":
+                    target_kind = EntrypointKind.ELECTRON_MAIN
+                    label = "Electron app entrypoint"
+                else:
+                    target_kind = EntrypointKind.MAIN_FUNCTION
+                    if framework:
+                        label = f"{framework.title()} entrypoint"
+                    else:
+                        label = "App entrypoint"
+                if target_kind in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=target_kind,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(target_kind)
+
+            # SPA bootstrap concept -> SPA_BOOTSTRAP
+            # Detected from react.yaml, solid.yaml, etc. patterns:
+            # createRoot(), ReactDOM.render(), render(), hydrateRoot(),
+            # createBrowserRouter().
+            #
+            # When multiple frameworks claim app_bootstrap for the same
+            # symbol (e.g., both React and Solid match bare createRoot()),
+            # disambiguate by preferring the more specific framework.
+            elif concept_type == "app_bootstrap":
+                if EntrypointKind.SPA_BOOTSTRAP in added_kinds:
+                    continue
+                best_fw = _pick_best_bootstrap_framework(concepts)
+                if best_fw:
+                    label = f"{best_fw.title()} app bootstrap"
+                else:
+                    label = "SPA bootstrap"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SPA_BOOTSTRAP,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.SPA_BOOTSTRAP)
+
+            # IPC handler concept -> EVENT_HANDLER
+            # Used by electron.yaml (ipcMain.on/handle) and tauri.yaml
+            # (#[tauri::command]). IPC handlers are cross-language entry
+            # points analogous to HTTP routes.
+            elif concept_type == "ipc_handler":
+                if EntrypointKind.EVENT_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} IPC handler"
+                else:
+                    label = "IPC handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.EVENT_HANDLER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
     # --- Pass 2: Direct route symbol detection ---
     # Go (and potentially other analyzers) create symbols with kind="route"
     # that carry route metadata (route_path, http_method) directly in sym.meta
@@ -741,6 +914,35 @@ def detect_entrypoints(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
+    # Route-label deduplication: multiple symbols (route symbol, handler
+    # method, different registration sites) can produce HTTP_ROUTE entrypoints
+    # with the same (method, path).  In prometheus, POST /-/quit appears 14x.
+    # Group by label and keep the highest-confidence entry per unique label.
+    _ROUTE_KINDS = frozenset({
+        EntrypointKind.HTTP_ROUTE,
+        EntrypointKind.EXPRESS_ROUTE,
+        EntrypointKind.SINATRA_ROUTE,
+        EntrypointKind.KTOR_ROUTE,
+        EntrypointKind.VAPOR_ROUTE,
+        EntrypointKind.PLUG_ROUTE,
+        EntrypointKind.HAPI_ROUTE,
+        EntrypointKind.FASTIFY_ROUTE,
+        EntrypointKind.KOA_ROUTE,
+        EntrypointKind.SLIM_ROUTE,
+        EntrypointKind.RUST_HANDLER,
+    })
+    route_label_groups: dict[str, list[Entrypoint]] = defaultdict(list)
+    non_route_eps: list[Entrypoint] = []
+    for ep in unique_entrypoints:
+        if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
+            route_label_groups[ep.label].append(ep)
+        else:
+            non_route_eps.append(ep)
+    for _label, eps in route_label_groups.items():
+        eps.sort(key=lambda e: e.confidence, reverse=True)
+        non_route_eps.append(eps[0])
+    unique_entrypoints = non_route_eps
+
     # Connectivity-based fallback: when no concept-based entrypoints found,
     # select the most-connected callable symbols as pseudo-entrypoints.
     # This ensures --entry auto never hard-fails, even for repos with no
@@ -776,6 +978,23 @@ def detect_entrypoints(
         # Tier 3 = external deps, Tier 4 = derived/build artifacts
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
+
+        # Penalty for Go main()s in deeply nested cmd/ directories (50%).
+        # In Go repos, top-level cmd/<name>/ holds the primary application
+        # binaries.  Deeply nested cmd/ (e.g., builtin/logical/consul/cmd/)
+        # holds plugin shims and tool binaries that should not outrank the
+        # actual server entrypoint.  Depth threshold: cmd/ preceded by 2+
+        # path components is considered "deeply nested".
+        if (
+            ep.kind == EntrypointKind.MAIN_FUNCTION
+            and sym.language == "go"
+            and sym.path
+        ):
+            parts = sym.path.split("/")
+            for i, part in enumerate(parts):
+                if part == "cmd" and i >= 2:
+                    ep.confidence *= 0.5
+                    break
 
     # Application demotion: when real semantic entrypoints exist (routes,
     # commands, main, controllers), library_export entries are just API
@@ -826,11 +1045,37 @@ def detect_entrypoints(
         EntrypointKind.ANDROID_ACTIVITY,
         EntrypointKind.ANDROID_APPLICATION,
     })
-    has_semantic = any(ep.kind in _SEMANTIC_KINDS for ep in unique_entrypoints)
-    if has_semantic:
+    # Per-language demotion: only demote library_export entries when their
+    # own language has semantic entrypoints.  This prevents the ArkLib
+    # problem: 6 Python helper scripts (with main()) should NOT suppress
+    # 163 Lean library_export entries.  Lean exports ARE the right
+    # entrypoints for a Lean library — Python main() is incidental tooling.
+    langs_with_semantic: set[str] = set()
+    for ep in unique_entrypoints:
+        if ep.kind in _SEMANTIC_KINDS:
+            sym = symbol_lookup.get(ep.symbol_id)
+            if sym and sym.language:
+                # Skip entrypoints from example/utility files — these are
+                # demonstration code, not real application entrypoints that
+                # should trigger library_export demotion.  Fixes the
+                # "livekit problem": example HTTP routes in examples/rpc/
+                # were demoting core library exports like Room.
+                if sym.path and is_utility_file(sym.path):
+                    continue
+                langs_with_semantic.add(sym.language)
+    infra_export_ids: set[str] = set()
+    if langs_with_semantic:
         for ep in unique_entrypoints:
             if ep.kind == EntrypointKind.LIBRARY_EXPORT:
-                ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                sym = symbol_lookup.get(ep.symbol_id)
+                lang = sym.language if sym else None
+                if lang and lang in langs_with_semantic:
+                    ep.confidence *= 0.1  # 90% reduction, same as test penalty
+                    # Infrastructure-path exports (telemetry/, metrics/, logging/)
+                    # are internal plumbing, not developer-facing API.  Track
+                    # them so connectivity boost skips them (like tests).
+                    if sym and sym.path and is_infrastructure_path(sym.path):
+                        infra_export_ids.add(ep.symbol_id)
 
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above
@@ -881,6 +1126,23 @@ def detect_entrypoints(
         # their selection already incorporates out-degree ranking, so
         # boosting again would double-count connectivity.
         if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
+            continue
+        # Skip connectivity boost for TEST_FUNCTION entrypoints and any
+        # entrypoint in a test file.  Without this, a test function with
+        # 0.80 * 0.1 (test penalty) = 0.08 gets boosted to 0.33 by
+        # connectivity, passing the MIN_ENTRYPOINT_CONFIDENCE filter and
+        # flooding entries.txt with hundreds of test functions.
+        if ep.kind == EntrypointKind.TEST_FUNCTION:
+            continue
+        sym = symbol_lookup.get(ep.symbol_id)
+        if sym and sym.path and is_test_file(sym.path):
+            continue
+        # Skip connectivity boost for infrastructure-path library exports
+        # (telemetry/, metrics/, logging/).  Like test functions, these are
+        # already demoted and the additive boost would bring them back above
+        # the confidence threshold.  In gemini-cli, 77 telemetry exports
+        # survived at ~0.14 confidence via connectivity boost.
+        if ep.symbol_id in infra_export_ids:
             continue
         effective_edges = _effective_out_degree(ep.symbol_id)
         if effective_edges > 0:

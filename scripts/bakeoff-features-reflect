@@ -183,6 +183,13 @@ developer_assessment:
   confidence: HIGH | MEDIUM | LOW
   trajectory: IMPROVING | STABLE | REGRESSING | FIRST_ASSESSMENT
 
+  dimension_scores:
+    slice_quality: <1-5>
+    reverse_slice_quality: <1-5>
+    tier_classification: <1-5>
+    entrypoint_detection: <1-5>
+    symbol_ranking: <1-5>
+
   improvement_ideas:
     - "specific, actionable suggestion 1"
     - "specific, actionable suggestion 2"
@@ -193,6 +200,18 @@ developer_assessment:
 
 Be specific and concrete. Reference actual files and functions from the repo.
 Focus on practical utility, not theoretical correctness.
+
+## IMPORTANT: Verify Negative Claims
+
+Before claiming "X is missing" or "no Y edges exist", verify by examining the hg.json
+data directly. Common false claims from prior assessments include:
+- "No cross-file call edges" — Check edge counts by comparing src/dst file paths
+- "No trait/interface implementation edges" — Search for edge type "implements"
+- "No tier classification" — Check node.supply_chain.tier (NOT node.supply_chain_tier)
+- "Forward slice is empty" — Verify the slice file has 0 edges, not just few
+
+Do NOT make absolute claims ("X doesn't exist") based on sampling a few artifacts.
+If you didn't check hg.json, say "I didn't verify this in the full graph."
 """
 
 PRIOR_CONTEXT_TEMPLATE = """
@@ -866,7 +885,8 @@ def _print_aggregate_summary(summary: dict, summary_path: str = "") -> None:
         stats = summary["score_statistics"]
         print(f"Scores (0-100):")
         print(f"  Mean: {stats['mean_score']}")
-        print(f"  Range: {stats['min_score']} - {stats['max_score']}")
+        if "min_score" in stats and "max_score" in stats:
+            print(f"  Range: {stats['min_score']} - {stats['max_score']}")
         if "per_task" in stats:
             for task, task_stats in stats["per_task"].items():
                 print(f"  {task}: {task_stats['mean']}")
@@ -954,22 +974,25 @@ def cmd_aggregate(args):
                 print("  No assessments found (skipped)")
 
         # Cross-cohort summary
-        if all_summaries:
-            total_repos = sum(s.get("total_repos", 0) for s in all_summaries)
-            all_verdicts: dict[str, int] = {}
-            for s in all_summaries:
-                for v, c in s.get("verdicts", {}).items():
-                    all_verdicts[v] = all_verdicts.get(v, 0) + c
+        if not all_summaries:
+            print("\nNo assessments found in any cohort.", file=sys.stderr)
+            return 1
 
-            print()
-            print("=" * 60)
-            print("CROSS-COHORT SUMMARY")
-            print("=" * 60)
-            print(f"Cohorts aggregated: {len(all_summaries)}")
-            print(f"Total repos assessed: {total_repos}")
-            print(f"Verdicts:")
-            for v, c in all_verdicts.items():
-                print(f"  {v}: {c}")
+        total_repos = sum(s.get("total_repos", 0) for s in all_summaries)
+        all_verdicts: dict[str, int] = {}
+        for s in all_summaries:
+            for v, c in s.get("verdicts", {}).items():
+                all_verdicts[v] = all_verdicts.get(v, 0) + c
+
+        print()
+        print("=" * 60)
+        print("CROSS-COHORT SUMMARY")
+        print("=" * 60)
+        print(f"Cohorts aggregated: {len(all_summaries)}")
+        print(f"Total repos assessed: {total_repos}")
+        print(f"Verdicts:")
+        for v, c in all_verdicts.items():
+            print(f"  {v}: {c}")
 
         return 0
 

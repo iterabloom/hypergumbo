@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Svelte component analyzer using tree-sitter.
 
 Svelte is a modern web framework that compiles components to efficient

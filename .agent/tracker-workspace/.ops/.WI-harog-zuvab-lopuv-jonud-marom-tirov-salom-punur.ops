@@ -1,0 +1,49 @@
+- op: create  # 6724
+  at: '2026-03-06T09:00:33Z'  # 6724
+  by: agent  # 6724
+  actor: jgstern_agent  # 6724
+  clock: 1  # 6724
+  nonce: '6724'  # 6724
+  data:  # 6724
+    kind: work_item  # 6724
+    title: "Tier classification missing for Cargo workspaces and Maven projects"  # 6724
+    status: todo_soft  # 6724
+    priority: 2  # 6724
+    parent:  # 6724
+    tags: []  # 6724
+    before: []  # 6724
+    duplicate_of: []  # 6724
+    not_duplicate_of: []  # 6724
+    pr_ref:  # 6724
+    description: "All Rust nodes tier unknown (no Cargo.toml workspace parsing). All Java nodes tier None (no pom.xml parsing). Tier-filtered slices provide no filtering value. TDD: test that workspace member crate symbols get tier 1, external crate deps get tier 3. See notebookjournal_03062026_0900.md."  # 6724
+    fields: {}  # 6724
+- op: update  # a440
+  at: '2026-03-06T09:52:13Z'  # a440
+  by: agent  # a440
+  actor: jgstern_agent  # a440
+  clock: 2  # a440
+  nonce: a440  # a440
+  set:  # a440
+    priority: 4  # a440
+- op: discuss  # 4456
+  at: '2026-03-06T09:52:13Z'  # 4456
+  by: agent  # 4456
+  actor: jgstern_agent  # 4456
+  clock: 3  # 4456
+  nonce: '4456'  # 4456
+  message: "Confirmed real but large scope. All Rust/Java nodes have tier=None. Deprioritized to P4."  # 4456
+- op: update  # 28b5
+  at: '2026-03-06T09:55:42Z'  # 28b5
+  by: agent  # 28b5
+  actor: jgstern_agent  # 28b5
+  clock: 4  # 28b5
+  nonce: 28b5  # 28b5
+  set:  # 28b5
+    status: done  # 28b5
+- op: discuss  # fb39
+  at: '2026-03-06T09:55:42Z'  # fb39
+  by: agent  # fb39
+  actor: jgstern_agent  # fb39
+  clock: 5  # fb39
+  nonce: fb39  # fb39
+  message: "Investigation shows tier classification IS working. Correct JSON path is supply_chain.tier (nested), not supply_chain_tier (top-level). candle: 8495 tier-1, 2054 tier-2, 434 tier-3. guacamole-client: 3154 tier-1, 2712 tier-2, 234 tier-3. codex-acp: 193 tier-1, 27 tier-3. All three LLM assessment claims (no cross-file edges, no trait impl, no tier classification) were factually wrong. Earlier verification also used wrong key path."  # fb39

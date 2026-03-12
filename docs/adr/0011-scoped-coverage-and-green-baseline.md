@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0011: Scoped Coverage and Green Baseline Tracking
 
 ## Status

@@ -16,10 +16,54 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Check autonomous mode (TRUE, BROAD, or DEEP all enable autonomous behavior)
 # OFF and FALSE both mean disabled (see scripts/loop-toggle)
-MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+# Format: "MODE" or "MODE pid=12345" (parallel session support)
+_RAW_MODE=$(head -1 "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null || true)
+MODE=$(echo "$_RAW_MODE" | sed 's/ *pid=[0-9]*//' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
 if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
   echo '{"decision": "approve", "reason": "Autonomous mode disabled"}'
   exit 0
+fi
+
+# --- PID-based parallel session detection ---
+# If a PID is stored, only the agent whose ancestor matches that PID is
+# treated as autonomous. Other sessions (interactive) get approved immediately.
+# If no PID is stored, the first agent to hit this hook claims ownership.
+_STORED_PID=""
+if [[ "$_RAW_MODE" =~ pid=([0-9]+) ]]; then
+  _STORED_PID="${BASH_REMATCH[1]}"
+fi
+
+_is_pid_ancestor() {
+  # Walk /proc ancestor chain from current process to check if target PID
+  # is an ancestor. Returns 0 if found, 1 if not.
+  local target=$1
+  local pid=$$
+  while [[ $pid -gt 1 ]]; do
+    [[ "$pid" == "$target" ]] && return 0
+    pid=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null) || return 1
+  done
+  return 1
+}
+
+if [[ -n "$_STORED_PID" ]]; then
+  if _is_pid_ancestor "$_STORED_PID"; then
+    : # This is the autonomous agent — proceed to blocking logic
+  elif [[ -d "/proc/$_STORED_PID" ]]; then
+    # Stored PID is alive but not our ancestor — we're a different session
+    echo '{"decision": "approve", "reason": "Interactive session (PID does not match autonomous agent)"}'
+    exit 0
+  else
+    # Stored PID is dead — don't auto-reclaim. Approve this session.
+    # The autonomous agent must be restarted via loop-toggle, which
+    # will set a fresh PID. Auto-reclaim caused interactive sessions
+    # to inherit autonomous blocking after the agent crashed.
+    echo '{"decision": "approve", "reason": "Autonomous agent PID is dead; use loop-toggle to restart"}'
+    exit 0
+  fi
+else
+  # No PID stored: claim ownership using $PPID (the agent process)
+  # Rewrite the mode file with our PID appended
+  echo "$MODE pid=$PPID" > "$REPO_ROOT/AUTONOMOUS_MODE.txt"
 fi
 
 # Check if loop sentinel exists

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for route-handler linker.
 
 The route-handler linker creates edges from route symbols to their handler symbols
@@ -269,6 +270,133 @@ class TestRouteHandlerLinker:
         assert edge.src == route.id
         assert edge.dst == handler.id
         assert edge.edge_type == "routes_to"
+
+    def test_liveview_module_fallback(self) -> None:
+        """LIVE route falls back to LiveView module when action function missing.
+
+        LiveView modules handle actions via handle_params/3, not separate
+        per-action functions. When LIVE route has action="page" but no
+        HomeLive.page function exists, resolve to the HomeLive module.
+        """
+        route = Symbol(
+            id="elixir:/lib/app_web/router.ex:5-5:LIVE /:route",
+            name="LIVE /",
+            kind="route",
+            language="elixir",
+            path="/lib/app_web/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/",
+                "controller": "HomeLive",
+                "action": "page",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/app_web/live/home_live.ex:1-50:AppWeb.HomeLive:module",
+            name="AppWeb.HomeLive",
+            kind="module",
+            language="elixir",
+            path="/lib/app_web/live/home_live.ex",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, module], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == module.id
+        assert edge.edge_type == "routes_to"
+
+    def test_liveview_exact_module_name_match(self) -> None:
+        """LIVE route resolves when controller exactly matches module name."""
+        route = Symbol(
+            id="elixir:/lib/router.ex:5-5:LIVE /admin:route",
+            name="LIVE /admin",
+            kind="route",
+            language="elixir",
+            path="/lib/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/admin",
+                "controller": "AdminLive",
+                "action": "index",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/admin_live.ex:1-30:AdminLive:module",
+            name="AdminLive",
+            kind="module",
+            language="elixir",
+            path="/lib/admin_live.ex",
+            span=Span(start_line=1, end_line=30, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, module], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == module.id
+
+    def test_liveview_prefers_function_over_module(self) -> None:
+        """LIVE route prefers action function when it exists."""
+        route = Symbol(
+            id="elixir:/lib/app_web/router.ex:5-5:LIVE /dash:route",
+            name="LIVE /dash",
+            kind="route",
+            language="elixir",
+            path="/lib/app_web/router.ex",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/dash",
+                "controller": "DashLive",
+                "action": "mount",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        mount_func = Symbol(
+            id="elixir:/lib/app_web/live/dash_live.ex:10-20:DashLive.mount:function",
+            name="DashLive.mount",
+            kind="function",
+            language="elixir",
+            path="/lib/app_web/live/dash_live.ex",
+            span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        module = Symbol(
+            id="elixir:/lib/app_web/live/dash_live.ex:1-50:DashLive:module",
+            name="DashLive",
+            kind="module",
+            language="elixir",
+            path="/lib/app_web/live/dash_live.ex",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, mount_func, module], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        # Should prefer the mount function, not the module
+        assert edge.dst == mount_func.id
 
     def test_malformed_controller_action_no_hash(self) -> None:
         """Malformed controller_action without # doesn't match."""
@@ -903,6 +1031,78 @@ class TestRouteHandlerLinker:
         assert result.run.pass_id == PASS_ID
         assert result.run.files_analyzed > 0  # Tracks routes processed
 
+    def test_direct_id_handler_ref_linking(self) -> None:
+        """Routes with handler_ref as a full symbol ID resolve directly.
+
+        Flask-RESTful emits handler_ref as a full symbol ID like
+        'python:/path:line:Class:class'. This should match the handler
+        symbol by ID, not by name.
+        """
+        handler_id = (
+            "python:/app/resources.py:10-20:UserResource:class"
+        )
+        route = Symbol(
+            id="python:/app/api.py:5-5:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="python",
+            path="/app/api.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_ref": handler_id,
+                "view_name": "UserResource",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id=handler_id,
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="/app/resources.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+
+    def test_direct_id_handler_ref_not_found(self) -> None:
+        """Routes with handler_ref as symbol ID fall back gracefully.
+
+        When handler_ref is a full ID but doesn't match any symbol,
+        the linker should not crash and should produce no edge.
+        """
+        route = Symbol(
+            id="python:/app/api.py:5-5:GET /foo:route",
+            name="GET /foo",
+            kind="route",
+            language="python",
+            path="/app/api.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=30),
+            meta={
+                "http_method": "GET",
+                "route_path": "/foo",
+                "handler_ref": "python:/app/missing.py:1-1:Gone:class",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route], [])
+
+        assert len(result.edges) == 0
+
 
 class TestLinkerEntryPoint:
     """Tests for linker registry integration."""
@@ -1439,6 +1639,49 @@ class TestGoRouteHandlerLinking:
         assert edge.src == route.id
         assert edge.dst == handler.id
 
+    def test_go_swagger_wired_handler_linking(self) -> None:
+        """Go-swagger route with wired handler_name resolves via suffix match.
+
+        After go-swagger handler wiring, routes have handler_name like
+        "api.getAlertsHandler" which should resolve to "API.getAlertsHandler"
+        method symbols via suffix matching on ".getAlertsHandler".
+        """
+        route = Symbol(
+            id="go:/api/v2/restapi/operations/api.go:377-377:GET /alerts:route",
+            name="api.getAlertsHandler",
+            kind="route",
+            language="go",
+            path="/api/v2/restapi/operations/api.go",
+            span=Span(start_line=377, end_line=377, start_col=0, end_col=80),
+            meta={
+                "http_method": "GET",
+                "route_path": "/alerts",
+                "handler_name": "api.getAlertsHandler",
+                "handler_field": "AlertGetAlertsHandler",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="go:/api/v2/api.go:150-165:API.getAlertsHandler:method",
+            name="API.getAlertsHandler",
+            kind="method",
+            language="go",
+            path="/api/v2/api.go",
+            span=Span(start_line=150, end_line=165, start_col=0, end_col=1),
+            meta={"class": "API"},
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == route.id
+        assert result.edges[0].dst == handler.id
+        assert result.edges[0].edge_type == "routes_to"
+
     def test_go_handler_no_match(self) -> None:
         """Go routes with handler_name that doesn't match any function."""
         route = Symbol(
@@ -1696,3 +1939,142 @@ class TestLaravelSuffixMatchFallback:
         result = link_routes_to_handlers([route, handler], [])
 
         assert len(result.edges) == 0
+
+
+class TestJSXRouteComponentLinking:
+    """Tests for JSX Route component handler resolution.
+
+    JSX <Route> elements reference handler components by name. The resolver
+    must handle: class components (kind='class'), module_file exports, and
+    name suffixes like 'Component' that differ from the JSX reference name.
+    """
+
+    def test_jsx_route_links_to_class_component(self) -> None:
+        """Route with handler_ref='Users' links to a class kind symbol."""
+        route = Symbol(
+            id="javascript:src/App.tsx:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/Users.tsx:1-50:Users:class",
+            name="Users",
+            kind="class",
+            language="javascript",
+            path="src/Users.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_links_to_module_file_default_export(self) -> None:
+        """Route with handler_ref='DropStage' links to module_file symbol."""
+        route = Symbol(
+            id="javascript:src/App.tsx:20-20:GET /drop:route",
+            name="GET /drop",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
+            meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/DropStage.tsx:1-100:DropStage:module_file",
+            name="DropStage",
+            kind="module_file",
+            language="javascript",
+            path="src/DropStage.tsx",
+            span=Span(start_line=1, end_line=100, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_suffix_component_match(self) -> None:
+        """Route handler_ref='ContentCDN' matches 'ContentCDNComponent' symbol."""
+        route = Symbol(
+            id="javascript:src/admin.js:10-10:GET /content-cdn:route",
+            name="GET /content-cdn",
+            kind="route",
+            language="javascript",
+            path="src/admin.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/content-cdn", "http_method": "GET",
+                  "handler_ref": "ContentCDN"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/ContentCDN.js:1-80:ContentCDNComponent:class",
+            name="ContentCDNComponent",
+            kind="class",
+            language="javascript",
+            path="src/ContentCDN.js",
+            span=Span(start_line=1, end_line=80, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_jsx_route_prefers_exact_function_over_class(self) -> None:
+        """When both a function and class match, prefer the function."""
+        route = Symbol(
+            id="javascript:src/App.tsx:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        func_handler = Symbol(
+            id="javascript:src/Users.tsx:1-50:Users:function",
+            name="Users",
+            kind="function",
+            language="javascript",
+            path="src/Users.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        class_handler = Symbol(
+            id="javascript:src/UsersClass.tsx:1-50:Users:class",
+            name="Users",
+            kind="class",
+            language="javascript",
+            path="src/UsersClass.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, func_handler, class_handler], [])
+
+        assert len(result.edges) == 1
+        # Function takes priority because symbol_by_name prefers non-route, and
+        # function kinds are checked first by _resolve_express_handler
+        assert result.edges[0].dst == func_handler.id
+

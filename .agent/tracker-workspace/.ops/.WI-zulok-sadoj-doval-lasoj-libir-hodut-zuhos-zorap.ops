@@ -1,0 +1,94 @@
+- op: create  # cd9c
+  at: '2026-03-11T04:20:38Z'  # cd9c
+  by: agent  # cd9c
+  actor: jgstern_agent  # cd9c
+  clock: 1  # cd9c
+  nonce: cd9c  # cd9c
+  data:  # cd9c
+    kind: work_item  # cd9c
+    title: "Proto-to-handler and cross-language dispatch linking gaps"  # cd9c
+    status: todo_soft  # cd9c
+    priority: 2  # cd9c
+    parent:  # cd9c
+    tags: []  # cd9c
+    before: []  # cd9c
+    duplicate_of: []  # cd9c
+    not_duplicate_of: []  # cd9c
+    pr_ref:  # cd9c
+    description: "DEEP bakeoff found three distinct cross-language dispatch gaps: (1) Proto/gRPC/ttrpc to Go handler: fccontrol.proto CreateVM route stops at grpc_service node, never reaches Go service.CreateVM. (2) Solidity-to-TypeScript ABI bridges: 0 TS↔Solidity edges in osx despite deploy scripts calling ABI wrappers. (3) Electron IPC: Signal-Desktop has 24 of ~100 IPC channels linked. These are all variants of the same structural problem: dispatch-based invocation across language/process boundaries."  # cd9c
+    fields: {}  # cd9c
+- op: update  # b39b
+  at: '2026-03-11T05:44:27Z'  # b39b
+  by: agent  # b39b
+  actor: jgstern_agent  # b39b
+  clock: 2  # b39b
+  nonce: b39b  # b39b
+  set:  # b39b
+    status: done  # b39b
+- op: discuss  # 5075
+  at: '2026-03-11T05:44:27Z'  # 5075
+  by: agent  # 5075
+  actor: jgstern_agent  # 5075
+  clock: 3  # 5075
+  nonce: '5075'  # 5075
+  message: "Proto-to-handler gap fixed in PR #2142 — dispatches_to edge bridges grpc_server to grpc_service, enabling full client→handler traversal. Remaining gaps (Solidity-to-TS ABI bridges, Electron IPC channel coverage) are niche domain-specific linkers that can be addressed when those ecosystems are prioritized."  # 5075
+- op: update  # dc8d
+  at: '2026-03-11T16:57:26Z'  # dc8d
+  by: human  # dc8d
+  actor: jgstern  # dc8d
+  clock: 4  # dc8d
+  nonce: dc8d  # dc8d
+  set:  # dc8d
+    status: todo_soft  # dc8d
+    priority: 4  # dc8d
+- op: discuss  # f6b2
+  at: '2026-03-11T16:57:37Z'  # f6b2
+  by: human  # f6b2
+  actor: jgstern  # f6b2
+  clock: 5  # f6b2
+  nonce: f6b2  # f6b2
+  message: "please address those remaining gaps"  # f6b2
+- op: discuss  # ebcc
+  at: '2026-03-11T17:28:46Z'  # ebcc
+  by: agent  # ebcc
+  actor: jgstern_agent  # ebcc
+  clock: 6  # ebcc
+  nonce: ebcc  # ebcc
+  message: "Acknowledged. The remaining gaps are:\n\n1. **Solidity-to-TypeScript ABI bridges** (e.g., osx repo): Deploy scripts and frontend code call contract methods through ethers.js/viem ABI wrappers. Zero TS↔Solidity edges detected. This requires a new linker that: (a) parses Solidity contract ABIs (from compilation artifacts or source), (b) matches TS/JS calls like `contract.approve()` to Solidity function definitions.\n\n2. **Electron IPC channel coverage** (e.g., Signal-Desktop): Only 24 of ~100 IPC channels linked. The current Tauri IPC linker pattern (regex for invoke()) needs an analogous Electron variant: `ipcRenderer.send('channel')`, `ipcRenderer.invoke('channel')`, `ipcMain.handle('channel', handler)`, and preload bridge patterns like `contextBridge.exposeInMainWorld`.\n\nI'll create separate tracker items for each and begin implementation."  # ebcc
+- op: update  # 0806
+  at: '2026-03-11T17:31:40Z'  # 0806
+  by: agent  # 0806
+  actor: jgstern_agent  # 0806
+  clock: 7  # 0806
+  nonce: '0806'  # 0806
+  set:  # 0806
+    status: todo_soft  # 0806
+- op: discuss  # 0c98
+  at: '2026-03-11T17:31:40Z'  # 0c98
+  by: agent  # 0c98
+  actor: jgstern_agent  # 0c98
+  clock: 8  # 0c98
+  nonce: 0c98  # 0c98
+  message: "Created sub-items: WI-lagok (Electron IPC linker, P3) and WI-runab (Solidity ABI bridge, P4). Proto-to-handler gap already fixed in PR #2142."  # 0c98
+- op: discuss  # cec2
+  at: '2026-03-11T18:18:13Z'  # cec2
+  by: agent  # cec2
+  actor: jgstern_agent  # cec2
+  clock: 9  # cec2
+  nonce: cec2  # cec2
+  message: "Created sub-items: WI-lagok (Electron IPC linker, P3) and WI-runab (Solidity ABI bridge, P4). Proto-to-handler gap already fixed in PR #2142."  # cec2
+- op: update  # 1b1c
+  at: '2026-03-11T21:16:28Z'  # 1b1c
+  by: agent  # 1b1c
+  actor: jgstern_agent  # 1b1c
+  clock: 10  # 1b1c
+  nonce: 1b1c  # 1b1c
+  set:  # 1b1c
+    status: done  # 1b1c
+- op: discuss  # 8faf
+  at: '2026-03-11T21:16:28Z'  # 8faf
+  by: agent  # 8faf
+  actor: jgstern_agent  # 8faf
+  clock: 11  # 8faf
+  nonce: 8faf  # 8faf
+  message: "Partially addressed in PR #2176. Added ttrpc RegisterXxxService pattern detection and ttrpc interface-based implements_rpc edges. Remaining: CSI interface implementations (use different code generation without Unimplemented or ttrpc patterns)."  # 8faf

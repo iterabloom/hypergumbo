@@ -1,0 +1,34 @@
+- op: create  # 43bb
+  at: '2026-03-07T04:53:26Z'  # 43bb
+  by: agent  # 43bb
+  actor: jgstern_agent  # 43bb
+  clock: 1  # 43bb
+  nonce: 43bb  # 43bb
+  data:  # 43bb
+    kind: work_item  # 43bb
+    title: "feat: resolve dynamic dispatch through analyzer registry for cross-package call edges"  # 43bb
+    status: todo_soft  # 43bb
+    priority: 2  # 43bb
+    parent:  # 43bb
+    tags: []  # 43bb
+    before: []  # 43bb
+    duplicate_of: []  # 43bb
+    not_duplicate_of: []  # 43bb
+    pr_ref:  # 43bb
+    description: "Bakeoff DEEP self-analysis (session deep-20260306-232500) found that forward slices from __main__ cannot reach lang analyzer code because the registry-based dynamic dispatch (register_analyzer → .analyze()) is not followed. Zero ast_call_direct edges cross package boundaries despite 1,529 import edges doing so. Fix: when building the call graph, recognize the registry pattern and add synthetic call edges from run_all_analyzers/run_behavior_map to each registered analyzer's .analyze() method."  # 43bb
+    fields: {}  # 43bb
+- op: update  # 2138
+  at: '2026-03-07T05:35:48Z'  # 2138
+  by: agent  # 2138
+  actor: jgstern_agent  # 2138
+  clock: 2  # 2138
+  nonce: '2138'  # 2138
+  set:  # 2138
+    status: done  # 2138
+- op: discuss  # 4195
+  at: '2026-03-07T05:35:48Z'  # 4195
+  by: agent  # 4195
+  actor: jgstern_agent  # 4195
+  clock: 3  # 4195
+  nonce: '4195'  # 4195
+  message: "Implemented in PR #1902. New decorator-dispatch linker creates dispatches_to edges from registry iteration sites to registered handlers. Bakeoff shows +333 edges on hypergumbo self-analysis (52587→52920). Cross-package dispatch is now connected."  # 4195

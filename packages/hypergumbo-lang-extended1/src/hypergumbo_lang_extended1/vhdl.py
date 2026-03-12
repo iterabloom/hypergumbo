@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """VHDL analysis pass using tree-sitter-vhdl.
 
 This analyzer uses tree-sitter to parse VHDL files and extract:
@@ -57,12 +58,6 @@ PASS_ID = make_pass_id("vhdl")
 def find_vhdl_files(repo_root: Path) -> Iterator[Path]:
     """Yield all VHDL files in the repository."""
     yield from find_files(repo_root, ["*.vhd", "*.vhdl"])
-
-
-def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
-    """Generate deterministic edge ID."""
-    content = f"{edge_type}:{src}:{dst}"
-    return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 def _get_entity_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -263,8 +258,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         dst_id = f"vhdl:external:{entity_name}:entity"
                         confidence = 0.70
 
-                    edge = Edge(
-                        id=_make_edge_id(symbol_id, dst_id, "implements"),
+                    edge = Edge.create(
                         src=symbol_id,
                         dst=dst_id,
                         edge_type="implements",

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Robot Framework analyzer using tree-sitter.
 
 Robot Framework is a generic test automation framework for acceptance testing

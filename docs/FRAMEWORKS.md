@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Web/Application Frameworks Reference
 
 This document lists web and application frameworks that hypergumbo can analyze or should consider for pattern detection.
@@ -50,6 +51,9 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 
 ### C++
 - Qt
+
+### AI Agent / Protocol
+- MCP (Model Context Protocol) - TypeScript (@modelcontextprotocol/sdk) and Python (mcp, FastMCP)
 
 ### Cross-language
 - CLI patterns (Python, Go, JS, Ruby, Rust), GraphQL, Library Exports

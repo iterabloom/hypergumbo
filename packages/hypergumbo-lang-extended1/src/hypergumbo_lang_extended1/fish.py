@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fish shell analysis pass using tree-sitter.
 
 Detects:
@@ -30,7 +31,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -261,8 +261,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
 
             if source_path:
                 edges.append(
-                    Edge(
-                        id=f"edge:fish:{uuid.uuid4().hex[:12]}",
+                    Edge.create(
                         src=file_stable_id,
                         dst=f"fish:{source_path}:file",
                         edge_type="sources",
@@ -285,8 +284,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
                     confidence = 0.70
 
                 edges.append(
-                    Edge(
-                        id=f"edge:fish:{uuid.uuid4().hex[:12]}",
+                    Edge.create(
                         src=caller.id,
                         dst=dst_id,
                         edge_type="calls",

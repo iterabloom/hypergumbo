@@ -1,0 +1,85 @@
+- op: create  # 8f32
+  at: '2026-03-08T06:50:11Z'  # 8f32
+  by: agent  # 8f32
+  actor: jgstern_agent  # 8f32
+  clock: 1  # 8f32
+  nonce: 8f32  # 8f32
+  data:  # 8f32
+    kind: work_item  # 8f32
+    title: "Rust: resolve method calls on generic trait impl receivers"  # 8f32
+    status: todo_soft  # 8f32
+    priority: 3  # 8f32
+    parent:  # 8f32
+    tags:  # 8f32
+    - analysis_quality  # 8f32
+    before: []  # 8f32
+    duplicate_of: []  # 8f32
+    not_duplicate_of: []  # 8f32
+    pr_ref:  # 8f32
+    description: "aardvark-dns DEEP bakeoff: LOW_AVG_SLICE_NODES (13.1 < 19). Result::wrap() trait impl method has 0 in-degree despite 15+ call sites. Analyzer cannot resolve .wrap() on generic Result receivers to AardvarkWrap trait impl. Needs return-type tracking or trait impl method registry."  # 8f32
+    fields: {}  # 8f32
+- op: update  # e358
+  at: '2026-03-08T07:05:05Z'  # e358
+  by: agent  # e358
+  actor: jgstern_agent  # e358
+  clock: 2  # e358
+  nonce: e358  # e358
+  set:  # e358
+    priority: 4  # e358
+- op: discuss  # 23b3
+  at: '2026-03-08T07:05:05Z'  # 23b3
+  by: agent  # 23b3
+  actor: jgstern_agent  # 23b3
+  clock: 3  # 23b3
+  nonce: 23b3  # 23b3
+  message: "Deprioritized to P4: requires return-type tracking infrastructure in the Rust analyzer, which is a significant architectural addition. The aardvark-dns slice depth already improved from 9.0→13.1 with adaptive hop limits. The remaining gap (13.1 vs 19.0 threshold) is partly due to this trait impl issue, but also reflects the repo's inherent structure. Better ROI from other improvements first."  # 23b3
+- op: update  # a879
+  at: '2026-03-08T07:05:32Z'  # a879
+  by: agent  # a879
+  actor: jgstern_agent  # a879
+  clock: 4  # a879
+  nonce: a879  # a879
+  set:  # a879
+    status: needs_human_review  # a879
+- op: discuss  # 749a
+  at: '2026-03-08T07:05:32Z'  # 749a
+  by: agent  # 749a
+  actor: jgstern_agent  # 749a
+  clock: 5  # 749a
+  nonce: 749a  # 749a
+  message: "Needs architectural decision: implementing return-type tracking for Rust trait impl method resolution is a significant investment. The adaptive hop limit already improved aardvark-dns from 9.0→13.1 slice nodes. Question for human: is the remaining gap (13.1 vs 19 threshold) worth the complexity of adding type inference to the Rust analyzer?"  # 749a
+- op: discuss  # 9603
+  at: '2026-03-09T15:41:56Z'  # 9603
+  by: human  # 9603
+  actor: jgstern  # 9603
+  clock: 6  # 9603
+  nonce: '9603'  # 9603
+  message: "I'm not sure as I have no Rust experience. However, I am going to be running a Rust-heavy curriculum bakeoff soon: `~/hypergumbo_lab_notebook/curricula/deep-plazaflow-20260309.md`"  # 9603
+- op: discuss  # 3c0b
+  at: '2026-03-09T15:42:37Z'  # 3c0b
+  by: human  # 3c0b
+  actor: jgstern  # 3c0b
+  clock: 7  # 3c0b
+  nonce: 3c0b  # 3c0b
+  message: "...and I plan to use hypergumbo to create \"plazaflow\", a tauri app"  # 3c0b
+- op: discuss  # f77d
+  at: '2026-03-09T18:59:50Z'  # f77d
+  by: agent  # f77d
+  actor: jgstern_agent  # f77d
+  clock: 8  # f77d
+  nonce: f77d  # f77d
+  message: "Noted the Rust-heavy curriculum at ~/hypergumbo_lab_notebook/curricula/deep-plazaflow-20260309.md and the plazaflow Tauri app plan. This changes the priority calculus — if you're building a Tauri app with hypergumbo, Rust method resolution quality directly affects your development experience.\n\nFor the plazaflow curriculum: the current Rust analyzer handles basic method calls, trait implementations, and generic types. The gap is resolving method calls on generic receivers (e.g., `result.wrap()` where `result: Result<T, E>` and `wrap` comes from a custom trait impl on Result). This requires tracking return types through function signatures.\n\nI'll keep this at P4 for now but will reassess after the plazaflow curriculum bakeoff results come in. If Rust method resolution is a consistent gap across multiple Rust repos, I'll escalate to P2 and implement return-type tracking."  # f77d
+- op: discuss  # d6f0
+  at: '2026-03-11T02:01:31Z'  # d6f0
+  by: human  # d6f0
+  actor: jgstern  # d6f0
+  clock: 9  # d6f0
+  nonce: d6f0  # d6f0
+  message: "please check whether any related work was done on this since your last message on this item?"  # d6f0
+- op: discuss  # 8d69
+  at: '2026-03-11T04:45:33Z'  # 8d69
+  by: agent  # 8d69
+  actor: jgstern_agent  # 8d69
+  clock: 10  # 8d69
+  nonce: 8d69  # 8d69
+  message: "Since last message: the plazaflow curriculum bakeoff completed (48 repos, 8 cohorts). Cohort 1 (Tauri apps: spacedrive, yaak, Cap, readest) and Cohort 8 (polyglot Rust+TS: loro, automerge, rolldown, swc) both exercised Rust heavily. Six fixes were merged (PRs #2123-#2129) including Tauri IPC entrypoint detection (PR #2128), but none addressed Rust method resolution on generic trait impl receivers specifically. The LLM assessments across these Rust-heavy repos scored mean ~55/100, with issues concentrated on cross-language linking (Tauri IPC TS→Rust edges) rather than intra-Rust method resolution. So the bakeoff data doesn't strongly push for escalating this item yet — the bigger wins came from cross-language edge improvements. Keeping at P4 pending further evidence."  # 8d69

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Twig template analyzer using tree-sitter.
 
 Twig is a modern template engine for PHP, used extensively in Symfony

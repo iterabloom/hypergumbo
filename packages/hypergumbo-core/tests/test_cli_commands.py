@@ -1,6 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for CLI commands to achieve 100% coverage."""
 import json
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import (
@@ -1021,9 +1024,9 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     input_file.write_text(json.dumps(behavior_map))
 
     # First test WITHOUT --exclude-tests: test_main with main_function concept
-    # has confidence 0.80 * 0.1 (test penalty) = 0.08, but the connectivity
-    # boost from one outgoing edge pushes it above MIN_ENTRYPOINT_CONFIDENCE
-    # (0.10). Both get_user and test_main should appear.
+    # has confidence 0.80 * 0.1 (test penalty) = 0.08.  Connectivity boost
+    # is skipped for test-file entrypoints, so it stays at 0.08 — below
+    # MIN_ENTRYPOINT_CONFIDENCE (0.10) and is filtered out.
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "auto"
@@ -1043,10 +1046,10 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # Non-test route should be present
     assert "get_user" in out or "api.py" in out
-    # Test main_function passes confidence threshold (0.10 >= 0.10)
-    assert "test_main" in out
+    # Test-file main is filtered by confidence threshold (0.08 < 0.10)
+    assert "test_main" not in out
 
-    # With --exclude-tests: test_main is filtered by the exclude-tests flag
+    # With --exclude-tests: test_main would also be filtered by the flag
     args.exclude_tests = True
 
     result = cmd_slice(args)
@@ -1344,6 +1347,60 @@ def test_cmd_slice_auto_entry_prefers_connected(tmp_path: Path, capsys) -> None:
     assert "main" in out
     assert "connectivity" in out  # Should mention connectivity
     assert "2 outgoing edges" in out  # Should report edge count
+
+
+@pytest.mark.parametrize(
+    "node_count,expected_hops",
+    [
+        (50, 10),    # ≤200 → 10 hops
+        (200, 10),   # ≤200 → 10 hops
+        (201, 7),    # ≤500 → 7 hops
+        (500, 7),    # ≤500 → 7 hops
+        (501, 5),    # ≤2000 → 5 hops
+        (2000, 5),   # ≤2000 → 5 hops
+        (2001, 3),   # >2000 → 3 hops
+    ],
+)
+def test_cmd_slice_adaptive_hop_limit(
+    tmp_path: Path, capsys, node_count: int, expected_hops: int,
+) -> None:
+    """When max_hops is None (default), hop limit adapts to graph size."""
+    # Create a behavior map with the specified number of nodes
+    nodes = []
+    for i in range(node_count):
+        nodes.append({
+            "id": f"python:src/f{i}.py:1-2:func{i}:function",
+            "name": f"func{i}",
+            "kind": "function",
+            "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+        })
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": nodes,
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "func0"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None
+    args.max_hops = None  # Trigger adaptive logic
+    args.max_files = 200
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    assert data["feature"]["query"]["hops"] == expected_hops
 
 
 def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
@@ -1765,6 +1822,294 @@ def test_cmd_slice_flat_output(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "[hypergumbo slice]" in out
+
+
+def test_cmd_slice_group_by_module(tmp_path: Path, capsys) -> None:
+    """Test slice --group-by-module groups nodes by file path."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/main.py:10-15:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "calls:caller->callee",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "confidence": 0.9,
+            },
+            {
+                "id": "calls:caller->helper",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/main.py:10-15:helper:function",
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = True
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # Should have modules dict, NOT nodes list
+    assert "modules" in data["feature"]
+    assert "nodes" not in data["feature"]
+
+    modules = data["feature"]["modules"]
+    assert len(modules) == 2
+    assert "src/main.py" in modules
+    assert "src/utils.py" in modules
+
+    # Each module has node_count and nodes list
+    assert modules["src/main.py"]["node_count"] == 2
+    assert modules["src/utils.py"]["node_count"] == 1
+
+    # All 3 nodes accounted for
+    all_nodes = []
+    for mod in modules.values():
+        all_nodes.extend(mod["nodes"])
+    assert len(all_nodes) == 3
+
+    out, _ = capsys.readouterr()
+    assert "modules: 2" in out
+
+
+def test_cmd_slice_group_by_module_implies_inline(tmp_path: Path) -> None:
+    """Test --group-by-module implies --inline even when inline=False."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = False  # Not set, but group_by_module implies it
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # Should still have modules (inline was implied)
+    assert "modules" in data["feature"]
+    assert "src/main.py" in data["feature"]["modules"]
+
+
+def test_cmd_slice_group_by_module_edges(tmp_path: Path) -> None:
+    """Test module_edges summarizes cross-file edges only."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:caller:function",
+                "name": "caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/main.py:10-15:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+            {
+                "id": "python:src/utils.py:1-5:callee:function",
+                "name": "callee",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [
+            {
+                "id": "calls:caller->callee",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/utils.py:1-5:callee:function",
+                "confidence": 0.9,
+            },
+            {
+                "id": "calls:caller->helper",
+                "type": "calls",
+                "src": "python:src/main.py:1-5:caller:function",
+                "dst": "python:src/main.py:10-15:helper:function",
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "caller"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = True
+    args.flat = False
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+
+    # module_edges should only have cross-file edges (not intra-file)
+    module_edges = data["feature"]["module_edges"]
+    assert len(module_edges) == 1
+
+    edge = module_edges[0]
+    assert edge["src_module"] == "src/main.py"
+    assert edge["dst_module"] == "src/utils.py"
+    assert edge["count"] == 1
+    assert "calls" in edge["types"]
+
+
+def test_cmd_slice_group_by_module_rejects_flat(tmp_path: Path, capsys) -> None:
+    """Test --flat + --group-by-module is an error."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "origin": "python-ast-v1",
+                "origin_run_id": "test",
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(results_file)
+    args.entry = "foo"
+    args.out = str(tmp_path / "slice.json")
+    args.max_hops = 3
+    args.max_files = 20
+    args.max_tier = None
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.inline = False
+    args.flat = True
+    args.group_by_module = True
+
+    result = cmd_slice(args)
+
+    assert result == 1
+
+    _, err = capsys.readouterr()
+    assert "--group-by-module" in err
+    assert "--flat" in err
 
 
 def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
@@ -3333,3 +3678,100 @@ def test_cmd_slice_auto_entry_max_tier_filter(tmp_path: Path, capsys) -> None:
     # Must select tier-1 entry, not tier-3
     assert "src/app.py" in out
     assert "vendor/lib.py" not in out
+
+
+def test_cmd_slice_auto_entry_prefers_main_over_route(
+    tmp_path: Path, capsys,
+) -> None:
+    """--entry auto prefers main() over route handlers with more edges.
+
+    Reproduces the alertmanager issue: V1DeprecationRouter.deprecationHandler
+    (7 out-edges, all to dead-end route nodes) was selected over main()
+    (2 out-edges but actually the application root). Main functions should
+    get a boost because they are the canonical application entrypoint.
+    """
+    main_node = {
+        "id": "go:cmd/app/main.go:1-50:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "go",
+        "path": "cmd/app/main.go",
+        "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    handler_node = {
+        "id": "go:api/handler.go:1-20:Handler.serve:method",
+        "name": "Handler.serve",
+        "kind": "method",
+        "language": "go",
+        "path": "api/handler.go",
+        "span": {"start_line": 1, "end_line": 20, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "route", "path": "/status"}]},
+    }
+    # main has 2 outgoing edges
+    helpers = [
+        {
+            "id": f"go:pkg/svc{i}.go:1-5:svc{i}:function",
+            "name": f"svc{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"pkg/svc{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        }
+        for i in range(2)
+    ]
+    # handler has 7 outgoing edges (to dead-end route nodes)
+    route_nodes = [
+        {
+            "id": f"go:api/handler.go:{10+i}-{10+i}:route{i}:route",
+            "name": f"GET /route{i}",
+            "kind": "route",
+            "language": "go",
+            "path": "api/handler.go",
+            "span": {
+                "start_line": 10 + i, "end_line": 10 + i,
+                "start_col": 0, "end_col": 1,
+            },
+        }
+        for i in range(7)
+    ]
+    edges = [
+        {"id": f"e-m-{i}", "src": main_node["id"], "dst": h["id"], "type": "calls"}
+        for i, h in enumerate(helpers)
+    ] + [
+        {"id": f"e-h-{i}", "src": handler_node["id"], "dst": r["id"], "type": "calls"}
+        for i, r in enumerate(route_nodes)
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [main_node, handler_node] + helpers + route_nodes,
+        "edges": edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # main() should be selected over the route handler despite fewer edges
+    assert "cmd/app/main.go" in out, (
+        "main() should be preferred over route handlers: "
+        "main functions are canonical application roots"
+    )

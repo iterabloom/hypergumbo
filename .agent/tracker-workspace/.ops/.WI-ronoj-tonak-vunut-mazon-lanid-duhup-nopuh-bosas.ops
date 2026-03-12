@@ -1,0 +1,128 @@
+- op: create  # 750e
+  at: '2026-03-02T00:41:36Z'  # 750e
+  by: agent  # 750e
+  actor: jgstern_agent  # 750e
+  clock: 1  # 750e
+  nonce: 750e  # 750e
+  data:  # 750e
+    kind: work_item  # 750e
+    title: "Rust trait-aware method resolution: disambiguate by receiver type"  # 750e
+    status: todo_soft  # 750e
+    priority: 2  # 750e
+    parent:  # 750e
+    tags: []  # 750e
+    before: []  # 750e
+    duplicate_of: []  # 750e
+    not_duplicate_of: []  # 750e
+    pr_ref:  # 750e
+    description: "LLM assessment finding from ZK cohort bakeoff (5/5 repos affected). Name-only disambiguation causes 0.566 confidence edges that are mostly false positives. Example: coeff.double() where coeff: F resolves to AllocatedPoint::double instead of ff::Field::double. The receiver type is available from the AST — adding type context to method name lookup would fix the dominant source of call edge noise (~15% of all call edges in Nova). See reflect/cohort-001/iter-001/summary.yaml in deep-20260301-zk-cohort."  # 750e
+    fields: {}  # 750e
+- op: update  # e894
+  at: '2026-03-02T00:43:23Z'  # e894
+  by: agent  # e894
+  actor: jgstern_agent  # e894
+  clock: 2  # e894
+  nonce: e894  # e894
+  set:  # e894
+    priority: 4  # e894
+- op: discuss  # b2da
+  at: '2026-03-02T00:43:23Z'  # b2da
+  by: agent  # b2da
+  actor: jgstern_agent  # b2da
+  clock: 3  # b2da
+  nonce: b2da  # b2da
+  message: "Deprioritized to P4 for now. This is a significant Rust analyzer enhancement requiring type inference or receiver-type tracking. The current session (12 PRs) focused on formal methods/Circom/Solidity improvements. Rust trait resolution is real but requires careful design — the receiver type isn't always trivially available from the AST (generics, trait bounds, impl blocks). Best tackled in a dedicated session with focused investigation of tree-sitter-rust's type information availability."  # b2da
+- op: update  # f3a3
+  at: '2026-03-02T01:05:33Z'  # f3a3
+  by: agent  # f3a3
+  actor: jgstern_agent  # f3a3
+  clock: 4  # f3a3
+  nonce: f3a3  # f3a3
+  set: {}  # f3a3
+- op: discuss  # eda5
+  at: '2026-03-02T01:05:33Z'  # eda5
+  by: agent  # eda5
+  actor: jgstern_agent  # eda5
+  clock: 5  # eda5
+  nonce: eda5  # eda5
+  message: "Session completed 13 PRs. The derive-macro dampening (WI-tukod, PR #1635) partially addresses this by reducing centrality noise from derive methods. The deeper trait dispatch resolution requires type inference beyond what tree-sitter provides. Approach options: (1) use impl block associations to narrow method resolution candidates, (2) use Cargo workspace dependency graph to eliminate impossible trait implementations, (3) use enclosing module path hints for same-name disambiguation. P4 appropriate for next session — the dampening fix provides immediate relief."  # eda5
+- op: update  # b0dc
+  at: '2026-03-02T01:17:53Z'  # b0dc
+  by: agent  # b0dc
+  actor: jgstern_agent  # b0dc
+  clock: 6  # b0dc
+  nonce: b0dc  # b0dc
+  set:  # b0dc
+    status: done  # b0dc
+- op: discuss  # 4895
+  at: '2026-03-02T01:17:53Z'  # 4895
+  by: agent  # 4895
+  actor: jgstern_agent  # 4895
+  clock: 7  # 4895
+  nonce: '4895'  # 4895
+  message: "Partially fixed in PRs #1635 (derive-macro dampening) and #1636 (same-module path hint for method resolution). PR #1635 dampens derive-generated methods (clone, into, default, fmt) that inflate centrality. PR #1636 passes caller directory as path_hint to ListNameResolver, preferring same-module candidates (e.g., nova/nifs.rs::NIFS::prove over neutron/nifs.rs::NIFS::prove when called from nova/mod.rs). Full receiver-type inference remains a future enhancement."  # 4895
+- op: update  # 8b1b
+  at: '2026-03-04T04:09:31Z'  # 8b1b
+  by: human  # 8b1b
+  actor: jgstern  # 8b1b
+  clock: 8  # 8b1b
+  nonce: 8b1b  # 8b1b
+  set:  # 8b1b
+    status: todo_soft  # 8b1b
+- op: discuss  # f971
+  at: '2026-03-04T04:10:08Z'  # f971
+  by: human  # f971
+  actor: jgstern  # f971
+  clock: 9  # f971
+  nonce: f971  # f971
+  message: "might an analogous issue affect other hypergumbo language analyzers besides the one for Rust?"  # f971
+- op: discuss  # 41dd
+  at: '2026-03-04T04:43:10Z'  # 41dd
+  by: agent  # 41dd
+  actor: jgstern_agent  # 41dd
+  clock: 10  # 41dd
+  nonce: 41dd  # 41dd
+  message: "Yes, analogous method-name ambiguity affects multiple language analyzers. Python: x.get() conflates dict.get()/Session.get()/etc. Java/Kotlin: method overloading (same name, different signatures/types). Go: interface methods (.Read(), .Write(), .Close(), .String()) are ubiquitous. C++: virtual methods and overloads. The Rust blocklist approach (blocking common trait/interface methods from short-name resolution) could be ported to these analyzers. Go and Java would benefit most: Go has .Error(), .String(), .Close() etc across many types; Java has .get(), .set(), .toString() etc. This is a cross-cutting concern that should be addressed language by language. The blocklist is pragmatic and effective without needing full type inference."  # 41dd
+- op: discuss  # 902c
+  at: '2026-03-04T05:50:17Z'  # 902c
+  by: human  # 902c
+  actor: jgstern  # 902c
+  clock: 11  # 902c
+  nonce: 902c  # 902c
+  message: "is there a benefit to new cross-analyzer infrastructure? worth it/not worth it?"  # 902c
+- op: discuss  # 23fd
+  at: '2026-03-04T09:35:46Z'  # 23fd
+  by: agent  # 23fd
+  actor: jgstern_agent  # 23fd
+  clock: 12  # 23fd
+  nonce: 23fd  # 23fd
+  message: "Good question. The cross-analyzer field-type-resolution infrastructure we just built (PR #1731) is exactly the kind of shared infrastructure that benefits multiple analyzers. The base class now provides: (1) FileAnalysis.class_field_types for subclasses to populate, (2) automatic aggregation into _field_type_registry between passes, (3) resolve_receiver_type() helper for walking self.field chains. This is already used by Rust and can be adopted by C#, C++, Swift (tracker items WI-pufaj, WI-puhod, WI-risan). For the remaining Rust-specific gap (trait-aware disambiguation for non-field method calls), the question is whether a shared trait resolution mechanism would benefit other analyzers. Likely not worth shared infrastructure — trait dispatch is Rust-specific (Go interfaces resolved differently, Java/C# interfaces already have type annotations). Recommendation: the field-type-registry infrastructure was worth building (cross-language benefit). Rust trait-aware resolution should stay Rust-specific (low cross-language benefit)."  # 23fd
+- op: discuss  # 0364
+  at: '2026-03-04T10:17:03Z'  # 0364
+  by: human  # 0364
+  actor: jgstern  # 0364
+  clock: 13  # 0364
+  nonce: '0364'  # 0364
+  message: "ok sounds good"  # 0364
+- op: discuss  # 9cd8
+  at: '2026-03-04T10:20:50Z'  # 9cd8
+  by: agent  # 9cd8
+  actor: jgstern_agent  # 9cd8
+  clock: 14  # 9cd8
+  nonce: 9cd8  # 9cd8
+  message: "Acknowledged. Rust trait-aware resolution stays Rust-specific. Field-type-registry infra (PR #1731) already serves cross-language needs. This item remains at P4 for future Rust-focused work."  # 9cd8
+- op: update  # 2aaf
+  at: '2026-03-04T10:22:11Z'  # 2aaf
+  by: agent  # 2aaf
+  actor: jgstern_agent  # 2aaf
+  clock: 15  # 2aaf
+  nonce: 2aaf  # 2aaf
+  set:  # 2aaf
+    status: needs_human_review  # 2aaf
+- op: discuss  # 5e1c
+  at: '2026-03-04T10:22:11Z'  # 5e1c
+  by: agent  # 5e1c
+  actor: jgstern_agent  # 5e1c
+  clock: 16  # 5e1c
+  nonce: 5e1c  # 5e1c
+  message: "Partially addressed by PRs #1635/#1636. Full receiver-type inference is a future Rust-specific enhancement. Moving to needs_human_review — human can decide when to prioritize a dedicated Rust session."  # 5e1c

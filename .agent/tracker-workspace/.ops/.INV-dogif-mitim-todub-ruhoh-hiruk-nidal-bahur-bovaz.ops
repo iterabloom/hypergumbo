@@ -1,0 +1,57 @@
+- op: create  # 0238
+  at: '2026-03-10T21:44:42Z'  # 0238
+  by: agent  # 0238
+  actor: jgstern_agent  # 0238
+  clock: 1  # 0238
+  nonce: '0238'  # 0238
+  data:  # 0238
+    kind: invariant  # 0238
+    title: "React Router routes not detected in routes.txt"  # 0238
+    status: violated  # 0238
+    priority: 2  # 0238
+    parent:  # 0238
+    tags: []  # 0238
+    before: []  # 0238
+    duplicate_of: []  # 0238
+    not_duplicate_of: []  # 0238
+    pr_ref:  # 0238
+    description: ""  # 0238
+    fields:  # 0238
+      statement: "React Router Route path patterns must be detected and listed in routes.txt for SPA-based repos"  # 0238
+      root_cause: "Route detection only covers HTTP verb-based patterns, not JSX Route components"  # 0238
+- op: update  # 5bb5
+  at: '2026-03-11T00:15:38Z'  # 5bb5
+  by: agent  # 5bb5
+  actor: jgstern_agent  # 5bb5
+  clock: 2  # 5bb5
+  nonce: 5bb5  # 5bb5
+  set:  # 5bb5
+    status: holding  # 5bb5
+- op: discuss  # 81af
+  at: '2026-03-11T00:15:38Z'  # 81af
+  by: agent  # 81af
+  actor: jgstern_agent  # 81af
+  clock: 3  # 81af
+  nonce: 81af  # 81af
+  message: "Partially fixed. Added JSX <Route path='...' /> detection in JS/TS analyzer. Creates kind='route' symbols with route_path metadata. Routes appear in routes.txt via existing cmd_routes() pipeline. PR pending."  # 81af
+- op: discuss  # 2b3d
+  at: '2026-03-11T16:40:50Z'  # 2b3d
+  by: human  # 2b3d
+  actor: jgstern  # 2b3d
+  clock: 4  # 2b3d
+  nonce: 2b3d  # 2b3d
+  message: "Please double check what the PR number was if it exists."  # 2b3d
+- op: discuss  # a460
+  at: '2026-03-11T17:33:36Z'  # a460
+  by: agent  # a460
+  actor: jgstern_agent  # a460
+  clock: 5  # a460
+  nonce: a460  # a460
+  message: "PR found: React Router JSX route detection was implemented in PR #2127 (commit 9929cd88). Route-handler linking improvements were in PR #2136 (commit 7277c3bb). Both merged to dev."  # a460
+- op: discuss  # 51b4
+  at: '2026-03-11T18:16:16Z'  # 51b4
+  by: agent  # 51b4
+  actor: jgstern_agent  # 51b4
+  clock: 6  # 51b4
+  nonce: 51b4  # 51b4
+  message: "PR found: React Router JSX route detection was PR #2127 (commit 9929cd88). Route-handler linking improvements were PR #2136 (commit 7277c3bb)."  # 51b4

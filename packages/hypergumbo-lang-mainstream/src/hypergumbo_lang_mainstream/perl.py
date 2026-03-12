@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Perl analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse Perl files and extract:
@@ -196,6 +197,21 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
         package_name = "main"
 
+        # Create module-level symbol for top-level code attribution
+        module_name = file_path.name
+        end_line = tree.root_node.end_point[0] + 1
+        module_symbol = Symbol(
+            id=make_symbol_id("perl", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
+            name=f"<module:{module_name}>",
+            kind="module",
+            language="perl",
+            path=rel_path,
+            span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        analysis.symbols.append(module_symbol)
+
         for node in iter_tree(tree.root_node):
             if node.type == "package_statement":
                 package_nodes = _find_children_by_type(node, "package")
@@ -298,9 +314,14 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         (ambiguous/func0op/func1op), and method calls (arrow operator).
         """
         edges: list[Edge] = []
+        _caller_path = str(file_path)
         file_id = make_file_id("perl", rel_path)
         package_name = self._file_package_names.get(rel_path, "main")
         run_id = run.execution_id
+
+        # Find module symbol for top-level call attribution
+        mod_sym_name = f"<module:{file_path.name}>"
+        module_symbol: Symbol | None = global_symbols.get(mod_sym_name)
 
         for node in iter_tree(tree.root_node):
             # Handle use statements
@@ -355,9 +376,9 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                     if func_name not in _PERL_BUILTINS:
                         caller = _find_enclosing_function_perl(
                             node, source, local_symbols, package_name,
-                        )
+                        ) or module_symbol
                         if caller:
-                            lookup_result = resolver.lookup(func_name)
+                            lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
                                 confidence = 0.85 * lookup_result.confidence
@@ -395,7 +416,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         node, source, local_symbols, package_name,
                     )
                     if caller:
-                        lookup_result = resolver.lookup(method_name)
+                        lookup_result = resolver.lookup(method_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.75 * lookup_result.confidence

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Meson build system analyzer using tree-sitter.
 
 This module provides static analysis for Neson build files, extracting symbols

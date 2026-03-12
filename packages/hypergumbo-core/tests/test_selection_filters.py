@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the selection.filters module."""
 
 from hypergumbo_core.selection.filters import (

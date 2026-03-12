@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for __main__.py module (python -m hypergumbo invocation)."""
 import runpy
 import sys

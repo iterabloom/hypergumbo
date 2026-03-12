@@ -1,0 +1,49 @@
+- op: create  # 0cc9
+  at: '2026-03-09T18:53:44Z'  # 0cc9
+  by: agent  # 0cc9
+  actor: jgstern_agent  # 0cc9
+  clock: 1  # 0cc9
+  nonce: 0cc9  # 0cc9
+  data:  # 0cc9
+    kind: work_item  # 0cc9
+    title: "Cobra CLI command tree detection"  # 0cc9
+    status: todo_soft  # 0cc9
+    priority: 2  # 0cc9
+    parent:  # 0cc9
+    tags: []  # 0cc9
+    before: []  # 0cc9
+    duplicate_of: []  # 0cc9
+    not_duplicate_of: []  # 0cc9
+    pr_ref:  # 0cc9
+    description: "DEEP bakeoff: beads assessment shows rootCmd.Execute() misresolved to Client.Execute. Cobra command tree structure invisible — 30+ subcommands unlinked. Needs: detect AddCommand() calls, create parent-child command edges, resolve command Run/RunE closures."  # 0cc9
+    fields: {}  # 0cc9
+- op: update  # dc03
+  at: '2026-03-09T19:03:47Z'  # dc03
+  by: agent  # dc03
+  actor: jgstern_agent  # dc03
+  clock: 2  # dc03
+  nonce: dc03  # dc03
+  set:  # dc03
+    priority: 4  # dc03
+- op: discuss  # c850
+  at: '2026-03-09T19:03:47Z'  # c850
+  by: agent  # c850
+  actor: jgstern_agent  # c850
+  clock: 3  # c850
+  nonce: c850  # c850
+  message: "Deprioritized: cobra patterns already exist in cli-go.yaml. The gap is in command tree edge creation (AddCommand calls) and method resolution (Execute collision). These require Go analyzer changes. Will reassess after plazaflow curriculum."  # c850
+- op: update  # fffa
+  at: '2026-03-09T22:00:47Z'  # fffa
+  by: agent  # fffa
+  actor: jgstern_agent  # fffa
+  clock: 4  # fffa
+  nonce: fffa  # fffa
+  set:  # fffa
+    status: needs_human_review  # fffa
+- op: discuss  # f430
+  at: '2026-03-09T22:00:47Z'  # f430
+  by: agent  # f430
+  actor: jgstern_agent  # f430
+  clock: 5  # f430
+  nonce: f430  # f430
+  message: "PlazaFlow bakeoff complete (48 repos). Cobra CLI detection confirmed as valid but low-impact gap. Recommend holding for future Go analyzer work."  # f430

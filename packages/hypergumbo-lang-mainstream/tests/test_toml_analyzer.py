@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for TOML analyzer using tree-sitter-toml.
 
 Tests verify that the analyzer correctly extracts:
@@ -18,7 +19,7 @@ from hypergumbo_lang_mainstream.toml_config import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "toml-v1"
-    assert PASS_VERSION == "2.0.2"
+    assert PASS_VERSION == "2.2.0"
 
 def test_analyze_table(tmp_path):
     """Test detection of table definitions."""
@@ -125,6 +126,89 @@ my-tool = "mypackage.tool:run"
     assert my_cli.meta is not None
     assert my_cli.meta.get("entry_point") == "mypackage.cli:main"
     assert my_cli.canonical_name == "my-cli"  # CLI command name
+
+def test_pyproject_scripts_emit_defines_target_edges(tmp_path):
+    """pyproject.toml [project.scripts] should emit defines_target edges.
+
+    Entry points like "mypackage.cli:main" should produce defines_target
+    edges pointing to the resolved file path (mypackage/cli.py), enabling
+    the build-target linker to connect the script symbol to main().
+    """
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+my-cli = "mypackage.cli:main"
+my-tool = "mypackage.tool:run"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    # Should have defines_target edges from script symbols
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) >= 2, (
+        f"Expected defines_target edges for pyproject.toml scripts, got {len(dt_edges)}"
+    )
+
+    # Check that the edge dst is a resolved file path (module path → file path)
+    dsts = {e.dst for e in dt_edges}
+    assert "mypackage/cli.py" in dsts, f"Expected mypackage/cli.py in {dsts}"
+    assert "mypackage/tool.py" in dsts, f"Expected mypackage/tool.py in {dsts}"
+
+    # Each edge should have the function name in meta
+    cli_edge = next(e for e in dt_edges if e.dst == "mypackage/cli.py")
+    assert cli_edge.meta is not None
+    assert cli_edge.meta.get("target_function") == "main"
+
+
+def test_pyproject_scripts_no_colon_no_edge(tmp_path):
+    """Entry point without colon (no module:function format) produces no edge."""
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+broken = "just_a_module"
+""")
+    result = analyze_toml_files(tmp_path)
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) == 0
+
+
+def test_pyproject_scripts_empty_parts_no_edge(tmp_path):
+    """Entry point with empty module or function (e.g., ':main') produces no edge."""
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+bad1 = ":main"
+bad2 = "module:"
+""")
+    result = analyze_toml_files(tmp_path)
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) == 0
+
+
+def test_pyproject_gui_scripts_emit_defines_target_edges(tmp_path):
+    """pyproject.toml [project.gui-scripts] should also emit defines_target edges."""
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.gui-scripts]
+my-gui = "mypackage.gui:start"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert len(dt_edges) >= 1
+    assert any(e.dst == "mypackage/gui.py" for e in dt_edges)
+
 
 def test_analyze_table_array(tmp_path):
     """Test detection of array of tables (e.g., [[bin]])."""

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 name: Release
 
 # Triggered manually or when a version tag is pushed
@@ -290,6 +291,9 @@ jobs:
   # Verifies multi-Python compatibility after publish. If this fails,
   # the release is already out but the failure is visible for triage.
   # ─────────────────────────────────────────────────────────────
+  # Uses container images to guarantee Python availability —
+  # setup-python@v5 can't find pre-built binaries for Debian 12
+  # (the versions manifest only ships Ubuntu builds).
   post-publish-matrix:
     needs: [check-nightly, build-and-publish]
     if: needs.check-nightly.outputs.matrix_covered != 'true'
@@ -299,15 +303,16 @@ jobs:
       fail-fast: false
 
     runs-on: codeberg-small-lazy
+    container: python:${{ matrix.python-version }}-bookworm
+    timeout-minutes: 15
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -316,7 +321,10 @@ jobs:
             pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo-tracker[dev,tui]" \
+                        -e packages/hypergumbo \
+                        jsonschema
           else
             pip install -e .[dev]
           fi
@@ -337,17 +345,29 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
             TEST_PATHS=""
           fi
 
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
           else
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+            WORKERS=$(nproc)
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
               --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
@@ -358,16 +378,16 @@ jobs:
     needs: [check-nightly, build-and-publish]
     if: needs.check-nightly.outputs.integration_covered != 'true'
     runs-on: codeberg-small-lazy
+    container: python:3.11-bookworm
     timeout-minutes: 30
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Install Node.js and jq for JS-based actions
+        run: apt-get update && apt-get install -y nodejs jq
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -376,17 +396,14 @@ jobs:
             pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
 
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
-
-      - name: Install jq
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq || true
 
       - name: Run integration tests
         run: ./scripts/integration-test --quick

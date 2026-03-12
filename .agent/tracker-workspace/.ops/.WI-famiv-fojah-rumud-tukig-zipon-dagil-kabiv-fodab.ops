@@ -1,0 +1,41 @@
+- op: create  # de62
+  at: '2026-03-08T02:30:05Z'  # de62
+  by: agent  # de62
+  actor: jgstern_agent  # de62
+  clock: 1  # de62
+  nonce: de62  # de62
+  data:  # de62
+    kind: work_item  # de62
+    title: "Tracker sync: escalate to disable autonomous mode after N consecutive failures"  # de62
+    status: todo_hard  # de62
+    priority: 2  # de62
+    parent:  # de62
+    tags: []  # de62
+    before: []  # de62
+    duplicate_of: []  # de62
+    not_duplicate_of: []  # de62
+    pr_ref:  # de62
+    description: ""  # de62
+    fields: {}  # de62
+- op: discuss  # cac3
+  at: '2026-03-08T02:31:08Z'  # cac3
+  by: agent  # cac3
+  actor: jgstern_agent  # cac3
+  clock: 2  # cac3
+  nonce: cac3  # cac3
+  message: "Human requested: if retry cap is breached, autonomous mode should be turned off. Current circuit breaker (PR #1982) only pauses for 30 min. Need: count consecutive failures in the marker file, and after N (e.g., 3-5) consecutive failures, call loop-toggle off."  # cac3
+- op: update  # 4f00
+  at: '2026-03-08T03:02:02Z'  # 4f00
+  by: agent  # 4f00
+  actor: jgstern_agent  # 4f00
+  clock: 3  # 4f00
+  nonce: 4f00  # 4f00
+  set:  # 4f00
+    status: done  # 4f00
+- op: discuss  # a827
+  at: '2026-03-08T03:02:02Z'  # a827
+  by: agent  # a827
+  actor: jgstern_agent  # a827
+  clock: 4  # a827
+  nonce: a827  # a827
+  message: "Fixed in PR #1990. After 3 consecutive sync failures, writes OFF to AUTONOMOUS_MODE.txt. Marker format changed to count:timestamp. 9 tests total (4 new for escalation)."  # a827

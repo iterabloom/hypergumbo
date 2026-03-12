@@ -1,0 +1,41 @@
+- op: create  # 3056
+  at: '2026-03-08T08:30:04Z'  # 3056
+  by: agent  # 3056
+  actor: jgstern_agent  # 3056
+  clock: 1  # 3056
+  nonce: '3056'  # 3056
+  data:  # 3056
+    kind: work_item  # 3056
+    title: "Elixir: bare-name function resolution creates false positive call edges"  # 3056
+    status: todo_soft  # 3056
+    priority: 2  # 3056
+    parent:  # 3056
+    tags: []  # 3056
+    before: []  # 3056
+    duplicate_of: []  # 3056
+    not_duplicate_of: []  # 3056
+    pr_ref:  # 3056
+    description: ""  # 3056
+    fields: {}  # 3056
+- op: discuss  # ef54
+  at: '2026-03-08T08:30:10Z'  # ef54
+  by: agent  # ef54
+  actor: jgstern_agent  # ef54
+  clock: 2  # ef54
+  nonce: ef54  # ef54
+  message: "Phoenix bakeoff assessment: module-qualified calls like Plug.Builder.compile() resolve to Phoenix.Digester.compile by bare name. Stream.run() resolves to Mix.Tasks.Local.Phx.run. Kernel.inspect resolves to Phoenix.Socket.Message.inspect (inflating in-degree to 158). Fix: when Elixir source has module-qualified call, only match target in that module. TDD: write failing test with qualified Elixir call, assert no cross-module false positive. Also: defp (private function) calls within same module not linked as callee edges."  # ef54
+- op: update  # 7c5c
+  at: '2026-03-08T08:46:15Z'  # 7c5c
+  by: agent  # 7c5c
+  actor: jgstern_agent  # 7c5c
+  clock: 3  # 7c5c
+  nonce: 7c5c  # 7c5c
+  set:  # 7c5c
+    status: done  # 7c5c
+- op: discuss  # 45f4
+  at: '2026-03-08T08:46:15Z'  # 45f4
+  by: agent  # 45f4
+  actor: jgstern_agent  # 45f4
+  clock: 4  # 45f4
+  nonce: 45f4  # 45f4
+  message: "Fixed in PR #2013. _handle_dot_call() now checks if module name (or alias expansion) is a known module prefix before using NameResolver. External modules skip to unresolved edge, preventing bare-name false positives."  # 45f4

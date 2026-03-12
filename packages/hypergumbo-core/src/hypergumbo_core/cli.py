@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Command-line interface for hypergumbo.
 
 This module provides the main entry point for the hypergumbo CLI, handling
@@ -80,8 +81,15 @@ import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa:
 import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F401
 import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
-from .entrypoints import detect_entrypoints
-from .ir import Symbol, Edge, deduplicate_edges
+import hypergumbo_core.linkers.build_target as _build_target_linker  # noqa: F401
+import hypergumbo_core.linkers.decorator_dispatch as _decorator_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.middleware_chain as _middleware_chain_linker  # noqa: F401
+import hypergumbo_core.linkers.react_component as _react_component_linker  # noqa: F401
+import hypergumbo_core.linkers.tauri_ipc as _tauri_ipc_linker  # noqa: F401
+import hypergumbo_core.linkers.solidity_abi as _solidity_abi_linker  # noqa: F401
+import hypergumbo_core.linkers.wasm_bindgen as _wasm_bindgen_linker  # noqa: F401
+from .entrypoints import EntrypointKind, detect_entrypoints
+from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -93,6 +101,7 @@ from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
+from .paths import is_test_node as _is_test_node
 from .compact import (
     CompactConfig,
     format_compact_behavior_map,
@@ -116,6 +125,65 @@ from .framework_patterns import (
     resolve_deferred_symbol_refs,
 )
 from .partial_install_warnings import check_partial_install_warnings
+
+
+def _setup_locale_filtering(
+    repo_root: Path,
+    locale: str | None,
+) -> None:
+    """Detect locale documentation directories and configure filtering.
+
+    Scans the repo for translated doc directories (GitLab-style doc-locale/<lang>/
+    or FastAPI-style docs/<lang>/). Logs what was found and what decision was made
+    to stderr. Sets the global locale excludes so find_files() skips the
+    appropriate directories.
+
+    Args:
+        repo_root: Repository root path.
+        locale: The --locale flag value. None means "use default (exclude
+            translations)", a string like "ja-jp" means "swap to that locale".
+    """
+    from .discovery import detect_locale_dirs, set_locale_excludes
+
+    info = detect_locale_dirs(repo_root)
+    if info is None:
+        if locale is not None:
+            print(
+                f"WARNING: --locale {locale} specified but no translated "
+                f"documentation directories found in {repo_root}",
+                file=sys.stderr,
+            )
+        return
+
+    # Log what we found
+    lang_list = ", ".join(info.languages)
+    print(
+        f"Locale docs detected ({info.style}): "
+        f"{len(info.languages)} language(s) [{lang_list}]",
+        file=sys.stderr,
+    )
+
+    try:
+        excludes = info.excludes_for_locale(locale)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    set_locale_excludes(excludes)
+
+    # Log the decision
+    if locale is None:
+        excluded_str = ", ".join(d.name for d in excludes)
+        print(
+            f"  Excluding translated docs: {excluded_str} "
+            f"(use --locale <code> to analyze a specific translation)",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"  Using locale '{locale}' instead of primary docs",
+            file=sys.stderr,
+        )
 
 
 # =============================================================================
@@ -520,7 +588,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
+    locale = getattr(args, "locale", None)
     verbose = getattr(args, "verbose", False)
+
+    # Detect and filter locale documentation directories
+    _setup_locale_filtering(repo_root, locale)
 
     # Convert string mode to enum
     mode_str = getattr(args, "config_extraction_mode", "hybrid")
@@ -785,6 +857,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_path = Path(args.out) if args.out else None
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
+    max_file_bytes = getattr(args, "max_file_bytes", None)
     compact = getattr(args, "compact", False)
     coverage = getattr(args, "coverage", 0.8)
     connectivity = not getattr(args, "no_connectivity", False)
@@ -793,12 +866,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     frameworks = getattr(args, "frameworks", None)
     include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
+    locale = getattr(args, "locale", None)
+
+    # Detect and filter locale documentation directories
+    _setup_locale_filtering(repo_root, locale)
 
     generated_files = run_behavior_map(
         repo_root=repo_root,
         out_path=out_path,
         max_tier=max_tier,
         max_files=max_files,
+        max_file_bytes=max_file_bytes,
         compact=compact,
         coverage=coverage,
         connectivity=connectivity,
@@ -818,18 +896,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def _edge_from_dict(d: Dict[str, Any]) -> Edge:
     """Reconstruct an Edge from its dict representation."""
-    meta = d.get("meta", {})
-    return Edge(
-        id=d["id"],
-        src=d["src"],
-        dst=d["dst"],
-        edge_type=d["type"],
-        line=d.get("line", 0),
-        confidence=d.get("confidence", 0.85),
-        origin=d.get("origin", ""),
-        origin_run_id=d.get("origin_run_id", ""),
-        evidence_type=meta.get("evidence_type", "unknown"),
-    )
+    return Edge.from_dict(d)
 
 
 def _format_symbol_display_name(node: Dict[str, Any] | None, fallback_id: str = "") -> str:
@@ -1097,9 +1164,9 @@ def cmd_slice(args: argparse.Namespace) -> int:
             if sym is None:
                 continue  # pragma: no cover - symbol should exist
 
-            # Filter out test files if --exclude-tests
-            if exclude_tests and sym.path and _is_test_path(sym.path):
-                continue
+            # Filter out test code if --exclude-tests (checks both path and annotations)
+            if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
+                continue  # pragma: no cover - test penalty in detect_entrypoints filters first
 
             # Filter out entries with tier > max_tier if --max-tier set
             if max_tier is not None and sym.supply_chain_tier > max_tier:
@@ -1142,8 +1209,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 sym = symbol_lookup.get(ep.symbol_id)
                 if sym is None:
                     continue  # pragma: no cover
-                if exclude_tests and sym.path and _is_test_path(sym.path):
-                    continue
+                if exclude_tests and sym.path and _is_test_node(sym.path, sym.meta):
+                    continue  # pragma: no cover - test penalty in detect_entrypoints filters first
                 if max_tier is not None and sym.supply_chain_tier > max_tier:
                     continue
                 filtered.append(ep)
@@ -1160,15 +1227,29 @@ def cmd_slice(args: argparse.Namespace) -> int:
         for e in edges:
             edge_src_counts[e.src] = edge_src_counts.get(e.src, 0) + 1
 
+        # Main functions are canonical application roots and should be
+        # preferred over route handlers that may have more edges but
+        # lead to dead ends (e.g., V1DeprecationRouter.deprecationHandler
+        # in alertmanager had 7 route-node edges but 0 useful call edges).
+        _MAIN_KINDS = frozenset({
+            EntrypointKind.MAIN_FUNCTION,
+            EntrypointKind.CLI_MAIN,
+        })
+
         def entry_score(ep: Any) -> float:
-            """Score = confidence * connectivity_boost.
+            """Score = confidence * connectivity_boost * kind_boost.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
-            This favors well-connected entries while still respecting confidence.
+            kind_boost = 2.0 for main functions, 1.0 otherwise
+
+            Main functions get a 2x boost because they are the canonical
+            application root.  Route handlers with more edges often point
+            to dead-end route nodes rather than useful call chains.
             """
             out_edges = edge_src_counts.get(ep.symbol_id, 0)
             connectivity_boost = 1 + math.log(1 + out_edges)
-            return ep.confidence * connectivity_boost
+            kind_boost = 2.0 if ep.kind in _MAIN_KINDS else 1.0
+            return ep.confidence * connectivity_boost * kind_boost
 
         best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
@@ -1195,9 +1276,22 @@ def cmd_slice(args: argparse.Namespace) -> int:
     hub_threshold_raw = getattr(args, "hub_threshold", 50)
     hub_threshold = hub_threshold_raw if hub_threshold_raw else None
     exclude_imports = getattr(args, "exclude_imports", False)
+    # Adaptive hop limit: deeper traversal for smaller graphs where
+    # the full call chain is short enough to be manageable.
+    max_hops = args.max_hops
+    if max_hops is None:
+        node_count = len(nodes)
+        if node_count <= 200:
+            max_hops = 10
+        elif node_count <= 500:
+            max_hops = 7
+        elif node_count <= 2000:
+            max_hops = 5
+        else:
+            max_hops = 3
     query = SliceQuery(
         entrypoint=entry,
-        max_hops=args.max_hops,
+        max_hops=max_hops,
         max_files=args.max_files,
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
@@ -1228,8 +1322,18 @@ def cmd_slice(args: argparse.Namespace) -> int:
     feature_dict = result.to_dict()
     feature_dict["node_ids"] = ranked_node_ids  # Replace with ranked order
 
-    # --flat implies --inline (need full objects for external tools)
-    use_inline = getattr(args, "inline", False) or getattr(args, "flat", False)
+    # --group-by-module validation and implied flags
+    group_by_module = getattr(args, "group_by_module", False)
+    if group_by_module and getattr(args, "flat", False):
+        print("Error: --group-by-module cannot be used with --flat", file=sys.stderr)
+        return 1
+
+    # --flat and --group-by-module both imply --inline
+    use_inline = (
+        getattr(args, "inline", False)
+        or getattr(args, "flat", False)
+        or group_by_module
+    )
 
     # If --inline (or --flat), include full node/edge objects for self-contained output
     if use_inline:
@@ -1246,12 +1350,57 @@ def cmd_slice(args: argparse.Namespace) -> int:
             if n.get("id") in node_ids_set
         ]
         inline_nodes.sort(key=lambda n: node_rank.get(n.get("id", ""), 999999))
-        feature_dict["nodes"] = inline_nodes
 
         feature_dict["edges"] = [
             e for e in behavior_map.get("edges", [])
             if e.get("id") in edge_ids_set
         ]
+
+        if group_by_module:
+            # Group nodes by file path
+            modules: dict[str, list[dict]] = {}
+            for node in inline_nodes:
+                path = node.get("path", "<unknown>")
+                modules.setdefault(path, []).append(node)
+
+            # Sort modules by best rank (module with highest-ranked node first)
+            sorted_modules = dict(sorted(
+                modules.items(),
+                key=lambda item: node_rank.get(item[1][0].get("id", ""), 999999),
+            ))
+
+            feature_dict["modules"] = {
+                path: {"node_count": len(mod_nodes), "nodes": mod_nodes}
+                for path, mod_nodes in sorted_modules.items()
+            }
+
+            # Build module-level edge summary (cross-file only)
+            node_to_module = {
+                n.get("id", ""): path
+                for path, mod_nodes in sorted_modules.items()
+                for n in mod_nodes
+            }
+            module_edge_counts: dict[tuple[str, str], dict] = {}
+            for e in feature_dict.get("edges", []):
+                src_mod = node_to_module.get(e.get("src", ""))
+                dst_mod = node_to_module.get(e.get("dst", ""))
+                if src_mod and dst_mod and src_mod != dst_mod:
+                    key = (src_mod, dst_mod)
+                    if key not in module_edge_counts:
+                        module_edge_counts[key] = {"count": 0, "types": set()}
+                    module_edge_counts[key]["count"] += 1
+                    module_edge_counts[key]["types"].add(e.get("type", ""))
+            feature_dict["module_edges"] = [
+                {
+                    "src_module": s,
+                    "dst_module": d,
+                    "count": info["count"],
+                    "types": sorted(info["types"]),
+                }
+                for (s, d), info in sorted(module_edge_counts.items())
+            ]
+        else:
+            feature_dict["nodes"] = inline_nodes
 
     # If --flat, output simple structure (nodes/edges at top level)
     # Otherwise, use standard wrapper structure
@@ -1269,13 +1418,15 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2))
+    out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
 
     mode = "reverse" if args.reverse else "forward"
     print(f"[hypergumbo slice] Wrote {mode} slice to {out_path}")
     print(f"  entry: {entry}")
     print(f"  nodes: {len(result.node_ids)}")
     print(f"  edges: {len(result.edge_ids)}")
+    if group_by_module:
+        print(f"  modules: {len(feature_dict.get('modules', {}))}")
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
 
@@ -1410,6 +1561,39 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 continue
             routes.append(node)
 
+    # Deduplicate routes by (method, path, file).  Routes from different
+    # files are always kept even if they share the same (method, path) —
+    # they represent different registrations (e.g. v1 deprecation vs v2
+    # go-swagger handlers).  Within a file, only the first entry for each
+    # (method, path) is shown.
+    seen_route_keys: set[str] = set()
+    deduped_routes: list[dict] = []
+    for node in routes:
+        meta = node.get("meta") or {}
+        route_path = None
+        method = None
+        # For kind="route" symbols, always use meta.route_path/http_method.
+        # These are the authoritative values from the analyzer.  Concept
+        # enrichment (Phase 3) can attach multiple concepts with different
+        # methods when a handler is reused across GET/POST — using the
+        # concept method would cause dedup collisions.
+        if node.get("kind") == "route":
+            route_path = meta.get("route_path")
+            method = meta.get("http_method")
+        if route_path is None:
+            for concept in meta.get("concepts", []):
+                if isinstance(concept, dict) and concept.get("concept") == "route":
+                    route_path = concept.get("path")
+                    method = concept.get("method")
+                    break
+        if route_path and method:
+            key = f"{method.upper()}:{route_path}:{node.get('path', '')}"
+            if key in seen_route_keys:
+                continue
+            seen_route_keys.add(key)
+        deduped_routes.append(node)
+    routes = deduped_routes
+
     if not routes:
         print("No API routes found in the behavior map.")
         cached_set = {input_path} if was_cached else set()
@@ -1440,23 +1624,25 @@ def cmd_routes(args: argparse.Namespace) -> int:
             line = span.get("start_line", 0)
             meta = route.get("meta", {}) or {}
 
-            # Extract route info from concept metadata (YAML pattern enrichment)
-            # or from direct meta fields (kind="route" symbols from analyzers)
+            # Extract route info from direct meta fields (kind="route" symbols
+            # from analyzers) or concept metadata (YAML pattern enrichment).
+            # kind="route" symbols use meta.route_path/http_method as the
+            # authoritative source — concept methods can be wrong when a
+            # handler is shared across multiple HTTP methods.
             route_path = None
             method = None
             controller_action = None
-            concepts = meta.get("concepts", [])
-            for concept in concepts:
-                if isinstance(concept, dict) and concept.get("concept") == "route":
-                    route_path = concept.get("path")
-                    method = concept.get("method")
-                    controller_action = concept.get("controller_action")
-                    break
-
-            # Fallback: kind="route" symbols store route info in meta directly
-            if route_path is None and route.get("kind") == "route":
+            if route.get("kind") == "route":
                 route_path = meta.get("route_path")
-                method = method or meta.get("http_method")
+                method = meta.get("http_method")
+            if route_path is None:
+                concepts = meta.get("concepts", [])
+                for concept in concepts:
+                    if isinstance(concept, dict) and concept.get("concept") == "route":
+                        route_path = concept.get("path")
+                        method = concept.get("method")
+                        controller_action = concept.get("controller_action")
+                        break
             # controller_action may also be in top-level meta (Rails routes)
             if controller_action is None:
                 controller_action = meta.get("controller_action")
@@ -1567,9 +1753,28 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
 
-    # Find matching symbols (case-insensitive exact match on name)
-    pattern = args.symbol.lower()
-    matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+    # Find matching symbols using priority-based matching (same rules as
+    # slice --entry for consistency — WI-gipop).
+    # Priority: exact ID → exact path → path suffix → exact name → partial name
+    spec = args.symbol
+    matches = [n for n in nodes if n.get("id") == spec]
+    if not matches:
+        matches = [n for n in nodes if n.get("path") == spec]
+    if not matches and ("/" in spec or "\\" in spec):
+        matches = [
+            n for n in nodes
+            if n.get("path", "").endswith(spec)
+            or n.get("path", "").endswith("/" + spec)
+        ]
+    if not matches:
+        matches = [n for n in nodes if n.get("name") == spec]
+    if not matches:
+        # Case-insensitive name match (original behavior)
+        pattern = spec.lower()
+        matches = [n for n in nodes if n.get("name", "").lower() == pattern]
+    if not matches:
+        # Partial name match (contains)
+        matches = [n for n in nodes if spec in n.get("name", "")]
 
     if not matches:
         print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
@@ -2419,8 +2624,11 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     ir_symbols = [Symbol.from_dict(n) for n in nodes]
     ir_edges = [Edge.from_dict(e) for e in edges_raw]
 
-    # Get canonical ranking from rank_symbols()
-    ranked = rank_symbols(ir_symbols, ir_edges)
+    # Get canonical ranking from rank_symbols().
+    # min_edge_confidence=0.5 excludes low-confidence inferred edges
+    # (ast_method_inferred) that inflate in-degree for common method
+    # names via name-collision false positives (e.g. .labels(), .rules()).
+    ranked = rank_symbols(ir_symbols, ir_edges, min_edge_confidence=0.5)
     rank_by_id: dict[str, int] = {rs.symbol.id: rs.rank for rs in ranked}
 
     # Minimum edge confidence for degree *display* counts.
@@ -2605,10 +2813,10 @@ def cmd_compact(args: argparse.Namespace) -> int:
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w") as f:
-            json.dump(compact_map, f, indent=2)
+            json.dump(compact_map, f, indent=2, sort_keys=True)
         print(f"Compact behavior map written to: {out_path}")
     else:
-        print(json.dumps(compact_map, indent=2))
+        print(json.dumps(compact_map, indent=2, sort_keys=True))
 
     return 0
 
@@ -2765,7 +2973,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
                 entry["cyclomatic_complexity"] = complexity
             output["cold_spots"].append(entry)
 
-        print(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2, sort_keys=True))
     else:
         # Human-readable output
         print("Test Coverage Estimate")
@@ -3018,6 +3226,15 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         dest="no_secret_scan",
         help="Skip secret scanning (not recommended)",
     )
+    p_sketch.add_argument(
+        "--locale",
+        type=str,
+        default=None,
+        metavar="CODE",
+        help="Analyze translated docs for this locale instead of English "
+             "(e.g., --locale ja-jp). By default, translated documentation "
+             "directories are excluded to avoid processing duplicate content.",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo run
@@ -3088,6 +3305,13 @@ Cache location:
         help="Maximum files to analyze per language (for large repos)",
     )
     p_run.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=None,
+        dest="max_file_bytes",
+        help="Skip files exceeding this size in bytes (default: no limit)",
+    )
+    p_run.add_argument(
         "--compact",
         action="store_true",
         help="Compact output: include top symbols by centrality coverage with "
@@ -3145,6 +3369,15 @@ Cache location:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+    )
+    p_run.add_argument(
+        "--locale",
+        type=str,
+        default=None,
+        metavar="CODE",
+        help="Analyze translated docs for this locale instead of English "
+             "(e.g., --locale ja-jp). By default, translated documentation "
+             "directories are excluded to avoid processing duplicate content.",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -3209,8 +3442,8 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_slice.add_argument(
         "--max-hops",
         type=int,
-        default=3,
-        help="Maximum traversal depth (default: 3)",
+        default=None,
+        help="Maximum traversal depth (default: adaptive, 3-10 based on graph size)",
     )
     p_slice.add_argument(
         "--max-files",
@@ -3283,6 +3516,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output flat structure with just nodes/edges arrays at top level. "
              "Useful for external tools expecting {nodes: [...], edges: [...]}. "
              "Implies --inline.",
+    )
+    p_slice.add_argument(
+        "--group-by-module",
+        action="store_true",
+        dest="group_by_module",
+        help="Group output nodes by file/module path. Implies --inline. "
+             "Adds 'modules' dict (path → nodes) and 'module_edges' summary.",
     )
     p_slice.add_argument(
         "--files",
@@ -3830,6 +4070,11 @@ without re-running the full analysis."""
     return p
 
 
+_DEPENDENCY_KINDS = frozenset({
+    "dependency", "devDependency", "dev-dependency", "build-dependency",
+})
+
+
 def _classify_symbols(
     symbols: list[Symbol], repo_root: Path, package_roots: set[Path]
 ) -> None:
@@ -3839,9 +4084,18 @@ def _classify_symbols(
     and supply_chain_reason fields.  Symbols that already have a tier
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
+
+    Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
+    classified as tier 3 (EXTERNAL_DEP) since they represent references
+    to external packages, not first-party code.
     """
     for symbol in symbols:
         if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+            continue
+        # Dependency declarations are external references, not source code
+        if symbol.kind in _DEPENDENCY_KINDS:
+            symbol.supply_chain_tier = 3
+            symbol.supply_chain_reason = "dependency declaration (external)"
             continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)
@@ -3888,6 +4142,7 @@ def run_behavior_map(
     out_path: Path | None = None,
     max_tier: int | None = None,
     max_files: int | None = None,
+    max_file_bytes: int | None = None,
     compact: bool = False,
     coverage: float = 0.8,
     connectivity: bool = True,
@@ -3989,6 +4244,11 @@ def run_behavior_map(
     # Detect internal package roots for supply chain classification
     package_roots = detect_package_roots(repo_root)
 
+    # Set global file size limit so all analyzers using find_files()
+    # automatically skip oversized files (e.g., minified JS, huge HTML).
+    from hypergumbo_core.discovery import set_max_file_bytes
+    set_max_file_bytes(max_file_bytes)
+
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
     show_progress("Running analyzers", 10)
@@ -4023,6 +4283,16 @@ def run_behavior_map(
     detected_frameworks = set(profile.frameworks)
     enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
+    # Materialize route symbols from enriched concept metadata (WI-lodik).
+    # Annotation-based frameworks (JAX-RS, Spring MVC, ASP.NET) tag handler
+    # methods with concept=route but don't create kind="route" IR nodes.
+    # This step creates those nodes so the route_handler linker can produce
+    # routes_to edges.
+    from .framework_patterns import materialize_route_symbols
+    materialized_routes = materialize_route_symbols(all_symbols)
+    if materialized_routes:
+        all_symbols.extend(materialized_routes)
+
     # Run cross-language linkers
     show_progress("Running linkers", 55)
     #
@@ -4048,6 +4318,20 @@ def run_behavior_map(
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
 
+    # Normalize linker-produced symbol/usage-context paths (same as analyzers
+    # in run_all_analyzers — linkers can also produce absolute paths).
+    from .paths import normalize_path as _norm_path
+
+    _root_prefix = _norm_path(str(repo_root)).rstrip("/") + "/"
+    for sym in all_symbols:
+        normed = _norm_path(sym.path)
+        if normed.startswith(_root_prefix):
+            sym.path = normed[len(_root_prefix):]
+    for uc in all_usage_contexts:
+        normed = _norm_path(uc.path)
+        if normed.startswith(_root_prefix):
+            uc.path = normed[len(_root_prefix):]  # pragma: no cover
+
     # Check for partial installation issues (ADR-0010 Item 8)
     # Emit warnings for: unanalyzed files, partial linker requirements
     check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
@@ -4062,6 +4346,14 @@ def run_behavior_map(
     # Provisioner#create_table in postal).
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     _log_memory("after linkers")
+
+    # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
+    # Edges to external functions (stdlib, npm packages, etc.) would otherwise
+    # break slice traversal by pointing to nonexistent nodes.
+    boundary = create_boundary_nodes(all_symbols, all_edges)
+    if boundary:
+        all_symbols.extend(boundary)
+    _log_memory("after boundary nodes")
 
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
@@ -4097,7 +4389,15 @@ def run_behavior_map(
         # AND dst must not reference a node that was explicitly removed by
         # tier filtering. Edges whose dst is an unresolved external reference
         # (never in the node set) are kept — they represent real dependencies.
-        removed_symbol_ids = {s.id for s in all_symbols} - filtered_symbol_ids
+        # Exclude boundary nodes from "removed" set — they're synthetic
+        # endpoints for external references and should be treated as if they
+        # don't exist for tier filtering purposes (same as pre-boundary-node
+        # behavior where unresolved IDs simply weren't in the symbol set).
+        removed_symbol_ids = {
+            s.id for s in all_symbols
+            if s.id not in filtered_symbol_ids
+            and not (s.meta and s.meta.get("external_boundary"))
+        }
 
         def _is_valid_edge_src(src: str) -> bool:
             if src in filtered_symbol_ids:
@@ -4157,6 +4457,17 @@ def run_behavior_map(
     )
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
+
+    # Filter boundary nodes from output.  They exist in `all_symbols` to make
+    # edge endpoints resolvable for slice traversal, but shouldn't appear in
+    # the behavior map output — they're synthetic, have no source code, and
+    # would inflate node counts.  Edges pointing to boundary node IDs are
+    # retained (consumers can detect them by the "<external>" path or
+    # external_boundary meta flag).
+    ranked_symbols = [
+        s for s in ranked_symbols
+        if not (s.meta and s.meta.get("external_boundary"))
+    ]
 
     # Convert to dicts for output (in ranked order)
     all_nodes = [s.to_dict() for s in ranked_symbols]
@@ -4312,7 +4623,7 @@ def run_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
                 with open(budget_path, "w") as f:
-                    json.dump(tiered_map, f, indent=2)
+                    json.dump(tiered_map, f, indent=2, sort_keys=True)
                 generated_files.append(budget_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
@@ -4340,7 +4651,7 @@ def run_behavior_map(
 
     show_progress("Writing output", 95)
     with open(out_path, "w") as f:
-        json.dump(behavior_map, f, indent=2)
+        json.dump(behavior_map, f, indent=2, sort_keys=True)
     generated_files.append(out_path)
     _log_memory("after write")
 

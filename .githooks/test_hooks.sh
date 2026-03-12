@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -u
 
 # ==============================================================================
@@ -229,7 +230,79 @@ Signed-off-by: Developer <dev@example.com>"
 
 run_test "Scenario 7: unstable (Prefix Preserved)" "$INPUT_7" "$EXPECTED_7"
 
-# 7. Pre-push hook tests
+# 7. Pre-commit branch guard tests
+# ------------------------------------------------------------------------------
+
+echo ""
+echo "========================================================"
+echo "PRE-COMMIT BRANCH GUARD TESTS"
+echo "========================================================"
+
+PRE_COMMIT_HOOK="$SCRIPT_DIR/pre-commit"
+
+if [[ -f "$PRE_COMMIT_HOOK" ]]; then
+  # Helper: test pre-commit branch guard by mocking `git branch --show-current`
+  run_branch_guard_test() {
+    local test_name="$1"
+    local branch_name="$2"
+    local expect_result="$3"  # "block" or "allow"
+
+    echo "--------------------------------------------------------"
+    echo "TEST: $test_name"
+
+    # Create a wrapper that overrides `git` to return a fake branch name,
+    # then runs only the branch guard portion of the pre-commit hook
+    local guard_script
+    guard_script=$(mktemp)
+    cat > "$guard_script" <<GUARD_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+git() {
+  if [[ "\$1" == "branch" && "\$2" == "--show-current" ]]; then
+    echo "$branch_name"
+    return 0
+  fi
+  command git "\$@"
+}
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+current_branch=\$(git branch --show-current 2>/dev/null || true)
+if [[ "\$current_branch" == "dev" || "\$current_branch" == "main" ]]; then
+    exit 1
+fi
+exit 0
+GUARD_EOF
+    chmod +x "$guard_script"
+
+    if bash "$guard_script" >/dev/null 2>&1; then
+      if [[ "$expect_result" == "allow" ]]; then
+        echo "  ✅ PASS (commit allowed on branch '$branch_name')"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (commit should have been blocked on '$branch_name')"
+        ((FAIL_COUNT++))
+      fi
+    else
+      if [[ "$expect_result" == "block" ]]; then
+        echo "  ✅ PASS (commit blocked on branch '$branch_name')"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (commit should have been allowed on '$branch_name')"
+        ((FAIL_COUNT++))
+      fi
+    fi
+    rm -f "$guard_script"
+  }
+
+  run_branch_guard_test "Pre-commit: block commit on dev" "dev" "block"
+  run_branch_guard_test "Pre-commit: block commit on main" "main" "block"
+  run_branch_guard_test "Pre-commit: allow commit on feature branch" "jgstern/feat/test" "allow"
+  run_branch_guard_test "Pre-commit: allow commit on tracker-sync branch" "tracker-sync/20260305-120000" "allow"
+fi
+
+# 7b. Pre-push hook tests
 # ------------------------------------------------------------------------------
 
 PRE_PUSH_HOOK="$SCRIPT_DIR/pre-push"
@@ -328,16 +401,39 @@ WRAPPER
   cp "$STOP_HOOK" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh"
   chmod +x "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh"
 
+  # Copy shared stop logic (sourced by the hook)
+  mkdir -p "$STOP_TEST_DIR/.agent/hooks/_shared"
+  cp "$SCRIPT_DIR/../.agent/hooks/_shared/stop_logic.sh" "$STOP_TEST_DIR/.agent/hooks/_shared/stop_logic.sh"
+
+  # Provide a minimal tracker setup so count-todos works (returns 0)
+  mkdir -p "$STOP_TEST_DIR/scripts"
+  cat > "$STOP_TEST_DIR/scripts/tracker" <<'TRACKER_STUB'
+#!/bin/bash
+# Stub tracker for stop hook tests — returns 0 for count-todos, empty for guidance
+case "$1" in
+  count-todos) echo 0 ;;
+  guidance) echo "" ;;
+  *) echo "" ;;
+esac
+TRACKER_STUB
+  chmod +x "$STOP_TEST_DIR/scripts/tracker"
+
+  # Isolate $HOME so stop_logic.sh reads sandbox state, not real state.
+  # Create a fake $HOME with the expected notebook structure.
+  FAKE_HOME="$(mktemp -d -t hypergumbo-fakehome.XXXXXX)"
+  mkdir -p "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log"
+
   # SCENARIO 8a: New filename (last_stop_check.json) with recent timestamp → cooldown
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
   RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  # Remove old file to ensure it's reading the new one
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  # Remove old sandbox fallback files
+  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
-  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
     echo "  ✅ PASS (cooldown triggered from last_stop_check.json)"
     ((PASS_COUNT++))
   else
@@ -349,11 +445,12 @@ WRAPPER
   # SCENARIO 8b: Backward compat — only stop_hook_state.json exists → cooldown
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8b: Stop hook falls back to stop_hook_state.json (backward compat)"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
-  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
     echo "  ✅ PASS (cooldown triggered from stop_hook_state.json fallback)"
     ((PASS_COUNT++))
   else
@@ -365,11 +462,12 @@ WRAPPER
   # SCENARIO 8c: Neither file exists → full reflection (Path 3)
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
-  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Reflect here"; then
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Stale reflection"; then
     echo "  ✅ PASS (full reflection triggered when no state file)"
     ((PASS_COUNT++))
   else
@@ -378,16 +476,62 @@ WRAPPER
     ((FAIL_COUNT++))
   fi
 
+  # SCENARIO 8d-1: Dead PID in AUTONOMOUS_MODE.txt → re-claim and block
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8d-1: Dead PID re-claim (crash recovery)"
+  # Use a PID that definitely doesn't exist (max pid + 1 style)
+  echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
+
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision":"block"'; then
+    # Also verify it re-claimed the PID
+    NEW_MODE=$(cat "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt")
+    if echo "$NEW_MODE" | grep -q "pid=" && ! echo "$NEW_MODE" | grep -q "pid=999999999"; then
+      echo "  ✅ PASS (dead PID re-claimed, hook blocks)"
+      ((PASS_COUNT++))
+    else
+      echo "  ❌ FAIL (hook blocked but PID not re-claimed)"
+      echo "  AUTONOMOUS_MODE.txt: $NEW_MODE"
+      ((FAIL_COUNT++))
+    fi
+  else
+    echo "  ❌ FAIL (expected block after dead PID re-claim, got approve)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  # SCENARIO 8d-2: Live PID that is NOT our ancestor → approve (interactive)
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8d-2: Live non-ancestor PID → approve as interactive"
+  # PID 1 (init/systemd) is always alive and never our ancestor via the walk
+  echo "BROAD pid=1" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
+
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision": "approve"' && echo "$OUTPUT" | grep -q "Interactive"; then
+    echo "  ✅ PASS (live non-ancestor PID → approved as interactive)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected approve for live non-ancestor PID)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  # Reset for remaining tests
+  echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
+
   # SCENARIO 8d: New file takes priority over old file
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8d: last_stop_check.json takes priority over stop_hook_state.json"
-  # New file: recent timestamp → cooldown
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  # New file: recent timestamp → cooldown (in $HOME location, which is checked first)
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
   # Old file: epoch timestamp → would be stale (Path 3) if read
   printf '{"last_completed_utc": "1970-01-01T00:00:00Z"}\n' > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
-  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
     echo "  ✅ PASS (new file takes priority — cooldown from last_stop_check.json)"
     ((PASS_COUNT++))
   else
@@ -396,7 +540,7 @@ WRAPPER
     ((FAIL_COUNT++))
   fi
 
-  rm -rf "$STOP_TEST_DIR"
+  rm -rf "$STOP_TEST_DIR" "$FAKE_HOME"
 else
   echo "⚠️  Skipping stop hook tests: $STOP_HOOK not found"
 fi

@@ -1,0 +1,44 @@
+- op: create  # e2db
+  at: '2026-03-02T21:25:14Z'  # e2db
+  by: agent  # e2db
+  actor: jgstern_agent  # e2db
+  clock: 1  # e2db
+  nonce: e2db  # e2db
+  data:  # e2db
+    kind: work_item  # e2db
+    title: "Agda: scan type signatures for reference edges (biggest gap)"  # e2db
+    status: todo_soft  # e2db
+    priority: 2  # e2db
+    parent:  # e2db
+    tags:  # e2db
+    - analyzer  # e2db
+    - agda  # e2db
+    - formal-methods  # e2db
+    before: []  # e2db
+    duplicate_of: []  # e2db
+    not_duplicate_of: []  # e2db
+    pr_ref:  # e2db
+    description: "## Context\n\nThe Agda analyzer (packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/agda.py)\nextracts symbols (module, function, data, record) and creates reference edges by scanning\npattern clause RHS (after =) for qid nodes. However, it completely ignores type signatures,\nwhich is the single biggest gap for Agda analysis.\n\nIn the March 2026 deep bakeoff (OptAttest curriculum), Agda repos scored WARN with 41-46%\norphan rates. When reference edges were first added (PR #1627), orphan rates halved — but the\nremaining gap is largely due to missing type-signature references.\n\n## Problem\n\nThe analyzer has an explicit code path that only scans pattern clauses (RHS after =) and\nskips type signatures entirely. For a definition like:\n\n    double : Nat → Nat\n    double n = n + n\n\nThe analyzer creates edges from `double` to `n` and `+` (found in the pattern clause RHS),\nbut NOT to `Nat` (which appears only in the type signature). In Agda, the type signature IS\nthe specification — types carry proof obligations and architectural meaning. A function\n`f : Vec A n → Vec A (n + m) → Vec A (n + m)` has critical dependencies on Vec, A, n, m\nthat are completely invisible.\n\n## Specific gaps (ranked by impact)\n\n1. **Type signatures completely ignored** (HIGHEST IMPACT): `double : Nat → Nat` creates NO\n   edge from `double` to `Nat`. The code only processes pattern clause RHS nodes. This is the\n   single biggest cause of orphan symbols — types referenced only in signatures appear\n   disconnected.\n\n2. **Implicit arguments not tracked**: `{A : Set}` implicit and `⦃x : C⦄` instance arguments\n   create invisible dependencies. These are resolved by Agda's unifier and represent\n   architectural coupling (e.g., a function that requires a DecEq instance depends on that\n   typeclass).\n\n3. **Record fields not extracted**: Data constructors inside `data` blocks are extracted as\n   symbols, but record fields are NOT. Records are a primary abstraction in Agda (used for\n   algebraic structures, proof bundles, etc.), and their fields are often referenced\n   cross-file.\n\n4. **Import granularity lost**: `using` and `hiding` directives are parsed but not used for\n   filtering. `open import A using (f; g)` should create edges only to f and g, not the\n   entire module.\n\n## Proposed fix\n\n**Phase 1 (high impact):** In the `_extract_symbols_and_edges` method, after identifying a\nfunction's type signature (the line with `:` before any pattern clauses), scan it for qid\nand atom nodes and create reference edges with confidence ~0.75. The tree-sitter grammar\nfor Agda has `typed_binding` and `signature` node types that can be targeted.\n\n**Phase 2:** Extract record fields as symbols (kind=variable or kind=field). The tree-sitter\ngrammar has `field_declaration` nodes inside `record_definition`.\n\n## Bakeoff evidence\n\n- crypto-agda: 3985 nodes, 100% tier1, 41.6% orphan rate\n- bft-consensus-agda: 2489 nodes, 100% tier1, 46.4% orphan rate\n- Both repos have zero slicing capability despite thousands of declarations"  # e2db
+    fields: {}  # e2db
+- op: discuss  # 8d69
+  at: '2026-03-03T11:32:49Z'  # 8d69
+  by: agent  # 8d69
+  actor: jgstern_agent  # 8d69
+  clock: 2  # 8d69
+  nonce: 8d69  # 8d69
+  message: "Investigated. The tree-sitter-agda grammar represents type signatures as two separate function nodes: (1) bare name 'f' with no RHS, (2) type ': T -> T' with type in LHS, no RHS. Symbol extraction requires handling bare-name function nodes and associating them with their type signature sibling. Reference extraction needs to scan the type-sig LHS for qid nodes. More involved than Lean fix due to grammar structure differences."  # 8d69
+- op: update  # faad
+  at: '2026-03-03T22:25:25Z'  # faad
+  by: agent  # faad
+  actor: jgstern_agent  # faad
+  clock: 3  # faad
+  nonce: faad  # faad
+  set:  # faad
+    status: done  # faad
+- op: discuss  # 52e2
+  at: '2026-03-03T22:25:25Z'  # 52e2
+  by: agent  # 52e2
+  actor: jgstern_agent  # 52e2
+  clock: 4  # 52e2
+  nonce: '52e2'  # 52e2
+  message: "Phase 1+2 implemented in PR #1695."  # 52e2

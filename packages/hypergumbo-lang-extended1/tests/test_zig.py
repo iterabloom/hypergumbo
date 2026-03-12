@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Zig analyzer.
 
 Tests for the tree-sitter-based Zig analyzer, verifying symbol extraction,

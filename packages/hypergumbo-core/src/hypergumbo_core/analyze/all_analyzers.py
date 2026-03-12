@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Facade for analyzer dispatch — delegates to the decorator-based registry.
 
 This module provides the stable import points used by cli.py and
@@ -11,11 +12,15 @@ Import points:
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from ..discovery import set_global_on_file_skipped
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
+from ..paths import normalize_path
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -120,23 +125,38 @@ def run_all_analyzers(
     limits.max_files_per_analyzer = max_files
     captured_symbols: dict[str, list[Symbol]] = {}
 
-    for analyzer in _registry_get_all():
-        # Build kwargs based on analyzer capabilities
-        kwargs: dict[str, Any] = {}
-        if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
-            kwargs["max_files"] = max_files
+    # Wire global callback so find_files() reports skipped files to limits
+    def _on_file_skipped(path: Path, size_bytes: int, reason: str) -> None:
+        limits.add_truncated_file(str(path), size_bytes, reason)
 
-        # Run the analyzer (using get_func() for test patchability)
-        result = analyzer.get_func()(repo_root, **kwargs)
+    set_global_on_file_skipped(_on_file_skipped)
 
-        # Collect results
-        collect_analyzer_result(
-            result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
-        )
+    # Run all analyzers in parallel using threads.  Tree-sitter (C
+    # extension) and file I/O release the GIL, so threads provide real
+    # parallelism for the expensive parts of each analyzer.
+    analyzers = list(_registry_get_all())
+    worker_count = max(1, min(len(analyzers), os.cpu_count() or 1))
 
-        # Capture symbols for linkers if needed (e.g., JNI needs c_symbols and java_symbols)
-        if analyzer.capture_symbols_as and not result.skipped:
-            captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {}
+        for analyzer in analyzers:
+            kwargs: dict[str, Any] = {}
+            if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
+                kwargs["max_files"] = max_files
+            future = pool.submit(analyzer.get_func(), repo_root, **kwargs)
+            futures[future] = analyzer
+
+        for future in as_completed(futures):
+            analyzer = futures[future]
+            result = future.result()
+
+            collect_analyzer_result(
+                result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+            )
+
+            # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)
+            if analyzer.capture_symbols_as and not result.skipped:
+                captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()
@@ -146,5 +166,22 @@ def run_all_analyzers(
             seen_edge_ids.add(edge.id)
             deduped_edges.append(edge)
     all_edges = deduped_edges
+
+    # Normalize paths: some analyzers produce absolute paths instead of
+    # paths relative to repo_root.  Stripping the repo_root prefix ensures
+    # consistent tier classification, test-file detection, and
+    # machine-independent output.
+    root_prefix = normalize_path(str(repo_root)).rstrip("/") + "/"
+    for sym in all_symbols:
+        normed = normalize_path(sym.path)
+        if normed.startswith(root_prefix):
+            sym.path = normed[len(root_prefix):]
+    for uc in all_usage_contexts:
+        normed = normalize_path(uc.path)
+        if normed.startswith(root_prefix):
+            uc.path = normed[len(root_prefix):]
+
+    # Clear global callback to avoid leaking state
+    set_global_on_file_skipped(None)
 
     return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols

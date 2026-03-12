@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Language-level main() function detection (ADR-0003 v1.2.x)
 #
 # Detects idiomatic entry point functions across languages:
@@ -138,5 +139,11 @@ patterns:
     symbol_name: "^main$"
     symbol_kind: "^function$"
     language: "^haxe$"
+
+  # Circom: component main = Template() = Template() — circuit entry point
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^variable$"
+    language: "^circom$"
 
 linkers: []

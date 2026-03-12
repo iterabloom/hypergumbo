@@ -35,3 +35,10 @@
   clock: 3  # 379f
   nonce: 379f  # 379f
   message: "Implemented in stapler.yaml. 10 tests covering @WebMethod, @RequirePOST, StaplerRequest params, RootAction/Action/ManagementLink/Descriptor base classes, doXxx/getXxx convention methods. Auto-detection from org.kohsuke.stapler in Maven/Gradle. Jenkins alias resolves to stapler."  # 379f
+- op: discuss  # 00c1
+  at: '2026-03-02T23:48:59Z'  # 00c1
+  by: agent  # 00c1
+  actor: jgstern_agent  # 00c1
+  clock: 4  # 00c1
+  nonce: 00c1  # 00c1
+  message: "External bakeoff (March 2026) confirms handler detection works well: 276 detected route nodes, 269 (97.5%) are Stapler doXxx convention methods at confidence 1.00. However, all 276 nodes lack route_path and http_method metadata, so routes_to=0. Follow-on work item WI-fokok created for Stapler route path synthesis."  # 00c1

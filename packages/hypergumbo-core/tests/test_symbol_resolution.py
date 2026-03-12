@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the shared SymbolResolver module."""
 
 import pytest
@@ -139,7 +140,8 @@ class TestSymbolResolverSuffixMatch:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == SymbolResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - SymbolResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
 
     def test_suffix_match_disabled(self) -> None:
         """Suffix matching can be disabled."""
@@ -233,7 +235,8 @@ class TestSymbolResolverLookupByName:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == SymbolResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - SymbolResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
         assert result.is_ambiguous is True
 
     def test_lookup_by_name_with_path_hint(self) -> None:
@@ -493,7 +496,7 @@ class TestNameResolverSuffixMatch:
         assert result.confidence == 1.0  # Exact match confidence
 
     def test_suffix_match_ambiguous_returns_first(self) -> None:
-        """Ambiguous suffix match returns first with low confidence."""
+        """Ambiguous suffix match returns first with scaled confidence."""
         sym1 = make_symbol("doWork", "/pkg1/MyClass.java", "java")
         sym2 = make_symbol("doWork", "/pkg2/OtherClass.java", "java")
         registry = {
@@ -506,9 +509,73 @@ class TestNameResolverSuffixMatch:
 
         assert result.found is True
         assert result.symbol in [sym1, sym2]
-        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        # Confidence scales as CONFIDENCE_AMBIGUOUS / sqrt(N)
+        import math
+        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)
+        assert abs(result.confidence - expected) < 0.01
         assert "ambiguous" in result.match_type
         assert len(result.candidates) == 2
+
+    def test_suffix_match_many_candidates_low_confidence(self) -> None:
+        """Many ambiguous candidates produce very low confidence."""
+        # Simulate 15 classes defining Initialize()
+        registry = {}
+        for i in range(15):
+            sym = make_symbol("Initialize", f"/pkg{i}/Class{i}.cpp", "cpp")
+            registry[f"pkg{i}::Class{i}::Initialize"] = sym
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("Initialize")
+
+        assert result.found is True
+        # 15 candidates: 0.70 / sqrt(15) ≈ 0.18
+        import math
+        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(15)
+        assert abs(result.confidence - expected) < 0.01
+        assert result.confidence < 0.20  # sanity: very low
+        assert len(result.candidates) == 15
+
+    def test_suffix_key_disambiguation_same_file(self) -> None:
+        """Key-based disambiguation when path_hint matches all candidates' paths.
+
+        When multiple candidates share the same file path, path-based
+        disambiguation fails (all match).  The resolver falls back to
+        key-based matching: path_hint="Parser" matches key
+        "Parser::Initialize" but not "Packager::Initialize".
+        """
+        sym1 = make_symbol("Initialize", "/src/parser.cpp", "cpp")
+        sym2 = make_symbol("Initialize", "/src/parser.cpp", "cpp")
+        registry = {
+            "Parser::Initialize": sym1,
+            "Packager::Initialize": sym2,
+        }
+        resolver = NameResolver(registry)
+
+        # path_hint="Parser" should match key "Parser::Initialize" uniquely
+        result = resolver.lookup("Initialize", path_hint="Parser")
+
+        assert result.found is True
+        assert result.symbol is sym1
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+        assert result.match_type == "path_hint"
+
+    def test_suffix_key_disambiguation_multiple_key_matches(self) -> None:
+        """When key matching produces multiple matches, return first."""
+        sym1 = make_symbol("Init", "/src/core.cpp", "cpp")
+        sym2 = make_symbol("Init", "/src/core.cpp", "cpp")
+        sym3 = make_symbol("Init", "/src/core.cpp", "cpp")
+        registry = {
+            "Core::Parser::Init": sym1,
+            "Core::Loader::Init": sym2,
+            "Other::Init": sym3,
+        }
+        resolver = NameResolver(registry)
+
+        # "Core" matches two keys (both Core::Parser and Core::Loader)
+        result = resolver.lookup("Init", path_hint="Core")
+        assert result.found is True
+        assert result.symbol in [sym1, sym2]
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
 
     def test_suffix_match_path_hint_disambiguates(self) -> None:
         """Path hint disambiguates among multiple suffix matches."""
@@ -656,6 +723,59 @@ class TestListNameResolverExactMatch:
         Prevents false edges like json.NewEncoder(w).Encode(data) resolving
         to a local MarshalEncoder.Encode method when the path_hint says the
         call targets encoding/json.
+        """
+        sym = make_symbol("Encode", "/myapp/marshal.go", "myapp")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is False
+        assert result.symbol is None
+
+    def test_soft_hint_single_candidate_non_matching_returns_symbol(self) -> None:
+        """With soft_hint=True, a single candidate is returned even when path_hint
+        doesn't match — with reduced confidence instead of rejection.
+
+        This supports Rust-style "prefer same-module" semantics where the hint is
+        the caller's directory (preference evidence), not Go-style import-path
+        evidence (filter evidence).
+        """
+        sym = make_symbol("prove", "/crates/util/tower/src/lib.rs", "tower")
+        registry = {"prove": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup(
+            "prove",
+            path_hint="crates/core/keys/src/keys",
+            soft_hint=True,
+        )
+
+        assert result.found is True
+        assert result.symbol is sym
+        # Confidence should be reduced (not 1.0) since path didn't match
+        assert result.confidence < 1.0
+
+    def test_soft_hint_single_candidate_matching_returns_exact(self) -> None:
+        """With soft_hint=True and matching path, returns with exact confidence."""
+        sym = make_symbol("prove", "/crates/core/nifs/src/lib.rs", "nifs")
+        registry = {"prove": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup(
+            "prove",
+            path_hint="crates/core/nifs/src",
+            soft_hint=True,
+        )
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+
+    def test_hard_hint_single_candidate_non_matching_rejects(self) -> None:
+        """Default (soft_hint=False) still rejects non-matching single candidates.
+
+        Preserves Go-style import-path filtering behavior.
         """
         sym = make_symbol("Encode", "/myapp/marshal.go", "myapp")
         registry = {"Encode": [sym]}
@@ -990,7 +1110,8 @@ class TestNameResolverRustSeparator:
         result = resolver.lookup("compute")
 
         assert result.found is True
-        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        import math
+        assert abs(result.confidence - NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
         assert result.match_type == "suffix_ambiguous"
         assert len(result.candidates) == 2
 
@@ -1069,3 +1190,91 @@ class TestNameResolverRustSeparator:
         assert result_rust.found is True
         assert result_rust.symbol is sym_rust
         assert result_rust.confidence == 1.0
+
+
+class TestNameResolverTestPathPreference:
+    """Tests for NameResolver preferring non-test symbols over test symbols.
+
+    When a non-test caller resolves a method name and both test-file and
+    production-file candidates exist, the resolver should prefer the
+    production candidate. This prevents false positives like
+    ``server.startup()`` resolving to ``LogCleanerTest.startup()``
+    instead of ``Server.startup()``.
+    """
+
+    def test_suffix_prefers_non_test_candidate(self) -> None:
+        """When caller_path is non-test, prefer non-test suffix match."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("LogCleanerTest.startup", "src/test/java/LogCleanerTest.java", "java")
+        registry = {"Server.startup": prod_sym, "LogCleanerTest.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup", caller_path="src/main/java/App.java")
+
+        assert result.found is True
+        assert result.symbol is prod_sym, (
+            f"Expected production symbol Server.startup, got {result.symbol.name}"
+        )
+
+    def test_suffix_no_preference_when_caller_is_test(self) -> None:
+        """When caller_path is a test file, no test-path preference applied."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("TestHelper.startup", "src/test/java/TestHelper.java", "java")
+        registry = {"Server.startup": prod_sym, "TestHelper.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        # From a test file, both candidates are equally valid
+        result = resolver.lookup("startup", caller_path="src/test/java/MyTest.java")
+        assert result.found is True
+        # Should still resolve (to either candidate), no preference filtering
+
+    def test_suffix_single_test_candidate_still_resolves(self) -> None:
+        """When only test candidates exist, still resolve (no elimination)."""
+        test_sym = make_symbol("TestHelper.startup", "src/test/java/TestHelper.java", "java")
+        registry = {"TestHelper.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup", caller_path="src/main/java/App.java")
+        assert result.found is True
+        assert result.symbol is test_sym  # Only option, still returned
+
+    def test_no_caller_path_no_preference(self) -> None:
+        """Without caller_path, no test-path preference applied (backward compat)."""
+        prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
+        test_sym = make_symbol("LogCleanerTest.startup", "src/test/java/LogCleanerTest.java", "java")
+        registry = {"Server.startup": prod_sym, "LogCleanerTest.startup": test_sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("startup")
+        assert result.found is True
+        # Without caller_path, returns first match (ambiguous) — no preference
+
+    def test_suffix_test_filter_with_path_hint_no_crash(self) -> None:
+        """Test filtering + path_hint zip must not crash (B905 strict zip).
+
+        When caller_path triggers test-path filtering, the candidates list
+        shrinks but candidates_keys must shrink with it.  Otherwise the
+        subsequent ``zip(candidates, candidates_keys, strict=True)`` in
+        Stage 2 raises ValueError.
+        """
+        prod_sym = make_symbol(
+            "Parser.Initialize", "src/parser.cc", "cpp"
+        )
+        test_sym = make_symbol(
+            "ParserTest.Initialize", "test/parser_test.cc", "cpp"
+        )
+        registry = {
+            "Parser.Initialize": prod_sym,
+            "ParserTest.Initialize": test_sym,
+        }
+        resolver = NameResolver(registry)
+
+        # Non-test caller + path_hint triggers both test filtering AND
+        # path-hint Stage 2 zip.  Before the fix this raised ValueError.
+        result = resolver.lookup(
+            "Initialize",
+            path_hint="parser",
+            caller_path="src/main.cc",
+        )
+        assert result.found is True
+        assert result.symbol is prod_sym

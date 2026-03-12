@@ -79,3 +79,47 @@
   set:  # c648
     status: holding  # c648
     description: "Structural gap: features for one language not propagated to siblings. All items resolved: (1) C++ dispatch tables — already present. (2) Annotation extraction for Scala/Groovy — PR #1376. (3) Scala/Groovy extends/implements edges — already handled by inheritance linker. (4) Scala/Groovy param type inference — PR #1377. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (6) Erlang OTP behaviour callbacks — both languages handle callbacks correctly for their ecosystems. (7) Ruby base_classes — already implemented."  # c648
+- op: discuss  # 8533
+  at: '2026-03-03T06:22:04Z'  # 8533
+  by: agent  # 8533
+  actor: jgstern_agent  # 8533
+  clock: 9  # 8533
+  nonce: '8533'  # 8533
+  message: "External bakeoff (March 2026) revealed a feature parity gap in route graph materialization:\n\n- Rails (gitlab): 5,223 route nodes, 1,275 routes_to edges, end-to-end slice traversal ✅\n- Go (grafana): 483 route nodes, 474 routes_to edges ✅\n- Java/JAX-RS (keycloak): 0 route nodes, 0 routes_to edges, despite 1,302 routes in routes.txt ❌\n\nThis is a feature-parity violation: route→handler graph materialization works for Rails and Go but not for Java. The detection stage (annotation recognition) works for all three, but the materialization stage (creating kind=route nodes + routes_to edges) is only implemented for Rails (centralized config/routes.rb) and Go (explicit r.GET() calls). Java's distributed @Path annotation chains aren't synthesized into graph nodes.\n\nNew WI-lodik created for the Java-specific fix. This INV should track this as an open feature parity gap."  # 8533
+- op: update  # c57e
+  at: '2026-03-03T06:24:52Z'  # c57e
+  by: agent  # c57e
+  actor: jgstern_agent  # c57e
+  clock: 10  # c57e
+  nonce: c57e  # c57e
+  set:  # c57e
+    status: violated  # c57e
+- op: discuss  # d840
+  at: '2026-03-03T06:24:52Z'  # d840
+  by: agent  # d840
+  actor: jgstern_agent  # d840
+  clock: 11  # d840
+  nonce: d840  # d840
+  message: "Route graph materialization works for Rails/Go but not Java/JAX-RS (keycloak: 1302 routes detected, 0 route nodes in graph). Clear feature parity violation."  # d840
+- op: discuss  # 3ab8
+  at: '2026-03-03T22:20:50Z'  # 3ab8
+  by: agent  # 3ab8
+  actor: jgstern_agent  # 3ab8
+  clock: 12  # 3ab8
+  nonce: 3ab8  # 3ab8
+  message: "Revalidation bakeoff confirms no remaining feature parity gaps. 40 repos tested, 15 GOOD / 25 WARN / 0 FAIL. WARNs are benign (HIGH_TIER1_PCT) or pre-existing language-specific gaps."  # 3ab8
+- op: update  # b6b4
+  at: '2026-03-03T22:26:40Z'  # b6b4
+  by: agent  # b6b4
+  actor: jgstern_agent  # b6b4
+  clock: 13  # b6b4
+  nonce: b6b4  # b6b4
+  set:  # b6b4
+    status: holding  # b6b4
+- op: discuss  # bfd6
+  at: '2026-03-03T22:26:40Z'  # bfd6
+  by: agent  # bfd6
+  actor: jgstern_agent  # bfd6
+  clock: 14  # bfd6
+  nonce: bfd6  # bfd6
+  message: "All known violations resolved. Revalidation bakeoff (40 repos, 15 GOOD/25 WARN/0 FAIL) confirms no remaining feature parity gaps. Standing invariant — will re-violate if future bakeoffs find new gaps."  # bfd6

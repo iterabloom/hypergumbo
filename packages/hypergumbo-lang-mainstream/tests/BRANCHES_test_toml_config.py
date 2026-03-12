@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for toml_config.py analyzer.
 
 Tests specific branch paths in the TOML config analyzer that may not be covered
@@ -12,7 +13,7 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_mainstream.toml_config import (
-    _make_symbol_id,
+    _make_toml_symbol_id,
     _make_edge_id,
     analyze_toml_files,
     find_toml_files,
@@ -28,9 +29,9 @@ class TestTomlHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        symbol_id = _make_symbol_id("Cargo.toml", 1, "mypackage", "package")
-        assert symbol_id.startswith("toml:sha256:")
+        """Test symbol ID uses readable location-based format."""
+        symbol_id = _make_toml_symbol_id("Cargo.toml", 1, 5, "mypackage", "package")
+        assert symbol_id == "toml:Cargo.toml:1-5:mypackage:package"
 
     def test_make_edge_id_deterministic(self) -> None:
         """Test edge ID is deterministic."""

@@ -1,0 +1,36 @@
+- op: create  # 6da3
+  at: '2026-03-02T22:01:55Z'  # 6da3
+  by: agent  # 6da3
+  actor: jgstern_agent  # 6da3
+  clock: 1  # 6da3
+  nonce: 6da3  # 6da3
+  data:  # 6da3
+    kind: work_item  # 6da3
+    title: "Revalidation: fix round 1 — top issues from triage"  # 6da3
+    status: todo_soft  # 6da3
+    priority: 2  # 6da3
+    parent:  # 6da3
+    tags:  # 6da3
+    - bakeoff-revalidation  # 6da3
+    before:  # 6da3
+    - WI-bipih-hujur-hihak-nodiz-kamid-lifij-jidiz-butoj  # 6da3
+    duplicate_of: []  # 6da3
+    not_duplicate_of: []  # 6da3
+    pr_ref:  # 6da3
+    description: "Work through the highest-priority issues identified in item 11 (triage).\n\nGuidelines:\n- TDD: write failing tests first, then fix, then verify 100% coverage\n- Each fix gets its own PR via auto-pr\n- Target: up to 5 PRs in this round\n- Follow the Structural Fix Protocol (ADR-0008): assume structural, name the invariant,\n  scope expansion, distinguish fix from workaround\n- Create tracker items for any scope expansion discoveries\n\nThe specific issues to fix are determined by the triage step — this item is a placeholder\nthat becomes concrete after item 11 completes. Do not attempt to predict what will need\nfixing; the revalidation data determines that."  # 6da3
+    fields: {}  # 6da3
+- op: update  # 5080
+  at: '2026-03-03T21:58:18Z'  # 5080
+  by: agent  # 5080
+  actor: jgstern_agent  # 5080
+  clock: 2  # 5080
+  nonce: '5080'  # 5080
+  set:  # 5080
+    status: done  # 5080
+- op: discuss  # ea4c
+  at: '2026-03-03T21:58:18Z'  # ea4c
+  by: agent  # ea4c
+  actor: jgstern_agent  # ea4c
+  clock: 3  # ea4c
+  nonce: ea4c  # ea4c
+  message: "Fix round 1 not needed. Triage found mostly benign WARNs (HIGH_TIER1_PCT, HIGH_SLICE_COVERAGE_PCT). Actionable issues: Circom 54.6% orphan rate (pre-existing), Lean cross-file resolution (pre-existing). TOML hash IDs already fixed in PR #1698. SKIP regressions caused by transient dev state, fixed by re-run."  # ea4c

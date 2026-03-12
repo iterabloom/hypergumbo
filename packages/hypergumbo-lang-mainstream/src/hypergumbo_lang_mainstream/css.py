@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """CSS stylesheet analysis using tree-sitter-css.
 
 This module parses CSS files to extract structure information useful for
@@ -172,10 +173,8 @@ def _process_css_tree(
                 )
 
                 # Create import edge from file to imported path
-                edge_id = _make_edge_id(file_symbol_id, import_path, "imports")
                 edges.append(
-                    Edge(
-                        id=edge_id,
+                    Edge.create(
                         src=file_symbol_id,
                         dst=import_path,
                         edge_type="imports",

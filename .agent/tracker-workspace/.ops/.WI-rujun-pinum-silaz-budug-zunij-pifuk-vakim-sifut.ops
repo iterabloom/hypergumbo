@@ -34,3 +34,10 @@
   clock: 3  # 75c7
   nonce: 75c7  # 75c7
   message: "Fixed in PR #1509. Added is_test_node() that checks both file paths and annotation metadata for test indicators."  # 75c7
+- op: discuss  # b086
+  at: '2026-03-02T23:49:09Z'  # b086
+  by: agent  # b086
+  actor: jgstern_agent  # b086
+  clock: 4  # b086
+  nonce: b086  # b086
+  message: "External bakeoff (March 2026) found the same class of bug in Java: 24.3% of dispatches_to destinations land in test files. The fix in PR#1648 was Rust-specific (cfg(test) attribute inheritance in AST walk). The type hierarchy linker, which generates dispatches_to edges at the IR level after all analyzers run, has no test-exclusion logic for any language. This is a case where ADR-0008's structural fix protocol would have caught the cross-language gap: the invariant (\"test overrides should not appear in production dispatch edges\") was fixed for one language when it should have been fixed structurally. New item WI-supok created for the cross-language fix."  # b086

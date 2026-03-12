@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Naming-based heuristic patterns (ADR-0003 v1.4.x)
 #
 # These patterns detect entrypoints by naming conventions alone, without

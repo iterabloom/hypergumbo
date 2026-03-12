@@ -1,0 +1,19 @@
+- op: create  # 09c6
+  at: '2026-03-11T23:33:07Z'  # 09c6
+  by: agent  # 09c6
+  actor: jgstern_agent  # 09c6
+  clock: 1  # 09c6
+  nonce: 09c6  # 09c6
+  data:  # 09c6
+    kind: work_item  # 09c6
+    title: "Entrypoint cap (500) hit on large repos, needs per-type diversity"  # 09c6
+    status: todo_soft  # 09c6
+    priority: 3  # 09c6
+    parent:  # 09c6
+    tags: []  # 09c6
+    before: []  # 09c6
+    duplicate_of: []  # 09c6
+    not_duplicate_of: []  # 09c6
+    pr_ref:  # 09c6
+    description: "DEEP bakeoff: AFFiNE hits 500-entrypoint cap with 410/500 being GraphQL resolvers. Consider per-type cap (max 100 per type) to ensure diverse entrypoint types."  # 09c6
+    fields: {}  # 09c6

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for JS/TS module resolution linker.
 
 The JS module linker resolves unresolved import edges created by the JS/TS
@@ -1646,3 +1647,42 @@ class TestMonorepoIntegration:
 
         npm = [s for s in result.symbols if s.kind == "npm_package"]
         assert len(npm) == 0
+
+
+class TestNonJsImportsSkipped:
+    """JS module linker should skip non-JS/TS import edges."""
+
+    def test_rust_imports_not_npm_packaged(self, repo_root: Path) -> None:
+        """Rust import edges must not create npm_package phantom nodes."""
+        # Create a Rust source file (src/ already exists from fixture)
+        (repo_root / "src" / "lib.rs").write_text("use serde::Serialize;\n")
+
+        # Simulate Rust import edge (same format as JS but lang=rust)
+        rust_sym = Symbol(
+            id="rust:src/lib.rs:1-1:lib:module",
+            name="lib",
+            kind="module",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 1, 0, 20),
+        )
+        rust_import = Edge.create(
+            src=rust_sym.id,
+            dst="rust:serde:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="test",
+            origin_run_id="test-run",
+        )
+
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[rust_sym],
+            edges=[rust_import],
+        )
+
+        # No npm_package nodes should be created for Rust crate imports
+        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        assert len(npm) == 0
+        # No new edges either
+        assert len(result.edges) == 0

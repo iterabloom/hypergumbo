@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Toggle autonomous mode on/off with support for multiple modes
 #
 # This script manages:
@@ -36,13 +37,15 @@ NC='\033[0m' # No Color
 
 get_current_mode() {
     # Returns: OFF, BROAD, or DEEP
+    # Strips optional pid=<N> suffix from the mode line.
     if [[ ! -f "$MODE_FILE" ]]; then
         echo "OFF"
         return
     fi
 
     local content
-    content=$(cat "$MODE_FILE" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+    # Read first line, strip pid=... suffix, normalize
+    content=$(head -1 "$MODE_FILE" 2>/dev/null | sed 's/ *pid=[0-9]*//' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
 
     case "$content" in
         OFF|FALSE)
@@ -62,6 +65,86 @@ get_current_mode() {
     esac
 }
 
+get_current_pid() {
+    # Returns the PID stored in AUTONOMOUS_MODE.txt, or empty string if none.
+    if [[ ! -f "$MODE_FILE" ]]; then
+        echo ""
+        return
+    fi
+    local content
+    content=$(head -1 "$MODE_FILE" 2>/dev/null)
+    if [[ "$content" =~ pid=([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo ""
+    fi
+}
+
+# Known agent CLI process patterns for pgrep discovery.
+# Users can extend this list via .agent/known_agents.txt (one pattern per line).
+AGENT_PATTERNS='claude|gemini|codex|aider|cursor|copilot'
+KNOWN_AGENTS_FILE="$REPO_ROOT/.agent/known_agents.txt"
+if [[ -f "$KNOWN_AGENTS_FILE" ]]; then
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        AGENT_PATTERNS="${AGENT_PATTERNS}|${line}"
+    done < "$KNOWN_AGENTS_FILE"
+fi
+
+find_agent_pid() {
+    # Find a running agent process via pgrep.
+    # Uses comm-based matching (process name only, not full command line)
+    # to avoid false positives from arguments containing agent names.
+    # Returns: PID if exactly one found, empty if zero or ambiguous.
+    # When multiple are found, prints a warning to stderr and returns empty.
+    local pids filtered=()
+    local self_pid=$$ parent_pid=$PPID
+
+    # First try: match by process comm name (basename of executable).
+    # This avoids false positives from paths/args containing agent names.
+    local IFS='|'
+    local -a patterns
+    read -ra patterns <<< "$AGENT_PATTERNS"
+    IFS=$' \t\n'
+    for pat in "${patterns[@]}"; do
+        while IFS= read -r pid; do
+            [[ -z "$pid" ]] && continue
+            [[ "$pid" == "$self_pid" ]] && continue
+            [[ "$pid" == "$parent_pid" ]] && continue
+            filtered+=("$pid")
+        done < <(pgrep -x "$pat" 2>/dev/null || true)
+    done
+
+    # Deduplicate
+    local -A seen
+    local unique=()
+    for pid in "${filtered[@]}"; do
+        if [[ -z "${seen[$pid]:-}" ]]; then
+            seen[$pid]=1
+            unique+=("$pid")
+        fi
+    done
+
+    case "${#unique[@]}" in
+        0)
+            echo ""
+            ;;
+        1)
+            echo "${unique[0]}"
+            ;;
+        *)
+            echo -e "${YELLOW}⚠${NC}  Multiple agent processes found:" >&2
+            for pid in "${unique[@]}"; do
+                local cmdline
+                cmdline=$(ps -p "$pid" -o args= 2>/dev/null | head -c 80) || cmdline="(unknown)"
+                echo "    PID $pid: $cmdline" >&2
+            done
+            echo "  Autonomous mode will apply to the next agent that starts." >&2
+            echo ""
+            ;;
+    esac
+}
+
 get_loop_state() {
     if [[ -f "$LOOP_FILE" ]]; then
         echo "enabled"
@@ -73,6 +156,8 @@ get_loop_state() {
 show_status() {
     local mode
     mode=$(get_current_mode)
+    local stored_pid
+    stored_pid=$(get_current_pid)
     local loop_state
     loop_state=$(get_loop_state)
 
@@ -98,6 +183,19 @@ show_status() {
             echo "  Bakeoff: scripts/bakeoff-features"
             ;;
     esac
+
+    echo ""
+    if [[ -n "$stored_pid" ]]; then
+        if kill -0 "$stored_pid" 2>/dev/null; then
+            local cmdline
+            cmdline=$(ps -p "$stored_pid" -o args= 2>/dev/null | head -c 60) || cmdline="(unknown)"
+            echo -e "Bound to: PID ${GREEN}$stored_pid${NC} ($cmdline)"
+        else
+            echo -e "Bound to: PID ${RED}$stored_pid${NC} (process not running)"
+        fi
+    elif [[ "$mode" != "OFF" ]]; then
+        echo -e "Bound to: ${YELLOW}(none — will bind to next agent started)${NC}"
+    fi
 
     echo ""
     if [[ "$loop_state" == "enabled" ]]; then
@@ -148,11 +246,22 @@ set_mode_off() {
 }
 
 set_mode_broad() {
-    echo "BROAD" > "$MODE_FILE"
+    local agent_pid
+    agent_pid=$(find_agent_pid)
+    if [[ -n "$agent_pid" ]]; then
+        echo "BROAD pid=$agent_pid" > "$MODE_FILE"
+    else
+        echo "BROAD" > "$MODE_FILE"
+    fi
     enable_loop_sentinel
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${GREEN}BROAD${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to BROAD"
+    if [[ -n "$agent_pid" ]]; then
+        echo "  - Bound to agent PID $agent_pid"
+    else
+        echo "  - No agent found; will bind to next agent started"
+    fi
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Parse correctness, call graph quality, route detection"
@@ -160,11 +269,22 @@ set_mode_broad() {
 }
 
 set_mode_deep() {
-    echo "DEEP" > "$MODE_FILE"
+    local agent_pid
+    agent_pid=$(find_agent_pid)
+    if [[ -n "$agent_pid" ]]; then
+        echo "DEEP pid=$agent_pid" > "$MODE_FILE"
+    else
+        echo "DEEP" > "$MODE_FILE"
+    fi
     enable_loop_sentinel
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${CYAN}DEEP${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to DEEP"
+    if [[ -n "$agent_pid" ]]; then
+        echo "  - Bound to agent PID $agent_pid"
+    else
+        echo "  - No agent found; will bind to next agent started"
+    fi
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Feature usefulness, slice quality, developer perspective"

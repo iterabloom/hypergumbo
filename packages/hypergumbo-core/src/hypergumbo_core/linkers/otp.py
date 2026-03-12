@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OTP GenServer dispatch linker for Elixir.
 
 Bridges GenServer.call/cast call sites to their handle_call/handle_cast

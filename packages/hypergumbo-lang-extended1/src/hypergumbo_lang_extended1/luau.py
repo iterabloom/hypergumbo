@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Luau language analyzer.
 
 This module analyzes Luau files (.luau only) using tree-sitter. Luau is

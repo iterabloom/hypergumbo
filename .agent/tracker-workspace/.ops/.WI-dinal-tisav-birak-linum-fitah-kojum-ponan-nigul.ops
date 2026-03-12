@@ -1,0 +1,49 @@
+- op: create  # 0ae5
+  at: '2026-03-06T19:52:42Z'  # 0ae5
+  by: agent  # 0ae5
+  actor: jgstern_agent  # 0ae5
+  clock: 1  # 0ae5
+  nonce: 0ae5  # 0ae5
+  data:  # 0ae5
+    kind: work_item  # 0ae5
+    title: "Go goroutine launches (go func(), go obj.Method()) not creating call edges"  # 0ae5
+    status: todo_hard  # 0ae5
+    priority: 1  # 0ae5
+    parent:  # 0ae5
+    tags: []  # 0ae5
+    before: []  # 0ae5
+    duplicate_of: []  # 0ae5
+    not_duplicate_of: []  # 0ae5
+    pr_ref:  # 0ae5
+    description: "Go goroutine launches should create call edges. Currently go func() and go obj.Method() are not followed during edge extraction, causing forward slices from main() to dead-end before reaching goroutine-launched methods like Dispatcher.Run."  # 0ae5
+    fields: {}  # 0ae5
+- op: update  # 4d92
+  at: '2026-03-06T19:54:13Z'  # 4d92
+  by: agent  # 4d92
+  actor: jgstern_agent  # 4d92
+  clock: 2  # 4d92
+  nonce: 4d92  # 4d92
+  set:  # 4d92
+    title: "Go constructor return type inference (NewXxx() → *Xxx) for var_types"  # 4d92
+- op: discuss  # 1cb4
+  at: '2026-03-06T19:54:13Z'  # 1cb4
+  by: agent  # 1cb4
+  actor: jgstern_agent  # 1cb4
+  clock: 3  # 1cb4
+  nonce: 1cb4  # 1cb4
+  message: "Root cause is not goroutine launch detection (go statements do get their call_expressions visited). The real issue is constructor return type inference: newDisp := dispatch.NewDispatcher(...) doesn't populate var_types because _type_from_rhs only handles composite literals. The fix is to infer type from NewXxx() constructor naming convention."  # 1cb4
+- op: update  # e857
+  at: '2026-03-06T20:19:12Z'  # e857
+  by: agent  # e857
+  actor: jgstern_agent  # e857
+  clock: 4  # e857
+  nonce: e857  # e857
+  set:  # e857
+    status: done  # e857
+- op: discuss  # 95be
+  at: '2026-03-06T20:19:12Z'  # 95be
+  by: agent  # 95be
+  actor: jgstern_agent  # 95be
+  clock: 5  # 95be
+  nonce: 95be  # 95be
+  message: "Fixed in PRs #1865 (field type registry), #1866 (typed_field_call edges), #1868 (constructor type inference). alertmanager's run() → Dispatcher.Run now resolves via newDisp := dispatch.NewDispatcher() → typed_receiver_call."  # 95be

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tcl language analyzer using tree-sitter.
 
 This module provides static analysis for Tcl source code, extracting symbols

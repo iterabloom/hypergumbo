@@ -1,8 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for event sourcing linker."""
 
 from pathlib import Path
 from textwrap import dedent
 
+from hypergumbo_core.ir import Symbol, Span, Edge
 from hypergumbo_core.linkers.event_sourcing import (
     _create_event_symbol,
     _find_source_files,
@@ -811,3 +813,202 @@ class TestFindSourceFiles:
         found = [p.name for p in _find_source_files(tmp_path)]
         assert "admin.js" in found
         assert "minimum.ts" in found
+
+    def test_skips_test_files(self, tmp_path: Path):
+        """Test files are excluded from scanning.
+
+        Regression: openzeppelin-contracts had 535 orphan event_publisher
+        nodes from Hardhat/Chai test assertions like `expect(...).to.emit()`
+        matching the JS_EMIT_PATTERN regex. Test files should be skipped
+        because event patterns in tests are assertions, not real event wiring.
+        """
+        # Source file — should be included
+        src = tmp_path / "events.js"
+        src.write_text("emitter.emit('start');")
+
+        # Test files — should be excluded
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        test_file = test_dir / "events.test.js"
+        test_file.write_text("emitter.emit('start');")
+        spec_file = tmp_path / "events.spec.ts"
+        spec_file.write_text("emitter.emit('start');")
+        test_prefix = tmp_path / "test_events.py"
+        test_prefix.write_text("EventBus.publish('start', data)")
+
+        found = [str(p) for p in _find_source_files(tmp_path)]
+        found_names = [Path(p).name for p in found]
+
+        assert "events.js" in found_names
+        assert "events.test.js" not in found_names
+        assert "events.spec.ts" not in found_names
+        assert "test_events.py" not in found_names
+
+    def test_link_events_excludes_test_files(self, tmp_path: Path):
+        """link_events produces no symbols from test files.
+
+        End-to-end test: even if test files contain event patterns,
+        they should not generate event_publisher/event_subscriber symbols.
+        """
+        # Real source
+        src = tmp_path / "emitter.js"
+        src.write_text("emitter.emit('transfer', data);")
+
+        # Test file with Hardhat-style assertion
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        test_file = test_dir / "emitter.test.js"
+        test_file.write_text(
+            "await expect(tx).to.emit(contract, 'Transfer');\n"
+            "this.mock.emit('Transfer', from, to, amount);\n"
+        )
+
+        result = link_events(tmp_path)
+
+        # Only the source file's symbol should exist
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "event_publisher"
+        # The symbol should be from the source file, not the test dir
+        assert Path(result.symbols[0].path).name == "emitter.js"
+
+
+class TestEventSubscriberToMethodEdges:
+    """Tests for subscriber→method edges enabling forward slice traversal.
+
+    When an event subscriber (.on/.addEventListener) is detected inside a method,
+    the linker should create an ``event_subscribes`` edge from the subscriber
+    node to the enclosing method. This enables forward slices to traverse:
+
+        emitting_method → event_publisher → event_publishes → event_subscriber
+            → event_subscribes → handler_method
+
+    Without this edge, forward slices dead-end at the subscriber node.
+    """
+
+    def test_subscriber_has_event_subscribes_edge_to_enclosing_method(
+        self, tmp_path: Path
+    ) -> None:
+        """Subscriber creates event_subscribes edge to enclosing method."""
+        # Create JS files with emit and on patterns
+        pub_file = tmp_path / "emitter.js"
+        pub_file.write_text("this.emit('data:ready', payload);")
+
+        sub_file = tmp_path / "handler.js"
+        sub_file.write_text("emitter.on('data:ready', this.handleData);")
+
+        # Create enclosing method symbol that contains the subscriber
+        handler_method = Symbol(
+            id="javascript:handler.js:1-1:Controller.setup:method",
+            name="Controller.setup",
+            kind="method",
+            language="javascript",
+            path=str(sub_file),
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=50),
+        )
+
+        ctx = LinkerContext(
+            symbols=[handler_method],
+            edges=[],
+            repo_root=tmp_path,
+        )
+
+        result = event_sourcing_linker(ctx)
+
+        # Should have event_publishes edge (publisher → subscriber)
+        pub_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
+        assert len(pub_edges) == 1
+
+        # Should have event_subscribes edge (subscriber → handler_method)
+        sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
+        assert len(sub_edges) == 1, (
+            f"Expected 1 event_subscribes edge, got {len(sub_edges)}. "
+            f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
+        )
+        assert sub_edges[0].dst == handler_method.id
+
+    def test_no_subscribes_edge_when_no_subscribers(
+        self, tmp_path: Path
+    ) -> None:
+        """No event_subscribes edges when there are only publishers."""
+        pub_file = tmp_path / "emitter.js"
+        pub_file.write_text("this.emit('data:ready', payload);")
+
+        ctx = LinkerContext(
+            symbols=[],
+            edges=[],
+            repo_root=tmp_path,
+        )
+
+        result = event_sourcing_linker(ctx)
+
+        # Should have publisher symbol but no subscriber symbols
+        pub_syms = [s for s in result.symbols if s.kind == "event_publisher"]
+        sub_syms = [s for s in result.symbols if s.kind == "event_subscriber"]
+        assert len(pub_syms) >= 1
+        assert len(sub_syms) == 0
+
+        # No event_subscribes edges
+        sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
+        assert len(sub_edges) == 0
+
+    def test_no_subscribes_edge_when_no_enclosing_method(
+        self, tmp_path: Path
+    ) -> None:
+        """No event_subscribes edge when subscriber has no enclosing method."""
+        sub_file = tmp_path / "standalone.js"
+        sub_file.write_text("emitter.on('data:ready', handleData);")
+
+        # No method symbols covering this line
+        ctx = LinkerContext(
+            symbols=[],
+            edges=[],
+            repo_root=tmp_path,
+        )
+
+        result = event_sourcing_linker(ctx)
+
+        sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
+        assert len(sub_edges) == 0
+
+    def test_subscribes_edge_with_relative_context_paths(
+        self, tmp_path: Path
+    ) -> None:
+        """event_subscribes edge works when context symbols have relative paths.
+
+        The CLI pipeline normalizes analyzer symbol paths to be relative to
+        the repo root before passing them to linkers. The event sourcing
+        linker scans files from repo_root and produces absolute paths.
+        The suffix-matching fallback must bridge this mismatch.
+        """
+        pub_file = tmp_path / "emitter.js"
+        pub_file.write_text("this.emit('data:ready', payload);")
+
+        sub_file = tmp_path / "handler.js"
+        sub_file.write_text("emitter.on('data:ready', this.handleData);")
+
+        # Context symbol with RELATIVE path (as the CLI pipeline normalizes)
+        handler_method = Symbol(
+            id="javascript:handler.js:1-1:Controller.setup:method",
+            name="Controller.setup",
+            kind="method",
+            language="javascript",
+            path="handler.js",  # relative, not absolute
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=50),
+        )
+
+        ctx = LinkerContext(
+            symbols=[handler_method],
+            edges=[],
+            repo_root=tmp_path,
+        )
+
+        result = event_sourcing_linker(ctx)
+
+        # Should still create event_subscribes edge despite path format mismatch
+        sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
+        assert len(sub_edges) == 1, (
+            f"Expected 1 event_subscribes edge with relative context paths, "
+            f"got {len(sub_edges)}. "
+            f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
+        )
+        assert sub_edges[0].dst == handler_method.id

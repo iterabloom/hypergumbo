@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo v1.0 Development Plan (Historical)
 
 > **Note**: This document is a historical archive of the original development plan for Hypergumbo v1.0. The implementation is now complete with 67 language analyzers, 14 cross-language linkers, and 37 framework pattern files. See the main spec for current implementation status.

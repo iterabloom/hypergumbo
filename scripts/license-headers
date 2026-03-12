@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Check and repair SPDX license headers on source files in the repository.
+
+Hypergumbo uses dual licensing:
+  - AGPL-3.0-or-later: everything except the tracker package
+  - MPL-2.0: packages/hypergumbo-tracker/
+
+Supported file types:
+  - Python (.py):    # SPDX-License-Identifier: ...
+  - YAML (.yaml/.yml): # SPDX-License-Identifier: ...
+  - Bash (.sh, shebanged): # SPDX-License-Identifier: ...
+  - Markdown (.md):  <!-- SPDX-License-Identifier: ... -->
+
+Usage:
+  ./scripts/license-headers              # Check only (exit 1 if problems found)
+  ./scripts/license-headers --fix        # Repair missing/incorrect headers
+  ./scripts/license-headers --summary    # Print counts only
+  ./scripts/license-headers --fix --files a.py b.yaml  # Fix specific files only
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+# Comment-style SPDX headers by license
+AGPL_HASH = "# SPDX-License-Identifier: AGPL-3.0-or-later"
+MPL_HASH = "# SPDX-License-Identifier: MPL-2.0"
+AGPL_HTML = "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->"
+MPL_HTML = "<!-- SPDX-License-Identifier: MPL-2.0 -->"
+
+# File extensions we handle, mapped to comment style
+#   "hash"  → # comment
+#   "html"  → <!-- comment -->
+EXTENSION_STYLE = {
+    ".py": "hash",
+    ".yaml": "hash",
+    ".yml": "hash",
+    ".sh": "hash",
+    ".md": "html",
+}
+
+# Directories to scan (relative to repo root)
+SCAN_DIRS = ["packages", "tests", "scripts", "docs", ".githooks", ".github"]
+
+# Root-level files to scan (relative to repo root)
+SCAN_ROOT_GLOBS = ["*.md", "*.yaml", "*.yml"]
+
+# The tracker package gets MPL-2.0; everything else gets AGPL-3.0-or-later
+TRACKER_PREFIX = "packages/hypergumbo-tracker"
+
+# Paths to skip (relative to repo root) — auto-generated, not source code
+SKIP_PREFIXES = [
+    ".agent/tracker/.ops",
+    ".agent/tracker-workspace/.ops",
+    ".agent/tracker-workspace/stealth",
+]
+
+# The SPDX marker that appears in all header variants
+SPDX_MARKER = "SPDX-License-Identifier:"
+
+
+def repo_root() -> Path:
+    """Find repository root by walking up from this script's location."""
+    candidate = Path(__file__).resolve().parent.parent
+    if (candidate / ".git").exists():
+        return candidate
+    raise RuntimeError("Cannot find repository root")
+
+
+def _rel_str(filepath: Path, root: Path) -> str:
+    """Return the path relative to root as a string."""
+    return str(filepath.resolve().relative_to(root.resolve()))
+
+
+def _is_skipped(rel: str) -> bool:
+    """Check if a file path should be skipped."""
+    return any(rel.startswith(prefix) for prefix in SKIP_PREFIXES)
+
+
+def _comment_style(filepath: Path) -> str | None:
+    """Determine the comment style for a file.
+
+    Returns 'hash', 'html', or None (unsupported).
+    For files without a recognized extension, checks for a shebang line
+    to detect shell scripts.
+    """
+    suffix = filepath.suffix.lower()
+    style = EXTENSION_STYLE.get(suffix)
+    if style:
+        return style
+
+    # No recognized extension — check for shebang (shell scripts in scripts/, .githooks/)
+    try:
+        first_line = filepath.read_text(encoding="utf-8").split("\n", 1)[0]
+        if first_line.startswith("#!") and ("bash" in first_line or "sh" in first_line):
+            return "hash"
+    except (UnicodeDecodeError, PermissionError, IsADirectoryError):
+        pass
+    return None
+
+
+def expected_header(filepath: Path, root: Path, style: str) -> str:
+    """Return the correct SPDX header for a given file path and comment style."""
+    rel = _rel_str(filepath, root)
+    is_tracker = rel.startswith(TRACKER_PREFIX)
+
+    if style == "html":
+        return MPL_HTML if is_tracker else AGPL_HTML
+    return MPL_HASH if is_tracker else AGPL_HASH
+
+
+def _header_line_index(lines: list[str]) -> int:
+    """Return the line index where the SPDX header should appear.
+
+    Line 0 for most files; line 1 if line 0 is a shebang.
+    """
+    if lines and lines[0].strip().startswith("#!"):
+        return 1
+    return 0
+
+
+def classify_file(filepath: Path, root: Path) -> tuple[str, str]:
+    """Classify a file's header status.
+
+    Returns (status, detail) where status is one of:
+      'ok'       - correct header present
+      'missing'  - no SPDX header found
+      'wrong'    - SPDX header present but incorrect license
+      'empty'    - file is empty (skip)
+      'skip'     - binary, unreadable, or excluded path
+    """
+    rel = _rel_str(filepath, root)
+    if _is_skipped(rel):
+        return ("skip", "excluded path")
+
+    style = _comment_style(filepath)
+    if style is None:
+        return ("skip", "unsupported file type")
+
+    expected = expected_header(filepath, root, style)
+
+    try:
+        content = filepath.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, PermissionError):
+        return ("skip", "binary or unreadable")
+
+    if not content.strip():
+        return ("empty", "empty file")
+
+    lines = content.split("\n")
+    idx = _header_line_index(lines)
+
+    if idx < len(lines):
+        header_line = lines[idx].strip()
+    else:
+        header_line = ""
+
+    if header_line == expected:
+        return ("ok", "")
+
+    if SPDX_MARKER in header_line:
+        return ("wrong", f"has '{header_line}', expected '{expected}'")
+
+    return ("missing", f"expected '{expected}'")
+
+
+def fix_file(filepath: Path, root: Path) -> str:
+    """Insert or replace the SPDX header. Returns description of action taken."""
+    rel = _rel_str(filepath, root)
+    if _is_skipped(rel):
+        return "skipped (excluded path)"
+
+    style = _comment_style(filepath)
+    if style is None:
+        return "skipped (unsupported file type)"
+
+    expected = expected_header(filepath, root, style)
+
+    try:
+        content = filepath.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, PermissionError):
+        return "skipped (binary or unreadable)"
+
+    if not content.strip():
+        return "skipped (empty)"
+
+    lines = content.split("\n")
+    idx = _header_line_index(lines)
+
+    if idx < len(lines) and lines[idx].strip() == expected:
+        return "already correct"
+
+    if idx < len(lines) and SPDX_MARKER in lines[idx]:
+        # Replace wrong header
+        old = lines[idx].strip()
+        lines[idx] = expected
+        action = f"replaced '{old}'"
+    else:
+        # Insert at the correct position
+        lines.insert(idx, expected)
+        action = "inserted after shebang" if idx == 1 else "inserted"
+
+    filepath.write_text("\n".join(lines), encoding="utf-8")
+    return action
+
+
+def find_source_files(root: Path) -> list[Path]:
+    """Collect all source files under SCAN_DIRS and root-level globs."""
+    files = []
+
+    # Scan directories
+    for scan_dir in SCAN_DIRS:
+        target = root / scan_dir
+        if not target.exists():
+            continue
+        for ext in EXTENSION_STYLE:
+            files.extend(target.rglob(f"*{ext}"))
+        # Also find extensionless shell scripts (scripts/, .githooks/)
+        if scan_dir in ("scripts", ".githooks"):
+            for candidate in target.iterdir():
+                if candidate.is_file() and candidate.suffix == "":
+                    if _comment_style(candidate) is not None:
+                        files.append(candidate)
+
+    # Root-level files
+    for pattern in SCAN_ROOT_GLOBS:
+        files.extend(root.glob(pattern))
+
+    # Deduplicate and sort
+    seen = set()
+    unique = []
+    for f in sorted(files):
+        resolved = f.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Check and repair SPDX license headers on source files"
+    )
+    parser.add_argument(
+        "--fix", action="store_true", help="Repair missing/incorrect headers"
+    )
+    parser.add_argument(
+        "--summary", action="store_true", help="Print counts only, no per-file detail"
+    )
+    parser.add_argument(
+        "--files", nargs="*", metavar="FILE",
+        help="Check/fix only these files instead of scanning all directories"
+    )
+    args = parser.parse_args()
+
+    root = repo_root()
+    if args.files:
+        files = [(root / f).resolve() for f in args.files]
+    else:
+        files = find_source_files(root)
+
+    counts = {"ok": 0, "missing": 0, "wrong": 0, "empty": 0, "skip": 0, "fixed": 0}
+
+    for filepath in files:
+        try:
+            rel = filepath.relative_to(root)
+        except ValueError:
+            continue
+
+        status, detail = classify_file(filepath, root)
+        counts[status] = counts.get(status, 0) + 1
+
+        if status in ("ok", "empty", "skip"):
+            continue
+
+        if args.fix:
+            action = fix_file(filepath, root)
+            counts["fixed"] += 1
+            if not args.summary:
+                print(f"  fixed: {rel} ({action})")
+        elif not args.summary:
+            print(f"  {status}: {rel} — {detail}")
+
+    # Summary
+    print()
+    print(f"Files scanned: {len(files)}")
+    print(f"  Correct:  {counts['ok']}")
+    print(f"  Missing:  {counts['missing']}")
+    print(f"  Wrong:    {counts['wrong']}")
+    print(f"  Empty:    {counts['empty']}")
+    print(f"  Skipped:  {counts['skip']}")
+    if args.fix:
+        print(f"  Fixed:    {counts['fixed']}")
+
+    if not args.fix and (counts["missing"] > 0 or counts["wrong"] > 0):
+        print()
+        print("Run with --fix to repair.")
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

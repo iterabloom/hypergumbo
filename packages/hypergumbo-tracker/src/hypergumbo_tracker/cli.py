@@ -270,15 +270,65 @@ def _cmd_ready(args: argparse.Namespace, ts: TrackerSet) -> int:
     limit = getattr(args, "limit", None)
     if limit:
         items = items[:limit]
+
+    # Scan all items for unread human messages (regardless of status)
+    unread_items = _collect_unread_human_messages(ts)
+
     if args.json:
-        print(json.dumps([_item_to_dict(i) for i in items], indent=2))
+        result: dict[str, Any] = {
+            "ready": [_item_to_dict(i) for i in items],
+        }
+        if unread_items:
+            result["items_with_unread_messages"] = [
+                {"id": item.id, "title": item.title, "status": item.status,
+                 "priority": item.priority, "unread_count": count}
+                for item, count in unread_items
+            ]
+        print(json.dumps(result, indent=2))
     else:
         if not items:
             print("(no ready items)")
         else:
             for idx, item in enumerate(items):
                 print(_format_item_short(item, idx))
+        if unread_items:
+            print()
+            print(f"--- {len(unread_items)} item(s) with unread human message(s) ---")
+            for item, count in unread_items:
+                print(f"  {item.id}  [{item.status}]  {item.title}  "
+                      f"({count} unread)")
+            print()
+            print("  View:  scripts/tracker show <ID>")
+            print("  Reply: scripts/tracker discuss <ID> \"your reply\"")
     return EXIT_SUCCESS
+
+
+def _collect_unread_human_messages(
+    ts: TrackerSet,
+) -> list[tuple[CompiledItem, int]]:
+    """Collect items with unread human messages across all tiers.
+
+    Returns a list of (item, unread_count) tuples sorted by priority then ID.
+    Scans all tiers based on tracker config scope, checking each item's
+    discussion for trailing human-authored messages (indicating the agent
+    hasn't replied yet).
+    """
+    tiers_to_check: list[Tier]
+    if ts.config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+
+    results: list[tuple[CompiledItem, int]] = []
+    for t in tiers_to_check:
+        store = ts._tier_stores[t]
+        for item in store._compile_all():
+            if has_unread_human_messages(item):
+                msgs = unread_human_messages(item)
+                results.append((item, len(msgs)))
+
+    results.sort(key=lambda r: (r[0].priority, r[0].id))
+    return results
 
 
 def _cmd_log(args: argparse.Namespace, ts: TrackerSet) -> int:
@@ -1283,6 +1333,41 @@ def _build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
+_SYNC_COOLDOWN_SECONDS = 1800  # 30 minutes between retry attempts
+_SYNC_MAX_CONSECUTIVE_FAILURES = 3  # disable autonomous mode after this many
+_SYNC_PR_WAIT_TIMEOUT = 900  # 15 min max wait for in-flight PR
+_SYNC_PR_WAIT_INTERVAL = 10  # seconds between PR_PENDING checks
+
+
+def _escalate_disable_autonomous(repo_root: Path, fail_count: int) -> None:
+    """Disable autonomous mode after too many consecutive sync failures.
+
+    Writes ``OFF`` to ``AUTONOMOUS_MODE.txt`` and prints a prominent
+    warning.  This prevents runaway PR creation when the sync mechanism
+    is persistently broken.
+    """
+    mode_file = repo_root / "AUTONOMOUS_MODE.txt"
+    try:
+        current = mode_file.read_text().strip() if mode_file.exists() else "OFF"
+    except OSError:  # pragma: no cover
+        current = "UNKNOWN"
+    if current == "OFF":
+        return
+    try:
+        mode_file.write_text("OFF\n")
+    except OSError:  # pragma: no cover
+        print(
+            "auto-sync: CRITICAL: could not write AUTONOMOUS_MODE.txt",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"auto-sync: ESCALATION — {fail_count} consecutive sync failures. "
+        f"Autonomous mode disabled (was {current}).",
+        file=sys.stderr,
+    )
+
+
 def _maybe_auto_sync(tracker_root: Path) -> None:
     """Check if pending tracker ops exceed the threshold and trigger sync.
 
@@ -1291,6 +1376,23 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
     ``do_sync()`` if the threshold is exceeded.  All output goes to stderr
     to preserve ``--json`` stdout.  Exceptions are caught and logged — this
     function never raises.
+
+    PR Wait Gate
+    ~~~~~~~~~~~~
+    Before syncing, checks for ``.git/PR_PENDING`` (created by ``auto-pr``
+    while polling CI).  If present, waits up to 15 minutes for the
+    in-flight PR to finish.  This prevents sync from advancing ``dev``
+    while a feature PR is mid-CI-poll, which would cause the feature PR to
+    fail with a 405 "head behind base branch" on merge.
+
+    Circuit Breaker
+    ~~~~~~~~~~~~~~~
+    When sync fails, a marker file (``.git/TRACKER_SYNC_FAILED``) is
+    written with the failure count and timestamp (``count:timestamp``).
+    Subsequent calls skip sync for 30 minutes to prevent runaway PR
+    creation.  After ``_SYNC_MAX_CONSECUTIVE_FAILURES`` consecutive
+    failures, autonomous mode is disabled by writing ``OFF`` to
+    ``AUTONOMOUS_MODE.txt``.  On success, the marker is removed.
     """
     from hypergumbo_tracker.sync import (
         AUTO_SYNC_DEFAULT_THRESHOLD,
@@ -1327,11 +1429,75 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         if lines < threshold:
             return
 
+        # Wait for in-flight auto-pr to finish before syncing.
+        # auto-pr creates .git/PR_PENDING while polling CI; if we sync
+        # and merge while that PR is in flight, dev advances and the
+        # feature PR gets a 405 "head behind base branch" on merge.
+        git_dir = repo_root / ".git"
+        pr_pending = git_dir / "PR_PENDING"
+        if pr_pending.exists():
+            print(
+                "auto-sync: waiting for in-flight PR to finish...",
+                file=sys.stderr,
+            )
+            deadline = time.monotonic() + _SYNC_PR_WAIT_TIMEOUT
+            while pr_pending.exists() and time.monotonic() < deadline:
+                time.sleep(_SYNC_PR_WAIT_INTERVAL)
+            if pr_pending.exists():
+                print(
+                    "auto-sync: timed out waiting for in-flight PR, "
+                    "skipping sync",
+                    file=sys.stderr,
+                )
+                return
+            print(
+                "auto-sync: in-flight PR finished, proceeding with sync",
+                file=sys.stderr,
+            )
+
+        # Circuit breaker: skip if recent failure
+        fail_marker = git_dir / "TRACKER_SYNC_FAILED"
+        fail_count = 0
+        if fail_marker.exists():
+            try:
+                parts = fail_marker.read_text().strip().split(":", 1)
+                fail_count = int(parts[0]) if len(parts) == 2 else 0
+                fail_ts = float(parts[-1])
+                elapsed = time.time() - fail_ts
+                if elapsed < _SYNC_COOLDOWN_SECONDS:
+                    remaining = int(_SYNC_COOLDOWN_SECONDS - elapsed)
+                    print(
+                        f"auto-sync: circuit breaker open "
+                        f"({remaining}s remaining), skipping",
+                        file=sys.stderr,
+                    )
+                    return
+                # Cooldown expired — remove marker and retry
+                fail_marker.unlink(missing_ok=True)
+            except (ValueError, OSError):
+                # Corrupt marker — remove and retry
+                fail_marker.unlink(missing_ok=True)
+
         print(
             f"auto-sync: {lines} lines of tracker changes exceed "
             f"threshold ({threshold}), syncing...",
             file=sys.stderr,
         )
+
+        # Check gate file BEFORE preflight to prevent concurrent auto-sync
+        # calls from racing.  Previously the gate was only written in
+        # do_sync step 8 (after commit creation), leaving a window where
+        # multiple _maybe_auto_sync calls could all pass preflight and
+        # push duplicate PRs.  Preflight also checks this gate, but by
+        # checking here first we can bail out faster and more reliably.
+        sync_gate = git_dir / "TRACKER_SYNC_PENDING"
+        if sync_gate.exists():
+            print(
+                "auto-sync: sync already in progress "
+                "(TRACKER_SYNC_PENDING exists), skipping",
+                file=sys.stderr,
+            )
+            return
 
         pre = preflight_check(repo_root)
         if not pre.ok:
@@ -1346,16 +1512,27 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 
         sync_result = do_sync(repo_root=repo_root, preflight=pre)
         if sync_result.success:
+            # Clear failure marker on success
+            fail_marker.unlink(missing_ok=True)
             print(
                 f"auto-sync: synced {sync_result.files_synced} file(s) "
                 f"via PR #{sync_result.pr_number}",
                 file=sys.stderr,
             )
         else:
+            # Set failure marker — circuit breaker opens
+            new_count = fail_count + 1
+            try:
+                fail_marker.write_text(f"{new_count}:{time.time()}")
+            except OSError:  # pragma: no cover
+                pass
             print(
-                f"auto-sync: sync failed: {sync_result.error}",
+                f"auto-sync: sync failed ({new_count}/"
+                f"{_SYNC_MAX_CONSECUTIVE_FAILURES}): {sync_result.error}",
                 file=sys.stderr,
             )
+            if new_count >= _SYNC_MAX_CONSECUTIVE_FAILURES:
+                _escalate_disable_autonomous(repo_root, new_count)
     except Exception as e:
         print(f"auto-sync: unexpected error: {e}", file=sys.stderr)
 

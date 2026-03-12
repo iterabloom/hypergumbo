@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the slice module (graph slicing for LLM context)."""
 from typing import List
 
@@ -1793,16 +1794,17 @@ class TestReverseSliceClassExpansion:
 
 
 class TestForwardSliceInheritanceEdges:
-    """Forward slices should NOT traverse structural/polymorphic edges.
+    """Forward slices should NOT traverse structural edges, but DO follow dispatches_to.
 
-    These edges cause BFS explosion through shared ancestors, containment,
-    or polymorphic dispatch:
+    Structural edges (extends, implements, contains) cause BFS explosion:
     - extends/implements: VoiceController → ApplicationController fans out
       to ALL sibling controllers
     - contains: reaching a class fans out to ALL member methods
-    - dispatches_to: reaching an interface method fans out to ALL implementations
 
-    Behavioral dependencies are captured by calls edges only in forward slices.
+    dispatches_to edges ARE followed in forward slices — they represent
+    intentional registry dispatch (run_all_analyzers → each analyzer).
+    Hub pruning exempts dispatches_to from its edge count so dispatch
+    sites with many handlers aren't pruned.
     """
 
     def test_forward_slice_skips_extends_edge(self) -> None:
@@ -1987,62 +1989,55 @@ class TestForwardSliceInheritanceEdges:
         # Parent's dependency should NOT be reached
         assert auth_svc.id not in result.node_ids
 
-    def test_forward_slice_skips_dispatches_to_edge(self) -> None:
-        """Forward slice should not follow dispatches_to edges.
+    def test_forward_slice_follows_dispatches_to_edge(self) -> None:
+        """Forward slice follows dispatches_to edges to implementations.
 
         dispatches_to edges represent polymorphic dispatch: InterfaceMethod
-        might dispatch to any implementation at runtime.  Following these in
-        a forward slice causes fan-out to ALL sibling implementations of the
-        same interface, inflating the slice.
-
-        Example: slicing from S3FileIO.create should not pull in GCSFileIO.create
-        and ADLSFileIO.create via the shared OutputFile.create interface.
+        dispatches to concrete implementations at runtime. Forward slices
+        should traverse these so the slice doesn't dead-end at interface
+        call sites. Hub_threshold handles fan-out for interfaces with
+        many implementations.
         """
-        # Implementation method we're slicing from
-        s3_create = make_symbol(
-            "S3FileIO.create", kind="method",
-            path="src/s3.java", start_line=1, end_line=20, language="java",
+        # Caller that invokes the interface method
+        caller = make_symbol(
+            "main", kind="function",
+            path="src/main.java", start_line=1, end_line=20, language="java",
         )
         # Interface method
         iface_create = make_symbol(
             "OutputFile.create", kind="method",
             path="src/output.java", start_line=1, end_line=5, language="java",
         )
-        # Sibling implementation that should NOT be pulled in
+        # Two implementations
+        s3_create = make_symbol(
+            "S3FileIO.create", kind="method",
+            path="src/s3.java", start_line=1, end_line=20, language="java",
+        )
         gcs_create = make_symbol(
             "GCSFileIO.create", kind="method",
             path="src/gcs.java", start_line=1, end_line=20, language="java",
         )
-        # Direct call dependency that SHOULD be found
-        s3_client = make_symbol(
-            "S3Client.putObject", kind="method",
-            path="src/s3client.java", start_line=1, end_line=10, language="java",
-        )
 
         edges = [
-            # s3 impl calls s3 client (real dependency)
-            make_edge(s3_create, s3_client, "calls"),
+            # caller calls the interface method
+            make_edge(caller, iface_create, "calls"),
             # interface dispatches_to both implementations
             make_edge(iface_create, s3_create, "dispatches_to"),
             make_edge(iface_create, gcs_create, "dispatches_to"),
-            # s3 impl calls the interface method
-            make_edge(s3_create, iface_create, "calls"),
         ]
 
-        query = SliceQuery(entrypoint="S3FileIO.create", max_hops=3)
+        query = SliceQuery(entrypoint="main", max_hops=3)
         result = slice_graph(
-            [s3_create, iface_create, gcs_create, s3_client], edges, query,
+            [caller, iface_create, s3_create, gcs_create], edges, query,
         )
 
-        # Direct call dependency is reachable
-        assert s3_client.id in result.node_ids
-        # Interface method reachable via the calls edge s3_create -> iface_create
+        # Interface method reachable via calls edge
         assert iface_create.id in result.node_ids
-        # Sibling implementation should NOT be reachable (dispatches_to skipped)
-        assert gcs_create.id not in result.node_ids, (
-            "Forward slice should not follow dispatches_to edges to sibling "
-            "implementations — this inflates slices with unrelated code"
+        # Both implementations reachable via dispatches_to
+        assert s3_create.id in result.node_ids, (
+            "Forward slice should follow dispatches_to to reach implementations"
         )
+        assert gcs_create.id in result.node_ids
 
     def test_reverse_slice_still_follows_dispatches_to(self) -> None:
         """Reverse slice should follow dispatches_to edges.
@@ -2075,6 +2070,166 @@ class TestForwardSliceInheritanceEdges:
 
         # Interface method should be found (dispatches_to reversed)
         assert iface_method.id in result.node_ids
+
+    def test_dispatches_to_exempt_from_hub_pruning(self) -> None:
+        """Hub pruning should not count dispatches_to edges toward threshold.
+
+        Registry dispatch sites like run_all_analyzers fan out to many
+        handlers via dispatches_to edges. This is intentional architectural
+        fan-out, not noisy utility calls. If these edges count toward
+        hub_threshold, the dispatch site gets pruned at depth >= 2 and
+        the slice misses all registered handlers.
+        """
+        # entry -> bridge -> dispatch_site -> {handler_0..59} via dispatches_to
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        dispatch = make_symbol(
+            "run_all_analyzers", path="src/registry.py",
+            start_line=10, end_line=20,
+        )
+        handlers = [
+            make_symbol(
+                f"analyze_{i}", path=f"src/lang_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(60)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, dispatch),
+        ]
+        for handler in handlers:
+            edges_list.append(
+                make_edge(dispatch, handler, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, dispatch] + handlers
+
+        # dispatch_site is at depth 2 with 60 outgoing dispatches_to edges.
+        # With hub_threshold=50, naive counting would prune it.
+        # But dispatches_to edges should be exempt from hub counting.
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # All handlers should be reachable despite exceeding hub_threshold
+        assert dispatch.id in result.node_ids
+        reachable_handlers = [h for h in handlers if h.id in result.node_ids]
+        assert len(reachable_handlers) == 60, (
+            f"Expected 60 handlers reachable via dispatches_to, got {len(reachable_handlers)}. "
+            f"Hub pruning should not count dispatches_to edges."
+        )
+
+    def test_mixed_calls_and_dispatches_to_below_threshold(self) -> None:
+        """Hub pruning counts only non-dispatch edges toward threshold.
+
+        A node with 10 calls edges + 60 dispatches_to edges should NOT be
+        pruned when hub_threshold=50 (only 10 non-dispatch edges < 50).
+        """
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        mixed_node = make_symbol(
+            "orchestrator", path="src/orchestrator.py",
+            start_line=10, end_line=20,
+        )
+        call_targets = [
+            make_symbol(
+                f"util_{i}", path=f"src/util_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(10)
+        ]
+        dispatch_targets = [
+            make_symbol(
+                f"handler_{i}", path=f"src/handler_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(60)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, mixed_node),
+        ]
+        for t in call_targets:
+            edges_list.append(make_edge(mixed_node, t, edge_type="calls"))
+        for t in dispatch_targets:
+            edges_list.append(
+                make_edge(mixed_node, t, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, mixed_node] + call_targets + dispatch_targets
+
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # All targets reachable — only 10 non-dispatch edges < 50
+        reachable_calls = [t for t in call_targets if t.id in result.node_ids]
+        reachable_dispatch = [t for t in dispatch_targets if t.id in result.node_ids]
+        assert len(reachable_calls) == 10
+        assert len(reachable_dispatch) == 60
+
+    def test_hub_pruned_node_still_follows_dispatches_to(self) -> None:
+        """When a node IS hub-pruned (calls > threshold), dispatches_to still followed.
+
+        A node with 55 calls edges + 5 dispatches_to edges should be
+        hub-pruned for calls (55 > 50), but its dispatches_to targets
+        should still be reachable.
+        """
+        entry = make_symbol("main", path="src/main.py")
+        bridge = make_symbol("run", path="src/run.py", start_line=1, end_line=5)
+        hub = make_symbol(
+            "big_orchestrator", path="src/big.py",
+            start_line=10, end_line=20,
+        )
+        call_targets = [
+            make_symbol(
+                f"callee_{i}", path=f"src/callee_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(55)
+        ]
+        dispatch_targets = [
+            make_symbol(
+                f"dispatch_{i}", path=f"src/dispatch_{i}.py",
+                start_line=1, end_line=5,
+            )
+            for i in range(5)
+        ]
+
+        edges_list: List[Edge] = [
+            make_edge(entry, bridge),
+            make_edge(bridge, hub),
+        ]
+        for t in call_targets:
+            edges_list.append(make_edge(hub, t, edge_type="calls"))
+        for t in dispatch_targets:
+            edges_list.append(
+                make_edge(hub, t, edge_type="dispatches_to")
+            )
+
+        all_nodes = [entry, bridge, hub] + call_targets + dispatch_targets
+
+        query = SliceQuery(
+            entrypoint="main", max_hops=5, max_files=200,
+            hub_threshold=50,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # Hub should be hub-pruned (55 calls > 50)
+        assert "hub_pruned" in result.limits_hit
+        # Calls targets should NOT be reachable (hub-pruned)
+        reachable_calls = [t for t in call_targets if t.id in result.node_ids]
+        assert len(reachable_calls) == 0
+        # But dispatches_to targets SHOULD still be reachable
+        reachable_dispatch = [t for t in dispatch_targets if t.id in result.node_ids]
+        assert len(reachable_dispatch) == 5
 
 
 class TestForwardSliceContainsEdges:
@@ -2245,7 +2400,9 @@ class TestForwardSliceContainsEdges:
             make_edge(caller, get_pet, "calls"),
         ]
 
-        # Reverse slice from getPet should still see the class via contains
+        # Reverse slice from getPet should find caller (via calls edge)
+        # but NOT the class (contains edges are excluded from reverse BFS
+        # to prevent false positives from class-level callers).
         query = SliceQuery(entrypoint="Owner.getPet", max_hops=3, reverse=True)
         result = slice_graph(
             [owner_class, get_pet, caller], edges, query,
@@ -2253,8 +2410,53 @@ class TestForwardSliceContainsEdges:
 
         # caller should be found (calls edge reversed)
         assert caller.id in result.node_ids
-        # owner_class should be found (contains edge reversed)
-        assert owner_class.id in result.node_ids
+        # owner_class should NOT be found — contains edges are excluded
+        # from reverse BFS to prevent fan-out to unrelated class callers
+        assert owner_class.id not in result.node_ids
+
+    def test_reverse_slice_contains_does_not_cause_false_positives(self) -> None:
+        """Reverse slice should not reach unrelated callers via contains edges.
+
+        Scenario: method M is contained in class C. Another function F calls C
+        (the class itself) but never calls M. Without filtering contains edges,
+        reverse slice from M would go: M → C (via contains) → F (via calls C).
+        F is a false positive — it doesn't call M.
+        """
+        owner_class = make_symbol(
+            "Owner", kind="class",
+            path="src/owner.py", start_line=1, end_line=100, language="python",
+        )
+        get_pet = make_symbol(
+            "Owner.getPet", kind="method",
+            path="src/owner.py", start_line=10, end_line=20, language="python",
+        )
+        # Calls getPet directly — should be in reverse slice
+        direct_caller = make_symbol(
+            "show_owner", kind="function",
+            path="src/views.py", start_line=1, end_line=10, language="python",
+        )
+        # Calls the Owner class (instantiation) but NOT getPet — false positive
+        class_instantiator = make_symbol(
+            "create_owner", kind="function",
+            path="src/factory.py", start_line=1, end_line=10, language="python",
+        )
+
+        edges = [
+            make_edge(owner_class, get_pet, "contains"),
+            make_edge(direct_caller, get_pet, "calls"),
+            make_edge(class_instantiator, owner_class, "calls"),
+        ]
+
+        query = SliceQuery(entrypoint="Owner.getPet", max_hops=3, reverse=True)
+        result = slice_graph(
+            [owner_class, get_pet, direct_caller, class_instantiator],
+            edges, query,
+        )
+
+        # direct_caller should be found (directly calls getPet)
+        assert direct_caller.id in result.node_ids
+        # class_instantiator should NOT be found (only calls the class, not the method)
+        assert class_instantiator.id not in result.node_ids
 
 
 class TestExcludeImports:
@@ -2422,3 +2624,236 @@ class TestSliceNodeDepths:
         assert result.node_depths[cls.id] == 0
         assert result.node_depths[method.id] == 0
         assert result.node_depths[callee.id] == 1
+
+
+class TestPassThroughSyntheticNodes:
+    """Tests for pass-through filtering of synthetic routing nodes.
+
+    Synthetic nodes like event_publisher and event_subscriber are created by
+    linkers to represent IPC channels. They are useful for traversal (connecting
+    producers to consumers) but inflate slice output with nodes that don't
+    correspond to real code the developer can read or modify.
+
+    The pass_through_kinds parameter controls which node kinds are traversed
+    through during BFS but excluded from the final SliceResult.node_ids.
+    """
+
+    def test_event_publisher_excluded_from_node_ids(self) -> None:
+        """event_publisher nodes are traversed but not in output.
+
+        Uses the real edge pattern from the event sourcing linker:
+        enclosing --(uses)--> event_publisher --(event_publishes)-->
+        event_subscriber --(event_subscribes)--> handler
+        """
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # Handler should be reachable through the synthetic nodes
+        assert handler.id in result.node_ids
+        # Synthetic nodes should NOT be in node_ids
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+        # Entry node should still be there
+        assert func_a.id in result.node_ids
+
+    def test_pass_through_still_traverses(self) -> None:
+        """Nodes behind synthetic routing are reachable despite filtering."""
+        producer = make_symbol("send_event", path="src/producer.py")
+        pub = make_symbol(
+            "event:user.signup", path="src/producer.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:user.signup", path="src/consumer.py",
+            kind="event_subscriber", start_line=1,
+        )
+        consumer = make_symbol("handle_signup", path="src/consumer.py", start_line=5)
+        downstream = make_symbol("send_welcome", path="src/consumer.py", start_line=15)
+
+        edges = [
+            make_edge(producer, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, consumer, edge_type="event_subscribes"),
+            make_edge(consumer, downstream, edge_type="calls"),
+        ]
+
+        query = SliceQuery(entrypoint="send_event", max_hops=5)
+        result = slice_graph(
+            [producer, pub, sub, consumer, downstream], edges, query,
+        )
+
+        # Both real consumer nodes reachable
+        assert consumer.id in result.node_ids
+        assert downstream.id in result.node_ids
+        # Synthetic nodes filtered out
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+
+    def test_edges_to_synthetic_nodes_excluded(self) -> None:
+        """Edges referencing filtered synthetic nodes are excluded."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        uses_edge = make_edge(func_a, pub, edge_type="uses")
+        publishes_edge = make_edge(pub, sub, edge_type="event_publishes")
+        subscribes_edge = make_edge(sub, handler, edge_type="event_subscribes")
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph(
+            [func_a, pub, sub, handler],
+            [uses_edge, publishes_edge, subscribes_edge],
+            query,
+        )
+
+        # Edges touching synthetic nodes should not be in edge_ids
+        assert uses_edge.id not in result.edge_ids
+        assert publishes_edge.id not in result.edge_ids
+        assert subscribes_edge.id not in result.edge_ids
+
+    def test_pass_through_kinds_empty_keeps_all(self) -> None:
+        """When pass_through_kinds is empty, synthetic nodes stay in output."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(
+            entrypoint="emit_order", max_hops=5,
+            pass_through_kinds=frozenset(),
+        )
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # With empty pass_through_kinds, synthetic nodes ARE included
+        assert pub.id in result.node_ids
+        assert sub.id in result.node_ids
+        assert handler.id in result.node_ids
+
+    def test_pass_through_in_reverse_slice(self) -> None:
+        """Reverse slice also filters pass-through synthetic nodes."""
+        producer = make_symbol("send_event", path="src/producer.py")
+        pub = make_symbol(
+            "event:user.signup", path="src/producer.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:user.signup", path="src/consumer.py",
+            kind="event_subscriber", start_line=1,
+        )
+        consumer = make_symbol("handle_signup", path="src/consumer.py", start_line=5)
+
+        edges = [
+            make_edge(producer, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, consumer, edge_type="event_subscribes"),
+        ]
+
+        # Reverse from consumer: should find producer through synthetic nodes
+        query = SliceQuery(
+            entrypoint="handle_signup", max_hops=5, reverse=True,
+        )
+        result = slice_graph([producer, pub, sub, consumer], edges, query)
+
+        assert producer.id in result.node_ids
+        assert consumer.id in result.node_ids
+        # Synthetic nodes filtered
+        assert pub.id not in result.node_ids
+        assert sub.id not in result.node_ids
+
+    def test_pass_through_node_depths_excluded(self) -> None:
+        """Filtered synthetic nodes should not appear in node_depths."""
+        func_a = make_symbol("emit_order", path="src/orders.py")
+        pub = make_symbol(
+            "event:order.created", path="src/orders.py",
+            kind="event_publisher", start_line=10,
+        )
+        sub = make_symbol(
+            "event:order.created", path="src/handlers.py",
+            kind="event_subscriber", start_line=1,
+        )
+        handler = make_symbol("on_order_created", path="src/handlers.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, pub, edge_type="uses"),
+            make_edge(pub, sub, edge_type="event_publishes"),
+            make_edge(sub, handler, edge_type="event_subscribes"),
+        ]
+
+        query = SliceQuery(entrypoint="emit_order", max_hops=5)
+        result = slice_graph([func_a, pub, sub, handler], edges, query)
+
+        # Synthetic nodes should not be in node_depths
+        assert pub.id not in result.node_depths
+        assert sub.id not in result.node_depths
+        # Handler should have a depth (it's reachable)
+        assert handler.id in result.node_depths
+
+    def test_custom_pass_through_kinds(self) -> None:
+        """Custom pass_through_kinds can include additional synthetic types."""
+        func_a = make_symbol("call_grpc", path="src/client.py")
+        stub = make_symbol(
+            "grpc:OrderService", path="src/client.py",
+            kind="grpc_stub", start_line=10,
+        )
+        server = make_symbol(
+            "grpc:OrderService", path="src/server.py",
+            kind="grpc_server", start_line=1,
+        )
+        impl = make_symbol("create_order", path="src/server.py", start_line=5)
+
+        edges = [
+            make_edge(func_a, stub, edge_type="uses"),
+            make_edge(stub, server, edge_type="grpc"),
+            make_edge(server, impl, edge_type="implements_rpc"),
+        ]
+
+        # Include grpc_stub and grpc_server in pass-through
+        query = SliceQuery(
+            entrypoint="call_grpc", max_hops=5,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+                "grpc_stub", "grpc_server",
+            }),
+        )
+        result = slice_graph([func_a, stub, server, impl], edges, query)
+
+        assert func_a.id in result.node_ids
+        assert impl.id in result.node_ids
+        assert stub.id not in result.node_ids
+        assert server.id not in result.node_ids

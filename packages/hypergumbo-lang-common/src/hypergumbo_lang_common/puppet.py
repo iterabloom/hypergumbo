@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Puppet manifest analyzer using tree-sitter.
 
 Puppet is a configuration management tool that uses a declarative language

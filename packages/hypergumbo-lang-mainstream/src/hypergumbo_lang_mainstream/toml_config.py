@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """TOML configuration file analyzer using tree-sitter-toml.
 
 This module parses TOML configuration files (Cargo.toml, pyproject.toml, etc.)
@@ -38,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     iter_tree,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -45,10 +47,16 @@ if TYPE_CHECKING:
     pass
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    """Generate a unique symbol ID."""
-    key = f"toml:{path}:{line}:{name}:{kind}"
-    return f"toml:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+def _make_toml_symbol_id(
+    path: str, start_line: int, end_line: int, name: str, kind: str,
+) -> str:
+    """Generate a location-based symbol ID for TOML symbols.
+
+    Uses the standard ``lang:path:start-end:name:kind`` format so that
+    symbol IDs are human-readable and resolvable by ``slice --entry``.
+    Previously used sha256 hashes, which made compact output IDs opaque.
+    """
+    return make_symbol_id("toml", path, start_line, end_line, name, kind)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -164,7 +172,7 @@ def _process_toml_tree(
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
             node_bytes = content[node.start_byte : node.end_byte].encode()
 
             symbols.append(
@@ -199,9 +207,11 @@ def _process_toml_tree(
                 _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
             elif is_pyproject and table_name == "project":
                 _extract_pyproject_dependencies(node, rel_path, symbols, content)
-            # Process pyproject.toml [project.scripts] - CLI entry points
-            elif is_pyproject and table_name == "project.scripts":
-                _extract_pyproject_scripts(node, rel_path, symbols, content)
+            # Process pyproject.toml [project.scripts] and [project.gui-scripts]
+            elif is_pyproject and table_name in (
+                "project.scripts", "project.gui-scripts",
+            ):
+                _extract_pyproject_scripts(node, rel_path, symbols, edges, content)
 
         elif node.type == "table_array_element":
             table_name = _extract_table_name(node)
@@ -238,7 +248,7 @@ def _process_toml_tree(
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            symbol_id = _make_symbol_id(rel_path, start_line, name, kind)
+            symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
             node_bytes = content[node.start_byte : node.end_byte].encode()
 
             # Build meta with path if present
@@ -270,10 +280,8 @@ def _process_toml_tree(
 
             # Create edge from build target to source file
             if target_path:
-                edge_id = _make_edge_id(symbol_id, target_path, "defines_target")
                 edges.append(
-                    Edge(
-                        id=edge_id,
+                    Edge.create(
                         src=symbol_id,
                         dst=target_path,
                         edge_type="defines_target",
@@ -412,7 +420,7 @@ def _extract_cargo_dependencies(
             if dep_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, dep_name, "dependency")
+                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 symbols.append(
@@ -482,8 +490,8 @@ def _extract_pyproject_dependencies(
 
                         start_line = elem.start_point[0] + 1
                         end_line = elem.end_point[0] + 1
-                        symbol_id = _make_symbol_id(
-                            rel_path, start_line, dep_name, "dependency"
+                        symbol_id = _make_toml_symbol_id(
+                            rel_path, start_line, end_line, dep_name, "dependency"
                         )
                         node_bytes = content[elem.start_byte : elem.end_byte].encode()
 
@@ -509,15 +517,37 @@ def _extract_pyproject_dependencies(
                         )
 
 
+def _python_entry_point_to_path(entry_point: str) -> tuple[str, str] | None:
+    """Convert a Python entry point string to (file_path, function_name).
+
+    Entry point format: ``module.path:function_name``
+    e.g. ``mypackage.cli:main`` → ``("mypackage/cli.py", "main")``
+
+    Returns None if the format is not recognized.
+    """
+    if ":" not in entry_point:
+        return None
+    module_part, func_name = entry_point.rsplit(":", 1)
+    if not module_part or not func_name:
+        return None
+    file_path = module_part.replace(".", "/") + ".py"
+    return file_path, func_name
+
+
 def _extract_pyproject_scripts(
-    table_node, rel_path: str, symbols: list[Symbol], content: str
+    table_node, rel_path: str, symbols: list[Symbol],
+    edges: list[Edge], content: str,
 ):
-    """Extract CLI entry points from a pyproject.toml [project.scripts] table.
+    """Extract CLI entry points from a pyproject.toml scripts table.
 
-    The [project.scripts] table defines console script entry points:
-    - my-cli = "mypackage.cli:main"
+    Handles both ``[project.scripts]`` (console scripts) and
+    ``[project.gui-scripts]`` (GUI scripts). Each entry like
+    ``my-cli = "mypackage.cli:main"`` produces:
 
-    These become executable commands when the package is installed.
+    1. A ``script`` symbol for the CLI command
+    2. A ``defines_target`` edge pointing to the resolved file path
+       (``mypackage/cli.py``), with ``target_function`` in meta so the
+       build-target linker can find the specific function
     """
     for child in table_node.children:
         if child.type == "pair":
@@ -532,7 +562,7 @@ def _extract_pyproject_scripts(
             if script_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, script_name, "script")
+                symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "script")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 meta: dict = {}
@@ -560,3 +590,20 @@ def _extract_pyproject_scripts(
                         meta=meta,
                     )
                 )
+
+                # Create defines_target edge for build-target linker
+                if entry_point:
+                    parsed = _python_entry_point_to_path(entry_point)
+                    if parsed:
+                        target_path, target_func = parsed
+                        edges.append(
+                            Edge.create(
+                                src=symbol_id,
+                                dst=target_path,
+                                edge_type="defines_target",
+                                line=start_line,
+                                confidence=1.0,
+                                origin=PASS_ID,
+                                meta={"target_function": target_func},
+                            )
+                        )

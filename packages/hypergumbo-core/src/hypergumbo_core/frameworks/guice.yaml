@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Google Guice dependency injection patterns (ADR-0003)
 #
 # Guice is Google's lightweight DI framework for Java. It uses annotations

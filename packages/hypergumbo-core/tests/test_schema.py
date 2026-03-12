@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Schema validation tests.
 
 These tests close the TDD loop for the JSON Schema:

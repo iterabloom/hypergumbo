@@ -46,15 +46,17 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 Slice Quality:
 | Metric              | Good Range  | Warning       |
 |---------------------|-------------|---------------|
-| avg_slice_nodes     | 20-500      | <5 or >2000   |
-| slice_coverage_pct  | 0.1-10%     | <0.01% or >30%|
+| avg_slice_nodes     | 20-2000*    | <5 or >5000   |
+| slice_coverage_pct  | 0.1-20%     | <0.01% or >50%|
 | limit_hit_frequency | <50%        | >80%          |
 | cross_file_ratio    | >20%        | <5%           |
+
+*avg_slice_nodes good_min scales to max(5, total_nodes*0.1) for repos <200 nodes.
 
 Supply Chain:
 | Metric     | Good Range | Warning        |
 |------------|------------|----------------|
-| tier1_pct  | 40-95%     | <20% or >99.5% |
+| tier1_pct  | 15-98%     | <5% or >99.5%  |
 | tier4_pct  | 0-5%       | >10%           |
 
 Graph:
@@ -74,6 +76,7 @@ import glob
 import gzip
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -132,25 +135,72 @@ _CODE_NODE_KINDS = frozenset({
 # `/special_repos/` (the bakeoff pool path) matched, filtering out ALL
 # entrypoints and producing zero forward slices for every repo in the pool.
 _TEST_PATH_RE = re.compile(
-    r'/(tests?|spec|__tests__|test-|unittest)/'      # dirs that MUST end with /
-    r'|/(t)/'                                         # t/ (C/Perl convention)
-    r'|/test_[^/]'                                    # test_ prefix files
-    r'|/integration/'                                 # integration test dirs
-    r'|_test\.'                                       # Go: *_test.go
-    r'|/Test[A-Z][^/]*\.java'                         # JVM: TestFoo.java
-    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'    # JVM: FooIT.java, FooTest.java
+    r'(?:^|/)(tests?|spec|__tests__|test-[^/]+|unittest)/' # dirs (incl. test-artifacts/)
+    r'|(?:^|/)(t)/'                                   # t/ (C/Perl convention)
+    r'|(?:^|/)test_[^/]'                               # test_ prefix files
+    r'|(?:^|/)integration/'                            # integration test dirs
+    r'|_test\.'                                        # Go: *_test.go
+    r'|\.(?:test|spec)\.'                              # JS/TS: *.test.js, *.spec.ts
+    r'|/Test[A-Z][^/]*\.java'                          # JVM: TestFoo.java
+    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'     # JVM: FooIT.java, FooTest.java
+    r'|(?:^|/)tests\.rs$'                                # Rust: co-located test module
+    r'|(?:^|/)testonly[/.]'                             # Rust: testonly/ dirs and testonly.rs
 )
+
+# Annotation names that indicate a test function/method.
+# Covers Rust (#[test], #[tokio::test], #[actix_rt::test], #[async_std::test]),
+# Java/Kotlin (@Test, @org.junit.Test), and C# ([TestMethod], [Fact], [Theory]).
+_TEST_ANNOTATION_NAMES = frozenset({
+    "test", "Test",
+    "tokio::test", "actix_rt::test", "async_std::test",
+    "org.junit.Test", "org.junit.jupiter.api.Test",
+    "TestMethod", "Fact", "Theory",
+})
+
+
+def _is_test_node(node: dict) -> bool:
+    """Check if a node is test code by path or annotation.
+
+    Extends file-path matching with annotation-based detection so that
+    Rust ``#[test]``/``#[cfg(test)]`` functions in non-test files (e.g.
+    ``src/lib.rs``) are correctly identified as test nodes.  This prevents
+    test functions from appearing as rslice seed candidates and ensures
+    edges from test functions don't inflate production in-degree.
+    """
+    if _TEST_PATH_RE.search(node.get("path", "")):
+        return True
+    meta = node.get("meta") or {}
+    for key in ("decorators", "annotations"):
+        for dec in (meta.get(key) or []):
+            name = dec.get("name", "")
+            if name in _TEST_ANNOTATION_NAMES:
+                return True
+            # Rust #[cfg(test)] — "cfg" with "test" in args
+            if name == "cfg":
+                for arg in (dec.get("args") or []):
+                    if isinstance(arg, str) and "test" in arg:
+                        return True
+    return False
+
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
-    "avg_slice_nodes": {"good_min": 20, "good_max": 500, "warn_min": 5, "warn_max": 2000},
-    "slice_coverage_pct": {"good_min": 0.1, "good_max": 10, "warn_min": 0.01, "warn_max": 30},
+    "avg_slice_nodes": {"good_min": 20, "good_max": 2000, "warn_min": 5, "warn_max": 5000},
+    "slice_coverage_pct": {"good_min": 0.1, "good_max": 20, "warn_min": 0.01, "warn_max": 50},
     "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
     "cross_file_ratio": {"good_min": 20, "warn_min": 5},
-    "tier1_pct": {"good_min": 40, "good_max": 95, "warn_min": 20, "warn_max": 99.5},
+    # Monorepos with many internal packages (e.g., hypergumbo with 100+ lang
+    # packages depending on core) naturally have low tier-1 percentages because
+    # sibling packages are classified as tier-2 (internal_dep). A 15% floor
+    # accommodates these structures while still flagging repos where almost
+    # everything is third-party.
+    "tier1_pct": {"good_min": 15, "good_max": 98, "warn_min": 5, "warn_max": 99.5},
     "tier4_pct": {"good_max": 5, "warn_max": 10},
     "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
-    "orphan_rate": {"good_max": 15, "warn_max": 35},
+    # Polyglot repos have a structural orphan floor from languages without
+    # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
+    # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
+    "orphan_rate": {"good_max": 20, "warn_max": 35},
 }
 
 # Recommended larger repos for feature testing (diverse languages)
@@ -596,14 +646,25 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
 _COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
 
 
-def assess_metric(name: str, value: float) -> tuple:
-    """Assess a metric against thresholds. Returns (status, message)."""
+def assess_metric(name: str, value: float, *, total_nodes: int | None = None) -> tuple:
+    """Assess a metric against thresholds. Returns (status, message).
+
+    For ``avg_slice_nodes``, the ``good_min`` threshold scales down for small
+    repos (< 200 nodes) using ``max(warn_min, total_nodes * 0.1)``.  A repo
+    with 72 nodes cannot realistically average 20 nodes per slice.
+    """
     thresholds = QUALITY_THRESHOLDS.get(name, {})
     unit = "" if name in _COUNT_METRICS else "%"
 
     # Check good range
     good_min = thresholds.get("good_min")
     good_max = thresholds.get("good_max")
+
+    # Scale avg_slice_nodes threshold for small repos
+    if name == "avg_slice_nodes" and good_min is not None and total_nodes is not None:
+        floor = thresholds.get("warn_min", 5)
+        scaled = max(floor, total_nodes * 0.1)
+        good_min = min(good_min, scaled)
 
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
@@ -632,7 +693,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     utility wrappers.
 
     Scoring: ``base * lang_weight * route_boost`` where:
-      - base = ``capped_in * min(1.0, out_degree / 10)``
+      - base = ``effective_in * min(1.0, out_degree / 10)``
+        where effective_in uses sqrt-diminishing returns above a knee (50):
+        ``in_deg if in_deg <= 50 else 50 + sqrt(in_deg - 50)``.
+        This penalises infrastructure symbols (UserFriendlyError, join) with
+        very high in-degree while preserving domain function scores.
       - lang_weight = fraction of codebase in this language, normalised so the
         dominant language = 1.0.  This prevents bash/shell utility functions
         from outscoring primary-language entrypoints in polyglot repos.
@@ -651,19 +716,28 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     if not edges:
         return []
 
-    # Compute in-degree and out-degree per node
+    # Build node lookup and identify test nodes (by path AND annotation).
+    # Annotation-based detection catches Rust #[test]/#[cfg(test)] functions
+    # in non-test files (e.g. src/lib.rs) that path-only regex misses.
+    node_map = {n["id"]: n for n in nodes}
+    test_node_ids = {n["id"] for n in nodes if _is_test_node(n)}
+
+    # Compute in-degree (prod-only and total) and out-degree per node.
+    # prod_in_degree excludes edges from test nodes so that production
+    # functions called mostly from tests don't outrank functions called
+    # from production code.
     in_degree: dict = {}
+    prod_in_degree: dict = {}
     out_degree: dict = {}
     for e in edges:
         src = e.get("src") or e.get("source")
         dst = e.get("dst") or e.get("target")
         if dst:
             in_degree[dst] = in_degree.get(dst, 0) + 1
+            if src not in test_node_ids:
+                prod_in_degree[dst] = prod_in_degree.get(dst, 0) + 1
         if src:
             out_degree[src] = out_degree.get(src, 0) + 1
-
-    # Build node lookup
-    node_map = {n["id"]: n for n in nodes}
 
     # ---- Language-dominance weighting ----
     # Count callable nodes per language (only seed_kinds, skip tests).
@@ -690,17 +764,48 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # or thin wrappers, not domain logic hubs.
     _MIN_OUT_DEGREE = 3
 
-    # In-degree cap prevents mega-hubs (in_degree > 500) from dominating
-    # via sheer volume.  A function called 1200 times isn't 5x more
-    # interesting as a seed than one called 250 times — it's likely
-    # infrastructure.  Capping at 300 equalises domain functions
-    # (in=100-300) against infrastructure (in=500-2000).
-    _IN_DEGREE_CAP = 300
+    # In-degree diminishing returns: above _IN_DEGREE_KNEE, additional
+    # callers contribute sqrt-scaled benefit instead of linear.  This
+    # penalises infrastructure symbols (UserFriendlyError in=200,
+    # join in=150) without a hard cutoff, while domain functions
+    # (in=20-50) keep their full linear score.
+    #
+    #   effective_in(30)  = 30      (linear, domain function)
+    #   effective_in(100) = 50 + sqrt(50)*~7 = 85   (moderate compression)
+    #   effective_in(200) = 50 + sqrt(150)*~12 = 62  (wait, let's compute)
+    #
+    # Formula: in_deg if in_deg <= knee, else knee + sqrt(in_deg - knee)
+    # At in=200: 50 + sqrt(150) ≈ 62.  At in=500: 50 + sqrt(450) ≈ 71.
+    # This compresses the 200→500 range into 62→71, preventing mega-hubs
+    # from dominating over moderate-in-degree domain functions.
+    _IN_DEGREE_KNEE = 50
 
     # Route boost: HTTP entrypoints are high-value reverse-slice seeds
     # ("who calls this API?") but score low because they're thin dispatchers
     # with low out-degree.  A 1.5x boost compensates.
     _ROUTE_BOOST = 1.5
+
+    # API handler boost: symbols targeted by routes_to edges are API handler
+    # implementations (e.g., API.getAlertsHandler, API.postAlertsHandler).
+    # These have low in-degree (called only from route registration) but
+    # high out-degree (they implement the API by calling many domain
+    # functions).  For seed selection, their out-degree is the valuable
+    # signal — reverse-slicing from a handler shows "what does this API
+    # endpoint touch?".
+    #
+    # The boost replaces the pure in-degree base with a bidirectional
+    # formula: max(capped_in, out_deg / 2) * out_factor.  This lets
+    # postAlertsHandler (in=3, out=23) compete with Integration.Notify
+    # (in=18, out=12).
+    _API_HANDLER_BOOST = 1.5
+
+    # Identify API handler targets: nodes that are dst of routes_to edges.
+    api_handler_ids: set = set()
+    for e in edges:
+        if e.get("type") == "routes_to":
+            dst = e.get("dst") or e.get("target")
+            if dst:
+                api_handler_ids.add(dst)
 
     candidates = []
     for node_id, in_deg in in_degree.items():
@@ -710,8 +815,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         kind = node.get("kind", "")
         if kind not in seed_kinds:
             continue
-        path = node.get("path", "")
-        if _TEST_PATH_RE.search(path):
+        if node_id in test_node_ids:
             continue
         name = node.get("name", "")
         entry = node.get("id", "")
@@ -721,9 +825,22 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         # Hard filter: skip pure sinks and thin wrappers entirely.
         if out_deg < _MIN_OUT_DEGREE:
             continue
-        # Base score: capped in_degree weighted by out-degree ratio.
-        capped_in = min(in_deg, _IN_DEGREE_CAP)
-        base_score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
+        # Use production in-degree for scoring: callers from test files
+        # don't indicate architectural importance.
+        prod_in = prod_in_degree.get(node_id, 0)
+        # Diminishing returns above knee: sqrt scaling compresses
+        # infrastructure symbols (in=200→eff=62) vs domain (in=30→eff=30).
+        if prod_in <= _IN_DEGREE_KNEE:
+            effective_in = float(prod_in)
+        else:
+            effective_in = _IN_DEGREE_KNEE + math.sqrt(prod_in - _IN_DEGREE_KNEE)
+
+        # API handlers get a bidirectional base score that rewards their
+        # high out-degree (they call many domain functions).
+        if node_id in api_handler_ids:
+            base_score = max(effective_in, out_deg / 2) * min(1.0, out_deg / _OUT_THRESHOLD) * _API_HANDLER_BOOST
+        else:
+            base_score = effective_in * min(1.0, out_deg / _OUT_THRESHOLD)
 
         # Language-dominance weight: dominant language = 1.0, others proportional.
         lang = node.get("language", "unknown")
@@ -742,13 +859,22 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                     break
 
         score = base_score * lang_weight * route_boost
-        candidates.append((score, in_deg, entry, name))
+        candidates.append((score, prod_in, entry, name))
 
-    # Sort by score descending, then in-degree descending, name for stability
+    # Sort by score descending, then prod in-degree descending, name for stability
     candidates.sort(key=lambda x: (-x[0], -x[1], x[3]))
 
+    # Name-based deduplication: allow at most 1 seed per method name.
+    # Without this, 19 Notifier.Notify variants crowd out other
+    # architectural axes (API handlers, dispatchers, etc.).
     result = []
-    for score, in_deg, entry, name in candidates[:count]:
+    seen_names: set = set()
+    for score, in_deg, entry, name in candidates:
+        if len(result) >= count:
+            break
+        if name in seen_names:
+            continue
+        seen_names.add(name)
         result.append(entry)
 
     # Language-diversity guarantee: ensure each major language (≥10% of
@@ -824,8 +950,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         kind = node.get("kind", "")
         if kind not in seed_kinds:
             continue
-        path = node.get("path", "")
-        if _TEST_PATH_RE.search(path):
+        if node_id in test_node_ids:
             continue
         entry = node.get("id", "")
         if not entry:
@@ -833,7 +958,8 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         name = node.get("name", "")
         lang = node.get("language", "unknown")
         lang_weight = lang_counts.get(lang, 1) / max_lang_count
-        weighted_in = in_deg * lang_weight
+        eff_in = float(in_deg) if in_deg <= _IN_DEGREE_KNEE else _IN_DEGREE_KNEE + math.sqrt(in_deg - _IN_DEGREE_KNEE)
+        weighted_in = eff_in * lang_weight
         relaxed.append((weighted_in, in_deg, entry, name))
 
     relaxed.sort(key=lambda x: (-x[0], -x[1], x[3]))
@@ -900,10 +1026,14 @@ def _find_latest_session(base_workdir: str, prefix: str = "deep-") -> Optional[s
 
 
 def cmd_init(args):
-    """Initialize a new feature bakeoff session (idempotent).
+    """Initialize a new feature bakeoff session.
 
-    If a session already exists, reuses it instead of creating a new one.
-    Use ``--force`` to create a fresh session regardless.
+    Always creates a new timestamped session by default. Use ``--resume``
+    to explicitly continue working with the most recent existing session.
+
+    Previous behavior (silent reuse) was dangerous: it encouraged deleting
+    completed outputs to "re-run" instead of creating a new session for
+    before/after comparison.
     """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
     base_workdir = resolve_workdir(args.workdir, auto_discover=False)
@@ -912,23 +1042,41 @@ def cmd_init(args):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
         return 1
 
-    # Idempotent: reuse existing session unless --force
-    if not getattr(args, "force", False):
+    # Explicit resume: reuse existing session
+    if getattr(args, "resume", False):
         existing = _find_latest_session(base_workdir, prefix="deep-")
         if existing:
             state = load_state(existing)
             if state:
                 if state.pool_path != pool_path:
                     print(f"Warning: --pool {pool_path} differs from session pool "
-                          f"{state.pool_path} (use --force to create a new session)",
-                          file=sys.stderr)
-                print(f"Reusing existing session: {state.session_id}")
+                          f"{state.pool_path}", file=sys.stderr)
+                # Count existing outputs
+                out_dir = os.path.join(existing, "out")
+                completed = 0
+                if os.path.isdir(out_dir):
+                    completed = len([d for d in os.listdir(out_dir)
+                                     if os.path.isdir(os.path.join(out_dir, d))
+                                     and os.listdir(os.path.join(out_dir, d))])
+                print(f"Resuming existing session: {state.session_id}")
                 print(f"  Workdir: {existing}")
                 print(f"  Pool: {state.pool_path}")
                 print(f"  Cohorts: {state.cohort_number}")
+                if completed:
+                    print(f"  Completed outputs: {completed} cohort(s)")
+                    print()
+                    print("NOTE: This session has completed outputs. Subsequent")
+                    print("`run` commands will skip cohorts that already have output.")
+                    print("To re-run with code changes, create a NEW session instead:")
+                    print(f"  ./scripts/bakeoff-features init --pool {pool_path}")
+                    print("Then use `bakeoff-features compare <old> <new>` to compare.")
                 print()
                 print("Next: Run `bakeoff-features cohort` to select repos for testing")
                 return 0
+        print("No existing session found. Creating a new one.")
+
+    # Backward compat: --force is now the default behavior, accept silently
+    # (flag kept so existing scripts/docs don't break)
 
     # Create timestamped session directory to prevent artifact overwrites
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -1187,7 +1335,16 @@ def cmd_run(args):
             # Check if already analysed at current code hash
             out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
             if os.path.isdir(out_dir) and os.listdir(out_dir):
-                print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping (delete to re-run)")
+                print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
+                print(f"  To re-run with code changes, create a NEW session:")
+                print(f"    ./scripts/bakeoff-features init --pool {pool_path}")
+                print(f"  Then compare: ./scripts/bakeoff-features compare <old-session> <new-session>")
+                print()
+                print(f"  IMPORTANT NOTE: If you are tempted to DELETE the existing output")
+                print(f"  directory to force a re-run, STOP. You are about to ERASE RESULTS")
+                print(f"  OF A SCIENCE EXPERIMENT. Unless you are REALLY CERTAIN you know what")
+                print(f"  you're doing, create a new session instead. Bakeoff artifacts are DATA,")
+                print(f"  not temp files — they exist for before/after comparison.")
                 continue
             # Temporarily point state at this cohort
             state.cohort_number = cohort_num
@@ -1383,6 +1540,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
             rc2, _, _ = run_cmd(
                 rslice_base_args + [
                     "--exclude-tests",
+                    "--exclude-utility",
                     "--out", os.path.join(repo_out, f"rslice.{i}.prod.json"),
                 ]
             )
@@ -1424,6 +1582,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
         rc, stdout, stderr = run_cmd([
             "hypergumbo", "routes",
             "--input", hg_json,
+            "--exclude-tests",
         ])
         with open(os.path.join(repo_out, "routes.txt"), "w") as f:
             f.write(stdout)
@@ -1500,7 +1659,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         code_nodes = [
             n for n in nodes
             if n.get("kind") in _CODE_NODE_KINDS
-            and not _TEST_PATH_RE.search(n.get("path", ""))
+            and not _is_test_node(n)
         ]
         code_node_ids = {n.get("id") for n in code_nodes}
         connected_nodes = set()
@@ -1553,9 +1712,21 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             metrics.tier3_pct = tier_counts[3] / total_tiered * 100
             metrics.tier4_pct = tier_counts[4] / total_tiered * 100
 
-        # Analyze slice outputs
-        slice_files = [f for f in os.listdir(repo_out) if f.startswith("slice.") and f.endswith(".json")]
+        # Analyze slice outputs (both forward and reverse slices contribute
+        # to avg_slice_nodes).  Library repos often have small forward slices
+        # (entrypoints are utility scripts) but meaningful reverse slices
+        # (tracing callers of core functions).  Exclude .prod.json variants
+        # (production-only filtered copies) and tier-filtered slices.
+        slice_files = [
+            f for f in os.listdir(repo_out)
+            if (f.startswith("slice.") or f.startswith("rslice."))
+            and f.endswith(".json")
+            and ".prod." not in f
+            and ".tier" not in f
+            and f != "rslice_seeds.json"
+        ]
         slice_node_counts = []
+        slice_max_depths = []
         cross_file_edges = 0
         total_slice_edges = 0
         slices_with_limits = 0
@@ -1577,6 +1748,9 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                     limits_hit = feature.get("limits_hit", [])
                     slice_node_counts.append(len(slice_nodes))
                     total_slices += 1
+                    node_depths = feature.get("node_depths", {})
+                    if node_depths:
+                        slice_max_depths.append(max(node_depths.values()))
                     if limits_hit:
                         slices_with_limits += 1
                     if _TRUNCATION_LIMITS & set(limits_hit):
@@ -1599,6 +1773,8 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         if slice_node_counts:
             avg_slice_size = sum(slice_node_counts) / len(slice_node_counts)
             metrics.avg_slice_nodes = avg_slice_size
+        if slice_max_depths:
+            metrics.avg_slice_depth = sum(slice_max_depths) / len(slice_max_depths)
             metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
 
         if total_slices > 0:
@@ -1631,7 +1807,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
 
         verdict_status = "GOOD"
         for metric_name, value in metric_assessments:
-            status, msg = assess_metric(metric_name, value)
+            status, msg = assess_metric(metric_name, value, total_nodes=metrics.total_nodes)
             if status == "FAIL":
                 verdict_status = "FAIL"
                 if msg:
@@ -2290,8 +2466,10 @@ def main():
     p_init = subparsers.add_parser("init", help="Initialize feature bakeoff session")
     p_init.add_argument("--pool", required=True, help="Path to repo pool")
     p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
+    p_init.add_argument("--resume", action="store_true",
+                         help="Resume the most recent existing session instead of creating a new one")
     p_init.add_argument("--force", action="store_true",
-                         help="Create a new session even if one already exists")
+                         help="(deprecated, now default behavior) Create a new session")
 
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort (larger repos)")

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Lean 4 analysis pass using tree-sitter-lean.
 
 This analyzer uses tree-sitter to parse Lean 4 files and extract:
@@ -253,13 +254,23 @@ def _extract_symbols_from_file(
                         if name:
                             add_symbol(child, name, "class")
 
-                elif child.type == "instance":  # pragma: no cover - instance detection
-                    # instance name : ...
+                elif child.type == "instance":
+                    # Named: instance myAdd : Add Nat where ...
+                    # Unnamed: instance : Add Nat where ...
                     id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
                             add_symbol(child, name, "instance")
+                    else:
+                        # Unnamed instance — use typeclass name from apply
+                        apply_node = find_child_by_type(child, "apply")
+                        if apply_node:
+                            tc_id = find_child_by_type(apply_node, "identifier")
+                            if tc_id:
+                                tc_name = node_text(tc_id, source).strip()
+                                if tc_name:
+                                    add_symbol(child, tc_name, "instance")
 
                 elif child.type == "abbrev":  # pragma: no cover - abbrev detection
                     # abbrev name ...
@@ -273,6 +284,15 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _module_name_to_file_path(module_name: str) -> str:
+    """Convert a Lean module name to a relative file path.
+
+    Lean modules use dot-separated names that map to directory structure:
+    ``ArkLib.AGM.Basic`` → ``ArkLib/AGM/Basic.lean``.
+    """
+    return module_name.replace(".", "/") + ".lean"
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -280,14 +300,26 @@ def _extract_edges_from_file(
     file_symbols: list[Symbol],
     resolver: "NameResolver",
     run_id: str,
+    known_file_paths: frozenset[str] = frozenset(),
 ) -> list[Edge]:
     """Extract import edges from a parsed Lean file.
 
     Detects:
     - import: Import statements (import Module.Name)
+
+    When ``known_file_paths`` is provided, intra-repo imports are resolved
+    to file node IDs (``lean:path.lean:1-1:file:file``) instead of module
+    IDs (``lean:Module.Name:0-0:module:module``).  This ensures import
+    edges connect to actual file nodes in the graph, fixing hundreds of
+    dangling edges in repos like ArkLib.
     """
     edges: list[Edge] = []
     file_id = make_file_id("lean", file_path)
+
+    # Track which file paths this file imports so we can filter reference
+    # edges to only symbols reachable through the import chain.  The
+    # current file is always included (same-file references are valid).
+    imported_file_paths: set[str] = {file_path}
 
     for node in iter_tree(tree.root_node):
         # Look for import statements at module level
@@ -300,10 +332,17 @@ def _extract_edges_from_file(
                 # The identifier contains the full dotted path
                 module_name = node_text(id_node, source).strip()
                 if module_name:
-                    module_id = _make_module_id(module_name)
+                    # Resolve to file ID if the target file exists in-repo;
+                    # otherwise keep module ID for external deps.
+                    expected_path = _module_name_to_file_path(module_name)
+                    if expected_path in known_file_paths:
+                        target_id = make_file_id("lean", expected_path)
+                        imported_file_paths.add(expected_path)
+                    else:
+                        target_id = _make_module_id(module_name)
                     edge = Edge.create(
                         src=file_id,
-                        dst=module_id,
+                        dst=target_id,
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         origin=PASS_ID,
@@ -312,6 +351,77 @@ def _extract_edges_from_file(
                         confidence=0.95,
                     )
                     edges.append(edge)
+
+    # Reference edges: scan all declaration types for identifier references
+    # to defined symbols (WI-juviz).  Originally only def/theorem/lemma were
+    # scanned, leaving instance/structure/class/inductive/abbrev symbols as
+    # orphans.  In the clean repo this caused 204 Lean orphans (133 functions,
+    # 26 theorems, 23 instances, 22 structures).
+    _REF_SCAN_TYPES = (
+        "def", "theorem", "lemma",
+        "instance", "structure", "class", "inductive", "abbrev",
+    )
+    seen_ref_pairs: set[tuple[str, str]] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type not in _REF_SCAN_TYPES:
+            continue
+        # Find the declaration name
+        decl_name_node = find_child_by_type(node, "identifier")
+        if not decl_name_node:
+            continue  # pragma: no cover
+        decl_name = _get_identifier_text(decl_name_node, source)
+        if not decl_name:
+            continue  # pragma: no cover
+
+        decl_result = resolver.lookup(decl_name)
+        if not decl_result.symbol:
+            continue  # pragma: no cover
+
+        # Collect both type signature nodes (before :=) and body nodes
+        # (after :=).  Skip the keyword and declaration name.
+        scan_nodes: list = []
+        past_name = False
+        for child in node.children:
+            if child.type == "identifier" and not past_name:
+                past_name = True
+                continue
+            if child.type in ("def", "theorem", "lemma"):
+                continue
+            if past_name:
+                scan_nodes.append(child)
+
+        # Scan all collected nodes for identifier references
+        for scan_node in scan_nodes:
+            for id_node in iter_tree(scan_node):
+                if id_node.type != "identifier":
+                    continue
+                ref_name = node_text(id_node, source).strip()
+                if not ref_name or ref_name == decl_name:
+                    continue  # pragma: no cover — skip self-ref
+
+                ref_result = resolver.lookup(ref_name)
+                if ref_result.symbol:
+                    # Filter by import chain: only create cross-file reference
+                    # edges when the referenced symbol's file is imported by
+                    # this file.  This prevents false positives where a bare
+                    # name like ``pSpec`` resolves to a same-named symbol in
+                    # an unrelated file (ArkLib had 119 such false edges).
+                    ref_path = getattr(ref_result.symbol, "path", "")
+                    if ref_path and ref_path not in imported_file_paths:
+                        continue
+                    pair = (decl_result.symbol.id, ref_result.symbol.id)
+                    if pair not in seen_ref_pairs:
+                        seen_ref_pairs.add(pair)
+                        edge = Edge.create(
+                            src=decl_result.symbol.id,
+                            dst=ref_result.symbol.id,
+                            edge_type="references",
+                            line=id_node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            confidence=0.80,
+                        )
+                        edges.append(edge)
 
     return edges
 
@@ -344,8 +454,20 @@ class LeanAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract import edges from a Lean file."""
+        # Build set of known file paths from global symbols so intra-repo
+        # imports resolve to file node IDs instead of dangling module IDs.
+        # Keyed by run ID to avoid stale data across analyze() calls.
+        run_id = run.execution_id
+        if getattr(self, "_known_paths_run_id", None) != run_id:
+            paths: set[str] = set()
+            for sym in global_symbols.values():
+                if hasattr(sym, "path") and sym.path.endswith(".lean"):
+                    paths.add(sym.path)
+            self._known_lean_paths: frozenset[str] = frozenset(paths)
+            self._known_paths_run_id = run_id
         return _extract_edges_from_file(
             tree, source, rel_path, [], resolver, run.execution_id,
+            known_file_paths=self._known_lean_paths,
         )
 
 

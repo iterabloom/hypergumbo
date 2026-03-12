@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Flask-Appbuilder framework patterns (ADR-0003)
 #
 # Flask-Appbuilder is a rapid application development framework built on Flask.

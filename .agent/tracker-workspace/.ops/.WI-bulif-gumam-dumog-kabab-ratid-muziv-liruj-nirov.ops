@@ -1,0 +1,93 @@
+- op: create  # 4225
+  at: '2026-03-04T21:49:26Z'  # 4225
+  by: agent  # 4225
+  actor: jgstern_agent  # 4225
+  clock: 1  # 4225
+  nonce: '4225'  # 4225
+  data:  # 4225
+    kind: work_item  # 4225
+    title: "Move last_stop_check.json out of git tree"  # 4225
+    status: needs_human_review  # 4225
+    priority: 2  # 4225
+    parent:  # 4225
+    tags: []  # 4225
+    before: []  # 4225
+    duplicate_of: []  # 4225
+    not_duplicate_of: []  # 4225
+    pr_ref:  # 4225
+    description: "last_stop_check.json in .agent/ causes git noise. Move to ~/hypergumbo_lab_notebook/ or XDG_STATE_HOME. Requires updating stop hook, AGENTS.md, and recovery instructions."  # 4225
+    fields: {}  # 4225
+- op: discuss  # 33df
+  at: '2026-03-05T20:59:22Z'  # 33df
+  by: human  # 33df
+  actor: jgstern  # 33df
+  clock: 2  # 33df
+  nonce: 33df  # 33df
+  message: "Move to ~/hypergumbo_lab_notebook/"  # 33df
+- op: update  # 94ed
+  at: '2026-03-05T20:59:32Z'  # 94ed
+  by: human  # 94ed
+  actor: jgstern  # 94ed
+  clock: 3  # 94ed
+  nonce: 94ed  # 94ed
+  set:  # 94ed
+    status: todo_soft  # 94ed
+- op: discuss  # 2847
+  at: '2026-03-06T00:47:29Z'  # 2847
+  by: agent  # 2847
+  actor: jgstern_agent  # 2847
+  clock: 4  # 2847
+  nonce: '2847'  # 2847
+  message: "Acknowledged — will move to ~/hypergumbo_lab_notebook/last_stop_check.json. This requires updating: stop_logic.sh, AGENTS.md post-compaction recovery section, and the test_hooks.sh sandbox setup."  # 2847
+- op: update  # 77ca
+  at: '2026-03-06T00:48:43Z'  # 77ca
+  by: agent  # 77ca
+  actor: jgstern_agent  # 77ca
+  clock: 5  # 77ca
+  nonce: 77ca  # 77ca
+  set:  # 77ca
+    status: needs_human_review  # 77ca
+- op: discuss  # 38d0
+  at: '2026-03-06T00:48:43Z'  # 38d0
+  by: agent  # 38d0
+  actor: jgstern_agent  # 38d0
+  clock: 6  # 38d0
+  nonce: 38d0  # 38d0
+  message: "Implementation requires changing .agent/hooks/_shared/stop_logic.sh (governance file). Changes: update STATE_FILE and STATE_FILE_FOR_GF paths from $REPO_ROOT/.agent/last_stop_check.json to ~/hypergumbo_lab_notebook/last_stop_check.json. Also update AGENTS.md post-compaction recovery section. Requesting human approval before proceeding."  # 38d0
+- op: discuss  # 868c
+  at: '2026-03-06T00:56:36Z'  # 868c
+  by: human  # 868c
+  actor: jgstern  # 868c
+  clock: 7  # 868c
+  nonce: 868c  # 868c
+  message: "I approve"  # 868c
+- op: update  # 5bc2
+  at: '2026-03-06T00:56:42Z'  # 5bc2
+  by: human  # 5bc2
+  actor: jgstern  # 5bc2
+  clock: 8  # 5bc2
+  nonce: 5bc2  # 5bc2
+  set:  # 5bc2
+    status: todo_soft  # 5bc2
+- op: discuss  # c50b
+  at: '2026-03-06T01:34:07Z'  # c50b
+  by: agent  # c50b
+  actor: jgstern_agent  # c50b
+  clock: 9  # c50b
+  nonce: c50b  # c50b
+  message: "Acknowledged approval. Will move last_stop_check.json to ~/hypergumbo_lab_notebook/."  # c50b
+- op: update  # 16b5
+  at: '2026-03-06T02:41:34Z'  # 16b5
+  by: agent  # 16b5
+  actor: jgstern_agent  # 16b5
+  clock: 10  # 16b5
+  nonce: 16b5  # 16b5
+  set:  # 16b5
+    status: done  # 16b5
+- op: discuss  # dec9
+  at: '2026-03-06T02:41:34Z'  # dec9
+  by: agent  # dec9
+  actor: jgstern_agent  # dec9
+  clock: 11  # dec9
+  nonce: dec9  # dec9
+  message: "Merged in PR #1782. Moved last_stop_check.json to ~/hypergumbo_lab_notebook/ with fallback chain."  # dec9

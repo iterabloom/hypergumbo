@@ -1,0 +1,41 @@
+- op: create  # 2006
+  at: '2026-03-06T11:35:07Z'  # 2006
+  by: agent  # 2006
+  actor: jgstern_agent  # 2006
+  clock: 1  # 2006
+  nonce: '2006'  # 2006
+  data:  # 2006
+    kind: work_item  # 2006
+    title: "JS nodes lose tier classification in compact mode (hg.4k.json)"  # 2006
+    status: todo_soft  # 2006
+    priority: 3  # 2006
+    parent:  # 2006
+    tags: []  # 2006
+    before: []  # 2006
+    duplicate_of: []  # 2006
+    not_duplicate_of: []  # 2006
+    pr_ref:  # 2006
+    description: ""  # 2006
+    fields: {}  # 2006
+- op: discuss  # e42b
+  at: '2026-03-06T11:35:12Z'  # e42b
+  by: agent  # e42b
+  actor: jgstern_agent  # e42b
+  clock: 2  # e42b
+  nonce: e42b  # e42b
+  message: "First-party src/ files become external_symbol tier=3 in compact view while full hg.json shows tier=1. Found in deep bakeoff extensions repo. The compactor likely creates simplified nodes that don't inherit supply_chain tier from the original full nodes."  # e42b
+- op: update  # cf8e
+  at: '2026-03-06T12:15:38Z'  # cf8e
+  by: agent  # cf8e
+  actor: jgstern_agent  # cf8e
+  clock: 3  # cf8e
+  nonce: cf8e  # cf8e
+  set:  # cf8e
+    status: done  # cf8e
+- op: discuss  # 1baf
+  at: '2026-03-06T12:15:39Z'  # 1baf
+  by: agent  # 1baf
+  actor: jgstern_agent  # 1baf
+  clock: 4  # 1baf
+  nonce: 1baf  # 1baf
+  message: "Fixed in PR #1846. Root cause: format_tiered_behavior_map received unfiltered all_symbols including boundary nodes. When no high-confidence entrypoints existed, boundary nodes dominated connectivity selection. Fix adds external_boundary check to eligible_symbols filter."  # 1baf

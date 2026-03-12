@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for hypergumbo.analyze.base module.
 
 Tests the shared infrastructure used by all tree-sitter analyzers:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for JavaScript/TypeScript analyzer."""
 import pytest
 from pathlib import Path
@@ -892,9 +893,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "greet"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "greet"
 
     def test_extract_symbols_class_declaration(self) -> None:
         """Tests extraction of class declarations."""
@@ -919,9 +920,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "User"
-        assert symbols[0].kind == "class"
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0].name == "User"
 
     def test_extract_class_with_methods_builds_registry(self) -> None:
         """Tests that method registry is built correctly for cross-file resolution."""
@@ -954,8 +955,8 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        # Should have class + method
-        assert len(symbols) == 2
+        # Should have module + class + method
+        assert len(symbols) == 3
         class_symbols = [s for s in symbols if s.kind == "class"]
         method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(class_symbols) == 1
@@ -994,9 +995,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "add"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "add"
 
     def test_extract_arrow_function_with_body(self) -> None:
         """Tests extraction of arrow functions with nested calls."""
@@ -1303,9 +1304,9 @@ class TestMockedTreeSitter:
             tree, source, Path("app.js"), "javascript", run
         )
 
-        assert len(symbols) == 1
-        assert symbols[0].name == "handler"
-        assert symbols[0].kind == "function"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert len(func_symbols) == 1
+        assert func_symbols[0].name == "handler"
 
     def test_analyze_with_parse_errors(self, tmp_path: Path) -> None:
         """Continues analysis even with parse errors."""
@@ -1864,6 +1865,52 @@ function handler(unknown) {
         assert len(inferred_calls) <= 1
         if inferred_calls:
             assert "create" in inferred_calls[0].dst
+
+    def test_builtin_methods_not_resolved_to_user_classes(self, tmp_path: Path) -> None:
+        """Built-in method names (get, set, forEach, push, etc.) should not
+        resolve to user-defined class methods via the fallback path.
+
+        Without this blocklist, `myArray.forEach(cb)` would create a false
+        edge to `TTLMap.forEach` if TTLMap is the only class defining forEach.
+        This inflates TTLMap's in-degree and corrupts centrality rankings.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+class TTLMap {
+    get(key) { return this.data[key]; }
+    set(key, val) { this.data[key] = val; }
+    has(key) { return key in this.data; }
+    forEach(cb) { Object.keys(this.data).forEach(cb); }
+    delete(key) { delete this.data[key]; }
+}
+
+function processItems(items, cache) {
+    items.forEach(item => {
+        if (cache.has(item.id)) {
+            const val = cache.get(item.id);
+            cache.set(item.id, val + 1);
+        }
+        items.push(item);
+    });
+    cache.delete("expired");
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_calls = [
+            e for e in call_edges if e.evidence_type == "ast_method_inferred"
+        ]
+        # Built-in methods should NOT create edges to TTLMap
+        ttlmap_edges = [e for e in inferred_calls if "TTLMap" in e.dst]
+        assert len(ttlmap_edges) == 0, (
+            f"Built-in method calls should not resolve to TTLMap, "
+            f"found {len(ttlmap_edges)} edges: "
+            f"{[e.dst for e in ttlmap_edges]}"
+        )
 
     def test_new_class_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
@@ -2728,6 +2775,39 @@ function main() {
             f"Call should be attributed to main function, got sources: {[e.src for e in helper_calls]}"
 
 
+    def test_app_get_without_string_path_not_route(self, tmp_path: Path) -> None:
+        """app.get(AppService) is NestJS DI lookup, not route registration.
+
+        When app.get() has no string path argument, it's not an Express route
+        registration. NestJS uses app.get(ServiceClass) for dependency injection.
+        These should NOT create route symbols or UsageContexts.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        js_file = tmp_path / "app.spec.ts"
+        js_file.write_text("""
+const app = await NestFactory.create(AppModule);
+const appService = app.get(AppService);
+const tokenService = app.get(DYNAMIC_TOKEN);
+
+// This IS a real route (has string path)
+app.get('/health', (req, res) => res.send('ok'));
+""")
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_funcs = [s for s in result.symbols if s.meta and s.meta.get("route_path")]
+
+        # Only /health should be detected, not AppService or DYNAMIC_TOKEN
+        route_names = {s.name for s in routes}
+        assert "AppService" not in route_names
+        assert "DYNAMIC_TOKEN" not in route_names
+
+        # The /health route should still work
+        all_route_paths = {s.meta.get("route_path") for s in route_funcs}
+        assert "/health" in all_route_paths
+
+
 # ============================================================================
 # NestJS Route Detection Tests
 # ============================================================================
@@ -2993,11 +3073,11 @@ class UsersService {
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
-        # No controller, just method path (no prefix_from_parent combination)
+        # No controller, method path normalized with leading slash
         concepts = handler.meta.get("concepts", [])
         route_concept = next((c for c in concepts if c.get("concept") == "route"), None)
         assert route_concept is not None
-        assert route_concept["path"] == "users"
+        assert route_concept["path"] == "/users"
 
     def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
         """Non-exported class with @Controller - decorator as child of class_declaration."""
@@ -5761,6 +5841,127 @@ class MyComponent extends React.Component {
         )
 
 
+class TestAbstractClassDeclaration:
+    """Tests for TypeScript abstract class support.
+
+    TypeScript abstract classes produce ``abstract_class_declaration`` in tree-sitter,
+    which is a different node type than ``class_declaration``. The analyzer must handle
+    both to extract symbols, methods, and inheritance edges from abstract classes.
+    """
+
+    def test_abstract_class_extracted_as_symbol(self, tmp_path: Path) -> None:
+        """Abstract class should be extracted as a class symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "track.ts").write_text(
+            "export default abstract class LocalTrack<\n"
+            "  TrackKind extends string = string,\n"
+            "> {\n"
+            "    protected sender: any;\n"
+            "    abstract restart(): Promise<void>;\n"
+            "    stop() { console.log('stop'); }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+        names = [s.name for s in classes]
+        assert "LocalTrack" in names, (
+            f"Abstract class LocalTrack not found in symbols. Classes: {names}"
+        )
+
+    def test_abstract_class_methods_qualified(self, tmp_path: Path) -> None:
+        """Methods inside abstract classes should have qualified names."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "base.ts").write_text(
+            "abstract class BaseHandler {\n"
+            "    abstract process(data: any): void;\n"
+            "    log(msg: string) { console.log(msg); }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "BaseHandler.log" in method_names, (
+            f"Method log inside abstract class should be qualified as "
+            f"BaseHandler.log, got: {method_names}"
+        )
+
+    def test_abstract_class_extends_creates_edge(self, tmp_path: Path) -> None:
+        """Concrete class extending abstract class should create extends edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "base.ts").write_text(
+            "export abstract class Track {\n"
+            "    stop() {}\n"
+            "}\n"
+        )
+        (tmp_path / "local.ts").write_text(
+            "import { Track } from './base';\n"
+            "\n"
+            "export class LocalTrack extends Track {\n"
+            "    start() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        local_extends = [e for e in extends_edges if "LocalTrack" in e.src]
+        assert len(local_extends) == 1, (
+            f"Expected 1 extends edge from LocalTrack, got {len(local_extends)}: "
+            f"{[(e.src, e.dst) for e in extends_edges]}"
+        )
+        assert "Track" in local_extends[0].dst
+
+    def test_abstract_class_exported_detected(self, tmp_path: Path) -> None:
+        """Export of abstract class should be tracked."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "widget.ts").write_text(
+            "export abstract class Widget {\n"
+            "    abstract render(): void;\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class" and s.name == "Widget"]
+        assert len(classes) == 1
+
+    def test_parenthesized_extends_expression(self, tmp_path: Path) -> None:
+        """Class extending a parenthesized cast expression should extract base class.
+
+        Pattern: class Room extends (EventEmitter as new () => TypedEmitter<Callbacks>) {}
+        Should extract EventEmitter as the base class.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "emitter.ts").write_text(
+            "export class EventEmitter {\n"
+            "    emit(event: string) {}\n"
+            "}\n"
+        )
+        (tmp_path / "room.ts").write_text(
+            "import { EventEmitter } from './emitter';\n"
+            "\n"
+            "interface RoomCallbacks { connected: () => void; }\n"
+            "type TypedEmitter<T> = EventEmitter;\n"
+            "\n"
+            "class Room extends (EventEmitter as new () => TypedEmitter<RoomCallbacks>) {\n"
+            "    connect() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        room = next((s for s in result.symbols if s.name == "Room" and s.kind == "class"), None)
+        assert room is not None
+        base_classes = room.meta.get("base_classes", []) if room.meta else []
+        assert any("EventEmitter" in b for b in base_classes), (
+            f"Room should have EventEmitter as base class, got: {base_classes}"
+        )
+
+
 class TestJsTsAmbiguousMethodGuard:
     """Tests for AMB-METHOD invariant in JavaScript/TypeScript.
 
@@ -6948,3 +7149,630 @@ class TestNormalizeJstsSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
         assert normalize_jsts_signature(None) is None
+
+
+class TestJsTsTopLevelCallEdges:
+    """Top-level code (outside any function) should produce call edges
+    attributed to a <module:filename> symbol (INV-jahom)."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_module_symbol_created(self, tmp_path: Path) -> None:
+        """Every JS file gets a <module:filename> symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("const x = 1;\n")
+        result = analyze_javascript(tmp_path)
+
+        mod_syms = [s for s in result.symbols if s.kind == "module"]
+        assert len(mod_syms) == 1
+        assert mod_syms[0].name == "<module:index.js>"
+
+    def test_toplevel_direct_call_produces_edge(self, tmp_path: Path) -> None:
+        """A top-level call like `helper()` should create a calls edge
+        from <module:main.js> to helper."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "helper.js").write_text("function helper() { return 1; }\n")
+        (tmp_path / "main.js").write_text(
+            "const helper = require('./helper');\nhelper();\n"
+        )
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The top-level call helper() in main.js should produce an edge
+        # from <module:main.js> → helper
+        module_call_edges = [
+            e for e in call_edges
+            if "<module:main.js>" in e.src
+        ]
+        assert len(module_call_edges) >= 1
+        assert any("helper" in e.dst for e in module_call_edges)
+
+    def test_toplevel_method_call_produces_edge(self, tmp_path: Path) -> None:
+        """Top-level method call like `app.listen(3000)` should be attributed
+        to the module symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+class Server {
+  listen(port) { return port; }
+}
+const app = new Server();
+app.listen(3000);
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        # The new Server() instantiation at top-level should be attributed
+        # to <module:app.js>
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        module_inst = [e for e in inst_edges if "<module:app.js>" in e.src]
+        assert len(module_inst) >= 1
+
+    def test_toplevel_new_expression_produces_edge(self, tmp_path: Path) -> None:
+        """Top-level `new Foo()` should produce an instantiates edge
+        from the module symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = "class Foo {}\nconst f = new Foo();\n"
+        (tmp_path / "index.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        module_inst = [e for e in inst_edges if "<module:index.js>" in e.src]
+        assert len(module_inst) == 1
+
+    def test_call_inside_function_still_uses_function(self, tmp_path: Path) -> None:
+        """Calls inside a named function should still be attributed to that
+        function, not the module symbol (regression check)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+function helper() { return 1; }
+function main() { helper(); }
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The call should be from main → helper, NOT from <module:app.js>
+        main_calls = [e for e in call_edges if "main" in e.src and "module" not in e.src]
+        assert len(main_calls) >= 1
+        module_calls = [e for e in call_edges if "<module:app.js>" in e.src]
+        assert len(module_calls) == 0
+
+    def test_esm_toplevel_call(self, tmp_path: Path) -> None:
+        """ESM-style top-level call with import should produce a call edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "export function setup() { return true; }\n"
+        )
+        (tmp_path / "index.js").write_text(
+            "import { setup } from './utils.js';\nsetup();\n"
+        )
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        module_calls = [
+            e for e in call_edges if "<module:index.js>" in e.src
+        ]
+        assert len(module_calls) >= 1
+        assert any("setup" in e.dst for e in module_calls)
+
+
+class TestMpegTsBinarySkip:
+    """Binary .ts files (MPEG Transport Stream) must not be parsed as TypeScript."""
+
+    def test_binary_ts_file_skipped(self, tmp_path: Path) -> None:
+        """A .ts file containing binary data (MPEG-TS) produces no symbols."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # MPEG-TS sync byte is 0x47, packets are 188 bytes
+        mpeg_ts_data = b"\x47" + b"\x00" * 187  # one TS packet
+        mpeg_ts_data *= 10  # 10 packets
+        (tmp_path / "video.ts").write_bytes(mpeg_ts_data)
+
+        # Also add a real TypeScript file to confirm it still works
+        (tmp_path / "app.ts").write_text("const x: number = 1;\n")
+
+        result = analyze_javascript(tmp_path)
+
+        # The binary .ts file should not produce any symbols
+        ts_symbols = [s for s in result.symbols if "video.ts" in s.path]
+        assert len(ts_symbols) == 0, (
+            f"Binary MPEG-TS file should not produce symbols, got: {ts_symbols}"
+        )
+
+        # The real TypeScript file should still be analyzed
+        real_ts = [s for s in result.symbols if "app.ts" in s.path]
+        assert len(real_ts) >= 1
+
+
+# ============================================================================
+# React Router JSX Route Detection
+# ============================================================================
+
+
+class TestReactRouterJSXRouteDetection:
+    """Tests for React Router <Route> JSX element detection.
+
+    React Router uses JSX elements to define client-side routes:
+    - <Route path="/users" element={<Users />} />
+    - <Route path="/about" component={About} />
+    - <Route path="/">...</Route>
+
+    These should be detected as route symbols and appear in routes.txt.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _skip_no_ts(self) -> None:
+        """Skip if tree-sitter is not available."""
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_self_closing_route_with_element(self, tmp_path: Path) -> None:
+        """<Route path="/users" element={<Users />} /> creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/users" element={<Users />} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/users"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta.get("handler_ref") == "Users"
+
+    def test_self_closing_route_with_component(self, tmp_path: Path) -> None:
+        """<Route path="/about" component={About} /> creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/about" component={About} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/about"
+        assert route.meta.get("handler_ref") == "About"
+
+    def test_route_element_with_children(self, tmp_path: Path) -> None:
+        """<Route path="/home">...</Route> (non-self-closing) creates a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/home">\n'
+            "      <Home />\n"
+            "    </Route>\n"
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/home"
+
+    def test_multiple_routes(self, tmp_path: Path) -> None:
+        """Multiple <Route> elements each create a route symbol."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route, Routes } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            "    <Routes>\n"
+            '      <Route path="/" element={<Home />} />\n'
+            '      <Route path="/users" element={<Users />} />\n'
+            '      <Route path="/settings" element={<Settings />} />\n'
+            "    </Routes>\n"
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 3
+
+        paths = {r.meta["route_path"] for r in routes if r.meta}
+        assert "/" in paths
+        assert "/users" in paths
+        assert "/settings" in paths
+
+    def test_route_without_path_ignored(self, tmp_path: Path) -> None:
+        """<Route element={<Layout />} /> without path is not a route."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "function App() {\n"
+            "  return <Route element={<Layout />} />;\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+    def test_member_expression_route_tag(self, tmp_path: Path) -> None:
+        """<ReactRouter.Route path="/x" /> (member expression tag) creates a route."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.jsx").write_text(
+            'import * as ReactRouter from "react-router-dom";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <ReactRouter.Route path="/dashboard" element={<Dashboard />} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = routes[0]
+        assert route.meta is not None
+        assert route.meta["route_path"] == "/dashboard"
+
+    def test_non_route_jsx_ignored(self, tmp_path: Path) -> None:
+        """Non-Route JSX elements are not detected as routes."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            "function App() {\n"
+            '  return <div className="app"><Header /><Footer /></div>;\n'
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+
+class TestSpaBootstrapUsageContext:
+    """Tests for SPA bootstrap call detection via UsageContext.
+
+    React (and similar SPA frameworks) bootstrap applications through
+    module-level calls like createRoot(), ReactDOM.render(), hydrateRoot().
+    These calls should emit UsageContext records with kind="call" so that
+    react.yaml usage patterns can assign the app_bootstrap concept to the
+    module symbol, enabling SPA_BOOTSTRAP entrypoint detection.
+    """
+
+    def test_create_root_react18(self, tmp_path: Path) -> None:
+        """React 18 createRoot() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import { createRoot } from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "const root = createRoot(document.getElementById('root')!);\n"
+            "root.render(<App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "createRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        ctx = bootstrap_ctx[0]
+        assert ctx.context_name == "createRoot"
+        # symbol_ref should point to the module symbol
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert ctx.symbol_ref == module_sym.id
+
+    def test_reactdom_render_react17(self, tmp_path: Path) -> None:
+        """React 17 ReactDOM.render() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.jsx").write_text(
+            "import React from 'react';\n"
+            "import ReactDOM from 'react-dom';\n"
+            "import App from './App';\n"
+            "\n"
+            "ReactDOM.render(<App />, document.getElementById('root'));\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "ReactDOM.render" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        ctx = bootstrap_ctx[0]
+        assert ctx.context_name == "ReactDOM.render"
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert ctx.symbol_ref == module_sym.id
+
+    def test_hydrate_root_ssr(self, tmp_path: Path) -> None:
+        """hydrateRoot() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "entry-client.tsx").write_text(
+            "import { hydrateRoot } from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "hydrateRoot(document.getElementById('root')!, <App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "hydrateRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        assert bootstrap_ctx[0].context_name == "hydrateRoot"
+
+    def test_create_browser_router(self, tmp_path: Path) -> None:
+        """createBrowserRouter() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import { createBrowserRouter, RouterProvider } from 'react-router-dom';\n"
+            "import { createRoot } from 'react-dom/client';\n"
+            "\n"
+            "const router = createBrowserRouter([{ path: '/', element: <Home /> }]);\n"
+            "const root = createRoot(document.getElementById('root')!);\n"
+            "root.render(<RouterProvider router={router} />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_names = {
+            c.context_name for c in result.usage_contexts
+            if c.kind == "call" and c.context_name in (
+                "createRoot", "createBrowserRouter"
+            )
+        }
+        assert "createRoot" in bootstrap_names
+        assert "createBrowserRouter" in bootstrap_names
+
+    def test_no_bootstrap_for_non_spa_calls(self, tmp_path: Path) -> None:
+        """Regular function calls should NOT produce bootstrap UsageContexts."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "const result = doSomething();\n"
+            "console.log(result);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name in (
+                "createRoot", "ReactDOM.render", "hydrateRoot",
+                "createBrowserRouter",
+            )
+        ]
+        assert len(bootstrap_ctx) == 0
+
+    def test_reactdom_createroot_qualified(self, tmp_path: Path) -> None:
+        """ReactDOM.createRoot() (qualified form) emits a bootstrap context."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.tsx").write_text(
+            "import ReactDOM from 'react-dom/client';\n"
+            "import App from './App';\n"
+            "\n"
+            "const root = ReactDOM.createRoot(document.getElementById('root')!);\n"
+            "root.render(<App />);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and "createRoot" in c.context_name
+        ]
+        assert len(bootstrap_ctx) == 1
+        assert bootstrap_ctx[0].context_name == "ReactDOM.createRoot"
+
+    def test_electron_app_when_ready(self, tmp_path: Path) -> None:
+        """Electron app.whenReady() emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text(
+            "const { app, BrowserWindow } = require('electron');\n"
+            "\n"
+            "app.whenReady().then(() => {\n"
+            "  const win = new BrowserWindow({ width: 800, height: 600 });\n"
+            "  win.loadFile('index.html');\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "app.whenReady"
+        ]
+        assert len(bootstrap_ctx) == 1
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        assert bootstrap_ctx[0].symbol_ref == module_sym.id
+
+    def test_electron_app_on_ready(self, tmp_path: Path) -> None:
+        """Electron app.on('ready') emits a bootstrap UsageContext."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.ts").write_text(
+            "import { app } from 'electron';\n"
+            "\n"
+            "app.on('ready', () => {\n"
+            "  console.log('App is ready');\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bootstrap_ctx = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "app.on"
+        ]
+        assert len(bootstrap_ctx) == 1
+
+
+class TestTypeReferenceEdges:
+    """Tests for TypeScript type-level reference edges."""
+
+    def test_type_alias_references_other_type(self, tmp_path: Path) -> None:
+        """Type alias body creates type_ref edges to referenced types."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+  name: string;
+}
+
+type UserList = User[];
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # UserList should reference User
+        assert any(
+            "UserList" in e.src and "User" in e.dst
+            for e in type_ref_edges
+        ), f"Expected type_ref from UserList to User, got: {type_ref_edges}"
+
+    def test_type_alias_references_multiple_types(self, tmp_path: Path) -> None:
+        """Type alias with intersection/union references multiple types."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface Serializable {
+  serialize(): string;
+}
+
+interface Loggable {
+  log(): void;
+}
+
+type Combined = Serializable & Loggable;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # Combined should reference both Serializable and Loggable
+        combined_refs = [e for e in type_ref_edges if "Combined" in e.src]
+        ref_dsts = {e.dst for e in combined_refs}
+        assert any("Serializable" in d for d in ref_dsts), (
+            f"Expected Combined -> Serializable, got dst: {ref_dsts}"
+        )
+        assert any("Loggable" in d for d in ref_dsts), (
+            f"Expected Combined -> Loggable, got dst: {ref_dsts}"
+        )
+
+    def test_interface_method_return_type_ref(self, tmp_path: Path) -> None:
+        """Interface method return type creates type_ref to the return type."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+  name: string;
+}
+
+interface UserService {
+  getUser(id: string): User;
+  listUsers(): User[];
+}
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # UserService should reference User (from method signatures)
+        service_refs = [e for e in type_ref_edges if "UserService" in e.src]
+        assert any(
+            "User" in e.dst for e in service_refs
+        ), f"Expected UserService -> User type_ref, got: {service_refs}"
+
+    def test_no_type_ref_to_builtin_types(self, tmp_path: Path) -> None:
+        """Does not create type_ref edges to built-in types like string, number."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+type Name = string;
+type Count = number;
+type Flag = boolean;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # No edges to built-in types
+        assert len(type_ref_edges) == 0, (
+            f"Expected no type_ref edges to builtins, got: {type_ref_edges}"
+        )
+
+    def test_type_alias_self_ref_and_dedup(self, tmp_path: Path) -> None:
+        """Self-referential type and duplicate refs don't create redundant edges."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface Node {
+  value: string;
+}
+
+type TreeNode = Node & { children: TreeNode[] };
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        # TreeNode references Node (not itself)
+        tree_refs = [e for e in type_ref_edges if "TreeNode" in e.src]
+        assert len(tree_refs) == 1, (
+            f"Expected exactly 1 type_ref from TreeNode (to Node), got: {tree_refs}"
+        )
+        assert "Node" in tree_refs[0].dst
+
+    def test_type_ref_edge_confidence(self, tmp_path: Path) -> None:
+        """Type reference edges have appropriate confidence."""
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """\
+interface User {
+  id: string;
+}
+
+type UserOrNull = User | null;
+"""
+        (tmp_path / "types.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        for edge in type_ref_edges:
+            assert edge.confidence == 0.85, (
+                f"Expected confidence 0.85, got {edge.confidence}"
+            )

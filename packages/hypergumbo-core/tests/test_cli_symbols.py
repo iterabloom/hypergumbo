@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo symbols command."""
 import json
 from pathlib import Path
@@ -1447,3 +1448,156 @@ def test_main_with_symbols(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "main" in out
+
+
+def test_cmd_symbols_low_confidence_edges_excluded_from_ranking(
+    tmp_path: Path, capsys,
+) -> None:
+    """Low-confidence edges should not inflate ranking.
+
+    Reproduces the memSeries.labels bug: a symbol with 50 low-confidence
+    (0.49) in-edges was ranked #1 despite having negligible real
+    connectivity.  The ranking pipeline must filter low-confidence edges
+    just like the display pipeline does.
+
+    Setup:
+    - ``FalsePositive``: 50 low-confidence (0.49) in-edges, 2 out
+      (non-trivial body so trivial-sink dampening doesn't mask the bug)
+    - ``RealHub``: 10 high-confidence (0.9) in-edges, 5 out
+    RealHub should outrank FalsePositive.
+    """
+    nodes = [
+        {
+            "id": "go:src/fp.go:1-100:FalsePositive:method",
+            "name": "FalsePositive",
+            "kind": "method",
+            "language": "go",
+            "path": "src/fp.go",
+            "span": {"start_line": 1, "end_line": 100, "start_col": 0, "end_col": 10},
+        },
+        {
+            "id": "go:src/hub.go:1-50:RealHub:function",
+            "name": "RealHub",
+            "kind": "function",
+            "language": "go",
+            "path": "src/hub.go",
+            "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 10},
+        },
+    ]
+    edges = []
+    edge_id = 1
+
+    # 50 low-confidence callers -> FalsePositive (name collision artifacts)
+    for i in range(50):
+        caller_id = f"go:src/lc{i}.go:1-5:lc_caller{i}:function"
+        nodes.append({
+            "id": caller_id,
+            "name": f"lc_caller{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"src/lc{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        })
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": caller_id,
+            "dst": "go:src/fp.go:1-100:FalsePositive:method",
+            "type": "calls",
+            "line": 3,
+            "confidence": 0.49,
+        })
+        edge_id += 1
+
+    # Give FalsePositive 2 out-edges so it's not a pure sink
+    for i in range(2):
+        out_id = f"go:src/fpout{i}.go:1-5:fp_target{i}:function"
+        nodes.append({
+            "id": out_id,
+            "name": f"fp_target{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"src/fpout{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        })
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": "go:src/fp.go:1-100:FalsePositive:method",
+            "dst": out_id,
+            "type": "calls",
+            "line": 50,
+            "confidence": 0.9,
+        })
+        edge_id += 1
+
+    # 10 high-confidence callers -> RealHub + 5 outgoing from RealHub
+    for i in range(10):
+        caller_id = f"go:src/hc{i}.go:1-5:hc_caller{i}:function"
+        nodes.append({
+            "id": caller_id,
+            "name": f"hc_caller{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"src/hc{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        })
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": caller_id,
+            "dst": "go:src/hub.go:1-50:RealHub:function",
+            "type": "calls",
+            "line": 3,
+            "confidence": 0.9,
+        })
+        edge_id += 1
+
+    for i in range(5):
+        target_id = f"go:src/tgt{i}.go:1-5:target{i}:function"
+        nodes.append({
+            "id": target_id,
+            "name": f"target{i}",
+            "kind": "function",
+            "language": "go",
+            "path": f"src/tgt{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        })
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": "go:src/hub.go:1-50:RealHub:function",
+            "dst": target_id,
+            "type": "calls",
+            "line": 10,
+            "confidence": 0.9,
+        })
+        edge_id += 1
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    hub_pos = out.find("RealHub")
+    fp_pos = out.find("FalsePositive")
+    assert hub_pos != -1, "RealHub should appear in output"
+    assert fp_pos != -1, "FalsePositive should appear in output"
+    assert hub_pos < fp_pos, (
+        "RealHub (10 high-confidence in-edges) should rank above "
+        "FalsePositive (50 low-confidence in-edges). "
+        "Ranking must filter low-confidence edges (conf < 0.5)."
+    )

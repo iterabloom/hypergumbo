@@ -1,0 +1,36 @@
+- op: create  # 76f4
+  at: '2026-03-09T06:19:46Z'  # 76f4
+  by: agent  # 76f4
+  actor: jgstern_agent  # 76f4
+  clock: 1  # 76f4
+  nonce: 76f4  # 76f4
+  data:  # 76f4
+    kind: invariant  # 76f4
+    title: "MPEG-TS .ts file misdetection: binary .ts test data files parsed as TypeScript"  # 76f4
+    status: violated  # 76f4
+    priority: 3  # 76f4
+    parent:  # 76f4
+    tags: []  # 76f4
+    before: []  # 76f4
+    duplicate_of: []  # 76f4
+    not_duplicate_of: []  # 76f4
+    pr_ref:  # 76f4
+    description: ""  # 76f4
+    fields:  # 76f4
+      statement: "Files with .ts extension must be validated as actual TypeScript before parsing; binary MPEG Transport Stream test data with .ts extension should be skipped"  # 76f4
+      root_cause: "JS/TS file discovery uses *.ts glob without checking file content; MPEG-TS files have .ts extension and are in testdata directories"  # 76f4
+- op: update  # b679
+  at: '2026-03-09T06:35:26Z'  # b679
+  by: agent  # b679
+  actor: jgstern_agent  # b679
+  clock: 2  # b679
+  nonce: b679  # b679
+  set:  # b679
+    status: holding  # b679
+- op: discuss  # 1aa4
+  at: '2026-03-09T06:35:26Z'  # 1aa4
+  by: agent  # 1aa4
+  actor: jgstern_agent  # 1aa4
+  clock: 3  # 1aa4
+  nonce: 1aa4  # 1aa4
+  message: "Fixed in PR #2057. Binary .ts files (null bytes in first 8KB) are now skipped by the JS/TS analyzer. Uses the same heuristic as git for binary detection."  # 1aa4

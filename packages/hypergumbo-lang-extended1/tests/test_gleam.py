@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Gleam analyzer.
 
 Tests for the tree-sitter-based Gleam analyzer, verifying symbol extraction,

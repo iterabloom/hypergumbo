@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Starlark (Bazel/Buck) analysis pass using tree-sitter.
 
 Detects:
@@ -219,8 +220,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         # Create import edges for direct imports
         for sym in loaded_symbols:
             ctx.edges.append(
-                Edge(
-                    id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                Edge.create(
                     src=ctx.file_stable_id,
                     dst=f"starlark:{source_file}:{sym}",
                     edge_type="imports",
@@ -234,8 +234,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         # Create import edges for aliased imports and track aliases
         for alias, original_name in aliased_symbols:
             ctx.edges.append(
-                Edge(
-                    id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                Edge.create(
                     src=ctx.file_stable_id,
                     dst=f"starlark:{source_file}:{original_name}",
                     edge_type="imports",
@@ -294,8 +293,7 @@ def _process_target(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
         for dep in deps_list:
             # Deps can be ":name" (same package), "//pkg:name", "@repo//pkg:name"
             ctx.edges.append(
-                Edge(
-                    id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                Edge.create(
                     src=sym.id,
                     dst=f"starlark:{ctx.rel_path}:{dep}",
                     edge_type="depends_on",
@@ -410,8 +408,7 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                         dst_id = f"starlark:external:{target_name}:function"
                         confidence = 0.70
 
-                    ctx.edges.append(Edge(
-                        id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
+                    ctx.edges.append(Edge.create(
                         src=caller.id,
                         dst=dst_id,
                         edge_type="calls",

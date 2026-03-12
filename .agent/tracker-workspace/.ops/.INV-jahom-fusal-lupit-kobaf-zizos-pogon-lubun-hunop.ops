@@ -1,0 +1,36 @@
+- op: create  # e0a3
+  at: '2026-03-08T03:22:07Z'  # e0a3
+  by: agent  # e0a3
+  actor: jgstern_agent  # e0a3
+  clock: 1  # e0a3
+  nonce: e0a3  # e0a3
+  data:  # e0a3
+    kind: invariant  # e0a3
+    title: "JS/TS analyzer drops all top-level call edges"  # e0a3
+    status: violated  # e0a3
+    priority: 2  # e0a3
+    parent:  # e0a3
+    tags: []  # e0a3
+    before: []  # e0a3
+    duplicate_of: []  # e0a3
+    not_duplicate_of: []  # e0a3
+    pr_ref:  # e0a3
+    description: ""  # e0a3
+    fields:  # e0a3
+      statement: "Every function call in analyzed source code must produce a call edge regardless of whether the call occurs inside a named function or at module top-level"  # e0a3
+      root_cause: "_get_enclosing_function() gatekeeper in js_ts.py returns None for top-level calls, and all call edge creation is gated on this returning a non-None value"  # e0a3
+- op: update  # b991
+  at: '2026-03-08T03:48:23Z'  # b991
+  by: agent  # b991
+  actor: jgstern_agent  # b991
+  clock: 2  # b991
+  nonce: b991  # b991
+  set:  # b991
+    status: holding  # b991
+- op: discuss  # dadd
+  at: '2026-03-08T03:48:23Z'  # dadd
+  by: agent  # dadd
+  actor: jgstern_agent  # dadd
+  clock: 3  # dadd
+  nonce: dadd  # dadd
+  message: "Fixed in PR #1992. Root cause: _get_enclosing_function() returns None for top-level code, gating all call edge creation. Fix: create <module:filename> symbol and use as fallback at all 6 call sites in _extract_edges()."  # dadd

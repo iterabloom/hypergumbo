@@ -1,0 +1,49 @@
+- op: create  # bb1b
+  at: '2026-03-07T19:06:17Z'  # bb1b
+  by: agent  # bb1b
+  actor: jgstern_agent  # bb1b
+  clock: 1  # bb1b
+  nonce: bb1b  # bb1b
+  data:  # bb1b
+    kind: work_item  # bb1b
+    title: "FastAPI include_router prefix composition"  # bb1b
+    status: todo_soft  # bb1b
+    priority: 3  # bb1b
+    parent:  # bb1b
+    tags: []  # bb1b
+    before: []  # bb1b
+    duplicate_of: []  # bb1b
+    not_duplicate_of: []  # bb1b
+    pr_ref:  # bb1b
+    description: "app.include_router(router, prefix='/api/v1') adds a prefix layer not captured by current APIRouter(prefix=) detection. Requires cross-file prefix chain resolution. Signal: full-stack-fastapi-template bakeoff shows /items instead of /api/v1/items."  # bb1b
+    fields: {}  # bb1b
+- op: update  # 4957
+  at: '2026-03-07T19:10:04Z'  # 4957
+  by: agent  # 4957
+  actor: jgstern_agent  # 4957
+  clock: 2  # 4957
+  nonce: '4957'  # 4957
+  set:  # 4957
+    priority: 4  # 4957
+- op: discuss  # fe07
+  at: '2026-03-07T19:10:04Z'  # fe07
+  by: agent  # fe07
+  actor: jgstern_agent  # fe07
+  clock: 3  # fe07
+  nonce: fe07  # fe07
+  message: "Deprioritized: requires cross-file prefix chain resolution. Current behavior shows router-level prefixes correctly but misses app.include_router(prefix=). Not blocking for most apps — primarily affects nested router composition."  # fe07
+- op: update  # 30de
+  at: '2026-03-08T03:06:04Z'  # 30de
+  by: agent  # 30de
+  actor: jgstern_agent  # 30de
+  clock: 4  # 30de
+  nonce: 30de  # 30de
+  set:  # 30de
+    status: wont_do  # 30de
+- op: discuss  # c71b
+  at: '2026-03-08T03:06:04Z'  # c71b
+  by: agent  # c71b
+  actor: jgstern_agent  # c71b
+  clock: 5  # c71b
+  nonce: c71b  # c71b
+  message: "Deferred: cross-file prefix chain resolution is needed but complex. Current behavior correctly detects router-level prefixes. Will reopen when cross-file linker infrastructure matures or bakeoff shows impact."  # c71b

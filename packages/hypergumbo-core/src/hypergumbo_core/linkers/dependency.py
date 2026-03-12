@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Dependency linker for connecting manifest dependencies to code imports.
 
 This linker creates depends_on_manifest edges between code import statements

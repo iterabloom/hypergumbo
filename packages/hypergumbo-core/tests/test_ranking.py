@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for ranking module.
 
 This module tests the symbol and file ranking utilities that provide
@@ -12,6 +13,7 @@ from hypergumbo_core.ranking import (
     apply_test_weights,
     apply_utility_symbol_weights,
     apply_common_method_name_weights,
+    apply_sibling_impl_weights,
     group_symbols_by_file,
     compute_file_scores,
     filter_edges_for_ranking,
@@ -29,6 +31,7 @@ from hypergumbo_core.ranking import (
     compute_symbol_mention_centrality,
     compute_symbol_mention_centrality_batch,
     compute_truncation_elbow,
+    compute_harmonic_shares,
     _compute_centrality_with_python,
     _has_logging_concept,
 )
@@ -135,12 +138,12 @@ class TestComputeCentrality:
 
         result = compute_centrality([a, b, c], edges)
 
-        # b has highest raw score (in=2), still max
-        assert result[b.id] == pytest.approx(1.0)
-        # c has lower in-degree (1) but gets out-degree boost from c→b
-        assert 0 < result[c.id] < 1.0
-        # b still outranks c (2 in-degree > 1 in-degree, even with c's out-degree boost)
-        assert result[b.id] > result[c.id]
+        # c has out-degree boost (1 + ln(2) ≈ 1.69x) which outweighs b's
+        # higher in-degree (2 vs 1) because b is a pure sink (out=0 → 0.5x).
+        # c raw = 1 * 1.69 = 1.69; b raw = 2 * 0.5 = 1.0
+        assert result[c.id] == pytest.approx(1.0)
+        assert 0 < result[b.id] < 1.0
+        assert result[c.id] > result[b.id]
         # a has zero in-degree → zero centrality
         assert result[a.id] == 0.0
 
@@ -234,6 +237,201 @@ class TestBidirectionalCentrality:
 
         # Max should still be 1.0
         assert max(result.values()) == pytest.approx(1.0)
+
+    def test_zero_out_degree_dampened_vs_nonzero_out(self):
+        """Zero-out-degree symbols get dampened vs symbols with even 1 outgoing edge.
+
+        A symbol with in=10, out=0 (pure sink) should score less than a symbol
+        with in=10, out=1 (minimal connector). This ensures popular leaf utilities
+        like Elm's `map` (in=71, out=0) rank below architectural symbols.
+        """
+        pure_sink = make_symbol("map")
+        connector = make_symbol("QuerySet")
+        # Give both the same 10 incoming edges
+        callers = [make_symbol(f"caller_{i}") for i in range(10)]
+        # One callee for the connector
+        callee = make_symbol("callee")
+
+        edges = []
+        for caller in callers:
+            edges.append(make_edge(caller.id, pure_sink.id))
+            edges.append(make_edge(caller.id, connector.id))
+        edges.append(make_edge(connector.id, callee.id))
+
+        all_symbols = [pure_sink, connector, callee] + callers
+
+        result = compute_centrality(all_symbols, edges)
+
+        # With equal in-degree, the symbol with out=1 should outrank out=0
+        assert result[connector.id] > result[pure_sink.id], (
+            f"connector (out=1) should outrank pure sink (out=0): "
+            f"{result[connector.id]} vs {result[pure_sink.id]}"
+        )
+        # The gap should be significant (connector gets ln(2)+1 ≈ 1.69 multiplier
+        # vs pure sink's dampened 0.5 multiplier)
+        ratio = result[connector.id] / result[pure_sink.id]
+        assert ratio > 2.0, (
+            f"connector should be >2x higher than pure sink, got {ratio:.2f}x"
+        )
+
+
+class TestCrossFileDegreeWeighting:
+    """Tests for within-file vs cross-file degree weighting in centrality.
+
+    Symbols referenced across many files are architecturally important.
+    Symbols referenced many times within one file may just be local variables.
+    The within_file_weight parameter lets callers dampen within-file edges.
+    """
+
+    def test_within_file_weight_reduces_same_file_edges(self):
+        """Within-file edges contribute less to in-degree when weight < 1.0."""
+        # Two symbols in the same file
+        callee = make_symbol("callee", path="src/utils.py")
+        caller = make_symbol("caller", path="src/utils.py")
+        edge = make_edge(caller.id, callee.id)
+
+        # Default (weight=1.0): full in-degree credit
+        full = compute_centrality([callee, caller], [edge])
+
+        # With within_file_weight=0.3: reduced credit
+        reduced = compute_centrality(
+            [callee, caller], [edge], within_file_weight=0.3
+        )
+
+        # Both should produce callee > 0 (it's the only node with in-degree)
+        # But the absolute scores differ only in normalization (both max→1.0)
+        # The key test is the next one: cross-file vs within-file comparison
+        assert full[callee.id] == 1.0
+        assert reduced[callee.id] == 1.0  # Still normalized to 1.0
+
+    def test_cross_file_outranks_within_file_heavy(self):
+        """A symbol with cross-file references outranks one with many within-file refs."""
+        # Symbol A: referenced 5 times from 5 different files (cross-file)
+        sym_a = make_symbol("ArchitecturalCore", path="src/core.py")
+        callers_a = [
+            make_symbol(f"caller{i}", path=f"src/mod{i}.py") for i in range(5)
+        ]
+        edges_a = [make_edge(c.id, sym_a.id) for c in callers_a]
+
+        # Symbol B: referenced 10 times from within the same file (within-file)
+        sym_b = make_symbol("LocalHelper", path="src/helpers.py")
+        callers_b = [
+            make_symbol(f"func{i}", path="src/helpers.py") for i in range(10)
+        ]
+        edges_b = [make_edge(c.id, sym_b.id) for c in callers_b]
+
+        all_symbols = [sym_a, sym_b] + callers_a + callers_b
+        all_edges = edges_a + edges_b
+
+        # Without weighting: B outranks A (10 > 5 in-degree)
+        default = compute_centrality(all_symbols, all_edges)
+        assert default[sym_b.id] > default[sym_a.id]
+
+        # With within_file_weight=0.3: A outranks B
+        # A: 5 * 1.0 = 5.0 effective in-degree
+        # B: 10 * 0.3 = 3.0 effective in-degree
+        weighted = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3
+        )
+        assert weighted[sym_a.id] > weighted[sym_b.id]
+
+    def test_within_file_weight_default_preserves_behavior(self):
+        """Default within_file_weight=1.0 gives same results as before."""
+        a = make_symbol("a", path="src/same.py")
+        b = make_symbol("b", path="src/same.py")
+        c = make_symbol("c", path="src/other.py")
+
+        edges = [
+            make_edge(a.id, b.id),  # within-file
+            make_edge(c.id, b.id),  # cross-file
+        ]
+
+        result_default = compute_centrality([a, b, c], edges)
+        result_explicit = compute_centrality(
+            [a, b, c], edges, within_file_weight=1.0
+        )
+
+        assert result_default == result_explicit
+
+    def test_within_file_weight_mixed_edges(self):
+        """Mixed within-file and cross-file edges are weighted correctly."""
+        target = make_symbol("target", path="src/core.py")
+        same_file = make_symbol("same", path="src/core.py")
+        other_file = make_symbol("other", path="src/utils.py")
+
+        edges = [
+            make_edge(same_file.id, target.id),   # within-file
+            make_edge(other_file.id, target.id),   # cross-file
+        ]
+
+        result = compute_centrality(
+            [target, same_file, other_file], edges,
+            within_file_weight=0.5,
+        )
+
+        # target effective in-degree = 1.0 (cross) + 0.5 (within) = 1.5
+        # same_file: 0 in-degree
+        # other_file: 0 in-degree
+        assert result[target.id] == 1.0  # Normalized max
+        assert result[same_file.id] == 0.0
+        assert result[other_file.id] == 0.0
+
+
+    def test_max_per_file_in_caps_concentrated_callers(self):
+        """Per-file in-degree cap prevents a single file from dominating.
+
+        createYAMLNode scenario: 58 callers from 3 files (46 + 4 + 8).
+        Without cap: in-degree = 55.2 (with within_file_weight=0.3).
+        With cap of 5: in-degree = 5 + 1.2 + 5 = 11.2.
+        """
+        target = make_symbol("createYAMLNode", path="web/api/v1/openapi_helpers.go")
+        diversely_called = make_symbol("ImportantAPI", path="web/api/v1/api.go")
+
+        # createYAMLNode: 46 callers from one file, 4 same-file, 8 from another
+        concentrated_callers = [
+            make_symbol(f"ex{i}", path="web/api/v1/openapi_examples.go")
+            for i in range(46)
+        ]
+        same_file_callers = [
+            make_symbol(f"helper{i}", path="web/api/v1/openapi_helpers.go")
+            for i in range(4)
+        ]
+        other_callers = [
+            make_symbol(f"schema{i}", path="web/api/v1/openapi_schemas.go")
+            for i in range(8)
+        ]
+        edges_concentrated = (
+            [make_edge(c.id, target.id) for c in concentrated_callers]
+            + [make_edge(c.id, target.id) for c in same_file_callers]
+            + [make_edge(c.id, target.id) for c in other_callers]
+        )
+
+        # ImportantAPI: 15 callers from 15 different files
+        diverse_callers = [
+            make_symbol(f"handler{i}", path=f"pkg/mod{i}.go")
+            for i in range(15)
+        ]
+        edges_diverse = [make_edge(c.id, diversely_called.id) for c in diverse_callers]
+
+        all_symbols = (
+            [target, diversely_called]
+            + concentrated_callers + same_file_callers + other_callers
+            + diverse_callers
+        )
+        all_edges = edges_concentrated + edges_diverse
+
+        # Without cap: target has higher raw in-degree (55.2 vs 15)
+        uncapped = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3,
+        )
+        assert uncapped[target.id] > uncapped[diversely_called.id]
+
+        # With max_per_file_in=5: target capped (11.2 vs 15)
+        capped = compute_centrality(
+            all_symbols, all_edges, within_file_weight=0.3,
+            max_per_file_in=5,
+        )
+        assert capped[diversely_called.id] > capped[target.id]
 
 
 class TestApplyTierWeights:
@@ -2145,6 +2343,170 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("main")
         assert not is_utility_symbol("checkout")
 
+    def test_fp_primitives_are_utility(self):
+        """Functional programming primitives are utility symbols.
+
+        Generic names like map, filter, reduce from UI frameworks (Elm,
+        React) have high fan-in but low architectural relevance.
+        """
+        assert is_utility_symbol("map")
+        assert is_utility_symbol("filter")
+        assert is_utility_symbol("reduce")
+        assert is_utility_symbol("forEach")
+        assert is_utility_symbol("flatMap")
+        assert is_utility_symbol("fold")
+        assert is_utility_symbol("foldl")
+        assert is_utility_symbol("foldr")
+        assert is_utility_symbol("zip")
+        assert is_utility_symbol("concat")
+        assert is_utility_symbol("apply")
+
+    def test_fp_names_in_qualified_context_are_utility(self):
+        """FP primitives dampened even when qualified (Utils.Api.map)."""
+        assert is_utility_symbol("Utils.Api.map")
+        assert is_utility_symbol("Array.filter")
+        assert is_utility_symbol("List.reduce")
+
+    def test_time_accessor_now_is_utility(self):
+        """now() is a time accessor utility (e.g., Log.now in alertmanager)."""
+        assert is_utility_symbol("now")
+        assert is_utility_symbol("Log.now")
+
+    def test_fp_compound_names_not_utility(self):
+        """Compound names containing FP primitives should NOT be dampened."""
+        assert not is_utility_symbol("mapToEntity")
+        assert not is_utility_symbol("filterConfig")
+        assert not is_utility_symbol("applyChanges")
+        assert not is_utility_symbol("SourceMap")
+        assert not is_utility_symbol("FilterBar")
+        assert not is_utility_symbol("MapView")
+
+    def test_test_fixture_names_are_utility(self):
+        """Test doubles (Dummy*, Mock*, Fake*, Stub*, Spy*) are utility symbols.
+
+        These have high in-degree from test code but zero production relevance.
+        Bakeoff finding: DummyNetworkAdapter ranked ahead of production code.
+        """
+        assert is_utility_symbol("DummyNetworkAdapter")
+        assert is_utility_symbol("MockClient")
+        assert is_utility_symbol("FakeServer")
+        assert is_utility_symbol("StubRepository")
+        assert is_utility_symbol("SpyLogger")
+        # Lowercase variants
+        assert is_utility_symbol("dummyHandler")
+        assert is_utility_symbol("mockService")
+
+    def test_test_fixture_false_positives(self):
+        """Names merely containing 'mock' etc. as substrings are NOT matched."""
+        assert not is_utility_symbol("Mockingbird")  # Not PascalCase Dummy/Mock prefix
+        assert not is_utility_symbol("stubborn")  # Lowercase, no uppercase after
+        assert not is_utility_symbol("Factory")  # Not a test double prefix
+
+    def test_assertion_panic_abort_names(self):
+        """Assertion/panic/abort builtins are utility symbols.
+
+        DEEP bakeoff finding: assert() ranked 6th in automerge despite being
+        a language built-in called everywhere. logPanicAndDie dominated
+        firecracker rankings (caught by ^log_ pattern). These are
+        control-flow primitives, not domain architecture.
+        """
+        # Assertion builtins
+        assert is_utility_symbol("assert")
+        assert is_utility_symbol("Assert")
+        assert is_utility_symbol("assertEqual")
+        assert is_utility_symbol("assertNotNil")
+        assert is_utility_symbol("assert_eq")
+        # Panic/abort/exit (exact match only)
+        assert is_utility_symbol("panic")
+        assert is_utility_symbol("Panic")
+        assert is_utility_symbol("abort")
+        assert is_utility_symbol("exit")
+        assert is_utility_symbol("Exit")
+        assert is_utility_symbol("die")
+        assert is_utility_symbol("Die")
+        # Unreachable markers
+        assert is_utility_symbol("unreachable")
+        assert is_utility_symbol("Unreachable")
+        # Compound names caught by existing patterns (^log_)
+        assert is_utility_symbol("logPanicAndDie")
+
+    def test_assertion_panic_false_positives(self):
+        """Domain terms should not be caught by assertion/panic patterns."""
+        assert not is_utility_symbol("PanicButton")  # Domain concept
+        assert not is_utility_symbol("ExitSurvey")  # Domain concept
+        assert not is_utility_symbol("aborted")  # Past tense, not the function
+        assert not is_utility_symbol("exitCode")  # Property, not the function
+
+    def test_ui_primitive_component_names(self):
+        """UI primitive components are utility symbols.
+
+        DEEP bakeoff finding: Button ranked above JobQueue.add in AFFiNE.
+        Leaf UI components like Button, Input, Icon are rendered everywhere
+        but are design-system plumbing, not application architecture.
+        """
+        assert is_utility_symbol("Button")
+        assert is_utility_symbol("Icon")
+        assert is_utility_symbol("Input")
+        assert is_utility_symbol("Checkbox")
+        assert is_utility_symbol("Select")
+        assert is_utility_symbol("Tooltip")
+        assert is_utility_symbol("Spinner")
+        assert is_utility_symbol("Modal")
+        assert is_utility_symbol("Avatar")
+        assert is_utility_symbol("Badge")
+        assert is_utility_symbol("Divider")
+
+    def test_ui_primitive_false_positives(self):
+        """Compound UI component names should NOT be caught."""
+        assert not is_utility_symbol("LoginButton")  # Domain-specific
+        assert not is_utility_symbol("UserAvatar")  # Domain-specific
+        assert not is_utility_symbol("CheckboxGroup")  # Composite, not primitive
+        assert not is_utility_symbol("ModalManager")  # Controller, not leaf
+        assert not is_utility_symbol("InputValidator")  # Logic, not UI
+        assert not is_utility_symbol("IconButton")  # Composite
+        assert not is_utility_symbol("Selector")  # Not same as Select
+
+
+class TestIsHelperFile:
+    """Tests for _is_helper_file function."""
+
+    def test_helpers_file(self):
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("web/api/v1/openapi_helpers.go")
+        assert _is_helper_file("src/string_utils.py")
+        assert _is_helper_file("lib/config_util.rb")
+        assert _is_helper_file("helpers.ts")
+        assert _is_helper_file("utils.py")
+        assert _is_helper_file("util.go")
+
+    def test_utils_directory(self):
+        """Files in utils/ or helpers/ directories are helper files."""
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("ui/app/src/Utils/Api.elm")
+        assert _is_helper_file("src/helpers/format.ts")
+        assert _is_helper_file("lib/utils/string.py")
+        assert _is_helper_file("app/helpers/application_helper.rb")
+
+    def test_test_fixture_files(self):
+        """Test fixture files (conftest, fixtures, factories) are helper files."""
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert _is_helper_file("tests/conftest.py")
+        assert _is_helper_file("spec/fixtures.rb")
+        assert _is_helper_file("test/factories.py")
+        assert _is_helper_file("tests/test_helpers.py")
+        assert _is_helper_file("tests/test_helper.py")
+
+    def test_non_helper_file(self):
+        from hypergumbo_core.ranking import _is_helper_file
+
+        assert not _is_helper_file("src/api.go")
+        assert not _is_helper_file("web/router.py")
+        assert not _is_helper_file("lib/helper_factory.rb")
+        assert not _is_helper_file("")
+
 
 class TestApplyUtilitySymbolWeights:
     """Tests for apply_utility_symbol_weights function.
@@ -2181,6 +2543,26 @@ class TestApplyUtilitySymbolWeights:
         centrality = {svc.id: 0.5}
         result = apply_utility_symbol_weights(centrality, [svc])
         assert result[svc.id] == 0.5
+
+    def test_helper_file_symbol_dampened(self):
+        """Symbols from *_helpers, *_utils files are dampened."""
+        helper = make_symbol(
+            "createYAMLNode",
+            path="web/api/v1/openapi_helpers.go",
+            language="go",
+        )
+        normal = make_symbol(
+            "Dispatcher.Run",
+            path="dispatch/dispatch.go",
+            language="go",
+        )
+        centrality = {helper.id: 0.9, normal.id: 0.5}
+        result = apply_utility_symbol_weights(
+            centrality, [helper, normal],
+        )
+        assert result[helper.id] < result[normal.id]
+        assert result[helper.id] == pytest.approx(0.09)
+        assert result[normal.id] == 0.5
 
     def test_rank_symbols_integrates_utility_weights(self):
         """rank_symbols should demote utility symbols below domain symbols.
@@ -2257,6 +2639,35 @@ class TestHasLoggingConcept:
     def test_none_symbol(self):
         """None symbol is not detected."""
         assert not _has_logging_concept(None)
+
+    def test_qualified_name_utility_match(self):
+        """Qualified names like 'AllocatedNum::clone' match on unqualified part."""
+        # Rust derive-generated clone
+        sym = make_symbol("AllocatedNum::clone", path="src/num.rs", language="rust")
+        centrality = {sym.id: 1.0}
+        result = apply_utility_symbol_weights(centrality, [sym])
+        assert result[sym.id] < 1.0, (
+            "AllocatedNum::clone should be dampened as a utility symbol"
+        )
+
+    def test_derive_method_dampened(self):
+        """Rust derive-generated methods (fmt, default, into) are dampened."""
+        fmt_sym = make_symbol("MyStruct::fmt", path="src/lib.rs", language="rust")
+        default_sym = make_symbol("Config::default", path="src/config.rs", language="rust")
+        into_sym = make_symbol("StatusRow::into", path="src/status.rs", language="rust")
+        real_sym = make_symbol("Prover::prove", path="src/prover.rs", language="rust")
+
+        centrality = {
+            fmt_sym.id: 1.0, default_sym.id: 1.0,
+            into_sym.id: 1.0, real_sym.id: 1.0,
+        }
+        result = apply_utility_symbol_weights(
+            centrality, [fmt_sym, default_sym, into_sym, real_sym],
+        )
+        assert result[fmt_sym.id] < 1.0, "fmt should be dampened"
+        assert result[default_sym.id] < 1.0, "default should be dampened"
+        assert result[into_sym.id] < 1.0, "into should be dampened"
+        assert result[real_sym.id] == 1.0, "prove should NOT be dampened"
 
     def test_concept_based_dampening_in_apply_utility(self):
         """Symbols with logging concept are dampened by apply_utility_symbol_weights."""
@@ -2608,10 +3019,52 @@ class TestTrivialSinkDampening:
 
         # sink: out=0, loc=1 → dampened
         assert result[sink.id] == pytest.approx(0.1)
-        # big: out=0, loc=50 → NOT dampened (body too long)
+        # big: out=0, loc=50 → NOT dampened (body too long for pure sink tier too)
         assert result[big.id] == pytest.approx(0.8)
         # caller: out=2, loc=3 → NOT dampened (out_degree > 1)
         assert result[caller.id] == pytest.approx(0.5)
+
+    def test_pure_sink_with_docstring_dampened(self):
+        """Pure sinks (out=0) with moderate LOC are dampened.
+
+        Utility helpers like node_text (in=496, out=0, LoC=11 including
+        docstring) and find_child_by_type (in=291, out=0, LoC=16) should
+        be dampened despite exceeding the strict max_loc=5 threshold.
+        Pure sinks call nothing — they're definitively leaf helpers.
+        """
+        from hypergumbo_core.ranking import apply_trivial_sink_weights
+
+        # Utility helper with docstring (11 lines including docstring)
+        helper = self._make_short_symbol("node_text", "base.py", loc=11)
+        # Larger helper (16 lines)
+        helper2 = self._make_short_symbol("find_child", "base.py", loc=16)
+        # Too large to be a trivial pure sink (50 lines)
+        big_leaf = self._make_short_symbol("process", "engine.py", loc=50)
+        # Near-sink with 1 outgoing edge, loc=11 → NOT dampened
+        near_sink = self._make_short_symbol("validate", "check.py", loc=11)
+
+        symbols = [helper, helper2, big_leaf, near_sink]
+        edges = [
+            # near_sink has 1 outgoing edge
+            make_edge(near_sink.id, "some_target"),
+        ]
+        centrality = {
+            helper.id: 1.0,
+            helper2.id: 0.8,
+            big_leaf.id: 0.6,
+            near_sink.id: 0.5,
+        }
+
+        result = apply_trivial_sink_weights(centrality, symbols, edges)
+
+        # helper: out=0, loc=11 → dampened (pure sink tier, loc <= 20)
+        assert result[helper.id] == pytest.approx(0.1)
+        # helper2: out=0, loc=16 → dampened (pure sink tier)
+        assert result[helper2.id] == pytest.approx(0.08)
+        # big_leaf: out=0, loc=50 → NOT dampened (exceeds pure_sink_max_loc=20)
+        assert result[big_leaf.id] == pytest.approx(0.6)
+        # near_sink: out=1, loc=11 → NOT dampened (out>0 and loc>5)
+        assert result[near_sink.id] == pytest.approx(0.5)
 
 
 class TestApplyCommonMethodNameWeights:
@@ -2758,6 +3211,156 @@ class TestApplyCommonMethodNameWeights:
 
         for s in id_syms:
             assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"
+
+
+class TestApplySiblingImplWeights:
+    """Tests for apply_sibling_impl_weights.
+
+    When many methods share the same name (interface implementations like
+    19 Notifier.Notify variants in alertmanager), they flood the top
+    rankings even after common-method-name dampening. Sibling impl
+    dampening keeps the top K within each name group at full weight
+    and steeply dampens the rest, so users see 2-3 representative
+    implementations instead of 19.
+    """
+
+    def test_top_k_kept_rest_dampened(self):
+        """Within a name group, top K symbols keep full weight, rest are dampened."""
+        # 19 methods named "Notifier.Notify" with varying scores
+        notify_syms = [
+            make_symbol(
+                "Notifier.Notify",
+                path=f"notify/impl{i}/impl.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(19)
+        ]
+        # Give them decreasing scores
+        centrality = {
+            s.id: 100.0 - i for i, s in enumerate(notify_syms)
+        }
+
+        result = apply_sibling_impl_weights(centrality, notify_syms, top_k=3)
+
+        # Sort by original score descending
+        sorted_ids = sorted(centrality.keys(), key=lambda k: -centrality[k])
+
+        # Top 3 should be unchanged
+        for sid in sorted_ids[:3]:
+            assert result[sid] == centrality[sid], (
+                f"Top-K symbol {sid} should keep full weight"
+            )
+        # Symbols 4+ should be dampened
+        for sid in sorted_ids[3:]:
+            assert result[sid] < centrality[sid], (
+                f"Below-top-K symbol {sid} should be dampened"
+            )
+
+    def test_small_group_not_dampened(self):
+        """Groups smaller than min_group_size are not affected."""
+        # 3 methods named "Handler.Process" — below default min_group_size
+        syms = [
+            make_symbol(
+                "Handler.Process",
+                path=f"handlers/h{i}.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(3)
+        ]
+        centrality = {s.id: 10.0 for s in syms}
+
+        result = apply_sibling_impl_weights(centrality, syms)
+
+        for s in syms:
+            assert result[s.id] == 10.0, "Small groups should not be dampened"
+
+    def test_non_method_excluded(self):
+        """Only method/function kinds are grouped — classes are excluded."""
+        # 10 classes named "Controller" — should not trigger dampening
+        syms = [
+            make_symbol(
+                "Controller",
+                path=f"controllers/c{i}.py",
+                kind="class",
+            )
+            for i in range(10)
+        ]
+        centrality = {s.id: 5.0 for s in syms}
+
+        result = apply_sibling_impl_weights(centrality, syms)
+
+        for s in syms:
+            assert result[s.id] == 5.0, "Class-kind symbols should not be grouped"
+
+    def test_integration_with_rank_symbols(self):
+        """Sibling impl dampening is applied in the rank_symbols pipeline."""
+        # 15 methods named "Notifier.Notify" all with same in-degree from
+        # shared callers, plus one unique high-value symbol
+        notify_syms = [
+            make_symbol(
+                "Notifier.Notify",
+                path=f"notify/ch{i}/ch.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(15)
+        ]
+        unique_sym = make_symbol(
+            "API.getAlertsHandler",
+            path="api/api.go",
+            kind="method",
+            language="go",
+        )
+        callers = [
+            make_symbol(f"caller_{i}", path=f"src/c{i}.go", kind="function", language="go")
+            for i in range(18)
+        ]
+
+        all_syms = notify_syms + [unique_sym] + callers
+
+        # Each caller calls all Notify impls and the unique sym
+        edges = []
+        for caller in callers:
+            for ns in notify_syms:
+                edges.append(make_edge(caller.id, ns.id))
+            edges.append(make_edge(caller.id, unique_sym.id))
+
+        # Give Notify impls some out-edges too.
+        # target is a substantial function (loc=30) that also calls another
+        # function, making it a connector rather than a trivial sink.
+        target = Symbol(
+            id="go:net/send.go:1-30:function:send",
+            name="send", kind="function", language="go",
+            path="net/send.go",
+            span=Span(start_line=1, end_line=30, start_col=0, end_col=0),
+        )
+        target.supply_chain_tier = 1
+        target.supply_chain_reason = "tier_1"
+        target.lines_of_code = 30
+        all_syms.append(target)
+        for ns in notify_syms:
+            edges.append(make_edge(ns.id, target.id))
+
+        # Give unique_sym outgoing edges (realistic: API handlers call services)
+        svc = make_symbol("alertService", path="svc/alert.go", kind="function", language="go")
+        all_syms.append(svc)
+        edges.append(make_edge(unique_sym.id, svc.id))
+        edges.append(make_edge(unique_sym.id, target.id))
+        # Give target an out-edge so it's not a pure sink
+        edges.append(make_edge(target.id, svc.id))
+
+        result = rank_symbols(all_syms, edges)
+
+        # Find how many Notifier.Notify in top 5
+        top5_names = [r.symbol.name for r in result[:5]]
+        notify_in_top5 = sum(1 for n in top5_names if n == "Notifier.Notify")
+
+        assert notify_in_top5 <= 3, (
+            f"At most 3 Notifier.Notify should appear in top 5, "
+            f"got {notify_in_top5}: {top5_names}"
+        )
 
 
 class TestComputeTruncationElbow:
@@ -2908,3 +3511,55 @@ class TestComputeTruncationElbow:
         result = compute_truncation_elbow(syms, centrality, path)
         # All end at line 10: 10 * 80 / 4 = 200 tokens
         assert result == 200
+
+
+class TestComputeHarmonicShares:
+    """Tests for compute_harmonic_shares function."""
+
+    def test_basic_n5_budget1000(self):
+        """n=5, budget=1000: shares sum to 1000, monotonically decreasing."""
+        shares = compute_harmonic_shares(5, 1000)
+        assert len(shares) == 5
+        assert sum(shares) == 1000
+        # Monotonically non-increasing
+        for i in range(len(shares) - 1):
+            assert shares[i] >= shares[i + 1]
+
+    def test_n1_returns_full_budget(self):
+        """n=1 returns [budget]."""
+        assert compute_harmonic_shares(1, 500) == [500]
+
+    def test_n0_returns_empty(self):
+        """n=0 returns []."""
+        assert compute_harmonic_shares(0, 1000) == []
+
+    def test_negative_n_returns_empty(self):
+        """Negative n returns []."""
+        assert compute_harmonic_shares(-1, 1000) == []
+
+    def test_zero_budget(self):
+        """Zero budget returns list of zeros."""
+        shares = compute_harmonic_shares(5, 0)
+        assert shares == [0, 0, 0, 0, 0]
+
+    def test_file1_gets_most(self):
+        """File 1's share > file 2's share > ... > file n's share."""
+        shares = compute_harmonic_shares(10, 5000)
+        assert len(shares) == 10
+        # Strictly decreasing (with sufficient budget)
+        for i in range(len(shares) - 1):
+            assert shares[i] > shares[i + 1], f"shares[{i}]={shares[i]} not > shares[{i+1}]={shares[i+1]}"
+
+    def test_sum_equals_budget(self):
+        """Sum of all shares equals the total budget exactly."""
+        for n, budget in [(3, 100), (7, 999), (1, 1), (20, 10000)]:
+            shares = compute_harmonic_shares(n, budget)
+            assert sum(shares) == budget, f"n={n}, budget={budget}: sum={sum(shares)}"
+
+    def test_small_budget_large_n(self):
+        """When budget < n, some shares are 0 but sum is still correct."""
+        shares = compute_harmonic_shares(10, 3)
+        assert len(shares) == 10
+        assert sum(shares) == 3
+        # At least first share is > 0
+        assert shares[0] > 0

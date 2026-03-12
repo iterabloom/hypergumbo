@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for bakeoff-features compress subcommand and hg.json.gz transparent reading."""
 
 import argparse
@@ -400,6 +401,171 @@ class TestCompressedReadIntegration:
             f"Expected one seed per major language, but got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_excludes_test_in_degree(self, tmp_path: Path) -> None:
+        """Seed scoring should use prod-only in-degree (exclude test callers).
+
+        A production function called 5 times from tests and 3 times from prod
+        should score lower than a function called 0 times from tests and 4
+        times from prod, even though the former has higher total in-degree.
+        """
+        nodes = [
+            # prod_heavy: called 4 times from production (high prod in-degree)
+            {"id": "prod_heavy", "name": "prod_heavy", "kind": "function",
+             "path": "src/core.py", "language": "python"},
+            # test_heavy: called 5 times from tests + 1 from prod (higher total in-degree)
+            {"id": "test_heavy", "name": "test_heavy", "kind": "function",
+             "path": "src/utils.py", "language": "python"},
+            # Production callers
+            {"id": "caller1", "name": "caller1", "kind": "function",
+             "path": "src/main.py", "language": "python"},
+            {"id": "caller2", "name": "caller2", "kind": "function",
+             "path": "src/api.py", "language": "python"},
+            {"id": "caller3", "name": "caller3", "kind": "function",
+             "path": "src/handler.py", "language": "python"},
+            {"id": "caller4", "name": "caller4", "kind": "function",
+             "path": "src/service.py", "language": "python"},
+            # Test callers
+            {"id": "test1", "name": "test_foo", "kind": "function",
+             "path": "tests/test_core.py", "language": "python"},
+            {"id": "test2", "name": "test_bar", "kind": "function",
+             "path": "tests/test_utils.py", "language": "python"},
+            {"id": "test3", "name": "test_baz", "kind": "function",
+             "path": "tests/test_api.py", "language": "python"},
+            {"id": "test4", "name": "test_qux", "kind": "function",
+             "path": "tests/test_extra.py", "language": "python"},
+            {"id": "test5", "name": "test_quux", "kind": "function",
+             "path": "tests/test_more.py", "language": "python"},
+            # Shared callees (to give candidates out-degree >= _MIN_OUT_DEGREE)
+            {"id": "dep1", "name": "dep1", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+            {"id": "dep2", "name": "dep2", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+            {"id": "dep3", "name": "dep3", "kind": "function",
+             "path": "src/deps.py", "language": "python"},
+        ]
+        edges = [
+            # prod_heavy: 4 production callers
+            {"src": "caller1", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller2", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller3", "dst": "prod_heavy", "type": "calls"},
+            {"src": "caller4", "dst": "prod_heavy", "type": "calls"},
+            # test_heavy: 5 test callers + 1 production caller (total=6 > prod_heavy=4)
+            {"src": "test1", "dst": "test_heavy", "type": "calls"},
+            {"src": "test2", "dst": "test_heavy", "type": "calls"},
+            {"src": "test3", "dst": "test_heavy", "type": "calls"},
+            {"src": "test4", "dst": "test_heavy", "type": "calls"},
+            {"src": "test5", "dst": "test_heavy", "type": "calls"},
+            {"src": "caller1", "dst": "test_heavy", "type": "calls"},
+            # Give both candidates out-degree >= 3
+            {"src": "prod_heavy", "dst": "dep1", "type": "calls"},
+            {"src": "prod_heavy", "dst": "dep2", "type": "calls"},
+            {"src": "prod_heavy", "dst": "dep3", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep1", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep2", "type": "calls"},
+            {"src": "test_heavy", "dst": "dep3", "type": "calls"},
+        ]
+        data = {"nodes": nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "test-in-degree-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=2)
+        assert len(seeds) >= 1
+
+        # prod_heavy (prod_in_degree=4) should rank above test_heavy (prod_in_degree=1)
+        if len(seeds) >= 2:
+            assert seeds[0] == "prod_heavy", (
+                f"Expected prod_heavy first (prod_in=4), but got: {seeds}"
+            )
+
+    def test_pick_reverse_slice_seeds_annotation_test_detection(self, tmp_path: Path) -> None:
+        """Test nodes identified by annotation (not just path) should be excluded.
+
+        A Rust function with #[cfg(test)] annotation in a non-test file path
+        (e.g., src/lib.rs) should be treated as a test node: it should not be
+        a candidate seed, and edges FROM it should not count as production
+        in-degree. This mirrors the core is_test_node() logic.
+        """
+        nodes = [
+            # prod_func: called 3 times from production code
+            {"id": "prod_func", "name": "prod_func", "kind": "function",
+             "path": "src/core.rs", "language": "rust"},
+            # test_annotated_func: has #[cfg(test)], called 0 times, but
+            # calls test_target 5 times (as a test helper). It's in src/,
+            # NOT in a tests/ directory — path-only detection misses it.
+            {"id": "test_annotated_func", "name": "test_helper", "kind": "function",
+             "path": "src/checking.rs", "language": "rust",
+             "meta": {"annotations": [{"name": "cfg", "args": ["test"]}]}},
+            # test_target: called 5 times from test_annotated_func + 1 from prod
+            # Without annotation detection, prod_in_degree=6 (all callers look prod).
+            # With annotation detection, prod_in_degree=1 (only caller1).
+            {"id": "test_target", "name": "test_target", "kind": "function",
+             "path": "src/lib.rs", "language": "rust"},
+            # test_attr_func: has #[test] attribute directly
+            {"id": "test_attr_func", "name": "test_something", "kind": "function",
+             "path": "src/lib.rs", "language": "rust",
+             "meta": {"annotations": [{"name": "test"}]}},
+            # Production callers
+            {"id": "caller1", "name": "caller1", "kind": "function",
+             "path": "src/main.rs", "language": "rust"},
+            {"id": "caller2", "name": "caller2", "kind": "function",
+             "path": "src/api.rs", "language": "rust"},
+            {"id": "caller3", "name": "caller3", "kind": "function",
+             "path": "src/handler.rs", "language": "rust"},
+            # Deps (for out-degree)
+            {"id": "dep1", "name": "dep1", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+            {"id": "dep2", "name": "dep2", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+            {"id": "dep3", "name": "dep3", "kind": "function",
+             "path": "src/deps.rs", "language": "rust"},
+        ]
+        edges = [
+            # prod_func: 3 production callers
+            {"src": "caller1", "dst": "prod_func", "type": "calls"},
+            {"src": "caller2", "dst": "prod_func", "type": "calls"},
+            {"src": "caller3", "dst": "prod_func", "type": "calls"},
+            # test_annotated_func calls test_target 5 times
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "test_target", "type": "calls"},
+            # test_attr_func also calls test_target
+            {"src": "test_attr_func", "dst": "test_target", "type": "calls"},
+            # 1 production caller for test_target
+            {"src": "caller1", "dst": "test_target", "type": "calls"},
+            # Give candidates out-degree >= 3
+            {"src": "prod_func", "dst": "dep1", "type": "calls"},
+            {"src": "prod_func", "dst": "dep2", "type": "calls"},
+            {"src": "prod_func", "dst": "dep3", "type": "calls"},
+            {"src": "test_target", "dst": "dep1", "type": "calls"},
+            {"src": "test_target", "dst": "dep2", "type": "calls"},
+            {"src": "test_target", "dst": "dep3", "type": "calls"},
+            # Give test_annotated_func out-degree (shouldn't matter, it's a test)
+            {"src": "test_annotated_func", "dst": "dep1", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "dep2", "type": "calls"},
+            {"src": "test_annotated_func", "dst": "dep3", "type": "calls"},
+        ]
+        data = {"nodes": nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "annot-test-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+
+        # prod_func (prod_in=3) should rank above test_target (prod_in=1)
+        # test_annotated_func and test_attr_func should NOT appear as seeds
+        assert "test_annotated_func" not in seeds, (
+            f"#[cfg(test)] function should not be a seed: {seeds}"
+        )
+        assert "test_attr_func" not in seeds, (
+            f"#[test] function should not be a seed: {seeds}"
+        )
+        # prod_func should be the top seed
+        assert len(seeds) >= 1
+        assert seeds[0] == "prod_func", (
+            f"Expected prod_func first (prod_in=3), got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)
@@ -413,3 +579,98 @@ class TestCompressedReadIntegration:
         repo_out = tmp_path / "repo-c"
         repo_out.mkdir()
         assert bf._has_hg_json(str(repo_out)) is False
+
+
+class TestTestPathRegex:
+    """Tests for _TEST_PATH_RE test file detection.
+
+    Regression: DEEP bakeoff assessments showed rslice seed selection picking
+    test functions because paths like 'test/helpers/governance.js' (no leading
+    slash) and 'testonly/mock_evm.rs' slipped through the regex.
+    """
+
+    def test_filters_test_dir_path_initial(self) -> None:
+        """Path-initial test/ (no leading /) is filtered."""
+        assert bf._TEST_PATH_RE.search("test/helpers/governance.js")
+
+    def test_filters_test_dir_with_slash(self) -> None:
+        """Standard /test/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("src/test/helpers.js")
+
+    def test_filters_tests_dir(self) -> None:
+        """tests/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("tests/unit/test_foo.py")
+
+    def test_filters_spec_dir(self) -> None:
+        """spec/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search("spec/models/user_spec.rb")
+
+    def test_filters_testonly_dir(self) -> None:
+        """Rust testonly/ directory is filtered."""
+        assert bf._TEST_PATH_RE.search(
+            "core/lib/multivm/src/versions/testonly/mock_evm.rs"
+        )
+
+    def test_filters_testonly_rs(self) -> None:
+        """Rust testonly.rs file is filtered."""
+        assert bf._TEST_PATH_RE.search("src/testonly.rs")
+
+    def test_filters_dot_test_js(self) -> None:
+        """JS .test.js files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/module.test.js")
+
+    def test_filters_dot_spec_ts(self) -> None:
+        """TS .spec.ts files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/module.spec.ts")
+
+    def test_filters_go_test_file(self) -> None:
+        """Go *_test.go files are filtered."""
+        assert bf._TEST_PATH_RE.search("pkg/handler_test.go")
+
+    def test_filters_test_prefix(self) -> None:
+        """test_ prefixed files are filtered."""
+        assert bf._TEST_PATH_RE.search("src/test_utils.py")
+
+    def test_filters_tests_rs(self) -> None:
+        """Rust tests.rs module is filtered."""
+        assert bf._TEST_PATH_RE.search("src/tests.rs")
+
+    def test_keeps_source_files(self) -> None:
+        """Source files are not filtered."""
+        assert not bf._TEST_PATH_RE.search("src/events.js")
+        assert not bf._TEST_PATH_RE.search("src/controller.py")
+        assert not bf._TEST_PATH_RE.search("crates/core/app/src/main.rs")
+
+    def test_keeps_non_test_docker_file(self) -> None:
+        """Files with test-like names but not in test paths are kept."""
+        assert not bf._TEST_PATH_RE.search(
+            "crates/recursion/gnark-ffi/src/ffi/docker.rs"
+        )
+
+    def test_keeps_attestation(self) -> None:
+        """Files containing 'test' as substring in non-test context are kept."""
+        assert not bf._TEST_PATH_RE.search("src/attestation.js")
+
+
+class TestQualityThresholds:
+    """Tests for QUALITY_THRESHOLDS values.
+
+    WI-hulak: 9 of 21 WARN repos were false positives from thresholds
+    set too tight for formal methods repos (pure first-party, small
+    focused, highly-connected). Human approved raising:
+    - tier1_pct good_max: 95 → 98 (pure first-party repos)
+    - slice_coverage_pct good_max: 10 → 20 (small focused repos)
+    - avg_slice_nodes good_max: 500 → 2000 (highly-connected repos)
+    """
+
+    def test_tier1_pct_good_max_accommodates_pure_first_party(self) -> None:
+        """tier1_pct good_max >= 98 to avoid flagging pure first-party repos."""
+        assert bf.QUALITY_THRESHOLDS["tier1_pct"]["good_max"] >= 98
+
+    def test_slice_coverage_good_max_accommodates_small_repos(self) -> None:
+        """slice_coverage_pct good_max >= 20 to avoid flagging small repos."""
+        assert bf.QUALITY_THRESHOLDS["slice_coverage_pct"]["good_max"] >= 20
+
+    def test_avg_slice_nodes_good_max_accommodates_connected_repos(self) -> None:
+        """avg_slice_nodes good_max >= 2000 for highly-connected repos."""
+        assert bf.QUALITY_THRESHOLDS["avg_slice_nodes"]["good_max"] >= 2000

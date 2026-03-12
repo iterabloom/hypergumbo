@@ -1,0 +1,48 @@
+- op: create  # e540
+  at: '2026-03-11T04:17:54Z'  # e540
+  by: agent  # e540
+  actor: jgstern_agent  # e540
+  clock: 1  # e540
+  nonce: e540  # e540
+  data:  # e540
+    kind: work_item  # e540
+    title: "Tauri IPC call linking: TS invoke() calls not connected to Rust handlers"  # e540
+    status: todo_soft  # e540
+    priority: 2  # e540
+    parent:  # e540
+    tags: []  # e540
+    before: []  # e540
+    duplicate_of: []  # e540
+    not_duplicate_of: []  # e540
+    pr_ref:  # e540
+    description: "DEEP bakeoff (cohort 1: Cap, spacedrive, yaak, readest) found that while Rust #[tauri::command] handlers are detected (135 in Cap), the TypeScript side (invoke/TAURI_INVOKE calls) produces nearly zero ipc_calls edges. Cap has 201 TS call sites but only 1 IPC edge. The tauri_ipc linker exists but is not matching the generated tauri-specta bindings pattern. Need to investigate why the linker fails for generated binding files."  # e540
+    fields: {}  # e540
+- op: update  # 8511
+  at: '2026-03-11T05:02:06Z'  # 8511
+  by: agent  # 8511
+  actor: jgstern_agent  # 8511
+  clock: 2  # 8511
+  nonce: '8511'  # 8511
+  set:  # 8511
+    status: done  # 8511
+- op: discuss  # 0c9d
+  at: '2026-03-11T05:02:06Z'  # 0c9d
+  by: agent  # 0c9d
+  actor: jgstern_agent  # 0c9d
+  clock: 3  # 0c9d
+  nonce: 0c9d  # 0c9d
+  message: "Fixed in PR #2139. Expanded invoke regex to match TAURI_INVOKE and __TAURI_INVOKE__ patterns from tauri-specta generated bindings. Remaining gap: wrapper functions (commands.takeScreenshot()) that don't contain literal command names — these require call-graph tracing through generated bindings, a fundamentally harder problem."  # 0c9d
+- op: discuss  # 2bb9
+  at: '2026-03-11T16:48:06Z'  # 2bb9
+  by: human  # 2bb9
+  actor: jgstern  # 2bb9
+  clock: 4  # 2bb9
+  nonce: 2bb9  # 2bb9
+  message: "how big of a deal is the \"wrapper functions (commands.takeScreenshot()) that don't contain literal command names\" gap? and might there be analogous issues in frameworks other than Tauri or languages other than Rust?"  # 2bb9
+- op: discuss  # 8892
+  at: '2026-03-11T18:15:50Z'  # 8892
+  by: agent  # 8892
+  actor: jgstern_agent  # 8892
+  clock: 5  # 8892
+  nonce: '8892'  # 8892
+  message: "Impact: Moderate. 38% of commands (122/323) across 4 Tauri repos were unreachable through literal invoke matching. Now fixed in PR #2165 (specta wrapper resolution). Analogous issues exist in Electron IPC (contextBridge wrappers), GraphQL codegen (useGetUsersQuery hooks), gRPC generated clients, and wasm_bindgen facade modules."  # 8892

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Jsonnet configuration language analyzer.
 
 This module analyzes Jsonnet files (.jsonnet, .libsonnet) using tree-sitter.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Prepare a release for human approval.
 #
 # This script does everything an agent can do to prepare a release,
@@ -269,14 +270,26 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 echo ""
-echo "━━━ Step 6: Push to dev ━━━"
+echo "━━━ Step 6: Push release commit to dev ━━━"
 # ─────────────────────────────────────────────────────────────
 
 if ! $DRY_RUN; then
-    git push origin dev
-    echo -e "${GREEN}✓${NC} Pushed to origin/dev"
+    # dev is a protected branch — push via refs/for/ (creates a PR that
+    # CI validates and we can then merge).  auto-pr handles the full
+    # push → poll → merge cycle but requires a feature branch, so we
+    # use the lightweight refs/for/ approach here and merge immediately.
+    RELEASE_BRANCH="release-${VERSION}-prep"
+    git checkout -b "$RELEASE_BRANCH"
+    if ./scripts/auto-pr; then
+        echo -e "${GREEN}✓${NC} Release commit merged to dev via auto-pr"
+    else
+        echo -e "${RED}✗${NC} Failed to push release commit to dev"
+        echo "Try manually: ./scripts/auto-pr or git push origin HEAD:refs/for/dev/$RELEASE_BRANCH"
+        exit 1
+    fi
+    # auto-pr switches back to dev after merge
 else
-    echo -e "${BLUE}[dry-run]${NC} Would push to origin/dev"
+    echo -e "${BLUE}[dry-run]${NC} Would push release commit to dev via auto-pr"
 fi
 
 # ─────────────────────────────────────────────────────────────

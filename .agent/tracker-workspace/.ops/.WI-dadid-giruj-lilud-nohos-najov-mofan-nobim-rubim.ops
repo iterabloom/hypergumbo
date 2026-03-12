@@ -1,0 +1,34 @@
+- op: create  # a6cb
+  at: '2026-03-08T10:36:20Z'  # a6cb
+  by: agent  # a6cb
+  actor: jgstern_agent  # a6cb
+  clock: 1  # a6cb
+  nonce: a6cb  # a6cb
+  data:  # a6cb
+    kind: work_item  # a6cb
+    title: "Elixir import-aware name resolution: track use/import to scope unqualified calls"  # a6cb
+    status: todo_soft  # a6cb
+    priority: 3  # a6cb
+    parent:  # a6cb
+    tags: []  # a6cb
+    before: []  # a6cb
+    duplicate_of: []  # a6cb
+    not_duplicate_of: []  # a6cb
+    pr_ref:  # a6cb
+    description: "Bare calls to imported functions (Ecto.Query.from, Ecto.Migration.create, ExMachina.build) resolve to ANY project function with the same name. Track import/use directives to build module-level import scope, then gate cross-file resolution on whether the name could come from an import. Plausible-analytics bakeoff shows 82 false migration->Sites.create edges. P3 because local defp resolution is correct; only cross-module unqualified is affected."  # a6cb
+    fields: {}  # a6cb
+- op: update  # 3f36
+  at: '2026-03-08T16:25:11Z'  # 3f36
+  by: agent  # 3f36
+  actor: jgstern_agent  # 3f36
+  clock: 2  # 3f36
+  nonce: 3f36  # 3f36
+  set:  # 3f36
+    status: done  # 3f36
+- op: discuss  # d370
+  at: '2026-03-08T16:25:11Z'  # d370
+  by: agent  # d370
+  actor: jgstern_agent  # d370
+  clock: 3  # d370
+  nonce: d370  # d370
+  message: "Fixed in PR #2033. Added _extract_imported_modules() to track import directives per file. Global multi-clause and pipe call lookups now filter to only imported modules. Local and module-qualified calls unaffected."  # d370

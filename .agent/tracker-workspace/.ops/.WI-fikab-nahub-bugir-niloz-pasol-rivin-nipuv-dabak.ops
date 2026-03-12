@@ -1,0 +1,43 @@
+- op: create  # 0941
+  at: '2026-03-10T06:51:09Z'  # 0941
+  by: agent  # 0941
+  actor: jgstern_agent  # 0941
+  clock: 1  # 0941
+  nonce: '0941'  # 0941
+  data:  # 0941
+    kind: work_item  # 0941
+    title: "wasm_bindgen linker: Rust #[wasm_bindgen] to JS imports"  # 0941
+    status: todo_hard  # 0941
+    priority: 2  # 0941
+    parent:  # 0941
+    tags:  # 0941
+    - cross_language  # 0941
+    before: []  # 0941
+    duplicate_of: []  # 0941
+    not_duplicate_of: []  # 0941
+    pr_ref:  # 0941
+    description: "PlazaFlow Cohorts 2 and 8: zero Rust-JS edges despite heavy wasm_bindgen usage. Affected repos: automerge (automerge-wasm crate), AFFiNE (y-octo), loro. WASM is the dominant Rust-JS bridge pattern. Needs: (1) detect #[wasm_bindgen] exports in Rust, (2) detect wasm import calls in JS/TS, (3) create ffi_calls edges. Also consider wasm-pack and wasm-bindgen-futures patterns."  # 0941
+    fields: {}  # 0941
+- op: update  # 55a9
+  at: '2026-03-10T09:13:26Z'  # 55a9
+  by: agent  # 55a9
+  actor: jgstern_agent  # 55a9
+  clock: 2  # 55a9
+  nonce: 55a9  # 55a9
+  set:  # 55a9
+    status: in_progress  # 55a9
+- op: update  # ff29
+  at: '2026-03-10T11:21:33Z'  # ff29
+  by: agent  # ff29
+  actor: jgstern_agent  # ff29
+  clock: 3  # ff29
+  nonce: ff29  # ff29
+  set:  # ff29
+    status: done  # ff29
+- op: discuss  # 0d32
+  at: '2026-03-10T11:21:33Z'  # 0d32
+  by: agent  # 0d32
+  actor: jgstern_agent  # 0d32
+  clock: 4  # 0d32
+  nonce: 0d32  # 0d32
+  message: "Merged in PR #2104. wasm_bindgen linker with 44 tests, 100% coverage. Detects #[wasm_bindgen] Rust exports and JS/TS imports from pkg/ directories and _bg.wasm files."  # 0d32

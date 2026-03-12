@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Vue.js component analyzer."""
 
 from pathlib import Path

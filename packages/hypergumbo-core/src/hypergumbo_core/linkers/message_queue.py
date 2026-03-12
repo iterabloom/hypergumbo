@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Message queue linker for detecting pub/sub communication patterns.
 
 This linker detects message queue patterns across multiple languages and creates
@@ -473,20 +474,19 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
         else:
             subscribers.setdefault(key, []).append(pattern)
 
+    # Build (file_path, line) -> symbol index for fast lookup
+    symbol_by_location: dict[tuple[str, int], Symbol] = {
+        (s.path, s.span.start_line): s for s in symbols
+    }
+
     # Create edges from publishers to subscribers
     edges: list[Edge] = []
     for key, pubs in publishers.items():
         subs = subscribers.get(key, [])
         for pub in pubs:
-            pub_symbol = next(
-                (s for s in symbols if s.path == pub.file_path and s.span.start_line == pub.line),
-                None,
-            )
+            pub_symbol = symbol_by_location.get((pub.file_path, pub.line))
             for sub in subs:
-                sub_symbol = next(
-                    (s for s in symbols if s.path == sub.file_path and s.span.start_line == sub.line),
-                    None,
-                )
+                sub_symbol = symbol_by_location.get((sub.file_path, sub.line))
                 if pub_symbol and sub_symbol:
                     is_cross_language = pub.language != sub.language
                     # Confidence depends on whether topics are literal or variable

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Julia analysis pass using tree-sitter-julia.
 
 This analyzer uses tree-sitter to parse Julia files and extract:

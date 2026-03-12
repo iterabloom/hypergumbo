@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Internal Representation (IR) for code analysis.
 
 Parsers emit Symbol and Edge objects to this IR layer. The IR is then
@@ -364,6 +365,7 @@ class Edge:
         confidence: float = 0.85,
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
+        meta: Optional[Dict[str, Any]] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key."""
         # Generate deterministic edge ID from src, dst, type, AND line
@@ -384,6 +386,7 @@ class Edge:
             evidence_type=evidence_type,
             evidence_lang=evidence_lang,
             evidence_spans=evidence_spans,
+            meta=meta,
         )
 
     def to_dict(self) -> dict:
@@ -558,3 +561,73 @@ class UsageContext:
             "path": self.path,
             "span": self.span.to_dict(),
         }
+
+
+def create_boundary_nodes(
+    symbols: List[Symbol],
+    edges: List[Edge],
+) -> List[Symbol]:
+    """Create lightweight boundary nodes for dangling edge endpoints.
+
+    After all analyzers and linkers have run, some edges point to IDs that
+    don't exist as symbols (e.g., calls to Go stdlib functions, imports of
+    npm packages, or references to Java standard library classes).  Rather
+    than leaving these as dangling edges that break slice traversal, this
+    function creates synthetic "boundary" nodes that mark where the analyzed
+    codebase ends and external dependencies begin.
+
+    Boundary nodes are:
+    - kind="external_symbol" (generic) or inferred from the ID format
+    - supply_chain_tier=3 (external dependency)
+    - Flagged with meta.external_boundary=True
+    - Zero-span (no source location)
+
+    Args:
+        symbols: All extracted symbols from analyzers and linkers.
+        edges: All edges (after deduplication).
+
+    Returns:
+        List of new boundary Symbol objects to extend the symbol list.
+        Does NOT modify the input lists.
+    """
+    symbol_ids = {sym.id for sym in symbols}
+    # Collect unique dangling targets (both src and dst)
+    dangling_ids: set = set()
+    for edge in edges:
+        if edge.src not in symbol_ids:
+            dangling_ids.add(edge.src)
+        if edge.dst not in symbol_ids:
+            dangling_ids.add(edge.dst)
+
+    if not dangling_ids:
+        return []
+
+    boundary_nodes: List[Symbol] = []
+    zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
+
+    for dangling_id in sorted(dangling_ids):
+        # Parse the ID to extract language and name.
+        # Common formats:
+        #   {lang}:unresolved:0-0:{name}:unresolved
+        #   {lang}:external:0-0:{name}:unresolved
+        #   {lang}:{path}:0-0:{name}:{kind}
+        #   {lang}:{path}:{start}-{end}:{name}:{kind}  (rare edge case)
+        parts = dangling_id.split(":")
+        language = parts[0] if parts else "unknown"
+        # Extract name: second-to-last part in the colon-separated ID
+        name = parts[-2] if len(parts) >= 2 else dangling_id
+
+        sym = Symbol(
+            id=dangling_id,
+            name=name,
+            kind="external_symbol",
+            language=language,
+            path="<external>",
+            span=zero_span,
+            meta={"external_boundary": True},
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
+        )
+        boundary_nodes.append(sym)
+
+    return boundary_nodes

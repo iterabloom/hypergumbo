@@ -1,0 +1,34 @@
+- op: create  # 84e1
+  at: '2026-03-02T06:19:29Z'  # 84e1
+  by: agent  # 84e1
+  actor: jgstern_agent  # 84e1
+  clock: 1  # 84e1
+  nonce: '84e1'  # 84e1
+  data:  # 84e1
+    kind: work_item  # 84e1
+    title: "Propagate supply_chain tier into slice node records"  # 84e1
+    status: todo_soft  # 84e1
+    priority: 3  # 84e1
+    parent:  # 84e1
+    tags: []  # 84e1
+    before: []  # 84e1
+    duplicate_of: []  # 84e1
+    not_duplicate_of: []  # 84e1
+    pr_ref:  # 84e1
+    description: "LLM assessment (multiple repos): slice.0.json and rslice nodes show tier 'unknown' even though hg.json has correct tier data. Emitting tier in slice node objects enables interactive tier-based filtering."  # 84e1
+    fields: {}  # 84e1
+- op: update  # 4c69
+  at: '2026-03-02T07:05:52Z'  # 4c69
+  by: agent  # 4c69
+  actor: jgstern_agent  # 4c69
+  clock: 2  # 4c69
+  nonce: 4c69  # 4c69
+  set:  # 4c69
+    status: done  # 4c69
+- op: discuss  # dd8d
+  at: '2026-03-02T07:05:52Z'  # dd8d
+  by: agent  # dd8d
+  actor: jgstern_agent  # dd8d
+  clock: 3  # dd8d
+  nonce: dd8d  # dd8d
+  message: "Fixed by adding node_tiers field to SliceResult. During BFS traversal, each node's supply_chain_tier is recorded alongside node_depths. The node_tiers dict maps node_id to tier integer and is serialized in to_dict() output."  # dd8d

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """ORM query linker for detecting ORM model references in application code.
 
 Detects ORM query patterns in Python source files and creates model_reference

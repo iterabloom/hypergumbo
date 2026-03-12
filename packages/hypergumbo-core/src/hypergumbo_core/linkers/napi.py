@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Node.js N-API linker for connecting JavaScript/TypeScript calls to C/C++ addon functions.
 
 This linker creates napi_bridge edges between JavaScript/TypeScript code that

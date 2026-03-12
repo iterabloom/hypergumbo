@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Nim language analysis pass.
 
 Tests verify that the Nim analyzer correctly extracts:

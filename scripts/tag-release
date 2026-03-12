@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Create and push a signed release tag.
 #
 # This script is the human-only step after prepare-release.

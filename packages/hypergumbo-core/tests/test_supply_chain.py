@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for supply chain classification.
 
 Tests the classification of files into supply chain tiers:
@@ -76,6 +77,15 @@ class TestDerivedArtifactDetection:
         "compiled/output.compiled.js",
         "__pycache__/module.cpython-311.pyc",
         "src/__pycache__/test.pyc",
+        # Rust prost-build generated serde implementations
+        "crates/proto/src/gen/penumbra.core.keys.v1.serde.rs",
+        "src/gen/mypackage.serde.rs",
+        # Go protobuf generated code
+        "pkg/api/v1/service.pb.go",
+        "internal/proto/message.pb.go",
+        # Python protobuf generated code
+        "src/proto/service_pb2.py",
+        "proto/message_pb2_grpc.py",
     ])
     def test_derived_path_patterns(self, path, tmp_path):
         """Files matching derived patterns are tier 4."""
@@ -252,6 +262,28 @@ class TestInternalDepDetection:
         roots = detect_package_roots(tmp_path)
         assert pkg_dir in roots
         assert tmp_path not in roots  # "." pattern should be skipped
+
+    def test_cargo_workspaces_dot_member(self, tmp_path):
+        """Skip '.' Cargo workspace member (would cause glob error).
+
+        This mirrors test_npm_workspaces_dot_pattern. The bellman repo uses
+        members = ["."] to indicate the root package is a workspace member.
+        Without the guard, pathlib.glob(".") raises or returns unexpected results.
+        """
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text('''
+[workspace]
+members = [".", "crates/*"]
+''')
+
+        # Create a crates subdirectory
+        crate_dir = tmp_path / "crates" / "mylib"
+        crate_dir.mkdir(parents=True)
+
+        # Should not crash, should find crates/mylib, should NOT add repo root
+        roots = detect_package_roots(tmp_path)
+        assert crate_dir in roots
+        assert tmp_path not in roots  # "." member should be skipped
 
     def test_cargo_workspaces(self, tmp_path):
         """Detect internal crates from Cargo.toml workspace."""
@@ -542,6 +574,24 @@ class TestTestFileClassification:
         (src_dir / "user_spec.rb").write_text("RSpec.describe User do; end")
 
         result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_rust_colocated_tests_rs_is_internal_dep(self, tmp_path):
+        """Rust co-located tests.rs modules are tier 2."""
+        src_dir = tmp_path / "core" / "lib" / "dal" / "src" / "consensus"
+        src_dir.mkdir(parents=True)
+        (src_dir / "tests.rs").write_text("#[cfg(test)]\nmod tests;")
+
+        result = classify_file(src_dir / "tests.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_rust_testonly_rs_is_internal_dep(self, tmp_path):
+        """Rust testonly.rs files are tier 2."""
+        src_dir = tmp_path / "core" / "lib" / "vm_executor" / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "testonly.rs").write_text("pub fn test_helper() {}")
+
+        result = classify_file(src_dir / "testonly.rs", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
 
     def test_unit_tests_dir_is_internal_dep(self, tmp_path):
@@ -1240,3 +1290,110 @@ class TestClassifySymbolsPreservesTier:
         _classify_symbols([sym], tmp_path, package_roots)
 
         assert sym.supply_chain_reason == "manually classified"
+
+
+class TestClassifySymbolsDependencyTier:
+    """_classify_symbols assigns tier 3 to dependency-kind symbols."""
+
+    def test_cargo_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """Cargo.toml dependency declarations should be tier 3 (EXTERNAL_DEP)."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "Cargo.toml").write_text('[dependencies]\nff = "0.13"\n')
+
+        sym = Symbol(
+            id="toml:dep:ff",
+            name="ff",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(2, 0, 2, 12),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_workspace_cargo_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """Dependency in workspace sub-crate Cargo.toml → tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        subcrate = tmp_path / "groth16"
+        subcrate.mkdir()
+        (subcrate / "Cargo.toml").write_text('[dependencies]\nff = "0.13"\n')
+
+        sym = Symbol(
+            id="toml:dep:ff:groth16",
+            name="ff",
+            kind="dependency",
+            language="toml",
+            path="groth16/Cargo.toml",
+            span=Span(2, 0, 2, 12),
+        )
+
+        package_roots = {subcrate}
+        _classify_symbols([sym], tmp_path, package_roots)
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_npm_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """package.json dependency declarations should be tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "package.json").write_text('{"dependencies": {"lodash": "^4.0"}}')
+
+        sym = Symbol(
+            id="json:dep:lodash",
+            name="lodash",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(1, 0, 1, 20),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_dev_dependency_gets_tier3(self, tmp_path: Path) -> None:
+        """devDependency kind symbols should be tier 3."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "package.json").write_text('{"devDependencies": {"jest": "^29"}}')
+
+        sym = Symbol(
+            id="json:dep:jest",
+            name="jest",
+            kind="devDependency",
+            language="json",
+            path="package.json",
+            span=Span(1, 0, 1, 20),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 3
+        assert "dependency declaration" in sym.supply_chain_reason
+
+    def test_non_dependency_kind_unaffected(self, tmp_path: Path) -> None:
+        """Regular symbols (kind=function etc.) are not affected by dependency rule."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text("fn main() {}\n")
+
+        sym = Symbol(
+            id="rs:main",
+            name="main",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 0, 1, 12),
+        )
+
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_tier == 1  # First-party, not tier 3

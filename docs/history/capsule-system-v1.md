@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Capsule System (Historical Design)
 
 > **Note**: This document archives the original capsule system design from the Spec A architecture. The capsule system was designed under the assumption that users would need custom analyzers composed from building blocks. In practice, the general-purpose analyzer works well enough that custom composition isn't needed.

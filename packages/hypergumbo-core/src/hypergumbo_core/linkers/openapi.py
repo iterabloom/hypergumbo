@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """OpenAPI/Swagger linker for detecting API schema to handler connections.
 
 This linker parses OpenAPI specification files and links operations to
@@ -353,9 +354,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                     continue
 
                 # Create edge linking spec to implementation
-                edge_id = f"edge:openapi:{symbol.id}:{route.id}"
-                edge = Edge(
-                    id=edge_id,
+                edge = Edge.create(
                     src=symbol.id,
                     dst=route.id,
                     edge_type="openapi_implements",
@@ -376,9 +375,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             for route in route_symbols:
                 # Check if operationId matches function name
                 if route.name == op.operation_id:
-                    edge_id = f"edge:openapi:opid:{symbol.id}:{route.id}"
-                    edge = Edge(
-                        id=edge_id,
+                    edge = Edge.create(
                         src=symbol.id,
                         dst=route.id,
                         edge_type="openapi_implements",

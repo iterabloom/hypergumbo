@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # 7. Import Tracking for Cross-File Call Resolution
 
 Date: 2026-01-22

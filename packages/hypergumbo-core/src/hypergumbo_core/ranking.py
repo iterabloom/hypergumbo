@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Symbol and file ranking utilities for hypergumbo output.
 
 This module provides reusable ranking functions that determine which symbols
@@ -14,9 +15,16 @@ Ranking uses multiple signals combined:
    log-scaled out-degree factor.  This rewards *connectors* — symbols
    that are both depended-on and depend-on-others (e.g., QuerySet, Model)
    — over pure *sinks* (e.g., exception classes, utility decorators) that
-   have high in-degree but near-zero out-degree.  Extreme in-degree is
+   have high in-degree but near-zero out-degree.  Pure sinks (out=0) get
+   a 0.5x multiplier instead of 1.0x, penalizing popular leaf utilities
+   (e.g., Elm ``map`` with in=71, out=0) that are plumbing.  Extreme
+   in-degree is
    saturated via ``hub_threshold`` to prevent infrastructure utilities
-   (error sentinels, loggers) from dominating rankings.
+   (error sentinels, loggers) from dominating rankings.  Cross-file edges
+   count as 1.0 while within-file edges are dampened (default 0.3x) to
+   prevent local variables referenced many times within a single file
+   (e.g., ``pSpec`` with 96 in-degree) from outranking architecturally
+   important symbols referenced across many files.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -43,7 +51,15 @@ Ranking uses multiple signals combined:
    CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
    rankings despite being plumbing.
 
-6. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+6. **Sibling Implementation Dampening**: When many methods share the same
+   name (e.g., 19 ``Notifier.Notify`` variants — one per notification
+   channel in alertmanager), they flood top rankings even after common
+   method name dampening.  Within each name group of 6+ methods, the top 3
+   by score keep full weight; the rest get a 0.15x multiplier.  This
+   ensures users see 2-3 representative implementations, not 19 variants
+   of the same interface method.
+
+7. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
    method calls with confidence <0.5) are excluded from centrality
    computation. This prevents method name collisions from inflating
    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
@@ -87,7 +103,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .ir import Symbol, Edge
-from .paths import is_test_file
+from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
 
 logger = logging.getLogger(__name__)
@@ -141,6 +157,8 @@ def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
     hub_threshold: int | None = None,
+    within_file_weight: float = 1.0,
+    max_per_file_in: int | None = None,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -152,7 +170,13 @@ def compute_centrality(
 
     The formula is::
 
-        raw_score = effective_in_degree * (1 + ln(1 + out_degree))
+        out_multiplier = (1 + ln(1 + out_degree)) if out_degree > 0 else 0.5
+        raw_score = effective_in_degree * out_multiplier
+
+    Pure sinks (out_degree=0) get a 0.5x multiplier instead of the standard
+    1.0x floor.  This ensures popular leaf utilities (e.g., ``map`` with
+    in=71, out=0) rank below architectural connectors with the same
+    in-degree.
 
     When ``hub_threshold`` is set, in-degree is saturated for symbols above
     the threshold to prevent infrastructure utilities (error sentinels,
@@ -167,6 +191,17 @@ def compute_centrality(
     happens *before* normalization, which is critical — post-normalization
     dampening cannot flip relative rankings.
 
+    When ``within_file_weight`` is less than 1.0, edges where source and
+    destination are in the same file contribute less to in-degree.  This
+    prevents local variables and helpers referenced many times within a
+    single file from outranking architecturally important symbols that are
+    referenced across many files.  Cross-file edges always contribute 1.0.
+
+    When ``max_per_file_in`` is set, each unique source file can contribute
+    at most this many edges worth of in-degree to any target symbol.  This
+    prevents a utility function called 50 times from 2 files from outranking
+    an architecturally important function called 15 times from 15 files.
+
     Scores are normalized to 0-1 after computation.
 
     Args:
@@ -175,18 +210,49 @@ def compute_centrality(
         hub_threshold: In-degree above which saturation applies. None
             disables saturation.  Default None (off for backward compat).
             ``rank_symbols`` passes 100.
+        within_file_weight: Weight for within-file edges (0.0-1.0).
+            Cross-file edges always count as 1.0.  Default 1.0
+            (all edges equal, backward compatible).  ``rank_symbols``
+            passes 0.3 to dampen local-variable inflation.
+        max_per_file_in: Maximum in-degree contribution from any single
+            source file. None disables capping. ``rank_symbols`` passes 5.
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
     """
     symbol_ids = {s.id for s in symbols}
-    in_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+    in_degree: Dict[str, float] = dict.fromkeys(symbol_ids, 0.0)
     out_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+
+    # Build symbol-to-path lookup for cross-file detection and per-file capping
+    use_file_weighting = within_file_weight < 1.0 or max_per_file_in is not None
+    if use_file_weighting:
+        symbol_path: Dict[str, str] = {s.id: s.path for s in symbols}
+
+    if max_per_file_in is not None:
+        # Track per-(target, source_file) edge counts for capping
+        per_file_counts: Dict[str, Dict[str, int]] = {}
 
     for edge in edges:
         target = edge.dst
         if target and target in in_degree:
-            in_degree[target] += 1
+            if use_file_weighting:
+                src_path = symbol_path.get(edge.src, "")
+                dst_path = symbol_path.get(target, "")
+                weight = within_file_weight if (src_path and src_path == dst_path) else 1.0
+
+                # Per-file in-degree capping
+                if max_per_file_in is not None and src_path:
+                    file_counts = per_file_counts.setdefault(target, {})
+                    count = file_counts.get(src_path, 0)
+                    if count >= max_per_file_in:
+                        weight = 0.0  # Capped — don't count this edge
+                    else:
+                        file_counts[src_path] = count + 1
+
+                in_degree[target] += weight
+            else:
+                in_degree[target] += 1
         source = edge.src
         if source and source in out_degree:
             out_degree[source] += 1
@@ -204,7 +270,14 @@ def compute_centrality(
         else:
             effective_in = ind
 
-        scores[sid] = effective_in * (1 + math.log(1 + outd))
+        # Pure sinks (out_degree=0) get a dampened multiplier (0.5) vs
+        # the normal floor of 1.0.  This penalizes popular leaf utilities
+        # (e.g., Elm map with in=71, out=0) that accumulate high in-degree
+        # through ubiquitous use but have no outgoing dependencies — they're
+        # plumbing, not connectors.  Symbols with out_degree >= 1 get the
+        # standard (1 + ln(1 + out_degree)) boost.
+        out_multiplier = (1 + math.log(1 + outd)) if outd > 0 else 0.5
+        scores[sid] = effective_in * out_multiplier
 
     # Normalize to 0-1 range
     max_score = max(scores.values()) if scores else 1.0
@@ -361,6 +434,7 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # information, debugger, traceback, warningLevel, fatalError, ErrorHandler.
     re.compile(r"(?i)^(?:log|warn|error|debug|info|trace|fatal|print)(?:f|ln)?$"),
     re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
+    re.compile(r"^now$"),                 # now() time accessor (e.g., Log.now)
     re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
     re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
     # Exception/error classes: thrown/caught infrastructure, not domain logic.
@@ -372,6 +446,33 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^(?:insert|erase|push_back|pop_back|front|back|clear|swap|reserve|resize|at)$"),
     re.compile(r"^(?:toString|hashCode|equals|compareTo|clone|finalize)$"),  # Java boilerplate
     re.compile(r"^__(?:repr|str|hash|eq|ne|lt|le|gt|ge|len|bool|init|del)__$"),  # Python dunder
+    # Rust derive-generated methods: Clone, Default, Debug, Hash, PartialEq, Into/From.
+    # These have high in-degree from derive macros but low architectural relevance.
+    re.compile(r"^(?:fmt|default|into|from|as_ref|deref|drop|unwrap)$"),
+    # Functional programming primitives: generic collection operations with
+    # high fan-in but no architectural relevance.  Elm's map/filter/reduce
+    # and JS Array methods dominate rankings in polyglot repos.
+    re.compile(r"^(?:map|filter|reduce|forEach|flatMap|fold|foldl|foldr|zip|concat|apply)$"),
+    # Test fixtures and doubles: mock/fake/stub/dummy classes used in tests.
+    # These have high in-degree from test code but zero production relevance.
+    # Catches: DummyNetworkAdapter, MockClient, FakeServer, StubRepository.
+    # Case-insensitive prefix, but suffix must be uppercase (to exclude "Mockingbird").
+    re.compile(r"^(?:[Dd]ummy|[Mm]ock|[Ff]ake|[Ss]tub|[Ss]py)[A-Z_]"),
+    # Assertion/panic/abort/exit builtins: control-flow primitives called
+    # everywhere but not domain architecture. Bakeoff: assert() ranked 6th
+    # in automerge, logPanicAndDie dominated firecracker.
+    # Catches: assert, assertEqual, assert_eq, panic, abort, exit, die, unreachable,
+    #          logPanicAndDie, panicOnError (compound camelCase with ^log prefix).
+    # Avoids: PanicButton, ExitSurvey, aborted (domain terms).
+    re.compile(r"(?i)^assert(?:_|[A-Z]|$)"),  # assert, assertEqual, assert_eq
+    re.compile(r"^(?:panic|abort|exit|die|unreachable)$", re.IGNORECASE),
+    # camelCase log-prefixed compound names: logPanicAndDie, logAndExit, logFatal.
+    # The ^log_ pattern catches snake_case (log_error) but not camelCase (logError).
+    re.compile(r"^log[A-Z]"),  # logPanicAndDie, logAndExit, logError
+    # UI primitive components: leaf design-system elements rendered everywhere.
+    # Bakeoff: Button ranked above JobQueue.add in AFFiNE. These are plumbing.
+    # Exact match only — compound names like LoginButton are domain-specific.
+    re.compile(r"^(?:Button|Icon|Input|Checkbox|Select|Tooltip|Spinner|Modal|Avatar|Badge|Divider|Label|Switch|Slider|Radio|Popover|Drawer|Skeleton|Progress|Tag|Chip|Snackbar|Toast)$"),
 ]
 
 
@@ -383,13 +484,52 @@ def is_utility_symbol(name: str) -> bool:
     domain relevance. This supplements is_utility_file (path-based) with
     name-based detection.
 
+    Checks both the full name and the unqualified part (after the last
+    separator: `::`, `.`, `#`, `\\`). This catches derive-generated methods
+    like `AllocatedNum::clone` where only the unqualified `clone` matches.
+
     Args:
         name: Symbol name to check.
 
     Returns:
         True if the name matches a known utility pattern.
     """
-    return any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS)
+    if any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS):
+        return True
+    # Check unqualified name for qualified symbols (Rust ::, Java/C# ., Ruby #)
+    for sep in ("::", ".", "#", "\\"):
+        if sep in name:
+            unqualified = name.rsplit(sep, 1)[-1]
+            if any(p.search(unqualified) for p in _UTILITY_SYMBOL_PATTERNS):
+                return True
+    return False
+
+
+def _is_helper_file(path: str) -> bool:
+    """Check if the file path or basename suggests a helper/utility module.
+
+    Files named ``*_helpers.*``, ``*_utils.*``, ``*_util.*``, ``helpers.*``,
+    ``utils.*``, ``util.*``, or located in ``utils/`` or ``helpers/``
+    directories are infrastructure plumbing whose symbols should be dampened
+    in rankings.  E.g. ``openapi_helpers.go`` whose ``createYAMLNode``,
+    ``responsesWithErrorExamples`` dominate rankings in prometheus, or Elm
+    ``Utils/Api.elm`` whose ``map`` dominated rankings in alertmanager.
+    """
+    if not path:
+        return False
+    path_lower = path.lower()
+    if "/utils/" in path_lower or "/helpers/" in path_lower:
+        return True
+    basename = path_lower.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return (
+        basename.endswith("_helpers")
+        or basename.endswith("_utils")
+        or basename.endswith("_util")
+        or basename in ("helpers", "utils", "util")
+        # Test fixture files: conftest, fixtures, factories, test_helpers
+        or basename in ("conftest", "fixtures", "factories")
+        or basename.startswith("test_helper")
+    )
 
 
 # Concepts from framework YAML patterns that indicate infrastructure logging.
@@ -439,7 +579,12 @@ def apply_utility_symbol_weights(
     for sid, score in centrality.items():
         sym = symbol_lookup.get(sid)
         name = sym.name if sym else ""
-        if is_utility_symbol(name) or _has_logging_concept(sym):
+        path = sym.path if sym else ""
+        if (
+            is_utility_symbol(name)
+            or _has_logging_concept(sym)
+            or _is_helper_file(path)
+        ):
             weighted[sid] = score * utility_weight
         else:
             weighted[sid] = score
@@ -453,6 +598,7 @@ def apply_trivial_sink_weights(
     sink_weight: float = 0.1,
     max_out_degree: int = 1,
     max_loc: int = 5,
+    pure_sink_max_loc: int = 20,
 ) -> Dict[str, float]:
     """Dampen centrality for trivial sinks — short-bodied symbols with near-zero out-degree.
 
@@ -467,14 +613,16 @@ def apply_trivial_sink_weights(
       - noopMetric.Inc (in=109, out=0, LoC=1) — null object stub
       - CheckError (in=195, out=1, LoC=3) — error-handling wrapper
       - syncTask.name (in=109, out=0, LoC=2) — trivial accessor
+      - node_text (in=496, out=0, LoC=11) — tree-sitter helper with docstring
+      - find_child_by_type (in=291, out=0, LoC=16) — utility with docstring
 
-    Detection criteria (all must hold):
-      1. out_degree <= max_out_degree (default 1)
-      2. lines_of_code <= max_loc (default 5)
-
-    This is conservative: most architectural functions have out_degree > 1
-    OR non-trivial body size.  The conjunction prevents false dampening of
-    genuinely important short leaf functions.
+    Two tiers of detection:
+      1. Near-sinks (out_degree <= 1, loc <= max_loc=5): strict, catches
+         accessors/stubs regardless of whether they have 0 or 1 edge out.
+      2. Pure sinks (out_degree == 0, loc <= pure_sink_max_loc=20): relaxed
+         LOC for truly zero-out-degree functions.  These call nothing — even
+         with docstrings making them 10-20 lines, they're leaf helpers, not
+         architectural functions.
 
     Args:
         centrality: Centrality scores to weight.
@@ -482,7 +630,12 @@ def apply_trivial_sink_weights(
         edges: Edge list (used to compute out-degree).
         sink_weight: Multiplier for trivial sinks (default 0.1).
         max_out_degree: Maximum out-degree to qualify as sink (default 1).
-        max_loc: Maximum lines of code to qualify as trivial (default 5).
+        max_loc: Maximum lines of code for near-sinks (default 5).
+        pure_sink_max_loc: Maximum lines of code for pure sinks with
+            out_degree == 0 (default 20).  Higher than max_loc because
+            pure sinks are definitively non-architectural — they call
+            nothing.  The higher threshold catches utility helpers whose
+            spans include docstrings (e.g., node_text at 11 lines).
 
     Returns:
         Dictionary mapping symbol ID to dampened centrality score.
@@ -506,6 +659,8 @@ def apply_trivial_sink_weights(
         outd = out_degree.get(sid, 0)
         loc = symbol_loc.get(sid, 0)
         if outd <= max_out_degree and loc <= max_loc:
+            weighted[sid] = score * sink_weight
+        elif outd == 0 and loc <= pure_sink_max_loc:
             weighted[sid] = score * sink_weight
         else:
             weighted[sid] = score
@@ -571,6 +726,73 @@ def apply_common_method_name_weights(
         if count > name_threshold:
             factor = max(floor, name_threshold / count)
             weighted[sid] = score * factor
+        else:
+            weighted[sid] = score
+
+    return weighted
+
+
+def apply_sibling_impl_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    top_k: int = 3,
+    min_group_size: int = 6,
+    tail_factor: float = 0.15,
+) -> Dict[str, float]:
+    """Dampen centrality for excess interface implementation siblings.
+
+    When many methods share the same name (e.g., 19 Notifier.Notify variants
+    in alertmanager — one per notification channel), they flood top rankings
+    even after common-method-name dampening.  This function groups same-name
+    methods, keeps the top K by score at full weight, and steeply dampens
+    the rest.
+
+    Bakeoff finding: alertmanager cohort-008 iter-003 had 19 Notifier.Notify
+    implementations occupying positions 1-20.  After common-method-name
+    dampening (0.53x), they still dominated because all had similar raw
+    scores (in=18 from shared interface callers).
+
+    Detection:
+    - Group callable symbols (function/method) by name
+    - Only apply to groups with >= min_group_size members
+    - Sort each group by centrality score (descending)
+    - Top K keep their score; remainder get tail_factor multiplier
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for name grouping).
+        top_k: Number of highest-scored members to keep at full weight
+            within each name group. Default 3.
+        min_group_size: Minimum group size to trigger dampening. Default 6.
+        tail_factor: Multiplier for symbols beyond top K. Default 0.15.
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    _CALLABLE_KINDS = {"function", "method"}
+
+    # Group callable symbols by name
+    name_groups: Dict[str, list[str]] = {}
+    symbol_lookup: Dict[str, Symbol] = {}
+    for s in symbols:
+        symbol_lookup[s.id] = s
+        if s.kind in _CALLABLE_KINDS:
+            name_groups.setdefault(s.name, []).append(s.id)
+
+    # Identify which symbol IDs need dampening
+    dampened_ids: set[str] = set()
+    for _name, sids in name_groups.items():
+        if len(sids) < min_group_size:
+            continue
+        # Sort by centrality descending, dampen beyond top_k
+        ranked = sorted(sids, key=lambda sid: -centrality.get(sid, 0))
+        for sid in ranked[top_k:]:
+            dampened_ids.add(sid)
+
+    weighted = {}
+    for sid, score in centrality.items():
+        if sid in dampened_ids:
+            weighted[sid] = score * tail_factor
         else:
             weighted[sid] = score
 
@@ -652,11 +874,14 @@ def filter_edges_for_ranking(
     _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
 
     if exclude_test_edges:
-        symbol_path_by_id = {s.id: s.path for s in symbols}
+        symbol_by_id = {s.id: s for s in symbols}
         filtered = [
             e for e in edges
             if e.edge_type in _STRUCTURAL_EDGE_TYPES
-            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
+            or not is_test_node(
+                (symbol_by_id[e.src].path if e.src in symbol_by_id else ''),
+                (symbol_by_id[e.src].meta if e.src in symbol_by_id else None),
+            )
         ]
     else:
         filtered = list(edges)
@@ -721,8 +946,16 @@ def rank_symbols(
 
     # Compute centrality with hub saturation (threshold=100 dampens
     # infrastructure utilities like error sentinels and loggers).
+    # within_file_weight=0.3 dampens local-variable inflation: symbols
+    # referenced many times within one file rank lower than symbols
+    # referenced across many files.
+    # max_per_file_in=5 caps per-source-file in-degree contribution,
+    # preventing utility functions called many times from few files
+    # (e.g., createYAMLNode with 46 calls from 1 file) from outranking
+    # architecturally important symbols called from many files.
     raw_centrality = compute_centrality(
-        symbols, filtered_edges, hub_threshold=100
+        symbols, filtered_edges, hub_threshold=100,
+        within_file_weight=0.3, max_per_file_in=5,
     )
 
     # Apply tier weighting if enabled
@@ -739,6 +972,12 @@ def rank_symbols(
 
     # De-weight common method names (execute, call, perform, etc.)
     weighted_centrality = apply_common_method_name_weights(
+        weighted_centrality, symbols,
+    )
+
+    # De-weight excess interface implementation siblings (e.g., 19
+    # Notifier.Notify variants — keep top 3, dampen the rest)
+    weighted_centrality = apply_sibling_impl_weights(
         weighted_centrality, symbols,
     )
 
@@ -1325,3 +1564,40 @@ def compute_truncation_elbow(
 
     # Convert elbow line number to tokens
     return elbow_line * chars_per_line // chars_per_token
+
+
+def compute_harmonic_shares(n: int, total_budget: int) -> list[int]:
+    """Compute harmonic budget shares for N ranked items.
+
+    File at rank i (1-indexed) gets ``total_budget * (1/i) / H_n`` tokens,
+    where ``H_n = sum(1/k for k=1..n)`` is the n-th harmonic number.  This
+    gives a depth-over-breadth distribution: the highest-ranked file gets
+    the most tokens, with each subsequent file receiving proportionally less.
+
+    Allocations are rounded down to integers.  Any leftover tokens from
+    rounding are distributed one each to the highest-ranked items so the
+    sum equals *exactly* ``total_budget``.
+
+    Args:
+        n: Number of items to allocate budget across.  Must be >= 0.
+        total_budget: Total token budget to distribute.  Must be >= 0.
+
+    Returns:
+        A list of ``n`` integer allocations summing to ``total_budget``,
+        monotonically non-increasing.
+    """
+    if n <= 0 or total_budget <= 0:
+        return [] if n <= 0 else [0] * n
+
+    # Compute H_n (n-th harmonic number)
+    h_n = sum(1.0 / k for k in range(1, n + 1))
+
+    # Compute raw shares and floor them
+    shares = [int(total_budget * (1.0 / i) / h_n) for i in range(1, n + 1)]
+
+    # Distribute remainder to top-ranked items
+    remainder = total_budget - sum(shares)
+    for i in range(remainder):
+        shares[i] += 1
+
+    return shares

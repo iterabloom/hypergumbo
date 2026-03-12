@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Supply chain classification for code analysis.
 
 Classifies files into tiers based on their position in the project's
@@ -118,6 +119,11 @@ DERIVED_FILENAME_PATTERNS = [
     r"\.compiled\.js$",
     r"\.pyc$",
     r"\.pyo$",
+    # Protobuf/gRPC code generation artifacts
+    r"\.serde\.rs$",        # Rust prost-build generated serde implementations
+    r"\.pb\.go$",           # Go protobuf generated code
+    r"_pb2\.py$",           # Python protobuf generated code
+    r"_pb2_grpc\.py$",      # Python gRPC generated code
 ]
 
 EXTERNAL_DEP_PATTERNS = [
@@ -187,6 +193,8 @@ TEST_FILE_PATTERNS = [
     r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
     r"_spec\.rb$",               # Ruby: user_spec.rb
     r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
+    r"(?:^|/)tests\.rs$",        # Rust: co-located test module (src/consensus/tests.rs)
+    r"(?:^|/)testonly\.rs$",     # Rust: test-only helpers (src/vm_executor/testonly.rs)
 ]
 
 # Simple first-party patterns to check within workspaces
@@ -419,6 +427,8 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                     r"members\s*=\s*\[(.*?)\]", content, re.DOTALL
                 ):
                     for member in re.findall(r'"([^"]+)"', match.group(1)):
+                        if not member or member == ".":
+                            continue
                         for path in repo_root.glob(member):
                             if path.is_dir():
                                 roots.add(path)

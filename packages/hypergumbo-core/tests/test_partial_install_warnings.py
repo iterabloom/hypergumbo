@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for partial installation warnings (ADR-0010 Item 8)."""
 
 from __future__ import annotations
@@ -133,6 +134,38 @@ class TestCheckUnanalyzedFiles:
         )
         assert len(warnings_verilog) == 1
         assert "hypergumbo-lang-extended1" in warnings_verilog[0].message
+
+    def test_no_warning_for_aliased_language(self) -> None:
+        """No warning when profile uses alias (e.g., 'shell') and canonical
+        name ('bash') has a registered analyzer."""
+        profile = RepoProfile(
+            languages={
+                "shell": LanguageStats(files=61, loc=3000),
+            }
+        )
+        # 'bash' is registered (canonical name)
+        registered = {"bash"}
+
+        warnings_list = check_unanalyzed_files(profile, registered_languages=registered)
+
+        assert warnings_list == []
+
+    def test_aliased_language_gets_package_suggestion(self) -> None:
+        """When alias is used and no analyzer registered, suggest canonical package."""
+        profile = RepoProfile(
+            languages={
+                "shell": LanguageStats(files=10, loc=200),
+            }
+        )
+        registered: set[str] = set()
+
+        warnings_list = check_unanalyzed_files(profile, registered_languages=registered)
+
+        assert len(warnings_list) == 1
+        warning = warnings_list[0]
+        assert warning.language == "shell"
+        # Should find the package via canonical name "bash"
+        assert "hypergumbo-lang-common" in warning.message
 
     def test_warning_for_unknown_language(self) -> None:
         """Warning for language not in our package mapping."""

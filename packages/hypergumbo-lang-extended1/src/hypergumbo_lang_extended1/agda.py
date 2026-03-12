@@ -1,12 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Agda analysis pass using tree-sitter-agda.
 
 This analyzer uses tree-sitter to parse Agda files and extract:
 - Module declarations
 - Function definitions (including theorems, lemmas, postulates)
 - Data type definitions
-- Record type definitions
+- Record type definitions and record field declarations
 - Import statements (open import, import)
-- Reference relationships between declarations
+- Reference relationships from both pattern clause bodies AND type signatures
 
 Agda is a dependently typed programming language and proof assistant.
 Unlike typical programming languages, "calls" are less meaningful than
@@ -145,6 +146,7 @@ def _extract_symbols_from_file(
     - function: Function/theorem type signatures
     - data: Data type definitions
     - record: Record type definitions
+    - field: Record field declarations
     """
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
@@ -248,6 +250,18 @@ def _extract_symbols_from_file(
                 name = node_text(name_node, source).strip()
                 add_symbol(node, name, "record")
 
+        elif node.type == "signature":
+            # Record field declaration (inside fields block)
+            field_name_node = find_child_by_type(node, "field_name")
+            if field_name_node:
+                fname = node_text(field_name_node, source).strip()
+                # Extract field type signature
+                expr_node = find_child_by_type(node, "expr")
+                sig = None
+                if expr_node:
+                    sig = ": " + node_text(expr_node, source).strip()
+                add_symbol(node, fname, "field", signature=sig)
+
     return symbols
 
 
@@ -295,6 +309,13 @@ def _extract_edges_from_file(
 
     Detects:
     - import: Import statements (open import, import)
+    - references: Pattern clause body references (confidence 0.80)
+    - references: Type signature references (confidence 0.75)
+
+    Type signature scanning is critical for Agda because types carry
+    architectural dependencies (e.g., ``f : Vec A n → Vec B n`` depends
+    on Vec). Without this, symbols referenced only in signatures appear
+    as orphans.
 
     Returns (edges, import_aliases) where import_aliases maps renamed
     symbols to their qualified module paths for path_hint resolution.
@@ -349,6 +370,93 @@ def _extract_edges_from_file(
                         confidence=0.95,
                     )
                     edges.append(edge)
+
+    # Reference edges from both pattern clauses AND type signatures.
+    # In Agda, type signatures carry architecturally significant dependencies:
+    #   double : Nat -> Nat  -- "double" depends on "Nat"
+    # Scanning only pattern clause bodies (= ...) misses these.
+    seen_ref_pairs: set[tuple[str, str]] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type != "function":
+            continue
+        rhs = find_child_by_type(node, "rhs")
+        if not rhs:
+            continue  # pragma: no cover
+        rhs_text = node_text(rhs, source).strip()
+
+        if rhs_text.startswith("="):
+            # Pattern clause: scan RHS body for references
+            lhs = find_child_by_type(node, "lhs")
+            if not lhs:
+                continue  # pragma: no cover
+            enclosing_name = ""
+            for child in lhs.children:
+                if child.type == "atom":
+                    qid_node = find_child_by_type(child, "qid")
+                    if qid_node:
+                        enclosing_name = node_text(qid_node, source).strip()
+                        break
+            if not enclosing_name:
+                continue  # pragma: no cover
+
+            enclosing_result = resolver.lookup(enclosing_name)
+            if not enclosing_result.symbol:
+                continue
+
+            for rhs_child in iter_tree(rhs):
+                if rhs_child.type != "qid":
+                    continue
+                ref_name = node_text(rhs_child, source).strip()
+                if not ref_name or ref_name == enclosing_name:
+                    continue
+                ref_result = resolver.lookup(ref_name)
+                if ref_result.symbol:
+                    pair = (enclosing_result.symbol.id, ref_result.symbol.id)
+                    if pair not in seen_ref_pairs:
+                        seen_ref_pairs.add(pair)
+                        edges.append(Edge.create(
+                            src=enclosing_result.symbol.id,
+                            dst=ref_result.symbol.id,
+                            edge_type="references",
+                            line=rhs_child.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            confidence=0.80,
+                        ))
+
+        elif rhs_text.startswith(":"):
+            # Type signature: scan for qid references to defined types
+            lhs = find_child_by_type(node, "lhs")
+            if not lhs:
+                continue  # pragma: no cover
+            fn_name = _get_function_name_from_lhs(lhs, source)
+            if not fn_name:
+                continue  # pragma: no cover
+
+            fn_result = resolver.lookup(fn_name)
+            if not fn_result.symbol:
+                continue  # pragma: no cover - type sig name always resolves
+
+            for rhs_child in iter_tree(rhs):
+                if rhs_child.type != "qid":
+                    continue
+                ref_name = node_text(rhs_child, source).strip()
+                if not ref_name or ref_name == fn_name:
+                    continue  # pragma: no cover - skip self-ref
+                ref_result = resolver.lookup(ref_name)
+                if ref_result.symbol:
+                    pair = (fn_result.symbol.id, ref_result.symbol.id)
+                    if pair not in seen_ref_pairs:
+                        seen_ref_pairs.add(pair)
+                        edges.append(Edge.create(
+                            src=fn_result.symbol.id,
+                            dst=ref_result.symbol.id,
+                            edge_type="references",
+                            line=rhs_child.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            confidence=0.75,
+                        ))
 
     return edges, import_aliases
 

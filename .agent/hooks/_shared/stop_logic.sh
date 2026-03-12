@@ -39,11 +39,51 @@ if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]
 fi
 TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 
-# --- Circuit breaker (hash-based no-progress detection) ---
+# --- Circuit breaker (file-change-based no-progress detection) ---
+# Hashes file modification times in sentinel directories to detect whether
+# real work product changed between stop events.  This measures whether the
+# agent *did* make progress (files changed) rather than whether it *said* it
+# made progress (tracker updated).  Dotfiles and invisible directories are
+# excluded because tracker bookkeeping and git metadata shouldn't count as
+# progress — source code and docs changes should.
 CIRCUIT_BREAKER_TRIPPED=false
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || \
-    { echo "WARNING: hash-todos failed, using fallback hash" >&2; CURRENT_HASH="fallback-$$"; }
+  # Read sentinel dirs from tracker config, fall back to sensible defaults
+  SENTINEL_DIRS=()
+  if command -v python3 &>/dev/null; then
+    while IFS= read -r dir; do
+      [[ -n "$dir" ]] && SENTINEL_DIRS+=("$dir")
+    done < <(python3 -c "
+import yaml, os, sys
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    dirs = cfg.get('stop_hook', {}).get('progress_sentinel_dirs', [])
+    for d in dirs:
+        d = os.path.expanduser(d)
+        if not os.path.isabs(d):
+            d = os.path.join('$REPO_ROOT', d)
+        print(d)
+except Exception:
+    pass
+" 2>/dev/null)
+  fi
+  # Fall back to defaults if config didn't provide any
+  if [[ ${#SENTINEL_DIRS[@]} -eq 0 ]]; then
+    SENTINEL_DIRS=("$REPO_ROOT/packages" "$REPO_ROOT/docs" "$REPO_ROOT/scripts")
+  fi
+
+  # Build file-change hash from sentinel directories
+  FIND_ARGS=()
+  for d in "${SENTINEL_DIRS[@]}"; do
+    [[ -d "$d" ]] && FIND_ARGS+=("$d")
+  done
+  if [[ ${#FIND_ARGS[@]} -gt 0 ]]; then
+    CURRENT_HASH=$(find "${FIND_ARGS[@]}" -not -path '*/.*' -not -path '*/guidance_log/*' -type f -printf '%p %T@\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+  else
+    CURRENT_HASH="no-sentinel-dirs-$$"
+  fi
+
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     echo "$CURRENT_HASH" >> "$HASH_FILE"
   fi
@@ -107,12 +147,28 @@ except Exception:
     pass
 " 2>/dev/null || true)
 
+    # Determine session type (broad vs deep) from directory name
+    _SESSION_DIR=$(dirname "$LATEST_STATE")
+    _SESSION_NAME=$(basename "$_SESSION_DIR")
+    _SESSION_TYPE="broad"
+    if [[ "$_SESSION_NAME" == deep-* ]]; then
+      _SESSION_TYPE="deep"
+    fi
+
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session is CONVERGED — no critical/high issues. Running another bakeoff on the same cohort would be redundant. Consider: selecting a new cohort, mining existing artifacts, or moving to other work items.'
+      if [[ "$_SESSION_TYPE" == "broad" ]]; then
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff cohort --count 5\n  - Mine existing artifacts: ./scripts/bakeoff issues --format json\n  - Run LLM assessment: ./scripts/bakeoff-reflect\n  - Or move to other work items (tracker ready)'
+      else
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff-features cohort --count 4\n  - Compare sessions: ./scripts/bakeoff-features compare <A> <B>\n  - Run LLM assessment: ./scripts/bakeoff-features-reflect\n  - Or move to other work items (tracker ready)'
+      fi
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session has outstanding issues. Consider investigating these before starting new work.'
+      if [[ "$_SESSION_TYPE" == "broad" ]]; then
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  - View issues: ./scripts/bakeoff issues --format json\n  - Diagnose latest: ./scripts/bakeoff diagnose\n  - Check status: ./scripts/bakeoff status\n  - Re-run after fixes: ./scripts/bakeoff cycle'
+      else
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  - Check status: ./scripts/bakeoff-features status\n  - Diagnose repos: ./scripts/bakeoff-features diagnose\n  - Re-run after fixes: ./scripts/bakeoff-features run\n  - View questions: ./scripts/bakeoff-features questions'
+      fi
     fi
   fi
 fi
@@ -137,7 +193,7 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
 
   # Update last_stop_check.json with guidance_file pointer + bakeoff convergence
   if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
+    STATE_FILE_FOR_GF="$HOME/hypergumbo_lab_notebook/last_stop_check.json"
     if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
       TMP=$(mktemp)
       if jq --arg gf "$GUIDANCE_FILE" \
@@ -155,10 +211,14 @@ fi
 # (Bakeoff convergence computed above, before guidance file write)
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
-STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-# Backward compat: fall back to old filename if new one doesn't exist
-if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-  STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
+STATE_FILE="$HOME/hypergumbo_lab_notebook/last_stop_check.json"
+# Backward compat: fall back to old locations if new one doesn't exist
+if [[ ! -f "$STATE_FILE" ]]; then
+  if [[ -f "$REPO_ROOT/.agent/last_stop_check.json" ]]; then
+    STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
+  elif [[ -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
+    STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
+  fi
 fi
 
 ELAPSED_MIN=9999  # Default: stale (will trigger Path 3)
@@ -211,4 +271,98 @@ if [[ "$ELAPSED_MIN" -ge 30 ]]; then
       printf '%s' "$BAKEOFF_SUFFIX"
     fi
   } > "$GUIDANCE_FILE_REFLECTION"
+fi
+
+# --- Stale-PR audit: surface open PRs older than 6 hours ---
+# Queries Forgejo for open PRs. Any PR created more than 6 hours ago is
+# flagged in the active guidance file. This catches PRs orphaned by context
+# compaction, remote timeouts, or failed CI that the agent forgot about.
+# Non-fatal: if the API call fails, we silently skip the audit.
+STALE_PR_SECTION=""
+if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+  _stale_pr_audit() {
+    # Source the Forgejo API library
+    local api_lib="$REPO_ROOT/scripts/lib/forgejo-api.sh"
+    [[ -f "$api_lib" ]] || return 0
+    # shellcheck disable=SC1090
+    source "$api_lib"
+    load_env 2>/dev/null || return 0
+    detect_api_base 2>/dev/null || return 0
+
+    # Fetch open PRs (silently fail if no connectivity)
+    if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate&limit=50" 2>/dev/null; then
+      return 0
+    fi
+
+    local now_epoch
+    now_epoch=$(date +%s)
+    local threshold=$((6 * 3600))  # 6 hours in seconds
+
+    # Parse PRs: filter to those older than 6 hours
+    local stale_prs
+    stale_prs=$(python3 -c "
+import json, sys, datetime
+now = $now_epoch
+threshold = $threshold
+prs = json.loads(sys.stdin.read())
+if not isinstance(prs, list):
+    sys.exit(0)
+for pr in prs:
+    created = pr.get('created_at', '')
+    if not created:
+        continue
+    # Parse ISO 8601 timestamp
+    try:
+        dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
+        age_s = now - int(dt.timestamp())
+    except (ValueError, TypeError):
+        continue
+    if age_s > threshold:
+        num = pr.get('number', '?')
+        title = pr.get('title', '?')[:60]
+        age_h = age_s // 3600
+        branch = pr.get('head', {}).get('ref', '?')
+        mergeable = pr.get('mergeable', None)
+        ci_note = ''
+        if mergeable is False:
+            ci_note = ' [NOT MERGEABLE]'
+        elif mergeable is True:
+            ci_note = ' [mergeable]'
+        print(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
+        print(f'  Branch: {branch}')
+" <<< "$API_RESPONSE" 2>/dev/null) || return 0
+
+    if [[ -n "$stale_prs" ]]; then
+      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\nThe following open PRs are older than 6 hours. Consider: merge (if CI green),\nrebase + re-push (if out of date), fix (if CI failed), or close (if superseded).\n\n%s\n' "$stale_prs")
+    fi
+  }
+  _stale_pr_audit
+fi
+
+# Append stale-PR section to the active guidance file (whichever was generated)
+if [[ -n "$STALE_PR_SECTION" ]]; then
+  for _gf in "$GUIDANCE_FILE" "$GUIDANCE_FILE_COOLDOWN" "$GUIDANCE_FILE_REFLECTION"; do
+    if [[ -n "$_gf" && -f "$_gf" ]]; then
+      printf '%s' "$STALE_PR_SECTION" >> "$_gf"
+    fi
+  done
+fi
+
+# --- Guidance file organization: move older files to subfolder ---
+# Keep the 10 most recent guidance files in the main directory for quick
+# access. Move everything else to older_guidance/ for archival. NEVER
+# deletes guidance files — move-only policy.
+if [[ -d "$GUIDANCE_LOG_DIR" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+  OLDER_DIR="$GUIDANCE_LOG_DIR/older_guidance"
+  # Count guidance files (stop_guidance_*.md pattern)
+  GUIDANCE_COUNT=$(find "$GUIDANCE_LOG_DIR" -maxdepth 1 -name 'stop_guidance_*.md' -type f 2>/dev/null | wc -l)
+  if [[ "$GUIDANCE_COUNT" -gt 10 ]]; then
+    mkdir -p "$OLDER_DIR"
+    # Move all but the 10 most recent (by modification time)
+    find "$GUIDANCE_LOG_DIR" -maxdepth 1 -name 'stop_guidance_*.md' -type f -printf '%T@ %p\n' 2>/dev/null \
+      | sort -rn | tail -n +"11" | cut -d' ' -f2- \
+      | while IFS= read -r f; do
+          mv "$f" "$OLDER_DIR/" 2>/dev/null || true
+        done
+  fi
 fi

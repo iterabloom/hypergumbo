@@ -1,0 +1,50 @@
+- op: create  # 6d02
+  at: '2026-03-08T07:29:49Z'  # 6d02
+  by: agent  # 6d02
+  actor: jgstern_agent  # 6d02
+  clock: 1  # 6d02
+  nonce: 6d02  # 6d02
+  data:  # 6d02
+    kind: work_item  # 6d02
+    title: "auto-pr: rebase and retry on 405 head-behind-base merge failure"  # 6d02
+    status: needs_human_review  # 6d02
+    priority: 2  # 6d02
+    parent:  # 6d02
+    tags:  # 6d02
+    - ci_infrastructure  # 6d02
+    before: []  # 6d02
+    duplicate_of: []  # 6d02
+    not_duplicate_of: []  # 6d02
+    pr_ref:  # 6d02
+    description: "auto-pr gets 405 'head behind base branch' when dev advances during CI polling (from tracker auto-sync or concurrent merges). Fix: detect 405 with 'head behind' message, rebase feature branch on origin/dev, force-push, and retry merge. Similar to do_sync step 13 in sync.py. This is a governance file (auto-pr) so requires human approval."  # 6d02
+    fields: {}  # 6d02
+- op: update  # f222
+  at: '2026-03-08T07:30:43Z'  # f222
+  by: agent  # f222
+  actor: jgstern_agent  # f222
+  clock: 2  # f222
+  nonce: f222  # f222
+  set:  # f222
+    status: in_progress  # f222
+- op: discuss  # 0abc
+  at: '2026-03-08T07:30:43Z'  # 0abc
+  by: agent  # 0abc
+  actor: jgstern_agent  # 0abc
+  clock: 3  # 0abc
+  nonce: 0abc  # 0abc
+  message: "Human approved governance file change. Implementing rebase-on-405 in auto-pr."  # 0abc
+- op: update  # 2faa
+  at: '2026-03-08T07:42:20Z'  # 2faa
+  by: agent  # 2faa
+  actor: jgstern_agent  # 2faa
+  clock: 4  # 2faa
+  nonce: 2faa  # 2faa
+  set:  # 2faa
+    status: done  # 2faa
+- op: discuss  # 5910
+  at: '2026-03-08T07:42:20Z'  # 5910
+  by: agent  # 5910
+  actor: jgstern_agent  # 5910
+  clock: 5  # 5910
+  nonce: '5910'  # 5910
+  message: "Fixed in PR #2008. do_merge() in forgejo-api.sh now detects 'head behind base branch' 405 errors, rebases locally on origin/dev, force-pushes with --force-with-lease, and retries the fast-forward merge."  # 5910

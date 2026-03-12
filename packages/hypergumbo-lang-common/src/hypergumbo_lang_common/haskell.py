@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Haskell analysis pass using tree-sitter-haskell.
 
 This analyzer uses tree-sitter to parse Haskell files and extract:

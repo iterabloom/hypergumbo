@@ -355,6 +355,7 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         "Analyzers": [],
         "Linkers": [],
         "CLI & I/O": [],
+        "Tracker": [],
     }
 
     # Scan all package src directories
@@ -363,6 +364,7 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         ("hypergumbo_lang_mainstream", REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src" / "hypergumbo_lang_mainstream"),
         ("hypergumbo_lang_common", REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common"),
         ("hypergumbo_lang_extended1", REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1"),
+        ("hypergumbo_tracker", REPO_ROOT / "packages" / "hypergumbo-tracker" / "src" / "hypergumbo_tracker"),
     ]
 
     for package_name, src_root in package_roots:
@@ -388,7 +390,9 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
             # Classify by directory structure and package origin.
             # Language analyzer modules live as top-level files in hypergumbo_lang_*
             # packages, while core analyzer infrastructure lives under analyze/.
-            if package_name.startswith("hypergumbo_lang_"):
+            if package_name == "hypergumbo_tracker":
+                categories["Tracker"].append((module_name, docstring))
+            elif package_name.startswith("hypergumbo_lang_"):
                 categories["Analyzers"].append((module_name, docstring))
             elif parts and parts[0] == "analyze":
                 categories["Analyzers"].append((module_name, docstring))
@@ -621,8 +625,100 @@ def extract_linker_howto() -> str:
     )
 
 
+def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]) -> dict[str, int]:
+    """Count analyzers per language package.
+
+    Returns a dict mapping package short name to count, e.g.
+    {"mainstream": 35, "common": 25, "extended1": 37}.
+    """
+    counts: dict[str, int] = {}
+    for name, _ in categories.get("Analyzers", []):
+        if "hypergumbo_lang_mainstream" in name:
+            counts["mainstream"] = counts.get("mainstream", 0) + 1
+        elif "hypergumbo_lang_common" in name:
+            counts["common"] = counts.get("common", 0) + 1
+        elif "hypergumbo_lang_extended1" in name:
+            counts["extended1"] = counts.get("extended1", 0) + 1
+        else:
+            counts["core"] = counts.get("core", 0) + 1
+    return counts
+
+
+def extract_supply_chain_tiers() -> str:
+    """Extract supply chain tier documentation from supply_chain.py's docstring.
+
+    Parses the module docstring to produce a markdown description
+    of the tier classification system.
+    """
+    sc_path = (
+        REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+        / "hypergumbo_core" / "supply_chain.py"
+    )
+    docstring = extract_module_docstring(sc_path)
+    if not docstring:
+        return ""
+
+    # Extract the Tiers section
+    lines: list[str] = []
+    in_tiers = False
+    in_algorithm = False
+    for line in docstring.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Tiers"):
+            in_tiers = True
+            continue
+        if stripped.startswith("Classification Algorithm"):
+            in_tiers = False
+            in_algorithm = True
+            continue
+        if in_algorithm and stripped.startswith("---"):
+            continue
+        if in_algorithm and stripped and not stripped.startswith("See "):
+            lines.append(stripped)
+            continue
+        if in_algorithm and stripped.startswith("See "):
+            break
+        if in_tiers and stripped.startswith("---"):
+            continue
+        if in_tiers and stripped.startswith("- "):
+            # Convert "- FIRST_PARTY (1): desc" to table-friendly format
+            lines.append(stripped)
+    return "\n".join(lines)
+
+
+def extract_tracker_architecture() -> str:
+    """Extract tracker architecture description from store.py's docstring."""
+    store_path = (
+        REPO_ROOT / "packages" / "hypergumbo-tracker" / "src"
+        / "hypergumbo_tracker" / "store.py"
+    )
+    docstring = extract_module_docstring(store_path)
+    if not docstring:
+        return ""
+    # Return first paragraph (up to first blank line after content)
+    para_lines: list[str] = []
+    started = False
+    for line in docstring.splitlines():
+        stripped = line.strip()
+        if not stripped and started:
+            break
+        if stripped:
+            started = True
+            para_lines.append(stripped)
+    return " ".join(para_lines)
+
+
 def generate_architecture_md() -> str:
-    """Generate the ARCHITECTURE.md content."""
+    """Generate the ARCHITECTURE.md content.
+
+    Produces a document organized around architectural understanding:
+    1. Package structure and dependency hierarchy
+    2. Analysis pipeline (data flow)
+    3. Key concepts (output modes, supply chain, symbol resolution)
+    4. Extension guides (new analyzers, linkers, patterns)
+    5. Module reference (auto-generated from docstrings)
+    6. Full sketch output (collapsible appendix)
+    """
     print("Running hypergumbo sketch on itself...", file=sys.stderr)
     sketch = run_hypergumbo_sketch()
 
@@ -648,6 +744,7 @@ def generate_architecture_md() -> str:
     core_count = len(categories.get("Core", []))
     cli_count = len(categories.get("CLI & I/O", []))
     total_modules = sum(len(v) for v in categories.values())
+    lang_counts = count_language_analyzers(categories)
     pattern_total, conv_count, fw_count = count_framework_patterns()
     node_count = len(analysis.get("nodes", []))
     edge_count = len(analysis.get("edges", []))
@@ -664,10 +761,16 @@ def generate_architecture_md() -> str:
         "> **Auto-generated** by running hypergumbo on itself.",
         "> Run `./scripts/generate-architecture` to update.",
         "",
+        "hypergumbo is a local-first CLI that analyzes source code and emits",
+        "behavior maps — JSON graphs of symbols, call edges, framework patterns,",
+        "and cross-language links. It supports three output modes: a Markdown sketch",
+        "for human reading, a full JSON behavior map for tooling, and graph slices",
+        "for focused LLM context.",
+        "",
         "## Self-Analysis Summary",
         "",
         f"hypergumbo analyzed its own source code and found:",
-        f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers, {core_count} core, {cli_count} CLI)",
+        f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers, {core_count} core, {cli_count} CLI, {len(categories.get('Tracker', []))} tracker)",
         f"- **{node_count}** symbols (functions, classes, methods)",
         f"- **{edge_count}** edges by type:",
     ]
@@ -679,57 +782,106 @@ def generate_architecture_md() -> str:
         other_count = sum(c for t, c in list(edge_types.items())[6:])
         lines.append(f"  - other: {other_count}")
 
+    # ── Package Architecture ──────────────────────────────────────
+    mainstream_n = lang_counts.get("mainstream", 0)
+    common_n = lang_counts.get("common", 0)
+    extended1_n = lang_counts.get("extended1", 0)
     lines.extend([
         "",
-        "## Sketch (hypergumbo on hypergumbo)",
+        "## Package Architecture",
         "",
-        "````markdown",
-        sketch.strip(),
-        "````",
+        "The codebase is a Python monorepo with six packages arranged in a strict",
+        "dependency hierarchy. The separation enforces layering: language analyzers",
+        "depend on core but not on each other, and the tracker is fully independent.",
         "",
-        "## Data Flow (ADR-0003)",
+        "```",
+        "                      hypergumbo (meta-package)",
+        "                    /       |       \\",
+        "                   v        v        v",
+        f"  lang-mainstream   lang-common   lang-extended1",
+        f"  ({mainstream_n} analyzers)   ({common_n} analyzers)   ({extended1_n} analyzers)",
+        "                   \\       |       /",
+        "                    v      v      v",
+        "                   hypergumbo-core",
+        "           (IR, CLI, linkers, patterns,",
+        "            ranking, discovery, sketch)",
+        "",
+        "  hypergumbo-tracker  (independent)",
+        "  (governance TUI, op-log store,",
+        "   CRDT-like merge, SQLite cache)",
+        "```",
+        "",
+        "| Package | Role |",
+        "|---------|------|",
+        "| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, "
+        f"{linker_count} linkers, {pattern_total} YAML pattern files, sketch/slice output, "
+        "supply chain classification, symbol resolution, ranking |",
+        f"| **hypergumbo-lang-mainstream** | {mainstream_n} tree-sitter analyzers for widely-used languages "
+        "(Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |",
+        f"| **hypergumbo-lang-common** | {common_n} analyzers for domain-specific and functional languages "
+        "(Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |",
+        f"| **hypergumbo-lang-extended1** | {extended1_n} analyzers for specialized languages "
+        "(Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |",
+        "| **hypergumbo** | Meta-package that installs core + all language packages |",
+        "| **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, "
+        "Lamport-clock ordering, and optional embedding-based dedup |",
+        "",
+    ])
+
+    # ── Analysis Pipeline ─────────────────────────────────────────
+    lines.extend([
+        "## Analysis Pipeline",
+        "",
+        "The CLI's `run_behavior_map()` function orchestrates the full pipeline:",
         "",
         "```",
         "Source Files",
         "     │",
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
-        "│                          PROFILE                                │",
+        "│                        1. DISCOVERY                             │",
+        "│  Find files, classify into supply chain tiers (1-4),            │",
+        "│  apply .gitignore + exclude patterns                            │",
+        "└─────────────────────────────────────────────────────────────────┘",
+        "     │",
+        "     ▼",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                         2. PROFILE                              │",
         "│  Detect languages (by file extension)                           │",
         "│  Detect frameworks (by manifest markers, scoped to languages)   │",
         "└─────────────────────────────────────────────────────────────────┘",
         "     │",
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
-        "│                         ANALYZERS                               │",
-        "│  Pure language processors - NO framework knowledge              │",
+        "│                        3. ANALYZERS                             │",
+        "│  Per-language tree-sitter parsing (two-pass architecture):      │",
+        "│    Pass 1: Extract symbols from AST nodes                       │",
+        "│    Pass 2: Resolve calls/imports against global symbol registry │",
         f"│  Output: {node_count} Symbols + {edge_count} Edges + UsageContexts".ljust(66) + "│",
-        "│  Rich metadata: decorators, base_classes, parameters            │",
         "└─────────────────────────────────────────────────────────────────┘",
         "     │",
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
-        "│                       PATTERN SYSTEM                            │",
-        "│  ┌─────────────────────────────────────────────────────────┐    │",
-        "│  │  Convention Patterns (always loaded):                   │    │",
-        "│  │  - main-functions.yaml: main() entrypoints              │    │",
-        "│  │  - test-frameworks.yaml: test function detection        │    │",
-        "│  │  - language-conventions.yaml: CUDA/WGSL/COBOL/etc.      │    │",
-        "│  │  - config-conventions.yaml: NPM/Maven/Cargo deps        │    │",
-        "│  └─────────────────────────────────────────────────────────┘    │",
-        "│  ┌─────────────────────────────────────────────────────────┐    │",
-        "│  │  Framework Patterns (loaded when framework detected):   │    │",
-        f"│  │  - {fw_count} framework YAML files (fastapi, django, etc.)".ljust(60) + "│    │",
-        "│  └─────────────────────────────────────────────────────────┘    │",
+        "│                     4. PATTERN ENRICHMENT                       │",
+        "│  YAML-driven pattern matching (ADR-0003):                       │",
+        f"│  - {conv_count} convention patterns (always loaded)".ljust(66) + "│",
+        f"│  - {fw_count} framework patterns (loaded when framework detected)".ljust(66) + "│",
         "│  Output: Symbols enriched with meta.concepts                    │",
         "└─────────────────────────────────────────────────────────────────┘",
         "     │",
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
-        "│                          LINKERS                                │",
-        "│  Cross-language edge creation                                   │",
+        "│                        5. LINKERS                               │",
+        "│  Cross-language/cross-file edge creation                        │",
         "│  Match via meta.concepts (route paths, gRPC services, etc.)     │",
         f"│  {linker_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.".ljust(66) + "│",
+        "└─────────────────────────────────────────────────────────────────┘",
+        "     │",
+        "     ▼",
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│                     6. RANKING & OUTPUT                         │",
+        "│  Centrality scoring, supply chain tier filtering,               │",
+        "│  token-budget-aware truncation (compact mode)                   │",
         "└─────────────────────────────────────────────────────────────────┘",
         "                          │",
         "                          ▼",
@@ -743,7 +895,91 @@ def generate_architecture_md() -> str:
         "",
     ])
 
-    # Top symbols section
+    # ── Output Modes ──────────────────────────────────────────────
+    lines.extend([
+        "## Output Modes",
+        "",
+        "| Mode | Format | Purpose |",
+        "|------|--------|---------|",
+        "| **`sketch`** | Markdown | Token-budgeted overview of repo structure and key symbols. "
+        "Designed for human reading and LLM context windows. Default output mode. |",
+        "| **`run`** | JSON | Full behavior map with all symbols, edges, and metadata. "
+        "Used by downstream tools, CI checks, and the tracker. |",
+        "| **`slice`** | JSON | Subgraph extraction from an entry point (forward or reverse). "
+        "Produces focused dependency/dependents view for a specific symbol. |",
+        "",
+    ])
+
+    # ── Supply Chain Tiers ────────────────────────────────────────
+    lines.extend([
+        "## Supply Chain Tiers",
+        "",
+        "Files are classified into tiers at discovery time (before analysis)",
+        "to prioritize first-party code and filter noise:",
+        "",
+        "| Tier | Name | Examples |",
+        "|------|------|----------|",
+        "| **1** | First-party | Project source code (`src/`, `lib/`, `app/`) |",
+        "| **2** | Internal dep | Monorepo packages, examples, tests |",
+        "| **3** | External dep | `node_modules/`, `vendor/`, vendored SDKs |",
+        "| **4** | Derived | Build artifacts, transpiled output (`dist/`, `build/`, `*.min.js`) |",
+        "",
+        "Classification uses first-match-wins: derived artifacts (tier 4) are checked first,",
+        "then external deps (tier 3), then internal (tier 2), and remaining files default to",
+        "first-party (tier 1). The `--first-party-only` flag restricts analysis to tier 1.",
+        "",
+    ])
+
+    # ── Tree-sitter Infrastructure ────────────────────────────────
+    lines.extend([
+        "## Tree-sitter Infrastructure",
+        "",
+        "All language analyzers inherit from `TreeSitterAnalyzer` (`analyze/base.py`),",
+        "which provides a universal two-pass architecture:",
+        "",
+        "1. **Pass 1 (symbol extraction):** Parse each file with tree-sitter, walk the AST,",
+        "   extract symbols (functions, classes, methods, etc.) with metadata",
+        "2. **Pass 2 (edge resolution):** Re-walk ASTs, resolve calls and imports against",
+        "   the global symbol registry built in pass 1",
+        "",
+        "Grammars come from two sources:",
+        f"- **PyPI packages** (most languages): installed via `pip` as `tree-sitter-<lang>` dependencies",
+        "- **Build-from-source** (Lean, Wolfram, etc.): compiled by `scripts/build-source-grammars`",
+        "  when the PyPI grammar is unavailable or incompatible",
+        "",
+    ])
+
+    # ── Symbol Resolution ─────────────────────────────────────────
+    lines.extend([
+        "## Symbol Resolution",
+        "",
+        "Linkers match symbols across files and languages using `NameResolver`",
+        "(`symbol_resolution.py`), which provides tiered matching with confidence levels:",
+        "",
+        "| Strategy | Confidence | When used |",
+        "|----------|-----------|-----------|",
+        "| Exact | 1.0 | Direct key match in symbol registry |",
+        "| Path hint | 0.90 | Disambiguate using import path (Go-style) |",
+        "| Suffix | 0.85 | Match `MyClass.doWork` for lookup `doWork` |",
+        "| Ambiguous | 0.70 | Multiple candidates, picked heuristically |",
+        "",
+        "The suffix index is built lazily on first fuzzy lookup, not upfront.",
+        "Confidence scores propagate to edges, enabling downstream consumers to",
+        "filter by reliability.",
+        "",
+    ])
+
+    # ── Key Abstractions ──────────────────────────────────────────
+    ir_abstractions = extract_ir_abstractions()
+    lines.extend([
+        "## Key Abstractions",
+        "",
+    ])
+    if ir_abstractions:
+        lines.append(ir_abstractions)
+    lines.append("")
+
+    # ── Most-Connected Symbols ────────────────────────────────────
     if top_symbols:
         lines.extend([
             "## Most-Connected Symbols",
@@ -759,68 +995,7 @@ def generate_architecture_md() -> str:
             lines.append(f"| `{sym['name']}` | {sym['kind']} | {sym['score']:.1f} | {path} |")
         lines.append("")
 
-    # Module reference
-    lines.extend([
-        "## Module Reference",
-        "",
-    ])
-
-    for category, mods in categories.items():
-        if not mods:
-            continue
-        lines.append(f"### {category}")
-        lines.append("")
-
-        for name, docstring in mods:
-            # Extract first non-empty line of docstring
-            if docstring:
-                first_line = next(
-                    (ln.strip() for ln in docstring.splitlines() if ln.strip()),
-                    "(no docstring)"
-                )
-                if len(first_line) > 70:
-                    first_line = first_line[:67] + "..."
-            else:
-                first_line = "(no docstring)"
-
-            lines.append(f"- **`{name}`**: {first_line}")
-
-        lines.append("")
-
-    # Key Abstractions (auto-generated from ir.py docstrings)
-    ir_abstractions = extract_ir_abstractions()
-    lines.extend([
-        "## Key Abstractions",
-        "",
-    ])
-    if ir_abstractions:
-        lines.append(ir_abstractions)
-    lines.append("")
-
-    lines.extend([
-        "## Adding a New Analyzer",
-        "",
-        "1. Create analyzer in the appropriate lang package:",
-        "   - Mainstream: `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/<language>.py`",
-        "   - Common: `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/<language>.py`",
-        "   - Extended1: `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/<language>.py`",
-        "2. Implement `analyze(root: Path) -> AnalysisResult`",
-        "3. Return symbols and edges following IR conventions",
-        "4. Add tests in the package's `tests/` directory",
-        "5. Register in the package's `__init__.py` ANALYZER_SPECS",
-        "",
-    ])
-
-    # Adding a New Linker (auto-generated from registry.py docstring)
-    linker_howto = extract_linker_howto()
-    lines.extend([
-        "## Adding a New Linker",
-        "",
-    ])
-    lines.append(linker_howto)
-    lines.append("")
-
-    # Pattern System section (Key Components, meta.concepts, Adding a New Pattern)
+    # ── Pattern System ────────────────────────────────────────────
     lines.extend([
         "## Pattern System",
         "",
@@ -885,6 +1060,96 @@ def generate_architecture_md() -> str:
         '    symbol_kind: "^function$"',
         '    language: "^python$"',
         "```",
+        "",
+    ])
+
+    # ── Tracker Subsystem ─────────────────────────────────────────
+    tracker_desc = extract_tracker_architecture()
+    lines.extend([
+        "## Tracker Subsystem",
+        "",
+        "The `hypergumbo-tracker` package is an independent governance tool for",
+        "managing work items, invariants, and project state. Key design choices:",
+        "",
+        "- **Op-log store:** Items are append-only YAML op logs, not mutable records.",
+        "  `compile()` folds the log into current state (LWW for scalars, accumulation for sets).",
+        "- **Lamport clock:** Cross-branch causal ordering via git object timestamps.",
+        "- **Multi-tier views:** `TrackerSet` provides a unified view over canonical,",
+        "  workspace, and stealth stores.",
+        "- **SQLite cache:** Read-hot path uses a SQLite cache (`Cache`) that rebuilds",
+        "  from the op-log on invalidation.",
+        "- **Proquint IDs:** Content-hash IDs (SHA-256 + proquint encoding) for",
+        "  natural deduplication — same logical item always gets the same ID.",
+        "- **TUI:** Textual-based terminal UI (`TrackerApp`) for interactive browsing,",
+        "  filtering, and discussion.",
+        "",
+    ])
+
+    # ── Extension Guides ──────────────────────────────────────────
+    lines.extend([
+        "## Adding a New Analyzer",
+        "",
+        "1. Create analyzer in the appropriate lang package:",
+        "   - Mainstream: `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/<language>.py`",
+        "   - Common: `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/<language>.py`",
+        "   - Extended1: `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/<language>.py`",
+        "2. Implement `analyze(root: Path) -> AnalysisResult`",
+        "3. Return symbols and edges following IR conventions",
+        "4. Add tests in the package's `tests/` directory",
+        "5. Register in the package's `__init__.py` ANALYZER_SPECS",
+        "",
+    ])
+
+    # Adding a New Linker (auto-generated from registry.py docstring)
+    linker_howto = extract_linker_howto()
+    lines.extend([
+        "## Adding a New Linker",
+        "",
+    ])
+    lines.append(linker_howto)
+    lines.append("")
+
+    # ── Module Reference ──────────────────────────────────────────
+    lines.extend([
+        "## Module Reference",
+        "",
+    ])
+
+    for category, mods in categories.items():
+        if not mods:
+            continue
+        lines.append(f"### {category}")
+        lines.append("")
+
+        for name, docstring in mods:
+            # Extract first non-empty line of docstring
+            if docstring:
+                first_line = next(
+                    (ln.strip() for ln in docstring.splitlines() if ln.strip()),
+                    "(no docstring)"
+                )
+                if len(first_line) > 70:
+                    first_line = first_line[:67] + "..."
+            else:
+                first_line = "(no docstring)"
+
+            lines.append(f"- **`{name}`**: {first_line}")
+
+        lines.append("")
+
+    # ── Sketch Appendix (collapsible) ─────────────────────────────
+    lines.extend([
+        "## Appendix: Full Sketch Output",
+        "",
+        "<details>",
+        "<summary>Click to expand hypergumbo's self-analysis sketch "
+        "(data models, source files, key symbols)</summary>",
+        "",
+        "````markdown",
+        sketch.strip(),
+        "````",
+        "",
+        "</details>",
         "",
         "---",
         "",

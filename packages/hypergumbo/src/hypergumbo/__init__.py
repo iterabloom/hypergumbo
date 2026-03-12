@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo: Local-first repo behavior map generator.
 
 This is a meta-package that installs all hypergumbo components:

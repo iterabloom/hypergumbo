@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Bottle framework patterns (ADR-0003)
 #
 # Bottle is a fast, simple Python micro-framework similar to Flask.

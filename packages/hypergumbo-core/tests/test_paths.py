@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for centralized path handling utilities."""
 
 import pytest
@@ -9,6 +10,7 @@ from hypergumbo_core.paths import (
     paths_match,
     path_ends_with,
     get_filename,
+    is_infrastructure_path,
     is_under_directory,
     is_test_file,
     is_test_node,
@@ -257,6 +259,59 @@ class TestIsTestFile:
         assert is_test_file("testhelper/setup.py") is True
         assert is_test_file("testhelpers/factory.rb") is True
 
+    def test_rust_colocated_test_modules(self) -> None:
+        """Rust co-located test modules (tests.rs, testonly.rs) are test files."""
+        assert is_test_file("core/lib/dal/src/consensus/tests.rs") is True
+        assert is_test_file("core/lib/vm_executor/src/testonly.rs") is True
+        assert is_test_file("src/tests.rs") is True
+        assert is_test_file("testonly.rs") is True
+        # But regular Rust files are not
+        assert is_test_file("src/lib.rs") is False
+        assert is_test_file("src/main.rs") is False
+        assert is_test_file("src/consensus.rs") is False
+
+    def test_fv_and_harness_directories(self) -> None:
+        """Files in fv/ and harnesses/ directories are test files."""
+        assert is_test_file("fv/harnesses/TokenHarness.sol") is True
+        assert is_test_file("fv/specs/Token.spec") is True
+        assert is_test_file("harnesses/AccessManagerHarness.sol") is True
+        assert is_test_file("contracts/harnesses/mock.sol") is True
+
+    def test_benchmark_directories(self) -> None:
+        """Files in bench/benches/benchmark/benchmarks directories are test files.
+
+        Benchmarks are non-production code that should be excluded from
+        production slices (--exclude-tests). Same treatment as fv/ and harnesses/.
+        """
+        assert is_test_file("benches/slow.rs") is True
+        assert is_test_file("bench/speed.go") is True
+        assert is_test_file("benchmarks/perf.py") is True
+        assert is_test_file("benchmark/gcbench.d") is True
+        assert is_test_file("crates/core/benches/prover_bench.rs") is True
+
+    def test_test_hyphen_prefix_directories(self) -> None:
+        """Directories starting with 'test-' are test directories.
+
+        Covers: test-artifacts/, test-fixtures/, test-data/, test-utils/, etc.
+        Real-world example: sp1 has crates/test-artifacts/programs/ with 80+ test
+        program main() functions that should be excluded from production analysis.
+        """
+        assert is_test_file("crates/test-artifacts/programs/main.rs") is True
+        assert is_test_file("test-fixtures/data/input.json") is True
+        assert is_test_file("test-data/sample.csv") is True
+        assert is_test_file("test-utils/helpers.py") is True
+        # Compound names that don't start with test- should NOT match
+        assert is_test_file("patch-testing/program/src/lib.rs") is False
+        assert is_test_file("latest-test/main.py") is False
+
+    def test_testsuite_directory(self) -> None:
+        """Directories named 'testsuite*' are test directories.
+
+        Common in Java projects (keycloak has testsuite/ and test-framework/).
+        """
+        assert is_test_file("testsuite/providers/src/main/java/TestProvider.java") is True
+        assert is_test_file("testsuite-providers/src/main/java/LdapEndpoint.java") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False
@@ -289,6 +344,7 @@ class TestIsUtilityFile:
         """Files in benchmark directories are utility files."""
         assert is_utility_file("benchmarks/perf.py") is True
         assert is_utility_file("benchmark/gcbench/testgc3.d") is True
+        assert is_utility_file("benches/slow.rs") is True  # Rust convention
         assert is_utility_file("bench/speed.go") is True
 
     def test_build_system_directories(self) -> None:
@@ -318,6 +374,70 @@ class TestIsUtilityFile:
         assert is_utility_file("devel/scripts/run.sh") is True
         # Should NOT match production paths that happen to contain "devel"
         assert is_utility_file("src/devel_utils.py") is False
+
+    def test_build_rs_is_utility(self) -> None:
+        """Cargo build.rs scripts are utility files.
+
+        build.rs is Cargo's compile-time build script — not user-facing code.
+        Its main() should not outrank library exports in entrypoint ranking.
+        """
+        assert is_utility_file("build.rs") is True
+        assert is_utility_file("crate/build.rs") is True
+        assert is_utility_file("sub/crate/build.rs") is True
+        # Regular Rust files should NOT match
+        assert is_utility_file("src/lib.rs") is False
+        assert is_utility_file("src/main.rs") is False
+
+    def test_ambiguous_dirs_inside_source_root_not_utility(self) -> None:
+        """dev/, utils/, tools/, bin/ inside source roots are modules (WI-kafif).
+
+        In halo2, ``src/dev/gates.rs`` contains MockProver — production code.
+        In Rust, ``src/bin/main.rs`` is a binary crate.
+        In Python, ``src/utils/helpers.py`` is a source module.
+        Only project-root occurrences are developer tooling.
+        """
+        # dev/ inside source roots
+        assert is_utility_file("src/dev/gates.rs") is False
+        assert is_utility_file("halo2_proofs/src/dev/gates.rs") is False
+        assert is_utility_file("lib/dev/mod.py") is False
+        assert is_utility_file("crates/core/src/dev.rs") is False
+        # utils/ inside source roots
+        assert is_utility_file("src/utils/helpers.py") is False
+        assert is_utility_file("packages/core/src/utils/mod.rs") is False
+        # tools/ inside source roots
+        assert is_utility_file("src/tools/parser.py") is False
+        # bin/ inside source roots (Rust convention)
+        assert is_utility_file("src/bin/main.rs") is False
+        assert is_utility_file("crates/cli/src/bin/tool.rs") is False
+        # But project-root occurrences are still utility
+        assert is_utility_file("dev/check_providers.py") is True
+        assert is_utility_file("dev/breeze/src/tool.py") is True
+        assert is_utility_file("utils/deploy.sh") is True
+        assert is_utility_file("tools/build.py") is True
+        assert is_utility_file("bin/run.sh") is True
+
+    def test_devenv_is_utility(self) -> None:
+        """devenv/ directories are dev environment code, not production."""
+        assert is_utility_file("devenv/docker/ha-test/listener.go") is True
+        assert is_utility_file("devenv/setup.py") is True
+        # Inside source root: still utility (devenv is unambiguous)
+        assert is_utility_file("src/devenv/main.go") is True
+
+    def test_codegen_go_filenames_are_utility(self) -> None:
+        """Go codegen scripts (gen.go, generate.go) are utility files."""
+        assert is_utility_file("kinds/gen.go") is True
+        assert is_utility_file("public/app/plugins/gen.go") is True
+        assert is_utility_file("cmd/generate.go") is True
+        # Suffix patterns
+        assert is_utility_file("api/types_gen.go") is True
+        assert is_utility_file("pkg/models_generate.go") is True
+        # NOT utility: regular Go files
+        assert is_utility_file("pkg/engine.go") is False
+        assert is_utility_file("cmd/main.go") is False
+        assert is_utility_file("internal/generic.go") is False
+        # NOT utility: non-Go gen files (too aggressive for other languages)
+        assert is_utility_file("src/gen.py") is False
+        assert is_utility_file("lib/gen.ts") is False
 
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
@@ -400,3 +520,48 @@ class TestIsTestNode:
         """Java @org.junit.Test annotation makes node a test node."""
         meta = {"decorators": [{"name": "org.junit.Test", "args": [], "kwargs": {}}]}
         assert is_test_node("src/main/java/Foo.java", meta) is True
+
+
+class TestIsInfrastructurePath:
+    """Tests for is_infrastructure_path function."""
+
+    def test_telemetry_directory(self) -> None:
+        """Files in telemetry/ directories are infrastructure."""
+        assert is_infrastructure_path("packages/core/src/telemetry/logger.ts")
+        assert is_infrastructure_path("src/telemetry/clearcut-logger.ts")
+
+    def test_metrics_directory(self) -> None:
+        """Files in metrics/ directories are infrastructure."""
+        assert is_infrastructure_path("src/metrics/counter.py")
+
+    def test_logging_directory(self) -> None:
+        """Files in logging/ directories are infrastructure."""
+        assert is_infrastructure_path("lib/logging/handler.py")
+
+    def test_tracing_directory(self) -> None:
+        """Files in tracing/ directories are infrastructure."""
+        assert is_infrastructure_path("src/tracing/span.ts")
+
+    def test_internal_directory(self) -> None:
+        """Files in internal/ directories are infrastructure."""
+        assert is_infrastructure_path("src/internal/cache.go")
+
+    def test_instrumentation_directory(self) -> None:
+        """Files in instrumentation/ directories are infrastructure."""
+        assert is_infrastructure_path("src/instrumentation/profiler.py")
+
+    def test_normal_source_not_infrastructure(self) -> None:
+        """Normal source files are not infrastructure."""
+        assert not is_infrastructure_path("src/mcp/client.ts")
+        assert not is_infrastructure_path("packages/core/src/agent.ts")
+        assert not is_infrastructure_path("src/main.py")
+
+    def test_filename_not_matched(self) -> None:
+        """Files named telemetry.ts (not in telemetry/ dir) are not infrastructure."""
+        assert not is_infrastructure_path("src/telemetry.ts")
+        assert not is_infrastructure_path("telemetry.py")
+
+    def test_case_insensitive(self) -> None:
+        """Directory matching is case-insensitive."""
+        assert is_infrastructure_path("src/Telemetry/Logger.ts")
+        assert is_infrastructure_path("src/METRICS/counter.py")

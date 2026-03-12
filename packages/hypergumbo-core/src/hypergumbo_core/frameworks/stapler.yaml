@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Stapler framework patterns (ADR-0003)
 #
 # Kohsuke Stapler is the URL dispatch framework used by Jenkins.

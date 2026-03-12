@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Pre-commit hook: Run linting, security, and freshness checks before committing
 #
 # This hook runs:
@@ -16,6 +17,74 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
+
+# Block direct commits to protected branches (dev, main)
+current_branch=$(git branch --show-current 2>/dev/null || true)
+if [[ "$current_branch" == "dev" || "$current_branch" == "main" ]]; then
+    echo ""
+    echo -e "${RED}========================================================${NC}"
+    echo -e "${RED}  BLOCKED: Direct commit to protected branch '$current_branch'${NC}"
+    echo -e "${RED}========================================================${NC}"
+    echo ""
+    echo -e "${YELLOW}  Create a feature branch first:${NC}"
+    echo ""
+    echo "    git stash"
+    echo "    git checkout -b <author>/feat/<description>"
+    echo "    git stash pop"
+    echo ""
+    echo "  To bypass (not recommended): git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+# Block production code changes while a bakeoff is running.
+# Editable install means the Python interpreter uses whatever's checked out.
+# Modifying source files mid-bakeoff corrupts the running analysis.
+#
+# "Production code" = packages/*/src/**/*.py and scripts/*.
+# Non-production (docs, tests, tracker, .ci, configs) is always allowed.
+# Character class trick prevents pgrep from matching itself.
+_bakeoff_pids=$(pgrep -f '[s]cripts/bakeoff' 2>/dev/null || true)
+if [[ -n "$_bakeoff_pids" ]]; then
+    # Check if any staged files are production code
+    _staged_prod=$(git diff --cached --name-only | grep -E '^(packages/[^/]+/src/|scripts/)' | grep -v -E '^scripts/(tracker|bakeoff)' || true)
+    if [[ -n "$_staged_prod" ]]; then
+        echo ""
+        echo -e "${RED}========================================================${NC}"
+        echo -e "${RED}  BLOCKED: Bakeoff is running (PIDs: ${_bakeoff_pids//$'\n'/, })${NC}"
+        echo -e "${RED}========================================================${NC}"
+        echo ""
+        echo -e "${YELLOW}  Cannot commit production code while bakeoff is active.${NC}"
+        echo -e "${YELLOW}  The editable install means your changes would affect${NC}"
+        echo -e "${YELLOW}  the running analysis.${NC}"
+        echo ""
+        echo "  Blocked files:"
+        echo "$_staged_prod" | sed 's/^/    /'
+        echo ""
+        echo "  Options:"
+        echo "    1. Wait for bakeoff to finish"
+        echo "    2. Stash changes: git stash"
+        echo "    3. Commit only non-production files"
+        echo ""
+        exit 1
+    fi
+fi
+
+# Auto-fix SPDX license headers on staged .py files
+# Auto-fix SPDX license headers on staged source files
+_staged_src=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(py|yaml|yml|sh|md)$' || true)
+# Also check extensionless files in scripts/ and .githooks/ (shell scripts)
+_staged_scripts=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(scripts/|\.githooks/)' | grep -v '\.' || true)
+_staged_all=$(printf '%s\n%s' "$_staged_src" "$_staged_scripts" | sort -u | grep -v '^$' || true)
+if [[ -n "$_staged_all" ]]; then
+    # shellcheck disable=SC2086
+    _out=$(./scripts/license-headers --fix --summary --files $_staged_all 2>/dev/null || true)
+    _fixed=$(echo "$_out" | grep "Fixed:" | awk '{print $2}')
+    if [[ -n "$_fixed" && "$_fixed" != "0" ]]; then
+        echo "$_staged_all" | xargs git add
+        echo -e "  ${GREEN}Auto-fixed SPDX headers on ${_fixed} file(s)${NC}"
+    fi
+fi
 
 echo "🔍 Running pre-commit checks..."
 

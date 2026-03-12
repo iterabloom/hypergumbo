@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 # Two-User Permission Test Playbook
 
 These four scripts exercise the tracker's two-user permission boundary

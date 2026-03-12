@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Apache Thrift analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse .thrift files and extract:
@@ -64,11 +65,6 @@ PASS_ID = make_pass_id("thrift")
 def find_thrift_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Thrift files in the repository."""
     yield from find_files(repo_root, ["*.thrift"])
-
-
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:thrift:{uuid.uuid4().hex[:12]}"
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -203,8 +199,7 @@ def _extract_symbols_and_edges(
                     symbols.append(func_sym)
 
                     # Create contains edge from service to function
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=service_sym.id,
                         dst=func_sym.id,
                         edge_type="contains",
@@ -242,8 +237,7 @@ def _extract_symbols_and_edges(
             for subchild in node.children:
                 if subchild.type == "string":
                     include_path = node_text(subchild, source).strip().strip('"')
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=make_file_id("thrift", file_path),
                         dst=f"thrift:{include_path}:1-1:file:file",
                         edge_type="imports",

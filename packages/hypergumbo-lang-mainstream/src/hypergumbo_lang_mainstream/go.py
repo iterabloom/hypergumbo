@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Go analysis pass using tree-sitter-go.
 
 This analyzer uses tree-sitter to parse Go files and extract:
@@ -156,6 +157,12 @@ GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
     "Del",  # Chi shorthand for Delete
+}
+
+# Uppercase HTTP methods for Go 1.22+ stdlib mux combined method-path
+# patterns like Handle("POST /path", handler).
+GO_HTTP_METHODS_UPPER = {
+    "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
 }
 
 # Short method aliases that need normalization before .upper().
@@ -418,6 +425,37 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _extract_interface_methods(
+    interface_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Extract method names from a Go interface definition.
+
+    Go interfaces list method specifications (name + signature) in their body.
+    This function extracts just the method names, used for structural interface
+    matching: a struct satisfies an interface if it has all the interface's
+    methods.
+
+    Example::
+
+        type Notifier interface {
+            Notify(msg string) error    // → {"Notify"}
+            Close() error               // → {"Notify", "Close"}
+        }
+
+    Embedded interfaces (e.g., ``io.Reader`` inside another interface) are
+    skipped — we only match on explicitly declared methods in this interface.
+    """
+    methods: set[str] = set()
+    for child in interface_type_node.children:
+        if child.type == "method_elem":
+            # method_elem has a field_identifier child for the method name
+            name_node = find_child_by_type(child, "field_identifier")
+            if name_node:
+                methods.add(node_text(name_node, source))
+    return methods
+
+
 def _extract_struct_embeddings(
     struct_type_node: "tree_sitter.Node",
     source: bytes,
@@ -467,6 +505,74 @@ def _extract_struct_embeddings(
             embedded.append(embedded_name)
 
     return embedded
+
+
+def _extract_struct_field_types(
+    struct_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract named field-to-type mappings from a Go struct definition.
+
+    Scans field_declaration children for named fields (those with an explicit
+    field name, excluding embeddings).  Returns ``{field_name: type_name}``.
+
+    Recognised type forms::
+
+        integration Integration      → integration: Integration
+        metrics     *Metrics         → metrics: Metrics
+        cache       pkg.Cache        → cache: Cache (unqualified)
+        data        map[string]int   → (skipped, not a named type)
+
+    Built-in types (string, int, bool, error, etc.) are excluded because
+    they don't correspond to user-defined methods and would create noise
+    in chained-access resolution.
+    """
+    _GO_BUILTINS = frozenset({
+        "string", "int", "int8", "int16", "int32", "int64",
+        "uint", "uint8", "uint16", "uint32", "uint64",
+        "float32", "float64", "complex64", "complex128",
+        "bool", "byte", "rune", "error", "any",
+    })
+    field_types: dict[str, str] = {}
+    field_list = find_child_by_type(struct_type_node, "field_declaration_list")
+    if field_list is None:  # pragma: no cover
+        return field_types
+
+    for field in field_list.children:
+        if field.type != "field_declaration":
+            continue
+
+        name_node = find_child_by_field(field, "name")
+        type_child = find_child_by_field(field, "type")
+        if name_node is None or type_child is None:
+            continue
+
+        field_name = node_text(name_node, source)
+
+        # Unwrap pointer types: *Metrics → Metrics
+        actual_type = type_child
+        if actual_type.type == "pointer_type":
+            inner = find_child_by_type(actual_type, "type_identifier")
+            if inner is None:
+                # *pkg.Type or *map[...]... — try qualified_type
+                inner = find_child_by_type(actual_type, "qualified_type")
+            if inner is not None:
+                actual_type = inner
+
+        # Extract type name from type_identifier or qualified_type
+        if actual_type.type == "type_identifier":
+            type_name = node_text(actual_type, source)
+            if type_name not in _GO_BUILTINS:
+                field_types[field_name] = type_name
+        elif actual_type.type == "qualified_type":
+            # pkg.Type → use the unqualified type name
+            tid = find_child_by_type(actual_type, "type_identifier")
+            if tid:
+                type_name = node_text(tid, source)
+                if type_name not in _GO_BUILTINS:
+                    field_types[field_name] = type_name
+
+    return field_types
 
 
 def _extract_embedding_type_name(
@@ -718,6 +824,12 @@ def _extract_symbols_from_file(
     # Populated during tree walk, applied to struct symbols after extraction.
     impl_assertions: dict[str, list[str]] = {}
 
+    # For structural interface matching (Go implicit satisfaction):
+    # interface_name -> set of method names defined in the interface body
+    interface_method_sets: dict[str, set[str]] = {}
+    # struct_name -> set of method names from method_declaration receivers
+    struct_method_sets: dict[str, set[str]] = {}
+
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
         if node.type == "function_declaration":
@@ -810,6 +922,12 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
+                # Track struct method sets for structural interface matching
+                if receiver_type:
+                    if receiver_type not in struct_method_sets:
+                        struct_method_sets[receiver_type] = set()
+                    struct_method_sets[receiver_type].add(method_name)
+
         # Type declaration (struct or interface)
         elif node.type == "type_declaration":
             for child in node.children:
@@ -826,6 +944,54 @@ def _extract_symbols_from_file(
                             kind = "struct"
                         elif type_node.type == "interface_type":
                             kind = "interface"
+                            # Extract method names for structural matching.
+                            # Skip empty interfaces (interface{}) — they
+                            # would match every struct.
+                            iface_methods = _extract_interface_methods(
+                                type_node, source,
+                            )
+                            if iface_methods:
+                                interface_method_sets[type_name] = iface_methods
+
+                            # Create method symbols for each interface method.
+                            # Named InterfaceName.MethodName so the containment
+                            # linker connects interface→method and the type
+                            # hierarchy linker creates dispatches_to edges.
+                            for iface_child in type_node.children:
+                                if iface_child.type != "method_elem":
+                                    continue
+                                mname_node = find_child_by_type(
+                                    iface_child, "field_identifier",
+                                )
+                                if not mname_node:
+                                    continue  # pragma: no cover
+                                mname = node_text(mname_node, source)
+                                qualified = f"{type_name}.{mname}"
+                                m_start = iface_child.start_point[0] + 1
+                                m_end = iface_child.end_point[0] + 1
+                                m_modifiers = _go_visibility_modifiers(qualified)
+                                m_sym = Symbol(
+                                    id=make_symbol_id(
+                                        "go", str(file_path),
+                                        m_start, m_end, qualified, "method",
+                                    ),
+                                    name=qualified,
+                                    kind="method",
+                                    language="go",
+                                    path=str(file_path),
+                                    span=Span(
+                                        start_line=m_start,
+                                        end_line=m_end,
+                                        start_col=iface_child.start_point[1],
+                                        end_col=iface_child.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    modifiers=m_modifiers,
+                                    lines_of_code=1,
+                                )
+                                analysis.symbols.append(m_sym)
+                                analysis.symbol_by_name[qualified] = m_sym
                         else:
                             kind = "type"
 
@@ -835,6 +1001,14 @@ def _extract_symbols_from_file(
                             embedded_types = _extract_struct_embeddings(
                                 type_node, source,
                             )
+                            # Extract field name→type mappings for chained
+                            # field access resolution (e.g., r.integration.Notify()
+                            # → Integration.Notify when integration is type Integration).
+                            field_types = _extract_struct_field_types(
+                                type_node, source,
+                            )
+                            if field_types:
+                                analysis.class_field_types[type_name] = field_types
 
                         symbol = Symbol(
                             id=make_symbol_id("go", str(file_path), start_line, end_line, type_name, kind),
@@ -921,6 +1095,34 @@ def _extract_symbols_from_file(
             sym.meta.setdefault("base_classes", []).extend(
                 impl_assertions[sym.name]
             )
+
+    # Per-file structural interface matching: Go implicit satisfaction.
+    # A struct satisfies an interface if its method set is a superset of
+    # the interface's method set (same method names).
+    if interface_method_sets and struct_method_sets:
+        for struct_name, struct_methods in struct_method_sets.items():
+            for iface_name, iface_methods in interface_method_sets.items():
+                if not iface_methods.issubset(struct_methods):
+                    continue
+                # Check not already added via explicit assertion
+                struct_sym = next(
+                    (s for s in analysis.symbols
+                     if s.kind == "struct" and s.name == struct_name),
+                    None,
+                )
+                if struct_sym is None:
+                    continue  # pragma: no cover
+                if struct_sym.meta is None:
+                    struct_sym.meta = {}
+                existing = struct_sym.meta.get("base_classes", [])
+                if iface_name not in existing:
+                    struct_sym.meta.setdefault("base_classes", []).append(
+                        iface_name,
+                    )
+
+    # Store method sets for cross-file structural matching in _analyze_go_impl
+    analysis.interface_method_sets = interface_method_sets
+    analysis.struct_method_sets = struct_method_sets
 
     return analysis
 
@@ -1042,10 +1244,14 @@ def _extract_go_var_types(
             if var_name in func_vars:
                 continue  # pragma: no cover - Go forbids redeclaration in same scope
 
-            # Get type from right side
+            # Get type from right side.  Record even if type unknown (empty
+            # string) so the variable name is tracked for false-positive
+            # prevention in function reference detection.
             type_name = _type_from_rhs(rhs, source)
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
+            else:
+                func_vars[var_name] = ""
 
         # Pattern 2: Var declaration  var c Client  or  var p *Client
         elif node.type == "var_spec":
@@ -1157,9 +1363,14 @@ def _type_from_rhs(
     """Extract a type name from the right side of a short var declaration.
 
     Handles:
-    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal``
+    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal / call_expression``
     - ``&Server{}`` → unary_expression(&, composite_literal(type_identifier=Server))
     - ``Server{}`` → composite_literal(type_identifier=Server)
+    - ``NewServer()`` → call_expression(identifier("NewServer")) → type "Server"
+    - ``pkg.NewFoo()`` → call_expression(selector_expression("pkg.NewFoo")) → type "Foo"
+
+    Constructor inference follows Go naming convention: ``NewXxx()`` returns
+    ``*Xxx``.  Only simple ``New`` prefix is stripped; ``NewXxxYyy`` → ``XxxYyy``.
 
     Returns the type name string or None.
     """
@@ -1167,7 +1378,9 @@ def _type_from_rhs(
     # Unwrap expression_list
     if node.type == "expression_list":
         for child in node.children:
-            if child.type in ("unary_expression", "composite_literal"):
+            if child.type in (
+                "unary_expression", "composite_literal", "call_expression",
+            ):
                 node = child
                 break
         else:
@@ -1187,7 +1400,45 @@ def _type_from_rhs(
         for child in node.children:
             if child.type == "type_identifier":
                 return node_text(child, source)
-    return None  # pragma: no cover - defensive for non-composite literal RHS
+
+    # NewFoo() or pkg.NewFoo() → constructor return type inference
+    if node.type == "call_expression":
+        return _type_from_constructor_call(node, source)
+
+    return None  # pragma: no cover - defensive for unrecognized RHS
+
+
+def _type_from_constructor_call(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Infer return type from Go constructor naming convention.
+
+    Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
+    package-qualified calls: ``pkg.NewFoo()`` → ``Foo``.
+
+    Only matches when the suffix after ``New`` starts with an uppercase letter
+    (Go exported type convention).
+    """
+    func_node = find_child_by_field(call_node, "function")
+    if func_node is None:
+        return None  # pragma: no cover
+
+    # NewFoo() → identifier "NewFoo"
+    if func_node.type == "identifier":
+        name = node_text(func_node, source)
+        if name.startswith("New") and len(name) > 3 and name[3].isupper():
+            return name[3:]
+
+    # pkg.NewFoo() → selector_expression with field_identifier "NewFoo"
+    elif func_node.type == "selector_expression":
+        field = find_child_by_field(func_node, "field")
+        if field is not None:
+            name = node_text(field, source)
+            if name.startswith("New") and len(name) > 3 and name[3].isupper():
+                return name[3:]
+
+    return None
 
 
 def _type_identifier_from_node(
@@ -1219,6 +1470,7 @@ def _extract_function_reference_edges(
     line: int,
     edges: list[Edge],
     run: AnalysisRun,
+    scoped_vars: dict[str, str] | None = None,
 ) -> None:
     """Detect function identifiers passed as arguments and create call edges.
 
@@ -1232,10 +1484,20 @@ def _extract_function_reference_edges(
     Handles two forms:
     - ``identifier``: simple function reference like ``handler``
     - ``selector_expression``: qualified reference like ``h.GetAPI``
+
+    The ``scoped_vars`` parameter (from ``_extract_go_var_types``) maps
+    local variable names to their types within the enclosing function.
+    Identifiers found in ``scoped_vars`` are skipped to avoid false
+    positives where a local variable shares a name with a function
+    (e.g., ``start := time.Now()`` vs ``func start()``).
     """
+    _scoped = scoped_vars or {}
     for arg in args_node.children:
         if arg.type == "identifier":
             ref_name = node_text(arg, source)
+            # Skip identifiers that are local variables in the current scope
+            if ref_name in _scoped:
+                continue
             # Check if it's a known function/method (local or global)
             if ref_name in local_symbols:
                 sym = local_symbols[ref_name]
@@ -1299,6 +1561,59 @@ def _extract_function_reference_edges(
                     ))
 
 
+def _resolve_field_chain(
+    operand_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+    field_type_registry: dict[str, dict[str, str]],
+) -> str | None:
+    """Resolve a chained selector expression to a field type.
+
+    Given the operand of a call like ``r.integration.Notify()``, walks
+    the selector chain to resolve the receiver type:
+
+    1. Decompose ``r.integration`` into segments ``["r", "integration"]``
+    2. Look up root ``r`` in ``var_types`` → ``RetryStage``
+    3. Walk ``field_type_registry["RetryStage"]["integration"]`` → ``Integration``
+
+    Returns the resolved type name (e.g., ``"Integration"``) or ``None``
+    if any step fails.
+    """
+    # Decompose nested selector_expression into segments from leaf to root.
+    # r.integration → ["r", "integration"]
+    # r.inner.field → ["r", "inner", "field"]
+    segments: list[str] = []
+    current = operand_node
+    while current is not None and current.type == "selector_expression":
+        field = find_child_by_field(current, "field")
+        if field is None:  # pragma: no cover — Go AST always has field
+            return None
+        segments.append(node_text(field, source))
+        current = find_child_by_field(current, "operand")
+
+    if current is None or current.type != "identifier":
+        return None
+
+    root_name = node_text(current, source)
+    segments.reverse()  # Now ["r", "integration"] for r.integration
+
+    # Resolve root variable to its type
+    current_type = var_types.get(root_name)
+    if current_type is None:
+        return None
+
+    # Walk through field chain using the registry
+    for field_name in segments:
+        fields = field_type_registry.get(current_type)
+        if fields is None:
+            return None
+        current_type = fields.get(field_name)
+        if current_type is None:
+            return None
+
+    return current_type
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -1308,6 +1623,7 @@ def _extract_edges_from_file(
     import_aliases: dict[str, str] | None = None,
     resolver: ListNameResolver | None = None,
     module_path: str | None = None,
+    field_type_registry: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1315,6 +1631,11 @@ def _extract_edges_from_file(
     Uses import_aliases to disambiguate when multiple files define the same symbol.
     Tracks variable types from assignments and parameters to disambiguate
     method calls when multiple types define the same method name.
+
+    When ``field_type_registry`` is provided (aggregated from Pass 1), chained
+    field access calls like ``r.integration.Notify()`` are resolved through the
+    registry: r's type → field "integration" → type "Integration" → symbol
+    "Integration.Notify".
 
     When ``module_path`` is provided (from go.mod), import path hints are
     transformed by stripping the module prefix so that suffix matching in
@@ -1325,6 +1646,8 @@ def _extract_edges_from_file(
         import_aliases = {}
     if resolver is None:
         resolver = ListNameResolver(global_symbols, ambiguity_threshold=3)
+    if field_type_registry is None:
+        field_type_registry = {}
 
     try:
         source = file_path.read_bytes()
@@ -1445,6 +1768,39 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
+                        # Chained field access: r.integration.Notify()
+                        # Walk selector chain through field_type_registry
+                        # to resolve the receiver type.
+                        elif (
+                            operand_node
+                            and operand_node.type == "selector_expression"
+                            and callee_name
+                            and current_function
+                            and field_type_registry
+                        ):
+                            resolved_type = _resolve_field_chain(
+                                operand_node, source, var_types,
+                                field_type_registry,
+                            )
+                            if resolved_type:
+                                qualified_name = f"{resolved_type}.{callee_name}"
+                                target = local_symbols.get(qualified_name)
+                                if target is None and qualified_name in global_symbols:
+                                    candidates = global_symbols[qualified_name]
+                                    if candidates:
+                                        target = candidates[0]
+                                if target is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=target.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="typed_field_call",
+                                        confidence=0.88,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                                    callee_name = None  # Already resolved
                         # Chained call: pkg.Func(args).Method()
                         # e.g. json.NewEncoder(w).Encode(data) — propagate
                         # the import path from the inner call's package prefix
@@ -1642,6 +1998,7 @@ def _extract_edges_from_file(
                         args_node, source, current_function,
                         local_symbols, global_symbols, resolver,
                         node.start_point[0] + 1, edges, run,
+                        scoped_vars=var_types,
                     )
 
         # Detect function references in struct literal fields
@@ -1730,6 +2087,11 @@ def _extract_handler_name(
       Falls back to the function name for constructors like
       ``httpapi.NewHandler(env)`` where the argument is not a handler.
 
+    Note: ``func_literal`` (anonymous closures) are handled at the call sites
+    in ``_extract_go_routes`` and ``_extract_go_usage_contexts``, not here.
+    Those functions skip closures and prefer named handlers, falling back to
+    ``"<closure>"`` only when no named handler exists.
+
     Returns None if the node type is not recognized.
     """
     if node.type == "identifier":
@@ -1752,6 +2114,33 @@ def _extract_handler_name(
         func_node = find_child_by_field(node, "function")
         if func_node:
             return node_text(func_node, source)
+    return None  # pragma: no cover - defensive for unrecognized node types
+
+
+def _extract_string_from_node(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract a string value from a node, handling string literals and concatenation.
+
+    For a plain string literal, returns its content.
+    For a binary expression (string concat), collects all string literal
+    segments.  Variable parts are omitted, so ``baseUrl + "/users"``
+    yields ``"/users"`` (the resolvable suffix).
+    """
+    if node.type == "interpreted_string_literal":
+        content_node = find_child_by_type(node, "interpreted_string_literal_content")
+        if content_node:
+            return node_text(content_node, source)
+        return node_text(node, source).strip('"')  # pragma: no cover
+    if node.type == "binary_expression":
+        # Collect all string literal parts from the concat chain
+        parts: list[str] = []
+        for child in node.children:
+            val = _extract_string_from_node(child, source)
+            if val is not None:
+                parts.append(val)
+        return "".join(parts) if parts else None
     return None
 
 
@@ -1761,6 +2150,9 @@ def _extract_first_string_arg(
 ) -> str | None:
     """Extract the first string literal from an argument list.
 
+    Handles plain string literals and string concatenation expressions
+    (e.g., ``baseUrl + "/path"`` → ``"/path"``).
+
     Returns the string content without quotes, or None if no string arg found.
     """
     for arg in args_node.children:
@@ -1769,6 +2161,10 @@ def _extract_first_string_arg(
             if content_node:
                 return node_text(content_node, source)
             return node_text(arg, source).strip('"')  # pragma: no cover
+        if arg.type == "binary_expression":
+            result = _extract_string_from_node(arg, source)
+            if result is not None:
+                return result
     return None  # pragma: no cover - only called with argument lists containing strings
 
 
@@ -1892,6 +2288,79 @@ def _get_go_route_prefix(
     return "".join(prefixes)
 
 
+def _build_group_prefix_map(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Build a mapping of variable names to router group path prefixes.
+
+    Scans for Gin/Echo/Fiber-style variable-based group patterns::
+
+        api := r.Group("/api")
+        v1 := api.Group("/v1")
+
+    Returns a dict like ``{"api": "/api", "v1": "/api/v1"}``.
+
+    This complements ``_get_go_route_prefix`` which handles closure-based
+    groups (Macaron/Chi).  Gin, Echo, and Fiber assign groups to variables
+    instead of using closures.
+    """
+    prefix_map: dict[str, str] = {}
+
+    for n in iter_tree(node):
+        # Match: varName := receiver.Group("/path")
+        if n.type != "short_var_declaration":
+            continue
+
+        left = find_child_by_field(n, "left")
+        right = find_child_by_field(n, "right")
+        if left is None or right is None:  # pragma: no cover
+            continue
+
+        # Left side: expression_list with a single identifier
+        left_ids = [c for c in left.children if c.type == "identifier"]
+        if len(left_ids) != 1:  # pragma: no cover
+            continue
+        var_name = node_text(left_ids[0], source)
+
+        # Right side: expression_list with a call_expression
+        right_calls = [c for c in right.children if c.type == "call_expression"]
+        if len(right_calls) != 1:
+            continue
+        call_node = right_calls[0]
+
+        func_node = find_child_by_field(call_node, "function")
+        if func_node is None or func_node.type != "selector_expression":
+            continue
+
+        field_node = find_child_by_field(func_node, "field")
+        if field_node is None:  # pragma: no cover
+            continue
+
+        method = node_text(field_node, source)
+        if method not in _GO_GROUP_METHODS:
+            continue
+
+        # Extract the group prefix string from the call arguments
+        args_node = find_child_by_field(call_node, "arguments")
+        if args_node is None:  # pragma: no cover
+            continue
+        group_path = _extract_first_string_arg(args_node, source)
+        if not group_path:  # pragma: no cover
+            continue
+
+        # Check if the receiver is itself a group variable (nested groups)
+        operand_node = find_child_by_field(func_node, "operand")
+        receiver_prefix = ""
+        if operand_node is not None and operand_node.type == "identifier":
+            receiver_name = node_text(operand_node, source)
+            receiver_prefix = prefix_map.get(receiver_name, "")
+
+        prefix_map[var_name] = receiver_prefix + group_path
+
+    return prefix_map
+
+
 def _extract_go_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1906,10 +2375,11 @@ def _extract_go_routes(
     - Fiber: app.Get("/path", handler) (lowercase methods)
     - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
     - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
-    - Group prefix composition: r.Group("/api", func() { r.GET("/users", h) }) → /api/users
+    - Group prefix composition (closure): r.Group("/api", func() { r.GET("/users", h) }) → /api/users
+    - Group prefix composition (variable): api := r.Group("/api"); api.GET("/users", h) → /api/users
     - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
-    Creates symbols with stable_id = HTTP method for route discovery.
+    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     Returns:
@@ -1917,6 +2387,9 @@ def _extract_go_routes(
     """
     routes: list[Symbol] = []
     mount_edges: list[Edge] = []
+
+    # Pre-pass: build variable-to-prefix map for Gin/Echo/Fiber groups
+    group_prefix_map = _build_group_prefix_map(node, source)
 
     for n in iter_tree(node):
         # Look for call_expression with selector_expression function
@@ -1944,6 +2417,11 @@ def _extract_go_routes(
                                 # Pick the LAST non-string argument as handler.
                                 # Go frameworks pass middleware before the handler:
                                 # r.GET("/path", mw1, mw2, handler)
+                                # Prefer named handlers over closures — if the
+                                # last arg is a func_literal, keep looking for
+                                # a named handler but remember the closure as
+                                # fallback.
+                                closure_fallback = False
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -1952,12 +2430,24 @@ def _extract_go_routes(
                                         ",",
                                     ):
                                         continue
+                                    if arg.type == "func_literal":
+                                        closure_fallback = True
+                                        continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
                                         break
+                                if handler_name is None and closure_fallback:
+                                    handler_name = "<closure>"
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
+                                # Variable-based group prefix (Gin/Echo/Fiber)
+                                if not prefix:
+                                    operand = find_child_by_field(func_node, "operand")
+                                    if operand is not None and operand.type == "identifier":
+                                        prefix = group_prefix_map.get(
+                                            node_text(operand, source), "",
+                                        )
                                 route_path = prefix + route_path
                                 normalized_method = _GO_METHOD_ALIASES.get(
                                     method_name, method_name.upper(),
@@ -1993,14 +2483,29 @@ def _extract_go_routes(
 
                     elif method_name in GORILLA_HANDLE_METHODS:
                         # Gorilla mux simple: router.HandleFunc("/path", handler)
+                        # Also supports Go 1.22+ stdlib: mux.Handle("POST /path", h)
                         args_node = find_child_by_field(n, "arguments")
                         if args_node:
                             route_path = _extract_first_string_arg(args_node, source)
                             handler_name = None
+                            # Go 1.22+ http.ServeMux combined method-path:
+                            # "POST /v1/data/{path...}" → method="POST", path="/v1/data/{path...}"
+                            handle_http_method = "ANY"
+                            if route_path and not route_path.startswith("/"):
+                                parts = route_path.split(" ", 1)
+                                if (
+                                    len(parts) == 2
+                                    and parts[0].upper() in GO_HTTP_METHODS_UPPER
+                                    and parts[1].startswith("/")
+                                ):
+                                    handle_http_method = parts[0].upper()
+                                    route_path = parts[1]
 
                             if route_path and route_path.startswith("/"):
                                 # Last non-string arg is handler (same
                                 # middleware convention as HTTP methods).
+                                # Prefer named handlers over closures.
+                                closure_fallback = False
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -2009,12 +2514,23 @@ def _extract_go_routes(
                                         ",",
                                     ):
                                         continue
+                                    if arg.type == "func_literal":
+                                        closure_fallback = True
+                                        continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
                                         break
+                                if handler_name is None and closure_fallback:
+                                    handler_name = "<closure>"
 
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
+                                if not prefix:
+                                    operand = find_child_by_field(func_node, "operand")
+                                    if operand is not None and operand.type == "identifier":
+                                        prefix = group_prefix_map.get(
+                                            node_text(operand, source), "",
+                                        )
                                 route_path = prefix + route_path
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
@@ -2022,9 +2538,11 @@ def _extract_go_routes(
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
-                                        f"ANY {route_path}", "route"
+                                        f"{handle_http_method} {route_path}", "route"
                                     ),
-                                    stable_id=make_route_stable_id("ANY", route_path),
+                                    stable_id=make_route_stable_id(
+                                        handle_http_method, route_path,
+                                    ),
                                     name=handler_name,
                                     kind="route",
                                     language="go",
@@ -2039,7 +2557,7 @@ def _extract_go_routes(
                                     origin_run_id=run.execution_id,
                                     meta={
                                         "route_path": route_path,
-                                        "http_method": "ANY",
+                                        "http_method": handle_http_method,
                                         "handler_name": handler_name,
                                     },
                                 )
@@ -2053,6 +2571,12 @@ def _extract_go_routes(
 
                         if route_path and handler_name:
                             prefix = _get_go_route_prefix(n, source)
+                            if not prefix:  # pragma: no cover - gorilla chains have call operands
+                                operand = find_child_by_field(func_node, "operand")
+                                if operand is not None and operand.type == "identifier":
+                                    prefix = group_prefix_map.get(
+                                        node_text(operand, source), "",
+                                    )
                             route_path = prefix + route_path
                             normalized_method = http_method or "ANY"
                             start_line = n.start_point[0] + 1
@@ -2231,12 +2755,26 @@ def _extract_go_routes(
             # Extract handler from the RHS call expression
             right = find_child_by_field(n, "right")
             handler_name: str | None = None
+            handler_field: str | None = None
             if right is not None:
                 for child in right.children:
                     if child.type == "call_expression":
                         func_node = find_child_by_field(child, "function")
                         if func_node:
                             handler_name = node_text(func_node, source)
+                        # Extract handler_field from constructor args:
+                        # alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
+                        # The last selector_expression arg whose field ends
+                        # with "Handler" is the handler interface field.
+                        call_args = find_child_by_field(child, "arguments")
+                        if call_args:
+                            for arg in call_args.children:
+                                if arg.type == "selector_expression":
+                                    fld = find_child_by_field(arg, "field")
+                                    if fld:
+                                        fld_text = node_text(fld, source)
+                                        if fld_text.endswith("Handler"):
+                                            handler_field = fld_text
                         break
                     elif child.type in ("identifier", "selector_expression"):
                         handler_name = node_text(child, source)
@@ -2248,6 +2786,14 @@ def _extract_go_routes(
             normalized_method = method_str.upper()
             start_line = n.start_point[0] + 1
             end_line = n.end_point[0] + 1
+
+            meta: dict[str, str] = {
+                "route_path": route_path,
+                "http_method": normalized_method,
+                "handler_name": handler_name,
+            }
+            if handler_field:
+                meta["handler_field"] = handler_field
 
             route_sym = Symbol(
                 id=make_symbol_id(
@@ -2267,15 +2813,103 @@ def _extract_go_routes(
                 ),
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                meta={
-                    "route_path": route_path,
-                    "http_method": normalized_method,
-                    "handler_name": handler_name,
-                },
+                meta=meta,
             )
             routes.append(route_sym)
 
     return (routes, mount_edges)
+
+
+def _extract_go_swagger_wiring(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract go-swagger handler wiring from assignment statements.
+
+    Detects the pattern where a go-swagger typed handler interface field is
+    assigned a HandlerFunc wrapper around the actual implementation method::
+
+        openAPI.AlertGetAlertsHandler = alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    AST structure::
+
+        assignment_statement
+          left: expression_list
+            selector_expression     <- openAPI.AlertGetAlertsHandler
+          right: expression_list
+            call_expression         <- alert_ops.GetAlertsHandlerFunc(api.getAlertsHandler)
+
+    The call's function name must end with ``HandlerFunc`` to match.  The
+    first non-context argument to the call is the actual handler implementation.
+
+    Returns:
+        Mapping from handler field name (e.g. ``AlertGetAlertsHandler``) to
+        the actual handler implementation name (e.g. ``api.getAlertsHandler``).
+    """
+    wiring: dict[str, str] = {}
+
+    for n in iter_tree(node):
+        if n.type != "assignment_statement":
+            continue
+
+        # LHS: selector_expression with field ending in "Handler"
+        left = find_child_by_field(n, "left")
+        if left is None:  # pragma: no cover - tree-sitter guarantees left field
+            continue
+
+        lhs_selector = None
+        for child in left.children:
+            if child.type == "selector_expression":
+                lhs_selector = child
+                break
+        if lhs_selector is None:
+            continue
+
+        lhs_field = find_child_by_field(lhs_selector, "field")
+        if lhs_field is None:  # pragma: no cover - structural
+            continue
+        field_name = node_text(lhs_field, source)
+        if not field_name.endswith("Handler"):
+            continue
+
+        # RHS: call_expression whose function ends with "HandlerFunc"
+        right = find_child_by_field(n, "right")
+        if right is None:  # pragma: no cover - tree-sitter guarantees right field
+            continue
+
+        call_expr = None
+        for child in right.children:
+            if child.type == "call_expression":
+                call_expr = child
+                break
+        if call_expr is None:  # pragma: no cover - structural
+            continue
+
+        func_node = find_child_by_field(call_expr, "function")
+        if func_node is None:  # pragma: no cover - structural
+            continue
+        func_name = node_text(func_node, source)
+        if not func_name.endswith("HandlerFunc"):
+            continue
+
+        # Extract the actual handler from the call args — last non-literal
+        # argument (skip context params which are typically identifiers
+        # matching "ctx" or "context").
+        call_args = find_child_by_field(call_expr, "arguments")
+        if call_args is None:  # pragma: no cover - structural
+            continue
+
+        impl_name: str | None = None
+        for arg in call_args.children:
+            if arg.type in ("(", ")", ","):
+                continue
+            if arg.type in ("selector_expression", "identifier"):
+                impl_name = node_text(arg, source)
+
+        if impl_name:
+            wiring[field_name] = impl_name
+
+    return wiring
 
 
 def _extract_go_usage_contexts(
@@ -2306,6 +2940,7 @@ def _extract_go_usage_contexts(
         List of UsageContext records for Go route patterns.
     """
     contexts: list[UsageContext] = []
+    group_prefix_map = _build_group_prefix_map(node, source)
 
     for n in iter_tree(node):
         if n.type != "call_expression":
@@ -2346,8 +2981,10 @@ def _extract_go_usage_contexts(
                     route_path = node_text(arg, source).strip('"')
                 break
 
-        # Handler is the LAST identifier/selector arg (middleware precedes it)
+        # Handler is the LAST identifier/selector arg (middleware precedes it).
+        # If only a func_literal (anonymous closure) is found, use "<closure>".
         if route_path is not None:
+            closure_fallback = False
             for arg in reversed(args_node.children):
                 if arg.type == "identifier":
                     handler_name = node_text(arg, source)
@@ -2355,8 +2992,18 @@ def _extract_go_usage_contexts(
                 elif arg.type == "selector_expression":
                     handler_name = node_text(arg, source)
                     break
+                elif arg.type == "func_literal":
+                    closure_fallback = True
+            if handler_name is None and closure_fallback:
+                handler_name = "<closure>"
 
         if not route_path:  # pragma: no cover
+            continue
+
+        # Skip single-arg calls like cache.Get("/key"), field.Tag.Get("/metric"),
+        # Header.Get("/Authorization") — these are not route registrations.
+        # Real route registrations always have at least a handler argument.
+        if handler_name is None:
             continue
 
         # Try to resolve handler to a symbol reference
@@ -2364,8 +3011,12 @@ def _extract_go_usage_contexts(
         if handler_name and handler_name in symbol_by_name:
             handler_ref = symbol_by_name[handler_name].id
 
-        # Prepend Group/Route prefix if nested in a closure
+        # Prepend Group/Route prefix (closure-based or variable-based)
         prefix = _get_go_route_prefix(n, source)
+        if not prefix and operand_node is not None and operand_node.type == "identifier":
+            prefix = group_prefix_map.get(
+                node_text(operand_node, source), "",
+            )
         route_path = prefix + route_path
 
         # Normalize method name (handles aliases like Del → DELETE)
@@ -2487,10 +3138,23 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                     global_symbols[symbol.name] = []
                 global_symbols[symbol.name].append(symbol)
 
+    # Aggregate field type registry from all files for chained field
+    # access resolution (e.g., r.integration.Notify() → Integration.Notify).
+    field_type_registry: dict[str, dict[str, str]] = {}
+    for analysis in file_analyses.values():
+        for class_name, fields in analysis.class_field_types.items():
+            if class_name not in field_type_registry:
+                field_type_registry[class_name] = {}
+            for fname, ftype in fields.items():
+                field_type_registry[class_name].setdefault(fname, ftype)
+
     # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
+    all_route_syms: list[Symbol] = []
+    # go-swagger handler wiring: field name -> impl name (cross-file)
+    handler_wiring: dict[str, str] = {}
 
     for go_file, analysis in file_analyses.items():
         all_symbols.extend(analysis.symbols)
@@ -2498,6 +3162,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         edges = _extract_edges_from_file(
             go_file, parser, analysis.symbol_by_name, global_symbols, run,
             analysis.import_aliases, module_path=go_module_path,
+            field_type_registry=field_type_registry,
         )
         all_edges.extend(edges)
 
@@ -2509,8 +3174,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                 tree.root_node, source, go_file, run,
                 local_symbols=analysis.symbol_by_name,
             )
-            all_symbols.extend(route_syms)
+            all_route_syms.extend(route_syms)
             all_edges.extend(route_mount_edges)
+
+            # Extract go-swagger handler wiring (field -> implementation)
+            wiring = _extract_go_swagger_wiring(tree.root_node, source)
+            handler_wiring.update(wiring)
 
             # Extract usage contexts for YAML pattern matching (v1.1.x)
             usage_contexts = _extract_go_usage_contexts(
@@ -2519,6 +3188,61 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
+
+    # Post-process: resolve go-swagger handler wiring across files.
+    # Routes from the handler cache have handler_field metadata (e.g.
+    # "AlertGetAlertsHandler").  The wiring mapping connects those field
+    # names to actual implementation methods (e.g. "api.getAlertsHandler").
+    if handler_wiring:
+        for route in all_route_syms:
+            field = (route.meta or {}).get("handler_field")
+            if field and field in handler_wiring:
+                route.meta["handler_name"] = handler_wiring[field]
+                route.name = handler_wiring[field]
+
+    all_symbols.extend(all_route_syms)
+
+    # Cross-file structural interface matching: aggregate method sets from
+    # all files and match structs to interfaces defined in other files.
+    # Per-file matching already happened in _extract_symbols_from_file;
+    # this pass catches cross-file relationships (e.g., interface in one
+    # file, implementing struct in another).
+    global_iface_methods: dict[str, set[str]] = {}
+    global_struct_methods: dict[str, set[str]] = {}
+    for analysis in file_analyses.values():
+        for iname, imethods in analysis.interface_method_sets.items():
+            # First definition wins (interfaces with same name in different
+            # packages would need package qualification, which is out of scope)
+            if iname not in global_iface_methods:
+                global_iface_methods[iname] = imethods
+        for sname, smethods in analysis.struct_method_sets.items():
+            # Merge method sets: methods can be defined across multiple files
+            if sname in global_struct_methods:
+                global_struct_methods[sname] = global_struct_methods[sname] | smethods
+            else:
+                global_struct_methods[sname] = set(smethods)
+
+    if global_iface_methods and global_struct_methods:
+        # Build a lookup of struct symbols for efficient updates
+        struct_syms: dict[str, Symbol] = {}
+        for sym in all_symbols:
+            if sym.kind == "struct" and sym.name not in struct_syms:
+                struct_syms[sym.name] = sym
+
+        for struct_name, struct_methods in global_struct_methods.items():
+            struct_sym = struct_syms.get(struct_name)
+            if struct_sym is None:
+                continue  # pragma: no cover
+            for iface_name, iface_methods in global_iface_methods.items():
+                if not iface_methods.issubset(struct_methods):
+                    continue
+                if struct_sym.meta is None:
+                    struct_sym.meta = {}
+                existing = struct_sym.meta.get("base_classes", [])
+                if iface_name not in existing:
+                    struct_sym.meta.setdefault("base_classes", []).append(
+                        iface_name,
+                    )
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped

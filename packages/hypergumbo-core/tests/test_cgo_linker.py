@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Cgo linker (Go-C interop).
 
 The cgo linker creates cgo_bridge edges between Go functions that call

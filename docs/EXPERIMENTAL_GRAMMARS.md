@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Experimental Grammars Wishlist
 
 This document tracks domain-specific languages and file formats that could benefit from tree-sitter parsing support. These are candidates for a future dedicated grammars project.

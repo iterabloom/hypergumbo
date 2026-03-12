@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for dependency linker.
 
 Tests that the linker correctly connects:

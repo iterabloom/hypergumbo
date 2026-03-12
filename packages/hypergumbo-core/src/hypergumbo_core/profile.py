@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Repo profile detection - language and framework heuristics.
 
 This module provides fast, heuristic-based detection of programming
@@ -118,6 +119,10 @@ PYTHON_FRAMEWORKS = {
     # LLM APIs
     "openai": ["openai"],
     "anthropic": ["anthropic"],
+    # MCP (Model Context Protocol)
+    "mcp-python": ["mcp", "fastmcp"],
+    # gRPC
+    "grpc": ["grpcio", "grpc"],
     # GraphQL
     "graphql": ["graphql-core"],
     "graphql-python": ["strawberry-graphql", "ariadne", "graphene"],
@@ -178,6 +183,8 @@ JS_FRAMEWORKS = {
     "viem": ["viem"],
     # CLI
     "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
+    # MCP (Model Context Protocol)
+    "mcp": ["@modelcontextprotocol/sdk"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)
@@ -255,6 +262,8 @@ GO_FRAMEWORKS = {
     "iris": ["github.com/kataras/iris"],
     # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
     "prometheus-common": ["github.com/prometheus/common"],
+    # gRPC
+    "grpc": ["google.golang.org/grpc"],
     # ORM
     "xorm": ["xorm.io/xorm"],
     # CLI
@@ -317,6 +326,8 @@ JAVA_FRAMEWORKS = {
         "javax.enterprise.inject",
         "weld",
     ],
+    # gRPC
+    "grpc": ["io.grpc", "grpc-core", "grpc-netty", "grpc-stub", "grpc-protobuf"],
 }
 
 # Swift Package.swift detection patterns
@@ -924,6 +935,9 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     """Detect Java/Kotlin frameworks from pom.xml, build.gradle, or AndroidManifest.xml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Also scans auxiliary Gradle files in the gradle/ directory (e.g.,
+    gradle/dependencies.gradle) used by multi-module Gradle projects like
+    Apache Kafka to declare dependencies outside of build.gradle.
     """
     detected: list[str] = []
     detected_set: set[str] = set()
@@ -948,6 +962,28 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
                         detected.append(framework)
                         detected_set.add(framework)
                         break
+
+    # Check auxiliary Gradle files (e.g., gradle/dependencies.gradle, gradle/libs.gradle)
+    # Multi-module Gradle projects like Apache Kafka declare dependencies in these
+    # files rather than in build.gradle directly.
+    gradle_dir = repo_root / "gradle"
+    if gradle_dir.is_dir():
+        aux_content_parts: list[str] = []
+        for pattern in ("*.gradle", "*.gradle.kts"):
+            for aux_file in gradle_dir.glob(pattern):
+                try:
+                    aux_content_parts.append(aux_file.read_text(errors="ignore").lower())
+                except (OSError, IOError):  # pragma: no cover
+                    pass
+        if aux_content_parts:
+            aux_content = "\n".join(aux_content_parts)
+            for framework, patterns in JAVA_FRAMEWORKS.items():
+                if framework not in detected_set:
+                    for pattern in patterns:
+                        if _manifest_has_package(aux_content, pattern):
+                            detected.append(framework)
+                            detected_set.add(framework)
+                            break
 
     # Check for AndroidManifest.xml (definitive Android indicator)
     # If any AndroidManifest.xml exists, this is an Android project
@@ -1499,6 +1535,23 @@ def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_protobuf(repo_root: Path) -> list[str]:
+    """Detect protobuf/gRPC by the presence of .proto files.
+
+    This is language-agnostic: any repo with .proto service definitions
+    gets the ``protobuf`` framework tag, which activates the gRPC linker.
+    The gRPC linker creates route symbols for proto RPC methods.
+
+    Uses ``find_files`` with a limit of 1 for efficiency — we only need
+    to know if at least one .proto file exists.
+    """
+    from .discovery import find_files
+
+    for _ in find_files(repo_root, ["*.proto"]):
+        return ["protobuf"]
+    return []
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -1560,6 +1613,7 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_zig_frameworks(repo_root))
     frameworks.extend(_detect_d_frameworks(repo_root))
     frameworks.extend(_detect_groovy_frameworks(repo_root))
+    frameworks.extend(_detect_protobuf(repo_root))
     return frameworks
 
 

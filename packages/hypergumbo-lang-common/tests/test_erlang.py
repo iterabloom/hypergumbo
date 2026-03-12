@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Erlang language analyzer.
 
 Erlang is a functional, concurrent programming language designed for

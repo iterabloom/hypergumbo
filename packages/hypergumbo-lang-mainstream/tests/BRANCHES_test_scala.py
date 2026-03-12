@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for scala.py analyzer.
 
 Tests specific branch paths in the Scala analyzer that may not be covered

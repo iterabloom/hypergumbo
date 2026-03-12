@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Unified symbol resolution with pluggable matching strategies.
 
 This module provides a shared framework for cross-file symbol resolution
@@ -58,9 +59,12 @@ component.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from .selection.filters import is_test_path
 
 if TYPE_CHECKING:
     from .ir import Symbol
@@ -215,10 +219,12 @@ class SymbolResolver:
                         candidates=candidates,
                     )
 
-        # Ambiguous - return first with low confidence
+        # Ambiguous — scale confidence by 1/sqrt(N) so that high-ambiguity
+        # names (e.g., Initialize() defined in 15 classes) get proportionally
+        # lower confidence than a two-way ambiguity.
         return LookupResult(
             symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
             match_type="ambiguous",
             candidates=candidates,
         )
@@ -263,7 +269,7 @@ class SymbolResolver:
         if allow_ambiguous:
             return LookupResult(
                 symbol=candidates[0],
-                confidence=self.CONFIDENCE_AMBIGUOUS,
+                confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
                 match_type="suffix_ambiguous",
                 candidates=candidates,
             )
@@ -414,6 +420,7 @@ class NameResolver:
         allow_suffix: bool = True,
         path_hint: str | None = None,
         path_hints: list[str] | None = None,
+        caller_path: str | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with optional suffix matching.
 
@@ -432,6 +439,12 @@ class NameResolver:
                 the exact-match symbol) are checked against the hints.  This
                 lets callers with import scope (e.g., D ``import errors;``)
                 disambiguate identically-named symbols across files.
+            caller_path: Optional path of the calling file.  When the caller
+                is in a non-test file and candidates include both test-file
+                and production-file symbols, production candidates are
+                preferred.  This prevents false positives like
+                ``server.startup()`` resolving to ``LogCleanerTest.startup()``
+                instead of ``Server.startup()``.
 
         Returns:
             LookupResult with the found symbol and match metadata.
@@ -463,6 +476,7 @@ class NameResolver:
                 effective_hints = [path_hint]
             result = self._lookup_suffix(
                 name, path_hint=None, path_hints=effective_hints,
+                caller_path=caller_path,
             )
             if result.found or result.candidates:
                 return result
@@ -474,6 +488,7 @@ class NameResolver:
         name: str,
         path_hint: str | None,
         path_hints: list[str] | None = None,
+        caller_path: str | None = None,
     ) -> LookupResult:
         """Look up symbol using suffix matching.
 
@@ -482,11 +497,18 @@ class NameResolver:
         For example, ``'doWork'`` matches ``'MyClass.doWork'``, and
         ``'compute'`` matches ``'Diff::compute'``.
 
+        When ``caller_path`` is provided and is a non-test file, candidates
+        from test files are deprioritized: non-test candidates are preferred
+        if any exist.  Test-file callers get no such preference (test code
+        legitimately calls test utilities).
+
         Args:
             name: The symbol name suffix to match.
             path_hint: Optional single path substring to prefer among candidates.
             path_hints: Optional list of path substrings (e.g., from imports)
                 to prefer among candidates.  Takes precedence over path_hint.
+            caller_path: Optional path of the calling file for test-path
+                preference filtering.
 
         Returns:
             LookupResult with suffix match or None.
@@ -500,17 +522,62 @@ class NameResolver:
 
         candidates = [self.registry[key] for key in candidates_keys]
 
-        # Try path hints disambiguation (from imports or single hint)
+        # Test-path preference: when caller is non-test, prefer non-test candidates
+        if (
+            caller_path
+            and not is_test_path(caller_path)
+            and len(candidates) > 1
+        ):
+            non_test_pairs = [
+                (c, k) for c, k in zip(candidates, candidates_keys, strict=True)
+                if not is_test_path(c.path)
+            ]
+            if non_test_pairs:
+                candidates = [p[0] for p in non_test_pairs]
+                candidates_keys = [p[1] for p in non_test_pairs]
+
+        # Try path hints disambiguation (from imports or single hint).
+        # Two-stage matching: (1) file path, (2) registry key (qualified name).
+        # Key matching handles C++ same-file disambiguation where
+        # path_hint="Parser" matches key "Parser::Initialize" but not
+        # "Packager::Initialize" even when both are in parser.cpp.
         all_hints = path_hints or ([path_hint] if path_hint else None)
         if all_hints and len(candidates) > 1:
-            for candidate in candidates:
-                if any(h in candidate.path for h in all_hints):
-                    return LookupResult(
-                        symbol=candidate,
-                        confidence=self.CONFIDENCE_PATH_HINT,
-                        match_type="path_hint",
-                        candidates=candidates,
-                    )
+            # Stage 1: filter by file path
+            path_matched = [
+                c for c in candidates
+                if any(h in c.path for h in all_hints)
+            ]
+            if len(path_matched) == 1:
+                return LookupResult(
+                    symbol=path_matched[0],
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
+            # Stage 2: filter by registry key (qualified symbol name)
+            key_matched = [
+                c for c, k in zip(candidates, candidates_keys, strict=True)
+                if any(h in k for h in all_hints)
+            ]
+            if len(key_matched) == 1:
+                return LookupResult(
+                    symbol=key_matched[0],
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
+            # Return first match from either stage
+            first_match = key_matched[0] if key_matched else (
+                path_matched[0] if path_matched else None
+            )
+            if first_match is not None:
+                return LookupResult(
+                    symbol=first_match,
+                    confidence=self.CONFIDENCE_PATH_HINT,
+                    match_type="path_hint",
+                    candidates=candidates,
+                )
 
         if len(candidates) == 1:
             return LookupResult(
@@ -520,10 +587,12 @@ class NameResolver:
                 candidates=candidates,
             )
 
-        # Multiple - ambiguous, return first
+        # Multiple — ambiguous, return first.  Scale confidence by
+        # 1/sqrt(N) so common method names (Initialize with 15 classes)
+        # get proportionally lower confidence than a two-way ambiguity.
         return LookupResult(
             symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
             match_type="suffix_ambiguous",
             candidates=candidates,
         )
@@ -646,6 +715,7 @@ class ListNameResolver:
         name: str,
         *,
         path_hint: str | None = None,
+        soft_hint: bool = False,
     ) -> LookupResult:
         """Look up a symbol by name with disambiguation.
 
@@ -658,6 +728,11 @@ class ListNameResolver:
         Args:
             name: The symbol name to look up.
             path_hint: Optional path substring to prefer among candidates.
+            soft_hint: When True, path_hint is treated as a preference rather
+                than a filter.  A single candidate that doesn't match the hint
+                is still returned (with reduced confidence) instead of rejected.
+                Use for Rust-style "prefer same-module" semantics where the hint
+                is the caller's directory, not Go-style import-path evidence.
 
         Returns:
             LookupResult with the found symbol and match metadata.
@@ -674,6 +749,11 @@ class ListNameResolver:
             # that happens to share the name (e.g. local MarshalEncoder.Encode
             # vs encoding/json Encode).  Return not-found so the caller can
             # create an unresolved edge.
+            #
+            # With soft_hint=True, the hint is preference-level evidence (e.g.
+            # Rust caller directory), not filter-level evidence (e.g. Go import
+            # path).  Return the candidate with reduced confidence instead of
+            # rejecting it.
             if path_hint:
                 path_parts = path_hint.rstrip("/").split("/")
                 matched = False
@@ -683,6 +763,13 @@ class ListNameResolver:
                         matched = True
                         break
                 if not matched:
+                    if soft_hint:
+                        return LookupResult(
+                            symbol=candidates[0],
+                            confidence=self.CONFIDENCE_PATH_HINT,
+                            match_type="soft_hint_fallback",
+                            candidates=candidates,
+                        )
                     return LookupResult(symbol=None)
             return LookupResult(
                 symbol=candidates[0],

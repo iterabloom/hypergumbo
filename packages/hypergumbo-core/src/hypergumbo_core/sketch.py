@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Token-budgeted Markdown sketch generation.
 
 This module generates human/LLM-readable Markdown summaries of repositories,
@@ -45,9 +46,8 @@ from .ranking import (
     compute_transitive_test_coverage,
     compute_raw_in_degree,
     compute_symbol_mention_centrality_batch,
-    compute_truncation_elbow,
+    compute_harmonic_shares,
     rank_files,
-    rank_symbols,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -5887,7 +5887,6 @@ def generate_sketch(
         # Also compute raw in-degree for stats tracking.
         # Additionally compute per-symbol weighted centrality for truncation elbow.
         raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
-        symbol_centrality: dict[str, float] = {}  # For truncation elbow computation
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             ranked_files = rank_files(symbols, edges)
@@ -5901,12 +5900,6 @@ def generate_sketch(
                 except ValueError:  # pragma: no cover
                     key = rf.path
                 density_scores[key] = rf.density_score
-
-            # Build per-symbol weighted centrality for truncation elbow
-            ranked_syms = rank_symbols(symbols, edges)
-            symbol_centrality = {
-                rs.symbol.id: rs.weighted_centrality for rs in ranked_syms
-            }
 
     prog.complete_phase("analysis")
 
@@ -5952,7 +5945,11 @@ def generate_sketch(
                     entrypoint_files.add(sym.path)
 
             # Entry points are high value, give them 33% of remaining (ADR-0005)
+            # Cap at 2000 tokens in with-source mode to prevent starving
+            # Source Files Content at large budgets (ADR-0005 amendment)
             budget_for_eps = remaining_tokens // 3
+            if with_source:
+                budget_for_eps = min(budget_for_eps, 2000)
             max_eps = max(5, budget_for_eps // tokens_per_symbol)
 
             ep_section = _format_entrypoints(
@@ -5981,7 +5978,11 @@ def generate_sketch(
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
             # Data Models get 20% of remaining budget (ADR-0005)
+            # Cap at 1500 tokens in with-source mode to prevent starving
+            # Source Files Content at large budgets (ADR-0005 amendment)
             budget_for_models = (remaining_tokens * 20) // 100
+            if with_source:  # pragma: no cover - requires datamodel detection with --with-source
+                budget_for_models = min(budget_for_models, 1500)
             max_models = max(3, budget_for_models // 15)  # ~15 tokens per model (grouped format)
 
             dm_section = _format_datamodels(
@@ -6212,11 +6213,9 @@ def generate_sketch(
     prog.start_phase("format")
 
     # Section 9: Source Files Content (if with_source is True and we have budget)
-    # ADR-0005: Source Files Content gets 70% of remaining budget, dynamic truncation
-    # with elbow-based min floor for early files, median-based floor after 3 files.
+    # ADR-0005: Source Files Content gets 75% of remaining budget, harmonic
+    # truncation gives top-ranked files proportionally more space.
     if with_source and source_files and max_tokens is not None:
-        from statistics import median as _median
-
         MIN_SOURCE_TRUNCATION_TOKENS = 500
 
         # Recalculate remaining budget
@@ -6243,71 +6242,67 @@ def generate_sketch(
 
             # Track files with content shown for stats
             source_content_files_added: list[Path] = []
-            # Track token counts for median-based truncation floor
-            source_token_counts: list[int] = []
 
+            # Pre-filter eligible files (>= 5 lines) and read content once
+            eligible: list[tuple[Path, str]] = []
             for src_file in ordered_files:
                 try:
                     content = src_file.read_text(errors="replace")
-
-                    # Skip files with fewer than 5 lines of code
-                    line_count = len(content.splitlines())
-                    if line_count < 5:
-                        continue
-
-                    rel_path = src_file.relative_to(repo_root)
-                    # Estimate full block size including markers, not just content
-                    file_tokens = _estimate_file_block_tokens(str(rel_path), content)
-
-                    if source_tokens_used + file_tokens <= source_budget:
-                        # File fits completely
-                        source_content_lines.extend(
-                            _format_file_content_block(str(rel_path), content)
-                        )
-                        source_content_files_added.append(src_file)
-                        source_token_counts.append(file_tokens)
-                        source_tokens_used += file_tokens
-                    else:
-                        # File needs truncation — compute min truncation target
-                        if len(source_token_counts) < 3:
-                            # Early files: use elbow-based floor from symbol centrality
-                            min_tokens = compute_truncation_elbow(
-                                symbols, symbol_centrality, str(rel_path),
-                            )
-                        else:
-                            # After 3 files: use median of already-included files
-                            min_tokens = max(
-                                int(_median(source_token_counts)),
-                                MIN_SOURCE_TRUNCATION_TOKENS,
-                            )
-
-                        truncation_target = min(
-                            min_tokens,
-                            source_budget - source_tokens_used - 50,
-                        )
-
-                        if truncation_target < MIN_SOURCE_TRUNCATION_TOKENS:
-                            break
-
-                        truncated_content = truncate_to_tokens(content, truncation_target)
-                        if truncated_content != content:
-                            truncated_content += "\n\n[...truncated...]"
-
-                        truncated_tokens = _estimate_file_block_tokens(
-                            str(rel_path), truncated_content
-                        )
-
-                        if source_tokens_used + truncated_tokens <= source_budget:
-                            source_content_lines.extend(
-                                _format_file_content_block(str(rel_path), truncated_content)
-                            )
-                            source_content_files_added.append(src_file)
-                            source_token_counts.append(truncated_tokens)
-                            source_tokens_used += truncated_tokens
-                        else:  # pragma: no cover - block overhead pushes over budget
-                            break
+                    if len(content.splitlines()) >= 5:
+                        eligible.append((src_file, content))
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
                     continue
+
+            # Compute harmonic shares for all eligible files.
+            # Shares determine truncation depth: higher-ranked files get
+            # more space.  Files that fit entirely within remaining budget
+            # are included regardless of their share (the floor only gates
+            # truncation, not inclusion of small files).
+            shares = compute_harmonic_shares(len(eligible), source_budget)
+
+            for rank_idx, (src_file, content) in enumerate(eligible):
+                rel_path = src_file.relative_to(repo_root)
+                file_tokens = _estimate_file_block_tokens(str(rel_path), content)
+
+                budget_left = source_budget - source_tokens_used
+                if budget_left <= 0:  # pragma: no cover - defensive: budget exhausted
+                    break
+
+                if file_tokens <= budget_left:
+                    # File fits entirely within remaining budget — include in full
+                    source_content_lines.extend(
+                        _format_file_content_block(str(rel_path), content)
+                    )
+                    source_content_files_added.append(src_file)
+                    source_tokens_used += file_tokens
+                else:
+                    # File needs truncation — use harmonic share as target
+                    share = shares[rank_idx] if rank_idx < len(shares) else 0
+                    effective_share = min(share, budget_left)
+
+                    if effective_share < MIN_SOURCE_TRUNCATION_TOKENS:
+                        break
+
+                    truncation_target = max(
+                        effective_share - 50,  # Reserve for block overhead
+                        MIN_SOURCE_TRUNCATION_TOKENS,
+                    )
+                    truncated_content = truncate_to_tokens(content, truncation_target)
+                    if truncated_content != content:
+                        truncated_content += "\n\n[...truncated...]"
+
+                    truncated_tokens = _estimate_file_block_tokens(
+                        str(rel_path), truncated_content
+                    )
+
+                    if source_tokens_used + truncated_tokens <= source_budget:
+                        source_content_lines.extend(
+                            _format_file_content_block(str(rel_path), truncated_content)
+                        )
+                        source_content_files_added.append(src_file)
+                        source_tokens_used += truncated_tokens
+                    else:  # pragma: no cover - block overhead pushes over budget
+                        break
 
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Dart/Flutter analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse Dart files and extract:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Pascal language analyzer using tree-sitter.
 
 This module provides static analysis for Pascal source code, extracting symbols

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Event sourcing linker for detecting event publishers and subscribers.
 
 This linker detects event-driven patterns (EventEmitter, Django signals, Spring
@@ -60,6 +61,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("event-sourcing-linker")
@@ -218,10 +220,17 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     Skips minified files (``*.min.js``, ``*.min.ts``) because minified
     libraries produce false-positive event publisher/subscriber symbols
     for generic names like ``start``, ``end``, ``error``.
+
+    Skips test files because event patterns in tests are assertions
+    (e.g. Hardhat/Chai ``expect(...).to.emit()``), not real event wiring.
+    Without this filter, repos like openzeppelin-contracts produce hundreds
+    of orphan ``event_publisher`` nodes from test assertions.
     """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
     for path in find_files(root, patterns):
         if path.stem.endswith(".min"):
+            continue
+        if is_test_file(str(path)):
             continue
         yield path
 
@@ -528,14 +537,17 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 subscriber_by_event[event_key] = []
             subscriber_by_event[event_key].append((pattern, symbol))
 
+    # Build (file_path, line) -> symbol index for fast publisher lookup
+    publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
+    for s in symbols:
+        if s.kind == "event_publisher":
+            publisher_symbol_index[(s.path, s.span.start_line)] = s
+
     # Create edges from publishers to matching subscribers
     for publisher in publishers:
-        pub_symbol = None
-        for s in symbols:
-            if s.kind == "event_publisher" and s.span.start_line == publisher.line:
-                if s.path == publisher.file_path:
-                    pub_symbol = s
-                    break
+        pub_symbol = publisher_symbol_index.get(
+            (publisher.file_path, publisher.line)
+        )
 
         if pub_symbol is None:  # pragma: no cover
             continue
@@ -579,6 +591,99 @@ def link_events(root: Path) -> EventSourcingLinkResult:
 
 
 # =============================================================================
+# Subscriber → Method Edges
+# =============================================================================
+
+
+def _create_subscriber_to_method_edges(
+    event_symbols: list[Symbol],
+    context_symbols: list[Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Create ``event_subscribes`` edges from subscriber nodes to enclosing methods.
+
+    For each ``event_subscriber`` symbol, finds the method/function from the
+    analysis context that encloses the subscriber's source location (same file,
+    line range contains the subscriber line). Creates an edge from the subscriber
+    to the enclosing method, enabling forward slice traversal through
+    event-driven architectures::
+
+        publisher_method → event_publisher → event_publishes → event_subscriber
+            → event_subscribes → handler_method
+
+    Without these edges, forward slices dead-end at subscriber nodes because
+    the ``uses`` edges (created by the enclosure linker) go in the wrong
+    direction (method → subscriber, not subscriber → method).
+
+    Path matching uses suffix comparison to handle absolute/relative path
+    mismatches: the event sourcing linker produces absolute paths from
+    filesystem scanning, while analyzer symbols may have paths normalized
+    to be relative to the repo root.
+    """
+    subscribers = [s for s in event_symbols if s.kind == "event_subscriber"]
+    if not subscribers:
+        return []
+
+    # Build file → methods index for fast lookup
+    methods_by_file: dict[str, list[Symbol]] = {}
+    for sym in context_symbols:
+        if sym.kind in ("method", "function") and sym.path and sym.span:
+            if sym.path not in methods_by_file:
+                methods_by_file[sym.path] = []
+            methods_by_file[sym.path].append(sym)
+
+    def _find_methods_for_path(path: str) -> list[Symbol]:
+        """Find methods matching a path, with suffix fallback.
+
+        Handles absolute/relative path mismatches: event symbols may have
+        absolute paths while context symbols have relative paths (or vice
+        versa) after path normalization in the analyzer pipeline.
+        """
+        # Exact match first (fast path)
+        candidates = methods_by_file.get(path, [])
+        if candidates:
+            return candidates
+        # Suffix match fallback (handles abs/rel mismatch)
+        for p, syms in methods_by_file.items():
+            if p.endswith(path) or path.endswith(p):
+                return syms
+        return []
+
+    edges: list[Edge] = []
+    for sub in subscribers:
+        if not sub.path or not sub.span:
+            continue  # pragma: no cover
+
+        # Find enclosing method: same file, line range contains subscriber line
+        candidates = _find_methods_for_path(sub.path)
+        enclosing = None
+        best_size = float("inf")
+        for method in candidates:
+            if (method.span
+                    and method.span.start_line <= sub.span.start_line
+                    and method.span.end_line >= sub.span.end_line):
+                # Pick the tightest enclosing method (smallest line range)
+                size = method.span.end_line - method.span.start_line
+                if size < best_size:
+                    best_size = size
+                    enclosing = method
+
+        if enclosing is not None:
+            edges.append(Edge.create(
+                src=sub.id,
+                dst=enclosing.id,
+                edge_type="event_subscribes",
+                line=sub.span.start_line,
+                confidence=0.80,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="event_subscriber_enclosure",
+            ))
+
+    return edges
+
+
+# =============================================================================
 # Linker Registry Integration
 # =============================================================================
 
@@ -591,12 +696,20 @@ def link_events(root: Path) -> EventSourcingLinkResult:
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.
 
-    This wraps link_events() to use the LinkerContext/LinkerResult interface.
+    This wraps link_events() and adds ``event_subscribes`` edges from subscriber
+    nodes to their enclosing methods, enabling forward slice traversal through
+    event-driven architectures.
     """
     result = link_events(ctx.repo_root)
 
+    # Create event_subscribes edges from subscriber → enclosing method
+    subscribes_edges = _create_subscriber_to_method_edges(
+        result.symbols, ctx.symbols, result.run,
+    )
+    all_edges = result.edges + subscribes_edges
+
     return LinkerResult(
         symbols=result.symbols,
-        edges=result.edges,
+        edges=all_edges,
         run=result.run,
     )

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Starlark (Bazel/Buck) analysis pass.
 
 Tests verify that the Starlark analyzer correctly extracts:

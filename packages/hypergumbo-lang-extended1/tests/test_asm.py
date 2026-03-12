@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Assembly language analyzer.
 
 Tests verify that the analyzer correctly extracts:
@@ -220,6 +221,64 @@ class TestFindChildByType:
 
         result = find_child_by_type(parent, "word")
         assert result is child_b
+
+
+class TestAsmRegisterFiltering:
+    """Tests for filtering CPU register names from call targets."""
+
+    def test_register_call_targets_excluded(self, temp_repo: Path) -> None:
+        """Call instructions with register targets should not create edges."""
+        (temp_repo / "indirect.s").write_text("""
+.section .text
+
+dispatch:
+    call r0
+    call r5
+    call r6
+    call rax
+    call rbx
+    call eax
+    call real_function
+    ret
+
+real_function:
+    ret
+""")
+
+        result = analyze_asm(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        call_dsts = {e.dst for e in call_edges}
+        # Register names should not appear as call targets
+        for reg in ("r0", "r5", "r6", "rax", "rbx", "eax"):
+            assert not any(reg in dst for dst in call_dsts), (
+                f"Register {reg} should not be a call target"
+            )
+        # But real functions should still be resolved
+        assert any("real_function" in dst for dst in call_dsts)
+
+    def test_register_names_case_insensitive(self, temp_repo: Path) -> None:
+        """Register filtering handles both cases (RAX, rax)."""
+        (temp_repo / "case.s").write_text("""
+.section .text
+
+caller:
+    call RAX
+    call Rax
+    call actual_func
+    ret
+
+actual_func:
+    ret
+""")
+
+        result = analyze_asm(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        call_dsts = {e.dst for e in call_edges}
+        # Uppercase register names should also be filtered
+        assert not any("RAX" in dst or "Rax" in dst for dst in call_dsts)
+        assert any("actual_func" in dst for dst in call_dsts)
 
 
 class TestAsmAnalysisUnavailable:

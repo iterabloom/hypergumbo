@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Solidity analysis pass."""
 from pathlib import Path
 
@@ -390,6 +391,387 @@ contract Token {
         assert len(call_edges) == 0
 
 
+class TestSolidityVisibilityModifiers:
+    """Tests for Solidity visibility modifier extraction."""
+
+    def test_public_function_has_modifier(self, temp_repo: Path) -> None:
+        """Public functions have 'public' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "transfer" in s.name]
+        assert len(funcs) == 1
+        assert "public" in funcs[0].modifiers
+
+    def test_external_function_has_modifier(self, temp_repo: Path) -> None:
+        """External functions have 'external' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function externalFn() external pure returns (uint256) {
+        return 42;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "externalFn" in s.name]
+        assert len(funcs) == 1
+        assert "external" in funcs[0].modifiers
+
+    def test_internal_function_has_modifier(self, temp_repo: Path) -> None:
+        """Internal functions have 'internal' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function _internal() internal pure returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "_internal" in s.name]
+        assert len(funcs) == 1
+        assert "internal" in funcs[0].modifiers
+
+    def test_private_function_has_modifier(self, temp_repo: Path) -> None:
+        """Private functions have 'private' in modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function _secret() private pure returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "_secret" in s.name]
+        assert len(funcs) == 1
+        assert "private" in funcs[0].modifiers
+
+    def test_view_and_pure_captured(self, temp_repo: Path) -> None:
+        """State mutability modifiers (view, pure) are captured."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function getValue() public view returns (uint256) {
+        return 0;
+    }
+    function compute() public pure returns (uint256) {
+        return 42;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        view_fn = next(s for s in result.symbols if s.kind == "function" and "getValue" in s.name)
+        pure_fn = next(s for s in result.symbols if s.kind == "function" and "compute" in s.name)
+
+        assert "view" in view_fn.modifiers
+        assert "public" in view_fn.modifiers
+        assert "pure" in pure_fn.modifiers
+        assert "public" in pure_fn.modifiers
+
+    def test_no_visibility_means_empty_modifiers(self, temp_repo: Path) -> None:
+        """Functions without explicit visibility have empty modifiers."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function noVisibility() returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "noVisibility" in s.name]
+        assert len(funcs) == 1
+        # No visibility keyword → empty modifiers
+        assert funcs[0].modifiers == []
+
+    def test_multiple_modifiers_captured(self, temp_repo: Path) -> None:
+        """Functions with multiple modifiers capture all of them."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function externalView() external view returns (uint256) {
+        return 0;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        funcs = [s for s in result.symbols if s.kind == "function" and "externalView" in s.name]
+        assert len(funcs) == 1
+        assert "external" in funcs[0].modifiers
+        assert "view" in funcs[0].modifiers
+
+
+class TestSolidityInheritance:
+    """Tests for Solidity inheritance edge detection."""
+
+    def test_detects_contract_inheritance(self, temp_repo: Path) -> None:
+        """Detects 'inherits' edges for contract is Base."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Base {
+    function baseFunc() public virtual returns (uint256) { return 0; }
+}
+
+contract Token is Base {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) >= 1
+        # Token inherits from Base
+        token = next(s for s in result.symbols if s.name == "Token" and s.kind == "contract")
+        base = next(s for s in result.symbols if s.name == "Base" and s.kind == "contract")
+        assert any(e.src == token.id and e.dst == base.id for e in inherit_edges)
+
+    def test_detects_multiple_inheritance(self, temp_repo: Path) -> None:
+        """Detects inheritance from multiple parents."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+}
+
+contract Ownable {
+    address public owner;
+}
+
+contract Token is IERC20, Ownable {
+    function totalSupply() external view returns (uint256) { return 0; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        # Token inherits from both IERC20 and Ownable
+        assert len(inherit_edges) >= 2
+
+    def test_interface_inheritance(self, temp_repo: Path) -> None:
+        """Detects interface extending another interface."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+}
+
+interface IERC20Metadata is IERC20 {
+    function name() external view returns (string memory);
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) >= 1
+
+
+class TestSolidityOverloading:
+    """Tests for Solidity function overloading resolution.
+
+    Solidity supports function overloading (same name, different params).
+    The analyzer must correctly identify the enclosing function by position
+    rather than by name, so that overloaded functions aren't orphaned.
+    """
+
+    def test_overloaded_functions_both_connected(self, temp_repo: Path) -> None:
+        """Both overloads of a function should have call edges, not just the last one."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract AccessControl {
+    function hasRole(bytes32 role, address account) public view returns (bool) {
+        return true;
+    }
+
+    function _checkRole(bytes32 role) internal view {
+        _checkRole(role, msg.sender);
+    }
+
+    function _checkRole(bytes32 role, address account) internal view {
+        require(hasRole(role, account));
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Both _checkRole overloads should exist as symbols
+        check_role_syms = [s for s in result.symbols if "._checkRole" in s.name and s.kind == "function"]
+        assert len(check_role_syms) == 2, f"Expected 2 _checkRole symbols, got {len(check_role_syms)}"
+
+        # Both should be connected (not orphaned)
+        connected_ids = set()
+        for e in result.edges:
+            connected_ids.add(e.src)
+            connected_ids.add(e.dst)
+
+        for sym in check_role_syms:
+            assert sym.id in connected_ids, (
+                f"Overload {sym.name} (lines {sym.span.start_line}-{sym.span.end_line}) is orphaned"
+            )
+
+    def test_overloaded_caller_resolved_by_position(self, temp_repo: Path) -> None:
+        """Call from first overload should have that overload as src, not the second."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to) public returns (bool) {
+        return transfer(to, 0);
+    }
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        # Get both transfer symbols
+        transfer_syms = sorted(
+            [s for s in result.symbols if "transfer" in s.name and s.kind == "function"],
+            key=lambda s: s.span.start_line,
+        )
+        assert len(transfer_syms) == 2
+        first_overload = transfer_syms[0]  # transfer(address)
+        second_overload = transfer_syms[1]  # transfer(address, uint256)
+
+        # The call from transfer(address) to transfer(address, uint256)
+        # should have first_overload as src
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        matching = [e for e in call_edges if e.dst == second_overload.id]
+        assert len(matching) >= 1, "Expected call edge to second overload"
+        assert matching[0].src == first_overload.id, (
+            f"Call src should be first overload (line {first_overload.span.start_line}), "
+            f"not second (line {second_overload.span.start_line})"
+        )
+
+
+class TestSolidityEmitEdges:
+    """Tests for Solidity emit event edge detection.
+
+    Solidity's emit statement (emit Transfer(...)) creates edges from the
+    emitting function to the event definition, connecting event symbols
+    to the call graph.
+    """
+
+    def test_emit_creates_edge_to_event(self, temp_repo: Path) -> None:
+        """emit Transfer(...) creates an 'emits' edge from function to event."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        assert len(emit_edges) >= 1, "Expected at least one 'emits' edge"
+
+        transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
+        transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
+        assert any(e.src == transfer_func.id and e.dst == transfer_event.id for e in emit_edges)
+
+    def test_multiple_emits_in_same_function(self, temp_repo: Path) -> None:
+        """Multiple emit statements create separate edges."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    function transferAndApprove(address to, uint256 amount) public {
+        emit Transfer(msg.sender, to, amount);
+        emit Approval(msg.sender, to, amount);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        assert len(emit_edges) >= 2, f"Expected 2+ emits edges, got {len(emit_edges)}"
+
+    def test_event_not_orphaned_when_emitted(self, temp_repo: Path) -> None:
+        """Events that are emitted should not be orphans."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        connected = set()
+        for e in result.edges:
+            connected.add(e.src)
+            connected.add(e.dst)
+
+        transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
+        assert transfer_event.id in connected, "Event should be connected via emits edge"
+
+
 class TestSolidityImportAliases:
     """Tests for Solidity import alias tracking (ADR-0007)."""
 
@@ -428,6 +810,335 @@ contract MyToken {}
         # Import edge should be created for the namespace import
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
+
+
+class TestSoliditySuperCalls:
+    """Tests for Solidity super.method() and this.method() call resolution."""
+
+    def test_super_call_creates_edge(self, temp_repo: Path) -> None:
+        """super.transfer() should create a calls edge to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+
+    function safeTransfer(address to, uint256 amount) public returns (bool) {
+        super.transfer(to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        # Find the edge from safeTransfer → transfer
+        safe_transfer = next(
+            (s for s in result.symbols if "safeTransfer" in s.name and s.kind == "function"),
+            None,
+        )
+        transfer = next(
+            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind == "function"),
+            None,
+        )
+        assert safe_transfer is not None
+        assert transfer is not None
+
+        call_edges = [
+            e for e in edges
+            if e.src == safe_transfer.id and e.dst == transfer.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, f"Expected 1 edge from safeTransfer→transfer, found {len(call_edges)}"
+
+    def test_this_call_creates_edge(self, temp_repo: Path) -> None:
+        """this.transfer() should create a calls edge to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+
+    function delegateTransfer(address to, uint256 amount) public returns (bool) {
+        this.transfer(to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        delegate = next(
+            (s for s in result.symbols if "delegateTransfer" in s.name and s.kind == "function"),
+            None,
+        )
+        transfer = next(
+            (s for s in result.symbols if s.name.endswith("transfer") and "delegate" not in s.name.lower() and s.kind == "function"),
+            None,
+        )
+        assert delegate is not None
+        assert transfer is not None
+
+        call_edges = [
+            e for e in edges
+            if e.src == delegate.id and e.dst == transfer.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, f"Expected 1 edge from delegateTransfer→transfer, found {len(call_edges)}"
+
+
+class TestSolidityMemberAccessCalls:
+    """Tests for resolving dotted member access calls (e.g., IERC20(x).transfer())."""
+
+    def test_interface_cast_call_creates_edge(self, temp_repo: Path) -> None:
+        """IERC20(token).transfer() resolves to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+}
+
+contract Vault {
+    function withdraw(address token, address to, uint256 amount) external {
+        IERC20(token).transfer(to, amount);
+    }
+
+    function transfer(address to, uint256 amount) internal returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        withdraw = next(
+            (s for s in result.symbols if "withdraw" in s.name and s.kind == "function"),
+            None,
+        )
+        assert withdraw is not None
+
+        # Should resolve "IERC20(token).transfer" to a transfer function
+        call_edges = [
+            e for e in edges
+            if e.src == withdraw.id and e.edge_type == "calls"
+        ]
+        # At minimum, the dotted call should resolve to a transfer symbol
+        transfer_calls = [
+            e for e in call_edges
+            if any("transfer" in s.name for s in result.symbols if s.id == e.dst)
+        ]
+        assert len(transfer_calls) >= 1, (
+            f"Expected at least 1 call edge from withdraw→transfer, found {len(transfer_calls)}"
+        )
+
+
+class TestSolidityOverrideEdges:
+    """Tests for Solidity function override edge detection.
+
+    When a contract overrides a function from a parent contract (via
+    inheritance), the analyzer should create 'overrides' edges connecting
+    the child function to the parent function. This prevents override
+    functions from being orphans in the call graph.
+    """
+
+    def test_override_creates_edge(self, temp_repo: Path) -> None:
+        """Override function creates an 'overrides' edge to parent function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ERC165 {
+    function supportsInterface(bytes4 interfaceId) public virtual view returns (bool) {
+        return false;
+    }
+}
+
+contract Token is ERC165 {
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        assert len(override_edges) >= 1, f"Expected override edges, found {len(override_edges)}"
+
+        # Token.supportsInterface overrides ERC165.supportsInterface
+        token_fn = next(
+            s for s in result.symbols
+            if s.name == "Token.supportsInterface" and s.kind == "function"
+        )
+        parent_fn = next(
+            s for s in result.symbols
+            if s.name == "ERC165.supportsInterface" and s.kind == "function"
+        )
+        assert any(
+            e.src == token_fn.id and e.dst == parent_fn.id
+            for e in override_edges
+        ), "Expected overrides edge from Token.supportsInterface → ERC165.supportsInterface"
+
+    def test_multiple_inheritance_overrides(self, temp_repo: Path) -> None:
+        """Override matching works across multiple parent contracts."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address) external view returns (uint256);
+}
+
+contract ERC20Base {
+    function totalSupply() public virtual view returns (uint256) { return 0; }
+}
+
+contract Token is IERC20, ERC20Base {
+    function totalSupply() public view override returns (uint256) { return 100; }
+    function balanceOf(address) public view returns (uint256) { return 0; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        # Token.totalSupply should override both IERC20.totalSupply and ERC20Base.totalSupply
+        token_ts = next(
+            s for s in result.symbols
+            if s.name == "Token.totalSupply" and s.kind == "function"
+        )
+        overridden_ids = {e.dst for e in override_edges if e.src == token_ts.id}
+        assert len(overridden_ids) >= 2, (
+            f"Expected Token.totalSupply to override 2+ parent functions, "
+            f"found {len(overridden_ids)}"
+        )
+
+    def test_no_override_for_unique_functions(self, temp_repo: Path) -> None:
+        """Functions only in child (not in parent) get no override edges."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Base {
+    function baseFunc() public virtual returns (uint256) { return 0; }
+}
+
+contract Child is Base {
+    function childOnly() public returns (uint256) { return 1; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        child_only = next(
+            s for s in result.symbols
+            if s.name == "Child.childOnly" and s.kind == "function"
+        )
+        # childOnly should not have any override edges
+        assert not any(e.src == child_only.id for e in override_edges), (
+            "childOnly should not override anything"
+        )
+
+
+class TestSolidityUsingLibraryCalls:
+    """Tests for resolving implicit library calls via 'using Library for Type'.
+
+    When a contract declares `using SafeMath for uint256`, calls like
+    `x.add(y)` should resolve to `SafeMath.add`, connecting the library
+    function to the call graph.
+    """
+
+    def test_using_library_call_creates_edge(self, temp_repo: Path) -> None:
+        """x.add(y) resolves to SafeMath.add when 'using SafeMath for uint256'."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+library SafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+}
+
+contract Token {
+    using SafeMath for uint256;
+
+    function mint(uint256 amount) public returns (uint256) {
+        uint256 total = amount.add(1);
+        return total;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        mint_fn = next(
+            s for s in result.symbols if "mint" in s.name and s.kind == "function"
+        )
+        add_fn = next(
+            s for s in result.symbols if s.name == "SafeMath.add" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == mint_fn.id and e.dst == add_fn.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) >= 1, (
+            f"Expected call edge from mint→SafeMath.add, found {len(call_edges)}"
+        )
+
+    def test_using_library_prefers_qualified_match(self, temp_repo: Path) -> None:
+        """When multiple libraries define 'add', using directive resolves correctly."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+library MathA {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+}
+
+library MathB {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b + 1;
+    }
+}
+
+contract Token {
+    using MathA for uint256;
+
+    function compute(uint256 x) public returns (uint256) {
+        return x.add(1);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        compute_fn = next(
+            s for s in result.symbols if "compute" in s.name and s.kind == "function"
+        )
+        math_a_add = next(
+            s for s in result.symbols if s.name == "MathA.add" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == compute_fn.id and e.dst == math_a_add.id
+        ]
+        assert len(call_edges) >= 1, "Should resolve to MathA.add, not MathB.add"
 
 
 class TestSoliditySignatureExtraction:

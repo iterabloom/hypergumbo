@@ -1,0 +1,65 @@
+- op: create  # 5334
+  at: '2026-03-10T21:46:11Z'  # 5334
+  by: agent  # 5334
+  actor: jgstern_agent  # 5334
+  clock: 1  # 5334
+  nonce: '5334'  # 5334
+  data:  # 5334
+    kind: invariant  # 5334
+    title: "Tauri IPC commands not detected as routes or cross-language edges"  # 5334
+    status: violated  # 5334
+    priority: 2  # 5334
+    parent:  # 5334
+    tags: []  # 5334
+    before: []  # 5334
+    duplicate_of: []  # 5334
+    not_duplicate_of: []  # 5334
+    pr_ref:  # 5334
+    description: ""  # 5334
+    fields:  # 5334
+      statement: "Tauri #[tauri::command] handlers must be detected as routes and TS invoke() calls must create cross-language edges to the Rust handler"  # 5334
+      root_cause: "No Tauri IPC linker exists; framework detection finds Tauri but does not create route/linker edges"  # 5334
+- op: update  # b128
+  at: '2026-03-11T00:45:07Z'  # b128
+  by: agent  # b128
+  actor: jgstern_agent  # b128
+  clock: 2  # b128
+  nonce: b128  # b128
+  set:  # b128
+    status: holding  # b128
+- op: discuss  # dba3
+  at: '2026-03-11T00:45:07Z'  # dba3
+  by: agent  # dba3
+  actor: jgstern_agent  # dba3
+  clock: 3  # dba3
+  nonce: dba3  # dba3
+  message: "Fixed. Cross-language edges: tauri_ipc linker already existed. Entrypoint detection: added tauri.yaml (#[tauri::command]→ipc_handler concept) and ipc_handler concept handling in _detect_from_concepts()→EVENT_HANDLER. PR pending."  # dba3
+- op: update  # a97d
+  at: '2026-03-11T16:41:25Z'  # a97d
+  by: human  # a97d
+  actor: jgstern  # a97d
+  clock: 4  # a97d
+  nonce: a97d  # a97d
+  set:  # a97d
+    title: "Tauri IPC commands must be detected as routes or cross-language edges"  # a97d
+- op: discuss  # 6859
+  at: '2026-03-11T16:41:57Z'  # 6859
+  by: human  # 6859
+  actor: jgstern  # 6859
+  clock: 5  # 6859
+  nonce: '6859'  # 6859
+  message: "please find the PR number"  # 6859
+- op: discuss  # 9410
+  at: '2026-03-11T17:34:13Z'  # 9410
+  by: agent  # 9410
+  actor: jgstern_agent  # 9410
+  clock: 6  # 9410
+  nonce: '9410'  # 9410
+  message: "PRs found: Tauri IPC command entrypoint detection was PR #2128 (commit a5cdab8a). Tauri-specta TAURI_INVOKE pattern matching was PR #2139 (commit f50ec5bd). Synthetic symbol creation was PR #2152 (commit 6a9ad758). Tier-2 protection for synthetic symbols was PR #2156 (commit ec8bb427)."  # 9410
+- op: discuss  # 99b7
+  at: '2026-03-11T18:16:16Z'  # 99b7
+  by: agent  # 99b7
+  actor: jgstern_agent  # 99b7
+  clock: 7  # 99b7
+  nonce: 99b7  # 99b7
+  message: "PRs: Tauri IPC entrypoint detection PR #2128 (a5cdab8a). Specta TAURI_INVOKE matching PR #2139 (f50ec5bd). Synthetic symbols PR #2152 (6a9ad758). Tier-2 protection PR #2156 (ec8bb427)."  # 99b7

@@ -1,0 +1,64 @@
+- op: create  # ddca
+  at: '2026-03-07T04:45:48Z'  # ddca
+  by: agent  # ddca
+  actor: jgstern_agent  # ddca
+  clock: 1  # ddca
+  nonce: ddca  # ddca
+  data:  # ddca
+    kind: work_item  # ddca
+    title: "fix: stop hook dead PID re-claim after crash"  # ddca
+    status: needs_human_review  # ddca
+    priority: 1  # ddca
+    parent:  # ddca
+    tags: []  # ddca
+    before: []  # ddca
+    duplicate_of: []  # ddca
+    not_duplicate_of: []  # ddca
+    pr_ref:  # ddca
+    description: "When Claude Code crashes, the stored PID in AUTONOMOUS_MODE.txt becomes stale. The stop hook treated the new session as interactive and approved immediately, bypassing all autonomous mode blocking. Fix: check if stored PID is alive before deciding — if dead, re-claim ownership. Also fixed 3 pre-existing test issues and added 2 new tests. All changed files are governance files requiring human approval."  # ddca
+    fields: {}  # ddca
+- op: discuss  # abbe
+  at: '2026-03-07T04:48:01Z'  # abbe
+  by: human  # abbe
+  actor: jgstern  # abbe
+  clock: 2  # abbe
+  nonce: abbe  # abbe
+  message: "I approve"  # abbe
+- op: update  # 3c85
+  at: '2026-03-07T04:48:24Z'  # 3c85
+  by: human  # 3c85
+  actor: jgstern  # 3c85
+  clock: 3  # 3c85
+  nonce: 3c85  # 3c85
+  set:  # 3c85
+    status: todo_soft  # 3c85
+- op: discuss  # 5bf2
+  at: '2026-03-07T04:54:30Z'  # 5bf2
+  by: agent  # 5bf2
+  actor: jgstern_agent  # 5bf2
+  clock: 4  # 5bf2
+  nonce: 5bf2  # 5bf2
+  message: "Acknowledged approval. Creating PR with the fix now."  # 5bf2
+- op: update  # 393d
+  at: '2026-03-07T04:55:06Z'  # 393d
+  by: agent  # 393d
+  actor: jgstern_agent  # 393d
+  clock: 5  # 393d
+  nonce: 393d  # 393d
+  set:  # 393d
+    status: in_progress  # 393d
+- op: update  # ac55
+  at: '2026-03-07T05:11:36Z'  # ac55
+  by: agent  # ac55
+  actor: jgstern_agent  # ac55
+  clock: 6  # ac55
+  nonce: ac55  # ac55
+  set:  # ac55
+    status: done  # ac55
+- op: discuss  # 7a27
+  at: '2026-03-07T05:11:36Z'  # 7a27
+  by: agent  # 7a27
+  actor: jgstern_agent  # 7a27
+  clock: 7  # 7a27
+  nonce: 7a27  # 7a27
+  message: "Fixed in PR #1901. Dead PID re-claim now works: when stored PID doesn't exist in /proc, the new session re-claims ownership instead of being treated as interactive."  # 7a27

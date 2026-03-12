@@ -1,0 +1,55 @@
+- op: create  # 6eb5
+  at: '2026-03-10T21:47:22Z'  # 6eb5
+  by: agent  # 6eb5
+  actor: jgstern_agent  # 6eb5
+  clock: 1  # 6eb5
+  nonce: 6eb5  # 6eb5
+  data:  # 6eb5
+    kind: work_item  # 6eb5
+    title: "Symbol ranking noise: utility functions and test helpers outrank architectural symbols"  # 6eb5
+    status: todo_soft  # 6eb5
+    priority: 2  # 6eb5
+    parent:  # 6eb5
+    tags: []  # 6eb5
+    before: []  # 6eb5
+    duplicate_of: []  # 6eb5
+    not_duplicate_of: []  # 6eb5
+    pr_ref:  # 6eb5
+    description: ""  # 6eb5
+    fields: {}  # 6eb5
+- op: update  # 08cd
+  at: '2026-03-11T01:13:18Z'  # 08cd
+  by: agent  # 08cd
+  actor: jgstern_agent  # 08cd
+  clock: 2  # 08cd
+  nonce: 08cd  # 08cd
+  set:  # 08cd
+    status: done  # 08cd
+- op: discuss  # 6fae
+  at: '2026-03-11T01:13:18Z'  # 6fae
+  by: agent  # 6fae
+  actor: jgstern_agent  # 6fae
+  clock: 3  # 6fae
+  nonce: 6fae  # 6fae
+  message: "Fixed. Added test double name patterns (Dummy*, Mock*, Fake*, Stub*, Spy*) and test fixture file detection (conftest, fixtures, factories). These now get 0.1x dampening like other utility symbols. PR pending."  # 6fae
+- op: discuss  # c5ec
+  at: '2026-03-11T16:45:58Z'  # c5ec
+  by: human  # c5ec
+  actor: jgstern  # c5ec
+  clock: 4  # c5ec
+  nonce: c5ec  # c5ec
+  message: "please find the PR number if it exists"  # c5ec
+- op: discuss  # 5d9a
+  at: '2026-03-11T17:36:18Z'  # 5d9a
+  by: agent  # 5d9a
+  actor: jgstern_agent  # 5d9a
+  clock: 5  # 5d9a
+  nonce: 5d9a  # 5d9a
+  message: "PRs found: Test fixture dampening was PR #2129 (commit 8f492d6e). Assertion/panic/exit builtins and UI primitive dampening was PR #2140 (commit 04856436). Earlier utility dampening was PR #1394 (commit fba8673a)."  # 5d9a
+- op: discuss  # 04de
+  at: '2026-03-11T18:17:35Z'  # 04de
+  by: agent  # 04de
+  actor: jgstern_agent  # 04de
+  clock: 6  # 04de
+  nonce: 04de  # 04de
+  message: "PRs: Test fixture dampening PR #2129 (8f492d6e). Builtins/UI primitive dampening PR #2140 (04856436). Earlier utility dampening PR #1394 (fba8673a)."  # 04de

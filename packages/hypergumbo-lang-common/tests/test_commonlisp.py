@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Common Lisp language analyzer.
 
 Common Lisp is a multi-paradigm Lisp dialect with strong metaprogramming.

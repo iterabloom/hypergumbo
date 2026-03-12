@@ -1,0 +1,35 @@
+- op: create  # 98fd
+  at: '2026-03-02T21:54:38Z'  # 98fd
+  by: agent  # 98fd
+  actor: jgstern_agent  # 98fd
+  clock: 1  # 98fd
+  nonce: 98fd  # 98fd
+  data:  # 98fd
+    kind: work_item  # 98fd
+    title: "Revalidation: init new DEEP session for OptAttest curriculum"  # 98fd
+    status: todo_soft  # 98fd
+    priority: 2  # 98fd
+    parent:  # 98fd
+    tags:  # 98fd
+    - bakeoff-revalidation  # 98fd
+    before: []  # 98fd
+    duplicate_of: []  # 98fd
+    not_duplicate_of: []  # 98fd
+    pr_ref:  # 98fd
+    description: "Initialize a new bakeoff-features DEEP session for re-running the full OptAttest curriculum\nagainst the current codebase.\n\nCommand: ./scripts/bakeoff-features init --pool ~/optattest_repos\n\nContext: The OptAttest curriculum (41 repos, 7 cohorts) was fully run on March 1 against\ncode hash e0ca04d3. Since then, ~15 PRs landed (generic trait blocklist PR#1645, turbofish\nPR#1647, cfg(test) PR#1648, codegen-derived patterns PR#1641, soft_hint PR#1640, benchmark\nexclusion PR#1643, etc.). Only 16/41 repos were re-validated. This session re-runs all 41.\n\nThe initial run is at: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260301-063114/\nCurriculum file: ~/hypergumbo_lab_notebook/curricula/deep-optattest-20260227.md"  # 98fd
+    fields: {}  # 98fd
+- op: update  # c991
+  at: '2026-03-03T21:11:56Z'  # c991
+  by: agent  # c991
+  actor: jgstern_agent  # c991
+  clock: 2  # c991
+  nonce: c991  # c991
+  set:  # c991
+    status: done  # c991
+- op: discuss  # 8e03
+  at: '2026-03-03T21:11:56Z'  # 8e03
+  by: agent  # 8e03
+  actor: jgstern_agent  # 8e03
+  clock: 3  # 8e03
+  nonce: '8e03'  # 8e03
+  message: "New DEEP session initialized: deep-reval-20260303-160033. 7 cohorts (40 repos, op-succinct missing from pool). Using OptAttest curriculum."  # 8e03

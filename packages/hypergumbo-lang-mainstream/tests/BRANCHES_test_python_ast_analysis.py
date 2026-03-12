@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for Python AST analysis.
 
 These tests specifically target uncovered branches in py.py.
