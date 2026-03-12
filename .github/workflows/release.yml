@@ -84,7 +84,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          pip install --upgrade pip "wheel>=0.46.2"
           # Install modular packages if available, otherwise legacy
           # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
           if [ -d "packages/hypergumbo-core" ]; then
@@ -146,7 +146,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          pip install --upgrade pip
+          pip install --upgrade pip "wheel>=0.46.2"
           pip install build twine cyclonedx-bom
 
       - name: Extract version
