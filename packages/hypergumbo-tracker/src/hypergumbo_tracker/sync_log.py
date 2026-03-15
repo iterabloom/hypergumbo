@@ -104,8 +104,7 @@ def init_sync_log(repo_root: Path) -> Path | None:
     Safe to call multiple times — subsequent calls are no-ops if the log
     file for today is already open.
     """
-    global _log_file_handle, _log_dir  # noqa: PLW0603
-
+    global _log_file_handle, _log_dir
     log_dir = repo_root / ".agent" / ".sync-logs"
     _log_dir = log_dir
 
@@ -133,7 +132,7 @@ def init_sync_log(repo_root: Path) -> Path | None:
     _close_log()
 
     try:
-        _log_file_handle = open(log_path, "a", encoding="utf-8")  # noqa: SIM115, PTH123, S108
+        _log_file_handle = open(log_path, "a", encoding="utf-8")
     except OSError:
         _log_file_handle = None
         return None
@@ -166,7 +165,7 @@ def write_log(msg: str) -> None:
 
 def _close_log() -> None:
     """Close the current log file handle if open."""
-    global _log_file_handle  # noqa: PLW0603
+    global _log_file_handle
     if _log_file_handle is not None:
         try:
             _log_file_handle.close()  # type: ignore[union-attr]
