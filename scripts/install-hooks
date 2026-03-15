@@ -239,6 +239,8 @@ if [[ -n "$STABLE_HG" ]]; then
   STABLE_VERSION=$("$STABLE_HG" --version 2>/dev/null | head -1 || echo "unknown")
   echo "✅ Stable hypergumbo found: $STABLE_HG ($STABLE_VERSION)"
   echo "   smart-test will use this for affected-test detection"
+  echo "   Upgrade: pipx upgrade hypergumbo"
+  echo "   Pin:     pipx install hypergumbo==VERSION"
 else
   echo "⚠️  No stable hypergumbo found"
   echo "   smart-test will fall back to running full test suite"
