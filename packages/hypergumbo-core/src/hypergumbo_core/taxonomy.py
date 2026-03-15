@@ -399,6 +399,36 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.ipynb"],
         roles=FileRole.ANALYZABLE,
     ),
+    "blade": LanguageSpec(
+        name="blade",
+        extensions=["*.blade.php"],
+        roles=FileRole.ANALYZABLE,
+    ),
+    "gnuplot": LanguageSpec(
+        name="gnuplot",
+        extensions=["*.gnuplot", "*.gp", "*.plt"],
+        roles=FileRole.ANALYZABLE,
+    ),
+    "handlebars": LanguageSpec(
+        name="handlebars",
+        extensions=["*.hbs", "*.handlebars"],
+        roles=FileRole.ANALYZABLE,
+    ),
+    "just": LanguageSpec(
+        name="just",
+        extensions=["justfile", "Justfile", ".justfile", "*.just"],
+        roles=FileRole.CONFIG,
+    ),
+    "mermaid": LanguageSpec(
+        name="mermaid",
+        extensions=["*.mmd", "*.mermaid"],
+        roles=FileRole.DOCUMENTATION,
+    ),
+    "qml": LanguageSpec(
+        name="qml",
+        extensions=["*.qml"],
+        roles=FileRole.ANALYZABLE,
+    ),
     "latex": LanguageSpec(
         name="latex",
         extensions=["*.tex", "*.sty", "*.cls"],

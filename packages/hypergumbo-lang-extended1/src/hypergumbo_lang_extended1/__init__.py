@@ -64,6 +64,11 @@ ANALYZER_MODULES = [
 
     # Web templating
     "hypergumbo_lang_extended1.twig",
+    "hypergumbo_lang_extended1.blade",
+
+    # Diagram and plotting
+    "hypergumbo_lang_extended1.mermaid",
+    "hypergumbo_lang_extended1.gnuplot",
 
     # Query languages
     "hypergumbo_lang_extended1.sparql",

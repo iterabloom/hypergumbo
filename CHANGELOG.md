@@ -13,6 +13,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **Jupyter notebook support**: Analyzes `.ipynb` files by extracting Python code cells, stripping IPython magics/shell commands, and parsing with the Python AST. Notebooks are classified as Tier 2 (INTERNAL_DEP) since they live outside the project's import namespace. Supports cross-cell symbol detection and call edge extraction.
+- **Blade** (`.blade.php`): Extracts Laravel Blade directives — sections, yields, extends, components.
+- **Gnuplot** (`.gnuplot`, `.gp`, `.plt`): Extracts function definitions, variable assignments, and plot commands.
+- **Handlebars** (`.hbs`, `.handlebars`): Extracts partial references, block helpers, and custom helpers.
+- **Just** (`justfile`, `.just`): Extracts recipes, variables, aliases, and recipe dependency edges.
+- **Mermaid** (`.mmd`, `.mermaid`): Extracts diagram types, nodes, participants, classes, and states.
+- **QML** (`.qml`): Extracts Qt/QML components, properties, signals, functions, and element IDs.
 
 ## [2.2.0] - 2026-03-12
 

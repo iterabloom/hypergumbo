@@ -44,6 +44,15 @@ ANALYZER_MODULES = [
     "hypergumbo_lang_common.proto",
     "hypergumbo_lang_common.thrift",
 
+    # Templating
+    "hypergumbo_lang_common.handlebars",
+
+    # UI frameworks
+    "hypergumbo_lang_common.qml",
+
+    # Build systems
+    "hypergumbo_lang_common.just",
+
     # Infrastructure and config
     "hypergumbo_lang_common.nix",
     "hypergumbo_lang_common.hcl",
