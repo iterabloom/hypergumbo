@@ -1557,16 +1557,18 @@ class TestDoSync:
         """Return git mock side_effect entries for cleanup calls.
 
         When on_base_branch is True (default, matching _make_preflight's
-        original_branch="dev"), includes the ff-only merge call that
-        absorbs synced ops files into the local branch.
+        original_branch="dev"), includes the checkout/ls-files/merge
+        calls that absorb synced ops files into the local branch.
         """
         entries = [
             _make_completed_process(),  # fetch (update remote tracking ref)
         ]
         if on_base_branch:
-            entries.append(
+            entries.extend([
+                _make_completed_process(),  # checkout HEAD -- (reset tracked)
+                _make_completed_process(stdout=""),  # ls-files --others (none)
                 _make_completed_process(),  # merge --ff-only origin/dev
-            )
+            ])
         entries.append(
             _make_completed_process(),  # branch -D
         )
@@ -1613,22 +1615,14 @@ class TestDoSync:
         # Temp index should be cleaned up
         assert not (tmp_path / ".git" / "tmp-sync-index").exists()
 
-        # Cleanup: fetch, ff-only merge (on base branch), branch -D
-        cleanup_calls = mock_git.call_args_list[-3:]
-        fetch_call = cleanup_calls[0]
-        fetch_args = fetch_call[0]
-        assert "fetch" in fetch_args, (
-            f"Expected 'fetch' in cleanup call, got: {fetch_args}"
-        )
-        # When on base branch, ff-only merge absorbs synced ops files
-        merge_call = cleanup_calls[1]
-        merge_args = merge_call[0]
-        assert "merge" in merge_args, (
-            f"Expected 'merge' in cleanup call, got: {merge_args}"
-        )
-        assert "--ff-only" in merge_args, (
-            f"Expected '--ff-only' in merge call, got: {merge_args}"
-        )
+        # Cleanup: fetch, checkout, ls-files, ff-only merge, branch -D
+        cleanup_calls = mock_git.call_args_list[-5:]
+        assert "fetch" in cleanup_calls[0][0]
+        assert "checkout" in cleanup_calls[1][0]
+        assert "ls-files" in cleanup_calls[2][0]
+        merge_args = cleanup_calls[3][0]
+        assert "merge" in merge_args
+        assert "--ff-only" in merge_args
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -1696,11 +1690,20 @@ class TestDoSync:
         ops_path.parent.mkdir(parents=True, exist_ok=True)
         ops_path.write_text("some ops data\n")
 
+        # Custom cleanup: ls-files returns the untracked file path
+        cleanup_with_untracked = [
+            _make_completed_process(),  # fetch
+            _make_completed_process(),  # checkout HEAD --
+            _make_completed_process(stdout=f"{ops_file}\n"),  # ls-files
+            _make_completed_process(),  # merge --ff-only
+            _make_completed_process(),  # branch -D
+        ]
+
         mock_git.side_effect = [
             *self._plumbing_setup(),
             _make_completed_process(),  # push
             *self._rebase_check_no_diverge(),
-            *self._cleanup(),
+            *cleanup_with_untracked,
         ]
         mock_find_pr.return_value = (42, "sha123")
         mock_poll.return_value = "success"
@@ -2047,14 +2050,19 @@ class TestDoSync:
         assert not result.success
         assert "push failed" in result.error
 
-        # Verify no checkout calls (plumbing never switches branches)
+        # Verify no branch-switching checkout calls.  The cleanup phase
+        # uses ``checkout HEAD -- <paths>`` to reset ops file content
+        # (not switch branches), which is fine.
         all_calls = mock_git.call_args_list
-        checkout_calls = [
+        branch_checkout_calls = [
             c for c in all_calls
-            if len(c[0]) >= 2 and c[0][1] == "checkout"
+            if len(c[0]) >= 2
+            and c[0][1] == "checkout"
+            and "HEAD" not in c[0]
         ]
-        assert len(checkout_calls) == 0, (
-            f"Expected no checkout calls, got {len(checkout_calls)}. "
+        assert len(branch_checkout_calls) == 0, (
+            f"Expected no branch checkout calls, got "
+            f"{len(branch_checkout_calls)}. "
             f"All calls: {[c[0] for c in all_calls]}"
         )
 

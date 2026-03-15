@@ -1117,17 +1117,39 @@ def do_sync(
         # Fast-forward-only is safe: we haven't made local commits on
         # the base branch (the plumbing approach commits to a detached
         # sync branch), so ff-only either succeeds or is a no-op.
-        # The synced ops files exist as untracked copies in the working
-        # tree (the plumbing approach staged them into the sync commit
-        # but never ``git add``ed them locally).  We must remove them
-        # before ff-only merge, otherwise git refuses to overwrite
-        # untracked files.  This is safe because their content is
-        # identical to what's on origin/dev (we just synced them).
+        #
+        # The synced ops files may be in one of two states:
+        # - **Untracked** (new items): must be removed before merge,
+        #   otherwise git refuses to overwrite them.
+        # - **Modified** (updates to existing items): must be reset to
+        #   HEAD content before merge, otherwise git refuses to
+        #   overwrite dirty tracked files.
+        # Both are safe because the content is identical to what's on
+        # origin/dev (we just synced them).  Use ``git checkout HEAD``
+        # for tracked files and ``unlink`` for untracked.
         if preflight.original_branch == base_branch:
-            for fpath in preflight.changed_files:
-                full = repo_root / fpath
-                if full.is_file():
-                    full.unlink()
+            # Reset tracked ops files to HEAD (handles modified files).
+            # ``git checkout HEAD -- <paths>`` silently ignores
+            # untracked files, so this is safe.
+            _git(
+                repo_root,
+                "checkout", "HEAD", "--",
+                *_OPS_PATHS,
+                check=False,
+            )
+            # Remove untracked ops files (new items created this
+            # session that aren't on the local branch yet).
+            untracked = _git(
+                repo_root,
+                "ls-files", "--others", "--exclude-standard", "--",
+                *_OPS_PATHS,
+                check=False,
+            )
+            if untracked.returncode == 0 and untracked.stdout.strip():
+                for fpath in untracked.stdout.strip().splitlines():
+                    full = repo_root / fpath
+                    if full.is_file():
+                        full.unlink()
             _git(
                 repo_root,
                 "merge", "--ff-only",
