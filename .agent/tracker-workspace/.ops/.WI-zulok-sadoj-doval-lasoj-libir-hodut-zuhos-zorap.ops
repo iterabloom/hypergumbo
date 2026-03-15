@@ -92,3 +92,10 @@
   clock: 11  # 8faf
   nonce: 8faf  # 8faf
   message: "Partially addressed in PR #2176. Added ttrpc RegisterXxxService pattern detection and ttrpc interface-based implements_rpc edges. Remaining: CSI interface implementations (use different code generation without Unimplemented or ttrpc patterns)."  # 8faf
+- op: discuss  # a452
+  at: '2026-03-15T20:54:04Z'  # a452
+  by: human  # a452
+  actor: jgstern  # a452
+  clock: 12  # a452
+  nonce: a452  # a452
+  message: "above you wrote \"Remaining: CSI interface implementations (use different code generation without Unimplemented or ttrpc patterns)\" -- did you make a tracker item for that? if not, perhaps you should?"  # a452

@@ -106,3 +106,10 @@
   clock: 12  # ae5b
   nonce: ae5b  # ae5b
   message: "Revalidated March 4: Jenkins 151/151 routes (100%), Keycloak 609 routes (from 0). Route-to-handler is functional for Java/JAX-RS/Stapler. Remaining gap: keycloak has 609 vs ~1302 expected routes (47% coverage). Holding pending investigation of the coverage gap."  # ae5b
+- op: discuss  # 6198
+  at: '2026-03-15T21:07:40Z'  # 6198
+  by: human  # 6198
+  actor: jgstern  # 6198
+  clock: 13  # 6198
+  nonce: '6198'  # 6198
+  message: "if some gap is uninvestigated, is it accurate to say this invariant is \"holding\"? perhaps the invariant is violated, but the priority is a 4 (low). does your agentic scaffolding imply that violated invariants, no matter how unimportant, must always take priority over not-done work items, no matter how important? if so, perhaps I need to change that scaffolding?"  # 6198

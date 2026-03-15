@@ -33,3 +33,11 @@
   clock: 3  # 274a
   nonce: 274a  # 274a
   message: "Sham item for testing auto-sync."  # 274a
+- op: update  # daf8
+  at: '2026-03-15T20:52:26Z'  # daf8
+  by: human  # daf8
+  actor: jgstern  # daf8
+  clock: 4  # daf8
+  nonce: daf8  # daf8
+  set:  # daf8
+    status: deleted  # daf8

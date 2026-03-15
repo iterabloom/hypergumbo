@@ -85,3 +85,10 @@
   clock: 10  # fd9c
   nonce: fd9c  # fd9c
   message: "Impact: LOW to MODERATE. The 1/sqrt(N) confidence scaling (PR #2058) means ambiguous methods like Initialize() with 15 candidates get confidence 0.18, below the edge filter threshold. Same-file calls are correctly resolved. Full type-aware resolution would require reimplementing a C++ compiler frontend — unfavorable effort-to-benefit ratio. Only 2-3 C++ repos in the bakeoff corpus showed significant false positives. Recommendation: keep at HOLDING."  # fd9c
+- op: discuss  # 1e33
+  at: '2026-03-15T21:10:08Z'  # 1e33
+  by: human  # 1e33
+  actor: jgstern  # 1e33
+  clock: 11  # 1e33
+  nonce: '1e33'  # 1e33
+  message: "is this what we meant in the hypergumbo spec when we talked about multi-fidelity analysis?"  # 1e33

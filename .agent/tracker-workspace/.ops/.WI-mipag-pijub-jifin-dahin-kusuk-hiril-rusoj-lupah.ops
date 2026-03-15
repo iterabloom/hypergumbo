@@ -18,3 +18,11 @@
     pr_ref:  # 8bf2
     description: "Sham work item for testing auto-sync behavior. Delete immediately."  # 8bf2
     fields: {}  # 8bf2
+- op: update  # 3161
+  at: '2026-03-15T21:14:07Z'  # 3161
+  by: human  # 3161
+  actor: jgstern  # 3161
+  clock: 2  # 3161
+  nonce: '3161'  # 3161
+  set:  # 3161
+    status: deleted  # 3161

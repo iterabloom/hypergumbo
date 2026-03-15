@@ -51,3 +51,12 @@
   clock: 7  # 22d9
   nonce: 22d9  # 22d9
   message: "[migrated from justification field] Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 22d9
+- op: update  # 8163
+  at: '2026-03-15T20:45:53Z'  # 8163
+  by: human  # 8163
+  actor: jgstern  # 8163
+  clock: 8  # 8163
+  nonce: '8163'  # 8163
+  set: {}  # 8163
+  add:  # 8163
+    tags: [someday]  # 8163

@@ -42,3 +42,12 @@
   nonce: 1f2e  # 1f2e
   set:  # 1f2e
     title: "Slice BFS must traverse event_publishes edges"  # 1f2e
+- op: update  # 6d69
+  at: '2026-03-15T21:04:00Z'  # 6d69
+  by: human  # 6d69
+  actor: jgstern  # 6d69
+  clock: 5  # 6d69
+  nonce: 6d69  # 6d69
+  set: {}  # 6d69
+  add:  # 6d69
+    tags: [done-ish]  # 6d69

@@ -55,3 +55,18 @@
   clock: 6  # 51b4
   nonce: 51b4  # 51b4
   message: "PR found: React Router JSX route detection was PR #2127 (commit 9929cd88). Route-handler linking improvements were PR #2136 (commit 7277c3bb)."  # 51b4
+- op: update  # a947
+  at: '2026-03-15T21:12:03Z'  # a947
+  by: human  # a947
+  actor: jgstern  # a947
+  clock: 7  # a947
+  nonce: a947  # a947
+  set:  # a947
+    title: "React Router routes must be detected in routes.txt"  # a947
+- op: discuss  # 0676
+  at: '2026-03-15T21:12:22Z'  # 0676
+  by: human  # 0676
+  actor: jgstern  # 0676
+  clock: 8  # 0676
+  nonce: '0676'  # 0676
+  message: "is there any aspect of this invariant that is not holding?"  # 0676

@@ -18,3 +18,12 @@
     description: ""  # 8ccc
     fields:  # 8ccc
       statement: "Agent loses CI debugging context across sessions. Scripts (auto-pr, ci-debug, merge-pr) are the tattoos but can mislead. Need: (1) better CI failure diagnostics, (2) last_stop_check.json should capture CI/PR state, (3) no first-shot assumptions on CI, (4) no parallel work while CI pending, (5) timing awareness for stale fetches/PRs."  # 8ccc
+- op: update  # f99c
+  at: '2026-03-15T20:46:22Z'  # f99c
+  by: human  # f99c
+  actor: jgstern  # f99c
+  clock: 2  # f99c
+  nonce: f99c  # f99c
+  set: {}  # f99c
+  add:  # f99c
+    tags: [someday]  # f99c
