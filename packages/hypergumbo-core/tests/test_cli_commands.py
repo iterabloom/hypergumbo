@@ -3081,6 +3081,53 @@ def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
     assert "tests/test_a.py" in dependent
 
 
+def test_cmd_slice_files_mode_max_hops_none(tmp_path: Path, capsys) -> None:
+    """Regression: --files mode with max_hops=None (argparse default) must not crash.
+
+    Previously raised TypeError: '<' not supported between 'int' and 'NoneType'
+    because getattr(args, "max_hops", 10) returns None when the attribute exists
+    but is set to None by argparse.
+    """
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    symbols = [
+        Symbol(
+            id="python:a.py:1-5:func_a:function",
+            name="func_a", kind="function", language="python",
+            path="a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:b.py:1-5:func_b:function",
+            name="func_b", kind="function", language="python",
+            path="b.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+    edges = [
+        Edge(
+            id="edge:b->a",
+            src="python:b.py:1-5:func_b:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls", line=3, confidence=0.9,
+        ),
+    ]
+
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("a.py\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None
+        max_hops = None  # argparse default when --max-hops not passed
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "b.py" in out
+
+
 def test_cmd_slice_files_mode_no_changed_files(tmp_path: Path) -> None:
     """Test --files mode with empty file list."""
     from hypergumbo_core.cli import _handle_files_mode

@@ -1068,7 +1068,7 @@ def _handle_files_mode(
             if sym.path:
                 dependent_files.add(sym.path)
 
-        max_hops = getattr(args, "max_hops", 10)  # Generous default for test selection
+        max_hops = getattr(args, "max_hops", None) or 10  # Generous default for test selection
         hop_count = 0
         current_level = set(queue)
 
