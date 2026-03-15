@@ -174,7 +174,7 @@ def _analyze_notebook_file(
     current_line = 1
     cell_offsets: list[int] = []  # start line of each cell in concatenated source
 
-    for i, cell_source in enumerate(cells):
+    for cell_source in cells:
         cell_offsets.append(current_line)
         processed = preprocess_notebook_source(cell_source)
         preprocessed_parts.append(processed)
