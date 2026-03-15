@@ -18,3 +18,18 @@
     pr_ref:  # b04a
     description: "Sham work item for testing auto-sync behavior. Delete immediately."  # b04a
     fields: {}  # b04a
+- op: update  # 0252
+  at: '2026-03-15T09:56:31Z'  # 0252
+  by: agent  # 0252
+  actor: jgstern_agent  # 0252
+  clock: 2  # 0252
+  nonce: '0252'  # 0252
+  set:  # 0252
+    status: wont_do  # 0252
+- op: discuss  # 274a
+  at: '2026-03-15T09:56:31Z'  # 274a
+  by: agent  # 274a
+  actor: jgstern_agent  # 274a
+  clock: 3  # 274a
+  nonce: 274a  # 274a
+  message: "Sham item for testing auto-sync."  # 274a
