@@ -485,6 +485,40 @@ members = ["crates/*"]
         assert lib_result.tier < example_result.tier
 
 
+class TestNotebookClassification:
+    """Jupyter notebooks are always tier 2 (internal_dep).
+
+    Notebooks are exploratory code that lives outside the project's import
+    namespace. They should be analyzed but deprioritized vs. first-party source.
+    """
+
+    def test_notebook_in_root_is_internal_dep(self, tmp_path):
+        """Notebook at repo root is tier 2."""
+        nb = tmp_path / "analysis.ipynb"
+        nb.write_text("{}")
+        result = classify_file(nb, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "notebook" in result.reason.lower()
+
+    def test_notebook_in_src_is_internal_dep(self, tmp_path):
+        """Notebook in src/ is still tier 2 (not tier 1)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        nb = src / "explore.ipynb"
+        nb.write_text("{}")
+        result = classify_file(nb, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_notebook_in_notebooks_dir_is_internal_dep(self, tmp_path):
+        """Notebook in notebooks/ subdirectory is tier 2."""
+        nb_dir = tmp_path / "notebooks"
+        nb_dir.mkdir()
+        nb = nb_dir / "experiment.ipynb"
+        nb.write_text("{}")
+        result = classify_file(nb, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+
 class TestTestFileClassification:
     """Test that test directories and files are classified as tier 2 (internal_dep).
 

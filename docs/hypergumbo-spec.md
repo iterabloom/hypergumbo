@@ -148,6 +148,9 @@ Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](
 **Additional languages (symbol extraction):**
 * 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and many more — see [LANGUAGES.md](LANGUAGES.md) for the full list
 
+**Notebook formats:**
+* 🟩 Jupyter Notebook (.ipynb) — extracts Python code cells, strips magics, AST-based analysis (Tier 2)
+
 **Configuration/data formats:**
 * 🟩 JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
 

@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Jupyter notebook support**: Analyzes `.ipynb` files by extracting Python code cells, stripping IPython magics/shell commands, and parsing with the Python AST. Notebooks are classified as Tier 2 (INTERNAL_DEP) since they live outside the project's import namespace. Supports cross-cell symbol detection and call edge extraction.
+
 ## [2.2.0] - 2026-03-12
 
 ## [2.2.0] - 2026-03-12

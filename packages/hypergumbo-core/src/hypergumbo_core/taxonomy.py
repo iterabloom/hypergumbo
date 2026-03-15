@@ -394,6 +394,11 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.capnp"],
         roles=FileRole.ANALYZABLE,
     ),
+    "jupyter": LanguageSpec(
+        name="jupyter",
+        extensions=["*.ipynb"],
+        roles=FileRole.ANALYZABLE,
+    ),
     "latex": LanguageSpec(
         name="latex",
         extensions=["*.tex", "*.sty", "*.cls"],

@@ -119,6 +119,12 @@ def get_default_catalog() -> Catalog:
                 languages=["python"],
             ),
             Pass(
+                id="jupyter-ast-v1",
+                description="Jupyter notebook code cell parser",
+                availability="core",
+                languages=["jupyter"],
+            ),
+            Pass(
                 id="html-pattern-v1",
                 description="HTML script tag parser",
                 availability="core",

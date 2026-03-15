@@ -63,6 +63,9 @@ ANALYZER_MODULES = [
 
     # Cross-language manifest build targets
     "hypergumbo_lang_mainstream.manifest_targets",
+
+    # Notebook formats
+    "hypergumbo_lang_mainstream.jupyter",
 ]
 
 __all__ = ["ANALYZER_MODULES", "__version__"]
