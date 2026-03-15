@@ -170,29 +170,67 @@ A single module (`dataflow.py`, estimated ~200-300 lines) provides:
 
 1. **YAML loader**: reads `dataflow/*.yaml` files, builds a per-language lookup table of node types to access-mode rules.
 
-2. **`classify_access(edge, ast_node, language) -> str | None`**: called by any edge producer. Looks up the AST node's type in the language's dataflow config, determines whether the edge's source/destination is on the read side or write side of the pattern, returns the access mode. Language analyzers call this when creating edges — one additional line at each `Edge.create` call site.
+2. **`annotate_dataflow(edges, tree, source, language) -> List[Edge]`**: takes a batch of edges produced by a language analyzer, the parsed AST tree, and the source bytes. For each edge, locates the AST node at the edge's line, looks up the node type in the language's dataflow config, and stamps `access_mode` into `meta`. Returns the same edges with annotations added. Edges that already have `access_mode` set (by a linker — see below) are skipped.
 
 3. **`scan_library_patterns(file_content, language) -> List[DataflowSite]`**: matches library-specific patterns (the `library_patterns` section) against source text via regex, returning structured write/read sites with channels. This is the same approach used by the event sourcing, message queue, and WebSocket linkers — but driven by YAML instead of per-linker Python code.
 
-#### Integration with existing producers
+### 5. Two-tier integration model
 
-Each edge producer opts in by passing AST context to `classify_access`:
+Dataflow annotation applies to two distinct populations of edges, with different integration strategies for each:
+
+#### Tier 1: Intra-language edges (automatic)
+
+Edges created by language analyzers (calls, assignments, attribute access) go through the base class orchestrator in `analyze/base.py`. The orchestrator already has the AST tree and source bytes at the point where edges are created. One line is added after `extract_edges_from_file`:
 
 ```python
-# In a language analyzer's edge-creation code (e.g., rust.py)
-from hypergumbo_core.dataflow import classify_access
+# In analyze/base.py, after line 1768 (existing edge extraction)
+edges = self.extract_edges_from_file(
+    tree, source, source_file, rel_path,
+    analysis.symbol_by_name, global_symbols, run,
+    import_aliases, resolver,
+)
+edges = annotate_dataflow(edges, tree, source, self.lang)  # NEW
+all_edges.extend(edges)
+```
 
-mode = classify_access(call_node, language="rust")
-edge = Edge.create(
-    src=caller_id, dst=callee_id,
-    edge_type="calls", line=line,
-    access_mode=mode,
+This is **one integration point** in the base class. Every language analyzer that uses the base class gets dataflow annotation automatically — zero changes to any individual analyzer. The `annotate_dataflow` function matches each edge's line number back to the AST node at that position, looks up the dataflow YAML for the language, and stamps `access_mode` into `meta`.
+
+#### Tier 2: Cross-language edges (explicit)
+
+Edges created by linkers (IPC, pub/sub, wasm bridges, event sourcing) have no AST context — linkers work from symbol metadata and regex scans, not tree-sitter nodes. Automatic classification is impossible here because the dataflow semantics come from the pattern match, not the AST structure. Only the linker knows that `emitter.emit('x')` is a write and `emitter.on('x', handler)` is a read.
+
+Linkers set `access_mode` and `channel` explicitly at edge creation time, using the same `meta` dict they already use for domain-specific metadata:
+
+```python
+# In event_sourcing.py (linker knows the semantics)
+Edge.create(
+    src=publisher_id, dst=subscriber_id,
+    edge_type="event_publishes",
+    meta={
+        "access_mode": "write",
+        "dest_access_mode": "read",
+        "channel": event_name,
+    },
 )
 ```
 
-Existing edges that don't call `classify_access` continue to work — their `access_mode` is simply `None`. Adoption is incremental per-analyzer.
+This is not new work — linkers already set `meta` fields like `channel`, `wasm_export`, and `package_name`. Adding `access_mode` is one additional key.
 
-### 5. Slice integration
+#### Precedence rule
+
+When both tiers could apply (e.g., a language analyzer creates a `calls` edge to `emitter.emit`, and then the event sourcing linker creates a separate `event_publishes` edge from the same call site), **explicit annotations take precedence over automatic ones**. The `annotate_dataflow` function skips any edge that already has `access_mode` set. This prevents double-counting: each call site gets at most one dataflow annotation, from whichever producer knows the semantics best.
+
+#### Why two tiers, not one
+
+A single-tier design was considered and rejected:
+
+- **All-automatic** (post-hoc pass over all edges): doesn't work for cross-language linker edges because there's no AST context. The event sourcing linker knows `emit` is a write, but an AST-level scan sees only a method call.
+
+- **All-explicit** (every edge producer calls `classify_access` manually): works correctly but requires touching every `Edge.create` call site across every analyzer. Error-prone, easy to forget, and creates N integration points instead of one.
+
+The two-tier design matches the natural boundary: language analyzers have AST context (automatic), linkers have domain knowledge but no AST (explicit).
+
+### 6. Slice integration
 
 The slicer gains an optional `--dataflow` flag:
 
@@ -201,7 +239,7 @@ The slicer gains an optional `--dataflow` flag:
 
 Implementation: ~10 lines added to the BFS loop in `slice.py` to check `edge.meta.get("access_mode")` before traversal.
 
-### 6. Unification of existing linkers
+### 7. Unification of existing linkers
 
 Several existing linkers already detect dataflow patterns with bespoke Python code:
 
@@ -220,16 +258,17 @@ This also addresses the PlazaFlow team's annotation convention request (`@hg:pub
 
 ### Positive
 
-- **Uniform vocabulary**: all edge producers can express dataflow semantics without inventing ad-hoc edge types.
+- **Uniform vocabulary**: all edge producers express dataflow semantics using the same four access modes, without inventing ad-hoc edge types.
 - **YAML-driven**: new languages and libraries can declare read/write patterns without writing Python analyzer code. Adding Yjs support, for example, is a YAML file — not a new linker.
+- **Automatic for intra-language edges**: one line in `base.py` gives every language analyzer dataflow annotation for free. No per-analyzer code changes. No opt-in to forget.
 - **Backward compatible**: `access_mode` is optional and carried in the existing `meta` dict. No schema version bump. No existing consumer breaks.
-- **Incremental adoption**: analyzers opt in per-language. The Python analyzer could classify reads/writes first; others follow as needed.
+- **No double-counting**: the precedence rule (explicit beats automatic) ensures each edge gets at most one dataflow annotation from whichever producer knows the semantics best.
 - **Tighter slices**: `--dataflow` slices follow write-to-read chains, producing smaller and more relevant results.
 - **Enables new analyses**: dead write detection (writes with no readers), shared mutable state enumeration (symbols with both writers and readers from different scopes), concurrency hazard candidates (concurrent writers without synchronization).
 
 ### Negative
 
-- **Partial coverage**: until all analyzers adopt `classify_access`, the graph has mixed annotated and unannotated edges. Dataflow slices may miss paths through unannotated edges.
+- **Partial coverage for cross-language edges**: linkers must explicitly set `access_mode`. Until all linkers adopt the vocabulary, some cross-language edges lack dataflow annotation. Intra-language edges are covered automatically via the base class.
 - **Pattern limitations**: tree-sitter AST patterns can classify direct assignments and simple call arguments, but cannot resolve aliased or indirect writes (e.g., `ref = obj; ref.x = 1` — the write to `obj.x` is invisible at the `ref.x` AST node without alias analysis).
 - **YAML maintenance**: each new language needs a dataflow YAML file. Most are small (10-30 lines), but the total count grows with language coverage.
 
@@ -237,9 +276,11 @@ This also addresses the PlazaFlow team's annotation convention request (`@hg:pub
 
 - **False precision**: users may trust `--dataflow` slices as complete when they're actually missing edges through unannotated code. Mitigation: clearly label partial coverage in output, warn when unannotated edges are encountered during dataflow slicing.
 - **Vocabulary creep**: teams may want custom access modes beyond the four defined here (e.g., "staged write" for transactions, "ownership transfer" for Rust move semantics). Mitigation: keep the core vocabulary small and use `meta` for domain-specific extensions.
+- **Precedence edge cases**: a linker and the automatic pass could disagree about access mode for the same symbol (e.g., a method call that the AST classifies as `read` but the linker knows is `write` because of framework semantics). The precedence rule (explicit wins) is correct, but only if the linker creates an edge for that specific call site. If the linker creates a *separate* edge (different `edge_type`) for the same call site, both annotations survive — which is the right behavior, since they represent different relationships (structural call vs. dataflow channel).
 
 ## Relationship to other ADRs and work items
 
-- **ADR-0012 (Pass Unification)**: dataflow classification is a pass annotation, not a separate pass. It piggybacks on existing analyzer passes.
+- **ADR-0012 (Pass Unification)**: dataflow classification piggybacks on existing analyzer passes. Tier 1 annotation runs inside the base class orchestrator's Pass 2 loop; it is not a separate pass.
 - **ADR-0014 (Symbol Identity)**: `channel` fields on edges complement `stable_id` on symbols — together they identify what shared state is being accessed and by whom.
 - **PlazaFlow work items**: the Yjs/CRDT linker (WI-zusig), annotation convention (WI-logok), and Tauri event direction (WI-vovaj) all become special cases of dataflow-annotated edges. The annotation convention (`@hg:publishes` / `@hg:subscribes`) maps directly to `access_mode: write` / `access_mode: read` with an explicit `channel`.
+- **Test isolation analysis**: the shared mutable state detection enabled by this ADR directly addresses the Textual Pilot test interaction failures observed in hypergumbo's own test suite — module-level globals that are written by one test and read by another can be enumerated by querying for symbols with both `write` and `read` edges from different test scopes.
