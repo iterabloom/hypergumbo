@@ -1664,10 +1664,10 @@ class TestDoSync:
 
         # No merge --ff-only call in cleanup (only fetch + branch -D)
         cleanup_calls = mock_git.call_args_list[-2:]
-        for call in cleanup_calls:
-            args = call[0]
-            assert "merge" not in args, (
-                f"Should not merge on feature branch, got: {args}"
+        for git_call in cleanup_calls:
+            git_args = git_call[0]
+            assert "merge" not in git_args, (
+                f"Should not merge on feature branch, got: {git_args}"
             )
 
     @patch("hypergumbo_tracker.sync.time")
