@@ -230,6 +230,21 @@ A single-tier design was considered and rejected:
 
 The two-tier design matches the natural boundary: language analyzers have AST context (automatic), linkers have domain knowledge but no AST (explicit).
 
+#### Coverage: analyzers outside the base class
+
+104 of 114 language analyzers subclass `TreeSitterAnalyzer` and get automatic annotation. 10 do not:
+
+| Analyzer | Approach | Dataflow action needed |
+|----------|----------|----------------------|
+| **py.py** | Python `ast` module | Needs its own `annotate_dataflow` integration — Python is the highest-priority language for dataflow (module globals, test isolation, framework state). The `ast` module provides richer context than tree-sitter (resolved names, scope info), so the Python-specific classifier may produce better results than the generic YAML-driven one. |
+| **jupyter.py** | `ast` + JSON | Inherits Python's dataflow needs. Shares py.py's `ast`-based classifier after cell extraction. |
+| **html.py** | Regex | No action needed — only creates `script_src` edges (file-level references, no read/write semantics). |
+| **manifest_targets.py** | Regex | No action needed — build target declarations only. |
+| **handlebars.py, blade.py** | Regex | Low priority — template partial/directive references. Could eventually classify `@yield` as read and `@section` as write to model template inheritance dataflow. |
+| **just.py, qml.py, gnuplot.py, mermaid.py** | Regex | No action needed — primarily declaration extraction with minimal call edges. |
+
+**Implementation order for non-base-class analyzers:** py.py first (highest value), jupyter.py second (shares py.py's classifier), others only if specific use cases demand it.
+
 ### 6. Slice integration
 
 The slicer gains an optional `--dataflow` flag:
