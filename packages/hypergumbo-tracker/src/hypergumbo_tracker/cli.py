@@ -1089,13 +1089,10 @@ def _tui_startup_summary(ts: TrackerSet) -> str:
     Returns a compact one-line summary like:
       "298 items (3 tiers, 12 compiled) in 0.43s"
     """
-    from hypergumbo_tracker.trackerset import Tier
-
     # Count ops files per tier (cheap — directory listing only).
     file_counts: dict[str, int] = {}
     for t, store in ts._tier_stores.items():
         file_counts[t.value] = len(store._list_item_files())
-    total_files = sum(file_counts.values())
 
     tier_str = ", ".join(
         f"{v} {k}" for k, v in file_counts.items() if v > 0
