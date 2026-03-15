@@ -1,0 +1,20 @@
+- op: create  # b04a
+  at: '2026-03-15T09:55:05Z'  # b04a
+  by: agent  # b04a
+  actor: jgstern_agent  # b04a
+  clock: 1  # b04a
+  nonce: b04a  # b04a
+  data:  # b04a
+    kind: work_item  # b04a
+    title: "SHAM: test item beta (delete me)"  # b04a
+    status: todo_soft  # b04a
+    priority: 4  # b04a
+    parent:  # b04a
+    tags:  # b04a
+    - sham  # b04a
+    before: []  # b04a
+    duplicate_of: []  # b04a
+    not_duplicate_of: []  # b04a
+    pr_ref:  # b04a
+    description: "Sham work item for testing auto-sync behavior. Delete immediately."  # b04a
+    fields: {}  # b04a
