@@ -201,12 +201,11 @@ git clone https://codeberg.org/iterabloom/hypergumbo.git
 cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 ./scripts/dev-install
-./scripts/install-hooks
 source .venv/bin/activate  # reload to enable pytest alias
 pytest                      # runs smart-test (affected tests only)
 ```
 
-After `install-hooks`, `pytest` is aliased to `./scripts/smart-test`, which runs only tests affected by your changes. 100% test coverage required.
+`dev-install` installs all packages, git hooks, and the pytest/smart-test wrapper. 100% test coverage required.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based workflow for external contributors), smart test selection setup, and coverage requirements. Agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md).
 
