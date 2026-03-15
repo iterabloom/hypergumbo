@@ -1103,15 +1103,37 @@ def do_sync(
         if tmp_index_path.exists():
             tmp_index_path.unlink()
 
-        # Fetch latest remote ref (non-fatal).  We deliberately do NOT
-        # ``git pull`` here because that merges into the currently checked-out
-        # branch, which is likely a feature branch — not ``base_branch``.
-        # A fetch is sufficient: it updates ``origin/dev`` so the next
-        # ``do_sync`` or ``auto-pr`` sees the latest base.
+        # Fetch latest remote ref (non-fatal).
         _git(
             repo_root, "fetch", preflight.push_remote, base_branch,
             check=False,
         )
+
+        # If we're sitting on the base branch itself, fast-forward it
+        # to origin/dev so the synced ops files become tracked.  Without
+        # this, the ops files remain "untracked" in the working tree and
+        # pending_sync_lines() counts them again on the next call,
+        # causing the pending-line count to grow by ~22 per sync cycle.
+        # Fast-forward-only is safe: we haven't made local commits on
+        # the base branch (the plumbing approach commits to a detached
+        # sync branch), so ff-only either succeeds or is a no-op.
+        # The synced ops files exist as untracked copies in the working
+        # tree (the plumbing approach staged them into the sync commit
+        # but never ``git add``ed them locally).  We must remove them
+        # before ff-only merge, otherwise git refuses to overwrite
+        # untracked files.  This is safe because their content is
+        # identical to what's on origin/dev (we just synced them).
+        if preflight.original_branch == base_branch:
+            for fpath in preflight.changed_files:
+                full = repo_root / fpath
+                if full.is_file():
+                    full.unlink()
+            _git(
+                repo_root,
+                "merge", "--ff-only",
+                f"{preflight.push_remote}/{base_branch}",
+                check=False,
+            )
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)

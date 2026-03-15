@@ -1553,12 +1553,24 @@ class TestDoSync:
         ]
 
     @staticmethod
-    def _cleanup() -> list[Any]:
-        """Return git mock side_effect entries for the 2 cleanup calls."""
-        return [
+    def _cleanup(on_base_branch: bool = True) -> list[Any]:
+        """Return git mock side_effect entries for cleanup calls.
+
+        When on_base_branch is True (default, matching _make_preflight's
+        original_branch="dev"), includes the ff-only merge call that
+        absorbs synced ops files into the local branch.
+        """
+        entries = [
             _make_completed_process(),  # fetch (update remote tracking ref)
-            _make_completed_process(),  # branch -D
         ]
+        if on_base_branch:
+            entries.append(
+                _make_completed_process(),  # merge --ff-only origin/dev
+            )
+        entries.append(
+            _make_completed_process(),  # branch -D
+        )
+        return entries
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -1601,16 +1613,105 @@ class TestDoSync:
         # Temp index should be cleaned up
         assert not (tmp_path / ".git" / "tmp-sync-index").exists()
 
-        # Cleanup should use fetch (not pull) to avoid merging dev into
-        # the checked-out feature branch
-        cleanup_calls = mock_git.call_args_list[-2:]  # last 2: fetch, branch -D
+        # Cleanup: fetch, ff-only merge (on base branch), branch -D
+        cleanup_calls = mock_git.call_args_list[-3:]
         fetch_call = cleanup_calls[0]
-        fetch_args = fetch_call[0]  # positional args: (repo_root, *git_args)
+        fetch_args = fetch_call[0]
         assert "fetch" in fetch_args, (
             f"Expected 'fetch' in cleanup call, got: {fetch_args}"
         )
-        assert "pull" not in fetch_args, (
-            f"Cleanup should use 'fetch' not 'pull': {fetch_args}"
+        # When on base branch, ff-only merge absorbs synced ops files
+        merge_call = cleanup_calls[1]
+        merge_args = merge_call[0]
+        assert "merge" in merge_args, (
+            f"Expected 'merge' in cleanup call, got: {merge_args}"
+        )
+        assert "--ff-only" in merge_args, (
+            f"Expected '--ff-only' in merge call, got: {merge_args}"
+        )
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_no_ff_merge_on_feature_branch(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """When syncing from a feature branch, skip the ff-only merge."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path, original_branch="feat/something")
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(on_base_branch=False),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+        # No merge --ff-only call in cleanup (only fetch + branch -D)
+        cleanup_calls = mock_git.call_args_list[-2:]
+        for call in cleanup_calls:
+            args = call[0]
+            assert "merge" not in args, (
+                f"Should not merge on feature branch, got: {args}"
+            )
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_ff_merge_removes_untracked_ops_files(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Untracked ops files are removed before ff-only merge to prevent
+        git from refusing to overwrite them."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        ops_file = ".agent/tracker/.ops/.WI-test.ops"
+        pre = _make_preflight(tmp_path, changed_files=[ops_file])
+
+        # Create the ops file on disk so unlink() actually fires
+        ops_path = tmp_path / ops_file
+        ops_path.parent.mkdir(parents=True, exist_ok=True)
+        ops_path.write_text("some ops data\n")
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+        # Ops file should have been removed before ff-only merge
+        assert not ops_path.exists(), (
+            "Ops file should be removed before ff-only merge"
         )
 
     @patch("hypergumbo_tracker.sync.time")
