@@ -54,3 +54,4 @@ package-lock.json
 **/config.yaml
 !**/config.yaml.template
 .agent/.cache-*.db
+.agent/.sync-logs/

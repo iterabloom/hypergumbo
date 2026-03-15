@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from http.client import HTTPResponse
 from io import BytesIO
 from pathlib import Path
@@ -43,6 +44,14 @@ from hypergumbo_tracker.sync import (
     do_sync,
     pending_sync_lines,
     preflight_check,
+)
+from hypergumbo_tracker.sync_log import (
+    RETENTION_DAYS,
+    _LOG_FILENAME_RE,
+    _parse_log_date,
+    gc_old_logs,
+    init_sync_log,
+    write_log,
 )
 
 
@@ -1508,8 +1517,16 @@ class TestDoSync:
     The plumbing call sequence is:
       fetch, rev-parse, read-tree, add, write-tree,
       config user.name, config user.email, commit-tree, update-ref,
+
+    Note: init_sync_log is auto-mocked via the fixture below to prevent
+    file I/O during tests (creating .agent/.sync-logs/ in tmp_path).
       push, ..., pull, branch -D
     """
+
+    @pytest.fixture(autouse=True)
+    def _mock_init_sync_log(self) -> Any:
+        with patch("hypergumbo_tracker.sync.init_sync_log"):
+            yield
 
     @staticmethod
     def _plumbing_setup() -> list[Any]:
@@ -3086,3 +3103,493 @@ class TestDetectFailover:
         flag.write_text("not json")
         result = _detect_failover(tmp_path, {})
         assert result.active is False
+
+
+# ---------------------------------------------------------------------------
+# TestSyncLog — log file management and garbage collection
+# ---------------------------------------------------------------------------
+
+
+class TestParseLogDate:
+    """Tests for _parse_log_date — filename validation and date extraction."""
+
+    def test_valid_filename(self) -> None:
+        dt = _parse_log_date("sync-2026-03-15.log")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 3
+        assert dt.day == 15
+        assert dt.tzinfo == timezone.utc
+
+    def test_invalid_date_returns_none(self) -> None:
+        """Feb 30 doesn't exist — should return None, not raise."""
+        assert _parse_log_date("sync-2026-02-30.log") is None
+
+    def test_wrong_prefix(self) -> None:
+        assert _parse_log_date("tracker-2026-03-15.log") is None
+
+    def test_wrong_extension(self) -> None:
+        assert _parse_log_date("sync-2026-03-15.txt") is None
+
+    def test_no_date(self) -> None:
+        assert _parse_log_date("sync-.log") is None
+
+    def test_partial_date(self) -> None:
+        assert _parse_log_date("sync-2026-03.log") is None
+
+    def test_empty_string(self) -> None:
+        assert _parse_log_date("") is None
+
+    def test_extra_suffix(self) -> None:
+        """Extra characters after .log should not match."""
+        assert _parse_log_date("sync-2026-03-15.log.bak") is None
+
+
+class TestGcOldLogs:
+    """Tests for gc_old_logs — safe 30-day log rotation."""
+
+    def test_deletes_old_logs(self, tmp_path: Path) -> None:
+        """Files older than RETENTION_DAYS are deleted."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        old_date = now - timedelta(days=RETENTION_DAYS + 1)
+        old_name = f"sync-{old_date.strftime('%Y-%m-%d')}.log"
+        (tmp_path / old_name).write_text("old data")
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert old_name in deleted
+        assert not (tmp_path / old_name).exists()
+
+    def test_keeps_recent_logs(self, tmp_path: Path) -> None:
+        """Files within RETENTION_DAYS are kept."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        recent_name = "sync-2026-03-14.log"
+        (tmp_path / recent_name).write_text("recent data")
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert deleted == []
+        assert (tmp_path / recent_name).exists()
+
+    def test_keeps_exactly_at_cutoff(self, tmp_path: Path) -> None:
+        """Files exactly RETENTION_DAYS old are kept (cutoff is exclusive)."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        cutoff_date = now - timedelta(days=RETENTION_DAYS)
+        cutoff_name = f"sync-{cutoff_date.strftime('%Y-%m-%d')}.log"
+        (tmp_path / cutoff_name).write_text("boundary data")
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert deleted == []
+        assert (tmp_path / cutoff_name).exists()
+
+    def test_ignores_non_log_files(self, tmp_path: Path) -> None:
+        """Files not matching the pattern are never deleted."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        # Create a very old non-log file
+        (tmp_path / "important-data.txt").write_text("keep me")
+        (tmp_path / "sync-not-a-date.log").write_text("weird name")
+        # Also create an old log to prove GC runs
+        old_date = now - timedelta(days=RETENTION_DAYS + 5)
+        old_name = f"sync-{old_date.strftime('%Y-%m-%d')}.log"
+        (tmp_path / old_name).write_text("old")
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert old_name in deleted
+        assert (tmp_path / "important-data.txt").exists()
+        assert (tmp_path / "sync-not-a-date.log").exists()
+
+    def test_ignores_directories(self, tmp_path: Path) -> None:
+        """Subdirectories are never deleted, even if name matches."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        old_date = now - timedelta(days=RETENTION_DAYS + 1)
+        dir_name = f"sync-{old_date.strftime('%Y-%m-%d')}.log"
+        (tmp_path / dir_name).mkdir()
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert deleted == []
+        assert (tmp_path / dir_name).is_dir()
+
+    def test_handles_nonexistent_dir(self) -> None:
+        """Returns empty list for nonexistent directory."""
+        deleted = gc_old_logs(Path("/nonexistent/dir"))
+        assert deleted == []
+
+    def test_handles_unlink_permission_error(self, tmp_path: Path) -> None:
+        """OSError on unlink is caught and skipped."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        old_date = now - timedelta(days=RETENTION_DAYS + 1)
+        old_name = f"sync-{old_date.strftime('%Y-%m-%d')}.log"
+        old_path = tmp_path / old_name
+        old_path.write_text("old data")
+
+        with patch.object(Path, "unlink", side_effect=OSError("perm")):
+            deleted = gc_old_logs(tmp_path, now=now)
+
+        # unlink failed — file still exists, not in deleted list
+        assert deleted == []
+        assert old_path.exists()
+
+    def test_deletes_multiple_old_keeps_multiple_recent(
+        self, tmp_path: Path,
+    ) -> None:
+        """Correctly handles a mix of old and recent files."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        old_names = []
+        for days_ago in [35, 40, 60]:
+            dt = now - timedelta(days=days_ago)
+            name = f"sync-{dt.strftime('%Y-%m-%d')}.log"
+            (tmp_path / name).write_text("old")
+            old_names.append(name)
+
+        recent_names = []
+        for days_ago in [0, 5, 29]:
+            dt = now - timedelta(days=days_ago)
+            name = f"sync-{dt.strftime('%Y-%m-%d')}.log"
+            (tmp_path / name).write_text("recent")
+            recent_names.append(name)
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert sorted(deleted) == sorted(old_names)
+        for name in recent_names:
+            assert (tmp_path / name).exists()
+
+    def test_returns_sorted_list(self, tmp_path: Path) -> None:
+        """Deleted filenames are returned in sorted order."""
+        now = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        names = []
+        for days_ago in [45, 35, 55]:
+            dt = now - timedelta(days=days_ago)
+            name = f"sync-{dt.strftime('%Y-%m-%d')}.log"
+            (tmp_path / name).write_text("old")
+            names.append(name)
+
+        deleted = gc_old_logs(tmp_path, now=now)
+        assert deleted == sorted(deleted)
+
+
+class TestInitSyncLog:
+    """Tests for init_sync_log — directory creation and log file opening."""
+
+    def test_creates_log_dir(self, tmp_path: Path) -> None:
+        log_dir = init_sync_log(tmp_path)
+        assert log_dir is not None
+        assert log_dir.is_dir()
+        assert log_dir == tmp_path / ".agent" / ".sync-logs"
+
+    def test_creates_daily_log_file(self, tmp_path: Path) -> None:
+        import time as time_mod
+
+        init_sync_log(tmp_path)
+        today = time_mod.strftime("%Y-%m-%d")
+        log_file = tmp_path / ".agent" / ".sync-logs" / f"sync-{today}.log"
+        # File exists (may be empty since we haven't written yet)
+        assert log_file.exists()
+
+    def test_returns_none_on_readonly_filesystem(
+        self, tmp_path: Path,
+    ) -> None:
+        with patch.object(Path, "mkdir", side_effect=OSError("read-only")):
+            result = init_sync_log(tmp_path)
+        assert result is None
+
+    def test_runs_gc_on_init(self, tmp_path: Path) -> None:
+        """Garbage collection runs during initialization."""
+        log_dir = tmp_path / ".agent" / ".sync-logs"
+        log_dir.mkdir(parents=True)
+        # Create a very old log file
+        (log_dir / "sync-2020-01-01.log").write_text("ancient")
+
+        init_sync_log(tmp_path)
+        assert not (log_dir / "sync-2020-01-01.log").exists()
+
+
+    def test_reentrant_init_reuses_handle(self, tmp_path: Path) -> None:
+        """Calling init_sync_log twice reuses the existing handle."""
+        import hypergumbo_tracker.sync_log as sl
+
+        result1 = init_sync_log(tmp_path)
+        handle1 = sl._log_file_handle
+        result2 = init_sync_log(tmp_path)
+        handle2 = sl._log_file_handle
+        assert result1 == result2
+        assert handle1 is handle2  # Same handle, not reopened
+
+    def test_open_failure_returns_none(self, tmp_path: Path) -> None:
+        """If open() fails, init returns None and handle stays None."""
+        import hypergumbo_tracker.sync_log as sl
+
+        # Reset module state
+        sl._log_file_handle = None
+        log_dir = tmp_path / ".agent" / ".sync-logs"
+        log_dir.mkdir(parents=True)
+
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            result = init_sync_log(tmp_path)
+        assert result is None
+        assert sl._log_file_handle is None
+
+
+class TestWriteLog:
+    """Tests for write_log — dual output to stderr and file."""
+
+    def test_writes_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+        write_log("test message")
+        captured = capsys.readouterr()
+        assert "sync: test message" in captured.err
+
+    def test_writes_to_file_when_initialized(
+        self, tmp_path: Path,
+    ) -> None:
+        import time as time_mod
+
+        init_sync_log(tmp_path)
+        write_log("hello from test")
+
+        today = time_mod.strftime("%Y-%m-%d")
+        log_file = tmp_path / ".agent" / ".sync-logs" / f"sync-{today}.log"
+        content = log_file.read_text()
+        assert "sync: hello from test" in content
+        assert "] sync: hello from test" in content  # has timestamp prefix
+
+    def test_write_oserror_is_caught(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """OSError during file write doesn't crash; stderr still works."""
+        import hypergumbo_tracker.sync_log as sl
+
+        init_sync_log(tmp_path)
+        # Sabotage the handle to raise on write
+        mock_handle = MagicMock()
+        mock_handle.closed = False
+        mock_handle.write.side_effect = OSError("disk full")
+        sl._log_file_handle = mock_handle
+
+        write_log("should not crash")
+        captured = capsys.readouterr()
+        assert "sync: should not crash" in captured.err
+
+
+class TestCloseLogAndGetLogDir:
+    """Tests for _close_log and get_log_dir."""
+
+    def test_close_log_closes_handle(self, tmp_path: Path) -> None:
+        import hypergumbo_tracker.sync_log as sl
+
+        init_sync_log(tmp_path)
+        assert sl._log_file_handle is not None
+        assert not sl._log_file_handle.closed
+
+        sl._close_log()
+        assert sl._log_file_handle is None
+
+    def test_close_log_handles_oserror(self) -> None:
+        """OSError on close doesn't crash."""
+        import hypergumbo_tracker.sync_log as sl
+
+        mock_handle = MagicMock()
+        mock_handle.close.side_effect = OSError("IO error")
+        sl._log_file_handle = mock_handle
+
+        sl._close_log()  # Should not raise
+        assert sl._log_file_handle is None
+
+    def test_close_log_noop_when_none(self) -> None:
+        import hypergumbo_tracker.sync_log as sl
+
+        sl._log_file_handle = None
+        sl._close_log()  # Should not raise
+        assert sl._log_file_handle is None
+
+    def test_get_log_dir_returns_path(self, tmp_path: Path) -> None:
+        init_sync_log(tmp_path)
+        from hypergumbo_tracker.sync_log import get_log_dir
+
+        result = get_log_dir()
+        assert result == tmp_path / ".agent" / ".sync-logs"
+
+    def test_get_log_dir_returns_none_before_init(self) -> None:
+        import hypergumbo_tracker.sync_log as sl
+
+        sl._log_dir = None
+        assert sl.get_log_dir() is None
+
+
+# ---------------------------------------------------------------------------
+# TestDoSync cleanup failure paths
+# ---------------------------------------------------------------------------
+
+
+class TestDoSyncCleanupFailures:
+    """Tests for do_sync cleanup failure modes.
+
+    Verifies that the finally block handles errors gracefully: checkout
+    failures, unlink OSErrors, and ff-only merge failures should all be
+    logged but not crash the sync.
+    """
+
+    @staticmethod
+    def _plumbing_setup() -> list[Any]:
+        """Return git mock side_effect entries for the plumbing setup."""
+        return [
+            _make_completed_process(),                       # fetch
+            _make_completed_process(stdout="abc123\n"),       # rev-parse
+            _make_completed_process(),                       # read-tree
+            _make_completed_process(),                       # add
+            _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(stdout="Test User\n"),    # config user.name
+            _make_completed_process(stdout="t@e.com\n"),      # config user.email
+            _make_completed_process(stdout="commit789\n"),    # commit-tree
+            _make_completed_process(),                       # update-ref
+        ]
+
+    @staticmethod
+    def _rebase_check_no_diverge() -> list[Any]:
+        return [
+            _make_completed_process(),                       # fetch
+            _make_completed_process(stdout="abc123\n"),       # rev-parse
+        ]
+
+    @patch("hypergumbo_tracker.sync.init_sync_log")
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_checkout_failure_logs_and_continues(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        mock_init_log: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If checkout HEAD fails during cleanup, it's logged but sync
+        still reports success (PR was already merged on remote)."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            # Cleanup:
+            _make_completed_process(),  # fetch
+            _make_completed_process(
+                returncode=1, stderr="error: pathspec"
+            ),  # checkout HEAD -- FAILS
+            _make_completed_process(stdout=""),  # ls-files --others
+            _make_completed_process(),  # merge --ff-only
+            _make_completed_process(),  # branch -D
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+        assert result.pr_number == 42
+
+    @patch("hypergumbo_tracker.sync.init_sync_log")
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_unlink_oserror_logs_and_continues(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        mock_init_log: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If unlink raises OSError, cleanup logs the error and
+        continues to the ff-only merge."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        ops_file = ".agent/tracker/.ops/.WI-test.ops"
+        pre = _make_preflight(tmp_path, changed_files=[ops_file])
+
+        # Create the ops file so unlink is attempted
+        ops_path = tmp_path / ops_file
+        ops_path.parent.mkdir(parents=True, exist_ok=True)
+        ops_path.write_text("ops data\n")
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            # Cleanup:
+            _make_completed_process(),  # fetch
+            _make_completed_process(),  # checkout HEAD
+            _make_completed_process(stdout=f"{ops_file}\n"),  # ls-files
+            _make_completed_process(),  # merge --ff-only
+            _make_completed_process(),  # branch -D
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        # Patch unlink to raise OSError
+        original_unlink = Path.unlink
+
+        def mock_unlink(self_path: Path, *a: Any, **kw: Any) -> None:
+            if ".WI-test.ops" in str(self_path):
+                raise OSError("permission denied")
+            original_unlink(self_path, *a, **kw)
+
+        with patch.object(Path, "unlink", mock_unlink):
+            result = do_sync(repo_root=tmp_path, preflight=pre)
+
+        # Sync still succeeds (PR merged on remote)
+        assert result.success
+
+        # File still exists (unlink was blocked)
+        assert ops_path.exists()
+
+    @patch("hypergumbo_tracker.sync.init_sync_log")
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_ff_merge_failure_logs_and_continues(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        mock_init_log: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If ff-only merge fails during cleanup, sync still reports
+        success — the PR was already merged on origin/dev."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            # Cleanup:
+            _make_completed_process(),  # fetch
+            _make_completed_process(),  # checkout HEAD
+            _make_completed_process(stdout=""),  # ls-files --others
+            _make_completed_process(
+                returncode=1,
+                stderr="fatal: Not possible to fast-forward",
+            ),  # merge --ff-only FAILS
+            _make_completed_process(),  # branch -D
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+        assert result.pr_number == 42

@@ -45,6 +45,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from hypergumbo_tracker.sync_log import init_sync_log, write_log
 from hypergumbo_tracker.validation import validate_all
 
 
@@ -413,8 +414,8 @@ def _poll_ci(
 
 
 def _log(msg: str) -> None:
-    """Write a sync diagnostic message to stderr."""
-    print(f"sync: {msg}", file=sys.stderr)
+    """Write a sync diagnostic message to stderr and the sync log file."""
+    write_log(msg)
 
 
 def _check_pr_merged(
@@ -807,6 +808,9 @@ def do_sync(
     assert preflight.ok, "preflight must pass before calling do_sync"
     assert preflight.git_dir is not None
 
+    # Initialize file logging (always on, 30-day retention).
+    init_sync_log(repo_root)
+
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     sync_branch = f"tracker-sync/{timestamp}"
     gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
@@ -1014,6 +1018,12 @@ def do_sync(
                 repo_root, "read-tree", new_base_sha,
                 check=False, env=idx_env,
             )
+            if rb_read.returncode != 0:
+                _log(
+                    f"read-tree failed during rebase "
+                    f"({rb_read.stderr.strip()}), "
+                    f"proceeding with original commit"
+                )
             if rb_read.returncode == 0:
                 _git(
                     repo_root, "add", "--", *_TRACKER_PATHS,
@@ -1131,12 +1141,17 @@ def do_sync(
             # Reset tracked ops files to HEAD (handles modified files).
             # ``git checkout HEAD -- <paths>`` silently ignores
             # untracked files, so this is safe.
-            _git(
+            co_result = _git(
                 repo_root,
                 "checkout", "HEAD", "--",
                 *_OPS_PATHS,
                 check=False,
             )
+            if co_result.returncode != 0:
+                _log(
+                    f"checkout HEAD failed during cleanup: "
+                    f"{co_result.stderr.strip()}"
+                )
             # Remove untracked ops files (new items created this
             # session that aren't on the local branch yet).
             untracked = _git(
@@ -1149,13 +1164,23 @@ def do_sync(
                 for fpath in untracked.stdout.strip().splitlines():
                     full = repo_root / fpath
                     if full.is_file():
-                        full.unlink()
-            _git(
+                        try:
+                            full.unlink()
+                        except OSError as exc:
+                            _log(
+                                f"failed to remove {fpath}: {exc}"
+                            )
+            ff_result = _git(
                 repo_root,
                 "merge", "--ff-only",
                 f"{preflight.push_remote}/{base_branch}",
                 check=False,
             )
+            if ff_result.returncode != 0:
+                _log(
+                    f"ff-only merge failed during cleanup: "
+                    f"{ff_result.stderr.strip()}"
+                )
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)
