@@ -37,7 +37,6 @@ import json
 import os
 import re
 import subprocess  # nosec B404 — required for git subprocess calls
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
