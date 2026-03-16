@@ -14,12 +14,26 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Dataflow access modes (ADR-0015)
 
-- **Edge schema:** `Edge.create()` accepts optional `access_mode`, `dest_access_mode`, and `channel` kwargs. Access mode vocabulary: `read`, `write`, `mutate`, `delete`. Validation via `VALID_ACCESS_MODES` frozenset.
-- **YAML-driven classification:** New `dataflow.py` module with `annotate_dataflow()` (Tier 1 automatic annotation from AST context) and `scan_library_patterns()` (regex-based library pattern matching). Configuration via `dataflow_patterns/*.yaml` files.
-- **Tier 1 integration:** Automatic dataflow annotation in `TreeSitterAnalyzer.analyze()` for 65 tree-sitter-based language analyzers. YAML patterns shipped for Python, JavaScript, TypeScript, Rust, and Go.
-- **Python AST integration:** `annotate_dataflow_ast()` for `py.py` — classifies Assign→write, AugAssign→mutate, AnnAssign→write, Delete→delete.
-- **Tier 2 linker annotations:** 6 cross-language linkers retrofitted with explicit `access_mode` on 11 edge creation sites: event_sourcing, message_queue, websocket, ipc (Electron), tauri_ipc, wasm_bindgen.
-- **`slice --dataflow`:** New CLI flag for data-dependency slicing. Forward slices follow write/mutate edges; reverse slices follow read edges. Unannotated edges are still followed (graceful degradation).
+- **Edge access modes**: Edges carry optional `access_mode` (`read`, `write`, `mutate`, `delete`), `dest_access_mode`, and `channel` metadata.
+- **Automatic annotation**: YAML-driven dataflow classification for 9 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, C#, Kotlin) plus 65 tree-sitter-based analyzers. Python AST integration classifies assignments, augmented assignments, and deletes.
+- **Linker annotations**: 6 cross-language linkers (event_sourcing, message_queue, websocket, Electron IPC, Tauri IPC, wasm_bindgen) annotated with explicit access modes.
+- **`slice --dataflow`**: Data-dependency slicing. Forward slices follow write/mutate edges; reverse slices follow read edges. Unannotated edges still followed (graceful degradation).
+
+#### Cross-language linkers
+
+- **Yjs/CRDT reactive**: `crdt_publishes` edges between Yjs writers (`yMap.set`/`delete`) and observers (`observe`/`observeDeep`), plus awareness API (`setLocalState` → `on('change')`).
+- **Annotation convention**: `@hg:publishes`/`@hg:subscribes` comment annotations create `annotated_publishes` edges by channel name (confidence 0.95). Language-agnostic.
+- **Tauri IPC events**: `ipc_event` edges from Rust `window.emit()` to TS `listen()`/`once()`, matched by channel name.
+
+#### Route detection
+
+- **React Router v6.4+**: `createBrowserRouter`/`createHashRouter`/`createMemoryRouter` object-based route configs with nested children path composition.
+
+### Fixed
+
+- **`slice --dataflow` reverse mode**: Correctly follows read edges instead of write edges.
+- **Solidity ABI linker**: Qualified function names (e.g., `PermissionManager._grant`) now also indexed by unqualified name for ethers.js/viem matching.
+- **Entrypoint diversity cap**: No single `EntrypointKind` can take more than 40% of slots when count exceeds the cap.
 
 ## [2.2.1] - 2026-03-15
 
