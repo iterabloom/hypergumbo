@@ -20,3 +20,12 @@
     pr_ref:  # 0146
     description: "New module: hypergumbo_core/dataflow.py (~200-300 lines).\n\n1. YAML loader: reads dataflow/*.yaml files, builds per-language lookup\n   table of tree-sitter node types to access-mode rules.\n2. annotate_dataflow(edges, tree, source, language): batch-annotates\n   edges by matching each edge's line to its AST node, looking up the\n   node type in the language config, and stamping access_mode into meta.\n   Skips edges that already have access_mode set (tier 2 precedence).\n3. scan_library_patterns(file_content, language): regex-based matching\n   for library-specific patterns (Yjs, Kafka, etc.) defined in the\n   library_patterns section of dataflow YAMLs.\n\nDepends on: Edge schema item (access_mode kwargs).\nSee ADR-0015 §4."  # 0146
     fields: {}  # 0146
+- op: update  # 35be
+  at: '2026-03-16T04:42:26Z'  # 35be
+  by: agent  # 35be
+  actor: jgstern_agent  # 35be
+  clock: 2  # 35be
+  nonce: 35be  # 35be
+  set: {}  # 35be
+  remove:  # 35be
+    before: [WI-hagok-sabab-kukug-darov-tapuf-nalof-jomoj-pavod]  # 35be

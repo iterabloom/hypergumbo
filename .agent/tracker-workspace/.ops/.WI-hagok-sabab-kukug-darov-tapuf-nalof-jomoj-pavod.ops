@@ -19,3 +19,12 @@
     pr_ref:  # 570b
     description: "Add access_mode, dest_access_mode, and channel as convenience kwargs to\nEdge.create() that flow into the existing meta dict. No schema change\nneeded — meta already exists and is serialized. This is the foundation\nthat all other ADR-0015 items build on.\n\nVocabulary: read | write | mutate | delete | None.\nChannel: string identifying the shared state (map key, topic, global name).\n\n~20 lines changed in ir.py. Tests: verify kwargs appear in meta, verify\nbackward compatibility (existing Edge.create calls unchanged).\n\nSee ADR-0015 §1-3."  # 570b
     fields: {}  # 570b
+- op: update  # 87d2
+  at: '2026-03-16T04:42:25Z'  # 87d2
+  by: agent  # 87d2
+  actor: jgstern_agent  # 87d2
+  clock: 2  # 87d2
+  nonce: 87d2  # 87d2
+  set: {}  # 87d2
+  add:  # 87d2
+    before: [WI-bujud-zufop-lojoh-fabak-vakib-ruhum-jipih-naniz]  # 87d2
