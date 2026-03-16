@@ -10,6 +10,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+#### Dataflow access modes (ADR-0015)
+
+- **Edge schema:** `Edge.create()` accepts optional `access_mode`, `dest_access_mode`, and `channel` kwargs. Access mode vocabulary: `read`, `write`, `mutate`, `delete`. Validation via `VALID_ACCESS_MODES` frozenset.
+- **YAML-driven classification:** New `dataflow.py` module with `annotate_dataflow()` (Tier 1 automatic annotation from AST context) and `scan_library_patterns()` (regex-based library pattern matching). Configuration via `dataflow_patterns/*.yaml` files.
+- **Tier 1 integration:** Automatic dataflow annotation in `TreeSitterAnalyzer.analyze()` for 65 tree-sitter-based language analyzers. YAML patterns shipped for Python, JavaScript, TypeScript, Rust, and Go.
+- **Python AST integration:** `annotate_dataflow_ast()` for `py.py` — classifies Assign→write, AugAssign→mutate, AnnAssign→write, Delete→delete.
+- **Tier 2 linker annotations:** 6 cross-language linkers retrofitted with explicit `access_mode` on 11 edge creation sites: event_sourcing, message_queue, websocket, ipc (Electron), tauri_ipc, wasm_bindgen.
+- **`slice --dataflow`:** New CLI flag for data-dependency slicing. Forward slices follow write/mutate edges; reverse slices follow read edges. Unannotated edges are still followed (graceful degradation).
+
 ## [2.2.1] - 2026-03-15
 
 ### Added
