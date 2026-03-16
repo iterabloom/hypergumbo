@@ -30,6 +30,15 @@ from typing import Any, Dict, List, Literal, Optional
 
 from . import __version__
 
+VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
+"""ADR-0015 access mode vocabulary for dataflow edges.
+
+- read: observe value without changing it
+- write: replace value entirely
+- mutate: modify in place (implies read + write; ordering matters)
+- delete: remove binding/key/entry (can cause subsequent reads to fail)
+"""
+
 PASS_VERSION: str = __version__
 """Canonical pass version derived from the package version.
 
@@ -366,8 +375,38 @@ class Edge:
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
         meta: Optional[Dict[str, Any]] = None,
+        access_mode: Optional[str] = None,
+        dest_access_mode: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> "Edge":
-        """Create an Edge with auto-generated ID and edge_key."""
+        """Create an Edge with auto-generated ID and edge_key.
+
+        ADR-0015 dataflow kwargs (access_mode, dest_access_mode, channel)
+        are merged into the meta dict when non-None.
+        """
+        if access_mode is not None and access_mode not in VALID_ACCESS_MODES:
+            raise ValueError(
+                f"access_mode={access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
+            )
+        if dest_access_mode is not None and dest_access_mode not in VALID_ACCESS_MODES:
+            raise ValueError(
+                f"dest_access_mode={dest_access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"
+            )
+        # Merge dataflow kwargs into meta
+        dataflow_meta: Dict[str, str] = {}
+        if access_mode is not None:
+            dataflow_meta["access_mode"] = access_mode
+        if dest_access_mode is not None:
+            dataflow_meta["dest_access_mode"] = dest_access_mode
+        if channel is not None:
+            dataflow_meta["channel"] = channel
+        if dataflow_meta:
+            if meta is not None:
+                merged = dict(meta)
+                merged.update(dataflow_meta)
+                meta = merged
+            else:
+                meta = dataflow_meta
         # Generate deterministic edge ID from src, dst, type, AND line
         # Line is included to ensure uniqueness for multiple call sites
         edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
