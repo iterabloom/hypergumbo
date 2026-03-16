@@ -1,0 +1,21 @@
+- op: create  # 570b
+  at: '2026-03-16T04:35:41Z'  # 570b
+  by: agent  # 570b
+  actor: jgstern_agent  # 570b
+  clock: 1  # 570b
+  nonce: 570b  # 570b
+  data:  # 570b
+    kind: work_item  # 570b
+    title: "ADR-0015: Edge schema — add access_mode, channel to Edge.create"  # 570b
+    status: todo_soft  # 570b
+    priority: 1  # 570b
+    parent:  # 570b
+    tags:  # 570b
+    - adr-0015  # 570b
+    - dataflow  # 570b
+    before: []  # 570b
+    duplicate_of: []  # 570b
+    not_duplicate_of: []  # 570b
+    pr_ref:  # 570b
+    description: "Add access_mode, dest_access_mode, and channel as convenience kwargs to\nEdge.create() that flow into the existing meta dict. No schema change\nneeded — meta already exists and is serialized. This is the foundation\nthat all other ADR-0015 items build on.\n\nVocabulary: read | write | mutate | delete | None.\nChannel: string identifying the shared state (map key, topic, global name).\n\n~20 lines changed in ir.py. Tests: verify kwargs appear in meta, verify\nbackward compatibility (existing Edge.create calls unchanged).\n\nSee ADR-0015 §1-3."  # 570b
+    fields: {}  # 570b
