@@ -1,0 +1,21 @@
+- op: create  # dc56
+  at: '2026-03-16T04:07:46Z'  # dc56
+  by: agent  # dc56
+  actor: jgstern_agent  # dc56
+  clock: 1  # dc56
+  nonce: dc56  # dc56
+  data:  # dc56
+    kind: work_item  # dc56
+    title: "gRPC: CSI interface implementation linking (non-Unimplemented/non-ttrpc codegen)"  # dc56
+    status: todo_soft  # dc56
+    priority: 4  # dc56
+    parent:  # dc56
+    tags:  # dc56
+    - linker  # dc56
+    - grpc  # dc56
+    before: []  # dc56
+    duplicate_of: []  # dc56
+    not_duplicate_of: []  # dc56
+    pr_ref:  # dc56
+    description: "CSI (Container Storage Interface) Go implementations use a different code\ngeneration pattern than standard gRPC (no UnimplementedXxxServer embedding)\nand ttrpc (no RegisterXxxService). The current gRPC linker detects both of\nthose patterns but misses CSI-style implementations.\n\nDiscovered during kata-containers bakeoff analysis (PR #2176 discussion).\nNeeds investigation of what pattern CSI codegen actually produces, then\nextension of the gRPC linker to match it."  # dc56
+    fields: {}  # dc56

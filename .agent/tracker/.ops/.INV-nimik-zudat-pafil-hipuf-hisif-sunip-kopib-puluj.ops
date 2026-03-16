@@ -129,3 +129,10 @@
   set:  # c1c3
     status: violated  # c1c3
     priority: 4  # c1c3
+- op: discuss  # 66ee
+  at: '2026-03-16T04:15:54Z'  # 66ee
+  by: human  # 66ee
+  actor: jgstern  # 66ee
+  clock: 16  # 66ee
+  nonce: 66ee  # 66ee
+  message: "but an item of type INV cannot have a Status of todo_hard -- it may only have a Status of violated, holding, needs_human_review, or deleted. Are you seeing prompt language that implies otherwise? Also invariant items already can carry their own priority, just like this one does. And it doesn't seem right to make lower priorities non-blocking. If they show up next to higher priorities, presumably the agent will work on the higher ones first. Or use its judgement."  # 66ee

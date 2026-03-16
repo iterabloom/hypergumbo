@@ -34,3 +34,12 @@
   clock: 3  # 29bd
   nonce: 29bd  # 29bd
   message: "Created curriculum file at ~/hypergumbo_lab_notebook/curricula/deep-plazaflow-focused-20260315.md. Four single-repo cohorts in progression order: yjs → blocksuite → AFFiNE → mediasoup. Ready to run once human approves."  # 29bd
+- op: update  # 7af8
+  at: '2026-03-16T04:17:37Z'  # 7af8
+  by: human  # 7af8
+  actor: jgstern  # 7af8
+  clock: 4  # 7af8
+  nonce: 7af8  # 7af8
+  set:  # 7af8
+    status: todo_soft  # 7af8
+    priority: 2  # 7af8

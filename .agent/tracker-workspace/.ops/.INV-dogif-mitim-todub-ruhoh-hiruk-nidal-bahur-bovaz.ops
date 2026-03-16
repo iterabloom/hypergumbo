@@ -77,3 +77,10 @@
   clock: 9  # ff92
   nonce: ff92  # ff92
   message: "The JSX Route detection (PR #2127) covers the basic <Route path='...' /> pattern. Aspects NOT verified: (1) nested routes (<Route><Route path='child'/></Route>), (2) createBrowserRouter/createRoutesFromElements API (v6.4+), (3) lazy routes (React.lazy + dynamic import), (4) route loader/action detection. I haven't checked these against real React Router apps since the PR merged. Status 'holding' means the basic pattern works; it does not mean all React Router idioms are covered."  # ff92
+- op: discuss  # 8f34
+  at: '2026-03-16T04:22:34Z'  # 8f34
+  by: human  # 8f34
+  actor: jgstern  # 8f34
+  clock: 10  # 8f34
+  nonce: 8f34  # 8f34
+  message: "wellll I would say that \"holding\" that ALL aspects of the invariant are holding, not just some of them. I think if you want to indicate progress toward the invariant holding even if it might not 100% be holding, you can lower the priority to a 3 or a 4. but the status should still be \"violated\". we might need to update the guidance in AGENTS.md to explain this."  # 8f34
