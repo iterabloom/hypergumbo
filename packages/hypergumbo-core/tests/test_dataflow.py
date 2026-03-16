@@ -670,3 +670,82 @@ class TestBaseAnalyzerIntegration:
 
         # annotate_dataflow should have been called at least once
         assert len(calls_made) >= 1, f"annotate_dataflow never called; result had {len(result.edges)} edges"
+
+
+# ==================== BUILT-IN YAML TESTS ====================
+
+
+_EXPECTED_LANGUAGES = ["python", "javascript", "typescript", "rust", "go"]
+
+
+class TestBuiltInYamlFiles:
+    """Tests for the shipped dataflow YAML pattern files."""
+
+    @pytest.mark.parametrize("language", _EXPECTED_LANGUAGES)
+    def test_yaml_loads_successfully(self, language: str) -> None:
+        """Each built-in YAML should load without errors."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
+        assert yaml_path.is_file(), f"Missing: {yaml_path}"
+        config = load_dataflow_config(yaml_path)
+        assert config.language == language
+
+    @pytest.mark.parametrize("language", _EXPECTED_LANGUAGES)
+    def test_yaml_has_assignments(self, language: str) -> None:
+        """Each built-in YAML should have at least one assignment rule."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / f"{language}.yaml")
+        assert len(config.assignments) >= 1, f"{language} has no assignment rules"
+
+    @pytest.mark.parametrize("language", _EXPECTED_LANGUAGES)
+    def test_yaml_builds_node_type_map(self, language: str) -> None:
+        """Each built-in YAML should produce a non-empty node type map."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / f"{language}.yaml")
+        nmap = config.build_node_type_map()
+        assert len(nmap) >= 1, f"{language} produces empty node type map"
+        # All values should be valid access modes
+        from hypergumbo_core.ir import VALID_ACCESS_MODES
+        for node_type, mode in nmap.items():
+            assert mode in VALID_ACCESS_MODES, f"{language}: {node_type} -> {mode} not valid"
+
+    def test_python_has_delete(self) -> None:
+        """Python YAML should include delete_statement."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / "python.yaml")
+        assert len(config.deletions) >= 1
+        nmap = config.build_node_type_map()
+        assert "delete_statement" in nmap
+        assert nmap["delete_statement"] == "delete"
+
+    def test_javascript_has_delete(self) -> None:
+        """JavaScript YAML should include delete_expression."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / "javascript.yaml")
+        nmap = config.build_node_type_map()
+        assert "delete_expression" in nmap
+        assert nmap["delete_expression"] == "delete"
+
+    def test_rust_has_borrows(self) -> None:
+        """Rust YAML should include borrow patterns."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / "rust.yaml")
+        assert len(config.borrows) >= 1
+        nmap = config.build_node_type_map()
+        assert "reference_expression" in nmap
+
+    def test_go_has_short_var_declaration(self) -> None:
+        """Go YAML should include short_var_declaration (:= operator)."""
+        from hypergumbo_core.dataflow import _DATAFLOW_DIR
+        config = load_dataflow_config(_DATAFLOW_DIR / "go.yaml")
+        nmap = config.build_node_type_map()
+        assert "short_var_declaration" in nmap
+        assert nmap["short_var_declaration"] == "write"
+
+    @pytest.mark.parametrize("language", _EXPECTED_LANGUAGES)
+    def test_get_dataflow_config_finds_builtin(self, language: str) -> None:
+        """get_dataflow_config should find and return built-in configs."""
+        _config_cache.clear()
+        config = get_dataflow_config(language)
+        assert config is not None, f"get_dataflow_config({language!r}) returned None"
+        assert config.language == language

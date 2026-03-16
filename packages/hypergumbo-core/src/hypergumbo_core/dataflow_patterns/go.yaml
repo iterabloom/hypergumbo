@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Go (tree-sitter grammar)
+language: go
+
+assignments:
+  - node_type: short_var_declaration
+    write: left
+    read: right
+  - node_type: assignment_statement
+    write: left
+    read: right
+  - node_type: var_declaration
+    write: name
+    read: value
+
+calls:
+  - node_type: call_expression
+    read: arguments
