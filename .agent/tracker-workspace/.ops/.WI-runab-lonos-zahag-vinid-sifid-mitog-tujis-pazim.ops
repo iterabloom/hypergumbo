@@ -69,3 +69,19 @@
   clock: 8  # d41a
   nonce: d41a  # d41a
   message: "Reopened: linker works for simple names but fails on qualified Solidity names (ContractName.function). Need to strip contract prefix for matching."  # d41a
+- op: update  # 5775
+  at: '2026-03-16T13:11:09Z'  # 5775
+  by: agent  # 5775
+  actor: jgstern_agent  # 5775
+  clock: 9  # 5775
+  nonce: '5775'  # 5775
+  set:  # 5775
+    status: done  # 5775
+    pr_ref: '#2264'  # 5775
+- op: discuss  # 6e2e
+  at: '2026-03-16T13:11:09Z'  # 6e2e
+  by: agent  # 6e2e
+  actor: jgstern_agent  # 6e2e
+  clock: 10  # 6e2e
+  nonce: 6e2e  # 6e2e
+  message: "Fixed in PR #2264. Solidity functions with qualified names (ContractName.function) now also indexed by unqualified name, enabling matching with TS/JS ethers.js/viem calls. 2 new tests."  # 6e2e

@@ -19,3 +19,18 @@
     pr_ref:  # 1068
     description: "39 analyzers override TreeSitterAnalyzer.analyze() and bypass the automatic Tier 1 dataflow annotation added in base.py. These need explicit annotate_dataflow() calls in their custom analyze() methods.\n\nHigh-priority overrides (produce call edges where dataflow matters):\nGo, Java, JS/TS, Ruby, C#, Kotlin, Lua, Perl, PHP, Obj-C, Elixir, Erlang, R\n\nLow-priority overrides (config/markup, minimal call edges):\nCSS, Dockerfile, CMake, Make, Markdown, JSON, TOML, XML, YAML, Requirements, LaTeX, RST, SCSS, Proto, Thrift, Meson, Starlark, Puppet, PureScript, Racket, Scheme, Robot, Svelte, Vue, C\n\n10 function-based analyzers (no TreeSitterAnalyzer at all):\nPython (py.py), Jupyter — tracked separately as WI-mimon.\nHTML, Manifest Targets, Handlebars, Just, QML, Blade, Gnuplot, Mermaid — low priority.\n\nSee lab notebook entry 2026-03-16 for full audit."  # 1068
     fields: {}  # 1068
+- op: discuss  # cd69
+  at: '2026-03-16T13:00:11Z'  # cd69
+  by: agent  # cd69
+  actor: jgstern_agent  # cd69
+  clock: 2  # cd69
+  nonce: cd69  # cd69
+  message: "Go analyzer retrofitted with Tier 1 dataflow annotation in PR #2263. Remaining: Java, JS/TS, Ruby, C#, Kotlin, Lua, and 30+ others. Go was the highest-priority override since it's heavily used in infrastructure codebases."  # cd69
+- op: update  # 694f
+  at: '2026-03-16T13:00:57Z'  # 694f
+  by: agent  # 694f
+  actor: jgstern_agent  # 694f
+  clock: 3  # 694f
+  nonce: 694f  # 694f
+  set:  # 694f
+    priority: 3  # 694f

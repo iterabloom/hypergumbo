@@ -69,3 +69,18 @@
   clock: 8  # c9ff
   nonce: c9ff  # c9ff
   message: "Re: would we disable 8+ existing heuristics? No — only 3 of the 15 ranking heuristics would be subsumed by edge-type weighting:\n\n1. **Edge type filtering** (imports excluded, extends preserved) — hand-coded edge weights; directly replaceable with a weight map\n2. **Edge confidence filtering** (min_confidence threshold) — workaround for unreliable receiver_call edges; fixed by explicit per-type weights\n3. **Common method name dampening** (>10 symbols with same name) — symptom of unweighted low-confidence inferred edges\n\nThe other 12 heuristics are ORTHOGONAL and would remain:\n- **Scope topology**: within-file dampening (0.3x), per-file in-degree capping (max 5 per source)\n- **Node semantics**: utility symbol names (Logger, Button), test file dampening, noise paths (migrations), helper file/dir dampening, supply chain tier weighting\n- **Structural normalization**: hub saturation (in-degree > 100), out-degree connector boost, trivial sink dampening (out≤1 + LoC≤5)\n- **Interface polymorphism**: sibling implementation dampening (>6 same-name methods)\n- **Aggregation**: file density scoring (sum-of-top-K)\n\nThese address concerns PageRank/edge-weights can't: where a symbol lives (test? migration? utils?), what it's named (Logger? Button?), its code size, its role (connector vs sink), and interface polymorphism. Hub saturation is PARTIAL — edge weights would reduce some hub in-degree, but the log-saturation above 100 would still be needed as a safety net.\n\nBottom line: implementing edge-type weighting would replace 3 heuristics with a weight lookup table and simplify the code, but 12 heuristics stay. The 8+ dampening patches I mentioned earlier referred to incremental additions across multiple PRs — the actual conceptual categories are fewer, but the implementation has grown organically."  # c9ff
+- op: update  # 6f02
+  at: '2026-03-16T12:35:07Z'  # 6f02
+  by: agent  # 6f02
+  actor: jgstern_agent  # 6f02
+  clock: 9  # 6f02
+  nonce: 6f02  # 6f02
+  set:  # 6f02
+    priority: 4  # 6f02
+- op: discuss  # 1007
+  at: '2026-03-16T12:35:07Z'  # 1007
+  by: agent  # 1007
+  actor: jgstern_agent  # 1007
+  clock: 10  # 1007
+  nonce: '1007'  # 1007
+  message: "Deprioritized to P4. Requires architectural design decision (PageRank/edge-type weighting). Human has been engaged in the design discussion. The existing dampening heuristics handle the worst cases (PR #2140). Will revisit when the design is ready."  # 1007
