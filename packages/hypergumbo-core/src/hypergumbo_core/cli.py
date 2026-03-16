@@ -4243,6 +4243,19 @@ def run_behavior_map(
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
 
+    # Build a shared file index from a single os.walk() pass.
+    # This replaces 80+ redundant rglob() calls across analyzers,
+    # profile detection, and linkers — ~75% of uncached runtime.
+    from hypergumbo_core.discovery import (
+        DEFAULT_EXCLUDES, FileIndex, set_file_index, set_max_file_bytes,
+    )
+    show_progress("Indexing files", 2)
+    combined_excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:
+        combined_excludes.extend(extra_excludes)
+    file_index = FileIndex.build(repo_root, excludes=combined_excludes)
+    set_file_index(file_index)
+
     # Detect repo profile (languages, frameworks)
     # LOC is set to 0 here (avoids reading every file).
     # generate_sketch backfills LOC from _analyze_test_files when it runs.
@@ -4255,7 +4268,6 @@ def run_behavior_map(
 
     # Set global file size limit so all analyzers using find_files()
     # automatically skip oversized files (e.g., minified JS, huge HTML).
-    from hypergumbo_core.discovery import set_max_file_bytes
     set_max_file_bytes(max_file_bytes)
 
     # Run all language analyzers using consolidated registry
@@ -4663,6 +4675,9 @@ def run_behavior_map(
         json.dump(behavior_map, f, indent=2, sort_keys=True)
     generated_files.append(out_path)
     _log_memory("after write")
+
+    # Clear global file index to release memory
+    set_file_index(None)
 
     complete_progress()
     return generated_files
