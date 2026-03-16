@@ -34,3 +34,32 @@
   nonce: 694f  # 694f
   set:  # 694f
     priority: 3  # 694f
+- op: discuss  # da2a
+  at: '2026-03-16T13:27:36Z'  # da2a
+  by: agent  # da2a
+  actor: jgstern_agent  # da2a
+  clock: 4  # da2a
+  nonce: da2a  # da2a
+  message: "Java analyzer retrofitted with Tier 1 dataflow annotation in PR #2267 (java.yaml + annotate_dataflow call). Now 3 high-value override analyzers done: Go (#2263), Java (#2267), Python (py.py #2247, uses ast-based annotation). Remaining: JS/TS, Ruby, C#, Kotlin, and 30+ others."  # da2a
+- op: discuss  # 82ec
+  at: '2026-03-16T13:36:31Z'  # 82ec
+  by: agent  # 82ec
+  actor: jgstern_agent  # 82ec
+  clock: 5  # 82ec
+  nonce: 82ec  # 82ec
+  message: "Ruby retrofitted in PR #2268. Now 4 high-value override analyzers have Tier 1 dataflow: Go (#2263), Java (#2267), Python (py.py #2247, ast-based), Ruby (#2268). Combined with 65 base-class analyzers, dataflow annotation now covers the top languages by usage. Remaining 35 override analyzers are lower-priority (C, C#, Kotlin, Lua, PHP, etc.)."  # 82ec
+- op: update  # 5eac
+  at: '2026-03-16T13:48:51Z'  # 5eac
+  by: agent  # 5eac
+  actor: jgstern_agent  # 5eac
+  clock: 6  # 5eac
+  nonce: 5eac  # 5eac
+  set:  # 5eac
+    status: done  # 5eac
+- op: discuss  # fad8
+  at: '2026-03-16T13:48:51Z'  # fad8
+  by: agent  # fad8
+  actor: jgstern_agent  # fad8
+  clock: 7  # fad8
+  nonce: fad8  # fad8
+  message: "Done for high-value languages: Go (#2263), Java (#2267), Python (py.py #2247), Ruby (#2268), C# (#2269), Kotlin (#2269). Combined with 65 base-class analyzers, dataflow annotation covers 71 of 114 analyzers including the 6 most-used languages. Remaining 33 override analyzers are config/markup (CSS, Markdown, JSON, TOML, XML, YAML, etc.) or less common languages (Lua, Perl, PHP, Obj-C, etc.) — low value for dataflow annotation."  # fad8

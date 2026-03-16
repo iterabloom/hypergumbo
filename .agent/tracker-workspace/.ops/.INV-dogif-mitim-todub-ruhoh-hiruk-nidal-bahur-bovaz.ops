@@ -107,3 +107,18 @@
   clock: 13  # 2e36
   nonce: '2e36'  # 2e36
   message: "PR #2261 adds createBrowserRouter/createHashRouter/createMemoryRouter/createRoutesFromElements detection. Now covers: (1) JSX <Route path> (PR #2127), (2) v6.4+ object-based route configs with nested children path composition (PR #2261). Remaining unverified: lazy routes (React.lazy + dynamic import), route loader/action detection. Priority stays P3 since the two most common patterns are now covered."  # 2e36
+- op: update  # 64bc
+  at: '2026-03-16T13:50:37Z'  # 64bc
+  by: agent  # 64bc
+  actor: jgstern_agent  # 64bc
+  clock: 14  # 64bc
+  nonce: 64bc  # 64bc
+  set:  # 64bc
+    status: needs_human_review  # 64bc
+- op: discuss  # 3a79
+  at: '2026-03-16T13:50:37Z'  # 3a79
+  by: agent  # 3a79
+  actor: jgstern_agent  # 3a79
+  clock: 15  # 3a79
+  nonce: 3a79  # 3a79
+  message: "Two most common React Router patterns now covered: JSX <Route path> (PR #2127) and createBrowserRouter object configs (PR #2261). Remaining gaps: lazy routes (React.lazy + dynamic import) and loader/action detection. These are increasingly niche patterns. Human decision needed: is the current coverage sufficient, or should we invest in lazy route detection?"  # 3a79
