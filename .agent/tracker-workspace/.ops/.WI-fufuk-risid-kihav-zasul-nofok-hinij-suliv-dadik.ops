@@ -20,3 +20,12 @@
     pr_ref:  # ce6e
     description: "Add optional --dataflow flag to slice command. When set, BFS only\nfollows edges where a write/mutate at the source connects to a read\nat the destination — producing tighter slices of actual data dependencies.\n\n~10 lines in slice.py BFS loop to check edge.meta.get(\"access_mode\").\nCLI arg addition in cli.py.\n\nWithout flag: existing behavior (follow all edges). Backward compatible.\n\nDepends on: edges actually having access_mode annotations (all prior items).\nSee ADR-0015 §6."  # ce6e
     fields: {}  # ce6e
+- op: update  # b7cc
+  at: '2026-03-16T04:40:28Z'  # b7cc
+  by: agent  # b7cc
+  actor: jgstern_agent  # b7cc
+  clock: 2  # b7cc
+  nonce: b7cc  # b7cc
+  set: {}  # b7cc
+  add:  # b7cc
+    before: [WI-tarar-tikul-hidoh-lihus-mugud-bagab-rafib-jolop]  # b7cc
