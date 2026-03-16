@@ -113,3 +113,19 @@
   clock: 13  # 6198
   nonce: '6198'  # 6198
   message: "if some gap is uninvestigated, is it accurate to say this invariant is \"holding\"? perhaps the invariant is violated, but the priority is a 4 (low). does your agentic scaffolding imply that violated invariants, no matter how unimportant, must always take priority over not-done work items, no matter how important? if so, perhaps I need to change that scaffolding?"  # 6198
+- op: discuss  # d124
+  at: '2026-03-16T04:05:16Z'  # d124
+  by: agent  # d124
+  actor: jgstern_agent  # d124
+  clock: 14  # d124
+  nonce: d124  # d124
+  message: "You're right — 'holding' is inaccurate when 47% of keycloak routes are uninvestigated. The honest status is 'violated' because the invariant statement says routes SHOULD have edges to handlers when handler info is available, and we haven't checked whether the missing 53% have handler info or not.\n\nOn the governance question: AGENTS.md currently says todo_hard items (invariant violations) 'block stopping' and should be 'investigated deeply, assume structural.' It doesn't explicitly say they must take priority over all work items. But the stop hook enforcement and the phrase 'assume structural' create strong pressure to treat every violation as urgent regardless of actual importance.\n\nThe current scaffolding conflates two things: (1) severity of the violation and (2) priority of fixing it. A low-severity invariant violation (47% route coverage gap in one Java framework) shouldn't block high-value PlazaFlow work. Possible fix: allow invariant items to carry their own priority (P1-P4) independently of their violated/holding status, and only have the stop hook block on todo_hard items at P1-P2, not P3-P4."  # d124
+- op: update  # c1c3
+  at: '2026-03-16T04:05:31Z'  # c1c3
+  by: agent  # c1c3
+  actor: jgstern_agent  # c1c3
+  clock: 15  # c1c3
+  nonce: c1c3  # c1c3
+  set:  # c1c3
+    status: violated  # c1c3
+    priority: 4  # c1c3

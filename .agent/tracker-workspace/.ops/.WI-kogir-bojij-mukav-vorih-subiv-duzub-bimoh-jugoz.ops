@@ -53,3 +53,10 @@
   clock: 6  # a408
   nonce: a408  # a408
   message: "if there are analogous issues, doesn't that imply we've discovered an invariant? are there any existing invariants that would capture these kinds of issues?"  # a408
+- op: discuss  # 30d9
+  at: '2026-03-16T04:06:05Z'  # 30d9
+  by: agent  # 30d9
+  actor: jgstern_agent  # 30d9
+  clock: 7  # 30d9
+  nonce: 30d9  # 30d9
+  message: "Good point. The invariant would be: 'Generated wrapper/proxy functions must not break cross-language edge tracing. When a linker detects a bridge call (IPC, RPC, WASM, codegen), it must trace through wrapper layers to connect the application-level call site to the implementation.'\n\nNo existing invariant captures this — the route-to-handler invariant (INV-nimik) covers route→handler resolution but not IPC/RPC wrapper tracing. This is a distinct pattern: codegen-mediated indirection.\n\nAffected frameworks: Tauri specta (fixed), Electron contextBridge (partially fixed), GraphQL codegen hooks (not addressed), gRPC generated clients (partially — proto→Go works but not codegen wrappers in TS/Python), wasm_bindgen facade modules (not addressed).\n\nShould I create an invariant for this? Something like 'INV: Codegen wrapper tracing — cross-language linkers must resolve through generated binding/proxy layers'?"  # 30d9

@@ -70,3 +70,10 @@
   clock: 8  # 0676
   nonce: '0676'  # 0676
   message: "is there any aspect of this invariant that is not holding?"  # 0676
+- op: discuss  # ff92
+  at: '2026-03-16T04:04:40Z'  # ff92
+  by: agent  # ff92
+  actor: jgstern_agent  # ff92
+  clock: 9  # ff92
+  nonce: ff92  # ff92
+  message: "The JSX Route detection (PR #2127) covers the basic <Route path='...' /> pattern. Aspects NOT verified: (1) nested routes (<Route><Route path='child'/></Route>), (2) createBrowserRouter/createRoutesFromElements API (v6.4+), (3) lazy routes (React.lazy + dynamic import), (4) route loader/action detection. I haven't checked these against real React Router apps since the PR merged. Status 'holding' means the basic pattern works; it does not mean all React Router idioms are covered."  # ff92

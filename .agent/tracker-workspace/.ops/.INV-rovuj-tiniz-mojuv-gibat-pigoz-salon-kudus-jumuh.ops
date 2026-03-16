@@ -92,3 +92,10 @@
   clock: 11  # 1e33
   nonce: '1e33'  # 1e33
   message: "is this what we meant in the hypergumbo spec when we talked about multi-fidelity analysis?"  # 1e33
+- op: discuss  # 12f7
+  at: '2026-03-16T04:06:36Z'  # 12f7
+  by: agent  # 12f7
+  actor: jgstern_agent  # 12f7
+  clock: 12  # 12f7
+  nonce: 12f7  # 12f7
+  message: "Yes, this is exactly the multi-fidelity scenario described in the spec (§5) and ADR-0012. The spec envisions a first pass (tree-sitter AST, fast, approximate) producing edges with confidence scores, then an optional second pass (e.g., pyright for Python, clangd for C++) refining those edges with type-resolved information. The 1/sqrt(N) confidence scaling is the first pass's way of expressing uncertainty — 'I found 15 candidates, I'm not confident which one is right.' A clangd-backed pass could resolve this to a single candidate with 0.95 confidence.\n\nFor C++ specifically, the practical path would be integrating with compile_commands.json (which clang/CMake generates), not reimplementing a type checker. But that's a heavy dependency and only helps repos that have a build system set up. The current confidence-scaling approach is the multi-fidelity design working as intended — low-fidelity pass with honest uncertainty, leaving room for a future high-fidelity pass to improve."  # 12f7
