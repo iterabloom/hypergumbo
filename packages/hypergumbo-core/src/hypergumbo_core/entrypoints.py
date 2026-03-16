@@ -1188,6 +1188,54 @@ def detect_entrypoints(
     # don't lose most of their entrypoints to a fixed cap.
     cap = compute_entrypoint_cap(len(nodes))
     if len(unique_entrypoints) > cap:
-        unique_entrypoints = unique_entrypoints[:cap]
+        unique_entrypoints = _diversity_cap(unique_entrypoints, cap)
 
     return unique_entrypoints
+
+
+# Maximum fraction of the entrypoint cap that a single kind may occupy.
+# With 0.4, at most 40% of entrypoints can be of one kind (e.g., max 200
+# GraphQL resolvers out of 500 total). This ensures diverse entrypoint types.
+_MAX_KIND_FRACTION: float = 0.4
+
+
+def _diversity_cap(
+    entrypoints: list[Entrypoint],
+    cap: int,
+) -> list[Entrypoint]:
+    """Apply per-kind diversity capping to entrypoints.
+
+    Ensures no single EntrypointKind takes more than _MAX_KIND_FRACTION of the
+    total cap. Entrypoints are assumed to be pre-sorted by score (best first).
+    When a kind exceeds its quota, remaining entrypoints of that kind are
+    deferred to fill any remaining slots after all kinds have had their share.
+
+    Args:
+        entrypoints: Sorted list of entrypoints (best first).
+        cap: Maximum total entrypoints to return.
+
+    Returns:
+        Capped list with per-kind diversity guarantee.
+    """
+    max_per_kind = max(1, int(cap * _MAX_KIND_FRACTION))
+    kind_counts: dict[EntrypointKind, int] = {}
+    result: list[Entrypoint] = []
+    overflow: list[Entrypoint] = []
+
+    for ep in entrypoints:
+        count = kind_counts.get(ep.kind, 0)
+        if count < max_per_kind:
+            result.append(ep)
+            kind_counts[ep.kind] = count + 1
+        else:
+            overflow.append(ep)
+
+        if len(result) >= cap:
+            return result[:cap]
+
+    # Fill remaining slots from overflow (kinds that exceeded their quota)
+    remaining = cap - len(result)
+    if remaining > 0 and overflow:
+        result.extend(overflow[:remaining])
+
+    return result
