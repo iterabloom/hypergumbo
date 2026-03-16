@@ -68,6 +68,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -1943,6 +1944,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             class_parents=global_class_parents,
             class_fields=global_class_fields,
         )
+        # ADR-0015 Tier 1: annotate edges with dataflow access modes
+        _java_df = _get_dataflow_config("java")
+        if _java_df is not None:
+            edges = _annotate_dataflow(edges, pf.tree, pf.source, _java_df)
         all_edges.extend(edges)
 
     # Extract annotation edges (INV-012: decorators metadata -> decorated_by edges)
