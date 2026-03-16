@@ -19,3 +19,33 @@
     fields:  # d1a4
       statement: "When a cross-language linker detects a bridge call (IPC, RPC, WASM, codegen), it must trace through generated wrapper/proxy layers to connect the application-level call site to the implementation. Generated bindings that wrap invoke/call/send behind typed functions must not break edge tracing."  # d1a4
       root_cause: "Linkers match literal command names in invoke() calls but codegen tools (specta, contextBridge, graphql-codegen, protoc) generate typed wrapper functions that hide the literal names. Without wrapper resolution, edges terminate at the generated layer instead of reaching the real implementation."  # d1a4
+- op: update  # 2db4
+  at: '2026-03-16T13:51:13Z'  # 2db4
+  by: agent  # 2db4
+  actor: jgstern_agent  # 2db4
+  clock: 2  # 2db4
+  nonce: 2db4  # 2db4
+  set:  # 2db4
+    status: needs_human_review  # 2db4
+- op: discuss  # c204
+  at: '2026-03-16T13:51:13Z'  # c204
+  by: agent  # c204
+  actor: jgstern_agent  # c204
+  clock: 3  # c204
+  nonce: c204  # c204
+  message: "Tauri specta fixed (PR #2165). Remaining: Electron contextBridge (partial), GraphQL codegen hooks, gRPC codegen clients in TS/Python, wasm_bindgen facades. Human decision needed: which of these are worth investigating? Each requires access to repos using those specific patterns."  # c204
+- op: discuss  # 44ce
+  at: '2026-03-16T15:56:51Z'  # 44ce
+  by: human  # 44ce
+  actor: jgstern  # 44ce
+  clock: 4  # 44ce
+  nonce: 44ce  # 44ce
+  message: "We should investigate all of the remaining topics you identified. For repos,\n\ncontextBridge:\n~/whole_bunch_of_repos/podman-desktop\n\nGraphQL codegen:\n~/whole_bunch_of_repos/git-bug\n~/whole_bunch_of_repos/apollo-server\n\ngRPC TS+Python:\n~/whole_bunch_of_repos/microservices-demo\n\ngRPC codegen (Python):\n~/repos/kserve\n\nwasm_bindgen:\n~/whole_bunch_of_repos/wasmtime"  # 44ce
+- op: update  # 7a18
+  at: '2026-03-16T15:57:07Z'  # 7a18
+  by: human  # 7a18
+  actor: jgstern  # 7a18
+  clock: 5  # 7a18
+  nonce: 7a18  # 7a18
+  set:  # 7a18
+    status: violated  # 7a18

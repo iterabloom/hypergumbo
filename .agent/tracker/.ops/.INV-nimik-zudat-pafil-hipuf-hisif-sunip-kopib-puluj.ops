@@ -143,3 +143,18 @@
   clock: 17  # 232a
   nonce: 232a  # 232a
   message: "Understood. The scaffolding does not conflate INV status with todo_hard — INV items use violated/holding/needs_human_review/deleted. Priority (P1-P4) already controls urgency independently. The stop hook shows all blocking items together and the agent uses judgment on ordering. No scaffolding changes needed. This item stays violated at P4 — the 47% keycloak gap is uninvestigated."  # 232a
+- op: update  # 56d1
+  at: '2026-03-16T13:51:13Z'  # 56d1
+  by: agent  # 56d1
+  actor: jgstern_agent  # 56d1
+  clock: 18  # 56d1
+  nonce: 56d1  # 56d1
+  set:  # 56d1
+    status: needs_human_review  # 56d1
+- op: discuss  # f8e2
+  at: '2026-03-16T13:51:13Z'  # f8e2
+  by: agent  # f8e2
+  actor: jgstern_agent  # f8e2
+  clock: 19  # f8e2
+  nonce: f8e2  # f8e2
+  message: "Jenkins 151/151 (100%), Keycloak 609/~1302 (47%). The gap is likely sub-resource locator route expansion or test-code exclusion. Human decision needed: is 47% keycloak coverage acceptable, or should we investigate the gap? Would require cloning keycloak and running a targeted bakeoff."  # f8e2

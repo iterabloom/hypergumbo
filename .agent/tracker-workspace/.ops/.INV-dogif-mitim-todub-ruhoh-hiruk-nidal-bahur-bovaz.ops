@@ -122,3 +122,19 @@
   clock: 15  # 3a79
   nonce: 3a79  # 3a79
   message: "Two most common React Router patterns now covered: JSX <Route path> (PR #2127) and createBrowserRouter object configs (PR #2261). Remaining gaps: lazy routes (React.lazy + dynamic import) and loader/action detection. These are increasingly niche patterns. Human decision needed: is the current coverage sufficient, or should we invest in lazy route detection?"  # 3a79
+- op: discuss  # a0b9
+  at: '2026-03-16T15:28:22Z'  # a0b9
+  by: human  # a0b9
+  actor: jgstern  # a0b9
+  clock: 16  # a0b9
+  nonce: a0b9  # a0b9
+  message: "You said \"Priority stays P3 since the two most common patterns are now covered\" but you *should* have said \"Priority lowers to P4 (4) since the two most common patterns are now covered\"\nOr, less optimally, but still acceptably: \"Priority stays P3 even though the two most common patterns are now covered. Wait- if the two most common patterns are now covered, then this item is *more* complete. That should *lower* its priority. Lowering priority to 4.\"\n\nAnd to answer your question more directly: yes, we should tackle lazy routes (React.lazy + dynamic import), route loader/action detection, at reduced priority."  # a0b9
+- op: update  # 850c
+  at: '2026-03-16T15:29:09Z'  # 850c
+  by: human  # 850c
+  actor: jgstern  # 850c
+  clock: 17  # 850c
+  nonce: 850c  # 850c
+  set:  # 850c
+    status: violated  # 850c
+    priority: 4  # 850c

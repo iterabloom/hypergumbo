@@ -34,3 +34,18 @@
   clock: 3  # 7ace
   nonce: 7ace  # 7ace
   message: "Cannot investigate: kata-containers repo not in ~/repos/ pool. Need human to clone it, or deprioritize. CSI codegen patterns are niche — only affects Container Storage Interface implementations."  # 7ace
+- op: discuss  # 8b84
+  at: '2026-03-16T15:38:31Z'  # 8b84
+  by: human  # 8b84
+  actor: jgstern  # 8b84
+  clock: 4  # 8b84
+  nonce: 8b84  # 8b84
+  message: "should be here: `~/plazaflow_deep_repos/cohort7_compute/kata-containers`"  # 8b84
+- op: update  # b84e
+  at: '2026-03-16T15:39:02Z'  # b84e
+  by: human  # b84e
+  actor: jgstern  # b84e
+  clock: 5  # b84e
+  nonce: b84e  # b84e
+  set:  # b84e
+    status: todo_soft  # b84e

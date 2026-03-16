@@ -47,3 +47,13 @@
   clock: 5  # cfec
   nonce: cfec  # cfec
   message: "Bakeoff methodology question: should slice entry points be selected by in-degree centrality rather than entrypoint detection score? All 4 repos already show GOOD verdicts. The new diversity cap helps. Needs human decision on whether to invest in changing the bakeoff script."  # cfec
+- op: update  # d546
+  at: '2026-03-16T15:32:51Z'  # d546
+  by: human  # d546
+  actor: jgstern  # d546
+  clock: 6  # d546
+  nonce: d546  # d546
+  set:  # d546
+    status: wont_do  # d546
+  add:  # d546
+    tags: [someday]  # d546

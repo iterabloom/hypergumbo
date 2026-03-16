@@ -77,3 +77,10 @@
   clock: 8  # c9d3
   nonce: c9d3  # c9d3
   message: "Good catch. The current --dataflow filter only handles forward slicing correctly (follows write/mutate edges). For reverse slicing, the logic should be inverted: from a symbol, follow edges where access_mode is 'read' to find code that reads data the symbol writes.\n\nCurrent behavior with --reverse --dataflow: edges with access_mode='read' are skipped, which is wrong for reverse — it would miss readers of the entry point.\n\nFix needed: when query.reverse is True and query.dataflow is True, follow edges where access_mode is 'read' (not write/mutate). This finds 'who reads from this writer?' Will implement in a follow-up PR."  # c9d3
+- op: discuss  # 351e
+  at: '2026-03-16T16:05:07Z'  # 351e
+  by: human  # 351e
+  actor: jgstern  # 351e
+  clock: 9  # 351e
+  nonce: 351e  # 351e
+  message: "please find the PR number for that follow-up?"  # 351e
