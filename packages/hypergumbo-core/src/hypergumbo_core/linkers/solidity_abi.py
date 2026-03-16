@@ -85,6 +85,13 @@ def _collect_solidity_functions(
         if sym.kind not in ("function", "constructor"):
             continue
         result[sym.name].append(sym)
+        # Also index by unqualified name for cross-language matching.
+        # Solidity functions may have qualified names (ContractName.function)
+        # while TS/JS calls use unqualified names (contract.function).
+        if "." in sym.name:
+            short_name = sym.name.rsplit(".", 1)[-1]
+            if short_name not in result or sym not in result[short_name]:
+                result[short_name].append(sym)
     return dict(result)
 
 
