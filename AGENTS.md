@@ -16,7 +16,7 @@
   When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely. Items with `needs_human_review` do NOT block stopping — use this for governance proposals or architectural questions that need human judgment.
+  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). See "Scope Expansion Commitment Protocol" for which statuses block stopping and how to handle each.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
@@ -94,13 +94,14 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   2. **Name the invariant:** "In this system, X must always be true because Y depends on it"
   3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
-  5. **If workaround:** Create a tracker item (`scripts/tracker add invariant ...`) with status `todo_hard`, then fix the root cause
+  5. **If workaround:** Create a tracker item (`scripts/tracker add --kind invariant ...`) with status `violated`, then fix the root cause
 - **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
   1. **Create tracker items immediately** using `scripts/tracker add`:
-     - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
-     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
-     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping.
-  2. **Hook enforcement:** Both `todo_hard` and `todo_soft` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
+     - `violated` — invariant violations, anything structural; use for items of kind `invariant` or `meta_invariant`. Investigate deeply, assume structural.
+     - `todo_hard` — defects, *potential* invariant violations, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things too seriously. Use for items of kind `work_item`. Investigate deeply, assume structural.
+     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves, scope expansion work from the Commitment Protocol). For `work_item`-kind items. Address freely.
+     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping. For any kind of item. Do not work on these (other than to update their data using `scripts/tracker`) — they await human triage.
+  2. **Hook enforcement:** `todo_hard`, `todo_soft`, and `violated` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
   3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
   4. **Track to completion:** When done, update the item's status to `done`/`holding`/etc with a PR reference.
 - **Signing & Identity:**
@@ -518,7 +519,7 @@ Use DEEP mode when:
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
@@ -529,10 +530,7 @@ Use DEEP mode when:
 - **If you run out of items from the main spec, look at §20 Future Work for what to tackle next.**
 
 ### Priority Queues:
-Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`):
-   - `todo_hard` items: structural issues, invariant violations — investigate deeply
-   - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
-   - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
+Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
 
 ### BROAD Mode Priority Queue:
 1. **Assess coverage breadth:** Run `bakeoff-reflect` for LLM-driven coverage assessment
