@@ -1,7 +1,10 @@
 # Test selection manifest
-# Generated manually at 2026-03-15T20:25:00-04:00
+# Generated manually at 2026-03-15T20:30:00-04:00
 # Mode: targeted
-# Reason: manual — fixing slice --files bug that prevents automatic manifest generation
+# Baseline: 86e5d956
+# Changed files: 2
+# Changed source files: 1
+# Selected tests: 2
 #
 # === CHANGED_SOURCE_FILES ===
 packages/hypergumbo-core/src/hypergumbo_core/cli.py
