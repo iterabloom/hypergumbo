@@ -1,0 +1,21 @@
+- op: create  # d1a4
+  at: '2026-03-16T04:52:50Z'  # d1a4
+  by: agent  # d1a4
+  actor: jgstern_agent  # d1a4
+  clock: 1  # d1a4
+  nonce: d1a4  # d1a4
+  data:  # d1a4
+    kind: invariant  # d1a4
+    title: "Codegen wrapper tracing: cross-language linkers must resolve through generated binding/proxy layers"  # d1a4
+    status: violated  # d1a4
+    priority: 4  # d1a4
+    parent:  # d1a4
+    tags: []  # d1a4
+    before: []  # d1a4
+    duplicate_of: []  # d1a4
+    not_duplicate_of: []  # d1a4
+    pr_ref:  # d1a4
+    description: ""  # d1a4
+    fields:  # d1a4
+      statement: "When a cross-language linker detects a bridge call (IPC, RPC, WASM, codegen), it must trace through generated wrapper/proxy layers to connect the application-level call site to the implementation. Generated bindings that wrap invoke/call/send behind typed functions must not break edge tracing."  # d1a4
+      root_cause: "Linkers match literal command names in invoke() calls but codegen tools (specta, contextBridge, graphql-codegen, protoc) generate typed wrapper functions that hide the literal names. Without wrapper resolution, edges terminate at the generated layer instead of reaching the real implementation."  # d1a4

@@ -84,3 +84,19 @@
   clock: 10  # 8f34
   nonce: 8f34  # 8f34
   message: "wellll I would say that \"holding\" that ALL aspects of the invariant are holding, not just some of them. I think if you want to indicate progress toward the invariant holding even if it might not 100% be holding, you can lower the priority to a 3 or a 4. but the status should still be \"violated\". we might need to update the guidance in AGENTS.md to explain this."  # 8f34
+- op: update  # 97af
+  at: '2026-03-16T04:52:33Z'  # 97af
+  by: agent  # 97af
+  actor: jgstern_agent  # 97af
+  clock: 11  # 97af
+  nonce: 97af  # 97af
+  set:  # 97af
+    status: violated  # 97af
+    priority: 3  # 97af
+- op: discuss  # 2a63
+  at: '2026-03-16T04:52:33Z'  # 2a63
+  by: agent  # 2a63
+  actor: jgstern_agent  # 2a63
+  clock: 12  # 2a63
+  nonce: 2a63  # 2a63
+  message: "Agreed — 'holding' was inaccurate since nested routes, createBrowserRouter, lazy routes, and loader/action detection are unverified. Reverted to violated at P3 since basic Route path detection works (PR #2127), but full React Router idiom coverage is unconfirmed."  # 2a63

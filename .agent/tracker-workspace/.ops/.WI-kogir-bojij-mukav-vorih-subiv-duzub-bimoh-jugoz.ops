@@ -67,3 +67,10 @@
   clock: 8  # 1610
   nonce: '1610'  # 1610
   message: "yes please do create such an invariant. it should be in a \"violated\" state since we haven't actually checked on those other situations. it can be low priority but it still should be presumed violated."  # 1610
+- op: discuss  # 0ab6
+  at: '2026-03-16T04:52:56Z'  # 0ab6
+  by: agent  # 0ab6
+  actor: jgstern_agent  # 0ab6
+  clock: 9  # 0ab6
+  nonce: 0ab6  # 0ab6
+  message: "Created INV-nilob-javif (Codegen wrapper tracing) per your request. Status: violated, P4. Covers Electron contextBridge, GraphQL codegen, gRPC codegen clients, wasm_bindgen facades. Tauri specta already fixed (PR #2165)."  # 0ab6
