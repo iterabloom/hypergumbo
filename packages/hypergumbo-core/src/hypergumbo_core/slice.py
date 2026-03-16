@@ -527,13 +527,19 @@ def slice_graph(
             if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
                 continue
 
-            # ADR-0015: dataflow mode — only follow write/mutate→read chains.
+            # ADR-0015: dataflow mode — only follow data-dependency chains.
+            # Forward: follow write/mutate edges (find what this symbol writes to).
+            # Reverse: follow read edges (find who reads from this symbol).
             # Edges without access_mode metadata are still followed (graceful
             # degradation when annotation coverage is incomplete).
             if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
                 mode = edge.meta["access_mode"]
-                if mode not in ("write", "mutate"):
-                    continue
+                if query.reverse:
+                    if mode not in ("read",):
+                        continue
+                else:
+                    if mode not in ("write", "mutate"):
+                        continue
 
             # Get the node at the other end of the edge
             if query.reverse:
