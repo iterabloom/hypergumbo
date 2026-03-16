@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Stop Reflection Protocol
 
 Before stopping, work through each section. Do not skip sections.
@@ -109,7 +110,7 @@ pending_soft_todos = tracker_count('--soft')
 
 # Preserve guidance_file from previous stop hook run if present
 existing_state = {}
-state_path = pathlib.Path.home() / 'hypergumbo_lab_notebook' / 'last_stop_check.json'
+state_path = pathlib.Path.home() / 'hypergumbo_lab_notebook' / 'guidance_log' / 'last_stop_check.json'
 if state_path.exists():
     try:
         existing_state = json.loads(state_path.read_text())

@@ -182,7 +182,7 @@ When context has been compressed, you may have lost awareness of in-progress wor
 
 **Recover state:**
 ```bash
-cat ~/hypergumbo_lab_notebook/last_stop_check.json 2>/dev/null
+cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null
 ```
 This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), and free-text notes about what to do next. Use it to orient yourself before starting new work.
 
@@ -197,8 +197,8 @@ If the JSON contains a `guidance_file` field, read that file for the most recent
 ```bash
 # Update notes (uses jq to modify in-place)
 jq --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
-  '. + {notes: $n}' ~/hypergumbo_lab_notebook/last_stop_check.json \
-  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/last_stop_check.json
+  '. + {notes: $n}' ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json \
+  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json
 ```
 
 Also check for pending work items:

@@ -92,7 +92,7 @@ cmd_engage() {
 		die "PR is currently in flight (.git/PR_PENDING exists). Wait for it to complete first."
 	fi
 
-	# last_stop_check.json now lives in ~/hypergumbo_lab_notebook/ (outside git tree)
+	# last_stop_check.json now lives in ~/hypergumbo_lab_notebook/guidance_log/ (outside git tree)
 
 	# Flush pending tracker ops via its own sync mechanism
 	if ls .agent/tracker-workspace/.ops/.WI-*.ops >/dev/null 2>&1; then
@@ -328,7 +328,7 @@ cmd_disengage() {
 	fi
 
 	# Auto-commit operational state that's always dirty mid-session
-	# last_stop_check.json now lives in ~/hypergumbo_lab_notebook/ (outside git tree)
+	# last_stop_check.json now lives in ~/hypergumbo_lab_notebook/guidance_log/ (outside git tree)
 
 	# Flush pending tracker ops via its own sync mechanism
 	if ls .agent/tracker-workspace/.ops/.WI-*.ops >/dev/null 2>&1; then
