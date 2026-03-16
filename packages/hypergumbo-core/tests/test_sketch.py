@@ -7968,6 +7968,46 @@ class TestBatchEmbedFiles:
         assert save_calls[0][2] is fake_embedding
 
 
+class TestEmbeddingModelSingleton:
+    """_load_embedding_model caches the model after the first call."""
+
+    def test_returns_cached_model_on_second_call(self) -> None:
+        """Second call returns the same object without re-loading."""
+        from unittest.mock import patch, MagicMock
+        import hypergumbo_core.sketch_embeddings as mod
+
+        sentinel = MagicMock(name="fake_model")
+        mock_st_module = MagicMock()
+        mock_st_module.SentenceTransformer = MagicMock(return_value=sentinel)
+        original_cache = mod._cached_embedding_model
+        try:
+            mod._cached_embedding_model = None
+
+            with patch.dict("sys.modules", {"sentence_transformers": mock_st_module}):
+                first = mod._load_embedding_model()
+                second = mod._load_embedding_model()
+
+            assert first is sentinel
+            assert second is sentinel
+            # SentenceTransformer constructor called only once
+            assert mock_st_module.SentenceTransformer.call_count == 1
+        finally:
+            mod._cached_embedding_model = original_cache
+
+    def test_cache_hit_returns_immediately(self) -> None:
+        """When cache is populated, no imports or loading occur."""
+        import hypergumbo_core.sketch_embeddings as mod
+
+        sentinel = object()
+        original_cache = mod._cached_embedding_model
+        try:
+            mod._cached_embedding_model = sentinel
+            result = mod._load_embedding_model()
+            assert result is sentinel
+        finally:
+            mod._cached_embedding_model = original_cache
+
+
 class TestConfigFilesNoLockFiles:
     """Lock files should not be in CONFIG_FILES_BY_LANG.
 

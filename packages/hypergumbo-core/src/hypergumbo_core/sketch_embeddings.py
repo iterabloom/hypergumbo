@@ -73,6 +73,9 @@ def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
         del os.environ["no_proxy"]
 
 
+_cached_embedding_model = None
+
+
 def _load_embedding_model():
     """Load SentenceTransformer model with warnings suppressed.
 
@@ -83,10 +86,18 @@ def _load_embedding_model():
     The warning is suppressed by setting log level BEFORE importing/loading,
     and by capturing any stdout output during initialization.
 
+    Returns a cached singleton after the first call — the model is ~500MB in
+    memory but is reused across config discovery, config extraction, and README
+    analysis within a single process invocation.
+
     Note:
         Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
         notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
+    global _cached_embedding_model
+    if _cached_embedding_model is not None:
+        return _cached_embedding_model
+
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
     logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
@@ -106,6 +117,7 @@ def _load_embedding_model():
     finally:
         sys.stdout = old_stdout
         _restore_no_proxy(old_no_proxy)
+    _cached_embedding_model = model
     return model
 
 # Probe patterns for embedding-based config extraction
