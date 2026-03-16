@@ -1301,6 +1301,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         language=args.language,
         hub_threshold=hub_threshold,
         exclude_imports=exclude_imports,
+        dataflow=getattr(args, "dataflow", False),
     )
 
     # Perform slice
@@ -3523,6 +3524,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         dest="group_by_module",
         help="Group output nodes by file/module path. Implies --inline. "
              "Adds 'modules' dict (path → nodes) and 'module_edges' summary.",
+    )
+    p_slice.add_argument(
+        "--dataflow",
+        action="store_true",
+        help="Only follow edges where a write/mutate at the source connects to "
+             "a read at the destination (ADR-0015). Produces tighter slices of "
+             "actual data dependencies. Edges without access_mode metadata are "
+             "still followed.",
     )
     p_slice.add_argument(
         "--files",

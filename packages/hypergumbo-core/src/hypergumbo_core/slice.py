@@ -155,6 +155,11 @@ class SliceQuery:
                            still follows their edges, but the final slice only
                            contains real code nodes. Edges touching filtered nodes
                            are also excluded. Default: {event_publisher, event_subscriber}.
+        dataflow: If True, only follow edges where a write/mutate at the source
+                  connects to a read at the destination (ADR-0015). Produces
+                  tighter slices of actual data dependencies. Edges without
+                  access_mode metadata are still followed (to avoid breaking
+                  slices when annotation is incomplete). Default False.
     """
 
     entrypoint: str
@@ -172,6 +177,7 @@ class SliceQuery:
     pass_through_kinds: frozenset[str] = frozenset({
         "event_publisher", "event_subscriber",
     })
+    dataflow: bool = False
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -194,6 +200,8 @@ class SliceQuery:
             result["exclude_imports"] = True
         if self.pass_through_kinds:
             result["pass_through_kinds"] = sorted(self.pass_through_kinds)
+        if self.dataflow:
+            result["dataflow"] = True
         return result
 
 
@@ -518,6 +526,14 @@ def slice_graph(
             # function-level call relationships.
             if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
                 continue
+
+            # ADR-0015: dataflow mode — only follow write/mutate→read chains.
+            # Edges without access_mode metadata are still followed (graceful
+            # degradation when annotation coverage is incomplete).
+            if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
+                mode = edge.meta["access_mode"]
+                if mode not in ("write", "mutate"):
+                    continue
 
             # Get the node at the other end of the edge
             if query.reverse:
