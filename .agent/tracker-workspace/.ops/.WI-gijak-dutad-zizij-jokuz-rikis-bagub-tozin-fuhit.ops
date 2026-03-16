@@ -84,3 +84,18 @@
   clock: 10  # 1007
   nonce: '1007'  # 1007
   message: "Deprioritized to P4. Requires architectural design decision (PageRank/edge-type weighting). Human has been engaged in the design discussion. The existing dampening heuristics handle the worst cases (PR #2140). Will revisit when the design is ready."  # 1007
+- op: update  # 9982
+  at: '2026-03-16T13:14:57Z'  # 9982
+  by: agent  # 9982
+  actor: jgstern_agent  # 9982
+  clock: 11  # 9982
+  nonce: '9982'  # 9982
+  set:  # 9982
+    status: needs_human_review  # 9982
+- op: discuss  # 8267
+  at: '2026-03-16T13:14:57Z'  # 8267
+  by: agent  # 8267
+  actor: jgstern_agent  # 8267
+  clock: 12  # 8267
+  nonce: '8267'  # 8267
+  message: "Architectural design decision needed: PageRank/edge-type weighting vs current heuristic dampening. Human has been engaged in design thread (5 discussion entries). Existing heuristics handle worst cases. Waiting for human decision on implementation approach."  # 8267

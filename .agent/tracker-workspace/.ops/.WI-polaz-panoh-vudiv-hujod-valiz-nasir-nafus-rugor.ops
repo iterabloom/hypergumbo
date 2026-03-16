@@ -19,3 +19,18 @@
     pr_ref:  # dc56
     description: "CSI (Container Storage Interface) Go implementations use a different code\ngeneration pattern than standard gRPC (no UnimplementedXxxServer embedding)\nand ttrpc (no RegisterXxxService). The current gRPC linker detects both of\nthose patterns but misses CSI-style implementations.\n\nDiscovered during kata-containers bakeoff analysis (PR #2176 discussion).\nNeeds investigation of what pattern CSI codegen actually produces, then\nextension of the gRPC linker to match it."  # dc56
     fields: {}  # dc56
+- op: update  # 43bb
+  at: '2026-03-16T13:14:22Z'  # 43bb
+  by: agent  # 43bb
+  actor: jgstern_agent  # 43bb
+  clock: 2  # 43bb
+  nonce: 43bb  # 43bb
+  set:  # 43bb
+    status: needs_human_review  # 43bb
+- op: discuss  # 7ace
+  at: '2026-03-16T13:14:22Z'  # 7ace
+  by: agent  # 7ace
+  actor: jgstern_agent  # 7ace
+  clock: 3  # 7ace
+  nonce: 7ace  # 7ace
+  message: "Cannot investigate: kata-containers repo not in ~/repos/ pool. Need human to clone it, or deprioritize. CSI codegen patterns are niche — only affects Container Storage Interface implementations."  # 7ace

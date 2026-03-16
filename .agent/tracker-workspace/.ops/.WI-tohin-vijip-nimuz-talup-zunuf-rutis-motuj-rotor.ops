@@ -32,3 +32,18 @@
   clock: 3  # 53c3
   nonce: 53c3  # 53c3
   message: "Investigated: bakeoff-features selects first 5 entrypoints from detect_entrypoints output. The ordering favors high-confidence pattern matches (routes, controllers) which may be UI leaves rather than architectural cores. The new diversity cap (PR #2259) helps by ensuring varied entrypoint kinds. A further improvement would be to sort by in-degree within the bakeoff script, but all 4 repos now show GOOD verdicts so this is low-impact."  # 53c3
+- op: update  # 2577
+  at: '2026-03-16T13:14:32Z'  # 2577
+  by: agent  # 2577
+  actor: jgstern_agent  # 2577
+  clock: 4  # 2577
+  nonce: '2577'  # 2577
+  set:  # 2577
+    status: needs_human_review  # 2577
+- op: discuss  # cfec
+  at: '2026-03-16T13:14:32Z'  # cfec
+  by: agent  # cfec
+  actor: jgstern_agent  # cfec
+  clock: 5  # cfec
+  nonce: cfec  # cfec
+  message: "Bakeoff methodology question: should slice entry points be selected by in-degree centrality rather than entrypoint detection score? All 4 repos already show GOOD verdicts. The new diversity cap helps. Needs human decision on whether to invest in changing the bakeoff script."  # cfec
