@@ -70,3 +70,10 @@
   clock: 7  # 69eb
   nonce: 69eb  # 69eb
   message: "what about reverse slicing?"  # 69eb
+- op: discuss  # c9d3
+  at: '2026-03-16T08:25:06Z'  # c9d3
+  by: agent  # c9d3
+  actor: jgstern_agent  # c9d3
+  clock: 8  # c9d3
+  nonce: c9d3  # c9d3
+  message: "Good catch. The current --dataflow filter only handles forward slicing correctly (follows write/mutate edges). For reverse slicing, the logic should be inverted: from a symbol, follow edges where access_mode is 'read' to find code that reads data the symbol writes.\n\nCurrent behavior with --reverse --dataflow: edges with access_mode='read' are skipped, which is wrong for reverse — it would miss readers of the entry point.\n\nFix needed: when query.reverse is True and query.dataflow is True, follow edges where access_mode is 'read' (not write/mutate). This finds 'who reads from this writer?' Will implement in a follow-up PR."  # c9d3
