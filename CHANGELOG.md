@@ -19,10 +19,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Just** (`justfile`, `.just`): Extracts recipes, variables, aliases, and recipe dependency edges.
 - **Mermaid** (`.mmd`, `.mermaid`): Extracts diagram types, nodes, participants, classes, and states.
 - **QML** (`.qml`): Extracts Qt/QML components, properties, signals, functions, and element IDs.
+- **TUI startup diagnostics**: Shows item count, per-tier breakdown, and load time before and after the TUI launches (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
+- **Tracker sync logging**: Always-on file logging for sync operations in `.agent/.sync-logs/sync-YYYY-MM-DD.log` with 30-day garbage collection. All sync diagnostics now written to both stderr and log file.
+- **ADR-0015**: Dataflow access modes on edges — proposes `read`/`write`/`mutate`/`delete` annotations on edges with YAML-driven pattern classification per language.
 
-## [2.2.0] - 2026-03-12
+### Fixed
 
-## [2.2.0] - 2026-03-12
+- **`slice --files` crash**: `TypeError` when `--max-hops` not passed (comparing `int < None`). This caused `smart-test` to silently fall back to full test suite on every run since 2.2.0.
+- **Tracker sync pending-line inflation**: After each auto-sync, pending line count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync and handling both modified and untracked ops files in cleanup.
+- **Tracker sync cleanup hardening**: `unlink()` wrapped in `try/except OSError`; checkout/merge failures logged instead of silent.
+- **`dev-install` now calls `install-hooks`**: Git hooks (ruff, bandit, pytest wrapper) are automatically installed during dev setup. Previously required a separate manual step.
 
 ## [2.2.0] - 2026-03-12
 
