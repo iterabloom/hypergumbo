@@ -231,6 +231,9 @@ def _show_box_plot(means: list[float]) -> None:
     )
 
     plt.clear_figure()
+    # Half-width, half-height of terminal
+    tw, th = plt.terminal_size()
+    plt.plotsize(tw // 2, th // 2)
     plt.box([means], label="mean duration (s)")
     plt.theme("clear")
     plt.show()
