@@ -130,6 +130,34 @@ _INVOKE_IN_BODY = re.compile(
 # Group 1 (named imports): the specifier list inside braces, or None
 # Group 2 (namespace import): the namespace alias after "* as", or None
 # Group 3: the import path
+# ---- Phase 5 patterns: Rust→TS event emission ----
+
+# Matches Rust emit/emit_all/emit_to patterns with string literal event names:
+#   window.emit("event-name", payload)
+#   handle.emit_all("event-name", payload)
+#   app.emit_to("label", "event-name", payload)     (Tauri v2)
+#   Emitter::emit(&self, "event-name", payload)      (trait-based)
+# Group 1: the event name string.
+_RUST_EMIT_PATTERN = re.compile(
+    r"""(?:"""
+    r"""\.emit(?:_all)?\s*\(\s*['"]([a-zA-Z0-9_:\-]+)['"]"""
+    r"""|"""
+    r"""\.emit_to\s*\(\s*['"][^'"]*['"]\s*,\s*['"]([a-zA-Z0-9_:\-]+)['"]"""
+    r"""|"""
+    r"""Emitter::emit\s*\([^,]*,\s*['"]([a-zA-Z0-9_:\-]+)['"]"""
+    r""")""",
+)
+
+# Matches TS/JS listen/once patterns:
+#   listen('event-name', handler)
+#   once('event-name', handler)
+#   appWindow.listen('event-name', handler)
+#   window.listen('event-name', handler)
+# Group 1: the event name string.
+_TS_LISTEN_PATTERN = re.compile(
+    r"""(?:\w+\.)?(?:listen|once)\s*(?:<[^>]*>)?\s*\(\s*['"]([a-zA-Z0-9_:\-]+)['"]""",
+)
+
 _TS_IMPORT_PATTERN = re.compile(
     r"""import\s+(?:"""
     r"""(?!type\s)"""  # skip `import type`
@@ -484,6 +512,43 @@ def _scan_imports_from_wrapper(
     return results
 
 
+def _scan_rust_file_for_emit(file_path: Path) -> list[str]:
+    """Scan a Rust source file for emit/emit_all/emit_to event names.
+
+    Returns a list of event name strings found in the file.
+    """
+    try:
+        content = file_path.read_text(errors="replace")
+    except OSError:  # pragma: no cover
+        return []
+
+    events: list[str] = []
+    for m in _RUST_EMIT_PATTERN.finditer(content):
+        # Groups: (1) emit/emit_all name, (2) emit_to name, (3) Emitter::emit name
+        event = m.group(1) or m.group(2) or m.group(3)
+        if event:
+            events.append(event)
+    return events
+
+
+def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
+    """Scan a TS/JS source file for listen/once event names.
+
+    Returns a list of event name strings found in the file.
+    """
+    try:
+        content = file_path.read_text(errors="replace")
+    except OSError:  # pragma: no cover
+        return []
+
+    events: list[str] = []
+    for m in _TS_LISTEN_PATTERN.finditer(content):
+        event = m.group(1)
+        if event:
+            events.append(event)
+    return events
+
+
 def link_tauri_ipc(
     repo_root: Path,
     ts_js_symbols: list[Symbol],
@@ -698,6 +763,112 @@ def link_tauri_ipc(
                     evidence_type="specta_wrapper_import",
                     access_mode="write",
                 ))
+
+    # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
+    # Scan Rust files for emit patterns and TS/JS files for listen patterns,
+    # then create ipc_event edges for matching event channel names.
+    rust_emit_map: dict[str, list[str]] = {}  # event_name → [rust_file_paths]
+    rust_scanned_paths: set[str] = set()
+    for sym in rust_symbols:
+        if sym.language != "rust":
+            continue
+        if sym.path in rust_scanned_paths:
+            continue
+        rust_scanned_paths.add(sym.path)
+        file_path = Path(sym.path)
+        if not file_path.is_absolute():
+            file_path = repo_root / file_path
+        if not file_path.exists():
+            continue
+        events = _scan_rust_file_for_emit(file_path)
+        for event in events:
+            rust_emit_map.setdefault(event, [])
+            if sym.path not in rust_emit_map[event]:
+                rust_emit_map[event].append(sym.path)
+
+    if rust_emit_map:
+        ts_listen_map: dict[str, list[str]] = {}  # event_name → [ts_file_paths]
+        for file_path in ts_js_files:
+            if not file_path.exists():  # pragma: no cover
+                continue
+            events = _scan_ts_js_file_for_listen(file_path)
+            rel_path = str(file_path)
+            try:
+                rel_path = str(file_path.relative_to(repo_root))
+            except ValueError:  # pragma: no cover
+                pass
+            for event in events:
+                ts_listen_map.setdefault(event, [])
+                if rel_path not in ts_listen_map[event]:
+                    ts_listen_map[event].append(rel_path)
+
+        # Match emit → listen by event name
+        seen_event_edges: set[tuple[str, str, str]] = set()
+        for event_name, rust_paths in rust_emit_map.items():
+            ts_paths = ts_listen_map.get(event_name, [])
+            for rust_path in rust_paths:
+                for ts_path in ts_paths:
+                    dedup = (rust_path, ts_path, event_name)
+                    if dedup in seen_event_edges:  # pragma: no cover
+                        continue
+                    seen_event_edges.add(dedup)
+
+                    src_id = f"rust:{rust_path}:0-0:{event_name}:event_emitter"
+                    dst_id = f"typescript:{ts_path}:0-0:{event_name}:event_listener"
+
+                    # Create synthetic symbols for emitter and listener
+                    if src_id not in seen_publisher_ids:
+                        seen_publisher_ids.add(src_id)
+                        result_symbols.append(Symbol(
+                            id=src_id,
+                            stable_id=None,
+                            shape_id=None,
+                            canonical_name=f"emit('{event_name}')",
+                            fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                            kind="event_publisher",
+                            name=event_name,
+                            path=rust_path,
+                            language="rust",
+                            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+                            origin=PASS_ID,
+                            meta={"tauri_event": event_name},
+                            supply_chain_tier=2,
+                            supply_chain_reason="synthetic Tauri event emitter",
+                        ))
+
+                    listener_seen_key = f"listener:{dst_id}"
+                    if listener_seen_key not in seen_publisher_ids:
+                        seen_publisher_ids.add(listener_seen_key)
+                        result_symbols.append(Symbol(
+                            id=dst_id,
+                            stable_id=None,
+                            shape_id=None,
+                            canonical_name=f"listen('{event_name}')",
+                            fingerprint=hashlib.sha256(dst_id.encode()).hexdigest()[:16],
+                            kind="event_subscriber",
+                            name=event_name,
+                            path=ts_path,
+                            language="typescript",
+                            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+                            origin=PASS_ID,
+                            meta={"tauri_event": event_name},
+                            supply_chain_tier=2,
+                            supply_chain_reason="synthetic Tauri event listener",
+                        ))
+
+                    result_edges.append(Edge.create(
+                        src=src_id,
+                        dst=dst_id,
+                        edge_type="ipc_event",
+                        line=0,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="tauri_emit_listen",
+                        access_mode="write",
+                        dest_access_mode="read",
+                        channel=event_name,
+                    ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
