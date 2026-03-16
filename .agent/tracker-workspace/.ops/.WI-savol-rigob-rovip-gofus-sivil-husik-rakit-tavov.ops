@@ -1,0 +1,21 @@
+- op: create  # 1068
+  at: '2026-03-16T06:19:45Z'  # 1068
+  by: agent  # 1068
+  actor: jgstern_agent  # 1068
+  clock: 1  # 1068
+  nonce: '1068'  # 1068
+  data:  # 1068
+    kind: work_item  # 1068
+    title: "ADR-0015: Retrofit override analyzers with Tier 1 dataflow annotation"  # 1068
+    status: todo_soft  # 1068
+    priority: 2  # 1068
+    parent:  # 1068
+    tags:  # 1068
+    - adr-0015  # 1068
+    - dataflow  # 1068
+    before: []  # 1068
+    duplicate_of: []  # 1068
+    not_duplicate_of: []  # 1068
+    pr_ref:  # 1068
+    description: "39 analyzers override TreeSitterAnalyzer.analyze() and bypass the automatic Tier 1 dataflow annotation added in base.py. These need explicit annotate_dataflow() calls in their custom analyze() methods.\n\nHigh-priority overrides (produce call edges where dataflow matters):\nGo, Java, JS/TS, Ruby, C#, Kotlin, Lua, Perl, PHP, Obj-C, Elixir, Erlang, R\n\nLow-priority overrides (config/markup, minimal call edges):\nCSS, Dockerfile, CMake, Make, Markdown, JSON, TOML, XML, YAML, Requirements, LaTeX, RST, SCSS, Proto, Thrift, Meson, Starlark, Puppet, PureScript, Racket, Scheme, Robot, Svelte, Vue, C\n\n10 function-based analyzers (no TreeSitterAnalyzer at all):\nPython (py.py), Jupyter — tracked separately as WI-mimon.\nHTML, Manifest Targets, Handlebars, Just, QML, Blade, Gnuplot, Mermaid — low priority.\n\nSee lab notebook entry 2026-03-16 for full audit."  # 1068
+    fields: {}  # 1068

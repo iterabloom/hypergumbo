@@ -38,3 +38,19 @@
   set: {}  # 80cc
   add:  # 80cc
     before: [WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj]  # 80cc
+- op: update  # 5d1b
+  at: '2026-03-16T06:42:31Z'  # 5d1b
+  by: agent  # 5d1b
+  actor: jgstern_agent  # 5d1b
+  clock: 4  # 5d1b
+  nonce: 5d1b  # 5d1b
+  set:  # 5d1b
+    status: done  # 5d1b
+    pr_ref: '#2244'  # 5d1b
+- op: discuss  # f71c
+  at: '2026-03-16T06:42:31Z'  # f71c
+  by: agent  # f71c
+  actor: jgstern_agent  # f71c
+  clock: 5  # f71c
+  nonce: f71c  # f71c
+  message: "Merged PR #2244. Added annotate_dataflow() call in base.py after extract_edges_from_file(). Also added get_dataflow_config() with caching, dataflow_patterns/ directory. Covers 65/114 analyzers; 39 override analyzers tracked as WI-savol."  # f71c
