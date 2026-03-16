@@ -676,7 +676,7 @@ class TestBaseAnalyzerIntegration:
 # ==================== BUILT-IN YAML TESTS ====================
 
 
-_EXPECTED_LANGUAGES = ["python", "javascript", "typescript", "rust", "go", "java", "ruby"]
+_EXPECTED_LANGUAGES = ["python", "javascript", "typescript", "rust", "go", "java", "ruby", "csharp", "kotlin"]
 
 
 class TestBuiltInYamlFiles:
