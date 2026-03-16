@@ -1,0 +1,22 @@
+- op: create  # 7a3d
+  at: '2026-03-15T09:25:01Z'  # 7a3d
+  by: agent  # 7a3d
+  actor: jgstern_agent  # 7a3d
+  clock: 1  # 7a3d
+  nonce: 7a3d  # 7a3d
+  data:  # 7a3d
+    kind: work_item  # 7a3d
+    title: "Tauri IPC linker: add Rust→TS event direction (emit/listen patterns)"  # 7a3d
+    status: todo_soft  # 7a3d
+    priority: 1  # 7a3d
+    parent:  # 7a3d
+    tags:  # 7a3d
+    - plazaflow  # 7a3d
+    - linker  # 7a3d
+    - tauri  # 7a3d
+    before: []  # 7a3d
+    duplicate_of: []  # 7a3d
+    not_duplicate_of: []  # 7a3d
+    pr_ref:  # 7a3d
+    description: "## Context\n\nThe existing Tauri IPC linker (linkers/tauri_ipc.py, ~783 lines) traces TypeScript invoke() calls to Rust #[tauri::command] functions, producing ipc_calls edges. However, Tauri's IPC is bidirectional: the Rust backend can also push events to the TypeScript frontend via emit()/emit_all(), and the frontend listens via listen()/once().\n\nFor PlazaFlow (a Tauri desktop app), the Rust backend pushes relay status updates, VM state changes, and other events to the frontend. Currently these appear as dead ends in the graph — the Rust side emits to a channel name but nothing connects it to the TypeScript listener.\n\n## What to Add\n\n### Rust→TS event emission (publish side)\nDetect Rust-side emit patterns:\n- `window.emit(\"event-name\", payload)` / `window.emit_all(\"event-name\", payload)`\n- `app_handle.emit(\"event-name\", payload)` / `app_handle.emit_all(\"event-name\", payload)`  \n- `manager.emit_to(\"label\", \"event-name\", payload)` (Tauri v2)\n- `Emitter::emit(&self, \"event-name\", payload)` (trait-based)\n\n### TS-side event listeners (subscribe side)\nDetect TypeScript/JavaScript listener patterns:\n- `listen('event-name', handler)` / `once('event-name', handler)` from `@tauri-apps/api/event`\n- `appWindow.listen('event-name', handler)` / `appWindow.once('event-name', handler)`\n- `UnlistenFn = await listen(...)` (captures return value)\n\n### Edge creation\n- Match by event channel name (string literal in both emit and listen calls)\n- Create `ipc_event` edges from Rust emit site → TS listen site (or use existing `ipc_calls` with a different evidence_type)\n- Create synthetic symbols as needed (following the pattern of the existing invoke-side linker)\n- Confidence: 0.85 (same as wasm_bindgen — string-literal matching across languages)\n\n## Implementation Notes\n\n- The existing tauri_ipc.py already scans both Rust symbols and TS/JS files — extend the scanning phases\n- Tauri v1 vs v2 API differences: v2 uses `Emitter` trait and `emit_to`; v1 uses `Window::emit`. Support both.\n- Variable-based event names should be supported with lower confidence (0.65), matching the event sourcing linker's approach\n- Consider whether emit_all (broadcast) should create edges to ALL listeners or just those with matching event names\n\n## Acceptance Criteria\n\n- Detects Rust emit/emit_all/emit_to with literal event names\n- Detects TS listen/once with literal event names\n- Creates ipc_event edges between matched emit/listen pairs\n- Handles both Tauri v1 and v2 API surfaces\n- Variable-based event names supported with lower confidence\n- 100% test coverage\n- Validated against a real Tauri v2 app via bakeoff"  # 7a3d
+    fields: {}  # 7a3d

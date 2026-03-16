@@ -8,7 +8,7 @@ These are languages that most developers will encounter regularly, representing
 the core of modern software development stacks.
 """
 
-__version__ = "2.2.0"
+__version__ = "2.2.1"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
@@ -63,6 +63,9 @@ ANALYZER_MODULES = [
 
     # Cross-language manifest build targets
     "hypergumbo_lang_mainstream.manifest_targets",
+
+    # Notebook formats
+    "hypergumbo_lang_mainstream.jupyter",
 ]
 
 __all__ = ["ANALYZER_MODULES", "__version__"]

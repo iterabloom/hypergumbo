@@ -37,7 +37,6 @@ import json
 import os
 import re
 import subprocess  # nosec B404 — required for git subprocess calls
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +44,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from hypergumbo_tracker.sync_log import init_sync_log, write_log
 from hypergumbo_tracker.validation import validate_all
 
 
@@ -413,8 +413,8 @@ def _poll_ci(
 
 
 def _log(msg: str) -> None:
-    """Write a sync diagnostic message to stderr."""
-    print(f"sync: {msg}", file=sys.stderr)
+    """Write a sync diagnostic message to stderr and the sync log file."""
+    write_log(msg)
 
 
 def _check_pr_merged(
@@ -807,6 +807,9 @@ def do_sync(
     assert preflight.ok, "preflight must pass before calling do_sync"
     assert preflight.git_dir is not None
 
+    # Initialize file logging (always on, 30-day retention).
+    init_sync_log(repo_root)
+
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     sync_branch = f"tracker-sync/{timestamp}"
     gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
@@ -1014,6 +1017,12 @@ def do_sync(
                 repo_root, "read-tree", new_base_sha,
                 check=False, env=idx_env,
             )
+            if rb_read.returncode != 0:
+                _log(
+                    f"read-tree failed during rebase "
+                    f"({rb_read.stderr.strip()}), "
+                    f"proceeding with original commit"
+                )
             if rb_read.returncode == 0:
                 _git(
                     repo_root, "add", "--", *_TRACKER_PATHS,
@@ -1103,15 +1112,74 @@ def do_sync(
         if tmp_index_path.exists():
             tmp_index_path.unlink()
 
-        # Fetch latest remote ref (non-fatal).  We deliberately do NOT
-        # ``git pull`` here because that merges into the currently checked-out
-        # branch, which is likely a feature branch — not ``base_branch``.
-        # A fetch is sufficient: it updates ``origin/dev`` so the next
-        # ``do_sync`` or ``auto-pr`` sees the latest base.
+        # Fetch latest remote ref (non-fatal).
         _git(
             repo_root, "fetch", preflight.push_remote, base_branch,
             check=False,
         )
+
+        # If we're sitting on the base branch itself, fast-forward it
+        # to origin/dev so the synced ops files become tracked.  Without
+        # this, the ops files remain "untracked" in the working tree and
+        # pending_sync_lines() counts them again on the next call,
+        # causing the pending-line count to grow by ~22 per sync cycle.
+        # Fast-forward-only is safe: we haven't made local commits on
+        # the base branch (the plumbing approach commits to a detached
+        # sync branch), so ff-only either succeeds or is a no-op.
+        #
+        # The synced ops files may be in one of two states:
+        # - **Untracked** (new items): must be removed before merge,
+        #   otherwise git refuses to overwrite them.
+        # - **Modified** (updates to existing items): must be reset to
+        #   HEAD content before merge, otherwise git refuses to
+        #   overwrite dirty tracked files.
+        # Both are safe because the content is identical to what's on
+        # origin/dev (we just synced them).  Use ``git checkout HEAD``
+        # for tracked files and ``unlink`` for untracked.
+        if preflight.original_branch == base_branch:
+            # Reset tracked ops files to HEAD (handles modified files).
+            # ``git checkout HEAD -- <paths>`` silently ignores
+            # untracked files, so this is safe.
+            co_result = _git(
+                repo_root,
+                "checkout", "HEAD", "--",
+                *_OPS_PATHS,
+                check=False,
+            )
+            if co_result.returncode != 0:
+                _log(
+                    f"checkout HEAD failed during cleanup: "
+                    f"{co_result.stderr.strip()}"
+                )
+            # Remove untracked ops files (new items created this
+            # session that aren't on the local branch yet).
+            untracked = _git(
+                repo_root,
+                "ls-files", "--others", "--exclude-standard", "--",
+                *_OPS_PATHS,
+                check=False,
+            )
+            if untracked.returncode == 0 and untracked.stdout.strip():
+                for fpath in untracked.stdout.strip().splitlines():
+                    full = repo_root / fpath
+                    if full.is_file():
+                        try:
+                            full.unlink()
+                        except OSError as exc:
+                            _log(
+                                f"failed to remove {fpath}: {exc}"
+                            )
+            ff_result = _git(
+                repo_root,
+                "merge", "--ff-only",
+                f"{preflight.push_remote}/{base_branch}",
+                check=False,
+            )
+            if ff_result.returncode != 0:
+                _log(
+                    f"ff-only merge failed during cleanup: "
+                    f"{ff_result.stderr.strip()}"
+                )
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)

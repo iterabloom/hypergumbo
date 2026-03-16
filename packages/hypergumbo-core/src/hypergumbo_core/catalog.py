@@ -104,7 +104,7 @@ def is_available(p: Pass) -> bool:
 
 
 # Config/data formats that shouldn't trigger pass suggestions
-CONFIG_LANGUAGES = {"json", "yaml", "toml", "xml", "css", "markdown"}
+CONFIG_LANGUAGES = {"json", "yaml", "toml", "xml", "css", "markdown", "just", "mermaid"}
 
 
 def get_default_catalog() -> Catalog:
@@ -117,6 +117,48 @@ def get_default_catalog() -> Catalog:
                 description="Python AST parser (classes, functions, imports)",
                 availability="core",
                 languages=["python"],
+            ),
+            Pass(
+                id="jupyter-ast-v1",
+                description="Jupyter notebook code cell parser",
+                availability="core",
+                languages=["jupyter"],
+            ),
+            Pass(
+                id="blade-v1",
+                description="Laravel Blade template directives",
+                availability="core",
+                languages=["blade"],
+            ),
+            Pass(
+                id="gnuplot-v1",
+                description="Gnuplot functions, variables, plot commands",
+                availability="core",
+                languages=["gnuplot"],
+            ),
+            Pass(
+                id="handlebars-v1",
+                description="Handlebars partials and block helpers",
+                availability="core",
+                languages=["handlebars"],
+            ),
+            Pass(
+                id="just-v1",
+                description="Justfile recipes and dependencies",
+                availability="core",
+                languages=["just"],
+            ),
+            Pass(
+                id="mermaid-v1",
+                description="Mermaid diagram types and nodes",
+                availability="core",
+                languages=["mermaid"],
+            ),
+            Pass(
+                id="qml-v1",
+                description="QML components, properties, signals",
+                availability="core",
+                languages=["qml"],
             ),
             Pass(
                 id="html-pattern-v1",

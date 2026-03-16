@@ -42,3 +42,12 @@
   clock: 6  # 0ed9
   nonce: 0ed9  # 0ed9
   message: "[migrated from justification field] ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 0ed9
+- op: update  # 3864
+  at: '2026-03-15T20:46:04Z'  # 3864
+  by: human  # 3864
+  actor: jgstern  # 3864
+  clock: 7  # 3864
+  nonce: '3864'  # 3864
+  set: {}  # 3864
+  add:  # 3864
+    tags: [someday]  # 3864

@@ -38,3 +38,9 @@ echo ""
 echo "✅ Dev install complete"
 echo "   hypergumbo => $(command -v hypergumbo)"
 hypergumbo --version
+
+# Step 4: Install git hooks (idempotent).
+# Sets core.hooksPath, installs pytest wrapper, configures textconv.
+echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/install-hooks"

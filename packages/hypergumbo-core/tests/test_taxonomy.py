@@ -99,6 +99,12 @@ class TestLanguagesRegistry:
         assert "yaml" in LANGUAGES
         assert LANGUAGES["yaml"].roles == FileRole.CONFIG
 
+    def test_jupyter_is_analyzable(self) -> None:
+        """Jupyter notebooks are registered as analyzable."""
+        assert "jupyter" in LANGUAGES
+        assert LANGUAGES["jupyter"].roles == FileRole.ANALYZABLE
+        assert "*.ipynb" in LANGUAGES["jupyter"].extensions
+
 
 class TestGetLanguage:
     """Tests for language detection from file path."""
@@ -114,6 +120,12 @@ class TestGetLanguage:
         f = tmp_path / "types.pyi"
         f.touch()
         assert get_language(f) == "python"
+
+    def test_jupyter_notebook(self, tmp_path: Path) -> None:
+        """Detects Jupyter from .ipynb extension."""
+        f = tmp_path / "analysis.ipynb"
+        f.touch()
+        assert get_language(f) == "jupyter"
 
     def test_markdown_file(self, tmp_path: Path) -> None:
         """Detects Markdown from .md extension."""

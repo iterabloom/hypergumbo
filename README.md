@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
 [![Coverage](https://img.shields.io/endpoint?url=https://codeberg.org/iterabloom/hypergumbo/raw/branch/badges/coverage.json)](https://codeberg.org/iterabloom/hypergumbo)
 
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase.
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase.
 
 ```bash
 pip install hypergumbo
@@ -26,7 +26,7 @@ Output:
 ```bash
 # hypergumbo
 
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
 
 ## Overview
 Python (91%), Markdown (4%), Yaml (3%)
@@ -201,12 +201,11 @@ git clone https://codeberg.org/iterabloom/hypergumbo.git
 cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 ./scripts/dev-install
-./scripts/install-hooks
 source .venv/bin/activate  # reload to enable pytest alias
 pytest                      # runs smart-test (affected tests only)
 ```
 
-After `install-hooks`, `pytest` is aliased to `./scripts/smart-test`, which runs only tests affected by your changes. 100% test coverage required.
+`dev-install` installs all packages, git hooks, and the pytest/smart-test wrapper. 100% test coverage required.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based workflow for external contributors), smart test selection setup, and coverage requirements. Agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md).
 

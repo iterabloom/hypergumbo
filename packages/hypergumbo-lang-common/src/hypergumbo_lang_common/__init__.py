@@ -8,7 +8,7 @@ These languages are commonly encountered but more domain-specific than
 the mainstream package.
 """
 
-__version__ = "2.2.0"
+__version__ = "2.2.1"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
@@ -43,6 +43,15 @@ ANALYZER_MODULES = [
     "hypergumbo_lang_common.graphql",
     "hypergumbo_lang_common.proto",
     "hypergumbo_lang_common.thrift",
+
+    # Templating
+    "hypergumbo_lang_common.handlebars",
+
+    # UI frameworks
+    "hypergumbo_lang_common.qml",
+
+    # Build systems
+    "hypergumbo_lang_common.just",
 
     # Infrastructure and config
     "hypergumbo_lang_common.nix",

@@ -47,3 +47,21 @@
   clock: 5  # 14cf
   nonce: 14cf  # 14cf
   message: "Closing as done (scope deferral). C/C++ function pointer dispatch requires cross-TU analysis — struct field assignment in one file, invocation in another. Not in current spec scope (C/C++ is 'tree-sitter' level only). All BROAD bakeoff sessions converged at 0 CRITICAL/0 HIGH across 140 repos without this feature. No bakeoff assessment rated it above MEDIUM. If future bakeoffs surface this as CRITICAL/HIGH, open a new tracker item."  # 14cf
+- op: update  # b32b
+  at: '2026-03-15T20:55:43Z'  # b32b
+  by: human  # b32b
+  actor: jgstern  # b32b
+  clock: 6  # b32b
+  nonce: b32b  # b32b
+  set: {}  # b32b
+  add:  # b32b
+    tags: [done-ish]  # b32b
+- op: update  # f943
+  at: '2026-03-15T20:57:24Z'  # f943
+  by: human  # f943
+  actor: jgstern  # f943
+  clock: 7  # f943
+  nonce: f943  # f943
+  set: {}  # f943
+  add:  # f943
+    tags: [test_tag]  # f943

@@ -3,16 +3,33 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.2.0
+- Released **tool** is at: v2.2.1
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
 
-## [2.2.0] - 2026-03-12
+## [2.2.1] - 2026-03-15
 
-## [2.2.0] - 2026-03-12
+### Added
+
+#### Language analyzers
+
+- **Jupyter** (`.ipynb`): Extracts Python symbols and call edges from notebook code cells. Strips IPython magics/shell commands, tracks cross-cell line offsets.
+- **Blade** (`.blade.php`), **Gnuplot** (`.gnuplot`, `.gp`, `.plt`), **Handlebars** (`.hbs`), **Just** (`justfile`), **Mermaid** (`.mmd`), **QML** (`.qml`): New regex-based analyzers for templates, build files, diagrams, and Qt components.
+
+#### Tracker
+
+- **TUI startup diagnostics**: Prints item count, per-tier breakdown, and load time before and after the TUI (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
+- **Sync logging**: Always-on file logging in `.agent/.sync-logs/` with 30-day garbage collection.
+
+### Fixed
+
+- **`slice --files` crash** when `--max-hops` not passed (`int < None` TypeError). Broken since 2.2.0 — caused `smart-test` to silently fall back to full test suite on every run.
+- **Tracker sync pending-line inflation**: count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync.
+- **Tracker sync cleanup**: `unlink()` OSError no longer halts cleanup; checkout/merge failures now logged.
+- **`dev-install`** now calls `install-hooks` automatically (was a separate manual step).
 
 ## [2.2.0] - 2026-03-12
 

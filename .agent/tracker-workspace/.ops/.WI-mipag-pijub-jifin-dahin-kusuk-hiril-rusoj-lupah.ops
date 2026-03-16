@@ -1,0 +1,28 @@
+- op: create  # 8bf2
+  at: '2026-03-15T09:55:45Z'  # 8bf2
+  by: agent  # 8bf2
+  actor: jgstern_agent  # 8bf2
+  clock: 1  # 8bf2
+  nonce: 8bf2  # 8bf2
+  data:  # 8bf2
+    kind: work_item  # 8bf2
+    title: "SHAM: test item gamma (delete me)"  # 8bf2
+    status: todo_soft  # 8bf2
+    priority: 4  # 8bf2
+    parent:  # 8bf2
+    tags:  # 8bf2
+    - sham  # 8bf2
+    before: []  # 8bf2
+    duplicate_of: []  # 8bf2
+    not_duplicate_of: []  # 8bf2
+    pr_ref:  # 8bf2
+    description: "Sham work item for testing auto-sync behavior. Delete immediately."  # 8bf2
+    fields: {}  # 8bf2
+- op: update  # 3161
+  at: '2026-03-15T21:14:07Z'  # 3161
+  by: human  # 3161
+  actor: jgstern  # 3161
+  clock: 2  # 3161
+  nonce: '3161'  # 3161
+  set:  # 3161
+    status: deleted  # 3161

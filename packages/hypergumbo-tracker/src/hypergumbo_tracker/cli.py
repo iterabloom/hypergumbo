@@ -1083,6 +1083,32 @@ def _print_screen_warning() -> None:
     print(_SCREEN_HINT, file=sys.stderr)
 
 
+def _tui_startup_summary(ts: TrackerSet) -> str:
+    """Pre-load diagnostic: count ops files per tier and time the load.
+
+    Returns a compact one-line summary like:
+      "298 items (3 tiers, 12 compiled) in 0.43s"
+    """
+    # Count ops files per tier (cheap — directory listing only).
+    file_counts: dict[str, int] = {}
+    for t, store in ts._tier_stores.items():
+        file_counts[t.value] = len(store._list_item_files())
+
+    tier_str = ", ".join(
+        f"{v} {k}" for k, v in file_counts.items() if v > 0
+    )
+
+    # Time the actual load.
+    t0 = time.monotonic()
+    items = ts.list_items()
+    elapsed = time.monotonic() - t0
+
+    return (
+        f"{len(items)} items ({tier_str}) "
+        f"loaded in {elapsed:.2f}s"
+    )
+
+
 def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'tui' subcommand — launch Textual TUI."""
     from hypergumbo_tracker.tui import TrackerApp
@@ -1092,14 +1118,22 @@ def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
         _print_screen_warning()
         time.sleep(3)
 
+    # Print startup diagnostics (visible during the pause before TUI).
+    startup_msg = _tui_startup_summary(ts)
+    sys.stderr.write(f"htrac: {startup_msg}\n")
+    sys.stderr.flush()
+
     app = TrackerApp(tracker_set=ts)
     app.run()
 
+    # Reprint after TUI exits so the user can see it.
     if altscreen_off:
         # Clear the screen to remove TUI remnants, then re-show the hint.
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
         _print_screen_warning()
+    sys.stderr.write(f"htrac: {startup_msg}\n")
+    sys.stderr.flush()
 
     return EXIT_SUCCESS
 

@@ -306,12 +306,16 @@ def classify_file(
         if re.search(pattern, rel):
             return FileClassification(Tier.INTERNAL_DEP, f"test file matches {pattern}")
 
-    # 5c. Check fuzz/benchmark patterns (not production code)
+    # 5c. Jupyter notebooks are exploratory, not part of the import namespace
+    if rel.endswith(".ipynb"):
+        return FileClassification(Tier.INTERNAL_DEP, "notebook file (.ipynb)")
+
+    # 5d. Check fuzz/benchmark patterns (not production code)
     for pattern in FUZZ_BENCH_PATTERNS:
         if re.search(pattern, rel):
             return FileClassification(Tier.INTERNAL_DEP, f"fuzz/bench path matches {pattern}")
 
-    # 5d. Check custom first_party_patterns from config
+    # 5e. Check custom first_party_patterns from config
     if config and config.first_party_patterns:
         for pattern in config.first_party_patterns:
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):

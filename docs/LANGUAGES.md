@@ -10,13 +10,16 @@ Hypergumbo includes language analyzers for dozens of languages and file formats.
 | **Application** | Python, JavaScript, TypeScript, Java, C#, F#, Go, Rust, Ruby, PHP, Perl, Swift, Kotlin, Scala, Groovy, Clojure, Common Lisp, Erlang, Elixir, Lua, Haskell, OCaml, Julia, R, Dart |
 | **Systems** | C, C++, Zig, Objective-C, D, Ada, Nim, Pascal, V, Odin, Fortran, CUDA, LLVM IR |
 | **Functional** | PureScript, Racket, Scheme, Elm, Gleam, Janet, Fennel |
-| **Frontend/Web** | Vue, Svelte, Astro, HTML, CSS/SCSS |
+| **Frontend/Web** | Vue, Svelte, Astro, HTML, CSS/SCSS, QML |
+| **Templating** | Blade, Handlebars |
 | **Smart Contracts** | Solidity, Circom*, Apex |
 | **Hardware/GPU** | Verilog/SystemVerilog, VHDL, GLSL, HLSL, WGSL |
-| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Meson, Nix, Starlark, Bash, PowerShell, Fish, Puppet, Bitbake, YAML/Ansible |
+| **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Just, Meson, Nix, Starlark, Bash, PowerShell, Fish, Puppet, Bitbake, YAML/Ansible |
 | **Data/Schema** | SQL, SPARQL, GraphQL, Protocol Buffers, Thrift, Cap'n Proto, Smithy, Prisma, JSON, TOML, XML, INI, Properties, KDL, JSONNet |
 | **Game Dev** | GDScript, Haxe, Luau |
 | **Proof/Formal** | Agda, Lean*, Wolfram* |
+| **Notebooks** | Jupyter Notebook (.ipynb) |
+| **Diagram/Plotting** | Mermaid, Gnuplot |
 | **Documentation** | Markdown, LaTeX, BibTeX, reStructuredText, AsciiDoc |
 | **Testing** | Robot Framework |
 | **Legacy** | COBOL, Tcl, Pony, Hack, Twig |

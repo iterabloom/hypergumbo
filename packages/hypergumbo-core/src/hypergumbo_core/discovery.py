@@ -410,6 +410,7 @@ DEFAULT_EXCLUDES = [
     ".hg",
     # Caches
     "__pycache__",
+    ".ipynb_checkpoints",  # Jupyter notebook auto-save copies
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",

@@ -46,3 +46,10 @@
   clock: 5  # 8892
   nonce: '8892'  # 8892
   message: "Impact: Moderate. 38% of commands (122/323) across 4 Tauri repos were unreachable through literal invoke matching. Now fixed in PR #2165 (specta wrapper resolution). Analogous issues exist in Electron IPC (contextBridge wrappers), GraphQL codegen (useGetUsersQuery hooks), gRPC generated clients, and wasm_bindgen facade modules."  # 8892
+- op: discuss  # a408
+  at: '2026-03-15T21:02:44Z'  # a408
+  by: human  # a408
+  actor: jgstern  # a408
+  clock: 6  # a408
+  nonce: a408  # a408
+  message: "if there are analogous issues, doesn't that imply we've discovered an invariant? are there any existing invariants that would capture these kinds of issues?"  # a408
