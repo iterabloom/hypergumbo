@@ -27,3 +27,10 @@
   clock: 2  # 1e38
   nonce: '1e38'  # 1e38
   message: "repos are present at `~/plazaflow_focused_mar15`. please create a new curriculum file at `~/hypergumbo_lab_notebook/curricula/` and following the conventions of the other curriculum files in that folder."  # 1e38
+- op: discuss  # 29bd
+  at: '2026-03-16T04:02:15Z'  # 29bd
+  by: agent  # 29bd
+  actor: jgstern_agent  # 29bd
+  clock: 3  # 29bd
+  nonce: 29bd  # 29bd
+  message: "Created curriculum file at ~/hypergumbo_lab_notebook/curricula/deep-plazaflow-focused-20260315.md. Four single-repo cohorts in progression order: yjs → blocksuite → AFFiNE → mediasoup. Ready to run once human approves."  # 29bd
