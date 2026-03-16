@@ -1,0 +1,22 @@
+- op: create  # 6736
+  at: '2026-03-16T04:37:14Z'  # 6736
+  by: agent  # 6736
+  actor: jgstern_agent  # 6736
+  clock: 1  # 6736
+  nonce: '6736'  # 6736
+  data:  # 6736
+    kind: work_item  # 6736
+    title: "ADR-0015: Tier 1 integration — annotate_dataflow in base.py"  # 6736
+    status: todo_soft  # 6736
+    priority: 1  # 6736
+    parent:  # 6736
+    tags:  # 6736
+    - adr-0015  # 6736
+    - dataflow  # 6736
+    before:  # 6736
+    - WI-bujud-zufop-lojoh-fabak-vakib-ruhum-jipih-naniz  # 6736
+    duplicate_of: []  # 6736
+    not_duplicate_of: []  # 6736
+    pr_ref:  # 6736
+    description: "One-line integration in analyze/base.py after extract_edges_from_file:\n\n  edges = annotate_dataflow(edges, tree, source, self.lang)\n\nThis gives all 104 TreeSitterAnalyzer-based language analyzers automatic\ndataflow annotation with zero per-analyzer code changes.\n\nDepends on: dataflow.py module (YAML loader + annotate_dataflow).\nSee ADR-0015 §5 (Tier 1)."  # 6736
+    fields: {}  # 6736
