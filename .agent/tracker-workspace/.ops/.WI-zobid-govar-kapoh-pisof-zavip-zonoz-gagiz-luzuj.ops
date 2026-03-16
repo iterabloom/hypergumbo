@@ -20,3 +20,21 @@
     pr_ref:  # ed00
     description: "Create dataflow/*.yaml pattern files for the four highest-priority\nlanguages (covering ~90% of PlazaFlow's codebase and most common repos):\n\n- dataflow/python.yaml: assignment, augmented_assignment, call, delete\n- dataflow/javascript.yaml: assignment_expression, variable_declarator,\n  augmented_assignment_expression, delete_expression\n- dataflow/typescript.yaml: (extends javascript.yaml or shares patterns)\n- dataflow/rust.yaml: let_declaration, assignment_expression,\n  reference_expression (mut vs immutable borrows)\n\nEach file is ~10-30 lines. Patterns map tree-sitter node types to\nread/write/mutate/delete roles for left/right/argument positions.\n\nDepends on: YAML loader (to consume these files).\nSee ADR-0015 §4 YAML examples."  # ed00
     fields: {}  # ed00
+- op: update  # dbfa
+  at: '2026-03-16T04:43:33Z'  # dbfa
+  by: agent  # dbfa
+  actor: jgstern_agent  # dbfa
+  clock: 2  # dbfa
+  nonce: dbfa  # dbfa
+  set: {}  # dbfa
+  remove:  # dbfa
+    before: [WI-tobul-firod-lifur-danaj-punoj-pokap-luzug-govib]  # dbfa
+- op: update  # eef5
+  at: '2026-03-16T04:43:33Z'  # eef5
+  by: agent  # eef5
+  actor: jgstern_agent  # eef5
+  clock: 3  # eef5
+  nonce: eef5  # eef5
+  set: {}  # eef5
+  add:  # eef5
+    before: [WI-mimon-rosir-lapod-mikif-hukab-kikos-jukob-bakah]  # eef5

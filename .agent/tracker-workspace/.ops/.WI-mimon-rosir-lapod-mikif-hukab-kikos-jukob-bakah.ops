@@ -20,3 +20,12 @@
     pr_ref:  # a7f1
     description: "py.py and jupyter.py use Python's ast module, not TreeSitterAnalyzer.\nThey won't get automatic Tier 1 annotation. Need a dedicated integration\npoint — either an ast-module-aware variant of classify_access, or a\npost-hoc pass that maps ast node types to the same access_mode vocabulary.\n\nPython is the highest-value language for dataflow analysis: module-level\nglobals (test isolation), framework state (Django settings, Flask config),\nand the PlazaFlow Yjs patterns all involve Python.\n\nDepends on: core dataflow YAMLs (Python patterns defined).\nSee ADR-0015 §5 coverage gap table."  # a7f1
     fields: {}  # a7f1
+- op: update  # 81fb
+  at: '2026-03-16T04:43:34Z'  # 81fb
+  by: agent  # 81fb
+  actor: jgstern_agent  # 81fb
+  clock: 2  # 81fb
+  nonce: 81fb  # 81fb
+  set: {}  # 81fb
+  remove:  # 81fb
+    before: [WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj]  # 81fb

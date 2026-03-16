@@ -20,3 +20,21 @@
     pr_ref:  # 6736
     description: "One-line integration in analyze/base.py after extract_edges_from_file:\n\n  edges = annotate_dataflow(edges, tree, source, self.lang)\n\nThis gives all 104 TreeSitterAnalyzer-based language analyzers automatic\ndataflow annotation with zero per-analyzer code changes.\n\nDepends on: dataflow.py module (YAML loader + annotate_dataflow).\nSee ADR-0015 §5 (Tier 1)."  # 6736
     fields: {}  # 6736
+- op: update  # fb73
+  at: '2026-03-16T04:43:33Z'  # fb73
+  by: agent  # fb73
+  actor: jgstern_agent  # fb73
+  clock: 2  # fb73
+  nonce: fb73  # fb73
+  set: {}  # fb73
+  remove:  # fb73
+    before: [WI-bujud-zufop-lojoh-fabak-vakib-ruhum-jipih-naniz]  # fb73
+- op: update  # 80cc
+  at: '2026-03-16T04:43:33Z'  # 80cc
+  by: agent  # 80cc
+  actor: jgstern_agent  # 80cc
+  clock: 3  # 80cc
+  nonce: 80cc  # 80cc
+  set: {}  # 80cc
+  add:  # 80cc
+    before: [WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj]  # 80cc
