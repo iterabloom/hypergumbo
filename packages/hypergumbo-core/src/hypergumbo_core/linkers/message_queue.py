@@ -506,6 +506,9 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="variable_match" if is_variable_match else "topic_match",
+                        access_mode="write",
+                        dest_access_mode="read",
+                        channel=key[1],
                     )
                     edge.meta = {
                         "queue_type": key[0],

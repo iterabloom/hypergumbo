@@ -285,6 +285,8 @@ def link_wasm_bindgen(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="wasm_bindgen_import",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

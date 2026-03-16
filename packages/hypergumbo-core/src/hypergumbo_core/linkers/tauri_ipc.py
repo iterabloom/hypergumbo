@@ -594,6 +594,8 @@ def link_tauri_ipc(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="tauri_invoke",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -694,6 +696,7 @@ def link_tauri_ipc(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="specta_wrapper_import",
+                    access_mode="write",
                 ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
