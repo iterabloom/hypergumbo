@@ -12,23 +12,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **Jupyter notebook support**: Analyzes `.ipynb` files by extracting Python code cells, stripping IPython magics/shell commands, and parsing with the Python AST. Notebooks are classified as Tier 2 (INTERNAL_DEP) since they live outside the project's import namespace. Supports cross-cell symbol detection and call edge extraction.
-- **Blade** (`.blade.php`): Extracts Laravel Blade directives — sections, yields, extends, components.
-- **Gnuplot** (`.gnuplot`, `.gp`, `.plt`): Extracts function definitions, variable assignments, and plot commands.
-- **Handlebars** (`.hbs`, `.handlebars`): Extracts partial references, block helpers, and custom helpers.
-- **Just** (`justfile`, `.just`): Extracts recipes, variables, aliases, and recipe dependency edges.
-- **Mermaid** (`.mmd`, `.mermaid`): Extracts diagram types, nodes, participants, classes, and states.
-- **QML** (`.qml`): Extracts Qt/QML components, properties, signals, functions, and element IDs.
-- **TUI startup diagnostics**: Shows item count, per-tier breakdown, and load time before and after the TUI launches (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
-- **Tracker sync logging**: Always-on file logging for sync operations in `.agent/.sync-logs/sync-YYYY-MM-DD.log` with 30-day garbage collection. All sync diagnostics now written to both stderr and log file.
-- **ADR-0015**: Dataflow access modes on edges — proposes `read`/`write`/`mutate`/`delete` annotations on edges with YAML-driven pattern classification per language.
+#### Language analyzers
+
+- **Jupyter** (`.ipynb`): Extracts Python symbols and call edges from notebook code cells. Strips IPython magics/shell commands, tracks cross-cell line offsets.
+- **Blade** (`.blade.php`), **Gnuplot** (`.gnuplot`, `.gp`, `.plt`), **Handlebars** (`.hbs`), **Just** (`justfile`), **Mermaid** (`.mmd`), **QML** (`.qml`): New regex-based analyzers for templates, build files, diagrams, and Qt components.
+
+#### Tracker
+
+- **TUI startup diagnostics**: Prints item count, per-tier breakdown, and load time before and after the TUI (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
+- **Sync logging**: Always-on file logging in `.agent/.sync-logs/` with 30-day garbage collection.
 
 ### Fixed
 
-- **`slice --files` crash**: `TypeError` when `--max-hops` not passed (comparing `int < None`). This caused `smart-test` to silently fall back to full test suite on every run since 2.2.0.
-- **Tracker sync pending-line inflation**: After each auto-sync, pending line count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync and handling both modified and untracked ops files in cleanup.
-- **Tracker sync cleanup hardening**: `unlink()` wrapped in `try/except OSError`; checkout/merge failures logged instead of silent.
-- **`dev-install` now calls `install-hooks`**: Git hooks (ruff, bandit, pytest wrapper) are automatically installed during dev setup. Previously required a separate manual step.
+- **`slice --files` crash** when `--max-hops` not passed (`int < None` TypeError). Broken since 2.2.0 — caused `smart-test` to silently fall back to full test suite on every run.
+- **Tracker sync pending-line inflation**: count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync.
+- **Tracker sync cleanup**: `unlink()` OSError no longer halts cleanup; checkout/merge failures now logged.
+- **`dev-install`** now calls `install-hooks` automatically (was a separate manual step).
 
 ## [2.2.0] - 2026-03-12
 
