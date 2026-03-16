@@ -837,17 +837,19 @@ def _detect_jsx_route(
 def _detect_create_browser_router(
     node: "tree_sitter.Node",
     source: bytes,
-) -> list[tuple[str, str | None]]:
+) -> list[tuple[str, str | None, dict[str, str | None]]]:
     """Detect createBrowserRouter/createRoutesFromElements route config objects.
 
     Parses call expressions like:
         createBrowserRouter([
             { path: "/", element: <Root /> },
             { path: "/users", element: <Users />, children: [...] },
+            { path: "/lazy", lazy: () => import("./LazyPage") },
+            { path: "/data", loader: loadData, action: saveData },
         ])
 
-    Returns a list of (route_path, component_name) tuples for each route
-    config object found in the array argument.
+    Returns a list of (route_path, component_name, extra_meta) tuples.
+    extra_meta may contain 'loader_ref', 'action_ref', and 'lazy_import'.
     """
     if node.type != "call_expression":  # pragma: no cover
         return []
@@ -868,7 +870,7 @@ def _detect_create_browser_router(
         return []
 
     # Find the array argument
-    routes: list[tuple[str, str | None]] = []
+    routes: list[tuple[str, str | None, dict[str, str | None]]] = []
     for arg in args_node.children:
         if arg.type == "array":
             _extract_route_objects(arg, source, "", routes)
@@ -877,15 +879,53 @@ def _detect_create_browser_router(
     return routes
 
 
+def _extract_lazy_import_path(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract the import path from a lazy route function.
+
+    Handles patterns like:
+        lazy: () => import('./Page')
+        lazy: () => import("./components/Dashboard")
+
+    Traverses the arrow function body to find a dynamic import() call
+    and extracts its string argument.
+    """
+    # The value node for a lazy property is typically an arrow_function
+    # containing a call_expression with import()
+    nodes_to_check = [node]
+    while nodes_to_check:
+        current = nodes_to_check.pop()
+        if current.type == "call_expression":
+            # Check if it's import('...')
+            for child in current.children:
+                if child.type == "import":
+                    # Found dynamic import — extract string argument
+                    for arg_child in current.children:
+                        if arg_child.type == "arguments":
+                            for a in arg_child.children:
+                                if a.type == "string":
+                                    return _node_text(a, source).strip("'\"")
+        for child in current.children:
+            nodes_to_check.append(child)
+    return None
+
+
 def _extract_route_objects(
     array_node: "tree_sitter.Node",
     source: bytes,
     parent_path: str,
-    routes: list[tuple[str, str | None]],
+    routes: list[tuple[str, str | None, dict[str, str | None]]],
 ) -> None:
     """Recursively extract route path/component from route config objects.
 
-    Handles nested children arrays for path composition.
+    Handles nested children arrays for path composition. Also extracts
+    loader, action, and lazy properties from React Router v6.4+ route
+    config objects.
+
+    Each entry in routes is (full_path, component_name, extra_meta) where
+    extra_meta may contain 'loader_ref', 'action_ref', and 'lazy_import'.
     """
     for child in array_node.children:
         if child.type != "object":
@@ -894,6 +934,9 @@ def _extract_route_objects(
         path = None
         component = None
         children_array = None
+        loader_ref = None
+        action_ref = None
+        lazy_import = None
 
         for prop in child.children:
             if prop.type != "pair":
@@ -922,10 +965,24 @@ def _extract_route_objects(
                 component = _node_text(value_node, source)
             elif key == "children" and value_node.type == "array":
                 children_array = value_node
+            elif key == "loader":
+                loader_ref = _node_text(value_node, source)
+            elif key == "action":
+                action_ref = _node_text(value_node, source)
+            elif key == "lazy":
+                lazy_import = _extract_lazy_import_path(value_node, source)
+
+        extra_meta: dict[str, str | None] = {}
+        if loader_ref is not None:
+            extra_meta["loader_ref"] = loader_ref
+        if action_ref is not None:
+            extra_meta["action_ref"] = action_ref
+        if lazy_import is not None:
+            extra_meta["lazy_import"] = lazy_import
 
         if path is not None:
             full_path = parent_path.rstrip("/") + "/" + path.lstrip("/") if parent_path else path
-            routes.append((full_path, component))
+            routes.append((full_path, component, extra_meta))
             if children_array is not None:
                 _extract_route_objects(children_array, source, full_path, routes)
         elif children_array is not None:  # pragma: no cover - layout route (no path)
@@ -2736,7 +2793,7 @@ def _extract_symbols(
         # React Router v6.4+ createBrowserRouter/createHashRouter/createMemoryRouter
         if node.type == "call_expression":
             config_routes = _detect_create_browser_router(node, source)
-            for rpath, comp in config_routes:
+            for rpath, comp, extra_meta in config_routes:
                 handler_name = comp or f"_route{rpath.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
                 span = Span(
                     start_line=node.start_point[0] + 1 + line_offset,
@@ -2744,6 +2801,12 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                route_meta: dict[str, object] = {
+                    "route_path": rpath,
+                    "http_method": "GET",
+                    "handler_ref": comp,
+                }
+                route_meta.update(extra_meta)
                 symbols.append(Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
                     name=handler_name,
@@ -2754,11 +2817,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", rpath),
-                    meta={
-                        "route_path": rpath,
-                        "http_method": "GET",
-                        "handler_ref": comp,
-                    },
+                    meta=route_meta,
                 ))
 
         # Function declarations (skip if inside an export_statement - handled below)
