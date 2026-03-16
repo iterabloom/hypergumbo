@@ -38,3 +38,19 @@
   set: {}  # 7a8d
   add:  # 7a8d
     before: [WI-fufuk-risid-kihav-zasul-nofok-hinij-suliv-dadik]  # 7a8d
+- op: update  # 1e24
+  at: '2026-03-16T07:32:26Z'  # 1e24
+  by: agent  # 1e24
+  actor: jgstern_agent  # 1e24
+  clock: 4  # 1e24
+  nonce: '1e24'  # 1e24
+  set:  # 1e24
+    status: done  # 1e24
+    pr_ref: '#2247'  # 1e24
+- op: discuss  # 5eec
+  at: '2026-03-16T07:32:26Z'  # 5eec
+  by: agent  # 5eec
+  actor: jgstern_agent  # 5eec
+  clock: 5  # 5eec
+  nonce: 5eec  # 5eec
+  message: "Merged PR #2247. Added annotate_dataflow_ast() for Python ast module and integrated into py.py. Covers Assign→write, AugAssign→mutate, AnnAssign→write, Delete→delete. 8 tests."  # 5eec
