@@ -834,6 +834,130 @@ def _detect_jsx_route(
     return route_path, component_name
 
 
+def _detect_create_browser_router(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> list[tuple[str, str | None]]:
+    """Detect createBrowserRouter/createRoutesFromElements route config objects.
+
+    Parses call expressions like:
+        createBrowserRouter([
+            { path: "/", element: <Root /> },
+            { path: "/users", element: <Users />, children: [...] },
+        ])
+
+    Returns a list of (route_path, component_name) tuples for each route
+    config object found in the array argument.
+    """
+    if node.type != "call_expression":  # pragma: no cover
+        return []
+
+    # Check the function name
+    func_name = None
+    args_node = None
+    for child in node.children:
+        if child.type == "identifier":
+            func_name = _node_text(child, source)
+        elif child.type == "arguments":
+            args_node = child
+
+    if func_name not in ("createBrowserRouter", "createRoutesFromElements",
+                         "createHashRouter", "createMemoryRouter"):
+        return []
+    if args_node is None:  # pragma: no cover
+        return []
+
+    # Find the array argument
+    routes: list[tuple[str, str | None]] = []
+    for arg in args_node.children:
+        if arg.type == "array":
+            _extract_route_objects(arg, source, "", routes)
+            break
+
+    return routes
+
+
+def _extract_route_objects(
+    array_node: "tree_sitter.Node",
+    source: bytes,
+    parent_path: str,
+    routes: list[tuple[str, str | None]],
+) -> None:
+    """Recursively extract route path/component from route config objects.
+
+    Handles nested children arrays for path composition.
+    """
+    for child in array_node.children:
+        if child.type != "object":
+            continue
+
+        path = None
+        component = None
+        children_array = None
+
+        for prop in child.children:
+            if prop.type != "pair":
+                continue
+            key_node = None
+            value_node = None
+            for pc in prop.children:
+                if pc.type in ("property_identifier", "string"):
+                    if key_node is None:
+                        key_node = pc
+                    else:
+                        value_node = pc
+                elif key_node is not None:
+                    value_node = pc
+
+            if key_node is None or value_node is None:  # pragma: no cover
+                continue
+
+            key = _node_text(key_node, source).strip("'\"")
+            if key == "path":
+                path = _node_text(value_node, source).strip("'\"")
+            elif key == "element":
+                # Extract component name from JSX: <Users /> → "Users"
+                component = _extract_component_from_jsx(value_node, source)
+            elif key == "Component":  # pragma: no cover - React Router v6.4+ lazy
+                component = _node_text(value_node, source)
+            elif key == "children" and value_node.type == "array":
+                children_array = value_node
+
+        if path is not None:
+            full_path = parent_path.rstrip("/") + "/" + path.lstrip("/") if parent_path else path
+            routes.append((full_path, component))
+            if children_array is not None:
+                _extract_route_objects(children_array, source, full_path, routes)
+        elif children_array is not None:  # pragma: no cover - layout route (no path)
+            # Layout route (no path) — children inherit parent path
+            _extract_route_objects(children_array, source, parent_path, routes)
+
+
+def _extract_component_from_jsx(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract component name from a JSX element node.
+
+    Given <Users /> or <UserDetail />, returns "Users" or "UserDetail".
+    """
+    if node.type in ("jsx_self_closing_element", "jsx_element"):
+        for child in node.children:
+            if child.type == "identifier":
+                return _node_text(child, source)
+            if child.type == "jsx_opening_element":  # pragma: no cover
+                for subchild in child.children:
+                    if subchild.type == "identifier":
+                        return _node_text(subchild, source)
+    # Try nested JSX expression: {<Users />}
+    if node.type == "jsx_expression":  # pragma: no cover
+        for child in node.children:
+            result = _extract_component_from_jsx(child, source)
+            if result:
+                return result
+    return None  # pragma: no cover - non-JSX element nodes
+
+
 def _find_route_path_in_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Find route path from a .route('/path') call in a chained expression.
 
@@ -2608,6 +2732,34 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
                 # Don't continue — let tree walk also process child nodes
+
+        # React Router v6.4+ createBrowserRouter/createHashRouter/createMemoryRouter
+        if node.type == "call_expression":
+            config_routes = _detect_create_browser_router(node, source)
+            for rpath, comp in config_routes:
+                handler_name = comp or f"_route{rpath.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                symbols.append(Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
+                    name=handler_name,
+                    kind="route",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=make_route_stable_id("GET", rpath),
+                    meta={
+                        "route_path": rpath,
+                        "http_method": "GET",
+                        "handler_ref": comp,
+                    },
+                ))
 
         # Function declarations (skip if inside an export_statement - handled below)
         if node.type == "function_declaration":

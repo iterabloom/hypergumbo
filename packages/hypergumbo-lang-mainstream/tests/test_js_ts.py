@@ -7459,6 +7459,66 @@ class TestReactRouterJSXRouteDetection:
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
 
+    def test_create_browser_router_routes(self, tmp_path: Path) -> None:
+        """createBrowserRouter([...]) should create route symbols."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "import { createBrowserRouter } from 'react-router-dom';\n"
+            "\n"
+            "const router = createBrowserRouter([\n"
+            "  { path: '/', element: <Home /> },\n"
+            "  { path: '/users', element: <Users /> },\n"
+            "  { path: '/users/:id', element: <UserDetail /> },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+        assert "/" in route_paths
+        assert "/users" in route_paths
+        assert "/users/:id" in route_paths
+
+    def test_create_browser_router_nested_children(self, tmp_path: Path) -> None:
+        """Nested children in createBrowserRouter should compose paths."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/dashboard',\n"
+            "    element: <Layout />,\n"
+            "    children: [\n"
+            "      { path: 'settings', element: <Settings /> },\n"
+            "      { path: 'profile', element: <Profile /> },\n"
+            "    ],\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+        assert "/dashboard" in route_paths
+        assert "/dashboard/settings" in route_paths
+        assert "/dashboard/profile" in route_paths
+
+    def test_create_hash_router(self, tmp_path: Path) -> None:
+        """createHashRouter should also be detected."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createHashRouter([\n"
+            "  { path: '/about', element: <About /> },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta["route_path"] == "/about"
+
 
 class TestSpaBootstrapUsageContext:
     """Tests for SPA bootstrap call detection via UsageContext.
