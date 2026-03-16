@@ -138,3 +138,10 @@
   set:  # 850c
     status: violated  # 850c
     priority: 4  # 850c
+- op: discuss  # 7f0c
+  at: '2026-03-16T19:21:44Z'  # 7f0c
+  by: agent  # 7f0c
+  actor: jgstern_agent  # 7f0c
+  clock: 18  # 7f0c
+  nonce: 7f0c  # 7f0c
+  message: "Acknowledged. Lowering priority to P4. The two most common patterns (JSX <Route path> and createBrowserRouter) are covered. Remaining work: lazy routes (React.lazy + dynamic import) and loader/action detection, at reduced priority."  # 7f0c

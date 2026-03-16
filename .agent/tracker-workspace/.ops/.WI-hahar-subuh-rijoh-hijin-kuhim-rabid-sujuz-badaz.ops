@@ -62,3 +62,25 @@
   clock: 7  # bcb7
   nonce: bcb7  # bcb7
   message: "did you change AGENTS.md as described and approved?"  # bcb7
+- op: discuss  # 7792
+  at: '2026-03-16T19:21:44Z'  # 7792
+  by: agent  # 7792
+  actor: jgstern_agent  # 7792
+  clock: 8  # 7792
+  nonce: '7792'  # 7792
+  message: "No, AGENTS.md was not updated with an Output Capture section. The behavioral guideline was acknowledged but the actual governance file change was never made. Will implement this."  # 7792
+- op: update  # 1016
+  at: '2026-03-16T19:21:51Z'  # 1016
+  by: agent  # 1016
+  actor: jgstern_agent  # 1016
+  clock: 9  # 1016
+  nonce: '1016'  # 1016
+  set:  # 1016
+    status: todo_soft  # 1016
+- op: discuss  # cadf
+  at: '2026-03-16T19:21:51Z'  # cadf
+  by: agent  # cadf
+  actor: jgstern_agent  # cadf
+  clock: 10  # cadf
+  nonce: cadf  # cadf
+  message: "Reopening: the AGENTS.md governance change was approved but never implemented. Needs an Output Capture section added."  # cadf
