@@ -17,3 +17,18 @@
     pr_ref:  # 1c78
     description: "DEEP bakeoff assessment: AFFiNE slice.0 starts from admin import-users dialog (a leaf) instead of SpaceSyncGateway or DocService. Consider selecting slice roots from highest in-degree entrypoints."  # 1c78
     fields: {}  # 1c78
+- op: update  # 3876
+  at: '2026-03-16T11:51:07Z'  # 3876
+  by: agent  # 3876
+  actor: jgstern_agent  # 3876
+  clock: 2  # 3876
+  nonce: '3876'  # 3876
+  set:  # 3876
+    priority: 4  # 3876
+- op: discuss  # 53c3
+  at: '2026-03-16T11:51:07Z'  # 53c3
+  by: agent  # 53c3
+  actor: jgstern_agent  # 53c3
+  clock: 3  # 53c3
+  nonce: 53c3  # 53c3
+  message: "Investigated: bakeoff-features selects first 5 entrypoints from detect_entrypoints output. The ordering favors high-confidence pattern matches (routes, controllers) which may be UI leaves rather than architectural cores. The new diversity cap (PR #2259) helps by ensuring varied entrypoint kinds. A further improvement would be to sort by in-degree within the bakeoff script, but all 4 repos now show GOOD verdicts so this is low-impact."  # 53c3

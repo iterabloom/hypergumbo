@@ -78,3 +78,33 @@
   nonce: 9c6c  # 9c6c
   set:  # 9c6c
     status: todo_soft  # 9c6c
+- op: update  # 8d47
+  at: '2026-03-16T11:50:02Z'  # 8d47
+  by: agent  # 8d47
+  actor: jgstern_agent  # 8d47
+  clock: 9  # 8d47
+  nonce: 8d47  # 8d47
+  set:  # 8d47
+    status: done  # 8d47
+- op: discuss  # aff2
+  at: '2026-03-16T11:50:02Z'  # aff2
+  by: agent  # aff2
+  actor: jgstern_agent  # aff2
+  clock: 10  # aff2
+  nonce: aff2  # aff2
+  message: "Bakeoff iter-002 complete. All 4 repos now GOOD (was 3 GOOD + 1 WARN). blocksuite improved from 6.8% to 23% tier1 after Yjs linker, annotation convention, and dataflow annotations. AFFiNE: 50182 nodes, 144900 edges, 61% tier1. automerge-repo: 63% tier1. hocuspocus: 52% tier1."  # aff2
+- op: update  # d4fd
+  at: '2026-03-16T11:52:09Z'  # d4fd
+  by: agent  # d4fd
+  actor: jgstern_agent  # d4fd
+  clock: 11  # d4fd
+  nonce: d4fd  # d4fd
+  set:  # d4fd
+    status: done  # d4fd
+- op: discuss  # e3fe
+  at: '2026-03-16T11:52:09Z'  # e3fe
+  by: agent  # e3fe
+  actor: jgstern_agent  # e3fe
+  clock: 12  # e3fe
+  nonce: e3fe  # e3fe
+  message: "Bakeoff iter-002: all 4 repos GOOD. blocksuite improved from WARN to GOOD."  # e3fe

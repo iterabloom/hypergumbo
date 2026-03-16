@@ -40,3 +40,18 @@
   clock: 4  # 554e
   nonce: 554e  # 554e
   message: "Acknowledged the additional examples (auto-pr, pytest, smart-test) and the governance consent. Will add an 'Output Capture' section to AGENTS.md specifying: always redirect full output to a file, then read with targeted tools. Will reference these concrete examples."  # 554e
+- op: update  # 1a75
+  at: '2026-03-16T11:52:08Z'  # 1a75
+  by: agent  # 1a75
+  actor: jgstern_agent  # 1a75
+  clock: 5  # 1a75
+  nonce: 1a75  # 1a75
+  set:  # 1a75
+    status: done  # 1a75
+- op: discuss  # c6aa
+  at: '2026-03-16T11:52:08Z'  # c6aa
+  by: agent  # c6aa
+  actor: jgstern_agent  # c6aa
+  clock: 6  # c6aa
+  nonce: c6aa  # c6aa
+  message: "Behavioral guideline acknowledged. Always capture full output to file before truncating."  # c6aa

@@ -17,3 +17,19 @@
     pr_ref:  # 09c6
     description: "DEEP bakeoff: AFFiNE hits 500-entrypoint cap with 410/500 being GraphQL resolvers. Consider per-type cap (max 100 per type) to ensure diverse entrypoint types."  # 09c6
     fields: {}  # 09c6
+- op: update  # e17a
+  at: '2026-03-16T11:52:08Z'  # e17a
+  by: agent  # e17a
+  actor: jgstern_agent  # e17a
+  clock: 2  # e17a
+  nonce: e17a  # e17a
+  set:  # e17a
+    status: done  # e17a
+    pr_ref: '#2259'  # e17a
+- op: discuss  # 9e5c
+  at: '2026-03-16T11:52:08Z'  # 9e5c
+  by: agent  # 9e5c
+  actor: jgstern_agent  # 9e5c
+  clock: 3  # 9e5c
+  nonce: 9e5c  # 9e5c
+  message: "Fixed in PR #2259 (diversity cap)."  # 9e5c
