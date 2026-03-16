@@ -136,3 +136,10 @@
   clock: 16  # 66ee
   nonce: 66ee  # 66ee
   message: "but an item of type INV cannot have a Status of todo_hard -- it may only have a Status of violated, holding, needs_human_review, or deleted. Are you seeing prompt language that implies otherwise? Also invariant items already can carry their own priority, just like this one does. And it doesn't seem right to make lower priorities non-blocking. If they show up next to higher priorities, presumably the agent will work on the higher ones first. Or use its judgement."  # 66ee
+- op: discuss  # 232a
+  at: '2026-03-16T04:51:34Z'  # 232a
+  by: agent  # 232a
+  actor: jgstern_agent  # 232a
+  clock: 17  # 232a
+  nonce: 232a  # 232a
+  message: "Understood. The scaffolding does not conflate INV status with todo_hard — INV items use violated/holding/needs_human_review/deleted. Priority (P1-P4) already controls urgency independently. The stop hook shows all blocking items together and the agent uses judgment on ordering. No scaffolding changes needed. This item stays violated at P4 — the 47% keycloak gap is uninvestigated."  # 232a
