@@ -49,6 +49,7 @@ package-lock.json
 # Hypergumbo cache
 .hypergumbo_cache/
 .ci/pytest-output.log
+.ci/pytest-results.xml
 
 # Tracker
 **/config.yaml
