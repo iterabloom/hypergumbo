@@ -1,0 +1,22 @@
+- op: create  # ce6e
+  at: '2026-03-16T04:38:32Z'  # ce6e
+  by: agent  # ce6e
+  actor: jgstern_agent  # ce6e
+  clock: 1  # ce6e
+  nonce: ce6e  # ce6e
+  data:  # ce6e
+    kind: work_item  # ce6e
+    title: "ADR-0015: Slice --dataflow flag (write-to-read chain traversal)"  # ce6e
+    status: todo_soft  # ce6e
+    priority: 1  # ce6e
+    parent:  # ce6e
+    tags:  # ce6e
+    - adr-0015  # ce6e
+    - dataflow  # ce6e
+    before:  # ce6e
+    - WI-mimon-rosir-lapod-mikif-hukab-kikos-jukob-bakah  # ce6e
+    duplicate_of: []  # ce6e
+    not_duplicate_of: []  # ce6e
+    pr_ref:  # ce6e
+    description: "Add optional --dataflow flag to slice command. When set, BFS only\nfollows edges where a write/mutate at the source connects to a read\nat the destination — producing tighter slices of actual data dependencies.\n\n~10 lines in slice.py BFS loop to check edge.meta.get(\"access_mode\").\nCLI arg addition in cli.py.\n\nWithout flag: existing behavior (follow all edges). Backward compatible.\n\nDepends on: edges actually having access_mode annotations (all prior items).\nSee ADR-0015 §6."  # ce6e
+    fields: {}  # ce6e

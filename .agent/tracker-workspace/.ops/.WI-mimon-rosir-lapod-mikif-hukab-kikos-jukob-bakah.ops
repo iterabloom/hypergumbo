@@ -1,0 +1,22 @@
+- op: create  # a7f1
+  at: '2026-03-16T04:38:22Z'  # a7f1
+  by: agent  # a7f1
+  actor: jgstern_agent  # a7f1
+  clock: 1  # a7f1
+  nonce: a7f1  # a7f1
+  data:  # a7f1
+    kind: work_item  # a7f1
+    title: "ADR-0015: py.py dataflow integration (Python AST analyzer)"  # a7f1
+    status: todo_soft  # a7f1
+    priority: 1  # a7f1
+    parent:  # a7f1
+    tags:  # a7f1
+    - adr-0015  # a7f1
+    - dataflow  # a7f1
+    before:  # a7f1
+    - WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj  # a7f1
+    duplicate_of: []  # a7f1
+    not_duplicate_of: []  # a7f1
+    pr_ref:  # a7f1
+    description: "py.py and jupyter.py use Python's ast module, not TreeSitterAnalyzer.\nThey won't get automatic Tier 1 annotation. Need a dedicated integration\npoint — either an ast-module-aware variant of classify_access, or a\npost-hoc pass that maps ast node types to the same access_mode vocabulary.\n\nPython is the highest-value language for dataflow analysis: module-level\nglobals (test isolation), framework state (Django settings, Flask config),\nand the PlazaFlow Yjs patterns all involve Python.\n\nDepends on: core dataflow YAMLs (Python patterns defined).\nSee ADR-0015 §5 coverage gap table."  # a7f1
+    fields: {}  # a7f1
