@@ -131,6 +131,40 @@ def load_dataflow_config(yaml_path: Path) -> DataflowConfig:
     )
 
 
+# Module-level cache for loaded configs, keyed by language name.
+_config_cache: Dict[str, Optional[DataflowConfig]] = {}
+
+# Default directory for built-in dataflow YAMLs (sibling to frameworks/).
+# Named dataflow_patterns/ (not dataflow/) to avoid shadowing this module.
+_DATAFLOW_DIR = Path(__file__).parent / "dataflow_patterns"
+
+
+def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
+    """Get the dataflow config for a language, loading from YAML if needed.
+
+    Looks for a YAML file at ``<package>/dataflow/<language>.yaml``.
+    Returns None if no config exists for the language. Caches results
+    so each YAML is loaded at most once per process.
+
+    Args:
+        language: Language name (e.g., "python", "javascript", "rust").
+
+    Returns:
+        DataflowConfig if a YAML exists, None otherwise.
+    """
+    if language in _config_cache:
+        return _config_cache[language]
+
+    yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
+    if yaml_path.is_file():
+        config = load_dataflow_config(yaml_path)
+        _config_cache[language] = config
+    else:
+        _config_cache[language] = None
+
+    return _config_cache[language]
+
+
 def _find_node_at_line(root_node: Any, line: int) -> Optional[Any]:
     """Find the most specific AST node at the given line (1-indexed).
 

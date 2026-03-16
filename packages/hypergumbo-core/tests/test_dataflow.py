@@ -16,7 +16,9 @@ import yaml
 from hypergumbo_core.dataflow import (
     DataflowConfig,
     DataflowSite,
+    _config_cache,
     annotate_dataflow,
+    get_dataflow_config,
     load_dataflow_config,
     scan_library_patterns,
 )
@@ -572,3 +574,99 @@ class TestDataflowSite:
         """Channel should be optional (default None)."""
         site = DataflowSite(access_mode="read", line=10)
         assert site.channel is None
+
+
+# ==================== GET DATAFLOW CONFIG TESTS ====================
+
+
+class TestGetDataflowConfig:
+    """Tests for the cached config loader."""
+
+    def setup_method(self) -> None:
+        """Clear config cache before each test."""
+        _config_cache.clear()
+
+    def test_returns_none_for_unknown_language(self) -> None:
+        """get_dataflow_config returns None when no YAML exists."""
+        result = get_dataflow_config("nonexistent_language_xyz")
+        assert result is None
+
+    def test_caches_none_for_missing_language(self) -> None:
+        """Missing languages are cached as None (no repeated filesystem lookups)."""
+        get_dataflow_config("nonexistent_language_xyz")
+        assert "nonexistent_language_xyz" in _config_cache
+        assert _config_cache["nonexistent_language_xyz"] is None
+
+    def test_returns_config_when_yaml_exists(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_dataflow_config returns a DataflowConfig when YAML exists."""
+        import hypergumbo_core.dataflow as df_mod
+        yaml_content = "language: testlang\nassignments:\n  - node_type: assignment\n    write: left\n"
+        yaml_file = tmp_path / "testlang.yaml"
+        yaml_file.write_text(yaml_content)
+        monkeypatch.setattr(df_mod, "_DATAFLOW_DIR", tmp_path)
+        _config_cache.clear()
+
+        result = get_dataflow_config("testlang")
+        assert result is not None
+        assert result.language == "testlang"
+        assert len(result.assignments) == 1
+
+    def test_caches_loaded_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Loaded configs are cached — subsequent calls return the same object."""
+        import hypergumbo_core.dataflow as df_mod
+        yaml_content = "language: cachelang\n"
+        yaml_file = tmp_path / "cachelang.yaml"
+        yaml_file.write_text(yaml_content)
+        monkeypatch.setattr(df_mod, "_DATAFLOW_DIR", tmp_path)
+        _config_cache.clear()
+
+        first = get_dataflow_config("cachelang")
+        second = get_dataflow_config("cachelang")
+        assert first is second
+
+
+# ==================== BASE.PY INTEGRATION TESTS ====================
+
+
+class TestBaseAnalyzerIntegration:
+    """Tests for the Tier 1 integration in analyze/base.py."""
+
+    def test_annotate_dataflow_called_when_config_exists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When a dataflow config exists for the language, annotate_dataflow is called."""
+        import hypergumbo_core.analyze.base as base_mod
+
+        config = DataflowConfig(
+            language="go",
+            assignments=[{"node_type": "assignment_statement", "write": "left"}],
+        )
+
+        calls_made: list = []
+        original_get = base_mod.get_dataflow_config
+        original_annotate = base_mod.annotate_dataflow
+
+        def patched_get(lang):
+            return config
+
+        def patched_annotate(edges, tree, source, cfg):
+            calls_made.append(len(edges))
+            return edges
+
+        monkeypatch.setattr(base_mod, "get_dataflow_config", patched_get)
+        monkeypatch.setattr(base_mod, "annotate_dataflow", patched_annotate)
+
+        # Use C++ analyzer — it subclasses TreeSitterAnalyzer and does NOT
+        # override analyze(), so it goes through the base class pass 2 loop
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        cpp_file = tmp_path / "main.cpp"
+        cpp_file.write_text('#include <iostream>\n\nvoid greet() {\n    std::cout << "hi";\n}\n\nint main() {\n    greet();\n    return 0;\n}\n')
+        result = analyze_cpp(tmp_path)
+
+        # If tree-sitter-cpp is not available, skip this test
+        if result.skipped:
+            pytest.skip("tree-sitter-cpp not available")
+
+        # annotate_dataflow should have been called at least once
+        assert len(calls_made) >= 1, f"annotate_dataflow never called; result had {len(result.edges)} edges"
