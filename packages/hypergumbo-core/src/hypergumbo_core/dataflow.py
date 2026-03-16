@@ -308,6 +308,56 @@ def scan_library_patterns(
     return sites
 
 
+def annotate_dataflow_ast(
+    edges: List["Edge"],
+    tree: Any,
+) -> List["Edge"]:
+    """Annotate edges with access_mode using Python's ast module (Tier 1 for py.py).
+
+    Walks the Python AST and builds a line-to-access-mode map from assignment,
+    augmented assignment, and delete statements. Then stamps matching edges.
+
+    Skips edges that already have access_mode (Tier 2 precedence).
+
+    Args:
+        edges: List of Edge objects to annotate.
+        tree: Python ast.Module node.
+
+    Returns:
+        The same list of edges with access_mode added where applicable.
+    """
+    import ast
+
+    if not edges or tree is None:
+        return edges
+
+    # Build line -> access_mode map from AST
+    line_modes: Dict[int, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            line_modes[node.lineno] = "write"
+        elif isinstance(node, ast.AugAssign):
+            line_modes[node.lineno] = "mutate"
+        elif isinstance(node, ast.AnnAssign):
+            line_modes[node.lineno] = "write"
+        elif isinstance(node, ast.Delete):
+            line_modes[node.lineno] = "delete"
+
+    if not line_modes:
+        return edges
+
+    for edge in edges:
+        if edge.meta is not None and "access_mode" in edge.meta:
+            continue
+        mode = line_modes.get(edge.line)
+        if mode is not None:
+            if edge.meta is None:
+                edge.meta = {}
+            edge.meta["access_mode"] = mode
+
+    return edges
+
+
 def _looks_like_regex(s: str) -> bool:
     """Heuristic: does this string look like it contains regex metacharacters?"""
     # If it has unescaped regex metacharacters, treat as regex

@@ -18,6 +18,7 @@ from hypergumbo_core.dataflow import (
     DataflowSite,
     _config_cache,
     annotate_dataflow,
+    annotate_dataflow_ast,
     get_dataflow_config,
     load_dataflow_config,
     scan_library_patterns,
@@ -749,3 +750,114 @@ class TestBuiltInYamlFiles:
         config = get_dataflow_config(language)
         assert config is not None, f"get_dataflow_config({language!r}) returned None"
         assert config.language == language
+
+
+# ==================== PYTHON AST DATAFLOW TESTS ====================
+
+
+class TestAnnotateDataflowAst:
+    """Tests for the Python ast-based dataflow annotation."""
+
+    def test_assignment_gets_write(self) -> None:
+        """ast.Assign node should produce access_mode=write."""
+        import ast
+        tree = ast.parse("x = f()")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:f:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "write"
+
+    def test_augmented_assignment_gets_mutate(self) -> None:
+        """ast.AugAssign node should produce access_mode=mutate."""
+        import ast
+        tree = ast.parse("x += 1")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:x:variable",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "mutate"
+
+    def test_annotated_assignment_gets_write(self) -> None:
+        """ast.AnnAssign node should produce access_mode=write."""
+        import ast
+        tree = ast.parse("x: int = 1")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:x:variable",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "write"
+
+    def test_delete_gets_delete(self) -> None:
+        """ast.Delete node should produce access_mode=delete."""
+        import ast
+        tree = ast.parse("del x")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:x:variable",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "delete"
+
+    def test_skips_existing_access_mode(self) -> None:
+        """Edges with existing access_mode should not be overwritten."""
+        import ast
+        tree = ast.parse("x = f()")
+        edge = Edge.create(
+            src="py:a.py:1:emitter:variable",
+            dst="py:a.py:1:handler:function",
+            edge_type="event_publishes",
+            line=1,
+            access_mode="write",
+            dest_access_mode="read",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        # Should preserve original
+        assert result[0].meta["access_mode"] == "write"
+        assert result[0].meta["dest_access_mode"] == "read"
+
+    def test_empty_edges_returns_empty(self) -> None:
+        """Empty edge list should return empty."""
+        import ast
+        tree = ast.parse("x = 1")
+        assert annotate_dataflow_ast([], tree) == []
+
+    def test_none_tree_returns_edges(self) -> None:
+        """None tree should return edges unchanged."""
+        edge = Edge.create(
+            src="py:a.py:1:f:function",
+            dst="py:a.py:1:g:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], None)
+        assert len(result) == 1
+        assert result[0].meta is None
+
+    def test_no_matching_lines(self) -> None:
+        """Edges at lines without assignments pass through unchanged."""
+        import ast
+        tree = ast.parse("f()\ng()")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:f:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is None or "access_mode" not in result[0].meta
