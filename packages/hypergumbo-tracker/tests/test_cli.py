@@ -32,6 +32,9 @@ from hypergumbo_tracker.cli import (
     _maybe_auto_sync,
     _print_sync_reminder,
     _print_screen_warning,
+    _changes_to_dict,
+    _describe_changes,
+    _short_id,
     _warn_unread_human_messages,
     main,
     textconv_main,
@@ -1260,6 +1263,180 @@ class TestVerboseConfirmations:
         assert "status" in out
         assert "priority" in out
         assert "resolved" in out
+
+    def test_update_remove_tag_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Tag removal prints which tag was removed."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        # Add tag first
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-tag", "obsolete",
+            ])
+        capsys.readouterr()
+        # Remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--remove-tag", "obsolete",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "obsolete" in out
+
+    def test_update_pr_ref_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Setting pr_ref shows the new value."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--pr-ref", "#1234",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "pr_ref" in out
+        assert "#1234" in out
+
+    def test_update_field_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Custom field changes show the field name and value."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--field", "root_cause=race condition",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "root_cause" in out
+        assert "race condition" in out
+
+
+class TestDescribeChangesUnit:
+    """Unit tests for _describe_changes and helpers."""
+
+    def test_short_id_single_part(self) -> None:
+        """IDs with fewer than 2 parts return unchanged."""
+        assert _short_id("NOID") == "NOID"
+
+    def test_short_id_normal(self) -> None:
+        """Normal proquint IDs are shortened to prefix + first word."""
+        assert _short_id("WI-mamuh-puduz-extra") == "WI-mamuh"
+
+    def test_changes_to_dict_no_colon(self) -> None:
+        """Lines without ': ' get field='unknown'."""
+        result = _changes_to_dict(["something happened"])
+        assert result[0]["field"] == "unknown"
+        assert result[0]["detail"] == "something happened"
+
+    def test_describe_parent_removed(self) -> None:
+        """Parent removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            parent="META-parent",
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            parent=None,
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="meta_invariant",
+                    title="Parent", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("removed" in c for c in changes)
+
+    def test_describe_pr_ref_removed(self) -> None:
+        """PR ref removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            pr_ref="#100",
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            pr_ref=None,
+        )
+
+        class FakeTS:
+            pass
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("pr_ref" in c and "removed" in c for c in changes)
+
+    def test_describe_duplicate_of_removed(self) -> None:
+        """Duplicate-of removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            duplicate_of=["WI-other"],
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            duplicate_of=[],
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="work_item",
+                    title="Other", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("duplicate_of" in c and "removed" in c for c in changes)
+
+    def test_describe_not_duplicate_of_added_and_removed(self) -> None:
+        """Not-duplicate-of add and removal are reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            not_duplicate_of=["WI-old"],
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            not_duplicate_of=["WI-new"],
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="work_item",
+                    title="Item", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("not_duplicate_of" in c and "removed" in c for c in changes)
+        assert any("not_duplicate_of" in c and "+" in c for c in changes)
+
+    def test_describe_field_removed(self) -> None:
+        """Custom field removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            fields={"root_cause": "bug"},
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            fields={},
+        )
+
+        class FakeTS:
+            pass
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("root_cause" in c and "removed" in c for c in changes)
 
 
 # ---------------------------------------------------------------------------
