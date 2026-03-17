@@ -1,0 +1,22 @@
+- op: create  # f3b3
+  at: '2026-03-17T09:11:05Z'  # f3b3
+  by: agent  # f3b3
+  actor: jgstern_agent  # f3b3
+  clock: 1  # f3b3
+  nonce: f3b3  # f3b3
+  data:  # f3b3
+    kind: work_item  # f3b3
+    title: "PlazaFlow readiness: Yjs sub-document and awareness tracing"  # f3b3
+    status: needs_human_review  # f3b3
+    priority: 2  # f3b3
+    parent:  # f3b3
+    tags:  # f3b3
+    - plazaflow  # f3b3
+    - linker  # f3b3
+    - yjs  # f3b3
+    before: []  # f3b3
+    duplicate_of: []  # f3b3
+    not_duplicate_of: []  # f3b3
+    pr_ref:  # f3b3
+    description: "PlazaFlow state is a graph of Yjs documents: chunks reference sub-documents via yjsDocId. Current linker misses: (1) Sub-document references, (2) Field-level awareness pub/sub, (3) Array/Text operations. Cross-refs: INV-bivot, META-sulor. Bakeoff: socketio-chat-example."  # f3b3
+    fields: {}  # f3b3

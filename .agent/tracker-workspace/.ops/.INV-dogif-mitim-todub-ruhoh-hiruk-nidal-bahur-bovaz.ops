@@ -152,3 +152,27 @@
   clock: 19  # a4cd
   nonce: a4cd  # a4cd
   message: "Added loader_ref and action_ref linking in route_handler linker. Routes with these metadata fields now get additional routes_to edges (role: loader/action) to function symbols. Remaining unverified: React.lazy() component-level lazy loading (not route-level lazy property, which is already extracted as metadata)."  # a4cd
+- op: update  # 99e7
+  at: '2026-03-17T08:32:23Z'  # 99e7
+  by: agent  # 99e7
+  actor: jgstern_agent  # 99e7
+  clock: 20  # 99e7
+  nonce: '99e7'  # 99e7
+  set:  # 99e7
+    status: holding  # 99e7
+- op: discuss  # 3be5
+  at: '2026-03-17T08:32:23Z'  # 3be5
+  by: agent  # 3be5
+  actor: jgstern_agent  # 3be5
+  clock: 21  # 3be5
+  nonce: 3be5  # 3be5
+  message: "All practical React Router patterns now covered: (1) JSX <Route path> (PR #2127), (2) createBrowserRouter object configs with nested children (PR #2261), (3) loader_ref/action_ref linking to function symbols (PR #2295), (4) React.lazy() component detection with lazy_import metadata (PR #2299). Remaining edge cases not covered: React Router v5 render prop pattern, index routes without explicit path, dynamic path values. These are increasingly rare in modern codebases."  # 3be5
+- op: update  # 0b16
+  at: '2026-03-17T08:35:42Z'  # 0b16
+  by: human  # 0b16
+  actor: jgstern  # 0b16
+  clock: 22  # 0b16
+  nonce: 0b16  # 0b16
+  set: {}  # 0b16
+  add:  # 0b16
+    tags: [someday]  # 0b16
