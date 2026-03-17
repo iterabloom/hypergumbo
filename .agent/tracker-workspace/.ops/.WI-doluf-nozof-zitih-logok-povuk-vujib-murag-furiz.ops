@@ -1,0 +1,23 @@
+- op: create  # 97df
+  at: '2026-03-17T09:17:07Z'  # 97df
+  by: agent  # 97df
+  actor: jgstern_agent  # 97df
+  clock: 1  # 97df
+  nonce: 97df  # 97df
+  data:  # 97df
+    kind: work_item  # 97df
+    title: "PlazaFlow readiness: BlockSuite document model framework pattern"  # 97df
+    status: needs_human_review  # 97df
+    priority: 3  # 97df
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 97df
+    tags:  # 97df
+    - plazaflow  # 97df
+    - framework  # 97df
+    - blocksuite  # 97df
+    before:  # 97df
+    - WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam  # 97df
+    duplicate_of: []  # 97df
+    not_duplicate_of: []  # 97df
+    pr_ref:  # 97df
+    description: "BlockSuite (MPL-2.0) arrives in PlazaFlow v1.5 as the unified document layer: EdgelessEditor (whiteboard), PageEditor (rich text), database blocks (kanban). Its data model IS Yjs. If hypergumbo can detect BlockSuite Workspace/Doc interfaces and block schema with meta:createdBy fields, it can trace attribution and erasure data paths. Lower priority — PlazaFlow v1.5 is far out. No bakeoff repos currently available (AFFiNE uses BlockSuite but not in repo pool). Cross-refs: WI-mamuh (Yjs sub-document tracing — BlockSuite sub-docs are Yjs docs)."  # 97df
+    fields: {}  # 97df
