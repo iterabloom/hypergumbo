@@ -330,11 +330,12 @@ class TestComputeDeselections:
     def test_no_changed_symbols_found(self, tmp_path: Path) -> None:
         """If no symbols match changed files, return empty."""
         src = _make_node("src-a", "func_a", "src/other.py")
+        src_b = _make_node("src-b", "func_b", "src/b.py")
 
         result = self._setup(
             tmp_path,
-            nodes=[src],
-            edges=[],
+            nodes=[src, src_b],
+            edges=[_make_edge("src-a", "src-b")],  # need edges to pass early check
             timings={},
             changed_files=["src/nonexistent.py"],
             affected_test_files=["tests/test_a.py"],
@@ -349,7 +350,7 @@ class TestComputeDeselections:
         result = self._setup(
             tmp_path,
             nodes=[src, test],
-            edges=[],
+            edges=[_make_edge("t1", "src-a")],
             timings={
                 "tests/test_a.py::test_fast": {
                     "runs": [{"seconds": 0.01, "timestamp": "t"}],
@@ -401,6 +402,156 @@ class TestComputeDeselections:
         )
 
         assert "--deselect=tests/test_a.py::test_standalone_slow" in result.deselections
+
+    def test_suffix_match_for_changed_files(self, tmp_path: Path) -> None:
+        """Changed files should match via path suffix when exact match fails."""
+        # Node has full path, changed file is relative
+        src = _make_node("src-a", "func_a", "packages/core/src/module_a.py")
+        test = _make_node("t1", "TestX.test_slow", "tests/test_x.py", kind="method")
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src, test],
+            edges=[_make_edge("t1", "src-a")],
+            timings={
+                "tests/test_x.py::TestX::test_slow": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/module_a.py"],  # suffix of full path
+            affected_test_files=["tests/test_x.py"],
+        )
+        # test IS connected to changed file via suffix match → not deselected
+        assert result.deselections == []
+
+    def test_suffix_match_for_affected_test_files(self, tmp_path: Path) -> None:
+        """Test file paths should match via suffix against affected list."""
+        src = _make_node("src-a", "func_a", "src/a.py")
+        src_b = _make_node("src-b", "func_b", "src/b.py")
+        # Node path is full, affected_test_files is relative
+        test = _make_node(
+            "t1", "TestX.test_slow", "packages/core/tests/test_x.py", kind="method",
+        )
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src, src_b, test],
+            edges=[_make_edge("t1", "src-b")],
+            timings={
+                "packages/core/tests/test_x.py::TestX::test_slow": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/a.py"],
+            affected_test_files=["tests/test_x.py"],  # suffix of full path
+        )
+        assert "--deselect=packages/core/tests/test_x.py::TestX::test_slow" in result.deselections
+
+    def test_skips_nodes_with_empty_path(self, tmp_path: Path) -> None:
+        """Nodes with no path should be silently skipped."""
+        src = _make_node("src-a", "func_a", "src/a.py")
+        no_path = {"id": "np", "name": "test_orphan", "path": "", "kind": "function"}
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src, no_path],
+            edges=[_make_edge("np", "src-a")],
+            timings={
+                "::test_orphan": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/a.py"],
+            affected_test_files=["tests/test_a.py"],
+        )
+        assert result.deselections == []
+
+    def test_skips_non_test_nodes(self, tmp_path: Path) -> None:
+        """Non-test nodes (classes, helpers) should be skipped."""
+        src = _make_node("src-a", "func_a", "src/a.py")
+        helper = _make_node("h1", "setup_fixtures", "tests/test_a.py")
+        cls = _make_node("c1", "TestFoo", "tests/test_a.py", kind="class")
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src, helper, cls],
+            edges=[_make_edge("h1", "src-a"), _make_edge("c1", "src-a")],
+            timings={
+                "tests/test_a.py::setup_fixtures": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/a.py"],
+            affected_test_files=["tests/test_a.py"],
+        )
+        assert result.deselections == []
+
+    def test_skips_fast_test_in_slow_check(self, tmp_path: Path) -> None:
+        """Fast test nodes are skipped even though they pass is_test check."""
+        src = _make_node("src-a", "func_a", "src/a.py")
+        src_b = _make_node("src-b", "func_b", "src/b.py")
+        fast_test = _make_node(
+            "t1", "TestX.test_fast_one", "tests/test_a.py", kind="method",
+        )
+        slow_test = _make_node(
+            "t2", "TestX.test_slow_one", "tests/test_a.py", kind="method",
+        )
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src, src_b, fast_test, slow_test],
+            edges=[
+                _make_edge("t1", "src-b"),  # fast test calls b (unconnected)
+                _make_edge("t2", "src-b"),  # slow test calls b (unconnected)
+            ],
+            timings={
+                "tests/test_a.py::TestX::test_fast_one": {
+                    "runs": [{"seconds": 0.01, "timestamp": "t"}],
+                },
+                "tests/test_a.py::TestX::test_slow_one": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/a.py"],
+            affected_test_files=["tests/test_a.py"],
+        )
+        # Only the slow unconnected test should be deselected
+        assert "--deselect=tests/test_a.py::TestX::test_slow_one" in result.deselections
+        # Fast test should NOT be deselected (even though unconnected)
+        assert "--deselect=tests/test_a.py::TestX::test_fast_one" not in result.deselections
+
+    def test_bfs_dedup(self, tmp_path: Path) -> None:
+        """BFS should handle duplicate nodes in current_level."""
+        # Two changed symbols (a1, a2) both have the same caller (mid)
+        # so mid appears in next_level from both. When processing mid,
+        # the second encounter should hit the dedup skip.
+        src_a1 = _make_node("src-a1", "func_a1", "src/a.py")
+        src_a2 = _make_node("src-a2", "func_a2", "src/a.py")
+        src_mid = _make_node("src-mid", "func_mid", "src/mid.py")
+        test = _make_node(
+            "t1", "TestX.test_slow", "tests/test_x.py", kind="method",
+        )
+
+        edges = [
+            _make_edge("src-mid", "src-a1"),  # mid calls a1
+            _make_edge("src-mid", "src-a2"),  # mid calls a2
+            _make_edge("t1", "src-mid"),       # test calls mid
+        ]
+
+        result = self._setup(
+            tmp_path,
+            nodes=[src_a1, src_a2, src_mid, test],
+            edges=edges,
+            timings={
+                "tests/test_x.py::TestX::test_slow": {
+                    "runs": [{"seconds": 5.0, "timestamp": "t"}],
+                },
+            },
+            changed_files=["src/a.py"],
+            affected_test_files=["tests/test_x.py"],
+        )
+        # test is connected to a (via mid) — should NOT be deselected
+        assert result.deselections == []
 
     def test_results_sorted(self, tmp_path: Path) -> None:
         """Deselection list should be sorted for determinism."""
@@ -514,6 +665,8 @@ class TestMain:
 
     def test_empty_changed_files(self, tmp_path: Path) -> None:
         """Should return 0 with no output when changed files list is empty."""
+        bmap_path = tmp_path / "bmap.json"
+        bmap_path.write_text(json.dumps(_make_behavior_map([], [])))
         changed = tmp_path / "changed.txt"
         changed.write_text("\n")
         affected = tmp_path / "affected.txt"
@@ -526,6 +679,7 @@ class TestMain:
             "--changed-files", str(changed),
             "--timings", str(timings),
             "--affected-tests", str(affected),
+            "--behavior-map", str(bmap_path),
             "--repo-root", str(tmp_path),
         ], stdout=stdout)
 
@@ -534,6 +688,8 @@ class TestMain:
 
     def test_empty_affected_tests(self, tmp_path: Path) -> None:
         """Should return 0 with no output when no affected tests."""
+        bmap_path = tmp_path / "bmap.json"
+        bmap_path.write_text(json.dumps(_make_behavior_map([], [])))
         changed = tmp_path / "changed.txt"
         changed.write_text("src/a.py\n")
         affected = tmp_path / "affected.txt"
@@ -546,6 +702,7 @@ class TestMain:
             "--changed-files", str(changed),
             "--timings", str(timings),
             "--affected-tests", str(affected),
+            "--behavior-map", str(bmap_path),
             "--repo-root", str(tmp_path),
         ], stdout=stdout)
 

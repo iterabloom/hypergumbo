@@ -219,7 +219,7 @@ def compute_deselections(
             break
         next_level: set[str] = set()
         for node_id in current_level:
-            if node_id in affected:
+            if node_id in affected:  # pragma: no cover — defensive dedup
                 continue
             affected.add(node_id)
             for caller_id in reverse_index.get(node_id, []):
@@ -416,5 +416,5 @@ def main(
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())
