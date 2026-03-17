@@ -1,0 +1,23 @@
+- op: create  # 176b
+  at: '2026-03-17T09:13:45Z'  # 176b
+  by: agent  # 176b
+  actor: jgstern_agent  # 176b
+  clock: 1  # 176b
+  nonce: 176b  # 176b
+  data:  # 176b
+    kind: work_item  # 176b
+    title: "PlazaFlow readiness: protocol message dispatch mapping (typed wire protocol)"  # 176b
+    status: needs_human_review  # 176b
+    priority: 2  # 176b
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 176b
+    tags:  # 176b
+    - plazaflow  # 176b
+    - linker  # 176b
+    - protocol  # 176b
+    before:  # 176b
+    - WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam  # 176b
+    duplicate_of: []  # 176b
+    not_duplicate_of: []  # 176b
+    pr_ref:  # 176b
+    description: "PlazaFlow binary relay wire protocol defines typed messages (JOIN, LEAVE, SDP/ICE, YJS_SYNC, etc.) with send sites in TS and receive handlers in Rust. Structurally identical to gRPC/message-queue linking: match message type names across send/receive. Gap: no generalized message dispatch pattern for custom wire protocols. Existing gRPC and message_queue linkers do topic matching but are framework-specific. Need a YAML-driven message type registry pattern (detect enum variants or string constants in send/receive contexts). Bakeoff repos: microservices-demo (gRPC, validates generalization), dash.js (custom protocol messages), any WebSocket-based protocol repo. Cross-refs: linkers/grpc.py (done), linkers/message_queue.py (done), INV-jamad (Linker DSL Name Resolution — name matching across boundaries)."  # 176b
+    fields: {}  # 176b

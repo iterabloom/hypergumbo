@@ -1,0 +1,22 @@
+- op: create  # 0262
+  at: '2026-03-17T09:14:23Z'  # 0262
+  by: agent  # 0262
+  actor: jgstern_agent  # 0262
+  clock: 1  # 0262
+  nonce: '0262'  # 0262
+  data:  # 0262
+    kind: work_item  # 0262
+    title: "PlazaFlow readiness: multi-crate Rust workspace cross-crate resolution"  # 0262
+    status: needs_human_review  # 0262
+    priority: 2  # 0262
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 0262
+    tags:  # 0262
+    - plazaflow  # 0262
+    - analyzer  # 0262
+    - rust  # 0262
+    before: []  # 0262
+    duplicate_of: []  # 0262
+    not_duplicate_of: []  # 0262
+    pr_ref:  # 0262
+    description: "PlazaFlow will be a Cargo workspace: relay crate, Tauri app crate, FUSE guest daemon crate, Polis-lite WASM crate, shared types crate. Need to verify Rust analyzer traces cross-crate dependencies (use plazaflow_types::ChunkPointer across workspace crates). If analysis is scoped per-crate, it misses the most important edges. Existing work: WI-gahuk (Rust cross-file call resolution, done) fixed intra-crate cross-file calls. Gap may be inter-crate. Bakeoff repos: wasmtime (large Cargo workspace), firecracker (multi-crate VMM — directly analogous to PlazaFlow's libkrun usage), ripgrep (smaller workspace). Cross-refs: WI-gahuk (done, Rust cross-file calls), INV-kobad (Feature Parity Across Language Families)."  # 0262
+    fields: {}  # 0262
