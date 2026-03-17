@@ -1,0 +1,22 @@
+- op: create  # fa80
+  at: '2026-03-17T09:12:07Z'  # fa80
+  by: agent  # fa80
+  actor: jgstern_agent  # fa80
+  clock: 1  # fa80
+  nonce: fa80  # fa80
+  data:  # fa80
+    kind: meta_invariant  # fa80
+    title: "PlazaFlow readiness: cross-boundary analysis quality"  # fa80
+    status: needs_human_review  # fa80
+    priority: 2  # fa80
+    parent:  # fa80
+    tags:  # fa80
+    - plazaflow  # fa80
+    - umbrella  # fa80
+    before: []  # fa80
+    duplicate_of: []  # fa80
+    not_duplicate_of: []  # fa80
+    pr_ref:  # fa80
+    description: "Umbrella tracking hypergumbo capabilities needed for PlazaFlow. PlazaFlow has many cross-boundary edges: JS-Rust (Tauri), JS-WASM (multiple modules), client-relay (wire protocol), host-guest (vsock), doc-subdoc (Yjs), plaintext-ciphertext (encryption). Children track specific gaps. Sequenced against PlazaFlow versions: v0.1-v0.2 (Yjs, Web Audio), v0.2-v0.3 (crypto-flow, Tauri v2), v0.3-v0.5 (multi-crate Rust), v0.6 (protocol dispatch), v0.8 (multi-WASM), v1.5 (BlockSuite)."  # fa80
+    fields:  # fa80
+      statement: "When analyzing a polyglot Tauri+Yjs+WASM+WebRTC project like PlazaFlow, hypergumbo must produce edges across all major architectural boundaries (Tauri IPC, Yjs CRDT, WASM bindgen, wire protocol dispatch, crypto flow, Web Audio graph) so that slices traverse the full system, not dead-end at boundary crossings."  # fa80

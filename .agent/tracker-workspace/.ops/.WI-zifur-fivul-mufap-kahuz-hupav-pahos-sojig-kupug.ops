@@ -1,0 +1,23 @@
+- op: create  # 645e
+  at: '2026-03-17T09:12:26Z'  # 645e
+  by: agent  # 645e
+  actor: jgstern_agent  # 645e
+  clock: 1  # 645e
+  nonce: 645e  # 645e
+  data:  # 645e
+    kind: work_item  # 645e
+    title: "PlazaFlow readiness: crypto-flow pattern detection (HKDF/AES boundary tracing)"  # 645e
+    status: needs_human_review  # 645e
+    priority: 2  # 645e
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 645e
+    tags:  # 645e
+    - plazaflow  # 645e
+    - linker  # 645e
+    - crypto  # 645e
+    - dataflow  # 645e
+    before: []  # 645e
+    duplicate_of: []  # 645e
+    not_duplicate_of: []  # 645e
+    pr_ref:  # 645e
+    description: "PlazaFlow three-layer encryption (content/navigation/attribution DEKs from fragment key via HKDF-SHA-256, AES-256-GCM) is architecturally central. Agents debugging 'why can't a visitor read navigation data?' need to trace key derivation chains. Gap: no pattern set for WebCrypto API (crypto.subtle.deriveKey/encrypt/decrypt) or Rust equivalents (hkdf::Hkdf, aes_gcm::Aes256Gcm). Needs YAML-driven dataflow patterns producing derives_from/encrypts_with edges. Builds on ADR-0015 dataflow infrastructure. Bakeoff repos: arti (Tor client, heavy crypto), signal-related repos if available. Cross-refs: ADR-0015 dataflow YAMLs (WI-zobid done), existing dataflow_patterns/ directory."  # 645e
+    fields: {}  # 645e

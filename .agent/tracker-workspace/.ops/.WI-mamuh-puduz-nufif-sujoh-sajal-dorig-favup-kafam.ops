@@ -20,3 +20,11 @@
     pr_ref:  # f3b3
     description: "PlazaFlow state is a graph of Yjs documents: chunks reference sub-documents via yjsDocId. Current linker misses: (1) Sub-document references, (2) Field-level awareness pub/sub, (3) Array/Text operations. Cross-refs: INV-bivot, META-sulor. Bakeoff: socketio-chat-example."  # f3b3
     fields: {}  # f3b3
+- op: update  # 4d30
+  at: '2026-03-17T09:12:26Z'  # 4d30
+  by: agent  # 4d30
+  actor: jgstern_agent  # 4d30
+  clock: 2  # 4d30
+  nonce: 4d30  # 4d30
+  set:  # 4d30
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 4d30
