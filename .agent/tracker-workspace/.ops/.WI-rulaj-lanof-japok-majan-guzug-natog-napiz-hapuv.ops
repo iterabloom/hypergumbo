@@ -1,0 +1,22 @@
+- op: create  # f07d
+  at: '2026-03-17T17:34:36Z'  # f07d
+  by: agent  # f07d
+  actor: jgstern_agent  # f07d
+  clock: 1  # f07d
+  nonce: f07d  # f07d
+  data:  # f07d
+    kind: work_item  # f07d
+    title: "Tracker CLI: bulk relationship operations (multiple items, inverse --add-blocked-by)"  # f07d
+    status: needs_human_review  # f07d
+    priority: 2  # f07d
+    parent:  # f07d
+    tags:  # f07d
+    - tracker  # f07d
+    - cli  # f07d
+    - ux  # f07d
+    before: []  # f07d
+    duplicate_of: []  # f07d
+    not_duplicate_of: []  # f07d
+    pr_ref:  # f07d
+    description: "Setting the same before target on N items requires N separate invocations. Two improvements: (1) Accept multiple positional item IDs: 'tracker update WI-a WI-b WI-c --add-before INV-x' applies the same mutation to all listed items. (2) Add --add-blocked-by as the inverse of --add-before: 'tracker update INV-x --add-blocked-by WI-a WI-b WI-c' means 'WI-a, WI-b, WI-c all block INV-x' — expresses fan-in dependency in one command instead of N. Discovered during PlazaFlow tracker setup where 4 items needed the same before target, requiring 4 separate commands."  # f07d
+    fields: {}  # f07d

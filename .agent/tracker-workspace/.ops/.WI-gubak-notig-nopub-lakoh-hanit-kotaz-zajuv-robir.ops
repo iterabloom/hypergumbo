@@ -1,0 +1,22 @@
+- op: create  # d1bd
+  at: '2026-03-17T17:34:54Z'  # d1bd
+  by: agent  # d1bd
+  actor: jgstern_agent  # d1bd
+  clock: 1  # d1bd
+  nonce: d1bd  # d1bd
+  data:  # d1bd
+    kind: work_item  # d1bd
+    title: "Tracker CLI: verbose mutation confirmations (show what changed, not just 'updated')"  # d1bd
+    status: needs_human_review  # d1bd
+    priority: 3  # d1bd
+    parent:  # d1bd
+    tags:  # d1bd
+    - tracker  # d1bd
+    - cli  # d1bd
+    - ux  # d1bd
+    before: []  # d1bd
+    duplicate_of: []  # d1bd
+    not_duplicate_of: []  # d1bd
+    pr_ref:  # d1bd
+    description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit', 'discussed WI-mamuh: 1 new message'. This is the general case of the relationship-specific confirmation (#4). Lower priority since #4 covers the highest-value case (relationship directionality). The 'discuss' command could also print a truncated preview of the message added."  # d1bd
+    fields: {}  # d1bd

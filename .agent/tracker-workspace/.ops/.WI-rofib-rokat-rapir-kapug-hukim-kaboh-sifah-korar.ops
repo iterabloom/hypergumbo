@@ -1,0 +1,21 @@
+- op: create  # 5109
+  at: '2026-03-17T18:19:30Z'  # 5109
+  by: agent  # 5109
+  actor: jgstern_agent  # 5109
+  clock: 1  # 5109
+  nonce: '5109'  # 5109
+  data:  # 5109
+    kind: work_item  # 5109
+    title: "Tracker setup: manage root .gitattributes (linguist-generated, diff=tracker-ops)"  # 5109
+    status: needs_human_review  # 5109
+    priority: 2  # 5109
+    parent:  # 5109
+    tags:  # 5109
+    - tracker  # 5109
+    - setup  # 5109
+    before: []  # 5109
+    duplicate_of: []  # 5109
+    not_duplicate_of: []  # 5109
+    pr_ref:  # 5109
+    description: "The tracker creates .gitattributes inside .ops/ dirs (merge=union) but doesn't touch the root-level .gitattributes. Root entries are what make PRs readable: linguist-generated collapses ops diffs in Forgejo/GitHub, diff=tracker-ops enables the textconv driver for human-readable diffs. Without these, every tracker sync PR shows raw proquint ops. Setup should idempotently append these lines (check if present, add if missing). Most impactful of the four setup gaps. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 5109
+    fields: {}  # 5109

@@ -1,0 +1,24 @@
+- op: create  # 92c4
+  at: '2026-03-17T17:34:35Z'  # 92c4
+  by: agent  # 92c4
+  actor: jgstern_agent  # 92c4
+  clock: 1  # 92c4
+  nonce: 92c4  # 92c4
+  data:  # 92c4
+    kind: invariant  # 92c4
+    title: "Tracker CLI: ID-reference arguments must resolve short prefixes (silent no-op bug)"  # 92c4
+    status: violated  # 92c4
+    priority: 1  # 92c4
+    parent:  # 92c4
+    tags:  # 92c4
+    - tracker  # 92c4
+    - cli  # 92c4
+    - bug  # 92c4
+    before: []  # 92c4
+    duplicate_of: []  # 92c4
+    not_duplicate_of: []  # 92c4
+    pr_ref:  # 92c4
+    description: "Discovered during PlazaFlow tracker item creation. 5 remove-before commands with short prefixes all reported 'updated' but removed nothing. Required extracting full proquint IDs and re-running. Caused ~10 wasted invocations and 2 verification passes."  # 92c4
+    fields:  # 92c4
+      statement: "All CLI arguments that accept item ID references (--add-before, --remove-before, --parent, --add-duplicate-of, etc.) must resolve short prefixes through the same prefix resolution used for the positional item_id argument. If a prefix does not resolve to exactly one item, the command must error, not silently succeed."  # 92c4
+      root_cause: "The positional item_id goes through prefix resolution in the CLI dispatch layer, but --add-before/--remove-before values are passed as raw strings to the ops layer. Short prefix WI-mamuh does not match stored full proquint WI-mamuh-puduz-..., so remove-before silently no-ops and add-before stores the unresolved prefix."  # 92c4

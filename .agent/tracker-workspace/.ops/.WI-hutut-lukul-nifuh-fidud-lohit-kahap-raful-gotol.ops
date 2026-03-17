@@ -1,0 +1,21 @@
+- op: create  # 2c86
+  at: '2026-03-17T18:19:31Z'  # 2c86
+  by: agent  # 2c86
+  actor: jgstern_agent  # 2c86
+  clock: 1  # 2c86
+  nonce: 2c86  # 2c86
+  data:  # 2c86
+    kind: work_item  # 2c86
+    title: "Tracker setup: generate config.yaml.template from built-in defaults"  # 2c86
+    status: needs_human_review  # 2c86
+    priority: 3  # 2c86
+    parent:  # 2c86
+    tags:  # 2c86
+    - tracker  # 2c86
+    - setup  # 2c86
+    before: []  # 2c86
+    duplicate_of: []  # 2c86
+    not_duplicate_of: []  # 2c86
+    pr_ref:  # 2c86
+    description: "When no config.yaml.template exists, setup falls back to built-in defaults silently. For teams that want to customize governance (field schemas, status transitions, sync thresholds), a version-controlled template is useful. Suggest opt-in: 'htrac setup --write-template' writes built-in defaults as .agent/tracker/config.yaml.template. Not automatic since most single-user repos don't need it. Weakest of the four setup gaps but still reasonable for multi-contributor projects. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 2c86
+    fields: {}  # 2c86

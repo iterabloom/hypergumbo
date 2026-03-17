@@ -1,0 +1,22 @@
+- op: create  # 637d
+  at: '2026-03-17T17:34:53Z'  # 637d
+  by: agent  # 637d
+  actor: jgstern_agent  # 637d
+  clock: 1  # 637d
+  nonce: 637d  # 637d
+  data:  # 637d
+    kind: work_item  # 637d
+    title: "Tracker CLI: human-readable confirmation messages for relationship mutations"  # 637d
+    status: needs_human_review  # 637d
+    priority: 2  # 637d
+    parent:  # 637d
+    tags:  # 637d
+    - tracker  # 637d
+    - cli  # 637d
+    - ux  # 637d
+    before: []  # 637d
+    duplicate_of: []  # 637d
+    not_duplicate_of: []  # 637d
+    pr_ref:  # 637d
+    description: "All relationship mutations (--add-before, --remove-before, --parent, etc.) print only 'updated'. Should print the natural-language meaning: 'WI-mamuh (Yjs sub-document tracing) now blocks INV-jisit (cross-linker integration)'. For --add-before, the phrasing 'X now blocks Y' makes the directionality unambiguous and would have immediately caught the backwards-before-link error during PlazaFlow tracker setup. Also applies to --parent ('WI-mamuh is now a child of META-migil'), --add-duplicate-of, etc."  # 637d
+    fields: {}  # 637d

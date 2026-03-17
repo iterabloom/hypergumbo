@@ -1,0 +1,22 @@
+- op: create  # 9e4b
+  at: '2026-03-17T17:34:54Z'  # 9e4b
+  by: agent  # 9e4b
+  actor: jgstern_agent  # 9e4b
+  clock: 1  # 9e4b
+  nonce: 9e4b  # 9e4b
+  data:  # 9e4b
+    kind: work_item  # 9e4b
+    title: "Tracker CLI: dependency graph view (tracker deps <item>)"  # 9e4b
+    status: needs_human_review  # 9e4b
+    priority: 3  # 9e4b
+    parent:  # 9e4b
+    tags:  # 9e4b
+    - tracker  # 9e4b
+    - cli  # 9e4b
+    - ux  # 9e4b
+    before: []  # 9e4b
+    duplicate_of: []  # 9e4b
+    not_duplicate_of: []  # 9e4b
+    pr_ref:  # 9e4b
+    description: "No way to visualize the dependency tree for an item and its children/dependents. After setting up 9 PlazaFlow items with parent and before relationships, verification required running 'tracker show' on each item individually (9 commands). A 'tracker deps <item>' command should show the tree: parent/child hierarchy plus before/blocked-by edges. Could also support --format dot for Graphviz output. Example: 'tracker deps META-migil' would show the full PlazaFlow readiness tree with arrows indicating blocking relationships."  # 9e4b
+    fields: {}  # 9e4b

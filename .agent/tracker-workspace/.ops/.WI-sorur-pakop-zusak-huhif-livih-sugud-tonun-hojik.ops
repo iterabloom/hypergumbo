@@ -1,0 +1,21 @@
+- op: create  # 3900
+  at: '2026-03-17T18:19:31Z'  # 3900
+  by: agent  # 3900
+  actor: jgstern_agent  # 3900
+  clock: 1  # 3900
+  nonce: '3900'  # 3900
+  data:  # 3900
+    kind: work_item  # 3900
+    title: "Tracker setup: manage root .gitignore entries for tracker ephemeral files"  # 3900
+    status: needs_human_review  # 3900
+    priority: 3  # 3900
+    parent:  # 3900
+    tags:  # 3900
+    - tracker  # 3900
+    - setup  # 3900
+    before: []  # 3900
+    duplicate_of: []  # 3900
+    not_duplicate_of: []  # 3900
+    pr_ref:  # 3900
+    description: "Tracker ephemeral files (.agent/.cache-*.db, .agent/.sync-logs/, .ci/pytest-output.log) need root .gitignore entries to prevent accidental commits. The tracker manages .gitignore inside its own directories but doesn't touch the root one. Setup should idempotently append tracker-specific entries. Low effort. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 3900
+    fields: {}  # 3900

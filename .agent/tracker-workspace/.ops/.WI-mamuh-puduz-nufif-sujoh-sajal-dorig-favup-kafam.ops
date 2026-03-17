@@ -35,3 +35,12 @@
   clock: 3  # 28d5
   nonce: 28d5  # 28d5
   message: "Overlaps with WI-zusig (Yjs/CRDT reactive linker, todo_soft). WI-zusig covers the broader Yjs API surface detection. This item (WI-mamuh) focuses on sub-document references and field-level awareness — extensions beyond what WI-zusig defined. Consider merging or making WI-mamuh a child of WI-zusig."  # 28d5
+- op: update  # b485
+  at: '2026-03-17T17:09:12Z'  # b485
+  by: agent  # b485
+  actor: jgstern_agent  # b485
+  clock: 4  # b485
+  nonce: b485  # b485
+  set: {}  # b485
+  add:  # b485
+    before: [WI-doluf-nozof-zitih-logok-povuk-vujib-murag-furiz]  # b485

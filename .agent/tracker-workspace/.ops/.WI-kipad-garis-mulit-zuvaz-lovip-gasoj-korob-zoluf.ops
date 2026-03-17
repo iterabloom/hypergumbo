@@ -20,3 +20,12 @@
     pr_ref:  # 9586
     description: "Existing tauri_ipc.py (built March 2026) handles invoke/command and emit/listen patterns. Need to verify coverage of Tauri v2 specifics: plugin system, register_uri_scheme_protocol, permissions model, managed state. PlazaFlow is Tauri v2. Existing work: WI-bajir (Tauri IPC linker, done), WI-vovaj (Tauri events, done), INV-hikak (Tauri IPC detection, holding). Run against real Tauri v2 apps and check for missing edges. Bakeoff repos: podman-desktop (Electron but similar IPC patterns, already used for contextBridge), spacedrive/yaak/Cap/readest if available (Tauri v2 apps from prior bakeoff). Cross-refs: INV-hikak (holding), INV-nilob (codegen wrapper tracing, violated — specta partially fixed)."  # 9586
     fields: {}  # 9586
+- op: update  # 43e1
+  at: '2026-03-17T17:09:12Z'  # 43e1
+  by: agent  # 43e1
+  actor: jgstern_agent  # 43e1
+  clock: 2  # 43e1
+  nonce: '43e1'  # 43e1
+  set: {}  # 43e1
+  add:  # 43e1
+    before: [INV-jisit-tokir-sogos-fipip-mubot-tirol-pinom-bumuz]  # 43e1

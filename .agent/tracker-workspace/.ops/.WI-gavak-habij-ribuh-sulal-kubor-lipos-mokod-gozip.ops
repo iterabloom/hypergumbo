@@ -1,0 +1,21 @@
+- op: create  # 1c5d
+  at: '2026-03-17T18:19:30Z'  # 1c5d
+  by: agent  # 1c5d
+  actor: jgstern_agent  # 1c5d
+  clock: 1  # 1c5d
+  nonce: 1c5d  # 1c5d
+  data:  # 1c5d
+    kind: work_item  # 1c5d
+    title: "Tracker setup: install scripts/tracker and scripts/tracker-textconv shims automatically"  # 1c5d
+    status: needs_human_review  # 1c5d
+    priority: 2  # 1c5d
+    parent:  # 1c5d
+    tags:  # 1c5d
+    - tracker  # 1c5d
+    - setup  # 1c5d
+    before: []  # 1c5d
+    duplicate_of: []  # 1c5d
+    not_duplicate_of: []  # 1c5d
+    pr_ref:  # 1c5d
+    description: "htrac setup warns about missing scripts/tracker shim (check 16) but doesn't install it. scripts/tracker-textconv isn't even checked. Both are ~3 lines. Setup should offer to create them, or just do it. Closes the gap between 'setup detected the problem' and 'setup fixed the problem'. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 1c5d
+    fields: {}  # 1c5d
