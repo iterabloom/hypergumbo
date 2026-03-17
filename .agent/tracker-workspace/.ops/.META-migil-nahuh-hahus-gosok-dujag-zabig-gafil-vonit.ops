@@ -35,3 +35,10 @@
   clock: 3  # b3fc
   nonce: b3fc  # b3fc
   message: "presume violated until that is demonstrably not the case."  # b3fc
+- op: discuss  # 577c
+  at: '2026-03-17T23:41:21Z'  # 577c
+  by: agent  # 577c
+  actor: jgstern_agent  # 577c
+  clock: 4  # 577c
+  nonce: 577c  # 577c
+  message: "Acknowledged. INV-jisit (cross-linker integration) validated that slice BFS traverses all linker edge types. But META-migil is a broader quality claim — keeping violated until we demonstrate on real polyglot repos."  # 577c

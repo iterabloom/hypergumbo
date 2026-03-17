@@ -98,3 +98,10 @@
   clock: 12  # e350
   nonce: e350  # e350
   message: "changing to todo_soft in case it facilitates lazaflow readiness work"  # e350
+- op: discuss  # d350
+  at: '2026-03-17T23:41:21Z'  # d350
+  by: agent  # d350
+  actor: jgstern_agent  # d350
+  clock: 13  # d350
+  nonce: d350  # d350
+  message: "Acknowledged status change to todo_soft for PlazaFlow readiness."  # d350
