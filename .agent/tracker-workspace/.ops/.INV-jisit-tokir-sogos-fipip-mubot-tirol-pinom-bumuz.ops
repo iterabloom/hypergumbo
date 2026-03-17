@@ -1,0 +1,42 @@
+- op: create  # 94d2
+  at: '2026-03-17T09:17:52Z'  # 94d2
+  by: agent  # 94d2
+  actor: jgstern_agent  # 94d2
+  clock: 1  # 94d2
+  nonce: 94d2  # 94d2
+  data:  # 94d2
+    kind: invariant  # 94d2
+    title: "PlazaFlow readiness: cross-linker integration in polyglot projects"  # 94d2
+    status: needs_human_review  # 94d2
+    priority: 2  # 94d2
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 94d2
+    tags:  # 94d2
+    - plazaflow  # 94d2
+    - integration  # 94d2
+    - slice  # 94d2
+    before: []  # 94d2
+    duplicate_of: []  # 94d2
+    not_duplicate_of: []  # 94d2
+    pr_ref:  # 94d2
+    description: "Highest-leverage PlazaFlow investment. Questions like 'what happens when a user crosses a chunk boundary?' span Tauri IPC + Yjs CRDT + WebSocket + event sourcing in a single trace. Need to verify: (1) no edge type conflicts, (2) slice BFS traverses all linker edge types, (3) compact retains cross-cutting edges from all active linkers. Bakeoff: podman-desktop, PlazaFlow. Cross-refs: INV-bivot, INV-posun, INV-risag."  # 94d2
+    fields:  # 94d2
+      statement: "When multiple linkers (Tauri IPC, Yjs CRDT, WASM bindgen, WebSocket, event sourcing) are active in the same project, slices must traverse edges from all active linkers, producing connected subgraphs that cross 3+ boundary types in a single trace."  # 94d2
+      root_cause: "Each linker is developed and tested in isolation. No integration test validates that slice BFS traverses edge types from multiple linkers in a single project. Compact mode edge-type seeding (INV-posun fix) may not account for all linker edge types simultaneously."  # 94d2
+- op: update  # 299a
+  at: '2026-03-17T09:18:42Z'  # 299a
+  by: agent  # 299a
+  actor: jgstern_agent  # 299a
+  clock: 2  # 299a
+  nonce: 299a  # 299a
+  set: {}  # 299a
+  add:  # 299a
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # 299a
+- op: update  # 226d
+  at: '2026-03-17T09:18:43Z'  # 226d
+  by: agent  # 226d
+  actor: jgstern_agent  # 226d
+  clock: 3  # 226d
+  nonce: 226d  # 226d
+  set: {}  # 226d
+  add:  # 226d
+    before: [WI-subaf-jinok-ninar-hipuf-zazuv-viduh-hupuf-gakov]  # 226d
