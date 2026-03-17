@@ -133,19 +133,27 @@ class MaskResult:
     Attributes:
         deselections: List of ``--deselect=<pytest_node_id>`` strings.
         estimated_seconds_saved: Sum of mean durations of deselected tests.
+        estimated_seconds_kept: Sum of mean durations of kept slow tests.
         total_slow_in_scope: Number of slow tests in affected files.
     """
 
-    __slots__ = ("deselections", "estimated_seconds_saved", "total_slow_in_scope")
+    __slots__ = (
+        "deselections",
+        "estimated_seconds_kept",
+        "estimated_seconds_saved",
+        "total_slow_in_scope",
+    )
 
     def __init__(
         self,
         deselections: list[str],
         estimated_seconds_saved: float,
+        estimated_seconds_kept: float,
         total_slow_in_scope: int,
     ) -> None:
         self.deselections = deselections
         self.estimated_seconds_saved = estimated_seconds_saved
+        self.estimated_seconds_kept = estimated_seconds_kept
         self.total_slow_in_scope = total_slow_in_scope
 
 
@@ -176,7 +184,7 @@ def compute_deselections(
     nodes = bmap.get("nodes", [])
     edges = bmap.get("edges", [])
 
-    empty = MaskResult([], 0.0, 0)
+    empty = MaskResult([], 0.0, 0.0, 0)
 
     if not nodes or not edges:
         return empty
@@ -239,6 +247,7 @@ def compute_deselections(
     deselections: list[str] = []
     total_slow_in_scope = 0
     time_saved = 0.0
+    time_kept = 0.0
 
     for node in nodes:
         npath = node.get("path", "")
@@ -282,10 +291,13 @@ def compute_deselections(
         if node["id"] not in affected:
             deselections.append(f"--deselect={pytest_id}")
             time_saved += slow_tests[pytest_id]
+        else:
+            time_kept += slow_tests[pytest_id]
 
     return MaskResult(
         deselections=sorted(deselections),
         estimated_seconds_saved=time_saved,
+        estimated_seconds_kept=time_kept,
         total_slow_in_scope=total_slow_in_scope,
     )
 
@@ -404,14 +416,26 @@ def main(
         masked = len(result.deselections)
         kept = result.total_slow_in_scope - masked
         saved = result.estimated_seconds_saved
-        if saved >= 60:
-            time_str = f"{saved / 60:.1f}m"
-        else:
-            time_str = f"{saved:.1f}s"
-        stderr.write(
-            f"  (masked {masked} slow unconnected tests, "
-            f"~{time_str} saved; {kept} slow tests kept)\n"
-        )
+
+        def _fmt_time(secs: float) -> str:
+            if secs >= 60:
+                return f"{secs / 60:.1f}m"
+            return f"{secs:.1f}s"
+
+        parts = [
+            f"masked {masked} slow unconnected tests",
+            f"~{_fmt_time(saved)} saved",
+            f"{kept} slow tests kept",
+        ]
+
+        # Estimate wall-clock time for kept slow tests
+        if result.estimated_seconds_kept > 0:
+            import os
+            cpus = os.cpu_count() or 1
+            wall_est = result.estimated_seconds_kept / cpus
+            parts.append(f"~{_fmt_time(wall_est)} est. wall time @ {cpus} CPUs")
+
+        stderr.write(f"  ({'; '.join(parts)})\n")
 
     return 0
 

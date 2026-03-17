@@ -51,6 +51,7 @@ MANIFEST_ONLY=false
 BACKGROUND=false
 RAW_OUTPUT=false
 NO_MASK=false
+MASK_ACTIVE=false
 PYTEST_ARGS=()
 HAS_EXPLICIT_TESTS=false
 
@@ -650,6 +651,7 @@ if [[ "$NO_MASK" != "true" ]] && [[ "$FULL_RUN" != "true" ]]; then
 
             MASK_COUNT=$(grep -c . "$DESELECT_FILE" 2>/dev/null || echo 0)
             if [[ "$MASK_COUNT" -gt 0 ]]; then
+                MASK_ACTIVE=true
                 while IFS= read -r deselect_arg; do
                     SCOPED_PYTEST_ARGS+=("$deselect_arg")
                 done < "$DESELECT_FILE"
@@ -677,12 +679,22 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
 
     # Run coverage report for just the changed files
     if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then
-        echo ""
-        echo "❌ Changed source files are not at 100% coverage:"
-        coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
-        echo ""
-        echo "Run the full suite to see overall coverage: pytest --full"
-        exit 1
+        if [[ "$MASK_ACTIVE" == "true" ]]; then
+            echo ""
+            echo "⚠️  Coverage gaps detected (slow test masking active — gaps may be from masked tests):"
+            coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
+            echo ""
+            echo "These gaps are likely covered by masked slow tests. CI runs unmasked and will verify."
+            echo "Use --no-mask to run all tests locally if needed."
+            # Don't fail — masked tests don't count against local coverage
+        else
+            echo ""
+            echo "❌ Changed source files are not at 100% coverage:"
+            coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
+            echo ""
+            echo "Run the full suite to see overall coverage: pytest --full"
+            exit 1
+        fi
     else
         echo "✅ All changed source files are at 100% coverage"
     fi

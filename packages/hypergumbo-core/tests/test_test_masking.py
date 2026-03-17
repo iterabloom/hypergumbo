@@ -247,6 +247,7 @@ class TestComputeDeselections:
         # test_connected IS connected to module_a — should NOT be deselected
         assert "--deselect=tests/test_x.py::TestX::test_connected" not in result.deselections
         assert result.estimated_seconds_saved == pytest.approx(10.0)
+        assert result.estimated_seconds_kept == pytest.approx(5.0)
         assert result.total_slow_in_scope == 2
 
     def test_keeps_slow_connected_test(self, tmp_path: Path) -> None:
@@ -788,6 +789,54 @@ class TestMain:
         assert "masked 2 slow" in summary
         assert "~1.1m saved" in summary
         assert "0 slow tests kept" in summary
+        # No wall time estimate when 0 tests kept
+        assert "CPUs" not in summary
+
+    def test_stderr_shows_wall_time_estimate(self, tmp_path: Path) -> None:
+        """Should show estimated wall time when slow tests are kept."""
+        bmap = _make_behavior_map(
+            nodes=[
+                _make_node("src-a", "func_a", "src/a.py"),
+                _make_node("src-b", "func_b", "src/b.py"),
+                _make_node("t1", "TestX.test_kept", "tests/test_x.py", kind="method"),
+                _make_node("t2", "TestX.test_masked", "tests/test_x.py", kind="method"),
+            ],
+            edges=[
+                _make_edge("t1", "src-a"),   # kept: connected to a
+                _make_edge("t2", "src-b"),   # masked: connected to b, not a
+            ],
+        )
+        bmap_path = tmp_path / "bmap.json"
+        bmap_path.write_text(json.dumps(bmap))
+
+        changed = tmp_path / "changed.txt"
+        changed.write_text("src/a.py\n")
+        affected = tmp_path / "affected.txt"
+        affected.write_text("tests/test_x.py\n")
+        timings = tmp_path / "timings.json"
+        timings.write_text(json.dumps({
+            "tests/test_x.py::TestX::test_kept": {
+                "runs": [{"seconds": 10.0, "timestamp": "t"}],
+            },
+            "tests/test_x.py::TestX::test_masked": {
+                "runs": [{"seconds": 20.0, "timestamp": "t"}],
+            },
+        }))
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        main([
+            "--changed-files", str(changed),
+            "--timings", str(timings),
+            "--affected-tests", str(affected),
+            "--behavior-map", str(bmap_path),
+            "--repo-root", str(tmp_path),
+        ], stdout=stdout, stderr=stderr)
+
+        summary = stderr.getvalue()
+        assert "masked 1 slow" in summary
+        assert "1 slow tests kept" in summary
+        assert "CPUs" in summary
 
     def test_explicit_behavior_map_path(self, tmp_path: Path) -> None:
         """--behavior-map flag should override auto-discovery."""
