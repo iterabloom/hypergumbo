@@ -20,3 +20,18 @@
     description: "Umbrella tracking hypergumbo capabilities needed for PlazaFlow. PlazaFlow has many cross-boundary edges: JS-Rust (Tauri), JS-WASM (multiple modules), client-relay (wire protocol), host-guest (vsock), doc-subdoc (Yjs), plaintext-ciphertext (encryption). Children track specific gaps. Sequenced against PlazaFlow versions: v0.1-v0.2 (Yjs, Web Audio), v0.2-v0.3 (crypto-flow, Tauri v2), v0.3-v0.5 (multi-crate Rust), v0.6 (protocol dispatch), v0.8 (multi-WASM), v1.5 (BlockSuite)."  # fa80
     fields:  # fa80
       statement: "When analyzing a polyglot Tauri+Yjs+WASM+WebRTC project like PlazaFlow, hypergumbo must produce edges across all major architectural boundaries (Tauri IPC, Yjs CRDT, WASM bindgen, wire protocol dispatch, crypto flow, Web Audio graph) so that slices traverse the full system, not dead-end at boundary crossings."  # fa80
+- op: update  # 2501
+  at: '2026-03-17T20:32:47Z'  # 2501
+  by: human  # 2501
+  actor: jgstern  # 2501
+  clock: 2  # 2501
+  nonce: '2501'  # 2501
+  set:  # 2501
+    status: violated  # 2501
+- op: discuss  # b3fc
+  at: '2026-03-17T20:33:31Z'  # b3fc
+  by: human  # b3fc
+  actor: jgstern  # b3fc
+  clock: 3  # b3fc
+  nonce: b3fc  # b3fc
+  message: "presume violated until that is demonstrably not the case."  # b3fc

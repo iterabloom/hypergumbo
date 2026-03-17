@@ -22,3 +22,18 @@
     fields:  # 92c4
       statement: "All CLI arguments that accept item ID references (--add-before, --remove-before, --parent, --add-duplicate-of, etc.) must resolve short prefixes through the same prefix resolution used for the positional item_id argument. If a prefix does not resolve to exactly one item, the command must error, not silently succeed."  # 92c4
       root_cause: "The positional item_id goes through prefix resolution in the CLI dispatch layer, but --add-before/--remove-before values are passed as raw strings to the ops layer. Short prefix WI-mamuh does not match stored full proquint WI-mamuh-puduz-..., so remove-before silently no-ops and add-before stores the unresolved prefix."  # 92c4
+- op: update  # 1450
+  at: '2026-03-17T19:16:56Z'  # 1450
+  by: agent  # 1450
+  actor: jgstern_agent  # 1450
+  clock: 2  # 1450
+  nonce: '1450'  # 1450
+  set:  # 1450
+    status: holding  # 1450
+- op: discuss  # 96b0
+  at: '2026-03-17T19:16:56Z'  # 96b0
+  by: agent  # 96b0
+  actor: jgstern_agent  # 96b0
+  clock: 3  # 96b0
+  nonce: 96b0  # 96b0
+  message: "Fixed in jgstern-agent/fix/tracker-prefix-resolve-refs. Root cause: --remove-before, --remove-duplicate-of, --remove-not-duplicate-of bypassed _resolve_ref(). Now all 6 ID-reference flags (3 add + 3 remove) go through prefix resolution."  # 96b0

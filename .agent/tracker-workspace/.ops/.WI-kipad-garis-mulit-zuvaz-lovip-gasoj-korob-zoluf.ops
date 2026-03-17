@@ -29,3 +29,11 @@
   set: {}  # 43e1
   add:  # 43e1
     before: [INV-jisit-tokir-sogos-fipip-mubot-tirol-pinom-bumuz]  # 43e1
+- op: update  # 273d
+  at: '2026-03-17T19:16:19Z'  # 273d
+  by: human  # 273d
+  actor: jgstern  # 273d
+  clock: 3  # 273d
+  nonce: 273d  # 273d
+  set:  # 273d
+    status: todo_soft  # 273d

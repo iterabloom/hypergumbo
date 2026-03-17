@@ -83,3 +83,18 @@
   clock: 10  # 8d69
   nonce: 8d69  # 8d69
   message: "Since last message: the plazaflow curriculum bakeoff completed (48 repos, 8 cohorts). Cohort 1 (Tauri apps: spacedrive, yaak, Cap, readest) and Cohort 8 (polyglot Rust+TS: loro, automerge, rolldown, swc) both exercised Rust heavily. Six fixes were merged (PRs #2123-#2129) including Tauri IPC entrypoint detection (PR #2128), but none addressed Rust method resolution on generic trait impl receivers specifically. The LLM assessments across these Rust-heavy repos scored mean ~55/100, with issues concentrated on cross-language linking (Tauri IPC TS→Rust edges) rather than intra-Rust method resolution. So the bakeoff data doesn't strongly push for escalating this item yet — the bigger wins came from cross-language edge improvements. Keeping at P4 pending further evidence."  # 8d69
+- op: update  # 1f9a
+  at: '2026-03-17T20:30:56Z'  # 1f9a
+  by: human  # 1f9a
+  actor: jgstern  # 1f9a
+  clock: 11  # 1f9a
+  nonce: 1f9a  # 1f9a
+  set:  # 1f9a
+    status: todo_soft  # 1f9a
+- op: discuss  # e350
+  at: '2026-03-17T20:32:06Z'  # e350
+  by: human  # e350
+  actor: jgstern  # e350
+  clock: 12  # e350
+  nonce: e350  # e350
+  message: "changing to todo_soft in case it facilitates lazaflow readiness work"  # e350

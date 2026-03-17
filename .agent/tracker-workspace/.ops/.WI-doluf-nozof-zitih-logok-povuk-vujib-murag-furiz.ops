@@ -48,3 +48,18 @@
   set: {}  # f6ca
   remove:  # f6ca
     before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # f6ca
+- op: discuss  # d584
+  at: '2026-03-17T20:28:32Z'  # d584
+  by: human  # d584
+  actor: jgstern  # d584
+  clock: 5  # d584
+  nonce: d584  # d584
+  message: "correction: AFFiNE is available at `/home/jgstern_agent/plazaflow_deep_repos/cohort2_yjs/AFFiNE/`"  # d584
+- op: update  # ae15
+  at: '2026-03-17T20:28:48Z'  # ae15
+  by: human  # ae15
+  actor: jgstern  # ae15
+  clock: 6  # ae15
+  nonce: ae15  # ae15
+  set:  # ae15
+    status: todo_soft  # ae15

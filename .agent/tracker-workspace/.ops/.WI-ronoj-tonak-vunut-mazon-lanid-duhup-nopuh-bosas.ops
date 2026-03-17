@@ -126,3 +126,18 @@
   clock: 16  # 5e1c
   nonce: 5e1c  # 5e1c
   message: "Partially addressed by PRs #1635/#1636. Full receiver-type inference is a future Rust-specific enhancement. Moving to needs_human_review — human can decide when to prioritize a dedicated Rust session."  # 5e1c
+- op: update  # e303
+  at: '2026-03-17T20:31:22Z'  # e303
+  by: human  # e303
+  actor: jgstern  # e303
+  clock: 17  # e303
+  nonce: e303  # e303
+  set:  # e303
+    status: todo_soft  # e303
+- op: discuss  # 396a
+  at: '2026-03-17T20:31:57Z'  # 396a
+  by: human  # 396a
+  actor: jgstern  # 396a
+  clock: 18  # 396a
+  nonce: 396a  # 396a
+  message: "changing to todo_soft in case it facilitates lazaflow readiness work"  # 396a

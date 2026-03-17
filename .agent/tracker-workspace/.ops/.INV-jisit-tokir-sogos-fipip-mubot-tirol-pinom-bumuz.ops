@@ -130,3 +130,26 @@
   set: {}  # 2cb6
   remove:  # 2cb6
     before: [WI-pitam-tajof-fibij-logor-timal-rafom-vufab-dozif]  # 2cb6
+- op: update  # 8bea
+  at: '2026-03-17T19:13:06Z'  # 8bea
+  by: human  # 8bea
+  actor: jgstern  # 8bea
+  clock: 14  # 8bea
+  nonce: 8bea  # 8bea
+  set:  # 8bea
+    status: violated  # 8bea
+- op: update  # 405a
+  at: '2026-03-17T20:36:01Z'  # 405a
+  by: agent  # 405a
+  actor: jgstern_agent  # 405a
+  clock: 15  # 405a
+  nonce: 405a  # 405a
+  set:  # 405a
+    status: holding  # 405a
+- op: discuss  # f243
+  at: '2026-03-17T20:36:01Z'  # f243
+  by: agent  # f243
+  actor: jgstern_agent  # f243
+  clock: 16  # f243
+  nonce: f243  # f243
+  message: "Integration test validates invariant in PR #2315. TestCrossLinkerIntegration proves slice BFS traverses edges from 4 linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single trace. Pass-through filtering correctly removes synthetic nodes while preserving reachability. No edge type conflicts found."  # f243
