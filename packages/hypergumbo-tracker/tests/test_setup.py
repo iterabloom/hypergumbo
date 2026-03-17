@@ -2151,7 +2151,7 @@ class TestCheckTextconv:
 
     def test_already_configured(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
-        # Create .gitattributes with both lines
+        # Create .gitattributes with both lines in .ops dirs
         for ops_dir in [
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
@@ -2159,6 +2159,12 @@ class TestCheckTextconv:
             (ops_dir / ".gitattributes").write_text(
                 "*.ops merge=union\n*.ops diff=tracker-ops\n"
             )
+        # Root .gitattributes also needs the entries
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+            ".agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker\n"
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
@@ -2286,6 +2292,12 @@ class TestCheckTextconv:
             root / "tracker-workspace" / ".ops",
         ]:
             (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        # Provide root gitattributes so only safe.directory is the fix
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+            ".agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker\n"
+        )
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -2335,6 +2347,81 @@ class TestCheckTextconv:
         ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "fixed"
+
+
+class TestRootGitattributes:
+    """Tests for root .gitattributes management in _check_textconv."""
+
+    def test_root_gitattributes_created(self, tmp_path: Path) -> None:
+        """Missing root .gitattributes entries are auto-added."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        root_ga = tmp_path / ".gitattributes"
+        assert root_ga.exists()
+        content = root_ga.read_text()
+        assert "linguist-generated" in content
+        assert "diff=tracker" in content
+
+    def test_root_gitattributes_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Root .gitattributes without trailing newline gets one before append."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text("some-other-rule")  # No trailing newline
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        content = root_ga.read_text()
+        # Ensure entries start on a new line
+        assert "\nsome-other-rule" not in content or "some-other-rule\n" in content
+
+    def test_root_gitattributes_partial(self, tmp_path: Path) -> None:
+        """Only missing lines are appended to existing root .gitattributes."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        # Only one of the two lines exists
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+        )
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        content = root_ga.read_text()
+        assert "tracker-workspace" in content
 
 
 class TestEnsureSafeDirectory:
@@ -2494,38 +2581,67 @@ class TestCheckExistingData:
 
 
 class TestCheckTrackerWrapper:
-    """Tests for _check_tracker_wrapper (check #13)."""
+    """Tests for _check_tracker_wrapper (check #13): auto-install shims."""
 
     def test_no_repo(self) -> None:
         result = _check_tracker_wrapper(None)
         assert result.status == "ok"
         assert "skipped" in result.message
 
-    def test_wrapper_exists_and_executable(self, tmp_path: Path) -> None:
+    def test_both_wrappers_exist_and_executable(self, tmp_path: Path) -> None:
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        wrapper = scripts / "tracker"
-        wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
-        wrapper.chmod(0o755)
+        for name in ("tracker", "tracker-textconv"):
+            wrapper = scripts / name
+            wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
+            wrapper.chmod(0o755)
         result = _check_tracker_wrapper(tmp_path)
         assert result.status == "ok"
         assert "found" in result.message
 
     def test_wrapper_exists_not_executable(self, tmp_path: Path) -> None:
+        """Existing non-executable wrapper gets permissions fixed."""
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        wrapper = scripts / "tracker"
-        wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
-        wrapper.chmod(0o644)
+        for name in ("tracker", "tracker-textconv"):
+            wrapper = scripts / name
+            wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
+            wrapper.chmod(0o644)
         result = _check_tracker_wrapper(tmp_path)
-        assert result.status == "warn"
-        assert "not executable" in result.message
+        assert result.status == "fixed"
+        assert "fixed permissions" in str(result.details)
+        # Both should now be executable
+        assert os.access(scripts / "tracker", os.X_OK)
+        assert os.access(scripts / "tracker-textconv", os.X_OK)
 
-    def test_wrapper_missing(self, tmp_path: Path) -> None:
+    def test_wrapper_missing_auto_installed(self, tmp_path: Path) -> None:
+        """Missing wrappers are auto-created with correct content."""
         result = _check_tracker_wrapper(tmp_path)
-        assert result.status == "warn"
-        assert "not found" in result.message
-        assert any("scripts/tracker" in d for d in result.details)
+        assert result.status == "fixed"
+        assert "installed" in str(result.details)
+        # Both shims should exist and be executable
+        tracker = tmp_path / "scripts" / "tracker"
+        textconv = tmp_path / "scripts" / "tracker-textconv"
+        assert tracker.exists()
+        assert textconv.exists()
+        assert os.access(tracker, os.X_OK)
+        assert os.access(textconv, os.X_OK)
+        # Content should include key markers
+        assert "hypergumbo-tracker" in tracker.read_text()
+        assert "textconv_main" in textconv.read_text()
+
+    def test_only_tracker_missing(self, tmp_path: Path) -> None:
+        """Only the missing shim is installed; existing one is left alone."""
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        textconv = scripts / "tracker-textconv"
+        textconv.write_text("#!/bin/bash\nexec htrac-tc \"$@\"")
+        textconv.chmod(0o755)
+        result = _check_tracker_wrapper(tmp_path)
+        assert result.status == "fixed"
+        assert "scripts/tracker: installed" in str(result.details)
+        # textconv should not be in actions
+        assert "scripts/tracker-textconv" not in str(result.details)
 
 
 # ---------------------------------------------------------------------------

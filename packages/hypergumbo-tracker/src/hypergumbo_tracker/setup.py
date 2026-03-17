@@ -1322,6 +1322,23 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
             ga_path.write_text(diff_line + "\n")
             fixed.append(str(ops_dir))
 
+    # Manage root .gitattributes for linguist-generated + diff=tracker
+    if repo_root is not None:
+        root_ga = repo_root / ".gitattributes"
+        _root_ga_lines = [
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker",
+            ".agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker",
+        ]
+        existing = root_ga.read_text() if root_ga.exists() else ""
+        missing = [ln for ln in _root_ga_lines if ln not in existing]
+        if missing:
+            with open(root_ga, "a") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                for ln in missing:
+                    f.write(ln + "\n")
+            fixed.append("root .gitattributes")
+
     if fixed:
         return CheckResult(
             name="textconv",
@@ -1404,8 +1421,69 @@ def _check_existing_data(root: Path) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 
+_TRACKER_SHIM = """\
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Thin wrapper for hypergumbo-tracker CLI.
+# Delegates to the Python entry point if installed.
+
+set -euo pipefail
+
+if command -v hypergumbo-tracker &>/dev/null; then
+    exec hypergumbo-tracker "$@"
+fi
+
+# Fallback: try running as module
+if python3 -c "import hypergumbo_tracker" &>/dev/null 2>&1; then
+    exec python3 -m hypergumbo_tracker.cli "$@"
+fi
+
+echo "error: hypergumbo-tracker is not installed." >&2
+echo "Run: pip install -e packages/hypergumbo-tracker" >&2
+exit 1
+"""
+
+_TEXTCONV_SHIM = """\
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Git textconv driver for hypergumbo-tracker .ops files.
+# Delegates to the Python entry point if installed.
+
+set -euo pipefail
+
+if command -v hypergumbo-tracker-textconv &>/dev/null; then
+    exec hypergumbo-tracker-textconv "$@"
+fi
+
+# Fallback: try running as module
+if python3 -c "import hypergumbo_tracker" &>/dev/null 2>&1; then
+    exec python3 -c "from hypergumbo_tracker.cli import textconv_main; textconv_main()" "$@"
+fi
+
+# Graceful degradation: show raw YAML with a warning
+echo "# hypergumbo-tracker not installed — run dev-install for compiled diffs"
+cat "$1"
+"""
+
+
+def _install_shim(path: Path, content: str) -> str | None:
+    """Write a shim script and make it executable. Returns action taken or None."""
+    if path.exists():
+        if os.access(path, os.X_OK):
+            return None
+        path.chmod(0o755)
+        return "fixed permissions"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    path.chmod(0o755)
+    return "installed"
+
+
 def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
-    """Check #15: Check if scripts/tracker wrapper exists and is executable."""
+    """Check #15: Install scripts/tracker and scripts/tracker-textconv shims.
+
+    Auto-creates missing shims and fixes permissions on existing ones.
+    """
     if repo_root is None:
         return CheckResult(
             name="tracker_wrapper",
@@ -1413,31 +1491,31 @@ def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
             message="Tracker wrapper check skipped (no git repo)",
         )
 
-    wrapper = repo_root / "scripts" / "tracker"
-    if wrapper.exists():
-        if os.access(wrapper, os.X_OK):
-            return CheckResult(
-                name="tracker_wrapper",
-                status="ok",
-                message="scripts/tracker wrapper found",
-            )
+    actions: list[str] = []
+
+    tracker_action = _install_shim(
+        repo_root / "scripts" / "tracker", _TRACKER_SHIM,
+    )
+    if tracker_action:
+        actions.append(f"scripts/tracker: {tracker_action}")
+
+    textconv_action = _install_shim(
+        repo_root / "scripts" / "tracker-textconv", _TEXTCONV_SHIM,
+    )
+    if textconv_action:
+        actions.append(f"scripts/tracker-textconv: {textconv_action}")
+
+    if actions:
         return CheckResult(
             name="tracker_wrapper",
-            status="warn",
-            message="scripts/tracker exists but is not executable",
-            details=["Run: chmod +x scripts/tracker"],
+            status="fixed",
+            message="Tracker wrapper shims " + ", ".join(actions),
+            details=actions,
         )
-
     return CheckResult(
         name="tracker_wrapper",
-        status="warn",
-        message="scripts/tracker wrapper not found",
-        details=[
-            "Create scripts/tracker with content:",
-            '  #!/usr/bin/env bash',
-            '  exec python -m hypergumbo_tracker.cli "$@"',
-            "Then: chmod +x scripts/tracker",
-        ],
+        status="ok",
+        message="scripts/tracker and scripts/tracker-textconv found",
     )
 
 
