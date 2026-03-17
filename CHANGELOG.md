@@ -12,28 +12,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-#### Dataflow access modes (ADR-0015)
-
-- **Edge access modes**: Edges carry optional `access_mode` (`read`, `write`, `mutate`, `delete`), `dest_access_mode`, and `channel` metadata.
-- **Automatic annotation**: YAML-driven dataflow classification for 9 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, C#, Kotlin) plus 65 tree-sitter-based analyzers. Python AST integration classifies assignments, augmented assignments, and deletes.
-- **Linker annotations**: 6 cross-language linkers (event_sourcing, message_queue, websocket, Electron IPC, Tauri IPC, wasm_bindgen) annotated with explicit access modes.
-- **`slice --dataflow`**: Data-dependency slicing. Forward slices follow write/mutate edges; reverse slices follow read edges. Unannotated edges still followed (graceful degradation).
-
-#### Cross-language linkers
-
-- **Yjs/CRDT reactive**: `crdt_publishes` edges between Yjs writers (`yMap.set`/`delete`) and observers (`observe`/`observeDeep`), plus awareness API (`setLocalState` → `on('change')`).
-- **Annotation convention**: `@hg:publishes`/`@hg:subscribes` comment annotations create `annotated_publishes` edges by channel name (confidence 0.95). Language-agnostic.
-- **Tauri IPC events**: `ipc_event` edges from Rust `window.emit()` to TS `listen()`/`once()`, matched by channel name.
-
-#### Route detection
-
-- **React Router v6.4+**: `createBrowserRouter`/`createHashRouter`/`createMemoryRouter` object-based route configs with nested children path composition.
+- **Dataflow access modes (ADR-0015)**: Edges carry optional `access_mode` (`read`/`write`/`mutate`/`delete`), `dest_access_mode`, and `channel` metadata. YAML-driven annotation for 9 languages plus 65 tree-sitter analyzers. `slice --dataflow` follows write→read dependencies.
+- **Yjs/CRDT linker**: `crdt_publishes` edges between Yjs writers and observers, plus awareness API.
+- **Annotation convention linker**: `@hg:publishes`/`@hg:subscribes` comment annotations create cross-language pub/sub edges.
+- **Tauri IPC event linker**: `ipc_event` edges from Rust `window.emit()` to TS `listen()`/`once()`.
+- **React Router v6.4+**: `createBrowserRouter` object-based route configs with nested children, `loader_ref`, `action_ref`, and `lazy_import` metadata.
+- **Shared file index**: Single `os.walk()` replaces ~80 redundant `rglob()` calls per run (~75% of uncached runtime eliminated).
+- **Embedding model cache**: Singleton avoids 2 redundant model loads per run (~9% faster).
+- **smart-test ETA**: Estimates wall-clock duration from test timing history before the run starts.
+- **Test timing leaderboard**: `scripts/test-leaderboard` tracks per-test durations with rolling windows.
 
 ### Fixed
 
 - **`slice --dataflow` reverse mode**: Correctly follows read edges instead of write edges.
-- **Solidity ABI linker**: Qualified function names (e.g., `PermissionManager._grant`) now also indexed by unqualified name for ethers.js/viem matching.
-- **Entrypoint diversity cap**: No single `EntrypointKind` can take more than 40% of slots when count exceeds the cap.
+- **Solidity ABI linker**: Qualified function names now also indexed by unqualified name.
+- **Entrypoint diversity cap**: No single `EntrypointKind` can take more than 40% of slots.
 
 ## [2.2.1] - 2026-03-15
 
