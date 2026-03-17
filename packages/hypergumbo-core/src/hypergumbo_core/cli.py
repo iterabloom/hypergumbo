@@ -4562,9 +4562,11 @@ def run_behavior_map(
         all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
         candidate_files: list[Path] = []
 
-        for f in repo_root.rglob("*"):
-            if not f.is_file():
-                continue
+        if file_index is not None:
+            _all_repo_files = file_index.all_files()
+        else:  # pragma: no cover - file_index always set in run_behavior_map
+            _all_repo_files = [f for f in repo_root.rglob("*") if f.is_file()]
+        for f in _all_repo_files:
             rel_path = f.relative_to(repo_root)
             rel_str = str(rel_path)
 

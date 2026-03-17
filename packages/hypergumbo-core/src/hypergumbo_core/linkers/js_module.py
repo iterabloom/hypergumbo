@@ -447,8 +447,14 @@ def _build_tsconfig_alias_index(
     """
     index: dict[str, list[tuple[str, Path]]] = {}
 
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
     for name in ("tsconfig.json", "jsconfig.json"):
-        for config_path in repo_root.rglob(name):
+        if file_index is not None and file_index.repo_root == repo_root:
+            config_paths = file_index.by_name(name)
+        else:
+            config_paths = repo_root.rglob(name)
+        for config_path in config_paths:
             # Skip node_modules — contains thousands of unrelated configs
             if "node_modules" in config_path.parts:
                 continue

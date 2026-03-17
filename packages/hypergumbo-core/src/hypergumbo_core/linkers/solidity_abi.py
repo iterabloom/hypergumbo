@@ -108,12 +108,16 @@ def _scan_contract_calls(
     results: list[tuple[str, str, int]] = []
     seen: set[tuple[str, str]] = set()
 
-    for ts_file in repo_root.rglob("*"):
-        if not ts_file.is_file():
-            continue
-        suffix = ts_file.suffix
-        if suffix not in _TS_JS_EXTENSIONS:
-            continue
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == repo_root:  # pragma: no cover - only via run_behavior_map
+        ts_js_files = list(file_index.by_extension(*_TS_JS_EXTENSIONS))
+    else:
+        ts_js_files = [
+            f for f in repo_root.rglob("*")
+            if f.is_file() and f.suffix in _TS_JS_EXTENSIONS
+        ]
+    for ts_file in ts_js_files:
 
         try:
             rel_path = str(ts_file.relative_to(repo_root))

@@ -425,13 +425,23 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
     }
     languages: set[str] = set()
     try:
-        for item in repo_root.rglob("*"):
-            if item.is_file():
+        from hypergumbo_core.discovery import get_file_index
+        file_index = get_file_index()
+        if file_index is not None and file_index.repo_root == repo_root:
+            for item in file_index.all_files():
                 ext = item.suffix.lower()
                 if ext in ext_to_lang:
                     languages.add(ext_to_lang[ext])
                     if len(languages) > 10:
                         break
+        else:
+            for item in repo_root.rglob("*"):
+                if item.is_file():
+                    ext = item.suffix.lower()
+                    if ext in ext_to_lang:
+                        languages.add(ext_to_lang[ext])
+                        if len(languages) > 10:
+                            break
     except OSError:
         pass
     return languages if languages else {"_common"}
@@ -1293,9 +1303,21 @@ def _get_repo_state_hash(repo_root: Path) -> str:
         ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs", ".rb",
         ".c", ".cpp", ".h", ".hpp", ".cs", ".php", ".swift", ".kt", ".scala",
     }
-    for f in sorted(repo_root.rglob("*")):
-        if f.is_file() and f.suffix in source_extensions:
-            # Skip common non-source directories
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == repo_root:
+        source_files_iter = sorted(
+            f for ext in source_extensions for f in file_index.by_extension(ext)
+        )
+    else:
+        source_files_iter = sorted(
+            f for f in repo_root.rglob("*")
+            if f.is_file() and f.suffix in source_extensions
+        )
+    for f in source_files_iter:
+        if file_index is None:
+            # Only need path filtering when not using the index (index
+            # already excludes node_modules, __pycache__, etc.)
             rel_parts = f.relative_to(repo_root).parts
             if any(p.startswith(".") or p in ("node_modules", "venv", "__pycache__")
                    for p in rel_parts):
