@@ -28,6 +28,7 @@
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --background # Kick off full suite in background
+#   ./scripts/smart-test --no-mask   # Disable slow test masking
 
 set -euo pipefail
 
@@ -49,6 +50,7 @@ VERBOSE=false
 MANIFEST_ONLY=false
 BACKGROUND=false
 RAW_OUTPUT=false
+NO_MASK=false
 PYTEST_ARGS=()
 HAS_EXPLICIT_TESTS=false
 
@@ -64,6 +66,7 @@ for arg in "$@"; do
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
         --raw) RAW_OUTPUT=true ;;
+        --no-mask) NO_MASK=true ;;
         -*) PYTEST_ARGS+=("$arg") ;;
         *)
             PYTEST_ARGS+=("$arg")
@@ -609,6 +612,56 @@ for arg in "${PYTEST_ARGS[@]}"; do
         SCOPED_PYTEST_ARGS+=("$arg")
     fi
 done
+
+# Slow test masking: deselect slow tests not connected to changed code
+# Uses the behavior map's call graph to identify which slow tests (>100ms)
+# actually depend on the changed symbols.  Degrades gracefully if the
+# behavior map or timings are unavailable.
+if [[ "$NO_MASK" != "true" ]] && [[ "$FULL_RUN" != "true" ]]; then
+    TIMINGS_PATH="$HOME/hypergumbo_lab_notebook/test_timings.json"
+    if [[ -f "$TIMINGS_PATH" ]]; then
+        AFFECTED_LIST=$(mktemp)
+        echo "$AFFECTED_TESTS" > "$AFFECTED_LIST"
+
+        # Prefer stable hypergumbo's Python, fall back to dev
+        MASK_PYTHON=""
+        if [[ -n "$STABLE_HG" ]]; then
+            # Derive the Python interpreter from the stable hypergumbo path
+            STABLE_DIR=$(dirname "$STABLE_HG")
+            if [[ -x "$STABLE_DIR/python3" ]]; then
+                MASK_PYTHON="$STABLE_DIR/python3"
+            elif [[ -x "$STABLE_DIR/python" ]]; then
+                MASK_PYTHON="$STABLE_DIR/python"
+            fi
+        fi
+        if [[ -z "$MASK_PYTHON" ]]; then
+            # Fall back to dev venv or system python
+            MASK_PYTHON="python3"
+        fi
+
+        DESELECT_FILE=$(mktemp)
+        MASK_STDERR=$(mktemp)
+        if "$MASK_PYTHON" -m hypergumbo_core.test_masking \
+            --changed-files "$CHANGED_FILE_LIST" \
+            --timings "$TIMINGS_PATH" \
+            --affected-tests "$AFFECTED_LIST" \
+            --repo-root "$REPO_ROOT" \
+            > "$DESELECT_FILE" 2>"$MASK_STDERR"; then
+
+            MASK_COUNT=$(grep -c . "$DESELECT_FILE" 2>/dev/null || echo 0)
+            if [[ "$MASK_COUNT" -gt 0 ]]; then
+                while IFS= read -r deselect_arg; do
+                    SCOPED_PYTEST_ARGS+=("$deselect_arg")
+                done < "$DESELECT_FILE"
+                # Print the summary from stderr (contains time saved info)
+                cat "$MASK_STDERR" >&2
+            fi
+        else
+            log "Slow test masking unavailable (non-fatal)"
+        fi
+        rm -f "$AFFECTED_LIST" "$DESELECT_FILE" "$MASK_STDERR"
+    fi
+fi
 
 # Run tests and collect coverage (don't enforce threshold yet)
 run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
