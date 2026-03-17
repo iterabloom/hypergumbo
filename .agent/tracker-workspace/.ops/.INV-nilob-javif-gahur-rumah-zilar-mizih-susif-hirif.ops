@@ -77,3 +77,10 @@
   clock: 9  # 153f
   nonce: 153f  # 153f
   message: "Re: investigation results. contextBridge investigation (podman-desktop) complete — found that podman-desktop uses individual function exposures (contextBridge.exposeInMainWorld('funcName', ...)) rather than object-based wrappers, and wraps ipcRenderer.invoke in a custom ipcInvoke() helper. Both gaps are now fixed in PR #2296. The remaining 4 areas (GraphQL codegen, gRPC TS+Python, gRPC codegen Python, wasm_bindgen) have not been investigated yet."  # 153f
+- op: discuss  # a39e
+  at: '2026-03-17T09:20:13Z'  # a39e
+  by: agent  # a39e
+  actor: jgstern_agent  # a39e
+  clock: 10  # a39e
+  nonce: a39e  # a39e
+  message: "Cross-ref: PlazaFlow readiness. wasm_bindgen facades listed as remaining gap — relevant because PlazaFlow has multiple WASM modules. See META-migil umbrella and WI-pitam (multi-WASM boundary quality)."  # a39e

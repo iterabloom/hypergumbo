@@ -60,3 +60,10 @@
   nonce: c80c  # c80c
   set:  # c80c
     status: holding  # c80c
+- op: discuss  # 7e28
+  at: '2026-03-17T09:20:13Z'  # 7e28
+  by: agent  # 7e28
+  actor: jgstern_agent  # 7e28
+  clock: 7  # 7e28
+  nonce: '7e28'  # 7e28
+  message: "Cross-ref: PlazaFlow readiness. yjsDocId metadata in SpatialObjects must become document_references edges. See WI-mamuh (Yjs sub-document tracing)."  # 7e28
