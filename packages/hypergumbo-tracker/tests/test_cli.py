@@ -1444,6 +1444,104 @@ class TestDescribeChangesUnit:
 # ---------------------------------------------------------------------------
 
 
+class TestBulkRelationships:
+    """Tests for --add-blocked-by and --remove-blocked-by inverse operations."""
+
+    def test_add_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-blocked-by sets before links on the referenced items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker1", title="Blocker 1")
+        _add_item(ops_dir, "WI-blocker2", title="Blocker 2")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker1",
+                "--add-blocked-by", "WI-blocker2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # Both blockers should now have before: [INV-target]
+        assert "blocks" in out.lower() or "blocked-by" in out.lower()
+
+    def test_add_blocked_by_sets_before_on_other_items(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Verify the before link is actually set on the blocker items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        # Verify by showing the blocker item
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "show", "WI-blocker",
+            ])
+        show_out = capsys.readouterr().out
+        assert "INV-target" in show_out
+
+    def test_remove_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-blocked-by removes before links from the referenced items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        # First add the link
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        capsys.readouterr()
+        # Now remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--remove-blocked-by", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "no longer" in out.lower() or "removed" in out.lower()
+
+    def test_blocked_by_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-blocked-by works in JSON mode."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+
+
 class TestBatchCommand:
     """Tests for the batch subcommand."""
 
@@ -4108,3 +4206,4 @@ class TestSyncReminder:
             _print_sync_reminder()
         captured = capsys.readouterr()
         assert captured.err == ""
+

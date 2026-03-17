@@ -586,32 +586,65 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         set_fields["fields"] = fields_dict
 
     # Capture old state for verbose confirmation
+    has_direct_mutations = bool(set_fields or add_fields or remove_fields)
     old_item = ts.get(args.item_id)
 
-    ts.update(
-        args.item_id,
-        set_fields=set_fields or None,
-        add_fields=add_fields or None,
-        remove_fields=remove_fields or None,
-    )
+    if has_direct_mutations:
+        ts.update(
+            args.item_id,
+            set_fields=set_fields or None,
+            add_fields=add_fields or None,
+            remove_fields=remove_fields or None,
+        )
 
     # --note is shorthand for a follow-up discuss call
     if args.note:
         _warn_unread_human_messages(args.item_id, ts)
         ts.discuss(args.item_id, message=args.note)
 
-    # Compute and display changes
+    # Compute and display changes for the primary item
     new_item = ts.get(args.item_id)
     changes = _describe_changes(old_item, new_item, ts)
 
+    # Handle --add-blocked-by / --remove-blocked-by (inverse before links)
+    # These modify OTHER items, not the primary target.
+    blocked_by_changes: list[str] = []
+    target_full_id, _, _ = ts._resolve_id(args.item_id)
+
+    if getattr(args, "add_blocked_by", None):
+        for ref in args.add_blocked_by:
+            blocker_id = _resolve_ref(ts, ref, "--add-blocked-by")
+            ts.update(
+                blocker_id,
+                add_fields={"before": [target_full_id]},
+            )
+            blocked_by_changes.append(
+                f"blocked-by: {_item_label(ts, blocker_id)} now blocks "
+                f"{_short_id(target_full_id)}"
+            )
+
+    if getattr(args, "remove_blocked_by", None):
+        for ref in args.remove_blocked_by:
+            blocker_id = _resolve_ref(ts, ref, "--remove-blocked-by")
+            ts.update(
+                blocker_id,
+                remove_fields={"before": [target_full_id]},
+            )
+            blocked_by_changes.append(
+                f"blocked-by: {_item_label(ts, blocker_id)} no longer blocks "
+                f"{_short_id(target_full_id)}"
+            )
+
+    all_changes = changes + blocked_by_changes
+
     if args.json:
         result: dict[str, Any] = {"ok": True}
-        if changes:
-            result["changes"] = _changes_to_dict(changes)
+        if all_changes:
+            result["changes"] = _changes_to_dict(all_changes)
         print(json.dumps(result))
     else:
-        if changes:
-            print(f"updated {_short_id(args.item_id)}: {'; '.join(changes)}")
+        if all_changes:
+            print(f"updated {_short_id(args.item_id)}: {'; '.join(all_changes)}")
         else:
             print("updated")
     return EXIT_SUCCESS
@@ -1368,6 +1401,12 @@ def _build_parser() -> argparse.ArgumentParser:
                           help="Add not-duplicate-of link")
     p_update.add_argument("--remove-not-duplicate-of", action="append",
                           help="Remove not-duplicate-of link")
+    p_update.add_argument("--add-blocked-by", action="append",
+                          help="Inverse of --add-before: sets before link on the OTHER item "
+                               "pointing to this item (repeatable)")
+    p_update.add_argument("--remove-blocked-by", action="append",
+                          help="Inverse of --remove-before: removes before link from the "
+                               "OTHER item pointing to this item (repeatable)")
     p_update.add_argument("--field", action="append", help="Field key=value (repeatable)")
     p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
 
