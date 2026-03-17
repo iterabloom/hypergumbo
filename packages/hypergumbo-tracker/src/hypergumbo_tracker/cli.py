@@ -426,21 +426,29 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             _resolve_ref(ts, b, "--add-before") for b in args.add_before
         ]
     if args.remove_before:
-        remove_fields["before"] = args.remove_before
+        remove_fields["before"] = [
+            _resolve_ref(ts, b, "--remove-before") for b in args.remove_before
+        ]
     if args.add_duplicate_of:
         add_fields["duplicate_of"] = [
             _resolve_ref(ts, d, "--add-duplicate-of")
             for d in args.add_duplicate_of
         ]
     if args.remove_duplicate_of:
-        remove_fields["duplicate_of"] = args.remove_duplicate_of
+        remove_fields["duplicate_of"] = [
+            _resolve_ref(ts, d, "--remove-duplicate-of")
+            for d in args.remove_duplicate_of
+        ]
     if args.add_not_duplicate_of:
         add_fields["not_duplicate_of"] = [
             _resolve_ref(ts, d, "--add-not-duplicate-of")
             for d in args.add_not_duplicate_of
         ]
     if args.remove_not_duplicate_of:
-        remove_fields["not_duplicate_of"] = args.remove_not_duplicate_of
+        remove_fields["not_duplicate_of"] = [
+            _resolve_ref(ts, d, "--remove-not-duplicate-of")
+            for d in args.remove_not_duplicate_of
+        ]
 
     if args.field:
         fields_dict: dict[str, Any] = {}

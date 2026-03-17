@@ -785,7 +785,9 @@ class TestWriteCommands:
     def test_update_with_tags(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                               mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-old", title="Old item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -2010,7 +2012,9 @@ class TestDuplicateFlags:
     ) -> None:
         """--remove-duplicate-of removes a duplicate-of link."""
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-dup", title="Dup item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -2025,7 +2029,9 @@ class TestDuplicateFlags:
     ) -> None:
         """--remove-not-duplicate-of removes a not-duplicate-of link."""
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-nodup", title="Not-dup item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -2033,6 +2039,109 @@ class TestDuplicateFlags:
                 "--remove-not-duplicate-of", "WI-nodup",
             ])
         assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_duplicate_of_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-duplicate-of with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Dup target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-duplicate-of", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_duplicate_of_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-duplicate-of with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-duplicate-of", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_remove_not_duplicate_of_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-not-duplicate-of with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Not-dup target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-not-duplicate-of", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_not_duplicate_of_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-not-duplicate-of with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-not-duplicate-of", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+
+class TestRemoveBeforePrefixResolution:
+    """--remove-before must resolve short prefixes like --add-before does."""
+
+    def test_remove_before_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Before target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-before", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_before_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-before", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
