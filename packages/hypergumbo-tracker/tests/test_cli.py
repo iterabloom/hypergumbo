@@ -1440,6 +1440,255 @@ class TestDescribeChangesUnit:
 
 
 # ---------------------------------------------------------------------------
+# Batch command
+# ---------------------------------------------------------------------------
+
+
+class TestBatchCommand:
+    """Tests for the batch subcommand."""
+
+    def test_batch_from_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch reads commands from a .htrac file."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update WI-test --priority 1\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "2/2" in out or "2 succeeded" in out
+
+    def test_batch_from_stdin(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch reads commands from stdin with '-'."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        input_text = "update WI-test --status done\n"
+        with pytest.raises(SystemExit) as exc:
+            with patch("sys.stdin", new=__import__("io").StringIO(input_text)):
+                main([
+                    "--tracker-root", str(tracker_root), "--no-auto-sync",
+                    "batch", "-",
+                ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_skips_comments_and_blanks(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Comments and blank lines are ignored."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "# This is a comment\n"
+            "\n"
+            "update WI-test --status done\n"
+            "  # Indented comment\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "1/1" in out or "1 succeeded" in out
+
+    def test_batch_partial_failure(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """If one operation fails, others still run and exit is non-zero."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update WI-nonexistent --status done\n"
+            "update WI-test --priority 1\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code != EXIT_SUCCESS
+        out = capsys.readouterr().out
+        err = capsys.readouterr().err
+        # Should report which operations failed
+        assert "FAIL" in out or "failed" in out.lower() or "FAIL" in err or "failed" in err.lower()
+
+    def test_batch_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode returns structured results."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("update WI-test --status done\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "--json",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert "results" in data
+        assert data["results"][0]["ok"] is True
+
+    def test_batch_empty_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Empty batch file succeeds with 0 operations."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "empty.htrac"
+        batch_file.write_text("# Nothing to do\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_discuss_command(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch supports discuss commands."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            'update WI-test --status done\n'
+            'discuss WI-test "Fixed in PR #100"\n'
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_file_not_found(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Missing batch file gives user error."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(tmp_path / "nonexistent.htrac"),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_batch_disallowed_command(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Read-only commands are rejected inside batch."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("show WI-test\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "not allowed" in err
+
+    def test_batch_invalid_args(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Invalid arguments in a batch line are reported."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update --invalid-flag\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_batch_empty_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Empty batch in JSON mode returns proper structure."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "empty.htrac"
+        batch_file.write_text("# All comments\n\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "--json",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+        assert data["results"] == []
+
+    def test_batch_item_not_found_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """ItemNotFoundError in batch is caught and reported per-op."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("update WI-nonexistent --status done\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "FAIL" in err
+
+    def test_batch_handler_nonzero_exit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Handler returning non-zero exit code is reported as failure."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        # --field without = gives EXIT_USER_ERROR from _cmd_update
+        batch_file.write_text("update WI-test --field badformat\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+
+# ---------------------------------------------------------------------------
 # Lock/Unlock commands
 # ---------------------------------------------------------------------------
 

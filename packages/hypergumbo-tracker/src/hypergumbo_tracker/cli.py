@@ -78,6 +78,7 @@ _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "freeze", "unfreeze", "repair-drift",
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup", "tui",
+    "batch",
 })
 
 
@@ -1504,7 +1505,212 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
 
+    # --- batch ---
+    p_batch = sub.add_parser(
+        "batch",
+        help="Run multiple operations from a .htrac file with deferred auto-sync",
+    )
+    p_batch.add_argument(
+        "file", help="Path to .htrac batch file, or '-' for stdin",
+    )
+
     return parser
+
+
+# ---------------------------------------------------------------------------
+# Batch command
+# ---------------------------------------------------------------------------
+
+
+# Commands allowed inside a batch file. Read-only commands (show, list, etc.)
+# are excluded since they don't produce mutations.
+_BATCH_ALLOWED_COMMANDS: frozenset[str] = frozenset({
+    "add", "update", "discuss", "lock", "unlock",
+    "promote", "demote",
+})
+
+
+def _parse_batch_line(line: str) -> list[str] | None:
+    """Parse one line from a .htrac batch file into argv tokens.
+
+    Returns None for comments and blank lines. Uses shlex to handle
+    quoted arguments (e.g., discuss WI-test "Fixed in PR #100").
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    import shlex
+
+    return shlex.split(stripped)
+
+
+def _cmd_batch(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'batch' subcommand.
+
+    Reads a .htrac file (or stdin) with one tracker command per line.
+    Executes each command sequentially. Auto-sync is NOT triggered between
+    operations — the caller (main()) fires it once after batch completes.
+
+    Each operation is individually atomic: if op #3 fails, ops #1 and #2
+    still stand. This is NOT transactional — there is no rollback.
+    """
+    # Read batch input
+    if args.file == "-":
+        lines = sys.stdin.readlines()
+    else:
+        batch_path = Path(args.file)
+        if not batch_path.exists():
+            print(f"error: batch file not found: {args.file}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        lines = batch_path.read_text().splitlines(keepends=True)
+
+    # Parse into operations
+    operations: list[tuple[int, list[str]]] = []
+    for line_num, line in enumerate(lines, 1):
+        tokens = _parse_batch_line(line)
+        if tokens is not None:
+            operations.append((line_num, tokens))
+
+    if not operations:
+        if args.json:
+            print(json.dumps({"ok": True, "results": []}))
+        else:
+            print("batch: 0 operations (nothing to do)")
+        return EXIT_SUCCESS
+
+    # Build a sub-parser for dispatching individual operations
+    # We reuse the existing parser's subcommand set
+    sub_parser = _build_parser()
+
+    results: list[dict[str, Any]] = []
+    succeeded = 0
+    failed = 0
+
+    for line_num, tokens in operations:
+        cmd_name = tokens[0] if tokens else "?"
+        if cmd_name not in _BATCH_ALLOWED_COMMANDS:
+            msg = f"line {line_num}: '{cmd_name}' not allowed in batch"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Parse the tokens using the full CLI parser, injecting global flags
+        full_argv = [
+            "--tracker-root", str(args.tracker_root_resolved),
+            "--no-auto-sync",
+        ]
+        if args.json:
+            full_argv.append("--json")
+        full_argv.extend(tokens)
+
+        try:
+            sub_args = sub_parser.parse_args(full_argv)
+        except SystemExit:
+            msg = f"line {line_num}: invalid arguments for '{cmd_name}'"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Dispatch — map command to handler
+        handler_map: dict[str, Any] = {
+            "add": _cmd_add,
+            "update": _cmd_update,
+            "discuss": _cmd_discuss,
+            "lock": _cmd_lock,
+            "unlock": _cmd_unlock,
+            "promote": _cmd_promote,
+            "demote": _cmd_demote,
+        }
+        handler = handler_map.get(sub_args.command)
+        if handler is None:  # pragma: no cover
+            msg = f"line {line_num}: no handler for '{cmd_name}'"
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Capture stdout for JSON mode (each sub-command prints its own output)
+        import io
+
+        old_stdout = sys.stdout
+        buf = io.StringIO()
+        if args.json:
+            sys.stdout = buf
+
+        try:
+            exit_code = handler(sub_args, ts)
+            if exit_code == EXIT_SUCCESS:
+                succeeded += 1
+                result_entry: dict[str, Any] = {
+                    "line": line_num, "command": cmd_name, "ok": True,
+                }
+                if args.json:
+                    sub_out = buf.getvalue().strip()
+                    if sub_out:
+                        try:
+                            result_entry["output"] = json.loads(sub_out)
+                        except json.JSONDecodeError:  # pragma: no cover
+                            result_entry["output"] = sub_out
+                results.append(result_entry)
+            else:
+                failed += 1
+                results.append({
+                    "line": line_num, "command": cmd_name,
+                    "ok": False, "error": f"exit code {exit_code}",
+                })
+        except (
+            ItemNotFoundError, AmbiguousPrefixError,
+            HumanAuthorityError, LockedFieldError, FrozenItemError,
+        ) as e:
+            failed += 1
+            msg = f"line {line_num}: {e}"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": str(e),
+            })
+        except Exception as e:  # pragma: no cover — catch-all for unexpected errors
+            failed += 1
+            msg = f"line {line_num}: {e}"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": str(e),
+            })
+        finally:
+            sys.stdout = old_stdout
+
+    total = succeeded + failed
+    if args.json:
+        print(json.dumps({
+            "ok": failed == 0,
+            "total": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "results": results,
+        }))
+    else:
+        status = "ok" if failed == 0 else "FAIL"
+        print(f"batch: {succeeded}/{total} succeeded ({status})")
+        if failed > 0:
+            for r in results:
+                if not r["ok"]:
+                    print(
+                        f"  line {r['line']}: {r['command']} — {r.get('error', '?')}",
+                        file=sys.stderr,
+                    )
+
+    return EXIT_SUCCESS if failed == 0 else EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -1801,6 +2007,9 @@ def main(argv: list[str] | None = None) -> None:
     except SystemExit:
         raise
 
+    # Store resolved path for batch command's sub-dispatching
+    args.tracker_root_resolved = str(tracker_root)
+
     # Create TrackerSet with optional cache
     try:
         config = load_config(tracker_root / "tracker")
@@ -1849,6 +2058,7 @@ def main(argv: list[str] | None = None) -> None:
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
         "tui": _cmd_tui,
+        "batch": _cmd_batch,
     }
 
     handler = handler_map.get(args.command)
