@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **React Router v6.4+ loader/action linking**: Route symbols with `loader_ref` or `action_ref` metadata now produce `routes_to` edges (with `role: loader`/`role: action`) to the corresponding function symbols.
 - **Electron contextBridge function exposure**: IPC linker now detects individual function exposures via `contextBridge.exposeInMainWorld('funcName', () => ...)` and traces `window.funcName()` calls through to IPC channels. Also supports custom wrappers like `ipcInvoke('channel')` (e.g., podman-desktop pattern).
+- **React.lazy() route detection**: JSX `<Route>` elements referencing `React.lazy()` or `lazy()` components now include `lazy_import` metadata with the dynamic import path.
 
 ## [2.3.0] - 2026-03-16
 
