@@ -2989,3 +2989,279 @@ class TestDataflowSlice:
         query = SliceQuery(entrypoint="func_a", dataflow=True, reverse=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
         assert func_b.id in result.node_ids
+
+
+class TestCrossLinkerIntegration:
+    """Verify slice BFS traverses edges from multiple linkers in a single trace.
+
+    Validates INV-jisit: when multiple linkers (Tauri IPC, Yjs CRDT, WebSocket,
+    event sourcing) are active in the same project, a single forward slice must
+    produce a connected subgraph that crosses 3+ boundary types.
+
+    The test simulates a PlazaFlow-like polyglot project:
+      TS frontend → Tauri IPC → Rust handler → Yjs CRDT → WebSocket relay
+                                              → event sourcing → audit handler
+    """
+
+    @pytest.fixture()
+    def polyglot_graph(self) -> tuple[list[Symbol], list[Edge]]:
+        """Build a graph spanning 4 linker boundary types.
+
+        Chain: user_action (TS) --ipc_calls--> handle_action (Rust)
+               --calls--> sync_doc (Rust) --crdt_publishes--> crdt_sub
+               --crdt_publishes--> relay_update (Rust)
+               --websocket_message--> ws_receiver (TS)
+
+        Branch: handle_action --uses--> event_pub --event_publishes--> event_sub
+                --event_subscribes--> audit_handler (Rust)
+        """
+        # Frontend (TypeScript)
+        user_action = make_symbol(
+            "userAction", path="src/app.ts", language="typescript",
+        )
+        ws_receiver = make_symbol(
+            "onWsMessage", path="src/ws.ts", language="typescript",
+            start_line=20, end_line=30,
+        )
+
+        # Backend (Rust)
+        handle_action = make_symbol(
+            "handle_action", path="src-tauri/commands.rs",
+            language="rust", start_line=10, end_line=20,
+        )
+        sync_doc = make_symbol(
+            "sync_doc", path="src-tauri/crdt.rs",
+            language="rust", start_line=1, end_line=10,
+        )
+        relay_update = make_symbol(
+            "relay_update", path="src-tauri/ws.rs",
+            language="rust", start_line=1, end_line=10,
+        )
+
+        # Synthetic CRDT nodes (pass-through)
+        crdt_pub = make_symbol(
+            "crdt:doc.content", path="src-tauri/crdt.rs",
+            kind="crdt_publisher", language="rust",
+            start_line=30, end_line=31,
+        )
+        crdt_sub = make_symbol(
+            "crdt:doc.content", path="src-tauri/ws.rs",
+            kind="crdt_subscriber", language="rust",
+            start_line=30, end_line=31,
+        )
+
+        # Synthetic event sourcing nodes (pass-through)
+        event_pub = make_symbol(
+            "event:action.completed", path="src-tauri/commands.rs",
+            kind="event_publisher", language="rust",
+            start_line=40, end_line=41,
+        )
+        event_sub = make_symbol(
+            "event:action.completed", path="src-tauri/audit.rs",
+            kind="event_subscriber", language="rust",
+            start_line=1, end_line=2,
+        )
+        audit_handler = make_symbol(
+            "on_action_completed", path="src-tauri/audit.rs",
+            language="rust", start_line=5, end_line=15,
+        )
+
+        symbols = [
+            user_action, handle_action, sync_doc, crdt_pub, crdt_sub,
+            relay_update, ws_receiver, event_pub, event_sub, audit_handler,
+        ]
+        edges = [
+            # Tauri IPC boundary (TS → Rust)
+            make_edge(user_action, handle_action, edge_type="ipc_calls"),
+            # Internal call
+            make_edge(handle_action, sync_doc, edge_type="calls"),
+            # Yjs CRDT boundary (pub/sub)
+            make_edge(sync_doc, crdt_pub, edge_type="uses"),
+            make_edge(crdt_pub, crdt_sub, edge_type="crdt_publishes"),
+            make_edge(crdt_sub, relay_update, edge_type="crdt_publishes"),
+            # WebSocket boundary (Rust → TS)
+            make_edge(relay_update, ws_receiver, edge_type="websocket_message"),
+            # Event sourcing boundary (branching from handle_action)
+            make_edge(handle_action, event_pub, edge_type="uses"),
+            make_edge(event_pub, event_sub, edge_type="event_publishes"),
+            make_edge(event_sub, audit_handler, edge_type="event_subscribes"),
+        ]
+        return symbols, edges
+
+    def test_forward_slice_crosses_four_boundaries(
+        self, polyglot_graph: tuple[list[Symbol], list[Edge]],
+    ) -> None:
+        """Forward slice from TS frontend reaches all endpoints via 4 linker types."""
+        symbols, edges = polyglot_graph
+        query = SliceQuery(
+            entrypoint="userAction", max_hops=10, max_files=50,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+                "crdt_publisher", "crdt_subscriber",
+            }),
+        )
+        result = slice_graph(symbols, edges, query)
+
+        # Must reach endpoints across all 4 boundary types
+        real_names = {
+            s.name for s in symbols
+            if s.id in result.node_ids
+            and s.kind not in (
+                "event_publisher", "event_subscriber",
+                "crdt_publisher", "crdt_subscriber",
+            )
+        }
+        assert "userAction" in real_names, "entry point missing"
+        assert "handle_action" in real_names, "Tauri IPC target missing"
+        assert "sync_doc" in real_names, "CRDT source missing"
+        assert "relay_update" in real_names, "CRDT→WS bridge missing"
+        assert "onWsMessage" in real_names, "WebSocket target missing"
+        assert "on_action_completed" in real_names, "event sourcing target missing"
+
+        # Verify synthetic nodes are filtered (pass-through)
+        synthetic_ids = {
+            s.id for s in symbols
+            if s.kind in (
+                "event_publisher", "event_subscriber",
+                "crdt_publisher", "crdt_subscriber",
+            )
+        }
+        assert not synthetic_ids & result.node_ids, \
+            "synthetic pass-through nodes should be filtered from result"
+
+    def test_forward_slice_edge_types_span_boundaries(
+        self, polyglot_graph: tuple[list[Symbol], list[Edge]],
+    ) -> None:
+        """Verify the slice traverses edges from 4+ distinct linker domains.
+
+        Pass-through filtering removes synthetic nodes and their edges from
+        the output. The BFS still traverses these edges during exploration.
+        We verify traversal by checking that nodes beyond each boundary type
+        are reachable.
+        """
+        symbols, edges = polyglot_graph
+        query = SliceQuery(
+            entrypoint="userAction", max_hops=10, max_files=50,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+                "crdt_publisher", "crdt_subscriber",
+            }),
+        )
+        result = slice_graph(symbols, edges, query)
+
+        # Retained edges should include non-synthetic types
+        edge_types_retained = {
+            e.edge_type for e in edges if e.id in result.edge_ids
+        }
+        # ipc_calls and websocket_message connect real nodes directly
+        assert "ipc_calls" in edge_types_retained, \
+            "IPC boundary edge should be retained (connects real nodes)"
+        assert "websocket_message" in edge_types_retained, \
+            "WebSocket boundary edge should be retained (connects real nodes)"
+
+        # crdt_publishes and event_publishes connect synthetic nodes, so they
+        # are filtered out. But we verify traversal happened by checking that
+        # nodes beyond those boundaries are reachable.
+        reachable = {
+            s.name for s in symbols if s.id in result.node_ids
+        }
+        # relay_update is only reachable via CRDT pass-through chain
+        assert "relay_update" in reachable, \
+            "CRDT boundary traversal failed: relay_update unreachable"
+        # on_action_completed is only reachable via event pass-through chain
+        assert "on_action_completed" in reachable, \
+            "Event sourcing boundary traversal failed: handler unreachable"
+
+    def test_reverse_slice_from_ws_receiver(
+        self, polyglot_graph: tuple[list[Symbol], list[Edge]],
+    ) -> None:
+        """Reverse slice from WS receiver traces back through CRDT and IPC."""
+        symbols, edges = polyglot_graph
+        query = SliceQuery(
+            entrypoint="onWsMessage", max_hops=10, max_files=50, reverse=True,
+            pass_through_kinds=frozenset({
+                "crdt_publisher", "crdt_subscriber",
+            }),
+        )
+        result = slice_graph(symbols, edges, query)
+
+        real_names = {
+            s.name for s in symbols
+            if s.id in result.node_ids
+            and s.kind not in ("crdt_publisher", "crdt_subscriber")
+        }
+        assert "onWsMessage" in real_names, "entry point missing"
+        assert "relay_update" in real_names, "WS source missing"
+        assert "sync_doc" in real_names, "CRDT source missing"
+        assert "handle_action" in real_names, "Tauri handler missing"
+        assert "userAction" in real_names, "TS frontend missing"
+        # Event branch should NOT appear (not on path to ws_receiver)
+        assert "audit_handler" not in real_names, \
+            "event branch should not appear in reverse slice to WS"
+
+    def test_reverse_slice_from_audit_handler(
+        self, polyglot_graph: tuple[list[Symbol], list[Edge]],
+    ) -> None:
+        """Reverse slice from audit handler traces back through events and IPC."""
+        symbols, edges = polyglot_graph
+        query = SliceQuery(
+            entrypoint="on_action_completed", max_hops=10, max_files=50,
+            reverse=True,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+            }),
+        )
+        result = slice_graph(symbols, edges, query)
+
+        real_names = {
+            s.name for s in symbols
+            if s.id in result.node_ids
+            and s.kind not in ("event_publisher", "event_subscriber")
+        }
+        assert "on_action_completed" in real_names
+        assert "handle_action" in real_names, "Tauri handler missing"
+        assert "userAction" in real_names, "TS frontend missing"
+        # WS branch should NOT appear
+        assert "onWsMessage" not in real_names, \
+            "WS branch should not appear in reverse slice to audit"
+
+    def test_max_files_limits_cross_boundary_reach(
+        self, polyglot_graph: tuple[list[Symbol], list[Edge]],
+    ) -> None:
+        """max_files limits prune the slice but still preserve BFS ordering.
+
+        With max_files=4 (7 unique files in graph), the slice correctly
+        includes files in BFS order from the entry point. Deeper boundary
+        crossings may be pruned — this is expected behavior, not a bug.
+        The important invariant is that the BFS traversal itself does not
+        skip edge types; it's the file budget that limits reach.
+        """
+        symbols, edges = polyglot_graph
+        query = SliceQuery(
+            entrypoint="userAction", max_hops=10, max_files=4,
+            pass_through_kinds=frozenset({
+                "event_publisher", "event_subscriber",
+                "crdt_publisher", "crdt_subscriber",
+            }),
+        )
+        result = slice_graph(symbols, edges, query)
+
+        # Entry point and at least 1 cross-boundary target must be reached
+        assert any(
+            s.name == "userAction" for s in symbols if s.id in result.node_ids
+        ), "entry point missing even with tight file budget"
+        # At least some boundary crossing should survive
+        edge_types_in_slice = {
+            e.edge_type for e in edges if e.id in result.edge_ids
+        }
+        boundary_types = {
+            "ipc_calls", "crdt_publishes", "websocket_message",
+            "event_publishes", "event_subscribes",
+        }
+        boundaries_present = edge_types_in_slice & boundary_types
+        assert len(boundaries_present) >= 1, (
+            f"Even with tight file budget, at least 1 boundary crossing "
+            f"should survive. Got: {edge_types_in_slice}"
+        )
+        # File limit should be hit
+        assert "file_limit" in result.limits_hit
