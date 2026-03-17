@@ -396,6 +396,42 @@ class TestCheckGitignore:
         assert "other-stuff" in content
         assert "config.yaml" in content
 
+    def test_root_gitignore_created(self, tmp_path: Path) -> None:
+        """Root .gitignore entries for tracker ephemeral files are added."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        content = (tmp_path / ".gitignore").read_text()
+        assert ".agent/.cache-*.db" in content
+        assert ".agent/.sync-logs/" in content
+        assert ".ci/pytest-output.log" in content
+
+    def test_root_gitignore_already_present(self, tmp_path: Path) -> None:
+        """Root .gitignore with all entries returns ok."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        root_gi = tmp_path / ".gitignore"
+        root_gi.write_text(
+            ".agent/.cache-*.db\n.agent/.sync-logs/\n.ci/pytest-output.log\n"
+        )
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_root_gitignore_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Root .gitignore without trailing newline gets one before append."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        root_gi = tmp_path / ".gitignore"
+        root_gi.write_text("existing-entry")
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        content = root_gi.read_text()
+        assert "existing-entry\n" in content
+
 
 # ---------------------------------------------------------------------------
 # Check #5: config.yaml.template

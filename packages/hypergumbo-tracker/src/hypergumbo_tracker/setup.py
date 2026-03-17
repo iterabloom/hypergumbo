@@ -367,8 +367,19 @@ def _check_gitattributes(root: Path) -> CheckResult:
     )
 
 
-def _check_gitignore(root: Path) -> CheckResult:
-    """Check #4: Ensure .gitignore files have required entries."""
+_ROOT_GITIGNORE_ENTRIES = [
+    ".agent/.cache-*.db",
+    ".agent/.sync-logs/",
+    ".ci/pytest-output.log",
+]
+
+
+def _check_gitignore(root: Path, repo_root: Path | None = None) -> CheckResult:
+    """Check #4: Ensure .gitignore files have required entries.
+
+    Manages both internal tracker .gitignore files and root .gitignore
+    entries for tracker ephemeral files (caches, sync logs).
+    """
     checks = [
         (root / "tracker" / ".gitignore", "config.yaml"),
         (root / "tracker-workspace" / "stealth" / ".gitignore", "*.ops"),
@@ -387,6 +398,20 @@ def _check_gitignore(root: Path) -> CheckResult:
         else:
             gi_path.write_text(required_line + "\n")
             fixed.append(str(gi_path))
+
+    # Manage root .gitignore for tracker ephemeral files
+    if repo_root is not None:
+        root_gi = repo_root / ".gitignore"
+        existing = root_gi.read_text() if root_gi.exists() else ""
+        missing = [e for e in _ROOT_GITIGNORE_ENTRIES if e not in existing]
+        if missing:
+            with open(root_gi, "a") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                f.write("# Tracker ephemeral files\n")
+                for entry in missing:
+                    f.write(entry + "\n")
+            fixed.append("root .gitignore")
 
     if fixed:
         return CheckResult(
@@ -2053,7 +2078,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     # Part 1: Core infrastructure
     results.append(_check_directory_structure(root))       # 2
     results.append(_check_gitattributes(root))             # 3
-    results.append(_check_gitignore(root))                 # 4
+    results.append(_check_gitignore(root, repo_root))       # 4
     results.append(_check_config_template(root))           # 5
     results.append(_check_config_yaml(root))               # 6
     results.append(_check_config_validation(root))         # 7
