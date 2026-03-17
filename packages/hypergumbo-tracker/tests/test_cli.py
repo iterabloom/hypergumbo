@@ -1444,6 +1444,230 @@ class TestDescribeChangesUnit:
 # ---------------------------------------------------------------------------
 
 
+class TestDepsCommand:
+    """Tests for the deps subcommand (dependency graph view)."""
+
+    def test_deps_shows_item(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows the target item."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-target",
+                  title="Target item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Target item" in out
+
+    def test_deps_shows_children(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows children of the target."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-parent", kind="meta_invariant",
+                  title="Parent meta")
+        _add_item(ops_dir, "WI-child1", title="Child 1")
+        _add_item(ops_dir, "WI-child2", title="Child 2")
+        # Set parents
+        for child in ("WI-child1", "WI-child2"):
+            with pytest.raises(SystemExit):
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "update", child, "--parent", "META-parent",
+                ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "META-parent",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Child 1" in out
+        assert "Child 2" in out
+
+    def test_deps_shows_blocking(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows before/blocked-by relationships."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-blocker", title="Blocker task")
+        _add_item(ops_dir, "WI-blocked", title="Blocked task")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker", "--add-before", "WI-blocked",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Blocked task" in out
+
+    def test_deps_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps in JSON mode returns structured output."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-target",
+                  title="Target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "WI-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["id"] == "WI-target"
+
+    def test_deps_no_relationships(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps with no relationships shows the item alone."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-lonely",
+                  title="Lonely item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-lonely",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Lonely item" in out
+
+    def test_deps_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows items that block the target (inverse before)."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker", title="Blocker task")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker", "--add-before", "INV-target",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "INV-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "blocked by" in out
+        assert "Blocker task" in out
+
+    def test_deps_json_full(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes parent, children, blocks, and blocked_by."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-top", kind="meta_invariant", title="Top")
+        _add_item(ops_dir, "WI-child", title="Child")
+        _add_item(ops_dir, "WI-target2", title="Target 2")
+        _add_item(ops_dir, "WI-blocker2", title="Blocker 2")
+        # child's parent = META-top
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--parent", "META-top",
+            ])
+        # child blocks WI-target2
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--add-before", "WI-target2",
+            ])
+        # WI-blocker2 blocks WI-child
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker2", "--add-before", "WI-child",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "WI-child",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["parent"]["title"] == "Top"
+        assert data["blocks"][0]["title"] == "Target 2"
+        assert data["blocked_by"][0]["title"] == "Blocker 2"
+
+    def test_deps_json_children(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes children array."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-top2", kind="meta_invariant", title="Top")
+        _add_item(ops_dir, "WI-kid", title="Kid item")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-kid", "--parent", "META-top2",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "META-top2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert "children" in data
+        assert data["children"][0]["title"] == "Kid item"
+
+    def test_deps_text_with_parent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Text mode shows parent relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-parent2", kind="meta_invariant", title="Parent")
+        _add_item(ops_dir, "WI-child2", title="Child item")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child2", "--parent", "META-parent2",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-child2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "parent:" in out
+        assert "Parent" in out
+
+
 class TestBulkRelationships:
     """Tests for --add-blocked-by and --remove-blocked-by inverse operations."""
 

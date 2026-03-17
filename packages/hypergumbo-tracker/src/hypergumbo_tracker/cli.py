@@ -5,11 +5,11 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~27 subcommands (add, update, list, show, ready,
-  log, discuss, lock, unlock, freeze, unfreeze, repair-drift, promote, demote,
-  stealth, unstealth, validate, count-todos, hash-todos, guidance,
+- main(): Primary CLI with ~29 subcommands (add, update, list, show, ready,
+  log, discuss, deps, lock, unlock, freeze, unfreeze, repair-drift, promote,
+  demote, stealth, unstealth, validate, count-todos, hash-todos, guidance,
   check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
-  fork-setup, migrate, tui).
+  fork-setup, migrate, batch, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -710,6 +710,90 @@ def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("discussed")
+    return EXIT_SUCCESS
+
+
+def _cmd_deps(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'deps' subcommand — show dependency graph for an item.
+
+    Shows: parent, children, items this blocks (before), and items that
+    block this (items with this item in their before list).
+    """
+    item = ts.get(args.item_id)
+    full_id = item.id
+
+    # Find children (items whose parent == this item)
+    children = ts.children(full_id)
+
+    # Find items this blocks (this item's before list)
+    blocks: list[CompiledItem] = []
+    for bid in item.before:
+        try:
+            blocks.append(ts.get(bid))
+        except ItemNotFoundError:  # pragma: no cover — dangling reference
+            pass
+
+    # Find items that block this (other items with this item in their before)
+    blocked_by: list[CompiledItem] = []
+    all_items = ts.list_items()
+    for other in all_items:
+        if full_id in other.before and other.id != full_id:
+            blocked_by.append(other)
+
+    if args.json:
+        result: dict[str, Any] = {
+            "id": full_id,
+            "title": item.title,
+            "status": item.status,
+        }
+        if item.parent:
+            try:
+                parent = ts.get(item.parent)
+                result["parent"] = {"id": parent.id, "title": parent.title}
+            except ItemNotFoundError:  # pragma: no cover — dangling parent ref
+                result["parent"] = {"id": item.parent, "title": "?"}
+        if children:
+            result["children"] = [
+                {"id": c.id, "title": c.title, "status": c.status}
+                for c in children
+            ]
+        if blocks:
+            result["blocks"] = [
+                {"id": b.id, "title": b.title, "status": b.status}
+                for b in blocks
+            ]
+        if blocked_by:
+            result["blocked_by"] = [
+                {"id": b.id, "title": b.title, "status": b.status}
+                for b in blocked_by
+            ]
+        print(json.dumps(result))
+    else:
+        # Text output: tree-like display
+        print(f"{_short_id(full_id)}  {item.title}  [{item.status}]")
+
+        if item.parent:
+            try:
+                parent = ts.get(item.parent)
+                print(f"  parent: {_short_id(parent.id)} ({parent.title})")
+            except ItemNotFoundError:  # pragma: no cover — dangling parent ref
+                print(f"  parent: {_short_id(item.parent)} (?)")
+
+        if children:
+            print(f"  children ({len(children)}):")
+            for c in children:
+                print(f"    {_short_id(c.id)}  {c.title}  [{c.status}]")
+
+        if blocks:
+            print(f"  blocks ({len(blocks)}):")
+            for b in blocks:
+                print(f"    → {_short_id(b.id)}  {b.title}  [{b.status}]")
+
+        if blocked_by:
+            print(f"  blocked by ({len(blocked_by)}):")
+            for b in blocked_by:
+                print(f"    ← {_short_id(b.id)}  {b.title}  [{b.status}]")
+
     return EXIT_SUCCESS
 
 
@@ -1544,6 +1628,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
 
+    # --- deps ---
+    p_deps = sub.add_parser("deps", help="Show dependency graph for an item")
+    p_deps.add_argument("item_id", help="Item ID or prefix")
+
     # --- batch ---
     p_batch = sub.add_parser(
         "batch",
@@ -2078,6 +2166,7 @@ def main(argv: list[str] | None = None) -> None:
         "add": _cmd_add,
         "update": _cmd_update,
         "discuss": _cmd_discuss,
+        "deps": _cmd_deps,
         "lock": _cmd_lock,
         "unlock": _cmd_unlock,
         "freeze": _cmd_freeze,
