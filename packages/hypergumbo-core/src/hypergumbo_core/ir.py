@@ -343,6 +343,7 @@ class Edge:
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
         quality: Score and reason dict for quality assessment
+        meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """
 
     id: str

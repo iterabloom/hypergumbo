@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Architecture
 
 > **Auto-generated** by running hypergumbo on itself.
@@ -12,16 +13,16 @@ for focused LLM context.
 ## Self-Analysis Summary
 
 hypergumbo analyzed its own source code and found:
-- **189** Python modules (110 analyzers, 39 linkers, 23 core, 4 CLI, 13 tracker)
-- **3487** symbols (functions, classes, methods)
-- **36307** edges by type:
-  - calls: 21885
-  - imports: 7125
-  - instantiates: 5171
-  - contains: 970
-  - dispatches_to: 496
-  - decorated_by: 253
-  - other: 407
+- **201** Python modules (117 analyzers, 41 linkers, 25 core, 4 CLI, 14 tracker)
+- **3577** symbols (functions, classes, methods)
+- **37262** edges by type:
+  - calls: 22444
+  - imports: 7403
+  - instantiates: 5235
+  - contains: 987
+  - dispatches_to: 512
+  - decorated_by: 263
+  - other: 418
 
 ## Package Architecture
 
@@ -34,7 +35,7 @@ depend on core but not on each other, and the tracker is fully independent.
                     /       |       \
                    v        v        v
   lang-mainstream   lang-common   lang-extended1
-  (35 analyzers)   (35 analyzers)   (37 analyzers)
+  (36 analyzers)   (38 analyzers)   (40 analyzers)
                    \       |       /
                     v      v      v
                    hypergumbo-core
@@ -48,10 +49,10 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 39 linkers, 98 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 35 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
-| **hypergumbo-lang-common** | 35 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
-| **hypergumbo-lang-extended1** | 37 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 41 linkers, 98 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 36 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
+| **hypergumbo-lang-extended1** | 40 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
 | **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, Lamport-clock ordering, and optional embedding-based dedup |
 
@@ -82,7 +83,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 3487 Symbols + 36307 Edges + UsageContexts             │
+│  Output: 3577 Symbols + 37262 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -99,7 +100,7 @@ Source Files
 │                        5. LINKERS                               │
 │  Cross-language/cross-file edge creation                        │
 │  Match via meta.concepts (route paths, gRPC services, etc.)     │
-│  39 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  41 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -216,6 +217,7 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_lang`: Language for confidence scoring
 - `evidence_spans`: Structured locations of evidence
 - `quality`: Score and reason dict for quality assessment
+- `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
 
 
 ## Most-Connected Symbols
@@ -225,21 +227,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 3932.4 | ir.py |
-| `Span` | class | 3380.9 | ir.py |
-| `run_behavior_map` | function | 2232.1 | cli.py |
+| `Symbol` | class | 4000.3 | ir.py |
+| `Span` | class | 3435.4 | ir.py |
+| `run_behavior_map` | function | 2264.0 | cli.py |
 | `TrackerApp` | class | 1647.2 | tui.py |
 | `load_framework_patterns` | function | 1124.9 | framework_patterns.py |
-| `LinkerContext` | class | 1101.8 | registry.py |
+| `LinkerContext` | class | 1119.4 | registry.py |
 | `TreeSitterAnalyzer` | class | 851.1 | base.py |
 | `main` | function | 815.9 | cli.py |
+| `find_files` | function | 782.8 | discovery.py |
 | `Store` | class | 760.4 | store.py |
-| `find_files` | function | 668.2 | discovery.py |
 | `clear_pattern_cache` | function | 614.0 | framework_patterns.py |
+| `Edge` | class | 560.8 | ir.py |
 | `UsageContext.create` | method | 558.1 | ir.py |
-| `Edge` | class | 539.3 | ir.py |
 | `Store.add` | method | 535.4 | store.py |
-| `node_text` | function | 517.0 | base.py |
+| `node_text` | function | 521.0 | base.py |
 
 ## Pattern System
 
@@ -357,6 +359,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes.
 - **`hypergumbo_core.compact`**: Compact output mode with coverage-based truncation and residual sum...
+- **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
@@ -377,6 +380,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
+- **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 
 ### Analyzers
 
@@ -398,6 +402,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.java`**: Java analysis pass using tree-sitter-java.
 - **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.json_config`**: JSON configuration analysis pass using tree-sitter-json.
+- **`hypergumbo_lang_mainstream.jupyter`**: Jupyter notebook (.ipynb) analyzer.
 - **`hypergumbo_lang_mainstream.kotlin`**: Kotlin analysis pass using tree-sitter-kotlin.
 - **`hypergumbo_lang_mainstream.lua`**: Lua analysis pass using tree-sitter-lua.
 - **`hypergumbo_lang_mainstream.make`**: Makefile analysis pass using tree-sitter-make.
@@ -430,10 +435,12 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.fsharp`**: F# analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.glsl`**: GLSL shader analysis pass using tree-sitter-glsl.
 - **`hypergumbo_lang_common.graphql`**: GraphQL schema analysis pass using tree-sitter-graphql.
+- **`hypergumbo_lang_common.handlebars`**: Handlebars template analyzer using regex patterns.
 - **`hypergumbo_lang_common.haskell`**: Haskell analysis pass using tree-sitter-haskell.
 - **`hypergumbo_lang_common.hcl`**: HCL/Terraform analyzer using tree-sitter.
 - **`hypergumbo_lang_common.hlsl`**: HLSL (DirectX shader) analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.julia`**: Julia analysis pass using tree-sitter-julia.
+- **`hypergumbo_lang_common.just`**: Just (justfile) analyzer using regex patterns.
 - **`hypergumbo_lang_common.latex`**: LaTeX analyzer using tree-sitter.
 - **`hypergumbo_lang_common.matlab`**: MATLAB language analyzer using tree-sitter.
 - **`hypergumbo_lang_common.meson`**: Meson build system analyzer using tree-sitter.
@@ -442,6 +449,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.proto`**: Protocol Buffers (Proto) analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.puppet`**: Puppet manifest analyzer using tree-sitter.
 - **`hypergumbo_lang_common.purescript`**: PureScript language analyzer using tree-sitter.
+- **`hypergumbo_lang_common.qml`**: QML (Qt Modeling Language) analyzer using regex patterns.
 - **`hypergumbo_lang_common.r_lang`**: R language analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.racket`**: Racket language analyzer using tree-sitter.
 - **`hypergumbo_lang_common.robot`**: Robot Framework analyzer using tree-sitter.
@@ -459,6 +467,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_extended1.asm`**: Assembly language analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.bibtex`**: BibTeX bibliography analyzer using tree-sitter.
 - **`hypergumbo_lang_extended1.bitbake`**: BitBake analyzer using tree-sitter.
+- **`hypergumbo_lang_extended1.blade`**: Blade template analyzer using regex patterns.
 - **`hypergumbo_lang_extended1.capnp`**: Cap'n Proto analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.circom`**: Circom analysis pass using tree-sitter-circom.
 - **`hypergumbo_lang_extended1.cobol`**: COBOL analyzer using tree-sitter.
@@ -467,6 +476,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_extended1.fish`**: Fish shell analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.gdscript`**: GDScript (Godot) analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.gleam`**: Gleam language analyzer using tree-sitter.
+- **`hypergumbo_lang_extended1.gnuplot`**: Gnuplot script analyzer using regex patterns.
 - **`hypergumbo_lang_extended1.hack`**: Hack language analyzer.
 - **`hypergumbo_lang_extended1.haxe`**: Haxe language analyzer using tree-sitter.
 - **`hypergumbo_lang_extended1.janet`**: Janet language analyzer using tree-sitter.
@@ -475,6 +485,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_extended1.lean`**: Lean 4 analysis pass using tree-sitter-lean.
 - **`hypergumbo_lang_extended1.llvm_ir`**: LLVM IR analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.luau`**: Luau language analyzer.
+- **`hypergumbo_lang_extended1.mermaid`**: Mermaid diagram analyzer using regex patterns.
 - **`hypergumbo_lang_extended1.nim`**: Nim language analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.odin`**: Odin language analyzer using tree-sitter.
 - **`hypergumbo_lang_extended1.pascal`**: Pascal language analyzer using tree-sitter.
@@ -493,6 +504,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Linkers
 
+- **`hypergumbo_core.linkers.annotation_convention`**: Annotation convention linker for developer-provided pub/sub and dis...
 - **`hypergumbo_core.linkers.build_target`**: Build target linker for connecting manifest entries to main() funct...
 - **`hypergumbo_core.linkers.cgo`**: Cgo linker for connecting Go C function calls to C/C++ implementati...
 - **`hypergumbo_core.linkers.containment`**: Containment linker for creating `contains` edges between containers...
@@ -532,6 +544,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.vue_template_method`**: Vue template-method linker for connecting event handlers to script ...
 - **`hypergumbo_core.linkers.wasm_bindgen`**: wasm_bindgen linker for connecting JS/TS imports to Rust #[wasm_bin...
 - **`hypergumbo_core.linkers.websocket`**: WebSocket linker for detecting WebSocket communication patterns.
+- **`hypergumbo_core.linkers.yjs_crdt`**: Yjs/CRDT reactive linker for detecting pub/sub patterns in Yjs-base...
 
 ### CLI & I/O
 
@@ -552,6 +565,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.stop_hook`**: Stop hook helpers for the hypergumbo tracker.
 - **`hypergumbo_tracker.store`**: Store for the hypergumbo tracker — YAML I/O, compile, CRUD, Lamport...
 - **`hypergumbo_tracker.sync`**: Streamlined PR workflow for tracker-only changes.
+- **`hypergumbo_tracker.sync_log`**: Always-on file logging for tracker sync operations.
 - **`hypergumbo_tracker.trackerset`**: TrackerSet: multi-tier unified view over canonical, workspace, and ...
 - **`hypergumbo_tracker.tui`**: Textual TUI for the hypergumbo tracker.
 - **`hypergumbo_tracker.validation`**: Op log and cross-file validation for the hypergumbo tracker.
@@ -564,48 +578,56 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 ````markdown
 # hypergumbo
 
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
+hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+.
 
 ## Overview
 Python (92%), Markdown (4%), Yaml (3%)
-740 files    (385 non-test + 355 test)
-~350,568 LOC (~138,739 non-test + ~211,829 test)
+776 files    (408 non-test + 368 test)
+~358,608 LOC (~142,251 non-test + ~216,357 test)
 
 ## Structure
 
 hypergumbo/
+├── .ci
+│   ├── pytest-results.xml
+│   └── [and 3 other items]
 ├── .githooks
 │   ├── commit-msg
 │   └── [and 9 other items]
 ├── docs
 │   ├── FRAMEWORKS.md
-│   └── [and 22 other items]
+│   └── [and 23 other items]
 ├── packages
+│   ├── hypergumbo
+│   │   ├── src
+│   │   │   └── hypergumbo
+│   │   │       ├── __main__.py
+│   │   │       └── [and 1 other items]
+│   │   └── [and 3 other items]
 │   ├── hypergumbo-core
 │   │   ├── src
 │   │   │   └── hypergumbo_core
 │   │   │       ├── analyze
 │   │   │       │   ├── base.py
 │   │   │       │   └── [and 3 other items]
-│   │   │       ├── __main__.py
 │   │   │       ├── cli.py
 │   │   │       ├── ir.py
-│   │   │       └── [and 26 other items]
+│   │   │       └── [and 30 other items]
 │   │   ├── tests
 │   │   │   ├── test_framework_patterns.py
-│   │   │   └── [and 102 other items]
+│   │   │   └── [and 106 other items]
 │   │   └── [and 2 other items]
 │   ├── hypergumbo-tracker
 │   │   ├── src
 │   │   │   └── hypergumbo_tracker
 │   │   │       ├── cli.py
-│   │   │       └── [and 13 other items]
+│   │   │       └── [and 14 other items]
 │   │   └── [and 6 other items]
-│   └── [and 4 other items]
+│   └── [and 3 other items]
 ├── scripts
 │   ├── lib
 │   │   └── forgejo-api.sh
-│   └── [and 35 other items]
+│   └── [and 36 other items]
 ├── tests
 │   ├── test_bakeoff_features_reflect.py
 │   └── [and 3 other items]
@@ -613,7 +635,7 @@ hypergumbo/
 ├── conftest.py
 ├── pyproject.toml
 ├── setup.py
-└── [and 30 other items]
+└── [and 24 other items]
 
 ## Frameworks
 
@@ -623,9 +645,9 @@ hypergumbo/
 
 ## Tests
 
-355 test files · hypothesis, pytest, unittest
+368 test files · hypothesis, pytest, unittest
 
-*~94% estimated coverage (2820/2996 functions called by tests)*
+*~94% estimated coverage (2880/3061 functions called by tests)*
 
 ## Configuration
 
@@ -652,7 +674,8 @@ LICENSE: AGPL
   > dev = [ "pytest>=8.0,<10", "pytest-cov~=7.0.0",
 
 [packages/hypergumbo/pyproject.toml]
-  > # Pulls in sentence-transformers which requires PyTorch (~2GB) # Install with: pip install hypergumbo[embeddings] or ./scripts/install-embe
+  > [project] name = "hypergumbo" version = "2.2.1"
+
 
 [pyproject.toml]
   > # Root pyproject.toml - shared tool configuration only # Packages are defined in packages/*/pyproject.toml
@@ -748,7 +771,6 @@ LICENSE: AGPL
   - `HttpClientCall` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/event_sourcing.py`:
   - `EventPattern` (Python @dataclass)
-  - `EventSourcingLinkResult` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql.py`:
   - `GraphQLClientCall` (Python @dataclass)
 `packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py`:
@@ -768,15 +790,21 @@ LICENSE: AGPL
   - `MigrationResult` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/subprocess_cli.py`:
   - `SubprocessCall` (Python @dataclass)
+`packages/hypergumbo-core/src/hypergumbo_core/dataflow.py`:
+  - `DataflowSite` (Python @dataclass)
+  - `DataflowConfig` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`:
   - `LanguageSpec` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/database_query.py`:
   - `DatabaseQueryPattern` (Python @dataclass)
-  - `DatabaseQueryLinkResult` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py`:
   - `ResolverPattern` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/partial_install_warnings.py`:
   - `PartialInstallWarning` (Python @dataclass)
+`packages/hypergumbo-core/src/hypergumbo_core/linkers/annotation_convention.py`:
+  - `AnnotationSite` (Python @dataclass)
+`packages/hypergumbo-core/src/hypergumbo_core/linkers/yjs_crdt.py`:
+  - `YjsSite` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/ranking.py`:
   - `CentralityResult` (Python @dataclass)
   - `RankedFile` (Python @dataclass)
@@ -795,9 +823,7 @@ LICENSE: AGPL
   - `_RailsIndex` (Python @dataclass)
 `packages/hypergumbo-core/src/hypergumbo_core/linkers/type_hierarchy.py`:
   - `_TypeHierarchyIndex` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/cgo.py`:
-  - `CgoLinkResult` (Python @dataclass)
-- ... and 48 more data models
+- ... and 51 more data models
 
 ## Source Files
 
@@ -821,6 +847,7 @@ LICENSE: AGPL
 - `packages/hypergumbo-core/src/hypergumbo_core/paths.py`
 - `packages/hypergumbo-core/src/hypergumbo_core/ranking.py`
 - `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/ada.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/dataflow.py`
 - `packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py`
 - `packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py`
 - `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py`
@@ -844,8 +871,7 @@ LICENSE: AGPL
 - `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/groovy.py`
 - `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/racket.py`
 - `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/vue.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/puppet.py`
-- ... and 515 more files
+- ... and 539 more files
 
 ## Key Symbols
 
@@ -905,25 +931,25 @@ LICENSE: AGPL
 ### `packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py`
 - `main(argv: list[str] | None=…) -> None` (function) — Primary CLI entry point.
 
-(... and 3466 more symbols across 218 other files)
+(... and 3547 more symbols across 229 other files)
 
 ## Additional Files
 
 - `README.md`
 - `CONTRIBUTING.md`
-- `docs/adr/0001-portable-agent-instructions.md`
+- `docs/governance-case-critiques.md`
 - `packages/hypergumbo-core/README.md`
 - `packages/hypergumbo-tracker/README.md`
-- `docs/GOVERNANCE.md`
-- `docs/LANGUAGES.md`
 - `docs/future/roadmap-details.md`
+- `packages/hypergumbo-core/src/hypergumbo_core/dataflow_patterns/python.yaml`
+- `docs/adr/0001-portable-agent-instructions.md`
+- `docs/LANGUAGES.md`
+- `docs/adr/0009-feature-focused-bakeoff.md`
 - `docs/MIGRATION-2.0.md`
-- `docs/MAINTAINER_AGENT_SPEC.md`
+- `docs/LINKERS.md`
 - `packages/hypergumbo-core/src/hypergumbo_core/frameworks/shiny.yaml`
-- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/servant.yaml`
-- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/plug.yaml`
-- `docs/adr/0012-pass-unification-and-multi-fidelity.md`
-- ... and 148 more files
+- `docs/GOVERNANCE.md`
+- ... and 159 more files
 ````
 
 </details>
@@ -932,7 +958,7 @@ LICENSE: AGPL
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7c238273d3a4
-  hypergumbo: 2.2.0
+  commit: 5dec9d796827
+  hypergumbo: 2.2.1
   python: 3.12.3
 -->
