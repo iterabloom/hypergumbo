@@ -21,3 +21,12 @@
     pr_ref:  # 97df
     description: "BlockSuite (MPL-2.0) arrives in PlazaFlow v1.5 as the unified document layer: EdgelessEditor (whiteboard), PageEditor (rich text), database blocks (kanban). Its data model IS Yjs. If hypergumbo can detect BlockSuite Workspace/Doc interfaces and block schema with meta:createdBy fields, it can trace attribution and erasure data paths. Lower priority — PlazaFlow v1.5 is far out. No bakeoff repos currently available (AFFiNE uses BlockSuite but not in repo pool). Cross-refs: WI-mamuh (Yjs sub-document tracing — BlockSuite sub-docs are Yjs docs)."  # 97df
     fields: {}  # 97df
+- op: update  # 28ad
+  at: '2026-03-17T09:19:19Z'  # 28ad
+  by: agent  # 28ad
+  actor: jgstern_agent  # 28ad
+  clock: 2  # 28ad
+  nonce: 28ad  # 28ad
+  set: {}  # 28ad
+  add:  # 28ad
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # 28ad

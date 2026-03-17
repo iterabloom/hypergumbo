@@ -63,3 +63,10 @@
   clock: 7  # 99b7
   nonce: 99b7  # 99b7
   message: "PRs: Tauri IPC entrypoint detection PR #2128 (a5cdab8a). Specta TAURI_INVOKE matching PR #2139 (f50ec5bd). Synthetic symbols PR #2152 (6a9ad758). Tier-2 protection PR #2156 (ec8bb427)."  # 99b7
+- op: discuss  # 926d
+  at: '2026-03-17T09:19:37Z'  # 926d
+  by: agent  # 926d
+  actor: jgstern_agent  # 926d
+  clock: 8  # 926d
+  nonce: 926d  # 926d
+  message: "Cross-ref: PlazaFlow readiness. PlazaFlow is Tauri v2. Tauri IPC linker needs v2 verification. See META-migil umbrella and WI-kipad (Tauri v2 verification)."  # 926d

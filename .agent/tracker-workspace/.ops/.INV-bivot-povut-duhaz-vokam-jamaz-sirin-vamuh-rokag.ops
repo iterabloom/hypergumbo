@@ -51,3 +51,10 @@
   set: {}  # 6d69
   add:  # 6d69
     tags: [done-ish]  # 6d69
+- op: discuss  # 449d
+  at: '2026-03-17T09:19:37Z'  # 449d
+  by: agent  # 449d
+  actor: jgstern_agent  # 449d
+  clock: 6  # 449d
+  nonce: 449d  # 449d
+  message: "Cross-ref: PlazaFlow readiness. PlazaFlow awareness edges (isSpeaking, editing, driverState) need the same slice traversal fix. See META-migil umbrella and WI-mamuh (Yjs sub-doc tracing)."  # 449d
