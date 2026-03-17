@@ -1,0 +1,22 @@
+- op: create  # 9586
+  at: '2026-03-17T09:15:33Z'  # 9586
+  by: agent  # 9586
+  actor: jgstern_agent  # 9586
+  clock: 1  # 9586
+  nonce: '9586'  # 9586
+  data:  # 9586
+    kind: work_item  # 9586
+    title: "PlazaFlow readiness: Tauri v2 linker verification and gaps"  # 9586
+    status: needs_human_review  # 9586
+    priority: 2  # 9586
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 9586
+    tags:  # 9586
+    - plazaflow  # 9586
+    - linker  # 9586
+    - tauri  # 9586
+    before: []  # 9586
+    duplicate_of: []  # 9586
+    not_duplicate_of: []  # 9586
+    pr_ref:  # 9586
+    description: "Existing tauri_ipc.py (built March 2026) handles invoke/command and emit/listen patterns. Need to verify coverage of Tauri v2 specifics: plugin system, register_uri_scheme_protocol, permissions model, managed state. PlazaFlow is Tauri v2. Existing work: WI-bajir (Tauri IPC linker, done), WI-vovaj (Tauri events, done), INV-hikak (Tauri IPC detection, holding). Run against real Tauri v2 apps and check for missing edges. Bakeoff repos: podman-desktop (Electron but similar IPC patterns, already used for contextBridge), spacedrive/yaak/Cap/readest if available (Tauri v2 apps from prior bakeoff). Cross-refs: INV-hikak (holding), INV-nilob (codegen wrapper tracing, violated — specta partially fixed)."  # 9586
+    fields: {}  # 9586
