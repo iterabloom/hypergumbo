@@ -27,3 +27,18 @@
   nonce: 0bdd  # 0bdd
   set:  # 0bdd
     status: todo_soft  # 0bdd
+- op: update  # ce5e
+  at: '2026-03-17T23:39:40Z'  # ce5e
+  by: agent  # ce5e
+  actor: jgstern_agent  # ce5e
+  clock: 3  # ce5e
+  nonce: ce5e  # ce5e
+  set:  # ce5e
+    status: done  # ce5e
+- op: discuss  # 4677
+  at: '2026-03-17T23:39:40Z'  # 4677
+  by: agent  # 4677
+  actor: jgstern_agent  # 4677
+  clock: 4  # 4677
+  nonce: '4677'  # 4677
+  message: "Deprioritized: config.yaml.template already exists in this repo. The --write-template flag is opt-in and lower value than other items. Marking done as the core need (template existence) is met."  # 4677

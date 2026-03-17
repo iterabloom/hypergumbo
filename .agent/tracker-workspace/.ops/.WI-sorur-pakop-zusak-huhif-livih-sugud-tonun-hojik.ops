@@ -27,3 +27,18 @@
   nonce: 6ebc  # 6ebc
   set:  # 6ebc
     status: todo_soft  # 6ebc
+- op: update  # 8798
+  at: '2026-03-17T23:39:40Z'  # 8798
+  by: agent  # 8798
+  actor: jgstern_agent  # 8798
+  clock: 3  # 8798
+  nonce: '8798'  # 8798
+  set:  # 8798
+    status: done  # 8798
+- op: discuss  # c07f
+  at: '2026-03-17T23:39:40Z'  # c07f
+  by: agent  # c07f
+  actor: jgstern_agent  # c07f
+  clock: 4  # c07f
+  nonce: c07f  # c07f
+  message: "Setup now manages root .gitignore entries for tracker ephemeral files."  # c07f
