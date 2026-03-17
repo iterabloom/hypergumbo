@@ -15,6 +15,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **React Router v6.4+ loader/action linking**: Route symbols with `loader_ref` or `action_ref` metadata now produce `routes_to` edges (with `role: loader`/`role: action`) to the corresponding function symbols.
 - **Electron contextBridge function exposure**: IPC linker now detects individual function exposures via `contextBridge.exposeInMainWorld('funcName', () => ...)` and traces `window.funcName()` calls through to IPC channels. Also supports custom wrappers like `ipcInvoke('channel')` (e.g., podman-desktop pattern).
 - **React.lazy() route detection**: JSX `<Route>` elements referencing `React.lazy()` or `lazy()` components now include `lazy_import` metadata with the dynamic import path.
+- **Cross-linker integration tests**: Validates that slice BFS traverses edges from 4+ linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single trace through a polyglot graph.
+
+#### Tracker
+
+- **Verbose update confirmations**: `tracker update` prints human-readable change details (e.g., `status: todo_hard → done`, `priority: P2 → P1`, `WI-alpha now blocks WI-beta (Beta task)`) instead of bare `updated`. JSON mode includes a structured `changes` array.
+- **Batch command**: `tracker batch <file>` reads a `.htrac` file (or stdin with `-`) with one tracker command per line. Auto-sync deferred to end of batch. Reports per-operation results.
+- **Inverse blocking flags**: `--add-blocked-by` and `--remove-blocked-by` on `tracker update` express fan-in dependencies in one command (e.g., `tracker update INV-x --add-blocked-by WI-a --add-blocked-by WI-b`).
+- **Dependency graph view**: `tracker deps <item>` shows parent, children, items it blocks, and items that block it, with directional arrows in text mode and structured output in JSON mode.
+- **Setup auto-install shims**: `tracker setup` now auto-creates `scripts/tracker` and `scripts/tracker-textconv` wrapper scripts when missing, and fixes permissions on existing non-executable ones.
+- **Setup root .gitattributes**: `tracker setup` manages root `.gitattributes` entries for `linguist-generated`, `merge=union`, and `diff=tracker` on `.ops` files.
+- **Setup root .gitignore**: `tracker setup` manages root `.gitignore` entries for tracker ephemeral files (`.agent/.cache-*.db`, `.agent/.sync-logs/`, `.ci/pytest-output.log`).
+
+### Fixed
+
+- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.
 
 ## [2.3.0] - 2026-03-16
 
