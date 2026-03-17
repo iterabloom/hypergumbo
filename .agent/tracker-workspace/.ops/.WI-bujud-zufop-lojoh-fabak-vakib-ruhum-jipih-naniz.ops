@@ -1,0 +1,56 @@
+- op: create  # 0146
+  at: '2026-03-16T04:35:53Z'  # 0146
+  by: agent  # 0146
+  actor: jgstern_agent  # 0146
+  clock: 1  # 0146
+  nonce: '0146'  # 0146
+  data:  # 0146
+    kind: work_item  # 0146
+    title: "ADR-0015: Dataflow YAML format and loader (dataflow.py)"  # 0146
+    status: todo_soft  # 0146
+    priority: 1  # 0146
+    parent:  # 0146
+    tags:  # 0146
+    - adr-0015  # 0146
+    - dataflow  # 0146
+    before:  # 0146
+    - WI-hagok-sabab-kukug-darov-tapuf-nalof-jomoj-pavod  # 0146
+    duplicate_of: []  # 0146
+    not_duplicate_of: []  # 0146
+    pr_ref:  # 0146
+    description: "New module: hypergumbo_core/dataflow.py (~200-300 lines).\n\n1. YAML loader: reads dataflow/*.yaml files, builds per-language lookup\n   table of tree-sitter node types to access-mode rules.\n2. annotate_dataflow(edges, tree, source, language): batch-annotates\n   edges by matching each edge's line to its AST node, looking up the\n   node type in the language config, and stamping access_mode into meta.\n   Skips edges that already have access_mode set (tier 2 precedence).\n3. scan_library_patterns(file_content, language): regex-based matching\n   for library-specific patterns (Yjs, Kafka, etc.) defined in the\n   library_patterns section of dataflow YAMLs.\n\nDepends on: Edge schema item (access_mode kwargs).\nSee ADR-0015 §4."  # 0146
+    fields: {}  # 0146
+- op: update  # 35be
+  at: '2026-03-16T04:42:26Z'  # 35be
+  by: agent  # 35be
+  actor: jgstern_agent  # 35be
+  clock: 2  # 35be
+  nonce: 35be  # 35be
+  set: {}  # 35be
+  remove:  # 35be
+    before: [WI-hagok-sabab-kukug-darov-tapuf-nalof-jomoj-pavod]  # 35be
+- op: update  # 9783
+  at: '2026-03-16T04:43:33Z'  # 9783
+  by: agent  # 9783
+  actor: jgstern_agent  # 9783
+  clock: 3  # 9783
+  nonce: '9783'  # 9783
+  set: {}  # 9783
+  add:  # 9783
+    before: [WI-tobul-firod-lifur-danaj-punoj-pokap-luzug-govib]  # 9783
+- op: update  # 7169
+  at: '2026-03-16T05:45:41Z'  # 7169
+  by: agent  # 7169
+  actor: jgstern_agent  # 7169
+  clock: 4  # 7169
+  nonce: '7169'  # 7169
+  set:  # 7169
+    status: done  # 7169
+    pr_ref: '#2242'  # 7169
+- op: discuss  # f34c
+  at: '2026-03-16T05:45:41Z'  # f34c
+  by: agent  # f34c
+  actor: jgstern_agent  # f34c
+  clock: 5  # f34c
+  nonce: f34c  # f34c
+  message: "Merged PR #2242. New dataflow.py module with YAML loader, annotate_dataflow(), and scan_library_patterns(). 27 tests, 100% coverage."  # f34c

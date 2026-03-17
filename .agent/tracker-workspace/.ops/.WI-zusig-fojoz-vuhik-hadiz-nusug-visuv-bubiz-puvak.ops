@@ -20,3 +20,19 @@
     pr_ref:  # 579e
     description: "## Context\n\nThe PlazaFlow project (a decentralized spatial collaboration platform) uses Yjs CRDTs as its primary coupling mechanism — virtually all shared state flows through Yjs observation patterns rather than direct function calls. Standard call-graph analysis misses these dependencies entirely.\n\nHypergumbo already has event sourcing, WebSocket, and message queue linkers that detect pub/sub patterns. A Yjs linker would follow the same architecture but target three distinct API surfaces:\n\n## Three API Surfaces to Cover\n\n### 1. Raw Yjs API (base case)\n- **Publish:** `yMap.set('key', value)`, `yArray.push(items)`, `yText.insert(pos, text)`, `yDoc.transact(fn)`\n- **Subscribe:** `yMap.observe(callback)`, `yMap.observeDeep(callback)`, `yDoc.on('update', handler)`\n- Covers: Y.Map, Y.Array, Y.Text, Y.Doc, Y.XmlFragment, and other shared types\n- Match by shared document/map key names or type names\n\n### 2. Yjs Awareness (ephemeral state)\n- **Publish:** `awareness.setLocalState(state)`, `awareness.setLocalStateField('key', value)`\n- **Subscribe:** `awareness.on('change', callback)`, `awareness.on('update', callback)`\n- Structurally identical to CRDT observation but a separate API surface\n- Used in PlazaFlow for: avatar positions, speaking status, capabilities, cursor positions\n\n### 3. BlockSuite block schema system (abstraction layer)\n- BlockSuite adds a higher-level abstraction over Yjs: block mutations and observations go through BlockSuite's API, which internally maps to Yjs operations\n- The linker needs to trace through BlockSuite's abstraction layer (slot-based event systems, computed properties from CRDT state) down to underlying Yjs operations\n- PlazaFlow uses BlockSuite for whiteboards, rich text, and kanban boards\n- Both levels matter: some code uses raw Yjs, some uses BlockSuite's API\n\n## Implementation Approach\n\nFollow the same pattern as the existing event sourcing linker (linkers/event_sourcing.py, ~716 lines):\n- Regex-based detection of publish/subscribe call patterns\n- Topic/key-based matching across files\n- Create `crdt_publishes` / `crdt_subscribes` edges (or similar)\n- Higher confidence for literal key names, lower for variable-based\n- Support both TypeScript and JavaScript files\n\n## Bakeoff Validation\n\nBefore building, analyze yjs/yjs, toeverything/blocksuite, and toeverything/AFFiNE repos to catalog the full API surface and validate detection patterns. See the related bakeoff curriculum work item.\n\n## Acceptance Criteria\n\n- Detects raw Yjs publish/subscribe patterns with key-based matching\n- Detects Yjs Awareness setLocalStateField/on('change') patterns\n- Detects BlockSuite block schema mutation/observation patterns\n- 100% test coverage\n- Validated against real Yjs-heavy codebases via bakeoff"  # 579e
     fields: {}  # 579e
+- op: update  # 0860
+  at: '2026-03-16T11:13:52Z'  # 0860
+  by: agent  # 0860
+  actor: jgstern_agent  # 0860
+  clock: 2  # 0860
+  nonce: '0860'  # 0860
+  set:  # 0860
+    status: done  # 0860
+    pr_ref: '#2256'  # 0860
+- op: discuss  # 6981
+  at: '2026-03-16T11:13:52Z'  # 6981
+  by: agent  # 6981
+  actor: jgstern_agent  # 6981
+  clock: 3  # 6981
+  nonce: '6981'  # 6981
+  message: "Merged PR #2256. New Yjs/CRDT linker covering raw Yjs API (set/delete → observe/observeDeep) and Awareness API (setLocalState/setLocalStateField → on change/update). Creates crdt_publishes edges. BlockSuite block schema layer not yet covered — can be added as follow-up or via @hg: annotations. 23 tests, 100% coverage."  # 6981

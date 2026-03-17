@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -1426,6 +1427,15 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
                 analysis.imports, run, resolver, method_resolver=method_resolver,
             )
+            # ADR-0015 Tier 1: annotate edges with dataflow access modes
+            try:
+                _kt_source = kt_file.read_bytes()
+                _kt_tree = parser.parse(_kt_source)
+                _kt_df = _get_dataflow_config("kotlin")
+                if _kt_df is not None:
+                    edges = _annotate_dataflow(edges, _kt_tree, _kt_source, _kt_df)
+            except (OSError, IOError):  # pragma: no cover
+                pass
             all_edges.extend(edges)
 
         run.files_analyzed = len(file_analyses)

@@ -1,0 +1,58 @@
+- op: create  # d1a4
+  at: '2026-03-16T04:52:50Z'  # d1a4
+  by: agent  # d1a4
+  actor: jgstern_agent  # d1a4
+  clock: 1  # d1a4
+  nonce: d1a4  # d1a4
+  data:  # d1a4
+    kind: invariant  # d1a4
+    title: "Codegen wrapper tracing: cross-language linkers must resolve through generated binding/proxy layers"  # d1a4
+    status: violated  # d1a4
+    priority: 4  # d1a4
+    parent:  # d1a4
+    tags: []  # d1a4
+    before: []  # d1a4
+    duplicate_of: []  # d1a4
+    not_duplicate_of: []  # d1a4
+    pr_ref:  # d1a4
+    description: ""  # d1a4
+    fields:  # d1a4
+      statement: "When a cross-language linker detects a bridge call (IPC, RPC, WASM, codegen), it must trace through generated wrapper/proxy layers to connect the application-level call site to the implementation. Generated bindings that wrap invoke/call/send behind typed functions must not break edge tracing."  # d1a4
+      root_cause: "Linkers match literal command names in invoke() calls but codegen tools (specta, contextBridge, graphql-codegen, protoc) generate typed wrapper functions that hide the literal names. Without wrapper resolution, edges terminate at the generated layer instead of reaching the real implementation."  # d1a4
+- op: update  # 2db4
+  at: '2026-03-16T13:51:13Z'  # 2db4
+  by: agent  # 2db4
+  actor: jgstern_agent  # 2db4
+  clock: 2  # 2db4
+  nonce: 2db4  # 2db4
+  set:  # 2db4
+    status: needs_human_review  # 2db4
+- op: discuss  # c204
+  at: '2026-03-16T13:51:13Z'  # c204
+  by: agent  # c204
+  actor: jgstern_agent  # c204
+  clock: 3  # c204
+  nonce: c204  # c204
+  message: "Tauri specta fixed (PR #2165). Remaining: Electron contextBridge (partial), GraphQL codegen hooks, gRPC codegen clients in TS/Python, wasm_bindgen facades. Human decision needed: which of these are worth investigating? Each requires access to repos using those specific patterns."  # c204
+- op: discuss  # 44ce
+  at: '2026-03-16T15:56:51Z'  # 44ce
+  by: human  # 44ce
+  actor: jgstern  # 44ce
+  clock: 4  # 44ce
+  nonce: 44ce  # 44ce
+  message: "We should investigate all of the remaining topics you identified. For repos,\n\ncontextBridge:\n~/whole_bunch_of_repos/podman-desktop\n\nGraphQL codegen:\n~/whole_bunch_of_repos/git-bug\n~/whole_bunch_of_repos/apollo-server\n\ngRPC TS+Python:\n~/whole_bunch_of_repos/microservices-demo\n\ngRPC codegen (Python):\n~/repos/kserve\n\nwasm_bindgen:\n~/whole_bunch_of_repos/wasmtime"  # 44ce
+- op: update  # 7a18
+  at: '2026-03-16T15:57:07Z'  # 7a18
+  by: human  # 7a18
+  actor: jgstern  # 7a18
+  clock: 5  # 7a18
+  nonce: 7a18  # 7a18
+  set:  # 7a18
+    status: violated  # 7a18
+- op: discuss  # 2a58
+  at: '2026-03-16T19:21:44Z'  # 2a58
+  by: agent  # 2a58
+  actor: jgstern_agent  # 2a58
+  clock: 6  # 2a58
+  nonce: 2a58  # 2a58
+  message: "Acknowledged repo assignments. Will investigate: (1) contextBridge via ~/whole_bunch_of_repos/podman-desktop, (2) GraphQL codegen via ~/whole_bunch_of_repos/git-bug and ~/whole_bunch_of_repos/apollo-server, (3) gRPC TS+Python via ~/whole_bunch_of_repos/microservices-demo, (4) gRPC codegen Python via ~/repos/kserve, (5) wasm_bindgen via ~/whole_bunch_of_repos/wasmtime."  # 2a58

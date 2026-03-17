@@ -17,3 +17,43 @@
     pr_ref:  # 1c78
     description: "DEEP bakeoff assessment: AFFiNE slice.0 starts from admin import-users dialog (a leaf) instead of SpaceSyncGateway or DocService. Consider selecting slice roots from highest in-degree entrypoints."  # 1c78
     fields: {}  # 1c78
+- op: update  # 3876
+  at: '2026-03-16T11:51:07Z'  # 3876
+  by: agent  # 3876
+  actor: jgstern_agent  # 3876
+  clock: 2  # 3876
+  nonce: '3876'  # 3876
+  set:  # 3876
+    priority: 4  # 3876
+- op: discuss  # 53c3
+  at: '2026-03-16T11:51:07Z'  # 53c3
+  by: agent  # 53c3
+  actor: jgstern_agent  # 53c3
+  clock: 3  # 53c3
+  nonce: 53c3  # 53c3
+  message: "Investigated: bakeoff-features selects first 5 entrypoints from detect_entrypoints output. The ordering favors high-confidence pattern matches (routes, controllers) which may be UI leaves rather than architectural cores. The new diversity cap (PR #2259) helps by ensuring varied entrypoint kinds. A further improvement would be to sort by in-degree within the bakeoff script, but all 4 repos now show GOOD verdicts so this is low-impact."  # 53c3
+- op: update  # 2577
+  at: '2026-03-16T13:14:32Z'  # 2577
+  by: agent  # 2577
+  actor: jgstern_agent  # 2577
+  clock: 4  # 2577
+  nonce: '2577'  # 2577
+  set:  # 2577
+    status: needs_human_review  # 2577
+- op: discuss  # cfec
+  at: '2026-03-16T13:14:32Z'  # cfec
+  by: agent  # cfec
+  actor: jgstern_agent  # cfec
+  clock: 5  # cfec
+  nonce: cfec  # cfec
+  message: "Bakeoff methodology question: should slice entry points be selected by in-degree centrality rather than entrypoint detection score? All 4 repos already show GOOD verdicts. The new diversity cap helps. Needs human decision on whether to invest in changing the bakeoff script."  # cfec
+- op: update  # d546
+  at: '2026-03-16T15:32:51Z'  # d546
+  by: human  # d546
+  actor: jgstern  # d546
+  clock: 6  # d546
+  nonce: d546  # d546
+  set:  # d546
+    status: wont_do  # d546
+  add:  # d546
+    tags: [someday]  # d546

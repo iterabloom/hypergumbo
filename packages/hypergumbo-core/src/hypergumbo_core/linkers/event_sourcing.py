@@ -573,6 +573,9 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="event_name_match",
+                    access_mode="write",
+                    dest_access_mode="read",
+                    channel=publisher.event_name,
                 )
                 edge.meta = {
                     "event_name": publisher.event_name,
@@ -678,6 +681,7 @@ def _create_subscriber_to_method_edges(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="event_subscriber_enclosure",
+                access_mode="read",
             ))
 
     return edges

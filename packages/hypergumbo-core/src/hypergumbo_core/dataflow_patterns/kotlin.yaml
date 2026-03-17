@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Kotlin (tree-sitter grammar)
+language: kotlin
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+  - node_type: property_declaration
+    write: name
+    read: value
+  - node_type: augmented_assignment
+    mutate: left
+    read: right
+
+calls:
+  - node_type: call_expression
+    read: arguments

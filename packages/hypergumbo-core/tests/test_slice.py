@@ -2857,3 +2857,135 @@ class TestPassThroughSyntheticNodes:
         assert impl.id in result.node_ids
         assert stub.id not in result.node_ids
         assert server.id not in result.node_ids
+
+
+# ==================== DATAFLOW SLICE TESTS (ADR-0015) ====================
+
+
+class TestDataflowSlice:
+    """Tests for the --dataflow flag on slice_graph."""
+
+    def test_dataflow_follows_write_to_read(self) -> None:
+        """Dataflow mode should follow write→read edges."""
+        writer = make_symbol("writer", path="src/a.py")
+        reader = make_symbol("reader", path="src/b.py")
+        edge = Edge.create(
+            src=writer.id, dst=reader.id, edge_type="data_flows_to", line=10,
+            access_mode="write", dest_access_mode="read", channel="config.key",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph([writer, reader], [edge], query)
+        assert writer.id in result.node_ids
+        assert reader.id in result.node_ids
+
+    def test_dataflow_follows_mutate(self) -> None:
+        """Dataflow mode should follow mutate edges (mutate implies write)."""
+        mutator = make_symbol("mutator", path="src/a.py")
+        reader = make_symbol("reader", path="src/b.py")
+        edge = Edge.create(
+            src=mutator.id, dst=reader.id, edge_type="calls", line=10,
+            access_mode="mutate",
+        )
+        query = SliceQuery(entrypoint="mutator", dataflow=True, max_hops=3)
+        result = slice_graph([mutator, reader], [edge], query)
+        assert reader.id in result.node_ids
+
+    def test_dataflow_skips_read_edges(self) -> None:
+        """Dataflow mode should skip read-only edges."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert func_a.id in result.node_ids
+        assert func_b.id not in result.node_ids
+
+    def test_dataflow_skips_delete_edges(self) -> None:
+        """Dataflow mode should skip delete edges."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+            access_mode="delete",
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert func_b.id not in result.node_ids
+
+    def test_dataflow_follows_unannotated_edges(self) -> None:
+        """Edges without access_mode should still be followed (graceful degradation)."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        # Unannotated edge should still be followed
+        assert func_b.id in result.node_ids
+
+    def test_dataflow_false_follows_all(self) -> None:
+        """When dataflow=False, read edges should still be followed normally."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=False, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert func_b.id in result.node_ids
+
+    def test_query_to_dict_includes_dataflow(self) -> None:
+        """SliceQuery.to_dict should include dataflow when True."""
+        query = SliceQuery(entrypoint="x", dataflow=True)
+        d = query.to_dict()
+        assert d["dataflow"] is True
+
+    def test_query_to_dict_omits_dataflow_when_false(self) -> None:
+        """SliceQuery.to_dict should omit dataflow when False."""
+        query = SliceQuery(entrypoint="x", dataflow=False)
+        d = query.to_dict()
+        assert "dataflow" not in d
+
+    def test_reverse_dataflow_follows_read_edges(self) -> None:
+        """Reverse dataflow mode should follow read edges (find readers)."""
+        writer = make_symbol("writer", path="src/a.py")
+        reader = make_symbol("reader", path="src/b.py")
+        # Edge from reader to writer (reader reads from writer's output)
+        edge = Edge.create(
+            src=reader.id, dst=writer.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, reverse=True, max_hops=3)
+        result = slice_graph([writer, reader], [edge], query)
+        assert writer.id in result.node_ids
+        assert reader.id in result.node_ids
+
+    def test_reverse_dataflow_skips_write_edges(self) -> None:
+        """Reverse dataflow mode should skip write edges."""
+        writer = make_symbol("writer", path="src/a.py")
+        other_writer = make_symbol("other_writer", path="src/b.py")
+        # Edge from other_writer to writer (both writing, not a read dependency)
+        edge = Edge.create(
+            src=other_writer.id, dst=writer.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, reverse=True, max_hops=3)
+        result = slice_graph([writer, other_writer], [edge], query)
+        assert writer.id in result.node_ids
+        assert other_writer.id not in result.node_ids
+
+    def test_reverse_dataflow_follows_unannotated(self) -> None:
+        """Reverse dataflow should follow unannotated edges."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_b.id, dst=func_a.id, edge_type="calls", line=10,
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, reverse=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert func_b.id in result.node_ids

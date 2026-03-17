@@ -578,6 +578,9 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                         confidence=confidence,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        access_mode="write",
+                        dest_access_mode="read",
+                        channel=event,
                     )
                     edge.meta = {
                         "event": event,
@@ -596,6 +599,8 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            access_mode="write",
+            channel=ep.event,
         ))
 
     run.files_analyzed = files_analyzed

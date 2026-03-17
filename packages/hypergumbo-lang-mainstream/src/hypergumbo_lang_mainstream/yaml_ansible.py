@@ -56,14 +56,18 @@ def find_ansible_files(root: Path) -> list[Path]:
     # Ansible-specific directories
     ansible_dirs = ("roles", "tasks", "handlers", "playbooks", "vars", "defaults", "group_vars", "host_vars")
 
-    for path in root.rglob("*"):
-        if not path.is_file():  # pragma: no cover - directories skipped
-            continue
+    # Use the global FileIndex if available to avoid a redundant walk.
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == root:
+        all_files = file_index.all_files()
+    else:
+        all_files = [
+            p for p in root.rglob("*")
+            if p.is_file() and not is_excluded(p, root)
+        ]
 
-        # Skip excluded directories (node_modules, .venv, __pycache__, etc.)
-        if is_excluded(path, root):  # pragma: no cover - test dirs clean
-            continue
-
+    for path in all_files:
         if path.suffix in yaml_extensions:
             # Check if in ansible-related directory or root
             is_ansible = (

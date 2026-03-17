@@ -11,6 +11,7 @@ Tests verify that the analyzer correctly extracts:
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import PASS_VERSION
+from hypergumbo_core import __version__
 from hypergumbo_lang_mainstream.css import (
     PASS_ID,
     analyze_css_files,
@@ -20,7 +21,7 @@ from hypergumbo_lang_mainstream.css import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "css-v1"
-    assert PASS_VERSION == "2.2.0"
+    assert PASS_VERSION == __version__
 
 def test_analyze_import(tmp_path):
     """Test detection of @import statements."""

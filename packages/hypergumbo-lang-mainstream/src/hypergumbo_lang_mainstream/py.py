@@ -85,6 +85,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
+from hypergumbo_core.dataflow import annotate_dataflow_ast
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -2846,6 +2847,8 @@ def analyze_python(
         for edge in call_edges:
             edge.origin = PASS_ID
             edge.origin_run_id = run.execution_id
+        # ADR-0015: annotate edges with access_mode from Python AST context
+        call_edges = annotate_dataflow_ast(call_edges, analysis.tree)
         all_edges.extend(call_edges)
 
         # Extract import edges

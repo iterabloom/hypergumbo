@@ -427,7 +427,7 @@ TRACKER_STUB
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
   RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
   # Remove old sandbox fallback files
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
@@ -445,7 +445,7 @@ TRACKER_STUB
   # SCENARIO 8b: Backward compat — only stop_hook_state.json exists → cooldown
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8b: Stop hook falls back to stop_hook_state.json (backward compat)"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
@@ -462,7 +462,7 @@ TRACKER_STUB
   # SCENARIO 8c: Neither file exists → full reflection (Path 3)
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
@@ -481,7 +481,7 @@ TRACKER_STUB
   echo "TEST: Scenario 8d-1: Dead PID re-claim (crash recovery)"
   # Use a PID that definitely doesn't exist (max pid + 1 style)
   echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
   rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
@@ -526,7 +526,7 @@ TRACKER_STUB
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8d: last_stop_check.json takes priority over stop_hook_state.json"
   # New file: recent timestamp → cooldown (in $HOME location, which is checked first)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/last_stop_check.json"
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
   # Old file: epoch timestamp → would be stale (Path 3) if read
   printf '{"last_completed_utc": "1970-01-01T00:00:00Z"}\n' > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 

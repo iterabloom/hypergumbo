@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from hypergumbo_core.ir import (
+    VALID_ACCESS_MODES,
     AnalysisRun, Edge, Span, Symbol, UsageContext, create_boundary_nodes,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
@@ -464,6 +465,134 @@ def test_edge_with_custom_meta() -> None:
 
     assert d["meta"]["evidence_type"] == "ast_call_direct"
     assert d["meta"]["channel"] == "my-channel"
+
+
+# ==================== DATAFLOW ACCESS MODE TESTS (ADR-0015) ====================
+
+
+def test_valid_access_modes_vocabulary() -> None:
+    """VALID_ACCESS_MODES should contain the four defined modes."""
+    assert VALID_ACCESS_MODES == frozenset({"read", "write", "mutate", "delete"})
+
+
+def test_edge_create_access_mode_kwargs() -> None:
+    """Edge.create should accept access_mode, dest_access_mode, channel kwargs."""
+    edge = Edge.create(
+        src="py:src/a.py:10:writer:function",
+        dst="py:src/b.py:20:reader:function",
+        edge_type="data_flows_to",
+        line=10,
+        access_mode="write",
+        dest_access_mode="read",
+        channel="awareness.cursor",
+    )
+    assert edge.meta is not None
+    assert edge.meta["access_mode"] == "write"
+    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["channel"] == "awareness.cursor"
+
+
+def test_edge_create_access_mode_merges_with_existing_meta() -> None:
+    """access_mode kwargs should merge with explicitly passed meta."""
+    edge = Edge.create(
+        src="py:src/a.py:10:writer:function",
+        dst="py:src/b.py:20:reader:function",
+        edge_type="event_publishes",
+        line=10,
+        meta={"topic": "user.created"},
+        access_mode="write",
+        dest_access_mode="read",
+        channel="user.created",
+    )
+    assert edge.meta is not None
+    assert edge.meta["topic"] == "user.created"
+    assert edge.meta["access_mode"] == "write"
+    assert edge.meta["dest_access_mode"] == "read"
+    assert edge.meta["channel"] == "user.created"
+
+
+def test_edge_create_access_mode_none_omitted() -> None:
+    """When access_mode kwargs are None, they should not appear in meta."""
+    edge = Edge.create(
+        src="py:src/a.py:10:f:function",
+        dst="py:src/b.py:20:g:function",
+        edge_type="calls",
+        line=10,
+    )
+    # meta should be None when no meta or access_mode kwargs are passed
+    assert edge.meta is None
+
+
+def test_edge_create_partial_access_mode() -> None:
+    """Only non-None access_mode kwargs should appear in meta."""
+    edge = Edge.create(
+        src="py:src/a.py:10:f:function",
+        dst="py:src/b.py:20:g:function",
+        edge_type="calls",
+        line=10,
+        access_mode="write",
+    )
+    assert edge.meta is not None
+    assert edge.meta["access_mode"] == "write"
+    assert "dest_access_mode" not in edge.meta
+    assert "channel" not in edge.meta
+
+
+def test_edge_create_invalid_access_mode_raises() -> None:
+    """Edge.create should reject invalid access_mode values."""
+    import pytest
+    with pytest.raises(ValueError, match="access_mode"):
+        Edge.create(
+            src="py:src/a.py:10:f:function",
+            dst="py:src/b.py:20:g:function",
+            edge_type="calls",
+            line=10,
+            access_mode="bogus",
+        )
+
+
+def test_edge_create_invalid_dest_access_mode_raises() -> None:
+    """Edge.create should reject invalid dest_access_mode values."""
+    import pytest
+    with pytest.raises(ValueError, match="dest_access_mode"):
+        Edge.create(
+            src="py:src/a.py:10:f:function",
+            dst="py:src/b.py:20:g:function",
+            edge_type="calls",
+            line=10,
+            dest_access_mode="bogus",
+        )
+
+
+def test_edge_access_mode_survives_to_dict() -> None:
+    """access_mode fields in meta should appear in to_dict output."""
+    edge = Edge.create(
+        src="py:src/a.py:10:f:function",
+        dst="py:src/b.py:20:g:function",
+        edge_type="data_flows_to",
+        line=10,
+        access_mode="write",
+        dest_access_mode="read",
+        channel="config.db_url",
+    )
+    d = edge.to_dict()
+    assert d["meta"]["access_mode"] == "write"
+    assert d["meta"]["dest_access_mode"] == "read"
+    assert d["meta"]["channel"] == "config.db_url"
+
+
+def test_edge_create_backward_compatible() -> None:
+    """Existing Edge.create calls without access_mode kwargs should work unchanged."""
+    edge = Edge.create(
+        src="py:src/a.py:10:f:function",
+        dst="py:src/b.py:20:g:function",
+        edge_type="calls",
+        line=10,
+        origin="python_analyzer",
+        meta={"some_key": "some_value"},
+    )
+    assert edge.meta == {"some_key": "some_value"}
+    assert "access_mode" not in edge.meta
 
 
 # ==================== SUPPLY CHAIN FIELDS TESTS ====================

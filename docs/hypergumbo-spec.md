@@ -928,6 +928,10 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 
 🟩 BFS traversal on the call graph from entry nodes, bounded by hop limit and file count limit. See [§3 Analysis options](#analysis-options) for CLI flags (`--max-hops`, `--max-files`). Edges can be filtered by confidence threshold or test exclusion.
 
+### Dataflow slicing (ADR-0015)
+
+🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 65 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (6 cross-language linkers). YAML patterns shipped for Python, JavaScript, TypeScript, Rust, and Go.
+
 ### Slice identity and reproducibility
 
 Each feature gets a stable `id` based on its query specification:

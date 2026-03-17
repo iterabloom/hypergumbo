@@ -7459,6 +7459,166 @@ class TestReactRouterJSXRouteDetection:
         routes = [s for s in result.symbols if s.kind == "route"]
         assert len(routes) == 0
 
+    def test_create_browser_router_routes(self, tmp_path: Path) -> None:
+        """createBrowserRouter([...]) should create route symbols."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "import { createBrowserRouter } from 'react-router-dom';\n"
+            "\n"
+            "const router = createBrowserRouter([\n"
+            "  { path: '/', element: <Home /> },\n"
+            "  { path: '/users', element: <Users /> },\n"
+            "  { path: '/users/:id', element: <UserDetail /> },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+        assert "/" in route_paths
+        assert "/users" in route_paths
+        assert "/users/:id" in route_paths
+
+    def test_create_browser_router_nested_children(self, tmp_path: Path) -> None:
+        """Nested children in createBrowserRouter should compose paths."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/dashboard',\n"
+            "    element: <Layout />,\n"
+            "    children: [\n"
+            "      { path: 'settings', element: <Settings /> },\n"
+            "      { path: 'profile', element: <Profile /> },\n"
+            "    ],\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"] for s in routes if s.meta}
+        assert "/dashboard" in route_paths
+        assert "/dashboard/settings" in route_paths
+        assert "/dashboard/profile" in route_paths
+
+    def test_create_hash_router(self, tmp_path: Path) -> None:
+        """createHashRouter should also be detected."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createHashRouter([\n"
+            "  { path: '/about', element: <About /> },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta["route_path"] == "/about"
+
+    def test_route_loader_and_action(self, tmp_path: Path) -> None:
+        """loader and action properties should appear in route meta."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "import { createBrowserRouter } from 'react-router-dom';\n"
+            "import { loadUsers } from './loaders';\n"
+            "import { createUser } from './actions';\n"
+            "\n"
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/users',\n"
+            "    element: <Users />,\n"
+            "    loader: loadUsers,\n"
+            "    action: createUser,\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = next(r for r in routes if r.meta["route_path"] == "/users")
+        assert route.meta["loader_ref"] == "loadUsers"
+        assert route.meta["action_ref"] == "createUser"
+
+    def test_route_lazy_import(self, tmp_path: Path) -> None:
+        """lazy: () => import('./Page') should record lazy_import in meta."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "import { createBrowserRouter } from 'react-router-dom';\n"
+            "\n"
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/dashboard',\n"
+            "    lazy: () => import('./pages/Dashboard'),\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+
+        route = next(r for r in routes if r.meta["route_path"] == "/dashboard")
+        assert route.meta["lazy_import"] == "./pages/Dashboard"
+
+    def test_route_loader_action_and_lazy_combined(self, tmp_path: Path) -> None:
+        """Route with loader, action, and lazy should capture all three."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/settings',\n"
+            "    lazy: () => import('./Settings'),\n"
+            "    loader: fetchSettings,\n"
+            "    action: updateSettings,\n"
+            "  },\n"
+            "  {\n"
+            "    path: '/plain',\n"
+            "    element: <Plain />,\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_map = {r.meta["route_path"]: r for r in routes if r.meta}
+
+        settings = route_map["/settings"]
+        assert settings.meta["lazy_import"] == "./Settings"
+        assert settings.meta["loader_ref"] == "fetchSettings"
+        assert settings.meta["action_ref"] == "updateSettings"
+
+        plain = route_map["/plain"]
+        assert "lazy_import" not in plain.meta
+        assert "loader_ref" not in plain.meta
+        assert "action_ref" not in plain.meta
+
+    def test_lazy_without_dynamic_import(self, tmp_path: Path) -> None:
+        """lazy property without dynamic import() should not produce lazy_import."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "const router = createBrowserRouter([\n"
+            "  {\n"
+            "    path: '/nolazy',\n"
+            "    lazy: () => fetchComponent('Dashboard'),\n"
+            "  },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route = next(r for r in routes if r.meta["route_path"] == "/nolazy")
+        assert "lazy_import" not in route.meta
+
 
 class TestSpaBootstrapUsageContext:
     """Tests for SPA bootstrap call detection via UsageContext.

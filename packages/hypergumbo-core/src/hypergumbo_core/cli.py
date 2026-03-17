@@ -1301,6 +1301,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         language=args.language,
         hub_threshold=hub_threshold,
         exclude_imports=exclude_imports,
+        dataflow=getattr(args, "dataflow", False),
     )
 
     # Perform slice
@@ -3525,6 +3526,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
              "Adds 'modules' dict (path → nodes) and 'module_edges' summary.",
     )
     p_slice.add_argument(
+        "--dataflow",
+        action="store_true",
+        help="Only follow edges where a write/mutate at the source connects to "
+             "a read at the destination (ADR-0015). Produces tighter slices of "
+             "actual data dependencies. Edges without access_mode metadata are "
+             "still followed.",
+    )
+    p_slice.add_argument(
         "--files",
         default=None,
         metavar="FILE",
@@ -4234,6 +4243,19 @@ def run_behavior_map(
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
 
+    # Build a shared file index from a single os.walk() pass.
+    # This replaces 80+ redundant rglob() calls across analyzers,
+    # profile detection, and linkers — ~75% of uncached runtime.
+    from hypergumbo_core.discovery import (
+        DEFAULT_EXCLUDES, FileIndex, set_file_index, set_max_file_bytes,
+    )
+    show_progress("Indexing files", 2)
+    combined_excludes = list(DEFAULT_EXCLUDES)
+    if extra_excludes:
+        combined_excludes.extend(extra_excludes)
+    file_index = FileIndex.build(repo_root, excludes=combined_excludes)
+    set_file_index(file_index)
+
     # Detect repo profile (languages, frameworks)
     # LOC is set to 0 here (avoids reading every file).
     # generate_sketch backfills LOC from _analyze_test_files when it runs.
@@ -4246,7 +4268,6 @@ def run_behavior_map(
 
     # Set global file size limit so all analyzers using find_files()
     # automatically skip oversized files (e.g., minified JS, huge HTML).
-    from hypergumbo_core.discovery import set_max_file_bytes
     set_max_file_bytes(max_file_bytes)
 
     # Run all language analyzers using consolidated registry
@@ -4541,9 +4562,11 @@ def run_behavior_map(
         all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
         candidate_files: list[Path] = []
 
-        for f in repo_root.rglob("*"):
-            if not f.is_file():
-                continue
+        if file_index is not None:
+            _all_repo_files = file_index.all_files()
+        else:  # pragma: no cover - file_index always set in run_behavior_map
+            _all_repo_files = [f for f in repo_root.rglob("*") if f.is_file()]
+        for f in _all_repo_files:
             rel_path = f.relative_to(repo_root)
             rel_str = str(rel_path)
 
@@ -4654,6 +4677,9 @@ def run_behavior_map(
         json.dump(behavior_map, f, indent=2, sort_keys=True)
     generated_files.append(out_path)
     _log_memory("after write")
+
+    # Clear global file index to release memory
+    set_file_index(None)
 
     complete_progress()
     return generated_files

@@ -1,0 +1,58 @@
+- op: create  # dc56
+  at: '2026-03-16T04:07:46Z'  # dc56
+  by: agent  # dc56
+  actor: jgstern_agent  # dc56
+  clock: 1  # dc56
+  nonce: dc56  # dc56
+  data:  # dc56
+    kind: work_item  # dc56
+    title: "gRPC: CSI interface implementation linking (non-Unimplemented/non-ttrpc codegen)"  # dc56
+    status: todo_soft  # dc56
+    priority: 4  # dc56
+    parent:  # dc56
+    tags:  # dc56
+    - linker  # dc56
+    - grpc  # dc56
+    before: []  # dc56
+    duplicate_of: []  # dc56
+    not_duplicate_of: []  # dc56
+    pr_ref:  # dc56
+    description: "CSI (Container Storage Interface) Go implementations use a different code\ngeneration pattern than standard gRPC (no UnimplementedXxxServer embedding)\nand ttrpc (no RegisterXxxService). The current gRPC linker detects both of\nthose patterns but misses CSI-style implementations.\n\nDiscovered during kata-containers bakeoff analysis (PR #2176 discussion).\nNeeds investigation of what pattern CSI codegen actually produces, then\nextension of the gRPC linker to match it."  # dc56
+    fields: {}  # dc56
+- op: update  # 43bb
+  at: '2026-03-16T13:14:22Z'  # 43bb
+  by: agent  # 43bb
+  actor: jgstern_agent  # 43bb
+  clock: 2  # 43bb
+  nonce: 43bb  # 43bb
+  set:  # 43bb
+    status: needs_human_review  # 43bb
+- op: discuss  # 7ace
+  at: '2026-03-16T13:14:22Z'  # 7ace
+  by: agent  # 7ace
+  actor: jgstern_agent  # 7ace
+  clock: 3  # 7ace
+  nonce: 7ace  # 7ace
+  message: "Cannot investigate: kata-containers repo not in ~/repos/ pool. Need human to clone it, or deprioritize. CSI codegen patterns are niche — only affects Container Storage Interface implementations."  # 7ace
+- op: discuss  # 8b84
+  at: '2026-03-16T15:38:31Z'  # 8b84
+  by: human  # 8b84
+  actor: jgstern  # 8b84
+  clock: 4  # 8b84
+  nonce: 8b84  # 8b84
+  message: "should be here: `~/plazaflow_deep_repos/cohort7_compute/kata-containers`"  # 8b84
+- op: update  # b84e
+  at: '2026-03-16T15:39:02Z'  # b84e
+  by: human  # b84e
+  actor: jgstern  # b84e
+  clock: 5  # b84e
+  nonce: b84e  # b84e
+  set:  # b84e
+    status: todo_soft  # b84e
+- op: discuss  # b134
+  at: '2026-03-16T19:21:44Z'  # b134
+  by: agent  # b134
+  actor: jgstern_agent  # b134
+  clock: 6  # b134
+  nonce: b134  # b134
+  message: "Acknowledged. kata-containers is at ~/plazaflow_deep_repos/cohort7_compute/kata-containers. Will use that path for investigating CSI codegen patterns."  # b134

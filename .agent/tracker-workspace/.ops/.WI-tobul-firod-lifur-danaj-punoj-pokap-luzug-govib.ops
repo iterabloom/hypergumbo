@@ -1,0 +1,56 @@
+- op: create  # 6736
+  at: '2026-03-16T04:37:14Z'  # 6736
+  by: agent  # 6736
+  actor: jgstern_agent  # 6736
+  clock: 1  # 6736
+  nonce: '6736'  # 6736
+  data:  # 6736
+    kind: work_item  # 6736
+    title: "ADR-0015: Tier 1 integration — annotate_dataflow in base.py"  # 6736
+    status: todo_soft  # 6736
+    priority: 1  # 6736
+    parent:  # 6736
+    tags:  # 6736
+    - adr-0015  # 6736
+    - dataflow  # 6736
+    before:  # 6736
+    - WI-bujud-zufop-lojoh-fabak-vakib-ruhum-jipih-naniz  # 6736
+    duplicate_of: []  # 6736
+    not_duplicate_of: []  # 6736
+    pr_ref:  # 6736
+    description: "One-line integration in analyze/base.py after extract_edges_from_file:\n\n  edges = annotate_dataflow(edges, tree, source, self.lang)\n\nThis gives all 104 TreeSitterAnalyzer-based language analyzers automatic\ndataflow annotation with zero per-analyzer code changes.\n\nDepends on: dataflow.py module (YAML loader + annotate_dataflow).\nSee ADR-0015 §5 (Tier 1)."  # 6736
+    fields: {}  # 6736
+- op: update  # fb73
+  at: '2026-03-16T04:43:33Z'  # fb73
+  by: agent  # fb73
+  actor: jgstern_agent  # fb73
+  clock: 2  # fb73
+  nonce: fb73  # fb73
+  set: {}  # fb73
+  remove:  # fb73
+    before: [WI-bujud-zufop-lojoh-fabak-vakib-ruhum-jipih-naniz]  # fb73
+- op: update  # 80cc
+  at: '2026-03-16T04:43:33Z'  # 80cc
+  by: agent  # 80cc
+  actor: jgstern_agent  # 80cc
+  clock: 3  # 80cc
+  nonce: 80cc  # 80cc
+  set: {}  # 80cc
+  add:  # 80cc
+    before: [WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj]  # 80cc
+- op: update  # 5d1b
+  at: '2026-03-16T06:42:31Z'  # 5d1b
+  by: agent  # 5d1b
+  actor: jgstern_agent  # 5d1b
+  clock: 4  # 5d1b
+  nonce: 5d1b  # 5d1b
+  set:  # 5d1b
+    status: done  # 5d1b
+    pr_ref: '#2244'  # 5d1b
+- op: discuss  # f71c
+  at: '2026-03-16T06:42:31Z'  # f71c
+  by: agent  # f71c
+  actor: jgstern_agent  # f71c
+  clock: 5  # f71c
+  nonce: f71c  # f71c
+  message: "Merged PR #2244. Added annotate_dataflow() call in base.py after extract_edges_from_file(). Also added get_dataflow_config() with caching, dataflow_patterns/ directory. Covers 65/114 analyzers; 39 override analyzers tracked as WI-savol."  # f71c

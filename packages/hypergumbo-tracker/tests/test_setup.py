@@ -2929,10 +2929,10 @@ class TestCheckReflectionState:
         assert "skipped" in result.message
 
     def _write_state(self, tmp_path: Path, content: str) -> None:
-        """Write state to the primary (lab notebook) location within tmp_path."""
-        nb_dir = tmp_path / "hypergumbo_lab_notebook"
-        nb_dir.mkdir(exist_ok=True)
-        (nb_dir / "last_stop_check.json").write_text(content)
+        """Write state to the primary (guidance_log) location within tmp_path."""
+        gl_dir = tmp_path / "hypergumbo_lab_notebook" / "guidance_log"
+        gl_dir.mkdir(parents=True, exist_ok=True)
+        (gl_dir / "last_stop_check.json").write_text(content)
 
     def test_no_state_file(self, tmp_path: Path) -> None:
         (tmp_path / ".agent").mkdir()

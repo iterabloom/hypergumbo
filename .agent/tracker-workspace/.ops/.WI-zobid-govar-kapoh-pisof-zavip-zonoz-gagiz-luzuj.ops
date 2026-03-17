@@ -1,0 +1,56 @@
+- op: create  # ed00
+  at: '2026-03-16T04:37:25Z'  # ed00
+  by: agent  # ed00
+  actor: jgstern_agent  # ed00
+  clock: 1  # ed00
+  nonce: ed00  # ed00
+  data:  # ed00
+    kind: work_item  # ed00
+    title: "ADR-0015: Core dataflow YAMLs — Python, JavaScript, Rust, TypeScript"  # ed00
+    status: todo_soft  # ed00
+    priority: 1  # ed00
+    parent:  # ed00
+    tags:  # ed00
+    - adr-0015  # ed00
+    - dataflow  # ed00
+    before:  # ed00
+    - WI-tobul-firod-lifur-danaj-punoj-pokap-luzug-govib  # ed00
+    duplicate_of: []  # ed00
+    not_duplicate_of: []  # ed00
+    pr_ref:  # ed00
+    description: "Create dataflow/*.yaml pattern files for the four highest-priority\nlanguages (covering ~90% of PlazaFlow's codebase and most common repos):\n\n- dataflow/python.yaml: assignment, augmented_assignment, call, delete\n- dataflow/javascript.yaml: assignment_expression, variable_declarator,\n  augmented_assignment_expression, delete_expression\n- dataflow/typescript.yaml: (extends javascript.yaml or shares patterns)\n- dataflow/rust.yaml: let_declaration, assignment_expression,\n  reference_expression (mut vs immutable borrows)\n\nEach file is ~10-30 lines. Patterns map tree-sitter node types to\nread/write/mutate/delete roles for left/right/argument positions.\n\nDepends on: YAML loader (to consume these files).\nSee ADR-0015 §4 YAML examples."  # ed00
+    fields: {}  # ed00
+- op: update  # dbfa
+  at: '2026-03-16T04:43:33Z'  # dbfa
+  by: agent  # dbfa
+  actor: jgstern_agent  # dbfa
+  clock: 2  # dbfa
+  nonce: dbfa  # dbfa
+  set: {}  # dbfa
+  remove:  # dbfa
+    before: [WI-tobul-firod-lifur-danaj-punoj-pokap-luzug-govib]  # dbfa
+- op: update  # eef5
+  at: '2026-03-16T04:43:33Z'  # eef5
+  by: agent  # eef5
+  actor: jgstern_agent  # eef5
+  clock: 3  # eef5
+  nonce: eef5  # eef5
+  set: {}  # eef5
+  add:  # eef5
+    before: [WI-mimon-rosir-lapod-mikif-hukab-kikos-jukob-bakah]  # eef5
+- op: update  # e9fd
+  at: '2026-03-16T07:07:31Z'  # e9fd
+  by: agent  # e9fd
+  actor: jgstern_agent  # e9fd
+  clock: 4  # e9fd
+  nonce: e9fd  # e9fd
+  set:  # e9fd
+    status: done  # e9fd
+    pr_ref: '#2245'  # e9fd
+- op: discuss  # 91ab
+  at: '2026-03-16T07:07:31Z'  # 91ab
+  by: agent  # 91ab
+  actor: jgstern_agent  # 91ab
+  clock: 5  # 91ab
+  nonce: 91ab  # 91ab
+  message: "Merged PR #2245. Created dataflow_patterns/ YAMLs for Python, JavaScript, TypeScript, Rust, and Go. 24 parametrized tests."  # 91ab

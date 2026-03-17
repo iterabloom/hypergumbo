@@ -544,6 +544,220 @@ def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) 
     return _is_excluded_classified(path, repo_root, exact, globs)
 
 
+# ---------------------------------------------------------------------------
+# FileIndex — single-pass file discovery cache
+# ---------------------------------------------------------------------------
+
+# Global file index. Set via set_file_index() before running analyzers;
+# find_files() uses this to avoid redundant directory walks.
+_global_file_index: "FileIndex | None" = None
+
+
+def set_file_index(index: "FileIndex | None") -> None:
+    """Set the global file index for find_files().
+
+    Called by the CLI after building a FileIndex from a single os.walk()
+    pass. When set, find_files() delegates to the index instead of
+    calling rglob() per pattern, eliminating redundant directory walks.
+    """
+    global _global_file_index
+    _global_file_index = index
+
+
+def get_file_index() -> "FileIndex | None":
+    """Get the current global file index, or None if not set."""
+    return _global_file_index
+
+
+class FileIndex:
+    """Pre-computed index of all non-excluded files in a repository.
+
+    Built from a single os.walk() pass at startup. Provides O(1)
+    extension and filename lookups, and fnmatch-based glob matching
+    against cached paths. Used by find_files() to avoid 80+ redundant
+    directory walks per analysis run.
+
+    Internal data structures:
+    - _by_ext: maps lowercase extension (e.g. '.py') to list of Paths
+    - _by_name: maps filename (e.g. 'Makefile') to list of Paths
+    - _all_files: sorted list of all indexed files
+    - _repo_root: the repository root used during construction
+    """
+
+    __slots__ = ("_all_files", "_by_ext", "_by_name", "_repo_root")
+
+    def __init__(
+        self,
+        repo_root: Path,
+        by_ext: dict[str, list[Path]],
+        by_name: dict[str, list[Path]],
+        all_files: list[Path],
+    ) -> None:
+        self._repo_root = repo_root
+        self._by_ext = by_ext
+        self._by_name = by_name
+        self._all_files = all_files
+
+    @classmethod
+    def build(
+        cls,
+        repo_root: Path,
+        excludes: list[str] | None = None,
+        locale_excludes: list[Path] | None = None,
+    ) -> "FileIndex":
+        """Build a FileIndex from a single os.walk() pass.
+
+        Args:
+            repo_root: Repository root to walk.
+            excludes: Exclude patterns (default: DEFAULT_EXCLUDES).
+                Matched against each path component (same semantics as
+                find_files).
+            locale_excludes: Absolute directory paths to skip
+                (locale-filtered doc dirs). If None, reads from the
+                global locale_excludes setting.
+        """
+        import os
+
+        if excludes is None:
+            excludes = DEFAULT_EXCLUDES
+        if locale_excludes is None:
+            locale_excludes = _global_locale_excludes
+
+        exact_exc, glob_exc = _classify_excludes(excludes)
+
+        by_ext: dict[str, list[Path]] = {}
+        by_name: dict[str, list[Path]] = {}
+        all_files: list[Path] = []
+
+        for dirpath_str, dirnames, filenames in os.walk(repo_root):
+            dirpath = Path(dirpath_str)
+
+            # Prune excluded directories in-place (prevents os.walk
+            # from descending into them).
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in exact_exc
+                and not any(fnmatch(d, g) for g in glob_exc)
+            ]
+
+            # Prune locale-excluded directories
+            if locale_excludes:
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not any(
+                        (dirpath / d) == le or _is_child_of(dirpath / d, le)
+                        for le in locale_excludes
+                    )
+                ]
+
+            for fname in filenames:
+                # Check filename-level excludes (e.g. package-lock.json)
+                if fname in exact_exc:
+                    continue
+                if any(fnmatch(fname, g) for g in glob_exc):
+                    continue
+
+                fpath = dirpath / fname
+                all_files.append(fpath)
+
+                ext = fpath.suffix.lower()
+                if ext:
+                    by_ext.setdefault(ext, []).append(fpath)
+
+                by_name.setdefault(fname, []).append(fpath)
+
+        all_files.sort()
+        for v in by_ext.values():
+            v.sort()
+        for v in by_name.values():
+            v.sort()
+
+        return cls(repo_root, by_ext, by_name, all_files)
+
+    @property
+    def repo_root(self) -> Path:
+        """The repository root this index was built from."""
+        return self._repo_root
+
+    def by_extension(self, *extensions: str) -> Iterator[Path]:
+        """Yield files matching any of the given extensions.
+
+        Extensions should include the dot, e.g. '.py', '.js'.
+        """
+        for ext in extensions:
+            yield from self._by_ext.get(ext.lower(), [])
+
+    def by_name(self, *names: str) -> Iterator[Path]:
+        """Yield files matching any of the given exact filenames.
+
+        E.g. by_name('Makefile', 'justfile').
+        """
+        for name in names:
+            yield from self._by_name.get(name, [])
+
+    def by_glob(self, *patterns: str) -> Iterator[Path]:
+        """Yield files whose filename matches any of the given glob patterns.
+
+        E.g. by_glob('Dockerfile*', '*.gradle.kts').
+        Uses fnmatch against filenames (not full paths).
+        """
+        for fpath in self._all_files:
+            for pat in patterns:
+                if fnmatch(fpath.name, pat):
+                    yield fpath
+                    break  # avoid yielding same file for multiple patterns
+
+    def all_files(self) -> list[Path]:
+        """Return all indexed files."""
+        return self._all_files
+
+    def match_pattern(self, pattern: str) -> Iterator[Path]:
+        """Match a single pattern using the best strategy.
+
+        Classifies the pattern as:
+        - Pure extension ('*.py') → O(1) dict lookup
+        - Exact filename ('Makefile') → O(1) dict lookup
+        - Glob ('Dockerfile*', '*.gradle.kts') → fnmatch scan
+
+        Handles '**/' prefix (stripped, since the index is already
+        recursive).
+        """
+        # Strip leading **/ — the index is already recursive
+        if pattern.startswith("**/"):
+            pattern = pattern[3:]
+
+        if not _has_glob_chars(pattern):
+            # Exact filename: 'Makefile', 'justfile', etc.
+            yield from self._by_name.get(pattern, [])
+        elif pattern.startswith("*.") and not _has_glob_chars(pattern[2:]):
+            # Pure extension: '*.py', '*.tsx'
+            ext = pattern[1:]  # '.py', '.tsx'
+            yield from self._by_ext.get(ext.lower(), [])
+        else:
+            # General glob: 'Dockerfile*', '*.gradle.kts', etc.
+            for fpath in self._all_files:
+                if fnmatch(fpath.name, pattern):
+                    yield fpath
+
+    def __len__(self) -> int:
+        return len(self._all_files)
+
+
+def _is_child_of(child: Path, parent: Path) -> bool:
+    """Check if child is under parent directory.
+
+    Defensive helper for locale exclude pruning. In practice, os.walk's
+    in-place dirnames pruning prevents descending into excluded dirs,
+    so this branch rarely fires. Kept for correctness if locale_excludes
+    contains paths at varying depths.
+    """
+    try:
+        child.relative_to(parent)
+        return True  # pragma: no cover
+    except ValueError:
+        return False
+
+
 def find_files(
     repo_root: Path,
     patterns: list[str],
@@ -553,6 +767,11 @@ def find_files(
     on_file_skipped: Callable[[Path, int, str], None] | None = None,
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
+
+    When a global FileIndex is set (via set_file_index()), delegates to
+    the index for O(1) lookups instead of calling rglob() per pattern.
+    Falls back to rglob() when no index is available or when custom
+    excludes differ from the index's excludes.
 
     Exclude patterns are classified once per call into exact names
     (frozenset lookup) and glob patterns (fnmatch). This avoids
@@ -580,7 +799,37 @@ def find_files(
     if on_file_skipped is None:
         on_file_skipped = _global_on_file_skipped
 
-    # Classify once, use for all files in this call
+    # Fast path: use the global file index if available.
+    # The index was built with the same excludes and locale filtering,
+    # so we only need to apply max_file_bytes filtering here.
+    index = _global_file_index
+    if index is not None and index.repo_root == repo_root:
+        count = 0
+        seen: set[Path] = set()
+        for pattern in patterns:
+            for path in index.match_pattern(pattern):
+                if path in seen:
+                    continue
+                seen.add(path)
+                if max_files is not None and count >= max_files:
+                    return
+                if max_file_bytes is not None:
+                    try:
+                        size = path.stat().st_size
+                    except OSError:  # pragma: no cover
+                        continue
+                    if size > max_file_bytes:
+                        if on_file_skipped is not None:
+                            on_file_skipped(
+                                path, size,
+                                f"exceeds {max_file_bytes} bytes",
+                            )
+                        continue
+                yield path
+                count += 1
+        return
+
+    # Slow path: no index available, fall back to rglob()
     exact, globs = _classify_excludes(excludes)
 
     count = 0

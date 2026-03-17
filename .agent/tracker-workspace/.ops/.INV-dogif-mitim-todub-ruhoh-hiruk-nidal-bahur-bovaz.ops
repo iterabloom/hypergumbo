@@ -70,3 +70,78 @@
   clock: 8  # 0676
   nonce: '0676'  # 0676
   message: "is there any aspect of this invariant that is not holding?"  # 0676
+- op: discuss  # ff92
+  at: '2026-03-16T04:04:40Z'  # ff92
+  by: agent  # ff92
+  actor: jgstern_agent  # ff92
+  clock: 9  # ff92
+  nonce: ff92  # ff92
+  message: "The JSX Route detection (PR #2127) covers the basic <Route path='...' /> pattern. Aspects NOT verified: (1) nested routes (<Route><Route path='child'/></Route>), (2) createBrowserRouter/createRoutesFromElements API (v6.4+), (3) lazy routes (React.lazy + dynamic import), (4) route loader/action detection. I haven't checked these against real React Router apps since the PR merged. Status 'holding' means the basic pattern works; it does not mean all React Router idioms are covered."  # ff92
+- op: discuss  # 8f34
+  at: '2026-03-16T04:22:34Z'  # 8f34
+  by: human  # 8f34
+  actor: jgstern  # 8f34
+  clock: 10  # 8f34
+  nonce: 8f34  # 8f34
+  message: "wellll I would say that \"holding\" that ALL aspects of the invariant are holding, not just some of them. I think if you want to indicate progress toward the invariant holding even if it might not 100% be holding, you can lower the priority to a 3 or a 4. but the status should still be \"violated\". we might need to update the guidance in AGENTS.md to explain this."  # 8f34
+- op: update  # 97af
+  at: '2026-03-16T04:52:33Z'  # 97af
+  by: agent  # 97af
+  actor: jgstern_agent  # 97af
+  clock: 11  # 97af
+  nonce: 97af  # 97af
+  set:  # 97af
+    status: violated  # 97af
+    priority: 3  # 97af
+- op: discuss  # 2a63
+  at: '2026-03-16T04:52:33Z'  # 2a63
+  by: agent  # 2a63
+  actor: jgstern_agent  # 2a63
+  clock: 12  # 2a63
+  nonce: 2a63  # 2a63
+  message: "Agreed — 'holding' was inaccurate since nested routes, createBrowserRouter, lazy routes, and loader/action detection are unverified. Reverted to violated at P3 since basic Route path detection works (PR #2127), but full React Router idiom coverage is unconfirmed."  # 2a63
+- op: discuss  # 2e36
+  at: '2026-03-16T12:32:30Z'  # 2e36
+  by: agent  # 2e36
+  actor: jgstern_agent  # 2e36
+  clock: 13  # 2e36
+  nonce: '2e36'  # 2e36
+  message: "PR #2261 adds createBrowserRouter/createHashRouter/createMemoryRouter/createRoutesFromElements detection. Now covers: (1) JSX <Route path> (PR #2127), (2) v6.4+ object-based route configs with nested children path composition (PR #2261). Remaining unverified: lazy routes (React.lazy + dynamic import), route loader/action detection. Priority stays P3 since the two most common patterns are now covered."  # 2e36
+- op: update  # 64bc
+  at: '2026-03-16T13:50:37Z'  # 64bc
+  by: agent  # 64bc
+  actor: jgstern_agent  # 64bc
+  clock: 14  # 64bc
+  nonce: 64bc  # 64bc
+  set:  # 64bc
+    status: needs_human_review  # 64bc
+- op: discuss  # 3a79
+  at: '2026-03-16T13:50:37Z'  # 3a79
+  by: agent  # 3a79
+  actor: jgstern_agent  # 3a79
+  clock: 15  # 3a79
+  nonce: 3a79  # 3a79
+  message: "Two most common React Router patterns now covered: JSX <Route path> (PR #2127) and createBrowserRouter object configs (PR #2261). Remaining gaps: lazy routes (React.lazy + dynamic import) and loader/action detection. These are increasingly niche patterns. Human decision needed: is the current coverage sufficient, or should we invest in lazy route detection?"  # 3a79
+- op: discuss  # a0b9
+  at: '2026-03-16T15:28:22Z'  # a0b9
+  by: human  # a0b9
+  actor: jgstern  # a0b9
+  clock: 16  # a0b9
+  nonce: a0b9  # a0b9
+  message: "You said \"Priority stays P3 since the two most common patterns are now covered\" but you *should* have said \"Priority lowers to P4 (4) since the two most common patterns are now covered\"\nOr, less optimally, but still acceptably: \"Priority stays P3 even though the two most common patterns are now covered. Wait- if the two most common patterns are now covered, then this item is *more* complete. That should *lower* its priority. Lowering priority to 4.\"\n\nAnd to answer your question more directly: yes, we should tackle lazy routes (React.lazy + dynamic import), route loader/action detection, at reduced priority."  # a0b9
+- op: update  # 850c
+  at: '2026-03-16T15:29:09Z'  # 850c
+  by: human  # 850c
+  actor: jgstern  # 850c
+  clock: 17  # 850c
+  nonce: 850c  # 850c
+  set:  # 850c
+    status: violated  # 850c
+    priority: 4  # 850c
+- op: discuss  # 7f0c
+  at: '2026-03-16T19:21:44Z'  # 7f0c
+  by: agent  # 7f0c
+  actor: jgstern_agent  # 7f0c
+  clock: 18  # 7f0c
+  nonce: 7f0c  # 7f0c
+  message: "Acknowledged. Lowering priority to P4. The two most common patterns (JSX <Route path> and createBrowserRouter) are covered. Remaining work: lazy routes (React.lazy + dynamic import) and loader/action detection, at reduced priority."  # 7f0c

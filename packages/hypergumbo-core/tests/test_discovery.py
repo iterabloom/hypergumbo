@@ -578,3 +578,375 @@ class TestFindFilesMaxFileBytes:
         finally:
             set_max_file_bytes(None)
             set_global_on_file_skipped(None)
+
+
+# ---------------------------------------------------------------------------
+# FileIndex tests
+# ---------------------------------------------------------------------------
+
+class TestFileIndex:
+    """Tests for the FileIndex single-pass file discovery cache."""
+
+    def _make_tree(self, tmp_path: Path) -> None:
+        """Create a sample repo tree for testing."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# app")
+        (tmp_path / "src" / "utils.py").write_text("# utils")
+        (tmp_path / "src" / "index.ts").write_text("// index")
+        (tmp_path / "Makefile").write_text("all:")
+        (tmp_path / "Dockerfile").write_text("FROM python:3.12")
+        (tmp_path / "Dockerfile.dev").write_text("FROM python:3.12-slim")
+        (tmp_path / "build.gradle.kts").write_text("plugins {}")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "pkg.js").write_text("// excluded")
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "justfile").write_text("default:")
+
+    def test_build_indexes_all_files(self, tmp_path: Path) -> None:
+        """Build should index all non-excluded files."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        names = {f.name for f in idx.all_files()}
+        assert "app.py" in names
+        assert "utils.py" in names
+        assert "index.ts" in names
+        assert "Makefile" in names
+        assert "Dockerfile" in names
+        assert "Dockerfile.dev" in names
+        assert "build.gradle.kts" in names
+        assert "justfile" in names
+        # Excluded dirs
+        assert "pkg.js" not in names
+        assert "HEAD" not in names
+
+    def test_by_extension(self, tmp_path: Path) -> None:
+        """by_extension should return files with matching suffix."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        py_files = list(idx.by_extension(".py"))
+        assert {f.name for f in py_files} == {"app.py", "utils.py"}
+
+        ts_files = list(idx.by_extension(".ts"))
+        assert {f.name for f in ts_files} == {"index.ts"}
+
+    def test_by_extension_case_insensitive(self, tmp_path: Path) -> None:
+        """by_extension should match case-insensitively."""
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "readme.MD").write_text("# Hello")
+        idx = FileIndex.build(tmp_path)
+
+        md_files = list(idx.by_extension(".md"))
+        assert {f.name for f in md_files} == {"readme.MD"}
+
+    def test_by_name(self, tmp_path: Path) -> None:
+        """by_name should return files matching exact filename."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        makefiles = list(idx.by_name("Makefile"))
+        assert len(makefiles) == 1
+        assert makefiles[0].name == "Makefile"
+
+        justfiles = list(idx.by_name("justfile"))
+        assert len(justfiles) == 1
+
+    def test_by_glob(self, tmp_path: Path) -> None:
+        """by_glob should match filename patterns."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        dockerfiles = list(idx.by_glob("Dockerfile*"))
+        assert {f.name for f in dockerfiles} == {"Dockerfile", "Dockerfile.dev"}
+
+    def test_by_glob_compound_extension(self, tmp_path: Path) -> None:
+        """by_glob should handle compound extensions like *.gradle.kts."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        gradle = list(idx.by_glob("*.gradle.kts"))
+        assert len(gradle) == 1
+        assert gradle[0].name == "build.gradle.kts"
+
+    def test_match_pattern_extension(self, tmp_path: Path) -> None:
+        """match_pattern should classify *.py as extension lookup."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        result = list(idx.match_pattern("*.py"))
+        assert {f.name for f in result} == {"app.py", "utils.py"}
+
+    def test_match_pattern_exact_name(self, tmp_path: Path) -> None:
+        """match_pattern should classify Makefile as exact name lookup."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        result = list(idx.match_pattern("Makefile"))
+        assert len(result) == 1
+
+    def test_match_pattern_glob(self, tmp_path: Path) -> None:
+        """match_pattern should classify Dockerfile* as glob."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        result = list(idx.match_pattern("Dockerfile*"))
+        assert {f.name for f in result} == {"Dockerfile", "Dockerfile.dev"}
+
+    def test_match_pattern_strips_double_star(self, tmp_path: Path) -> None:
+        """match_pattern should handle **/*.py prefix."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        result = list(idx.match_pattern("**/*.py"))
+        assert {f.name for f in result} == {"app.py", "utils.py"}
+
+    def test_len(self, tmp_path: Path) -> None:
+        """__len__ should return total file count."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+        assert len(idx) == 8  # 2 py + 1 ts + Makefile + 2 Dockerfiles + gradle + justfile
+
+    def test_custom_excludes(self, tmp_path: Path) -> None:
+        """Build with custom excludes should filter accordingly."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path, excludes=["node_modules", ".git", "sub"])
+
+        names = {f.name for f in idx.all_files()}
+        assert "justfile" not in names
+        assert "app.py" in names
+
+    def test_filename_level_excludes(self, tmp_path: Path) -> None:
+        """Build should exclude files by exact name and glob pattern."""
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "package-lock.json").write_text("{}")
+        (tmp_path / "hypergumbo.results.json").write_text("{}")
+        (tmp_path / "app.py").write_text("# app")
+
+        idx = FileIndex.build(tmp_path)
+        names = {f.name for f in idx.all_files()}
+        # package-lock.json is in DEFAULT_EXCLUDES (exact name)
+        assert "package-lock.json" not in names
+        # hypergumbo.results*.json matches glob exclude
+        assert "hypergumbo.results.json" not in names
+        assert "app.py" in names
+
+    def test_locale_excludes_nested(self, tmp_path: Path) -> None:
+        """Locale exclude should skip subdirectories of excluded dirs."""
+        from hypergumbo_core.discovery import FileIndex
+
+        locale_dir = tmp_path / "docs" / "ja"
+        locale_dir.mkdir(parents=True)
+        (locale_dir / "sub").mkdir()
+        (locale_dir / "sub" / "deep.md").write_text("# deep")
+        (tmp_path / "keep.py").write_text("# keep")
+
+        idx = FileIndex.build(
+            tmp_path,
+            locale_excludes=[locale_dir],
+        )
+        names = {f.name for f in idx.all_files()}
+        assert "deep.md" not in names
+        assert "keep.py" in names
+
+    def test_locale_excludes(self, tmp_path: Path) -> None:
+        """Build with locale_excludes should skip locale dirs."""
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "en").mkdir()
+        (tmp_path / "docs" / "en" / "guide.md").write_text("# Guide")
+        (tmp_path / "docs" / "ja").mkdir()
+        (tmp_path / "docs" / "ja" / "guide.md").write_text("# ガイド")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("# main")
+
+        idx = FileIndex.build(
+            tmp_path,
+            locale_excludes=[tmp_path / "docs" / "ja"],
+        )
+        # ja guide should be excluded
+        ja_paths = [p for p in idx.all_files() if p.parent.name == "ja"]
+        assert len(ja_paths) == 0
+        # en guide should remain
+        en_paths = [p for p in idx.all_files() if p.parent.name == "en"]
+        assert len(en_paths) == 1
+
+    def test_repo_root_property(self, tmp_path: Path) -> None:
+        """repo_root property returns the root used during construction."""
+        from hypergumbo_core.discovery import FileIndex
+
+        idx = FileIndex.build(tmp_path)
+        assert idx.repo_root == tmp_path
+
+    def test_all_files_sorted(self, tmp_path: Path) -> None:
+        """all_files should return paths in sorted order."""
+        from hypergumbo_core.discovery import FileIndex
+
+        self._make_tree(tmp_path)
+        idx = FileIndex.build(tmp_path)
+
+        paths = idx.all_files()
+        assert paths == sorted(paths)
+
+    def test_by_glob_no_duplicate_yields(self, tmp_path: Path) -> None:
+        """by_glob should not yield the same file twice for multiple patterns."""
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "test.py").write_text("# test")
+        idx = FileIndex.build(tmp_path)
+
+        # A file should only be yielded once even if multiple patterns match
+        result = list(idx.by_glob("*.py", "test*"))
+        names = [f.name for f in result]
+        # by_glob yields once per file (breaks after first matching pattern)
+        assert names.count("test.py") == 1
+
+
+class TestFileIndexFindFilesIntegration:
+    """Tests that find_files uses the global FileIndex when available."""
+
+    def test_find_files_uses_index(self, tmp_path: Path) -> None:
+        """find_files should return same results via index as via rglob."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# app")
+        (tmp_path / "src" / "lib.py").write_text("# lib")
+        (tmp_path / "readme.md").write_text("# Readme")
+
+        # Get baseline results without index
+        baseline = set(find_files(tmp_path, ["*.py"]))
+
+        # Build index and set global
+        idx = FileIndex.build(tmp_path)
+        try:
+            set_file_index(idx)
+            indexed = set(find_files(tmp_path, ["*.py"]))
+        finally:
+            set_file_index(None)
+
+        assert indexed == baseline
+
+    def test_find_files_index_respects_max_files(self, tmp_path: Path) -> None:
+        """find_files with index should respect max_files limit."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        for i in range(10):
+            (tmp_path / f"file{i}.py").write_text(f"# {i}")
+
+        idx = FileIndex.build(tmp_path)
+        try:
+            set_file_index(idx)
+            result = list(find_files(tmp_path, ["*.py"], max_files=3))
+        finally:
+            set_file_index(None)
+
+        assert len(result) == 3
+
+    def test_find_files_index_respects_max_file_bytes(self, tmp_path: Path) -> None:
+        """find_files with index should skip oversized files."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        (tmp_path / "small.py").write_text("x")
+        (tmp_path / "big.py").write_text("x" * 10000)
+
+        skipped: list[str] = []
+
+        idx = FileIndex.build(tmp_path)
+        try:
+            set_file_index(idx)
+            result = list(find_files(
+                tmp_path, ["*.py"],
+                max_file_bytes=100,
+                on_file_skipped=lambda p, s, r: skipped.append(p.name),
+            ))
+        finally:
+            set_file_index(None)
+
+        assert {f.name for f in result} == {"small.py"}
+        assert "big.py" in skipped
+
+    def test_find_files_index_deduplicates(self, tmp_path: Path) -> None:
+        """find_files with index should not yield duplicates for overlapping patterns."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        (tmp_path / "app.ts").write_text("// ts")
+        (tmp_path / "app.d.ts").write_text("// dts")
+
+        idx = FileIndex.build(tmp_path)
+        try:
+            set_file_index(idx)
+            # *.ts and *.d.ts both match app.d.ts
+            result = list(find_files(tmp_path, ["*.ts", "*.d.ts"]))
+        finally:
+            set_file_index(None)
+
+        names = [f.name for f in result]
+        assert names.count("app.d.ts") == 1
+        assert "app.ts" in names
+
+    def test_find_files_falls_back_without_index(self, tmp_path: Path) -> None:
+        """find_files should work normally when no index is set."""
+        (tmp_path / "test.py").write_text("# test")
+
+        result = list(find_files(tmp_path, ["*.py"]))
+        assert len(result) == 1
+        assert result[0].name == "test.py"
+
+    def test_find_files_index_different_root_falls_back(self, tmp_path: Path) -> None:
+        """find_files should fall back to rglob when repo_root differs from index."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "file.py").write_text("# file")
+
+        # Build index for tmp_path, but query for sub
+        idx = FileIndex.build(tmp_path)
+        try:
+            set_file_index(idx)
+            result = list(find_files(sub, ["*.py"]))
+        finally:
+            set_file_index(None)
+
+        # Should still find the file (via rglob fallback)
+        assert len(result) == 1
+
+    def test_set_get_file_index(self) -> None:
+        """set_file_index / get_file_index round-trip."""
+        from hypergumbo_core.discovery import get_file_index, set_file_index
+
+        assert get_file_index() is None  # default state
+        sentinel = object()
+        try:
+            set_file_index(sentinel)  # type: ignore[arg-type]
+            assert get_file_index() is sentinel
+        finally:
+            set_file_index(None)

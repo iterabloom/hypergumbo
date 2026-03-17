@@ -471,6 +471,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
+                    access_mode="write",
+                    dest_access_mode="read",
+                    channel=channel,
                 )
                 edge.meta = {
                     "channel": channel,
@@ -501,6 +504,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
+                    access_mode="read",
+                    dest_access_mode="write",
+                    channel=channel,
                 )
                 edge.meta = {
                     "channel": channel,
@@ -625,6 +631,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="context_bridge_wrapper",
+                    access_mode="write",
+                    channel=channel,
                 )
                 edge.meta = {
                     "channel": channel,

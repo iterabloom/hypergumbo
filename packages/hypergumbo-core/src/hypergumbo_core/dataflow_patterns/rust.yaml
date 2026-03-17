@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Rust (tree-sitter grammar)
+language: rust
+
+assignments:
+  - node_type: let_declaration
+    write: pattern
+    read: value
+  - node_type: assignment_expression
+    write: left
+    read: right
+
+borrows:
+  - node_type: reference_expression
+    mutate_if: mutable
+    read_if: immutable
+
+calls:
+  - node_type: call_expression
+    read: arguments
+  - node_type: macro_invocation
+    read: arguments

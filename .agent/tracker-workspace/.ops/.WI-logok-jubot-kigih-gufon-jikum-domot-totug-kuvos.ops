@@ -20,3 +20,19 @@
     pr_ref:  # f5d6
     description: "## Context\n\nPlazaFlow identified two gaps in hypergumbo that share a common solution: (1) reactive/event-driven patterns too abstract for automatic detection (e.g., custom CRDT wrappers, application-specific event buses) and (2) custom binary wire protocol dispatch (e.g., PlazaFlow's relay uses byte-level message type dispatch: 0x01=JOIN, 0x10=YJS_SYNC, etc.). Neither fits existing framework-specific linkers.\n\nA lightweight comment-based annotation convention would let developers hint the analyzer about pub/sub relationships and dispatch patterns that can't be automatically detected. A single spec covering both use cases is cleaner than two separate linkers.\n\n## Proposed Design\n\n### Syntax\n```typescript\n// @hg:publishes <channel>\n// @hg:subscribes <channel>\n// @hg:route <method> <path-or-identifier>\n// @hg:dispatches <target>\n```\n\n### Examples\n\n#### Reactive/CRDT flows\n```typescript\nfunction updateCursorPosition(pos: Position) {\n  // @hg:publishes awareness.cursor\n  awareness.setLocalStateField('cursor', pos);\n}\n\nfunction onCursorChange(callback: Callback) {\n  // @hg:subscribes awareness.cursor\n  awareness.on('change', ({added, updated}) => { ... });\n}\n```\n\n#### Binary protocol dispatch\n```rust\nfn handle_message(msg: &[u8]) {\n    match msg[0] {\n        // @hg:route POST join\n        0x01 => handle_join(&msg[1..]),\n        // @hg:route POST yjs_sync\n        0x10 => handle_yjs_sync(&msg[1..]),\n    }\n}\n```\n\n## Implementation Approach\n\n- Scan all source files for `@hg:` comment directives via regex\n- Create synthetic symbols and edges based on directive type:\n  - `@hg:publishes X` + `@hg:subscribes X` → `annotated_publishes` edge between the two enclosing functions\n  - `@hg:route METHOD PATH` → create a route symbol (kind=\"route\") with the given method and path\n  - `@hg:dispatches TARGET` → create a `dispatches_to` edge to the named symbol\n- Language-agnostic: works in any language with `//` or `#` comments\n- Confidence: 0.95 (explicit developer annotation = high trust)\n- Integrate with the existing linker pipeline (new linker, ~200-400 lines)\n\n## Design Considerations\n\n- Should annotations be inheritable? (e.g., annotating a class vs a method)\n- Should there be a way to declare channel schemas? (probably not for v1)\n- How to handle annotations in generated code? (skip files matching derived-artifact heuristics)\n- Consider a `@hg:ignore` directive for suppressing false-positive edges\n\n## Acceptance Criteria\n\n- Parser extracts @hg: directives from comments in all supported languages\n- publishes/subscribes matching creates edges between annotated functions\n- route annotations create route symbols visible in routes.txt\n- 100% test coverage\n- Documented in a user-facing guide (how to annotate your codebase)"  # f5d6
     fields: {}  # f5d6
+- op: update  # c4be
+  at: '2026-03-16T10:49:59Z'  # c4be
+  by: agent  # c4be
+  actor: jgstern_agent  # c4be
+  clock: 2  # c4be
+  nonce: c4be  # c4be
+  set:  # c4be
+    status: done  # c4be
+    pr_ref: '#2255'  # c4be
+- op: discuss  # 14fa
+  at: '2026-03-16T10:49:59Z'  # 14fa
+  by: agent  # 14fa
+  actor: jgstern_agent  # 14fa
+  clock: 3  # 14fa
+  nonce: 14fa  # 14fa
+  message: "Merged PR #2255. New annotation convention linker: @hg:publishes/@hg:subscribes creates annotated_publishes edges matched by channel name. Language-agnostic comment scanning. Also detects @hg:route and @hg:dispatches (scanner only, matching not yet implemented for these). 18 tests, 100% coverage."  # 14fa

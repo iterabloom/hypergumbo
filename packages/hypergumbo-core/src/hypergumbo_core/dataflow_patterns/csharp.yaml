@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for C# (tree-sitter grammar)
+language: csharp
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+  - node_type: local_declaration_statement
+    write: name
+    read: value
+
+calls:
+  - node_type: invocation_expression
+    read: arguments
+  - node_type: object_creation_expression
+    read: arguments

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Python (tree-sitter grammar)
+#
+# Note: py.py uses Python's ast module, not tree-sitter. This YAML is for
+# any future tree-sitter-based Python analysis or for analyzers that parse
+# Python files via the base class (e.g., embedded Python in notebooks).
+# The py.py-specific integration is tracked as WI-mimon.
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+  - node_type: augmented_assignment
+    mutate: left
+    read: right
+
+calls:
+  - node_type: call
+    read: arguments
+
+deletions:
+  - node_type: delete_statement
+    delete: argument

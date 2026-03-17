@@ -1,0 +1,56 @@
+- op: create  # a7f1
+  at: '2026-03-16T04:38:22Z'  # a7f1
+  by: agent  # a7f1
+  actor: jgstern_agent  # a7f1
+  clock: 1  # a7f1
+  nonce: a7f1  # a7f1
+  data:  # a7f1
+    kind: work_item  # a7f1
+    title: "ADR-0015: py.py dataflow integration (Python AST analyzer)"  # a7f1
+    status: todo_soft  # a7f1
+    priority: 1  # a7f1
+    parent:  # a7f1
+    tags:  # a7f1
+    - adr-0015  # a7f1
+    - dataflow  # a7f1
+    before:  # a7f1
+    - WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj  # a7f1
+    duplicate_of: []  # a7f1
+    not_duplicate_of: []  # a7f1
+    pr_ref:  # a7f1
+    description: "py.py and jupyter.py use Python's ast module, not TreeSitterAnalyzer.\nThey won't get automatic Tier 1 annotation. Need a dedicated integration\npoint — either an ast-module-aware variant of classify_access, or a\npost-hoc pass that maps ast node types to the same access_mode vocabulary.\n\nPython is the highest-value language for dataflow analysis: module-level\nglobals (test isolation), framework state (Django settings, Flask config),\nand the PlazaFlow Yjs patterns all involve Python.\n\nDepends on: core dataflow YAMLs (Python patterns defined).\nSee ADR-0015 §5 coverage gap table."  # a7f1
+    fields: {}  # a7f1
+- op: update  # 81fb
+  at: '2026-03-16T04:43:34Z'  # 81fb
+  by: agent  # 81fb
+  actor: jgstern_agent  # 81fb
+  clock: 2  # 81fb
+  nonce: 81fb  # 81fb
+  set: {}  # 81fb
+  remove:  # 81fb
+    before: [WI-zobid-govar-kapoh-pisof-zavip-zonoz-gagiz-luzuj]  # 81fb
+- op: update  # 7a8d
+  at: '2026-03-16T04:44:09Z'  # 7a8d
+  by: agent  # 7a8d
+  actor: jgstern_agent  # 7a8d
+  clock: 3  # 7a8d
+  nonce: 7a8d  # 7a8d
+  set: {}  # 7a8d
+  add:  # 7a8d
+    before: [WI-fufuk-risid-kihav-zasul-nofok-hinij-suliv-dadik]  # 7a8d
+- op: update  # 1e24
+  at: '2026-03-16T07:32:26Z'  # 1e24
+  by: agent  # 1e24
+  actor: jgstern_agent  # 1e24
+  clock: 4  # 1e24
+  nonce: '1e24'  # 1e24
+  set:  # 1e24
+    status: done  # 1e24
+    pr_ref: '#2247'  # 1e24
+- op: discuss  # 5eec
+  at: '2026-03-16T07:32:26Z'  # 5eec
+  by: agent  # 5eec
+  actor: jgstern_agent  # 5eec
+  clock: 5  # 5eec
+  nonce: 5eec  # 5eec
+  message: "Merged PR #2247. Added annotate_dataflow_ast() for Python ast module and integrated into py.py. Covers Assign→write, AugAssign→mutate, AnnAssign→write, Delete→delete. 8 tests."  # 5eec

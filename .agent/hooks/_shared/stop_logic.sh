@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Shared stop hook logic — sourced by all vendor hooks.
 # See ADR-0008 for governance protocol; ADR-0013 for structured tracker.
 #
@@ -193,7 +194,7 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
 
   # Update last_stop_check.json with guidance_file pointer + bakeoff convergence
   if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    STATE_FILE_FOR_GF="$HOME/hypergumbo_lab_notebook/last_stop_check.json"
+    STATE_FILE_FOR_GF="$HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
     if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
       TMP=$(mktemp)
       if jq --arg gf "$GUIDANCE_FILE" \
@@ -211,7 +212,7 @@ fi
 # (Bakeoff convergence computed above, before guidance file write)
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
-STATE_FILE="$HOME/hypergumbo_lab_notebook/last_stop_check.json"
+STATE_FILE="$HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
 # Backward compat: fall back to old locations if new one doesn't exist
 if [[ ! -f "$STATE_FILE" ]]; then
   if [[ -f "$REPO_ROOT/.agent/last_stop_check.json" ]]; then

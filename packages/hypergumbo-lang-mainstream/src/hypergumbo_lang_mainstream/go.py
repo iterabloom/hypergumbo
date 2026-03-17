@@ -71,6 +71,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -3164,6 +3165,16 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             analysis.import_aliases, module_path=go_module_path,
             field_type_registry=field_type_registry,
         )
+
+        # ADR-0015 Tier 1: annotate call edges with dataflow access modes
+        try:
+            source = go_file.read_bytes()
+            tree = parser.parse(source)
+            _go_df_config = _get_dataflow_config("go")
+            if _go_df_config is not None:
+                edges = _annotate_dataflow(edges, tree, source, _go_df_config)
+        except (OSError, IOError):  # pragma: no cover
+            pass  # Annotation is best-effort; edges are still valid without it
         all_edges.extend(edges)
 
         # Extract web framework routes (Gin, Echo, Fiber, Gorilla mux)

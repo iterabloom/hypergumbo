@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
+from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext, make_pass_id
 from ..symbol_resolution import NameResolver
@@ -1765,6 +1766,10 @@ class TreeSitterAnalyzer:
                 analysis.symbol_by_name, global_symbols, run,
                 import_aliases, resolver,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation from AST context
+            df_config = get_dataflow_config(self.lang)
+            if df_config is not None:
+                edges = annotate_dataflow(edges, tree, source, df_config)
             all_edges.extend(edges)
 
             # 6. Usage contexts

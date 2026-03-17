@@ -96,6 +96,25 @@ class TestCollectSolidityFunctions:
         result = _collect_solidity_functions([f1, f2])
         assert len(result["transfer"]) == 2
 
+    def test_qualified_name_also_indexed_unqualified(self) -> None:
+        """Qualified names (Contract.function) also indexed by short name."""
+        from hypergumbo_core.linkers.solidity_abi import _collect_solidity_functions
+
+        sym = _make_sol_sym("PermissionManager._grant")
+        result = _collect_solidity_functions([sym])
+        # Should be indexed under both qualified and unqualified names
+        assert "PermissionManager._grant" in result
+        assert "_grant" in result
+        assert sym in result["_grant"]
+
+    def test_unqualified_name_not_duplicated(self) -> None:
+        """Simple names (no dot) should not create duplicate entries."""
+        from hypergumbo_core.linkers.solidity_abi import _collect_solidity_functions
+
+        sym = _make_sol_sym("transfer")
+        result = _collect_solidity_functions([sym])
+        assert len(result["transfer"]) == 1
+
 
 class TestScanContractCalls:
     """Tests for _scan_contract_calls internal function."""

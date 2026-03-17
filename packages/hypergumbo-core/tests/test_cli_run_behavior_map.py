@@ -239,3 +239,28 @@ def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
     assert precomputed["readme_description"] is None or isinstance(
         precomputed["readme_description"], str
     )
+
+
+def test_run_behavior_map_with_extra_excludes(tmp_path: Path) -> None:
+    """extra_excludes should be combined with DEFAULT_EXCLUDES for the file index."""
+    from hypergumbo_core.cli import run_behavior_map
+
+    # Create files: one in a dir we'll exclude, one we keep
+    (tmp_path / "keep.py").write_text("def keep(): pass\n")
+    vendor = tmp_path / "custom_vendor"
+    vendor.mkdir()
+    (vendor / "lib.py").write_text("def lib(): pass\n")
+
+    out_path = tmp_path / "results.json"
+    generated = run_behavior_map(
+        tmp_path, out_path,
+        budgets="none",
+        extra_excludes=["custom_vendor"],
+        include_sketch_precomputed=False,
+    )
+
+    assert len(generated) == 1
+    data = json.loads(out_path.read_text())
+    # The excluded dir's file should not appear in symbols
+    paths = {s["path"] for s in data.get("symbols", [])}
+    assert not any("custom_vendor" in p for p in paths)

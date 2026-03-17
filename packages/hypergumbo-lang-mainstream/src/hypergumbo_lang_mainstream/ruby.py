@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -2710,6 +2711,10 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 method_candidates=method_candidates,
                 method_resolver=method_resolver,
             )
+            # ADR-0015 Tier 1: annotate edges with dataflow access modes
+            _ruby_df = _get_dataflow_config("ruby")
+            if _ruby_df is not None:
+                edges = _annotate_dataflow(edges, tree, source, _ruby_df)
             all_edges.extend(edges)
 
         # Pass 2b: Extract Rails callback edges (before_action, after_action, etc.)

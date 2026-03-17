@@ -4,6 +4,7 @@ import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
+    _diversity_cap,
     _is_frontend_file,
     compute_entrypoint_cap,
     detect_entrypoints,
@@ -3854,3 +3855,78 @@ class TestIpcHandlerConceptDetection:
         entrypoints = detect_entrypoints([sym], [])
         ep = [e for e in entrypoints if e.kind == EntrypointKind.EVENT_HANDLER]
         assert len(ep) == 1
+
+
+# ==================== DIVERSITY CAP TESTS ====================
+
+
+class TestDiversityCap:
+    """Tests for per-kind diversity capping of entrypoints."""
+
+    def _make_ep(self, kind: EntrypointKind, idx: int) -> Entrypoint:
+        """Create a test entrypoint."""
+        return Entrypoint(
+            symbol_id=f"test:{idx}",
+            kind=kind,
+            confidence=0.9 - idx * 0.001,
+            label=f"ep_{idx}",
+        )
+
+    def test_dominant_kind_capped_when_others_present(self) -> None:
+        """When multiple kinds exist, no single kind dominates the cap."""
+        # 80 GraphQL + 5 HTTP, cap=50
+        # Without diversity: top 50 would be 50 GraphQL, 0 HTTP
+        # With diversity: max 20 GraphQL (40%), then HTTP fills in
+        eps = (
+            [self._make_ep(EntrypointKind.GRAPHQL_SERVER, i) for i in range(80)]
+            + [self._make_ep(EntrypointKind.HTTP_ROUTE, 80 + i) for i in range(5)]
+        )
+        result = _diversity_cap(eps, 50)
+        assert len(result) <= 50
+        graphql_count = sum(1 for e in result if e.kind == EntrypointKind.GRAPHQL_SERVER)
+        http_count = sum(1 for e in result if e.kind == EntrypointKind.HTTP_ROUTE)
+        # GraphQL capped at 40% in diversity pass, but overflow fills remaining
+        # Still, HTTP should be represented
+        assert http_count == 5  # All 5 HTTP routes should be included
+        assert graphql_count > 0
+
+    def test_diverse_kinds_not_capped(self) -> None:
+        """When kinds are diverse, all fit within cap."""
+        eps = [
+            self._make_ep(EntrypointKind.HTTP_ROUTE, 0),
+            self._make_ep(EntrypointKind.CLI_MAIN, 1),
+            self._make_ep(EntrypointKind.GRAPHQL_SERVER, 2),
+            self._make_ep(EntrypointKind.DJANGO_VIEW, 3),
+        ]
+        result = _diversity_cap(eps, 10)
+        assert len(result) == 4
+
+    def test_overflow_fills_remaining_slots(self) -> None:
+        """Overflow entries fill remaining slots after diversity round."""
+        eps = (
+            [self._make_ep(EntrypointKind.HTTP_ROUTE, i) for i in range(30)]
+            + [self._make_ep(EntrypointKind.GRAPHQL_SERVER, 30 + i) for i in range(30)]
+        )
+        result = _diversity_cap(eps, 50)
+        assert len(result) == 50
+        http_count = sum(1 for e in result if e.kind == EntrypointKind.HTTP_ROUTE)
+        graphql_count = sum(1 for e in result if e.kind == EntrypointKind.GRAPHQL_SERVER)
+        assert http_count > 0
+        assert graphql_count > 0
+
+    def test_cap_of_one(self) -> None:
+        """Cap=1 returns exactly 1."""
+        eps = [self._make_ep(EntrypointKind.HTTP_ROUTE, 0)]
+        result = _diversity_cap(eps, 1)
+        assert len(result) == 1
+
+    def test_empty_list(self) -> None:
+        """Empty input returns empty."""
+        result = _diversity_cap([], 50)
+        assert result == []
+
+    def test_fewer_than_cap(self) -> None:
+        """When total < cap, all are returned."""
+        eps = [self._make_ep(EntrypointKind.HTTP_ROUTE, i) for i in range(5)]
+        result = _diversity_cap(eps, 50)
+        assert len(result) == 5

@@ -99,3 +99,10 @@
   clock: 12  # a452
   nonce: a452  # a452
   message: "above you wrote \"Remaining: CSI interface implementations (use different code generation without Unimplemented or ttrpc patterns)\" -- did you make a tracker item for that? if not, perhaps you should?"  # a452
+- op: discuss  # 1e37
+  at: '2026-03-16T04:07:55Z'  # 1e37
+  by: agent  # 1e37
+  actor: jgstern_agent  # 1e37
+  clock: 13  # 1e37
+  nonce: '1e37'  # 1e37
+  message: "No, I hadn't created a tracker item for the CSI gap. Created now: WI-polaz (gRPC: CSI interface implementation linking, P4, todo_soft). Thanks for catching the dropped thread."  # 1e37

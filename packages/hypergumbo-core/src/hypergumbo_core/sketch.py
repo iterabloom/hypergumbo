@@ -1199,13 +1199,23 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
     }
     languages: set[str] = set()
     try:
-        for item in repo_root.rglob("*"):
-            if item.is_file():
+        from hypergumbo_core.discovery import get_file_index
+        file_index = get_file_index()
+        if file_index is not None and file_index.repo_root == repo_root:
+            for item in file_index.all_files():
                 ext = item.suffix.lower()
                 if ext in ext_to_lang:
                     languages.add(ext_to_lang[ext])
                     if len(languages) > 10:  # pragma: no cover - early exit
                         break
+        else:  # pragma: no cover - only without global FileIndex
+            for item in repo_root.rglob("*"):
+                if item.is_file():
+                    ext = item.suffix.lower()
+                    if ext in ext_to_lang:
+                        languages.add(ext_to_lang[ext])
+                        if len(languages) > 10:
+                            break
     except OSError:  # pragma: no cover
         pass
     return languages if languages else {"_common"}
@@ -1274,9 +1284,13 @@ def _discover_config_files_embedding(
     # Collect unique filenames from repo, excluding large directories
     repo_files: dict[str, list[Path]] = {}  # filename -> list of paths
     try:
-        for item in repo_root.rglob("*"):
-            if not item.is_file():  # pragma: no cover - directory traversal
-                continue
+        from hypergumbo_core.discovery import get_file_index
+        file_index = get_file_index()
+        if file_index is not None and file_index.repo_root == repo_root:
+            all_items = file_index.all_files()
+        else:
+            all_items = [f for f in repo_root.rglob("*") if f.is_file()]
+        for item in all_items:
             # Skip hidden directories and common non-config paths
             parts = item.relative_to(repo_root).parts
             if any(p.startswith(".") and p not in {".ruby-version"} for p in parts[:-1]):
@@ -3045,10 +3059,14 @@ def _collect_important_files(
 
         def walk_additional_files() -> list[str]:
             """Walk repo and collect additional file candidates."""
+            from hypergumbo_core.discovery import get_file_index
+            file_index = get_file_index()
+            if file_index is not None and file_index.repo_root == repo_root:  # pragma: no cover - only via run_behavior_map
+                all_items = file_index.all_files()
+            else:
+                all_items = [f for f in repo_root.rglob("*") if f.is_file()]
             candidates: list[str] = []
-            for item in repo_root.rglob("*"):
-                if not item.is_file():
-                    continue
+            for item in all_items:
                 # Skip excluded directories
                 if any(fnmatch(p, pat) for p in item.parts for pat in excludes):
                     continue
@@ -3860,8 +3878,14 @@ def _extract_domain_vocabulary(
     excludes = {"node_modules", "__pycache__", "dist", "build", ".venv", "vendor",
                 ".git", "target", "coverage", "htmlcov", ".pytest_cache"}
 
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
     for ext in extensions:
-        for f in repo_root.rglob(ext):
+        if file_index is not None and file_index.repo_root == repo_root:
+            ext_files = file_index.match_pattern(ext)
+        else:
+            ext_files = repo_root.rglob(ext)
+        for f in ext_files:
             # Skip excluded directories
             if any(excl in f.parts for excl in excludes):
                 continue
@@ -4081,10 +4105,15 @@ def _select_additional_files(
         return rel_str not in source_set
 
     # Collect all non-excluded files
-    all_files: list[Path] = []
-    for f in repo_root.rglob("*"):
-        if f.is_file() and not _is_excluded(f):
-            all_files.append(f)
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == repo_root:  # pragma: no cover - only via run_behavior_map
+        all_files = [f for f in file_index.all_files() if not _is_excluded(f)]
+    else:
+        all_files = [
+            f for f in repo_root.rglob("*")
+            if f.is_file() and not _is_excluded(f)
+        ]
 
     if not all_files:
         return [], [], {}, {}

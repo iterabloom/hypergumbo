@@ -43,6 +43,13 @@ def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
 
 def _find_swift_files(root: Path) -> list[Path]:
     """Find all Swift files."""
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == root:  # pragma: no cover - only via run_behavior_map
+        return [
+            p for p in file_index.by_extension(".swift")
+            if not any(part in (".build", "Build", "DerivedData") for part in p.parts)
+        ]
     swift_files: list[Path] = []
     for path in root.rglob("*.swift"):
         if path.is_file():
@@ -55,6 +62,10 @@ def _find_swift_files(root: Path) -> list[Path]:
 
 def _find_bridging_headers(root: Path) -> list[Path]:
     """Find bridging header files (*-Bridging-Header.h)."""
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == root:  # pragma: no cover - only via run_behavior_map
+        return list(file_index.by_glob("*-Bridging-Header.h"))
     bridging_headers: list[Path] = []
     for path in root.rglob("*-Bridging-Header.h"):
         if path.is_file():

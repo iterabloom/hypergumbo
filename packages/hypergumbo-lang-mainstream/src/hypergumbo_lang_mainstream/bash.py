@@ -82,14 +82,18 @@ def find_bash_files(root: Path) -> list[Path]:
     # Get .sh and .bash files using find_files (respects DEFAULT_EXCLUDES)
     bash_files.extend(find_files(root, ["*.sh", "*.bash"]))
 
-    # For files without extension, check shebang (still need to walk)
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix != "":
-            continue  # Already handled above or not a shell script
-        if is_excluded(path, root):
-            continue
+    # For files without extension, check shebang.
+    # Use the global FileIndex if available to avoid a redundant walk.
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == root:
+        candidates = (f for f in file_index.all_files() if f.suffix == "")
+    else:
+        candidates = (
+            p for p in root.rglob("*")
+            if p.is_file() and p.suffix == "" and not is_excluded(p, root)
+        )
+    for path in candidates:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 first_line = f.readline()

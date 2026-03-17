@@ -16,7 +16,7 @@
   When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely. Items with `needs_human_review` do NOT block stopping — use this for governance proposals or architectural questions that need human judgment.
+  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). See "Scope Expansion Commitment Protocol" for which statuses block stopping and how to handle each.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
@@ -94,13 +94,14 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   2. **Name the invariant:** "In this system, X must always be true because Y depends on it"
   3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
-  5. **If workaround:** Create a tracker item (`scripts/tracker add invariant ...`) with status `todo_hard`, then fix the root cause
+  5. **If workaround:** Create a tracker item (`scripts/tracker add --kind invariant ...`) with status `violated`, then fix the root cause
 - **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
   1. **Create tracker items immediately** using `scripts/tracker add`:
-     - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
-     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
-     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping.
-  2. **Hook enforcement:** Both `todo_hard` and `todo_soft` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
+     - `violated` — invariant violations, anything structural; use for items of kind `invariant` or `meta_invariant`. Investigate deeply, assume structural.
+     - `todo_hard` — defects, *potential* invariant violations, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things too seriously. Use for items of kind `work_item`. Investigate deeply, assume structural.
+     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves, scope expansion work from the Commitment Protocol). For `work_item`-kind items. Address freely.
+     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping. For any kind of item. Do not work on these (other than to update their data using `scripts/tracker`) — they await human triage.
+  2. **Hook enforcement:** `todo_hard`, `todo_soft`, and `violated` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
   3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
   4. **Track to completion:** When done, update the item's status to `done`/`holding`/etc with a PR reference.
 - **Signing & Identity:**
@@ -182,7 +183,7 @@ When context has been compressed, you may have lost awareness of in-progress wor
 
 **Recover state:**
 ```bash
-cat ~/hypergumbo_lab_notebook/last_stop_check.json 2>/dev/null
+cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null
 ```
 This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), and free-text notes about what to do next. Use it to orient yourself before starting new work.
 
@@ -197,8 +198,8 @@ If the JSON contains a `guidance_file` field, read that file for the most recent
 ```bash
 # Update notes (uses jq to modify in-place)
 jq --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
-  '. + {notes: $n}' ~/hypergumbo_lab_notebook/last_stop_check.json \
-  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/last_stop_check.json
+  '. + {notes: $n}' ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json \
+  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json
 ```
 
 Also check for pending work items:
@@ -288,78 +289,8 @@ git commit -s -m "feat: description"
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
-## Contributor Mode (Fork-Based Workflow)
-
-External contributors without write access use the fork-based workflow:
-
-### Setup
-```bash
-# 1. Fork the repo on Codeberg to your account
-
-# 2. Clone YOUR fork (not upstream)
-git clone https://codeberg.org/YOUR-USER/hypergumbo.git
-cd hypergumbo
-
-# 3. Add upstream remote
-git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git
-
-# 4. Set credentials (in .env or exported)
-export FORGEJO_USER=your-username
-export FORGEJO_TOKEN=your-token
-```
-
-### Workflow
-```bash
-# 1. Sync with upstream
-git fetch upstream
-git checkout dev
-git merge upstream/dev
-
-# 2. Create feature branch (from dev)
-git checkout -b yourname/feat/description
-
-# 3. Do TDD work (same as maintainer workflow)
-# ... write tests, write code, run pytest ...
-
-# 4. Commit with sign-off
-git commit -s -m "feat: description"
-
-# 5. Create PR to upstream
-./scripts/contribute
-```
-
-### Key Differences from Maintainer Workflow
-
-| Aspect | Maintainer (`auto-pr`) | Contributor (`contribute`) |
-|--------|------------------------|---------------------------|
-| Push target | Upstream directly | Your fork |
-| PR creation | refs/for/dev/branch | Fork → upstream/dev PR |
-| CI polling | Waits and auto-merges | Exits after PR creation |
-| Merge | Automatic on CI pass | Requires maintainer approval |
-
-### Conflict Resolution: First Come, First Serve
-
-If two contributors work on overlapping areas:
-1. Whoever gets their PR merged first "wins"
-2. The other contributor must rebase on the updated dev
-3. No special coordination is expected or required
-4. CI will fail on the second PR if there are conflicts
-
-This is standard git workflow - small, focused PRs reduce conflict risk.
-
-### After PR Merge
-
-Once a maintainer merges your PR:
-```bash
-# Sync your fork with upstream
-git checkout dev
-git fetch upstream
-git merge upstream/dev
-git push origin dev
-
-# Delete your feature branch
-git branch -d yourname/feat/description
-```
+## Contributor Mode
+External contributors: see `docs/CONTRIBUTOR_MODE.AGENTS.md` for fork-based workflow instructions.
 
 ## Release Workflow (Agent + Human)
 
@@ -507,21 +438,17 @@ When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefin
 - **BROAD** answers: "Are we detecting all the linker edges, framework patterns, and call relationships?"
 - **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
 
-Use DEEP mode when:
-- You've converged on coverage breadth (no CRITICAL/HIGH gaps)
-- You want to test slice limits, supply chain tiers, or graph centrality
-- You're preparing for a release and want qualitative assessment
-
+Use **BROAD** mode (the default) when coverage gaps remain — missing linker edges, unrecognized framework patterns, or incomplete call graphs. Use **DEEP** mode once you've converged on coverage breadth (no manifestly obvious gaps) and want to assess feature quality: slice limits, supply chain tiers, graph centrality, or qualitative readiness for a release.
 
 - **One thing at a time.** Finish your current task — including its PR merge — before starting the next one. Do not start coding a new feature while a bakeoff is running, while CI is pending, or while `auto-pr` is in flight. The editable install means your in-progress edits affect every `hypergumbo` invocation in the process, including background bakeoffs. Waiting for results is not wasted time — it produces better decisions about what to do next.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
-- **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
+- **8-hour rule for experiments:** This applies to individual commands whose wall-clock execution time would plausibly exceed 8 hours — it does not limit the duration of autonomous mode itself. The concern is avoiding single commands that lock up the machine for extended periods and risk producing nothing informative. If extrapolated runtime for a single command exceeds 8 hours, do NOT run it immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
 - **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
 - **Avoid premature timeouts in bakeoff:** Large, popular repos may take significant time to analyze. Do not use short timeouts that would cause false failures. If a repo genuinely takes too long, note it in the lab notebook and investigate optimization opportunities rather than masking the issue with aggressive timeouts.
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
@@ -529,10 +456,7 @@ Use DEEP mode when:
 - **If you run out of items from the main spec, look at §20 Future Work for what to tackle next.**
 
 ### Priority Queues:
-Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`):
-   - `todo_hard` items: structural issues, invariant violations — investigate deeply
-   - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
-   - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
+Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
 
 ### BROAD Mode Priority Queue:
 1. **Assess coverage breadth:** Run `bakeoff-reflect` for LLM-driven coverage assessment
@@ -652,4 +576,4 @@ Key design decisions:
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-03-02.0 -->
+<!-- CANARY: agents-policy-v2026-03-16.0 -->

@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Test timing leaderboard — tracks per-test durations across runs.
+
+Reads JUnit XML produced by pytest (--junit-xml), appends per-test
+timing to a rolling JSON store, and displays the slowest tests.
+
+Usage:
+    # Ingest latest results (called automatically by smart-test):
+    scripts/test-leaderboard ingest .ci/pytest-results.xml
+
+    # Show top 20 slowest tests by mean duration:
+    scripts/test-leaderboard show
+
+    # Show top 50:
+    scripts/test-leaderboard show --top 50
+
+    # Show stats for a specific test:
+    scripts/test-leaderboard show --test test_sync.py::TestDoSync::test_happy_path
+
+Storage:
+    ~/hypergumbo_lab_notebook/test_timings.json
+    Not tracked in git. Rolling window of last 5 runs per test.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from pathlib import Path
+
+TIMINGS_PATH = Path.home() / "hypergumbo_lab_notebook" / "test_timings.json"
+MAX_RUNS_PER_TEST = 5
+
+
+def _load_timings() -> dict:
+    """Load existing timings or return empty dict."""
+    if TIMINGS_PATH.is_file():
+        try:
+            return json.loads(TIMINGS_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_timings(data: dict) -> None:
+    """Save timings to disk."""
+    TIMINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TIMINGS_PATH.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def _parse_junit_xml(xml_path: str) -> list[tuple[str, float]]:
+    """Parse JUnit XML and return list of (test_id, duration_seconds).
+
+    Handles both single-suite and multi-suite JUnit XML formats.
+    """
+    tree = ET.parse(xml_path)  # noqa: S314
+    root = tree.getroot()
+
+    results: list[tuple[str, float]] = []
+
+    # Find all testcase elements (handles both <testsuite> and <testsuites> roots)
+    for testcase in root.iter("testcase"):
+        classname = testcase.get("classname", "")
+        name = testcase.get("name", "")
+        time_str = testcase.get("time", "0")
+
+        if not name:
+            continue
+
+        try:
+            duration = float(time_str)
+        except ValueError:
+            duration = 0.0
+
+        # Build a node ID similar to pytest's format
+        # classname is typically "tests.test_foo.TestBar"
+        # name is "test_method" or "test_method[param]"
+        if classname:
+            # Convert dot-separated classname to path-like format
+            # "tests.test_foo.TestBar" -> "tests/test_foo.py::TestBar"
+            parts = classname.rsplit(".", 1)
+            if len(parts) == 2:
+                module, cls = parts
+                module_path = module.replace(".", "/") + ".py"
+                test_id = f"{module_path}::{cls}::{name}"
+            else:
+                module_path = classname.replace(".", "/") + ".py"
+                test_id = f"{module_path}::{name}"
+        else:
+            test_id = name
+
+        results.append((test_id, duration))
+
+    return results
+
+
+def cmd_ingest(xml_path: str) -> int:
+    """Ingest JUnit XML results into the timings store."""
+    if not os.path.isfile(xml_path):
+        print(f"error: {xml_path} not found", file=sys.stderr)
+        return 1
+
+    results = _parse_junit_xml(xml_path)
+    if not results:
+        print("warning: no test results found in XML", file=sys.stderr)
+        return 0
+
+    timings = _load_timings()
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    ingested = 0
+    for test_id, duration in results:
+        if test_id not in timings:
+            timings[test_id] = {"runs": []}
+
+        runs = timings[test_id]["runs"]
+        runs.append({"timestamp": timestamp, "seconds": round(duration, 4)})
+
+        # Keep only last MAX_RUNS_PER_TEST per test
+        if len(runs) > MAX_RUNS_PER_TEST:
+            timings[test_id]["runs"] = runs[-MAX_RUNS_PER_TEST:]
+
+        ingested += 1
+
+    _save_timings(timings)
+    print(
+        f"Ingested {ingested} test timings "
+        f"({len(timings)} tests tracked, "
+        f"store: {TIMINGS_PATH})"
+    )
+    return 0
+
+
+def cmd_show(top: int = 20, test_filter: str | None = None) -> int:
+    """Display the leaderboard."""
+    timings = _load_timings()
+    if not timings:
+        print("No timing data yet. Run tests first.")
+        return 0
+
+    if test_filter:
+        # Show detail for a specific test
+        matches = [
+            (tid, data)
+            for tid, data in timings.items()
+            if test_filter in tid
+        ]
+        if not matches:
+            print(f"No tests matching '{test_filter}'")
+            return 0
+
+        for test_id, data in sorted(matches):
+            runs = data["runs"]
+            durations = [r["seconds"] for r in runs]
+            mean = sum(durations) / len(durations)
+            print(f"\n{test_id}")
+            print(f"  runs: {len(runs)}, mean: {mean:.3f}s, "
+                  f"min: {min(durations):.3f}s, max: {max(durations):.3f}s")
+            for run in runs:
+                ts = run["timestamp"][:19]
+                print(f"    {ts}  {run['seconds']:.4f}s")
+        return 0
+
+    # Compute mean duration per test, sort descending
+    ranked: list[tuple[str, float, int, float]] = []
+    for test_id, data in timings.items():
+        runs = data["runs"]
+        durations = [r["seconds"] for r in runs]
+        mean = sum(durations) / len(durations)
+        worst = max(durations)
+        ranked.append((test_id, mean, len(runs), worst))
+
+    ranked.sort(key=lambda x: x[1], reverse=True)
+
+    total_tests = len(ranked)
+    total_runs = sum(r[2] for r in ranked)
+
+    print(f"Test Timing Leaderboard ({total_tests} tests, {total_runs} total runs)")
+    print(f"{'='*80}")
+    print(f"{'#':>3}  {'mean':>7}  {'max':>7}  {'runs':>4}  test")
+    print(f"{'─'*3}  {'─'*7}  {'─'*7}  {'─'*4}  {'─'*50}")
+
+    for i, (test_id, mean, nruns, worst) in enumerate(ranked[:top], 1):
+        # Shorten test_id for display
+        display_id = test_id
+        if len(display_id) > 70:
+            display_id = "..." + display_id[-67:]
+        print(f"{i:>3}  {mean:>6.3f}s  {worst:>6.3f}s  {nruns:>4}  {display_id}")
+
+    if len(ranked) > top:
+        remaining = len(ranked) - top
+        print(f"\n  ... and {remaining} more (use --top N to see more)")
+
+    # Box-and-whiskers plot of mean durations across all tests
+    means = [r[1] for r in ranked]
+    if len(means) >= 5:
+        _show_box_plot(means)
+
+    return 0
+
+
+def _show_box_plot(means: list[float]) -> None:
+    """Render a box-and-whiskers plot of per-test mean durations."""
+    try:
+        import plotext as plt  # type: ignore[import-untyped]
+    except ImportError:
+        print("\n  (install plotext for distribution plot: pip install plotext)")
+        return
+
+    means_sorted = sorted(means)
+    n = len(means_sorted)
+
+    def percentile(data: list[float], p: float) -> float:
+        k = (n - 1) * p / 100.0
+        f = int(k)
+        c = f + 1 if f + 1 < n else f
+        return data[f] + (k - f) * (data[c] - data[f])
+
+    q25 = percentile(means_sorted, 25)
+    q50 = percentile(means_sorted, 50)
+    q75 = percentile(means_sorted, 75)
+
+    print(f"\nDistribution of {n} test mean durations:")
+    print(
+        f"  min={means_sorted[0]:.4f}s  Q1={q25:.4f}s  "
+        f"median={q50:.4f}s  Q3={q75:.4f}s  max={means_sorted[-1]:.4f}s"
+    )
+
+    plt.clear_figure()
+    # Half-width, half-height of terminal
+    tw, th = plt.terminal_size()
+    plt.plotsize(tw // 2, th // 2)
+    plt.box([means], label="mean duration (s)")
+    plt.theme("clear")
+    plt.show()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point."""
+    args = argv or sys.argv[1:]
+
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+
+    cmd = args[0]
+
+    if cmd == "ingest":
+        if len(args) < 2:
+            print("usage: test-leaderboard ingest <junit-xml>", file=sys.stderr)
+            return 1
+        return cmd_ingest(args[1])
+
+    elif cmd == "show":
+        top = 20
+        test_filter = None
+        i = 1
+        while i < len(args):
+            if args[i] == "--top" and i + 1 < len(args):
+                top = int(args[i + 1])
+                i += 2
+            elif args[i] == "--test" and i + 1 < len(args):
+                test_filter = args[i + 1]
+                i += 2
+            else:
+                test_filter = args[i]
+                i += 1
+        return cmd_show(top=top, test_filter=test_filter)
+
+    else:
+        print(f"unknown command: {cmd}", file=sys.stderr)
+        print("usage: test-leaderboard [ingest|show]", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

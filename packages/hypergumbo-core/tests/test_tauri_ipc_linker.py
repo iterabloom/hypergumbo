@@ -2108,3 +2108,223 @@ bindings.commands.doStuff();
 
         caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
         assert len(caller_edges) >= 1
+
+
+# ==================== TAURI EVENT DIRECTION TESTS (Rust→TS) ====================
+
+
+class TestTauriIPCEventDirection:
+    """Tests for Rust→TS event emission and TS listener detection."""
+
+    def test_emit_to_listen_creates_ipc_event_edge(self, tmp_path: Path) -> None:
+        """Rust emit() matched to TS listen() produces an ipc_event edge."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text("""
+fn push_status(window: &Window) {
+    window.emit("relay-status", StatusPayload { connected: true }).unwrap();
+}
+""")
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("""
+import { listen } from '@tauri-apps/api/event';
+
+listen('relay-status', (event) => {
+    console.log(event.payload);
+});
+""")
+
+        rust_sym = _make_rust_symbol(
+            "push_status", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+        edge = event_edges[0]
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
+        assert edge.meta.get("channel") == "relay-status"
+
+    def test_emit_all_detected(self, tmp_path: Path) -> None:
+        """Rust emit_all() variant should also be detected."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text("""
+fn broadcast(handle: &AppHandle) {
+    handle.emit_all("vm-state-changed", state).unwrap();
+}
+""")
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("""
+import { listen } from '@tauri-apps/api/event';
+listen('vm-state-changed', (e) => update(e.payload));
+""")
+
+        rust_sym = _make_rust_symbol(
+            "broadcast", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+        assert event_edges[0].meta["channel"] == "vm-state-changed"
+
+    def test_once_listener_detected(self, tmp_path: Path) -> None:
+        """TS once() should also match as a listener."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text('fn f(w: &Window) { w.emit("init-done", ()).unwrap(); }')
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("once('init-done', () => console.log('ready'));")
+
+        rust_sym = _make_rust_symbol(
+            "f", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+
+    def test_no_event_edge_without_matching_listener(self, tmp_path: Path) -> None:
+        """Emit without matching listen should not create an edge."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text('fn f(w: &Window) { w.emit("orphan-event", ()).unwrap(); }')
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("listen('different-event', handler);")
+
+        rust_sym = _make_rust_symbol(
+            "f", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) == 0
+
+    def test_appwindow_listen_detected(self, tmp_path: Path) -> None:
+        """appWindow.listen() pattern should be detected."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text('fn f(w: &Window) { w.emit("status", data).unwrap(); }')
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("appWindow.listen('status', callback);")
+
+        rust_sym = _make_rust_symbol(
+            "f", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+
+    def test_non_rust_symbols_skipped_in_phase5(self, tmp_path: Path) -> None:
+        """Non-Rust symbols should be skipped during emit scanning."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text('fn f(w: &Window) { w.emit("evt", ()).unwrap(); }')
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("listen('evt', handler);")
+
+        # Pass a Python symbol (non-Rust) — should be skipped
+        py_sym = Symbol(
+            id="python:src/app.py:1-10:func:function",
+            name="func", kind="function", language="python",
+            path="src/app.py",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="py-v1", origin_run_id="uuid:test",
+        )
+        rust_sym = _make_rust_symbol(
+            "f", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [py_sym, rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+
+    def test_duplicate_rust_path_scanned_once(self, tmp_path: Path) -> None:
+        """Same Rust file path from multiple symbols should only be scanned once."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text('fn f(w: &Window) { w.emit("dup-event", ()).unwrap(); }')
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("listen('dup-event', handler);")
+
+        # Two symbols from same file
+        rust_sym1 = _make_rust_symbol(
+            "f", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        rust_sym2 = _make_rust_symbol(
+            "g", path="src-tauri/src/lib.rs", start_line=20, end_line=30,
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym1, rust_sym2])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        # Should produce exactly 1 edge (not duplicated)
+        assert len(event_edges) == 1
+
+    def test_emit_to_v2_pattern(self, tmp_path: Path) -> None:
+        """Tauri v2 emit_to() should be detected."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+        rust_file = tmp_path / "src-tauri" / "src" / "lib.rs"
+        rust_file.parent.mkdir(parents=True, exist_ok=True)
+        rust_file.write_text("""
+fn notify(app: &AppHandle) {
+    app.emit_to("main", "update-available", version).unwrap();
+}
+""")
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text("listen('update-available', (e) => showUpdate(e));")
+
+        rust_sym = _make_rust_symbol(
+            "notify", path="src-tauri/src/lib.rs",
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("App", path="src/app.ts")
+
+        result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
+        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        assert len(event_edges) >= 1
+        assert event_edges[0].meta["channel"] == "update-available"

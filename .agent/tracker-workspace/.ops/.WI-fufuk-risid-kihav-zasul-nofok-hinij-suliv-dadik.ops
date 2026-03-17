@@ -1,0 +1,93 @@
+- op: create  # ce6e
+  at: '2026-03-16T04:38:32Z'  # ce6e
+  by: agent  # ce6e
+  actor: jgstern_agent  # ce6e
+  clock: 1  # ce6e
+  nonce: ce6e  # ce6e
+  data:  # ce6e
+    kind: work_item  # ce6e
+    title: "ADR-0015: Slice --dataflow flag (write-to-read chain traversal)"  # ce6e
+    status: todo_soft  # ce6e
+    priority: 1  # ce6e
+    parent:  # ce6e
+    tags:  # ce6e
+    - adr-0015  # ce6e
+    - dataflow  # ce6e
+    before:  # ce6e
+    - WI-mimon-rosir-lapod-mikif-hukab-kikos-jukob-bakah  # ce6e
+    duplicate_of: []  # ce6e
+    not_duplicate_of: []  # ce6e
+    pr_ref:  # ce6e
+    description: "Add optional --dataflow flag to slice command. When set, BFS only\nfollows edges where a write/mutate at the source connects to a read\nat the destination — producing tighter slices of actual data dependencies.\n\n~10 lines in slice.py BFS loop to check edge.meta.get(\"access_mode\").\nCLI arg addition in cli.py.\n\nWithout flag: existing behavior (follow all edges). Backward compatible.\n\nDepends on: edges actually having access_mode annotations (all prior items).\nSee ADR-0015 §6."  # ce6e
+    fields: {}  # ce6e
+- op: update  # b7cc
+  at: '2026-03-16T04:40:28Z'  # b7cc
+  by: agent  # b7cc
+  actor: jgstern_agent  # b7cc
+  clock: 2  # b7cc
+  nonce: b7cc  # b7cc
+  set: {}  # b7cc
+  add:  # b7cc
+    before: [WI-tarar-tikul-hidoh-lihus-mugud-bagab-rafib-jolop]  # b7cc
+- op: update  # ff58
+  at: '2026-03-16T04:44:09Z'  # ff58
+  by: agent  # ff58
+  actor: jgstern_agent  # ff58
+  clock: 3  # ff58
+  nonce: ff58  # ff58
+  set: {}  # ff58
+  remove:  # ff58
+    before: [WI-mimon-rosir-lapod-mikif-hukab-kikos-jukob-bakah]  # ff58
+- op: update  # 2acc
+  at: '2026-03-16T04:44:10Z'  # 2acc
+  by: agent  # 2acc
+  actor: jgstern_agent  # 2acc
+  clock: 4  # 2acc
+  nonce: 2acc  # 2acc
+  set: {}  # 2acc
+  add:  # 2acc
+    before: [WI-fubod-sufiv-rugal-bozoz-patif-tihuh-mukan-nokat]  # 2acc
+- op: update  # 0d99
+  at: '2026-03-16T07:56:43Z'  # 0d99
+  by: agent  # 0d99
+  actor: jgstern_agent  # 0d99
+  clock: 5  # 0d99
+  nonce: 0d99  # 0d99
+  set:  # 0d99
+    status: done  # 0d99
+    pr_ref: '#2248'  # 0d99
+- op: discuss  # afd7
+  at: '2026-03-16T07:56:43Z'  # afd7
+  by: agent  # afd7
+  actor: jgstern_agent  # afd7
+  clock: 6  # afd7
+  nonce: afd7  # afd7
+  message: "Merged PR #2248. Added --dataflow flag to slice command. BFS filters to write/mutate edges only. Graceful degradation for unannotated edges. 8 tests."  # afd7
+- op: discuss  # 69eb
+  at: '2026-03-16T08:18:17Z'  # 69eb
+  by: human  # 69eb
+  actor: jgstern  # 69eb
+  clock: 7  # 69eb
+  nonce: 69eb  # 69eb
+  message: "what about reverse slicing?"  # 69eb
+- op: discuss  # c9d3
+  at: '2026-03-16T08:25:06Z'  # c9d3
+  by: agent  # c9d3
+  actor: jgstern_agent  # c9d3
+  clock: 8  # c9d3
+  nonce: c9d3  # c9d3
+  message: "Good catch. The current --dataflow filter only handles forward slicing correctly (follows write/mutate edges). For reverse slicing, the logic should be inverted: from a symbol, follow edges where access_mode is 'read' to find code that reads data the symbol writes.\n\nCurrent behavior with --reverse --dataflow: edges with access_mode='read' are skipped, which is wrong for reverse — it would miss readers of the entry point.\n\nFix needed: when query.reverse is True and query.dataflow is True, follow edges where access_mode is 'read' (not write/mutate). This finds 'who reads from this writer?' Will implement in a follow-up PR."  # c9d3
+- op: discuss  # 351e
+  at: '2026-03-16T16:05:07Z'  # 351e
+  by: human  # 351e
+  actor: jgstern  # 351e
+  clock: 9  # 351e
+  nonce: 351e  # 351e
+  message: "please find the PR number for that follow-up?"  # 351e
+- op: discuss  # 66b1
+  at: '2026-03-16T19:21:43Z'  # 66b1
+  by: agent  # 66b1
+  actor: jgstern_agent  # 66b1
+  clock: 10  # 66b1
+  nonce: 66b1  # 66b1
+  message: "The reverse dataflow fix is commit 5a1a886b ('fix: handle reverse slicing in --dataflow mode (ADR-0015)'). It was merged to dev via fast-forward, so there's no merge commit with a PR number. The Forgejo API is currently unreachable (HTTP 000) so I can't look up the PR number from the remote. The fix is listed in CHANGELOG.md under [Unreleased] > Fixed."  # 66b1

@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for JavaScript (tree-sitter grammar)
+#
+# Also covers TypeScript via the shared js_ts.py analyzer — TypeScript's
+# tree-sitter grammar extends JavaScript's with the same assignment and
+# call node types.
+language: javascript
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+  - node_type: augmented_assignment_expression
+    mutate: left
+    read: right
+  - node_type: variable_declarator
+    write: name
+    read: value
+
+calls:
+  - node_type: call_expression
+    read: arguments
+  - node_type: new_expression
+    read: arguments
+
+deletions:
+  - node_type: delete_expression
+    delete: argument

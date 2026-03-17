@@ -3,12 +3,32 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.2.1
+- Released **tool** is at: v2.3.0
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [2.3.0] - 2026-03-16
+
+### Added
+
+- **Dataflow access modes (ADR-0015)**: Edges carry optional `access_mode` (`read`/`write`/`mutate`/`delete`), `dest_access_mode`, and `channel` metadata. YAML-driven annotation for 9 languages plus 65 tree-sitter analyzers. `slice --dataflow` follows write→read dependencies.
+- **Yjs/CRDT linker**: `crdt_publishes` edges between Yjs writers and observers, plus awareness API.
+- **Annotation convention linker**: `@hg:publishes`/`@hg:subscribes` comment annotations create cross-language pub/sub edges.
+- **Tauri IPC event linker**: `ipc_event` edges from Rust `window.emit()` to TS `listen()`/`once()`.
+- **React Router v6.4+**: `createBrowserRouter` object-based route configs with nested children, `loader_ref`, `action_ref`, and `lazy_import` metadata.
+- **Shared file index**: Single `os.walk()` replaces ~80 redundant `rglob()` calls per run (~75% of uncached runtime eliminated).
+- **Embedding model cache**: Singleton avoids 2 redundant model loads per run (~9% faster).
+- **smart-test ETA**: Estimates wall-clock duration from test timing history before the run starts.
+- **Test timing leaderboard**: `scripts/test-leaderboard` tracks per-test durations with rolling windows.
+
+### Fixed
+
+- **`slice --dataflow` reverse mode**: Correctly follows read edges instead of write edges.
+- **Solidity ABI linker**: Qualified function names now also indexed by unqualified name.
+- **Entrypoint diversity cap**: No single `EntrypointKind` can take more than 40% of slots.
 
 ## [2.2.1] - 2026-03-15
 

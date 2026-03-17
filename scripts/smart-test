@@ -64,6 +64,7 @@ for arg in "$@"; do
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
         --raw) RAW_OUTPUT=true ;;
+
         -*) PYTEST_ARGS+=("$arg") ;;
         *)
             PYTEST_ARGS+=("$arg")
@@ -256,6 +257,8 @@ summarize_pytest_output() {
 }
 
 # Run pytest and show summary (or raw output if --raw)
+JUNIT_XML="$MANIFEST_DIR/pytest-results.xml"
+
 run_pytest() {
     local test_targets="$1"
     shift
@@ -266,13 +269,13 @@ run_pytest() {
     if [[ "$RAW_OUTPUT" == "true" ]]; then
         # Stream output directly (old behavior)
         # shellcheck disable=SC2086
-        exec pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}"
+        exec pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
     else
         # Capture output, then summarize
         echo "Running tests... (output saved to $PYTEST_LOG)"
         # shellcheck disable=SC2086
         # Use || true to prevent set -e from exiting on test failure
-        pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
+        pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
         local exit_code=${PIPESTATUS[0]}
         # Re-check exit code from log file if PIPESTATUS doesn't work
         if grep -q "FAIL Required test coverage" "$PYTEST_LOG"; then
@@ -283,6 +286,13 @@ run_pytest() {
             exit_code=0
         fi
         summarize_pytest_output "$PYTEST_LOG" "$exit_code"
+
+        # Ingest test timings into leaderboard (non-fatal)
+        if [[ -f "$JUNIT_XML" ]]; then
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            "$SCRIPT_DIR/test-leaderboard" ingest "$JUNIT_XML" 2>/dev/null || true
+        fi
+
         return $exit_code
     fi
 }
@@ -600,6 +610,40 @@ for arg in "${PYTEST_ARGS[@]}"; do
         SCOPED_PYTEST_ARGS+=("$arg")
     fi
 done
+
+# Estimate wall-clock time from test timing data (non-fatal, informational)
+TIMINGS_PATH="$HOME/hypergumbo_lab_notebook/test_timings.json"
+if [[ -f "$TIMINGS_PATH" ]]; then
+    # Sum mean durations of slow tests (>100ms) in affected files, divide by CPU count
+    ETA=$(python3 -c "
+import json, os, sys
+try:
+    timings = json.load(open('$TIMINGS_PATH'))
+    affected = set('''$AFFECTED_TESTS'''.split())
+    total = 0.0
+    for tid, info in timings.items():
+        # Extract test file path from pytest node ID (path::Class::method)
+        tfile = tid.split('::')[0]
+        if tfile not in affected:
+            continue
+        runs = info.get('runs', [])
+        if not runs:
+            continue
+        mean = sum(r['seconds'] for r in runs) / len(runs)
+        total += mean
+    cpus = os.cpu_count() or 1
+    wall = total / cpus
+    if wall >= 60:
+        print(f'~{wall/60:.0f}m @ {cpus} CPUs')
+    elif wall >= 1:
+        print(f'~{wall:.0f}s @ {cpus} CPUs')
+except Exception:
+    pass
+" 2>/dev/null)
+    if [[ -n "$ETA" ]]; then
+        echo "  (estimated wall time: $ETA)"
+    fi
+fi
 
 # Run tests and collect coverage (don't enforce threshold yet)
 run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"

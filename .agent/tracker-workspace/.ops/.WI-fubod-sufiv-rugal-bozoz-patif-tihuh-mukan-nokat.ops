@@ -1,0 +1,56 @@
+- op: create  # 3c30
+  at: '2026-03-16T04:39:43Z'  # 3c30
+  by: agent  # 3c30
+  actor: jgstern_agent  # 3c30
+  clock: 1  # 3c30
+  nonce: 3c30  # 3c30
+  data:  # 3c30
+    kind: work_item  # 3c30
+    title: "ADR-0015: Retrofit existing linkers with access_mode"  # 3c30
+    status: todo_soft  # 3c30
+    priority: 1  # 3c30
+    parent:  # 3c30
+    tags:  # 3c30
+    - adr-0015  # 3c30
+    - dataflow  # 3c30
+    before:  # 3c30
+    - WI-fufuk-risid-kihav-zasul-nofok-hinij-suliv-dadik  # 3c30
+    duplicate_of: []  # 3c30
+    not_duplicate_of: []  # 3c30
+    pr_ref:  # 3c30
+    description: "Add access_mode and channel to meta on edges produced by existing\npub/sub linkers (Tier 2 — explicit annotation):\n\n- event_sourcing.py: event_publishes → write, event_subscribes → read\n- message_queue.py: mq_publishes → write, mq_subscribes → read\n- websocket.py: websocket_message send → write, receive → read\n- ipc.py: Electron send → write, receive → read\n- tauri_ipc.py: invoke → write (request), command → read (handler)\n- wasm_bindgen.py: JS import → write (call), Rust export → read (impl)\n\nEach linker already has meta dicts. Adding access_mode is one key per\nEdge.create call. Estimated: ~50 lines total across 6 files.\n\nDepends on: Edge schema (access_mode kwargs available).\nSee ADR-0015 §7."  # 3c30
+    fields: {}  # 3c30
+- op: update  # 2358
+  at: '2026-03-16T04:40:28Z'  # 2358
+  by: agent  # 2358
+  actor: jgstern_agent  # 2358
+  clock: 2  # 2358
+  nonce: '2358'  # 2358
+  set: {}  # 2358
+  add:  # 2358
+    before: [WI-tarar-tikul-hidoh-lihus-mugud-bagab-rafib-jolop]  # 2358
+- op: update  # c930
+  at: '2026-03-16T04:44:10Z'  # c930
+  by: agent  # c930
+  actor: jgstern_agent  # c930
+  clock: 3  # c930
+  nonce: c930  # c930
+  set: {}  # c930
+  remove:  # c930
+    before: [WI-fufuk-risid-kihav-zasul-nofok-hinij-suliv-dadik]  # c930
+- op: update  # 352b
+  at: '2026-03-16T08:23:11Z'  # 352b
+  by: agent  # 352b
+  actor: jgstern_agent  # 352b
+  clock: 4  # 352b
+  nonce: 352b  # 352b
+  set:  # 352b
+    status: done  # 352b
+    pr_ref: '#2249'  # 352b
+- op: discuss  # 1e2f
+  at: '2026-03-16T08:23:11Z'  # 1e2f
+  by: agent  # 1e2f
+  actor: jgstern_agent  # 1e2f
+  clock: 5  # 1e2f
+  nonce: 1e2f  # 1e2f
+  message: "Merged PR #2249. Retrofitted 6 linkers (event_sourcing, message_queue, websocket, ipc, tauri_ipc, wasm_bindgen) with access_mode/dest_access_mode/channel on 11 Edge.create calls."  # 1e2f
