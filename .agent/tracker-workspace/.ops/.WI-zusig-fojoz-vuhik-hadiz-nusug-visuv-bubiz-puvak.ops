@@ -36,3 +36,19 @@
   clock: 3  # 6981
   nonce: '6981'  # 6981
   message: "Merged PR #2256. New Yjs/CRDT linker covering raw Yjs API (set/delete → observe/observeDeep) and Awareness API (setLocalState/setLocalStateField → on change/update). Creates crdt_publishes edges. BlockSuite block schema layer not yet covered — can be added as follow-up or via @hg: annotations. 23 tests, 100% coverage."  # 6981
+- op: update  # 128c
+  at: '2026-03-17T05:16:04Z'  # 128c
+  by: human  # 128c
+  actor: jgstern  # 128c
+  clock: 4  # 128c
+  nonce: 128c  # 128c
+  set:  # 128c
+    status: todo_soft  # 128c
+    priority: 3  # 128c
+- op: discuss  # d470
+  at: '2026-03-17T05:17:44Z'  # d470
+  by: human  # d470
+  actor: jgstern  # d470
+  clock: 5  # d470
+  nonce: d470  # d470
+  message: "yes please add BlockSuite block schema layer in whatever manner best leverages hypergumbo's extensibility"  # d470

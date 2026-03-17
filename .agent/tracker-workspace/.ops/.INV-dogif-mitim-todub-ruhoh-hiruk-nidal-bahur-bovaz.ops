@@ -145,3 +145,10 @@
   clock: 18  # 7f0c
   nonce: 7f0c  # 7f0c
   message: "Acknowledged. Lowering priority to P4. The two most common patterns (JSX <Route path> and createBrowserRouter) are covered. Remaining work: lazy routes (React.lazy + dynamic import) and loader/action detection, at reduced priority."  # 7f0c
+- op: discuss  # a4cd
+  at: '2026-03-17T05:24:04Z'  # a4cd
+  by: agent  # a4cd
+  actor: jgstern_agent  # a4cd
+  clock: 19  # a4cd
+  nonce: a4cd  # a4cd
+  message: "Added loader_ref and action_ref linking in route_handler linker. Routes with these metadata fields now get additional routes_to edges (role: loader/action) to function symbols. Remaining unverified: React.lazy() component-level lazy loading (not route-level lazy property, which is already extracted as metadata)."  # a4cd

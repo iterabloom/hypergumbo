@@ -84,3 +84,25 @@
   clock: 10  # cadf
   nonce: cadf  # cadf
   message: "Reopening: the AGENTS.md governance change was approved but never implemented. Needs an Output Capture section added."  # cadf
+- op: update  # 17b1
+  at: '2026-03-17T05:08:53Z'  # 17b1
+  by: agent  # 17b1
+  actor: jgstern_agent  # 17b1
+  clock: 11  # 17b1
+  nonce: 17b1  # 17b1
+  set:  # 17b1
+    status: done  # 17b1
+- op: discuss  # 9659
+  at: '2026-03-17T05:08:53Z'  # 9659
+  by: agent  # 9659
+  actor: jgstern_agent  # 9659
+  clock: 12  # 9659
+  nonce: '9659'  # 9659
+  message: "Added Output Capture section to AGENTS.md. PR in flight via auto-pr."  # 9659
+- op: discuss  # a7fc
+  at: '2026-03-17T05:19:44Z'  # a7fc
+  by: human  # a7fc
+  actor: jgstern  # a7fc
+  clock: 13  # a7fc
+  nonce: a7fc  # a7fc
+  message: "please write the PR number here"  # a7fc

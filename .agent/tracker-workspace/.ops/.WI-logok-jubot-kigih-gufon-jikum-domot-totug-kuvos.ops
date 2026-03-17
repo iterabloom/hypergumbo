@@ -36,3 +36,19 @@
   clock: 3  # 14fa
   nonce: 14fa  # 14fa
   message: "Merged PR #2255. New annotation convention linker: @hg:publishes/@hg:subscribes creates annotated_publishes edges matched by channel name. Language-agnostic comment scanning. Also detects @hg:route and @hg:dispatches (scanner only, matching not yet implemented for these). 18 tests, 100% coverage."  # 14fa
+- op: update  # 0b79
+  at: '2026-03-17T05:21:21Z'  # 0b79
+  by: human  # 0b79
+  actor: jgstern  # 0b79
+  clock: 4  # 0b79
+  nonce: 0b79  # 0b79
+  set:  # 0b79
+    status: todo_soft  # 0b79
+    priority: 3  # 0b79
+- op: discuss  # ef4b
+  at: '2026-03-17T05:21:59Z'  # ef4b
+  by: human  # ef4b
+  actor: jgstern  # ef4b
+  clock: 5  # ef4b
+  nonce: ef4b  # ef4b
+  message: "please implement matching for  @hg:route and @hg:dispatches"  # ef4b
