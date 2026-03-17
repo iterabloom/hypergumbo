@@ -27,3 +27,18 @@
   nonce: c3a7  # c3a7
   set:  # c3a7
     status: todo_soft  # c3a7
+- op: update  # 19c4
+  at: '2026-03-17T22:42:33Z'  # 19c4
+  by: agent  # 19c4
+  actor: jgstern_agent  # 19c4
+  clock: 3  # 19c4
+  nonce: 19c4  # 19c4
+  set:  # 19c4
+    status: done  # 19c4
+- op: discuss  # 082f
+  at: '2026-03-17T22:42:33Z'  # 082f
+  by: agent  # 082f
+  actor: jgstern_agent  # 082f
+  clock: 4  # 082f
+  nonce: 082f  # 082f
+  message: "Setup now manages root .gitattributes with linguist-generated + merge=union + diff=tracker. PR merged."  # 082f

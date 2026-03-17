@@ -27,3 +27,18 @@
   nonce: '9095'  # 9095
   set:  # 9095
     status: todo_soft  # 9095
+- op: update  # b6ae
+  at: '2026-03-17T22:42:33Z'  # b6ae
+  by: agent  # b6ae
+  actor: jgstern_agent  # b6ae
+  clock: 3  # b6ae
+  nonce: b6ae  # b6ae
+  set:  # b6ae
+    status: done  # b6ae
+- op: discuss  # f6fb
+  at: '2026-03-17T22:42:33Z'  # f6fb
+  by: agent  # f6fb
+  actor: jgstern_agent  # f6fb
+  clock: 4  # f6fb
+  nonce: f6fb  # f6fb
+  message: "Setup now auto-creates scripts/tracker and scripts/tracker-textconv shims. PR merged."  # f6fb

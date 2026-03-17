@@ -28,3 +28,18 @@
   nonce: d758  # d758
   set:  # d758
     status: todo_soft  # d758
+- op: update  # ba2e
+  at: '2026-03-17T22:06:21Z'  # ba2e
+  by: agent  # ba2e
+  actor: jgstern_agent  # ba2e
+  clock: 3  # ba2e
+  nonce: ba2e  # ba2e
+  set:  # ba2e
+    status: done  # ba2e
+- op: discuss  # ee09
+  at: '2026-03-17T22:06:21Z'  # ee09
+  by: agent  # ee09
+  actor: jgstern_agent  # ee09
+  clock: 4  # ee09
+  nonce: ee09  # ee09
+  message: "Implemented --add-blocked-by and --remove-blocked-by in update command. Multiple items accepted via repeated flags. The batch command (WI-modab) also addresses the multiple-invocations workflow."  # ee09
