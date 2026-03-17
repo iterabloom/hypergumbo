@@ -41,3 +41,18 @@
   clock: 4  # a5f1
   nonce: a5f1  # a5f1
   message: "Acknowledged. A .htrac file format for batch mutations makes sense — it could be a structured text file with one operation per line (or block). The heredoc/stdin option could accept the same format, so they're complementary rather than overlapping: .htrac files for saved/reusable batches, stdin for ad-hoc piped input. Will design around this when implementing."  # a5f1
+- op: update  # 67a6
+  at: '2026-03-17T21:51:21Z'  # 67a6
+  by: agent  # 67a6
+  actor: jgstern_agent  # 67a6
+  clock: 5  # 67a6
+  nonce: 67a6  # 67a6
+  set:  # 67a6
+    status: done  # 67a6
+- op: discuss  # c4cb
+  at: '2026-03-17T21:51:21Z'  # c4cb
+  by: agent  # c4cb
+  actor: jgstern_agent  # c4cb
+  clock: 6  # c4cb
+  nonce: c4cb  # c4cb
+  message: "Implemented in batch command PR. Supports .htrac files and stdin. 13 tests with 100% coverage."  # c4cb

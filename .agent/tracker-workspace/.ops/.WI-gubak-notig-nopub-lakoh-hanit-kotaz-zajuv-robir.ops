@@ -36,3 +36,18 @@
   nonce: '3899'  # 3899
   set:  # 3899
     status: todo_soft  # 3899
+- op: update  # 4f46
+  at: '2026-03-17T21:10:39Z'  # 4f46
+  by: agent  # 4f46
+  actor: jgstern_agent  # 4f46
+  clock: 4  # 4f46
+  nonce: 4f46  # 4f46
+  set:  # 4f46
+    status: done  # 4f46
+- op: discuss  # f6b4
+  at: '2026-03-17T21:10:39Z'  # f6b4
+  by: agent  # f6b4
+  actor: jgstern_agent  # f6b4
+  clock: 5  # f6b4
+  nonce: f6b4  # f6b4
+  message: "Implemented in same PR as WI-povuh. All mutation types now print what changed: status transitions, priority changes, tag additions/removals, parent changes, pr_ref changes, and custom field updates."  # f6b4

@@ -28,3 +28,18 @@
   nonce: ca0d  # ca0d
   set:  # ca0d
     status: todo_soft  # ca0d
+- op: update  # 6dc7
+  at: '2026-03-17T21:10:33Z'  # 6dc7
+  by: agent  # 6dc7
+  actor: jgstern_agent  # 6dc7
+  clock: 3  # 6dc7
+  nonce: 6dc7  # 6dc7
+  set:  # 6dc7
+    status: done  # 6dc7
+- op: discuss  # b575
+  at: '2026-03-17T21:10:33Z'  # b575
+  by: agent  # b575
+  actor: jgstern_agent  # b575
+  clock: 4  # b575
+  nonce: b575  # b575
+  message: "Implemented in verbose confirmations PR. Relationship mutations now print directionality: 'WI-alpha now blocks WI-beta (Beta task)', 'WI-alpha no longer blocks WI-beta'."  # b575
