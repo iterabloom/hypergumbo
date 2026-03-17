@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **React Router v6.4+ loader/action linking**: Route symbols with `loader_ref` or `action_ref` metadata now produce `routes_to` edges (with `role: loader`/`role: action`) to the corresponding function symbols.
+
 ## [2.3.0] - 2026-03-16
 
 ### Added

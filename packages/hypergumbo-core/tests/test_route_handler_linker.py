@@ -2078,3 +2078,121 @@ class TestJSXRouteComponentLinking:
         # function kinds are checked first by _resolve_express_handler
         assert result.edges[0].dst == func_handler.id
 
+
+class TestReactRouterLoaderActionLinking:
+    """Tests for React Router v6.4+ loader/action function linking.
+
+    Routes with loader_ref or action_ref metadata should produce additional
+    edges from the route symbol to the loader/action function symbols.
+    """
+
+    def _make_route(
+        self,
+        path: str = "/dashboard",
+        handler_ref: str = "Dashboard",
+        loader_ref: str | None = None,
+        action_ref: str | None = None,
+    ) -> Symbol:
+        meta: dict[str, str] = {
+            "route_path": path,
+            "http_method": "GET",
+            "handler_ref": handler_ref,
+        }
+        if loader_ref is not None:
+            meta["loader_ref"] = loader_ref
+        if action_ref is not None:
+            meta["action_ref"] = action_ref
+        return Symbol(
+            id=f"javascript:src/routes.tsx:10-10:GET {path}:route",
+            name=f"GET {path}",
+            kind="route",
+            language="javascript",
+            path="src/routes.tsx",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta=meta,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def _make_func(self, name: str, line: int = 1) -> Symbol:
+        return Symbol(
+            id=f"javascript:src/{name}.ts:{line}-{line + 20}:{name}:function",
+            name=name,
+            kind="function",
+            language="javascript",
+            path=f"src/{name}.ts",
+            span=Span(start_line=line, end_line=line + 20, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def test_loader_ref_creates_edge(self) -> None:
+        """Route with loader_ref links to the loader function."""
+        route = self._make_route(loader_ref="dashboardLoader")
+        handler = self._make_func("Dashboard")
+        loader = self._make_func("dashboardLoader")
+
+        result = link_routes_to_handlers([route, handler, loader], [])
+
+        # Should have 2 edges: routes_to handler + routes_to loader
+        assert len(result.edges) == 2
+        handler_edge = next(e for e in result.edges if e.dst == handler.id)
+        loader_edge = next(e for e in result.edges if e.dst == loader.id)
+        assert handler_edge.edge_type == "routes_to"
+        assert loader_edge.edge_type == "routes_to"
+        assert loader_edge.meta.get("role") == "loader"
+
+    def test_action_ref_creates_edge(self) -> None:
+        """Route with action_ref links to the action function."""
+        route = self._make_route(action_ref="dashboardAction")
+        handler = self._make_func("Dashboard")
+        action = self._make_func("dashboardAction")
+
+        result = link_routes_to_handlers([route, handler, action], [])
+
+        assert len(result.edges) == 2
+        action_edge = next(e for e in result.edges if e.dst == action.id)
+        assert action_edge.edge_type == "routes_to"
+        assert action_edge.meta.get("role") == "action"
+
+    def test_loader_and_action_both_linked(self) -> None:
+        """Route with both loader_ref and action_ref creates edges for both."""
+        route = self._make_route(
+            loader_ref="dashboardLoader", action_ref="dashboardAction"
+        )
+        handler = self._make_func("Dashboard")
+        loader = self._make_func("dashboardLoader")
+        action = self._make_func("dashboardAction")
+
+        result = link_routes_to_handlers(
+            [route, handler, loader, action], []
+        )
+
+        assert len(result.edges) == 3
+        roles = {e.meta.get("role") for e in result.edges}
+        assert roles == {None, "loader", "action"}
+
+    def test_unresolved_loader_ref_no_edge(self) -> None:
+        """When loader_ref doesn't match any symbol, no loader edge is created."""
+        route = self._make_route(loader_ref="missingLoader")
+        handler = self._make_func("Dashboard")
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        # Only the handler edge
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_loader_without_handler_still_linked(self) -> None:
+        """Loader edge is created even when handler_ref doesn't resolve."""
+        route = self._make_route(
+            handler_ref="MissingComponent", loader_ref="dashboardLoader"
+        )
+        loader = self._make_func("dashboardLoader")
+
+        result = link_routes_to_handlers([route, loader], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == loader.id
+        assert result.edges[0].meta.get("role") == "loader"
+

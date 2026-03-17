@@ -16,6 +16,8 @@ How It Works
    - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
 3. Resolve handler reference to actual method/function symbols
 4. Create routes_to edges linking routes to handlers
+5. For React Router v6.4+ routes: resolve loader_ref/action_ref to function
+   symbols and create additional routes_to edges with role=loader/action metadata
 
 Why This Design
 ---------------
@@ -38,6 +40,7 @@ Supported Frameworks
 - JS/TS Express: handler_ref = "module.function"
 - Python/Django: view_name = "view_function" or "module.view_function"
 - Go/Gin/Echo/Fiber/Chi: handler_name = "functionName" or "pkg.FunctionName"
+- React Router v6.4+: loader_ref/action_ref = data loader/action function names
 """
 
 from __future__ import annotations
@@ -659,6 +662,27 @@ def link_routes_to_handlers(
             )
             new_edges.append(edge)
             routes_linked += 1
+
+        # React Router v6.4+ loader/action linking: resolve loader_ref and
+        # action_ref metadata to function symbols and create additional edges.
+        route_meta = route.meta or {}
+        route_line = route.span.start_line if route.span else 0
+        for ref_key, role in (("loader_ref", "loader"), ("action_ref", "action")):
+            ref_name = route_meta.get(ref_key)
+            if not ref_name:
+                continue
+            target = _resolve_express_handler(ref_name, symbol_by_name)
+            if target:
+                la_edge = Edge.create(
+                    src=route.id,
+                    dst=target.id,
+                    edge_type="routes_to",
+                    line=route_line,
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    meta={"role": role, ref_key: ref_name},
+                )
+                new_edges.append(la_edge)
 
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     run.files_analyzed = len(routes)  # Using this field to track routes processed
