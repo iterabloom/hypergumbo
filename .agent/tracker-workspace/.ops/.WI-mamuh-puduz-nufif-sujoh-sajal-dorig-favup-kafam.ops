@@ -28,3 +28,10 @@
   nonce: 4d30  # 4d30
   set:  # 4d30
     parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 4d30
+- op: discuss  # 28d5
+  at: '2026-03-17T09:21:41Z'  # 28d5
+  by: agent  # 28d5
+  actor: jgstern_agent  # 28d5
+  clock: 3  # 28d5
+  nonce: 28d5  # 28d5
+  message: "Overlaps with WI-zusig (Yjs/CRDT reactive linker, todo_soft). WI-zusig covers the broader Yjs API surface detection. This item (WI-mamuh) focuses on sub-document references and field-level awareness — extensions beyond what WI-zusig defined. Consider merging or making WI-mamuh a child of WI-zusig."  # 28d5

@@ -60,3 +60,10 @@
   nonce: '5088'  # 5088
   set:  # 5088
     parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 5088
+- op: discuss  # e7a8
+  at: '2026-03-17T09:21:41Z'  # e7a8
+  by: agent  # e7a8
+  actor: jgstern_agent  # e7a8
+  clock: 7  # e7a8
+  nonce: e7a8  # e7a8
+  message: "Cross-ref: WI-mamuh (PlazaFlow Yjs sub-document and awareness tracing) covers additional patterns beyond this item: sub-document references via getSubdocs()/Y.Doc guid, field-level awareness matching. Both under META-migil umbrella."  # e7a8

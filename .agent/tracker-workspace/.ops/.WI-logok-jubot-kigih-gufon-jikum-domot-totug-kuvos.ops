@@ -60,3 +60,10 @@
   nonce: fd0c  # fd0c
   set:  # fd0c
     parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # fd0c
+- op: discuss  # 3cbe
+  at: '2026-03-17T09:21:42Z'  # 3cbe
+  by: agent  # 3cbe
+  actor: jgstern_agent  # 3cbe
+  clock: 7  # 3cbe
+  nonce: 3cbe  # 3cbe
+  message: "Cross-ref: WI-jisib (protocol message dispatch mapping) proposes automatic detection for typed wire protocols. Annotation convention is the fallback for patterns too custom for auto-detection. Both under META-migil umbrella."  # 3cbe

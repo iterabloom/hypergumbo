@@ -58,3 +58,21 @@
   set: {}  # 25a8
   add:  # 25a8
     before: [WI-pitam-tajof-fibij-logor-timal-rafom-vufab-dozif]  # 25a8
+- op: update  # 245d
+  at: '2026-03-17T17:00:25Z'  # 245d
+  by: agent  # 245d
+  actor: jgstern_agent  # 245d
+  clock: 6  # 245d
+  nonce: 245d  # 245d
+  set: {}  # 245d
+  remove:  # 245d
+    before: [WI-mamuh]  # 245d
+- op: update  # da6b
+  at: '2026-03-17T17:00:26Z'  # da6b
+  by: agent  # da6b
+  actor: jgstern_agent  # da6b
+  clock: 7  # da6b
+  nonce: da6b  # da6b
+  set: {}  # da6b
+  remove:  # da6b
+    before: [WI-subaf]  # da6b
