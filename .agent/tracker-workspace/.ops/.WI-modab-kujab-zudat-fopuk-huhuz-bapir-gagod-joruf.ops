@@ -19,3 +19,18 @@
     pr_ref:  # 426c
     description: "## Problem\n\nWhen multiple tracker mutations are chained in a single shell invocation (cmd1 && cmd2 && cmd3),\nauto-sync can fire mid-batch when pending ops exceed the 40-line threshold. Auto-sync is\nsynchronous and blocking (push, poll CI, merge) — typically 5-15 minutes. Remaining commands\nin the chain stall silently.\n\n## Design\n\nA `tracker batch` subcommand that accepts multiple individual operations:\n\n1. Each op is individually atomic — it either fully applies or fully fails\n2. Local validation runs after each op against compiled state that includes prior ops in the batch\n   (so `add X` then `update X --add-before Y` works)\n3. Auto-sync is suppressed between ops — fires once at the end\n4. Exit code 0 ONLY if all ops AND the final auto-sync succeed\n5. If ANYTHING fails (any op or the sync), return non-zero with a per-op result report\n   listing each operation and whether it succeeded or failed\n\n## Input format\n\nTBD — options include:\n- Heredoc/stdin (one command per line)\n- Repeated --op flags\n- A YAML/JSON manifest file\n\n## What this is NOT\n\n- NOT all-or-nothing batch atomicity — if op #3 fails, ops #1 and #2 stand\n- NOT a transaction with rollback — ops are append-only, rollback is architecturally wrong\n- The batch is a sequence of individually-atomic operations with deferred sync\n\n## Root cause\n\n_maybe_auto_sync() in cli.py:1731-1736 fires after EVERY mutation command. No mechanism exists\nto group mutations and defer sync. The CI poll in do_sync() blocks for 5+ minutes."  # 426c
     fields: {}  # 426c
+- op: discuss  # 55bf
+  at: '2026-03-17T18:34:31Z'  # 55bf
+  by: human  # 55bf
+  actor: jgstern  # 55bf
+  clock: 2  # 55bf
+  nonce: 55bf  # 55bf
+  message: "for the input format I am leaning towards a text file or maybe a text file with a `.htrac` suffix. I'm not sure if that overlaps with the heredoc/stdin option."  # 55bf
+- op: update  # 20b4
+  at: '2026-03-17T18:34:42Z'  # 20b4
+  by: human  # 20b4
+  actor: jgstern  # 20b4
+  clock: 3  # 20b4
+  nonce: 20b4  # 20b4
+  set:  # 20b4
+    status: todo_soft  # 20b4

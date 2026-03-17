@@ -19,3 +19,11 @@
     pr_ref:  # 5109
     description: "The tracker creates .gitattributes inside .ops/ dirs (merge=union) but doesn't touch the root-level .gitattributes. Root entries are what make PRs readable: linguist-generated collapses ops diffs in Forgejo/GitHub, diff=tracker-ops enables the textconv driver for human-readable diffs. Without these, every tracker sync PR shows raw proquint ops. Setup should idempotently append these lines (check if present, add if missing). Most impactful of the four setup gaps. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 5109
     fields: {}  # 5109
+- op: update  # c3a7
+  at: '2026-03-17T18:37:42Z'  # c3a7
+  by: human  # c3a7
+  actor: jgstern  # c3a7
+  clock: 2  # c3a7
+  nonce: c3a7  # c3a7
+  set:  # c3a7
+    status: todo_soft  # c3a7

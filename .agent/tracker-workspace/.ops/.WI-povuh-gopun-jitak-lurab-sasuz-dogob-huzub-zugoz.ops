@@ -20,3 +20,11 @@
     pr_ref:  # 637d
     description: "All relationship mutations (--add-before, --remove-before, --parent, etc.) print only 'updated'. Should print the natural-language meaning: 'WI-mamuh (Yjs sub-document tracing) now blocks INV-jisit (cross-linker integration)'. For --add-before, the phrasing 'X now blocks Y' makes the directionality unambiguous and would have immediately caught the backwards-before-link error during PlazaFlow tracker setup. Also applies to --parent ('WI-mamuh is now a child of META-migil'), --add-duplicate-of, etc."  # 637d
     fields: {}  # 637d
+- op: update  # ca0d
+  at: '2026-03-17T18:36:59Z'  # ca0d
+  by: human  # ca0d
+  actor: jgstern  # ca0d
+  clock: 2  # ca0d
+  nonce: ca0d  # ca0d
+  set:  # ca0d
+    status: todo_soft  # ca0d

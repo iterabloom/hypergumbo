@@ -20,3 +20,11 @@
     pr_ref:  # d1bd
     description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit', 'discussed WI-mamuh: 1 new message'. This is the general case of the relationship-specific confirmation (#4). Lower priority since #4 covers the highest-value case (relationship directionality). The 'discuss' command could also print a truncated preview of the message added."  # d1bd
     fields: {}  # d1bd
+- op: update  # 0e84
+  at: '2026-03-17T18:40:08Z'  # 0e84
+  by: agent  # 0e84
+  actor: jgstern_agent  # 0e84
+  clock: 2  # 0e84
+  nonce: '0e84'  # 0e84
+  set:  # 0e84
+    description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit (cross-linker integration)', 'discussed WI-mamuh: 1 new message'. This generalizes relationship-specific confirmations (WI-povuh) to all mutation types: status changes, priority changes, tag additions, field updates, discussion messages. Lower priority than WI-povuh because relationship directionality errors (before links pointing the wrong way) are the costliest mistake — WI-povuh addresses that specific case. This item covers the rest: knowing at a glance whether your status/priority/tag change took effect without running a separate 'tracker show' to verify."  # 0e84

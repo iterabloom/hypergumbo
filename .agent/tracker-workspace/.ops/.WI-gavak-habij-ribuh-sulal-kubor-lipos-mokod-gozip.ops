@@ -19,3 +19,11 @@
     pr_ref:  # 1c5d
     description: "htrac setup warns about missing scripts/tracker shim (check 16) but doesn't install it. scripts/tracker-textconv isn't even checked. Both are ~3 lines. Setup should offer to create them, or just do it. Closes the gap between 'setup detected the problem' and 'setup fixed the problem'. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 1c5d
     fields: {}  # 1c5d
+- op: update  # 9095
+  at: '2026-03-17T18:37:27Z'  # 9095
+  by: human  # 9095
+  actor: jgstern  # 9095
+  clock: 2  # 9095
+  nonce: '9095'  # 9095
+  set:  # 9095
+    status: todo_soft  # 9095
