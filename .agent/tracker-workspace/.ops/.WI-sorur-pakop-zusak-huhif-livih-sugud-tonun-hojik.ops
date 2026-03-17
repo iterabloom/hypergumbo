@@ -19,3 +19,11 @@
     pr_ref:  # 3900
     description: "Tracker ephemeral files (.agent/.cache-*.db, .agent/.sync-logs/, .ci/pytest-output.log) need root .gitignore entries to prevent accidental commits. The tracker manages .gitignore inside its own directories but doesn't touch the root one. Setup should idempotently append tracker-specific entries. Low effort. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 3900
     fields: {}  # 3900
+- op: update  # 6ebc
+  at: '2026-03-17T18:43:50Z'  # 6ebc
+  by: human  # 6ebc
+  actor: jgstern  # 6ebc
+  clock: 2  # 6ebc
+  nonce: 6ebc  # 6ebc
+  set:  # 6ebc
+    status: todo_soft  # 6ebc

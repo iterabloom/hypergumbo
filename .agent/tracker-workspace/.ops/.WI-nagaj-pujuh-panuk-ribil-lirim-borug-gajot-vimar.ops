@@ -20,3 +20,11 @@
     pr_ref:  # 9e4b
     description: "No way to visualize the dependency tree for an item and its children/dependents. After setting up 9 PlazaFlow items with parent and before relationships, verification required running 'tracker show' on each item individually (9 commands). A 'tracker deps <item>' command should show the tree: parent/child hierarchy plus before/blocked-by edges. Could also support --format dot for Graphviz output. Example: 'tracker deps META-migil' would show the full PlazaFlow readiness tree with arrows indicating blocking relationships."  # 9e4b
     fields: {}  # 9e4b
+- op: update  # 659b
+  at: '2026-03-17T18:42:51Z'  # 659b
+  by: human  # 659b
+  actor: jgstern  # 659b
+  clock: 2  # 659b
+  nonce: 659b  # 659b
+  set:  # 659b
+    status: todo_soft  # 659b

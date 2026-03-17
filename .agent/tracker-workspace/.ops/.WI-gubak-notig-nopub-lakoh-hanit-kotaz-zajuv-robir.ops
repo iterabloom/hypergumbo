@@ -28,3 +28,11 @@
   nonce: '0e84'  # 0e84
   set:  # 0e84
     description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit (cross-linker integration)', 'discussed WI-mamuh: 1 new message'. This generalizes relationship-specific confirmations (WI-povuh) to all mutation types: status changes, priority changes, tag additions, field updates, discussion messages. Lower priority than WI-povuh because relationship directionality errors (before links pointing the wrong way) are the costliest mistake — WI-povuh addresses that specific case. This item covers the rest: knowing at a glance whether your status/priority/tag change took effect without running a separate 'tracker show' to verify."  # 0e84
+- op: update  # 3899
+  at: '2026-03-17T18:42:09Z'  # 3899
+  by: human  # 3899
+  actor: jgstern  # 3899
+  clock: 3  # 3899
+  nonce: '3899'  # 3899
+  set:  # 3899
+    status: todo_soft  # 3899

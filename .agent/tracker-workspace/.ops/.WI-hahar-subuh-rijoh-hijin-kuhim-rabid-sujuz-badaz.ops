@@ -106,3 +106,10 @@
   clock: 13  # a7fc
   nonce: a7fc  # a7fc
   message: "please write the PR number here"  # a7fc
+- op: discuss  # 60e7
+  at: '2026-03-17T18:56:41Z'  # 60e7
+  by: agent  # 60e7
+  actor: jgstern_agent  # 60e7
+  clock: 14  # 60e7
+  nonce: '60e7'  # 60e7
+  message: "Fixed in PR #2293 (AGENTS.md output capture policy). Added 'Output Capture for Long-Running Commands' section with required pattern, list of applicable commands, and safety valve guidance."  # 60e7

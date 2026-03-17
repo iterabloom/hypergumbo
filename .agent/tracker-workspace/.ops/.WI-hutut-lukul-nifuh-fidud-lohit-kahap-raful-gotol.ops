@@ -19,3 +19,11 @@
     pr_ref:  # 2c86
     description: "When no config.yaml.template exists, setup falls back to built-in defaults silently. For teams that want to customize governance (field schemas, status transitions, sync thresholds), a version-controlled template is useful. Suggest opt-in: 'htrac setup --write-template' writes built-in defaults as .agent/tracker/config.yaml.template. Not automatic since most single-user repos don't need it. Weakest of the four setup gaps but still reasonable for multi-contributor projects. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 2c86
     fields: {}  # 2c86
+- op: update  # 0bdd
+  at: '2026-03-17T18:43:24Z'  # 0bdd
+  by: human  # 0bdd
+  actor: jgstern  # 0bdd
+  clock: 2  # 0bdd
+  nonce: 0bdd  # 0bdd
+  set:  # 0bdd
+    status: todo_soft  # 0bdd
