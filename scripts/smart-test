@@ -28,7 +28,6 @@
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --background # Kick off full suite in background
-#   ./scripts/smart-test --no-mask   # Disable slow test masking
 
 set -euo pipefail
 
@@ -50,8 +49,6 @@ VERBOSE=false
 MANIFEST_ONLY=false
 BACKGROUND=false
 RAW_OUTPUT=false
-NO_MASK=false
-MASK_ACTIVE=false
 PYTEST_ARGS=()
 HAS_EXPLICIT_TESTS=false
 
@@ -67,7 +64,7 @@ for arg in "$@"; do
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
         --raw) RAW_OUTPUT=true ;;
-        --no-mask) NO_MASK=true ;;
+
         -*) PYTEST_ARGS+=("$arg") ;;
         *)
             PYTEST_ARGS+=("$arg")
@@ -614,54 +611,37 @@ for arg in "${PYTEST_ARGS[@]}"; do
     fi
 done
 
-# Slow test masking: deselect slow tests not connected to changed code
-# Uses the behavior map's call graph to identify which slow tests (>100ms)
-# actually depend on the changed symbols.  Degrades gracefully if the
-# behavior map or timings are unavailable.
-if [[ "$NO_MASK" != "true" ]] && [[ "$FULL_RUN" != "true" ]]; then
-    TIMINGS_PATH="$HOME/hypergumbo_lab_notebook/test_timings.json"
-    if [[ -f "$TIMINGS_PATH" ]]; then
-        AFFECTED_LIST=$(mktemp)
-        echo "$AFFECTED_TESTS" > "$AFFECTED_LIST"
-
-        # Prefer stable hypergumbo's Python, fall back to dev
-        MASK_PYTHON=""
-        if [[ -n "$STABLE_HG" ]]; then
-            # Derive the Python interpreter from the stable hypergumbo path
-            STABLE_DIR=$(dirname "$STABLE_HG")
-            if [[ -x "$STABLE_DIR/python3" ]]; then
-                MASK_PYTHON="$STABLE_DIR/python3"
-            elif [[ -x "$STABLE_DIR/python" ]]; then
-                MASK_PYTHON="$STABLE_DIR/python"
-            fi
-        fi
-        if [[ -z "$MASK_PYTHON" ]]; then
-            # Fall back to dev venv or system python
-            MASK_PYTHON="python3"
-        fi
-
-        DESELECT_FILE=$(mktemp)
-        MASK_STDERR=$(mktemp)
-        if "$MASK_PYTHON" -m hypergumbo_core.test_masking \
-            --changed-files "$CHANGED_FILE_LIST" \
-            --timings "$TIMINGS_PATH" \
-            --affected-tests "$AFFECTED_LIST" \
-            --repo-root "$REPO_ROOT" \
-            > "$DESELECT_FILE" 2>"$MASK_STDERR"; then
-
-            MASK_COUNT=$(grep -c . "$DESELECT_FILE" 2>/dev/null || echo 0)
-            if [[ "$MASK_COUNT" -gt 0 ]]; then
-                MASK_ACTIVE=true
-                while IFS= read -r deselect_arg; do
-                    SCOPED_PYTEST_ARGS+=("$deselect_arg")
-                done < "$DESELECT_FILE"
-                # Print the summary from stderr (contains time saved info)
-                cat "$MASK_STDERR" >&2
-            fi
-        else
-            log "Slow test masking unavailable (non-fatal)"
-        fi
-        rm -f "$AFFECTED_LIST" "$DESELECT_FILE" "$MASK_STDERR"
+# Estimate wall-clock time from test timing data (non-fatal, informational)
+TIMINGS_PATH="$HOME/hypergumbo_lab_notebook/test_timings.json"
+if [[ -f "$TIMINGS_PATH" ]]; then
+    # Sum mean durations of slow tests (>100ms) in affected files, divide by CPU count
+    ETA=$(python3 -c "
+import json, os, sys
+try:
+    timings = json.load(open('$TIMINGS_PATH'))
+    affected = set('''$AFFECTED_TESTS'''.split())
+    total = 0.0
+    for tid, info in timings.items():
+        # Extract test file path from pytest node ID (path::Class::method)
+        tfile = tid.split('::')[0]
+        if tfile not in affected:
+            continue
+        runs = info.get('runs', [])
+        if not runs:
+            continue
+        mean = sum(r['seconds'] for r in runs) / len(runs)
+        total += mean
+    cpus = os.cpu_count() or 1
+    wall = total / cpus
+    if wall >= 60:
+        print(f'~{wall/60:.0f}m @ {cpus} CPUs')
+    elif wall >= 1:
+        print(f'~{wall:.0f}s @ {cpus} CPUs')
+except Exception:
+    pass
+" 2>/dev/null)
+    if [[ -n "$ETA" ]]; then
+        echo "  (estimated wall time: $ETA)"
     fi
 fi
 
@@ -679,22 +659,12 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
 
     # Run coverage report for just the changed files
     if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then
-        if [[ "$MASK_ACTIVE" == "true" ]]; then
-            echo ""
-            echo "⚠️  Coverage gaps detected (slow test masking active — gaps may be from masked tests):"
-            coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
-            echo ""
-            echo "These gaps are likely covered by masked slow tests. CI runs unmasked and will verify."
-            echo "Use --no-mask to run all tests locally if needed."
-            # Don't fail — masked tests don't count against local coverage
-        else
-            echo ""
-            echo "❌ Changed source files are not at 100% coverage:"
-            coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
-            echo ""
-            echo "Run the full suite to see overall coverage: pytest --full"
-            exit 1
-        fi
+        echo ""
+        echo "❌ Changed source files are not at 100% coverage:"
+        coverage report --include="$INCLUDE_PATTERN" --show-missing 2>/dev/null || true
+        echo ""
+        echo "Run the full suite to see overall coverage: pytest --full"
+        exit 1
     else
         echo "✅ All changed source files are at 100% coverage"
     fi
