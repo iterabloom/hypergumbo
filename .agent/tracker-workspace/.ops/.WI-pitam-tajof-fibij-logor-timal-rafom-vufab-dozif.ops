@@ -21,3 +21,12 @@
     pr_ref:  # de03
     description: "PlazaFlow has multiple WASM modules in one project: Polis-lite (Rust/WASM), UDHR classifier (WASM), Whisper.cpp (C++ WASM), Piper TTS (C++ WASM), Silero VAD (ONNX/WASM). Existing wasm_bindgen linker handles one Rust/WASM module well. Need to verify: (1) multiple wasm_bindgen modules in same project don't collide, (2) non-Rust WASM (C++ via Emscripten) has any coverage, (3) ONNX runtime WASM (onnxruntime-web) model loading is detectable. Bakeoff repos: wasmtime (multi-module WASM, already available). Cross-refs: INV-nilob (codegen wrapper tracing, violated — wasm_bindgen facades listed as remaining gap)."  # de03
     fields: {}  # de03
+- op: update  # afac
+  at: '2026-03-17T17:01:26Z'  # afac
+  by: agent  # afac
+  actor: jgstern_agent  # afac
+  clock: 2  # afac
+  nonce: afac  # afac
+  set: {}  # afac
+  remove:  # afac
+    before: [WI-mamuh]  # afac

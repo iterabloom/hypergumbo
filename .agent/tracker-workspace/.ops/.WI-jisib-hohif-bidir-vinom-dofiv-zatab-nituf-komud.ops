@@ -28,3 +28,12 @@
   clock: 2  # f6b1
   nonce: f6b1  # f6b1
   message: "Overlaps with WI-logok (annotation convention, todo_soft). WI-logok proposes @hg:publishes/@hg:subscribes comment annotations as a fallback for custom wire protocols. This item (WI-jisib) proposes automatic detection of typed message dispatch (enum variants, string constants). Both approaches are complementary — auto-detect where possible, annotate where not."  # f6b1
+- op: update  # cb9a
+  at: '2026-03-17T17:01:26Z'  # cb9a
+  by: agent  # cb9a
+  actor: jgstern_agent  # cb9a
+  clock: 3  # cb9a
+  nonce: cb9a  # cb9a
+  set: {}  # cb9a
+  remove:  # cb9a
+    before: [WI-mamuh]  # cb9a
