@@ -63,3 +63,17 @@
   clock: 7  # 6f88
   nonce: 6f88  # 6f88
   message: "what are the results of the investigation?"  # 6f88
+- op: discuss  # 05c2
+  at: '2026-03-17T05:53:08Z'  # 05c2
+  by: agent  # 05c2
+  actor: jgstern_agent  # 05c2
+  clock: 8  # 05c2
+  nonce: 05c2  # 05c2
+  message: "contextBridge function exposure implemented (PR #2296). IPC linker now detects individual function exposures via contextBridge.exposeInMainWorld('funcName', ...) and traces window.funcName() calls. Also supports custom wrappers like ipcInvoke(). Tested against podman-desktop's pattern. Remaining uninvestigated: GraphQL codegen, gRPC TS+Python codegen, wasm_bindgen facades."  # 05c2
+- op: discuss  # 153f
+  at: '2026-03-17T05:53:15Z'  # 153f
+  by: agent  # 153f
+  actor: jgstern_agent  # 153f
+  clock: 9  # 153f
+  nonce: 153f  # 153f
+  message: "Re: investigation results. contextBridge investigation (podman-desktop) complete — found that podman-desktop uses individual function exposures (contextBridge.exposeInMainWorld('funcName', ...)) rather than object-based wrappers, and wraps ipcRenderer.invoke in a custom ipcInvoke() helper. Both gaps are now fixed in PR #2296. The remaining 4 areas (GraphQL codegen, gRPC TS+Python, gRPC codegen Python, wasm_bindgen) have not been investigated yet."  # 153f
