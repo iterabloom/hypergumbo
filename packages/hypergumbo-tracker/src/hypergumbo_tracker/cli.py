@@ -398,6 +398,130 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _short_id(item_id: str) -> str:
+    """Return a short display form of a proquint item ID.
+
+    Keeps prefix + first word: 'WI-mamuh-puduz-...' → 'WI-mamuh'.
+    """
+    parts = item_id.split("-")
+    if len(parts) >= 2:
+        return f"{parts[0]}-{parts[1]}"
+    return item_id
+
+
+def _item_label(ts: TrackerSet, item_id: str) -> str:
+    """Return 'SHORT_ID (title)' for an item, or just the ID if lookup fails."""
+    try:
+        item = ts.get(item_id)
+        return f"{_short_id(item_id)} ({item.title})"
+    except Exception:  # pragma: no cover
+        return _short_id(item_id)
+
+
+def _describe_changes(
+    old: "CompiledItem", new: "CompiledItem", ts: TrackerSet,
+) -> list[str]:
+    """Compare old and new item state, returning human-readable change lines.
+
+    Each line describes one mutation in natural language. For relationship
+    changes, includes item titles to make directionality unambiguous.
+    """
+    changes: list[str] = []
+
+    # Status change
+    if old.status != new.status:
+        changes.append(f"status: {old.status} → {new.status}")
+
+    # Priority change
+    if old.priority != new.priority:
+        changes.append(f"priority: P{old.priority} → P{new.priority}")
+
+    # Title change
+    if old.title != new.title:
+        changes.append(f"title: {old.title!r} → {new.title!r}")
+
+    # Parent change
+    if old.parent != new.parent:
+        if new.parent:
+            changes.append(
+                f"parent: now child of {_item_label(ts, new.parent)}"
+            )
+        else:
+            changes.append("parent: removed")
+
+    # PR ref change
+    if old.pr_ref != new.pr_ref:
+        if new.pr_ref:
+            changes.append(f"pr_ref: {new.pr_ref}")
+        else:
+            changes.append("pr_ref: removed")
+
+    # Tags
+    old_tags = set(old.tags)
+    new_tags = set(new.tags)
+    added_tags = new_tags - old_tags
+    removed_tags = old_tags - new_tags
+    if added_tags:
+        changes.append(f"tags: +{', +'.join(sorted(added_tags))}")
+    if removed_tags:
+        changes.append(f"tags: -{', -'.join(sorted(removed_tags))}")
+
+    # Before links (blocking relationships)
+    old_before = set(old.before)
+    new_before = set(new.before)
+    for bid in new_before - old_before:
+        label = _item_label(ts, bid)
+        changes.append(
+            f"before: {_short_id(new.id)} now blocks {label}"
+        )
+    for bid in old_before - new_before:
+        label = _item_label(ts, bid)
+        changes.append(
+            f"before: {_short_id(new.id)} no longer blocks {label}"
+        )
+
+    # Duplicate-of links
+    old_dup = set(old.duplicate_of)
+    new_dup = set(new.duplicate_of)
+    for did in new_dup - old_dup:
+        changes.append(f"duplicate_of: +{_item_label(ts, did)}")
+    for did in old_dup - new_dup:
+        changes.append(f"duplicate_of: removed {_item_label(ts, did)}")
+
+    # Not-duplicate-of links
+    old_ndup = set(old.not_duplicate_of)
+    new_ndup = set(new.not_duplicate_of)
+    for nid in new_ndup - old_ndup:
+        changes.append(f"not_duplicate_of: +{_item_label(ts, nid)}")
+    for nid in old_ndup - new_ndup:
+        changes.append(f"not_duplicate_of: removed {_item_label(ts, nid)}")
+
+    # Custom fields
+    if old.fields != new.fields:
+        for k in set(list(old.fields) + list(new.fields)):
+            ov = old.fields.get(k)
+            nv = new.fields.get(k)
+            if ov != nv:
+                if nv is not None:
+                    changes.append(f"fields.{k}: {nv}")
+                else:
+                    changes.append(f"fields.{k}: removed")
+
+    return changes
+
+
+def _changes_to_dict(changes: list[str]) -> list[dict[str, str]]:
+    """Convert change lines to structured dicts for JSON output."""
+    result = []
+    for line in changes:
+        if ": " in line:
+            field, detail = line.split(": ", 1)
+            result.append({"field": field, "detail": detail})
+        else:
+            result.append({"field": "unknown", "detail": line})
+    return result
+
+
 def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'update' subcommand."""
     set_fields: dict[str, Any] = {}
@@ -460,6 +584,9 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             fields_dict[k] = v
         set_fields["fields"] = fields_dict
 
+    # Capture old state for verbose confirmation
+    old_item = ts.get(args.item_id)
+
     ts.update(
         args.item_id,
         set_fields=set_fields or None,
@@ -472,10 +599,20 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         _warn_unread_human_messages(args.item_id, ts)
         ts.discuss(args.item_id, message=args.note)
 
+    # Compute and display changes
+    new_item = ts.get(args.item_id)
+    changes = _describe_changes(old_item, new_item, ts)
+
     if args.json:
-        print(json.dumps({"ok": True}))
+        result: dict[str, Any] = {"ok": True}
+        if changes:
+            result["changes"] = _changes_to_dict(changes)
+        print(json.dumps(result))
     else:
-        print("updated")
+        if changes:
+            print(f"updated {_short_id(args.item_id)}: {'; '.join(changes)}")
+        else:
+            print("updated")
     return EXIT_SUCCESS
 
 

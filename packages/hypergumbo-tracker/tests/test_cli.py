@@ -1075,6 +1075,194 @@ class TestWriteCommands:
 
 
 # ---------------------------------------------------------------------------
+# Verbose confirmation messages
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseConfirmations:
+    """Mutation commands print human-readable confirmation details."""
+
+    def test_update_status_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Status change prints old → new status."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--status", "done",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "status" in out
+        assert "todo_hard" in out
+        assert "done" in out
+
+    def test_update_priority_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Priority change prints old → new priority."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--priority", "1",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "priority" in out
+        assert "P2" in out
+        assert "P1" in out
+
+    def test_update_add_before_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-before prints the relationship with item titles."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-alpha", title="Alpha task")
+        _add_item(ops_dir, "WI-beta", title="Beta task")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--add-before", "WI-beta",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "blocks" in out.lower() or "before" in out.lower()
+
+    def test_update_remove_before_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before prints the unlinked relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-alpha", title="Alpha task")
+        _add_item(ops_dir, "WI-beta", title="Beta task")
+        # First add the before link
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--add-before", "WI-beta",
+            ])
+        capsys.readouterr()  # clear
+        # Now remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--remove-before", "WI-beta",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "no longer" in out.lower() or "removed" in out.lower()
+
+    def test_update_parent_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--parent prints the parent relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-child", title="Child item")
+        _add_item(ops_dir, "META-parent", kind="meta_invariant",
+                  title="Parent meta")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--parent", "META-parent",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "parent" in out.lower()
+
+    def test_update_tags_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Tag mutations print which tags were added/removed."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-tag", "important",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "important" in out
+
+    def test_update_json_includes_changes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes structured change details."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "update", "WI-test", "--status", "done",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+        assert "changes" in data
+
+    def test_discuss_shows_confirmation(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Discuss command prints confirmation with message count."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  title="Test item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "My discussion message",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "discussed" in out
+
+    def test_update_multiple_changes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Multiple mutations in one update all appear in output."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--status", "done",
+                "--priority", "1",
+                "--add-tag", "resolved",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "status" in out
+        assert "priority" in out
+        assert "resolved" in out
+
+
+# ---------------------------------------------------------------------------
 # Lock/Unlock commands
 # ---------------------------------------------------------------------------
 
