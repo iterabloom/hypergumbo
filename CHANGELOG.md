@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Yjs sub-document and shared type accessors**: `doc.getMap('name')`, `doc.getArray('name')`, `doc.getText('name')`, `doc.getXmlFragment('name')` detected as named channel writes, enabling cross-file linking between shared type access and observers.
 - **BlockSuite document model linker**: Detects BlockSuite API patterns — `store.addBlock()`, `store.deleteBlock()`, `store.transact()`, `defineBlockSchema()` as writes; `store.slots.blockUpdated.subscribe()`, `model.propsUpdated.subscribe()` as reads. Creates `crdt_publishes` edges across BlockSuite's Yjs abstraction layer (used by AFFiNE).
 - **Crypto-flow linker**: Detects WebCrypto API (`crypto.subtle.encrypt/decrypt/deriveKey/importKey`) and Rust crypto crate patterns (`hkdf::Hkdf`, `Aes256Gcm`, `ChaCha20Poly1305`). Creates `crypto_flow` edges between encryption/key-derivation and decryption sites across files, enabling `slice --dataflow` to trace key derivation chains (e.g., PlazaFlow's three-tier HKDF→AES-GCM model).
+- **Message dispatch linker**: Detects typed wire protocol message patterns — JS/TS object literals with `type`/`action` discriminator fields matched against `switch/case` dispatch and equality comparisons; Rust `#[serde(rename)]` enum variants matched against `match` arms. Creates `message_dispatch` edges by message type name (e.g., `'JOIN'`, `'offer'`, `'SDP_OFFER'`).
 
 #### Tracker
 
