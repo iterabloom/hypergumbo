@@ -56,3 +56,18 @@
   clock: 6  # b134
   nonce: b134  # b134
   message: "Acknowledged. kata-containers is at ~/plazaflow_deep_repos/cohort7_compute/kata-containers. Will use that path for investigating CSI codegen patterns."  # b134
+- op: update  # cbcc
+  at: '2026-03-18T06:07:04Z'  # cbcc
+  by: agent  # cbcc
+  actor: jgstern_agent  # cbcc
+  clock: 7  # cbcc
+  nonce: cbcc  # cbcc
+  set:  # cbcc
+    status: done  # cbcc
+- op: discuss  # fd9b
+  at: '2026-03-18T06:07:04Z'  # fd9b
+  by: agent  # fd9b
+  actor: jgstern_agent  # fd9b
+  clock: 8  # fd9b
+  nonce: fd9b  # fd9b
+  message: "Fixed in PR #2342. gRPC linker now detects XxxServer interface implementations (CSI pattern) and removes early return that prevented interface-only implementations from creating edges."  # fd9b
