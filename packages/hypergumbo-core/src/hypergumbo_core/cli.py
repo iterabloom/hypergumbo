@@ -4862,7 +4862,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
