@@ -1,0 +1,22 @@
+- op: create  # 49f8
+  at: '2026-03-18T06:52:21Z'  # 49f8
+  by: agent  # 49f8
+  actor: jgstern_agent  # 49f8
+  clock: 1  # 49f8
+  nonce: 49f8  # 49f8
+  data:  # 49f8
+    kind: work_item  # 49f8
+    title: "ADR-0016 Phase 1d: dogfood on hypergumbo's own codebase"  # 49f8
+    status: todo_soft  # 49f8
+    priority: 3  # 49f8
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 49f8
+    tags:  # 49f8
+    - adr-0016  # 49f8
+    - io-boundary  # 49f8
+    before:  # 49f8
+    - WI-dikig-gihub-durus-bifat-dorog-paviz-dirut-bugot  # 49f8
+    duplicate_of: []  # 49f8
+    not_duplicate_of: []  # 49f8
+    pr_ref:  # 49f8
+    description: "Run the I/O boundary analysis on hypergumbo itself. Verify results manually. Publish boundary map as documentation. This validates the end-to-end pipeline before expanding to other languages. See ADR-0016 §Implementation Phase 1."  # 49f8
+    fields: {}  # 49f8

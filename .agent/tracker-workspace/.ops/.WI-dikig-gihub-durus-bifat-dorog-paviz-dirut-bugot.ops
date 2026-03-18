@@ -1,0 +1,22 @@
+- op: create  # a067
+  at: '2026-03-18T06:52:12Z'  # a067
+  by: agent  # a067
+  actor: jgstern_agent  # a067
+  clock: 1  # a067
+  nonce: a067  # a067
+  data:  # a067
+    kind: work_item  # a067
+    title: "ADR-0016 Phase 1c: reverse-trace chain computation and boundary map output"  # a067
+    status: todo_soft  # a067
+    priority: 3  # a067
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # a067
+    tags:  # a067
+    - adr-0016  # a067
+    - io-boundary  # a067
+    before:  # a067
+    - WI-fonak-naduf-sakut-pijaj-suroj-hosoz-duvav-hutos  # a067
+    duplicate_of: []  # a067
+    not_duplicate_of: []  # a067
+    pr_ref:  # a067
+    description: "For each boundary-tagged edge, compute a reverse slice to find entry points that reach it. Classify transparency (transparent/opaque/partial). Aggregate into structured boundary map JSON. Add 'hypergumbo io-boundaries' CLI command. See ADR-0016 §3 Phases 2-4 and §6."  # a067
+    fields: {}  # a067
