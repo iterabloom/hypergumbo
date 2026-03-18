@@ -210,3 +210,73 @@ def match_edge_to_primitive(
     the first match or None.
     """
     return catalog.lookup(callee_name)
+
+
+# ---------------------------------------------------------------------------
+# Boundary-tagging pass (ADR-0016 Phase 1b)
+# ---------------------------------------------------------------------------
+
+
+def _extract_callee_name(edge_dst: str) -> str:
+    """Extract a callable name from an edge destination symbol ID.
+
+    Symbol IDs have the format:
+        ``language:path:span:name:kind``
+
+    We extract the ``name`` part (4th colon-separated field from the end).
+    For method calls the name may be ``ClassName.method_name``.
+    """
+    parts = edge_dst.split(":")
+    if len(parts) >= 2:
+        # The name is the second-to-last field before the kind
+        # Example: "python:/path/to/file.py:10-12:os.listdir:function"
+        # → name = "os.listdir"
+        return parts[-2] if len(parts) >= 2 else edge_dst
+    return edge_dst
+
+
+def tag_io_boundaries(
+    edges: list,
+    catalogs: dict[str, IoBoundaryCatalog],
+    *,
+    call_types: frozenset[str] = frozenset({"calls", "imports"}),
+) -> int:
+    """Tag edges that reach I/O primitives with boundary metadata.
+
+    For each call-type edge, extracts the callee name from the destination
+    symbol ID, looks it up in the appropriate language catalog, and stamps
+    ``io_boundary`` and ``io_primitive`` into ``edge.meta`` if matched.
+
+    Args:
+        edges: List of Edge objects to scan (mutated in place).
+        catalogs: Language → IoBoundaryCatalog mapping.
+        call_types: Edge types to consider (default: calls, imports).
+
+    Returns:
+        Number of edges tagged.
+    """
+    tagged = 0
+    for edge in edges:
+        if edge.edge_type not in call_types:
+            continue
+
+        # Extract language from dst ID (first colon-delimited segment)
+        dst_parts = edge.dst.split(":")
+        lang = dst_parts[0]
+
+        catalog = catalogs.get(lang)
+        if catalog is None:
+            continue
+
+        callee = _extract_callee_name(edge.dst)
+        match = catalog.lookup(callee)
+        if match is None:
+            continue
+
+        if edge.meta is None:
+            edge.meta = {}
+        edge.meta["io_boundary"] = match.boundary
+        edge.meta["io_primitive"] = match.qualified_name
+        tagged += 1
+
+    return tagged

@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **gRPC CSI-style server interface linking**: gRPC linker now detects Go structs implementing `XxxServer` interfaces (e.g., `IdentityServer`, `ControllerServer`, `NodeServer`) without `UnimplementedXxxServer` embedding. Creates `implements_rpc` edges for CSI and similar external library patterns.
 - **ADR-0016: I/O Boundary Analysis**: Design proposal for exhaustive I/O primitive detection, reverse-trace chain computation, transparency tier classification, and optional security claim verification against the boundary map.
 - **Python I/O primitive catalog** (ADR-0016 Phase 1a): YAML catalog of Python stdlib I/O functions classified by boundary type (fs_read, fs_write, net_send, net_recv, ipc_send, ipc_recv, env_read, subprocess). Includes `load_catalog()`, `match_edge_to_primitive()`, and `IoBoundaryCatalog` with O(1) lookup.
+- **I/O boundary-tagging pass** (ADR-0016 Phase 1b): `tag_io_boundaries()` walks call edges, matches callee names against I/O primitive catalogs, and stamps `io_boundary`/`io_primitive` metadata on matching edges.
 
 ### Fixed
 
