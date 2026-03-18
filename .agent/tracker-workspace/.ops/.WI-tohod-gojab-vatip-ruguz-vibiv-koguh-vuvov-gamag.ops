@@ -1,0 +1,21 @@
+- op: create  # c749
+  at: '2026-03-18T16:40:52Z'  # c749
+  by: agent  # c749
+  actor: jgstern_agent  # c749
+  clock: 1  # c749
+  nonce: c749  # c749
+  data:  # c749
+    kind: work_item  # c749
+    title: "Performance: Java analyzer slow on very large repos (Flink 14K files takes 100+ min)"  # c749
+    status: todo_soft  # c749
+    priority: 4  # c749
+    parent:  # c749
+    tags:  # c749
+    - performance  # c749
+    - java  # c749
+    before: []  # c749
+    duplicate_of: []  # c749
+    not_duplicate_of: []  # c749
+    pr_ref:  # c749
+    description: "Apache Flink (325MB, 14,352 Java files) takes over 100 minutes to analyze. Apache Spark (similar size) took ~28 min. Flink's deeper class hierarchy or more complex method resolution may cause quadratic behavior in the name resolver. Investigate profiling the Java analyzer on large repos and optimizing call resolution. Compare: kafka (6,997 files, 91MB) takes ~2.5 min — the issue is not linear scaling but something about repos with 14K+ files."  # c749
+    fields: {}  # c749

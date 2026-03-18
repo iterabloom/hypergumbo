@@ -64,3 +64,18 @@
   clock: 7  # b97f
   nonce: b97f  # b97f
   message: "Awaiting human decision on whether to proceed with minimal test coverage or find better test repos."  # b97f
+- op: discuss  # 24c0
+  at: '2026-03-18T16:38:50Z'  # 24c0
+  by: human  # 24c0
+  actor: jgstern  # 24c0
+  clock: 8  # 24c0
+  nonce: 24c0  # 24c0
+  message: "Please run one or more bakeoffs on the following repos. **For audio processing graph complexity**, Tone.js stands alone — it wraps every node type and supports `AudioWorklet`, `chain()`, and `fan()` patterns for building arbitrary graphs. **For effects chains**, Tuna.js and Pizzicato.js build modular `connect()`-based pipelines with 12–15 native node types. **For spatial audio**, Resonance Audio and Omnitone construct the densest graphs, routing ambisonics through `GainNode` matrices, multiple `ConvolverNode` instances, and `ChannelSplitter/Merger` routing. Among actual **media players**, Koel and Nuclear are the strongest examples of applications that use `BiquadFilterNode` equalizers and `AnalyserNode` visualizers in production. Howler.js bridges the gap between player and framework with its spatial plugin's `PannerNode` and `StereoPannerNode` chains. The key pattern across all these repos is the same: `AudioContext` → source node → processing chain via `connect()` → `GainNode` → `destination`.\n\n\nhttps://github.com/Tonejs/Tone.js\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/Tone.js\n\nhttps://github.com/Theodeus/tuna\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/tuna\n\nhttps://github.com/alemangui/pizzicato\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/pizzicato\n\nhttps://github.com/resonance-audio/resonance-audio-web-sdk\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/resonance-audio-web-sdk\n\nhttps://github.com/GoogleChrome/omnitone\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/omnitone\n\nhttps://github.com/koel/koel\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/koel\n\nhttps://github.com/nukeop/nuclear\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/nuclear\n\nhttps://github.com/goldfire/howler.js\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/howler.js"  # 24c0
+- op: update  # 4b1b
+  at: '2026-03-18T16:39:19Z'  # 4b1b
+  by: human  # 4b1b
+  actor: jgstern  # 4b1b
+  clock: 9  # 4b1b
+  nonce: 4b1b  # 4b1b
+  set:  # 4b1b
+    status: todo_soft  # 4b1b
