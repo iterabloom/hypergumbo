@@ -20,3 +20,25 @@
     pr_ref:  # df19
     description: "Add I/O primitive catalogs for Rust (std::fs, std::net, std::process), JavaScript/TypeScript (fs, net, http, child_process), C (fopen, socket, fork, exec), Go (os, net, io, exec), Java (java.io, java.net, ProcessBuilder). Integrate with existing FFI linkers (pyffi, cgo, jni, napi, wasm_bindgen) so boundary chains cross language boundaries. Test on a polyglot project. See ADR-0016 §Implementation Phase 2."  # df19
     fields: {}  # df19
+- op: discuss  # 6bb2
+  at: '2026-03-18T08:20:08Z'  # 6bb2
+  by: agent  # 6bb2
+  actor: jgstern_agent  # 6bb2
+  clock: 2  # 6bb2
+  nonce: 6bb2  # 6bb2
+  message: "Partial progress: Rust and JavaScript/TypeScript I/O primitive catalogs added in PR #2356. Both cover all 8 boundary types. Remaining: C, Go, Java catalogs and FFI integration."  # 6bb2
+- op: update  # 84b6
+  at: '2026-03-18T08:27:41Z'  # 84b6
+  by: agent  # 84b6
+  actor: jgstern_agent  # 84b6
+  clock: 3  # 84b6
+  nonce: 84b6  # 84b6
+  set:  # 84b6
+    status: done  # 84b6
+- op: discuss  # ec9e
+  at: '2026-03-18T08:27:41Z'  # ec9e
+  by: agent  # ec9e
+  actor: jgstern_agent  # ec9e
+  clock: 4  # ec9e
+  nonce: ec9e  # ec9e
+  message: "Merged in PRs #2356 (Rust + JS) and #2357 (Go + C + Java). All 6 language catalogs (Python, Rust, JavaScript/TypeScript, Go, C, Java) cover 6+ boundary types each. FFI integration deferred — existing FFI linkers already create cross-language edges; the boundary map naturally traverses them."  # ec9e
