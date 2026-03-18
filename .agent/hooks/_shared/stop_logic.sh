@@ -5,12 +5,15 @@
 #
 # Uses the structured tracker CLI (scripts/tracker) for TODO counting,
 # circuit breaker hashing, and guidance generation. Fail-closed: if the
-# tracker CLI is present but fails, the hook blocks (exit 1).
+# tracker CLI is present but fails, the hook blocks (exit 1). Circuit
+# breaker uses file-change hashing on sentinel directories (not tracker
+# state). Bakeoff convergence is surfaced in guidance files when bakeoff
+# artifacts are present.
 #
 # Expects REPO_ROOT to be set by the caller.
 # Exports: TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED,
-#          GUIDANCE_FILE, GUIDANCE_FILE_COOLDOWN, GUIDANCE_FILE_REFLECTION,
-#          STATE_FILE, ELAPSED_MIN
+#          SESSION_IS_AUTONOMOUS, GUIDANCE_FILE, GUIDANCE_FILE_COOLDOWN,
+#          GUIDANCE_FILE_REFLECTION, STATE_FILE, ELAPSED_MIN, HASH_THRESHOLD
 #
 # Optional env vars for dry-run (set by scripts/stop-hook-preview):
 #   STOP_HOOK_DRY_RUN       - When non-empty, writes go to a temp dir instead
@@ -19,10 +22,66 @@
 #                             "broad-*"). Default: "*" (all sessions).
 
 # --- Setup ---
-GUIDANCE_LOG_DIR="$HOME/hypergumbo_lab_notebook/guidance_log"
+# Guidance log and state file live outside the repo to avoid polluting git.
+# Derive a project-specific directory from the repo directory name.
+_REPO_NAME="${REPO_ROOT##*/}"
+GUIDANCE_LOG_DIR="$HOME/${_REPO_NAME}_lab_notebook/guidance_log"
 mkdir -p "$GUIDANCE_LOG_DIR"
-HASH_FILE="/tmp/hypergumbo_stop_hashes"
+HASH_FILE="/tmp/${_REPO_NAME}_stop_hashes"
 HASH_THRESHOLD=5
+
+# --- PID-based parallel session detection ---
+# When multiple agent sessions share a repo (e.g., one autonomous, one
+# interactive), only the session whose ancestor PID matches the stored PID
+# should be treated as autonomous.  Other sessions get SESSION_IS_AUTONOMOUS=false
+# and the vendor hook should approve/allow the stop immediately.
+#
+# The PID is stored in AUTONOMOUS_MODE.txt as "MODE pid=12345".
+# If no PID is stored, the first session to reach this code claims ownership.
+#
+# Expects _RAW_MODE to be set by the vendor hook (the raw first line of
+# AUTONOMOUS_MODE.txt, before stripping the pid= suffix).  If _RAW_MODE is
+# unset, we read it ourselves for backward compatibility.
+SESSION_IS_AUTONOMOUS=true
+
+if [[ -z "${_RAW_MODE:-}" ]]; then
+  _RAW_MODE=$(head -1 "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null || true)
+fi
+
+_STORED_PID=""
+if [[ "$_RAW_MODE" =~ pid=([0-9]+) ]]; then
+  _STORED_PID="${BASH_REMATCH[1]}"
+fi
+
+_is_pid_ancestor() {
+  # Walk /proc ancestor chain from current process to check if target PID
+  # is an ancestor. Returns 0 if found, 1 if not.
+  local target=$1
+  local pid=$$
+  while [[ $pid -gt 1 ]]; do
+    [[ "$pid" == "$target" ]] && return 0
+    pid=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null) || return 1
+  done
+  return 1
+}
+
+if [[ -n "$_STORED_PID" ]]; then
+  if _is_pid_ancestor "$_STORED_PID"; then
+    SESSION_IS_AUTONOMOUS=true
+  elif [[ -d "/proc/$_STORED_PID" ]]; then
+    # Stored PID is alive but not our ancestor — we're a different session
+    SESSION_IS_AUTONOMOUS=false
+  else
+    # Stored PID is dead — don't auto-reclaim. The autonomous agent must
+    # be restarted via loop-toggle, which will set a fresh PID.
+    SESSION_IS_AUTONOMOUS=false
+  fi
+else
+  # No PID stored: claim ownership using $PPID (the agent process)
+  SESSION_IS_AUTONOMOUS=true
+  _MODE_CLEAN=$(echo "$_RAW_MODE" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+  echo "${_MODE_CLEAN} pid=$PPID" > "$REPO_ROOT/AUTONOMOUS_MODE.txt"
+fi
 
 # --- Dry-run support ---
 if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
@@ -99,7 +158,7 @@ fi
 # Computed early so it can be appended to guidance files.
 BAKEOFF_SUFFIX=""
 BAKEOFF_CONVERGENCE_LINE=""
-BAKEOFF_DIR="$HOME/hypergumbo_lab_notebook/bakeoff_artifacts"
+BAKEOFF_DIR="$HOME/${_REPO_NAME}_lab_notebook/bakeoff_artifacts"
 if [[ -d "$BAKEOFF_DIR" ]]; then
   BAKEOFF_GLOB="${STOP_HOOK_BAKEOFF_FILTER:-*}"
   LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 3 -path "*/${BAKEOFF_GLOB}/state.json" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
@@ -195,7 +254,7 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
   # Update last_stop_check.json with guidance_file pointer + bakeoff convergence.
   # Seeds the file from scratch if it doesn't exist yet (closes bootstrap gap).
   if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    STATE_FILE_FOR_GF="$HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
+    STATE_FILE_FOR_GF="$GUIDANCE_LOG_DIR/last_stop_check.json"
     if command -v jq &>/dev/null; then
       TMP=$(mktemp)
       _EXISTING="{}"
@@ -217,7 +276,7 @@ fi
 # (Bakeoff convergence computed above, before guidance file write)
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
-STATE_FILE="$HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
+STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
 # Backward compat: fall back to old locations if new one doesn't exist
 if [[ ! -f "$STATE_FILE" ]]; then
   if [[ -f "$REPO_ROOT/.agent/last_stop_check.json" ]]; then
