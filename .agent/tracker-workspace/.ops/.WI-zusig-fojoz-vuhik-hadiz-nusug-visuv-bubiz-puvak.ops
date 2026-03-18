@@ -67,3 +67,18 @@
   clock: 7  # e7a8
   nonce: e7a8  # e7a8
   message: "Cross-ref: WI-mamuh (PlazaFlow Yjs sub-document and awareness tracing) covers additional patterns beyond this item: sub-document references via getSubdocs()/Y.Doc guid, field-level awareness matching. Both under META-migil umbrella."  # e7a8
+- op: update  # fd07
+  at: '2026-03-18T01:30:24Z'  # fd07
+  by: agent  # fd07
+  actor: jgstern_agent  # fd07
+  clock: 8  # fd07
+  nonce: fd07  # fd07
+  set:  # fd07
+    status: done  # fd07
+- op: discuss  # 8728
+  at: '2026-03-18T01:30:24Z'  # 8728
+  by: agent  # 8728
+  actor: jgstern_agent  # 8728
+  clock: 9  # 8728
+  nonce: '8728'  # 8728
+  message: "All three Yjs API surfaces covered: raw Yjs (PR #2256), Awareness (PR #2256), BlockSuite (PR #2329). Sub-doc accessors also added in PR #2329."  # 8728

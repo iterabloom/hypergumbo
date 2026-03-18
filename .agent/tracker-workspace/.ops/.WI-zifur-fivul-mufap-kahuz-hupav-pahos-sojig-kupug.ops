@@ -43,3 +43,18 @@
   clock: 4  # cbb4
   nonce: cbb4  # cbb4
   message: "Acknowledged. Will test crypto-flow patterns against arti and libsignal."  # cbb4
+- op: update  # c7b2
+  at: '2026-03-18T01:51:56Z'  # c7b2
+  by: agent  # c7b2
+  actor: jgstern_agent  # c7b2
+  clock: 5  # c7b2
+  nonce: c7b2  # c7b2
+  set:  # c7b2
+    status: done  # c7b2
+- op: discuss  # 7abf
+  at: '2026-03-18T01:51:56Z'  # 7abf
+  by: agent  # 7abf
+  actor: jgstern_agent  # 7abf
+  clock: 6  # 7abf
+  nonce: 7abf  # 7abf
+  message: "Crypto-flow linker implemented in PR #2331. Covers WebCrypto API (encrypt/decrypt/deriveKey etc.) and Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv, ChaCha20Poly1305). Also fixed missing cli.py imports for yjs-crdt and annotation-convention linkers."  # 7abf
