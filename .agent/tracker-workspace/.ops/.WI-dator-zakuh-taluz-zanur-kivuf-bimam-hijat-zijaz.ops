@@ -58,3 +58,25 @@
   nonce: a63b  # a63b
   set:  # a63b
     status: todo_soft  # a63b
+- op: update  # e42d
+  at: '2026-03-18T04:55:40Z'  # e42d
+  by: agent  # e42d
+  actor: jgstern_agent  # e42d
+  clock: 7  # e42d
+  nonce: e42d  # e42d
+  set:  # e42d
+    status: done  # e42d
+- op: discuss  # a22c
+  at: '2026-03-18T04:55:40Z'  # a22c
+  by: agent  # a22c
+  actor: jgstern_agent  # a22c
+  clock: 8  # a22c
+  nonce: a22c  # a22c
+  message: "Implemented in PR #2339. Setup wizard now injects/maintains a fenced tracker-governance block in AGENTS.md with tool-usage rules. Optional --with-policy-template flag scaffolds project-owned status policy section."  # a22c
+- op: discuss  # a9b4
+  at: '2026-03-18T04:55:44Z'  # a9b4
+  by: agent  # a9b4
+  actor: jgstern_agent  # a9b4
+  clock: 9  # a9b4
+  nonce: a9b4  # a9b4
+  message: "Thanks for the approval! Implemented and merged in PR #2339."  # a9b4

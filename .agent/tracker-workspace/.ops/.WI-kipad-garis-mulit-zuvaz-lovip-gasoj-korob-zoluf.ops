@@ -68,3 +68,17 @@
   clock: 7  # d9aa
   nonce: d9aa  # d9aa
   message: "Did you run a bakeoff recently using these repos?\n\npodman-desktop: /home/jgstern_agent/whole_bunch_of_repos/podman-desktop\nspacedrive: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/spacedrive/\nyaak: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/yaak/\nCap: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/Cap/\nreadest: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/readest/"  # d9aa
+- op: discuss  # f7c1
+  at: '2026-03-18T04:56:03Z'  # f7c1
+  by: agent  # f7c1
+  actor: jgstern_agent  # f7c1
+  clock: 8  # f7c1
+  nonce: f7c1  # f7c1
+  message: "No, I did not run a formal bakeoff on those repos. The verification was done via direct `hypergumbo analyze` runs on readest and yaak, checking IPC edge counts manually. The last formal bakeoff session was deep-20260311-182037 (March 11). The human provided repo paths — I can run a formal DEEP bakeoff against all 5 repos (podman-desktop, spacedrive, yaak, Cap, readest) as a cohort to get structured diagnostics. Should I proceed?"  # f7c1
+- op: discuss  # f19f
+  at: '2026-03-18T05:06:42Z'  # f19f
+  by: agent  # f19f
+  actor: jgstern_agent  # f19f
+  clock: 9  # f19f
+  nonce: f19f  # f19f
+  message: "Ran formal DEEP bakeoff (session deep-20260318-005759) on all 4 Tauri v2 repos + podman-desktop.\n\nResults — all GOOD:\n| Repo | Total Edges | ipc_calls | ipc_event | crypto_flow | crdt_publishes | message_dispatch |\n|------|-------------|-----------|-----------|-------------|----------------|------------------|\n| Cap | 35,549 | 111 | 0 | 1 | 400 | 2,269 |\n| readest | 18,208 | 46 | 8 | 0 | 560 | 268 |\n| yaak | 16,789 | 57 | 6 | 79 | 19 | 767 |\n| spacedrive | 32,194 | 32 | 13 | 439 | 7 | 225 |\n| podman-desktop | 50,807 | 0 (Electron) | 0 | 0 | 750 | 6,543 |\n\npodman-desktop uses bridge_invokes (67 edges) via contextBridge instead of Tauri IPC.\n\nThe Tauri v2 linker covers: invoke(), TAURI_INVOKE(), #[tauri::command], plugin:name|command syntax, event emit/listen, and specta wrapper resolution. No gaps found."  # f19f
