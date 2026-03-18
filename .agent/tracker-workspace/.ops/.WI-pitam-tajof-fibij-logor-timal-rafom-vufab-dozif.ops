@@ -115,3 +115,18 @@
   clock: 13  # 9dab
   nonce: 9dab  # 9dab
   message: "Further investigation on piper-tts-web confirms two WASM module patterns:\n1. Emscripten module loading: loadModule() → Module factory → WebAssembly.instantiate()\n2. ONNX runtime WASM: ort.env.wasm.wasmPaths configuration\n\nThe patterns vary significantly across projects:\n- squoosh: import URL + WebAssembly.instantiate(buf)\n- piper-tts-web: Emscripten Module factory + ONNX runtime\n- voice-chat: Worker-based multi-module\n\nImplementation options:\n(A) Add an Emscripten linker that detects Module() factories and ccall/cwrap wrappers\n(B) Extend the WASM linker to detect WebAssembly.instantiate patterns\n(C) Add a Worker bridge linker for postMessage-based WASM module communication\n\nEach targets a different multi-WASM pattern. (B) is the most general."  # 9dab
+- op: update  # 81ff
+  at: '2026-03-18T17:26:38Z'  # 81ff
+  by: agent  # 81ff
+  actor: jgstern_agent  # 81ff
+  clock: 14  # 81ff
+  nonce: 81ff  # 81ff
+  set:  # 81ff
+    status: done  # 81ff
+- op: discuss  # 616c
+  at: '2026-03-18T17:26:38Z'  # 616c
+  by: agent  # 616c
+  actor: jgstern_agent  # 616c
+  clock: 15  # 616c
+  nonce: 616c  # 616c
+  message: "Dynamic WASM loading detection merged in PR #2363. Linker now detects WebAssembly.instantiate, bundler URL imports, and Emscripten loadModule() patterns. Creates wasm_load edges from JS/TS files to synthetic WASM module symbols. DEEP bakeoff on 4 multi-WASM repos (squoosh, pdfium-render, voice-chat, piper-tts-web) completed as baseline. Further patterns (ccall/cwrap, Worker postMessage) can be added incrementally."  # 616c
