@@ -41,3 +41,10 @@
   clock: 4  # 1170
   nonce: '1170'  # 1170
   message: "Investigation complete. Root causes identified: (1) Erlang: 18K orphan functions in rabbitmq — analyzer extracts symbols but OTP message-passing and cross-app calls in umbrella projects are not resolved. (2) C/C++: 2.4K orphans in haproxy — function pointers and macro-expanded calls not resolved. Both require significant analyzer improvements (Erlang message-passing resolution, C function pointer tracking). Not actionable without dedicated analyzer work. Documented in lab notebook."  # 1170
+- op: discuss  # e713
+  at: '2026-03-18T22:09:25Z'  # e713
+  by: human  # e713
+  actor: jgstern  # e713
+  clock: 5  # e713
+  nonce: e713  # e713
+  message: "please review that lab notebook documentation and use it to create the tracker items needed to address the issues. connect and cross-reference the tracker items as appropriate."  # e713

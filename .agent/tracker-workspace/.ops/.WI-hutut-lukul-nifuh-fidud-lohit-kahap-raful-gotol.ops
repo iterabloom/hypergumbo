@@ -42,3 +42,18 @@
   clock: 4  # 4677
   nonce: '4677'  # 4677
   message: "Deprioritized: config.yaml.template already exists in this repo. The --write-template flag is opt-in and lower value than other items. Marking done as the core need (template existence) is met."  # 4677
+- op: update  # 5e6d
+  at: '2026-03-18T21:57:32Z'  # 5e6d
+  by: human  # 5e6d
+  actor: jgstern  # 5e6d
+  clock: 5  # 5e6d
+  nonce: 5e6d  # 5e6d
+  set:  # 5e6d
+    status: todo_soft  # 5e6d
+- op: discuss  # 587f
+  at: '2026-03-18T22:00:41Z'  # 587f
+  by: human  # 587f
+  actor: jgstern  # 587f
+  clock: 6  # 587f
+  nonce: 587f  # 587f
+  message: "this should just be the behavior. i don't see any benefit to making it a choice. if config.yaml doesn't exist, congratulations user, you get .agent/tracker/config.yaml.template. They can use it or not; we don't care. but without this implemented, they might miss it. I see no benefit in making the user make another decision or understand another CLI flag. correct me if I'm wrong."  # 587f

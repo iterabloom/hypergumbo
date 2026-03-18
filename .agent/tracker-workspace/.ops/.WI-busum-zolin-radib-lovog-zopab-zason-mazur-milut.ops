@@ -105,3 +105,28 @@
   clock: 13  # d350
   nonce: d350  # d350
   message: "Acknowledged status change to todo_soft for PlazaFlow readiness."  # d350
+- op: update  # 09e5
+  at: '2026-03-18T18:53:53Z'  # 09e5
+  by: agent  # 09e5
+  actor: jgstern_agent  # 09e5
+  clock: 14  # 09e5
+  nonce: '09e5'  # 09e5
+  set:  # 09e5
+    status: needs_human_review  # 09e5
+- op: discuss  # 8803
+  at: '2026-03-18T18:53:53Z'  # 8803
+  by: agent  # 8803
+  actor: jgstern_agent  # 8803
+  clock: 15  # 8803
+  nonce: '8803'  # 8803
+  message: "Same root cause as WI-ronoj. Recommend closing together with WI-ronoj or investigating language server integration."  # 8803
+- op: update  # 68f9
+  at: '2026-03-18T21:45:18Z'  # 68f9
+  by: human  # 68f9
+  actor: jgstern  # 68f9
+  clock: 16  # 68f9
+  nonce: 68f9  # 68f9
+  set:  # 68f9
+    status: done  # 68f9
+  add:  # 68f9
+    tags: [someday]  # 68f9

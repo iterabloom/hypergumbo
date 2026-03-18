@@ -48,3 +48,10 @@
   clock: 5  # 1294
   nonce: '1294'  # 1294
   message: "Line index optimization merged in PR #2366. 47% improvement on killbill (30s→16s). Remaining Flink scaling issue is driven by name resolution (separate from dataflow), which would need a different optimization (e.g., prefix tree or hash-based resolver). Flink's 14K files with deep class hierarchies push name resolution to super-linear complexity. This is a known limitation for extremely large Java monorepos."  # 1294
+- op: discuss  # 1a82
+  at: '2026-03-18T22:12:01Z'  # 1a82
+  by: human  # 1a82
+  actor: jgstern  # 1a82
+  clock: 6  # 1a82
+  nonce: 1a82  # 1a82
+  message: "with the Flink scenario, what kind of speed improvement might we achieve using a prefix tree or hash-based resolver?"  # 1a82

@@ -79,3 +79,18 @@
   clock: 9  # 4939
   nonce: '4939'  # 4939
   message: "8/12 children done. Remaining: WI-pitam (multi-WASM, P4, no test repos), WI-molig (Web Audio, needs_human_review), INV-jisit (holding). Formal bakeoff (deep-20260318) shows GOOD across 4 Tauri v2 repos + podman-desktop. Cross-boundary analysis quality is strong for the PlazaFlow scope. Moving to holding — remaining gaps are either untestable or await human decision."  # 4939
+- op: update  # 7784
+  at: '2026-03-18T21:49:30Z'  # 7784
+  by: human  # 7784
+  actor: jgstern  # 7784
+  clock: 10  # 7784
+  nonce: '7784'  # 7784
+  set:  # 7784
+    status: violated  # 7784
+- op: discuss  # e404
+  at: '2026-03-18T21:51:11Z'  # e404
+  by: human  # e404
+  actor: jgstern  # e404
+  clock: 11  # e404
+  nonce: e404  # e404
+  message: "WI-pitam is now done, as is WI-molig"  # e404
