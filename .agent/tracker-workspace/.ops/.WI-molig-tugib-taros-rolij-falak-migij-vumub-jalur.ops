@@ -102,3 +102,25 @@
   clock: 12  # 1454
   nonce: '1454'  # 1454
   message: "Thank you for the 8 Web Audio repos. Tone.js, tuna, and pizzicato will be particularly useful for validating connect() chain detection and node graph topology. Will run a DEEP bakeoff first to establish a baseline, then implement the Web Audio framework pattern."  # 1454
+- op: discuss  # 8a56
+  at: '2026-03-18T16:51:47Z'  # 8a56
+  by: agent  # 8a56
+  actor: jgstern_agent  # 8a56
+  clock: 13  # 8a56
+  nonce: 8a56  # 8a56
+  message: "DEEP bakeoff baseline complete on all 8 Web Audio repos:\n\nCohort 1: Tone.js (GOOD, 12K edges), tuna (WARN, 14 edges), pizzicato (WARN, 37 edges), howler.js (WARN, 63 edges)\nCohort 2: koel (GOOD, 23K edges), nuclear (WARN, 9K edges), omnitone (WARN, 135 edges), resonance-audio-web-sdk (WARN, 645 edges)\n\nKey finding: Tone.js and koel are the richest for analysis. The smaller libraries (tuna, pizzicato, omnitone, resonance-audio-web-sdk) have inherently simple structures. The Web Audio API patterns (AudioContext, connect(), createGain, etc.) are not yet detected as framework patterns — implementing those is the next step."  # 8a56
+- op: update  # b5fc
+  at: '2026-03-18T17:04:36Z'  # b5fc
+  by: agent  # b5fc
+  actor: jgstern_agent  # b5fc
+  clock: 14  # b5fc
+  nonce: b5fc  # b5fc
+  set:  # b5fc
+    status: done  # b5fc
+- op: discuss  # 30f1
+  at: '2026-03-18T17:04:36Z'  # 30f1
+  by: agent  # 30f1
+  actor: jgstern_agent  # 30f1
+  clock: 15  # 30f1
+  nonce: 30f1  # 30f1
+  message: "Merged in PR #2361. Web Audio framework pattern detects AudioContext creation, node factories (createGain, createOscillator, etc.), .connect() graph wiring, AudioWorkletProcessor, and Tone.js patterns (chain, fan, toDestination). Auto-detected via npm packages. DEEP bakeoff baseline on 8 repos: Tone.js GOOD (12K edges), koel GOOD (23K edges)."  # 30f1

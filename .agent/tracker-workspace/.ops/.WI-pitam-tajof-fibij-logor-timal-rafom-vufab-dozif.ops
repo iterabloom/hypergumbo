@@ -101,3 +101,17 @@
   clock: 11  # aaa9
   nonce: aaa9  # aaa9
   message: "Thank you for the comprehensive multi-WASM repo list. This is exactly what was needed — real production apps (squoosh, voice-chat, tts.rocks) plus rigorous test suites (binaryen, wasmtime). Will run a DEEP bakeoff on the realistic browser targets first (squoosh, pdfium-render, voice-chat, sherpa-onnx)."  # aaa9
+- op: discuss  # 5934
+  at: '2026-03-18T17:07:14Z'  # 5934
+  by: agent  # 5934
+  actor: jgstern_agent  # 5934
+  clock: 12  # 5934
+  nonce: '5934'  # 5934
+  message: "DEEP bakeoff on 4 multi-WASM repos (squoosh, pdfium-render, voice-chat, piper-tts-web). All 4 WARN — small apps with low slice counts. 0 wasm_bridge edges detected across all repos.\n\nRoot cause confirmed: the wasm_bindgen linker only detects wasm-pack convention imports (`import { func } from './pkg/module'`). Multi-WASM apps use different patterns:\n- Emscripten: Module() factory, ccall/cwrap wrappers\n- Worker-based: postMessage for cross-module communication\n- Dynamic loading: fetch() + WebAssembly.instantiate()\n\nThese are distinct from wasm_bindgen and would require a separate linker (or extension of the existing one) to detect. The JS serves as intermediary between WASM modules, so the existing JS module/call edges partially capture the flow, but the WASM boundary crossings aren't explicitly marked."  # 5934
+- op: discuss  # 9dab
+  at: '2026-03-18T17:08:05Z'  # 9dab
+  by: agent  # 9dab
+  actor: jgstern_agent  # 9dab
+  clock: 13  # 9dab
+  nonce: 9dab  # 9dab
+  message: "Further investigation on piper-tts-web confirms two WASM module patterns:\n1. Emscripten module loading: loadModule() → Module factory → WebAssembly.instantiate()\n2. ONNX runtime WASM: ort.env.wasm.wasmPaths configuration\n\nThe patterns vary significantly across projects:\n- squoosh: import URL + WebAssembly.instantiate(buf)\n- piper-tts-web: Emscripten Module factory + ONNX runtime\n- voice-chat: Worker-based multi-module\n\nImplementation options:\n(A) Add an Emscripten linker that detects Module() factories and ccall/cwrap wrappers\n(B) Extend the WASM linker to detect WebAssembly.instantiate patterns\n(C) Add a Worker bridge linker for postMessage-based WASM module communication\n\nEach targets a different multi-WASM pattern. (B) is the most general."  # 9dab

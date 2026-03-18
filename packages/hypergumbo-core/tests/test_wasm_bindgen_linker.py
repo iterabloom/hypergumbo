@@ -794,6 +794,91 @@ class TestWasmDynamicLoading:
         # Should deduplicate: same file + same wasm ref = 1 edge
         assert len(edges) == 1
 
+    def test_webassembly_instantiate_with_inline_url(self, tmp_path: Path) -> None:
+        """WebAssembly.instantiate with inline .wasm URL creates edge."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+
+        js_file = tmp_path / "loader.ts"
+        js_file.write_text(
+            "const { instance } = await WebAssembly.instantiate('rotate.wasm', imports);\n"
+        )
+
+        js_sym = _make_js_sym("loader", str(js_file))
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+        edges, symbols = _create_wasm_load_edges(tmp_path, [js_sym], run)
+        assert len(edges) == 1
+        assert "rotate.wasm" in symbols[0].name
+
+    def test_non_js_symbols_skipped(self, tmp_path: Path) -> None:
+        """Non-JS/TS symbols are skipped."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+
+        rust_sym = _make_rust_sym("my_func")
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+        edges, symbols = _create_wasm_load_edges(tmp_path, [rust_sym], run)
+        assert len(edges) == 0
+
+    def test_duplicate_paths_deduplicated(self, tmp_path: Path) -> None:
+        """Multiple symbols from same file don't cause duplicate scanning."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+
+        js_file = tmp_path / "app.ts"
+        js_file.write_text("import wasmUrl from 'url:codecs/mod.wasm';\n")
+
+        sym1 = _make_js_sym("func1", str(js_file))
+        sym2 = _make_js_sym("func2", str(js_file))
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+        edges, symbols = _create_wasm_load_edges(tmp_path, [sym1, sym2], run)
+        assert len(edges) == 1  # Only scanned once
+
+    def test_relative_path_resolved(self, tmp_path: Path) -> None:
+        """Relative paths in symbol.path are resolved to absolute."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+
+        js_file = tmp_path / "src" / "app.ts"
+        js_file.parent.mkdir(parents=True, exist_ok=True)
+        js_file.write_text("import wasmUrl from 'url:codecs/mod.wasm';\n")
+
+        sym = _make_js_sym("app", "src/app.ts")
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+        edges, symbols = _create_wasm_load_edges(tmp_path, [sym], run)
+        assert len(edges) == 1
+
+    def test_nonexistent_file_skipped(self, tmp_path: Path) -> None:
+        """Symbols pointing to nonexistent files are skipped."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+
+        sym = _make_js_sym("ghost", str(tmp_path / "nonexistent.ts"))
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+        edges, symbols = _create_wasm_load_edges(tmp_path, [sym], run)
+        assert len(edges) == 0
+
+    def test_absolute_path_not_relative_to_root(self, tmp_path: Path) -> None:
+        """Absolute paths outside repo root use full path."""
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as other_dir:
+            js_file = Path(other_dir) / "app.ts"
+            js_file.write_text("import wasmUrl from 'url:codecs/mod.wasm';\n")
+
+            sym = _make_js_sym("app", str(js_file))
+            run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+
+            edges, symbols = _create_wasm_load_edges(tmp_path, [sym], run)
+            assert len(edges) == 1
+
     def test_registry_integration_includes_wasm_load(self, tmp_path: Path) -> None:
         """Registry-based linker produces wasm_load edges alongside wasm_bridge."""
         import hypergumbo_core.linkers.wasm_bindgen  # trigger registration
