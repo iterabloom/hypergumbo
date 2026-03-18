@@ -75,3 +75,18 @@
   clock: 8  # 4b0e
   nonce: 4b0e  # 4b0e
   message: "Acknowledged repo path. Will use socketio-chat-example for Yjs pattern testing."  # 4b0e
+- op: update  # 8e7d
+  at: '2026-03-18T01:29:03Z'  # 8e7d
+  by: agent  # 8e7d
+  actor: jgstern_agent  # 8e7d
+  clock: 9  # 8e7d
+  nonce: 8e7d  # 8e7d
+  set:  # 8e7d
+    status: done  # 8e7d
+- op: discuss  # fb13
+  at: '2026-03-18T01:29:03Z'  # fb13
+  by: agent  # fb13
+  actor: jgstern_agent  # fb13
+  clock: 10  # fb13
+  nonce: fb13  # fb13
+  message: "Sub-document accessors (getMap/getArray/getText/getXmlFragment) and field-level awareness matching implemented in PR #2329."  # fb13
