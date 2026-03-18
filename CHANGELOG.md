@@ -40,6 +40,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`hypergumbo io-boundaries` CLI command** (ADR-0016 Phase 1c): Displays I/O boundary map for a repository, showing which call edges reach filesystem, network, subprocess, and environment primitives. Supports `--json` output.
 - **I/O primitive catalogs for 6 languages** (ADR-0016 Phase 2): YAML catalogs for Python, Rust (`std::fs`, `std::net`, `std::process`), JavaScript/TypeScript (Node.js `fs`, `net`, `http`, `child_process`), Go (`os`, `net`, `net/http`, `os/exec`), C (`stdio`, `unistd`, `sys/socket`), and Java (`java.io`, `java.nio.file`, `java.net`, `ProcessBuilder`). All cover 6+ boundary types.
 - **Web Audio API framework pattern**: YAML-driven detection of AudioContext creation, audio node factories (`createGain`, `createOscillator`, etc.), `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js-specific patterns (`chain()`, `fan()`, `toDestination()`).
+- **Dynamic WASM loading detection**: The wasm_bindgen linker now detects `WebAssembly.instantiate`, bundler URL imports (`import wasmUrl from 'url:path.wasm'`), and Emscripten `loadModule()` patterns. Creates `wasm_load` edges from JS/TS files to synthetic WASM module symbols.
 
 ### Fixed
 

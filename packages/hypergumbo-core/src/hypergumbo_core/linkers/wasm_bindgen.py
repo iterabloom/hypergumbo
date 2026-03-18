@@ -296,6 +296,135 @@ def link_wasm_bindgen(
     )
 
 
+# Pattern for WebAssembly.instantiate / WebAssembly.instantiateStreaming calls
+# Captures the URL/path of the .wasm file being loaded
+_WASM_INSTANTIATE_PATTERN = re.compile(
+    r"""WebAssembly\.instantiate(?:Streaming)?\s*\("""
+    r"""[^)]*?['"]([^'"]*\.wasm)['"]""",
+)
+
+# Pattern for import URL of .wasm files (bundler URL imports)
+_WASM_URL_IMPORT_PATTERN = re.compile(
+    r"""import\s+\w+\s+from\s+['"](?:url:)?([^'"]*\.wasm)['"]""",
+)
+
+# Pattern for Emscripten Module() factory or loadModule() calls
+_EMSCRIPTEN_MODULE_PATTERN = re.compile(
+    r"""(?:new\s+Module|Module\s*\(|loadModule\s*\()""",
+)
+
+
+def _scan_js_ts_for_wasm_loading(
+    file_path: Path,
+) -> list[str]:
+    """Scan a JS/TS file for dynamic WASM loading patterns.
+
+    Detects:
+    - WebAssembly.instantiate('path.wasm')
+    - WebAssembly.instantiateStreaming(fetch('path.wasm'))
+    - import wasmUrl from 'url:codecs/rotate/rotate.wasm'
+    - Emscripten Module() factory patterns
+
+    Returns a list of .wasm file references found.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - defensive for I/O errors
+        return []
+
+    wasm_refs: list[str] = []
+
+    for match in _WASM_INSTANTIATE_PATTERN.finditer(content):
+        wasm_refs.append(match.group(1))
+
+    for match in _WASM_URL_IMPORT_PATTERN.finditer(content):
+        wasm_refs.append(match.group(1))
+
+    # Check for Emscripten patterns (no specific .wasm path captured)
+    if _EMSCRIPTEN_MODULE_PATTERN.search(content):
+        wasm_refs.append("__emscripten_module__")
+
+    return wasm_refs
+
+
+def _create_wasm_load_edges(
+    repo_root: Path,
+    ts_js_symbols: list[Symbol],
+    run: AnalysisRun,
+) -> tuple[list[Edge], list[Symbol]]:
+    """Create wasm_load edges for dynamic WASM loading patterns.
+
+    Scans JS/TS files for WebAssembly.instantiate, URL imports of .wasm files,
+    and Emscripten Module patterns. Creates synthetic WASM module symbols and
+    wasm_load edges from the JS file to the WASM module.
+    """
+    edges: list[Edge] = []
+    symbols: list[Symbol] = []
+    seen_paths: set[str] = set()
+    seen_wasm_refs: set[tuple[str, str]] = set()
+
+    for sym in ts_js_symbols:
+        if sym.language not in ("javascript", "typescript"):
+            continue
+        if sym.path in seen_paths:
+            continue
+        seen_paths.add(sym.path)
+
+        file_path = Path(sym.path)
+        if not file_path.is_absolute():
+            file_path = repo_root / file_path
+        if not file_path.exists():
+            continue
+
+        wasm_refs = _scan_js_ts_for_wasm_loading(file_path)
+        for wasm_ref in wasm_refs:
+            dedup_key = (sym.path, wasm_ref)
+            if dedup_key in seen_wasm_refs:
+                continue
+            seen_wasm_refs.add(dedup_key)
+
+            # Create synthetic WASM module symbol
+            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:wasm_module"
+
+            if wasm_module_id not in {s.id for s in symbols}:
+                symbols.append(Symbol(
+                    id=wasm_module_id,
+                    stable_id=None,
+                    shape_id=None,
+                    canonical_name=f"WASM module: {wasm_ref}",
+                    fingerprint=hashlib.sha256(wasm_module_id.encode()).hexdigest()[:16],
+                    kind="wasm_module",
+                    name=wasm_ref,
+                    path=wasm_ref,
+                    language="wasm",
+                    span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+                    origin=PASS_ID,
+                    supply_chain_tier=2,
+                    supply_chain_reason="WASM module loaded dynamically",
+                ))
+
+            # Create wasm_load edge from JS file to WASM module
+            rel_path = sym.path
+            try:
+                rel_path = str(Path(sym.path).relative_to(repo_root))
+            except ValueError:
+                pass
+
+            src_id = f"{sym.language}:{rel_path}:0-0:file:file"
+            edges.append(Edge.create(
+                src=src_id,
+                dst=wasm_module_id,
+                edge_type="wasm_load",
+                line=0,
+                confidence=0.80,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="wasm_instantiate",
+            ))
+
+    return edges, symbols
+
+
 def _count_js_ts_files(ctx: LinkerContext) -> int:
     """Count JavaScript/TypeScript files."""
     seen_paths: set[str] = set()
@@ -356,7 +485,8 @@ WASM_BINDGEN_REQUIREMENTS = [
 def wasm_bindgen_linker(ctx: LinkerContext) -> LinkerResult:
     """wasm_bindgen linker for registry-based dispatch.
 
-    Wraps link_wasm_bindgen() to use the LinkerContext/LinkerResult interface.
+    Wraps link_wasm_bindgen() and adds dynamic WASM loading detection
+    (WebAssembly.instantiate, URL imports, Emscripten patterns).
     """
     ts_js_symbols = [
         s for s in ctx.symbols if s.language in ("javascript", "typescript")
@@ -365,8 +495,15 @@ def wasm_bindgen_linker(ctx: LinkerContext) -> LinkerResult:
 
     result = link_wasm_bindgen(ctx.repo_root, ts_js_symbols, rust_symbols)
 
+    # Also detect dynamic WASM loading patterns
+    load_edges, load_symbols = _create_wasm_load_edges(
+        ctx.repo_root, ts_js_symbols, result.run or AnalysisRun.create(
+            pass_id=PASS_ID, version=PASS_VERSION,
+        ),
+    )
+
     return LinkerResult(
-        symbols=result.symbols,
-        edges=result.edges,
+        symbols=result.symbols + load_symbols,
+        edges=result.edges + load_edges,
         run=result.run,
     )
