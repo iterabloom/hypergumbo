@@ -67,3 +67,18 @@
   clock: 7  # 3cbe
   nonce: 3cbe  # 3cbe
   message: "Cross-ref: WI-jisib (protocol message dispatch mapping) proposes automatic detection for typed wire protocols. Annotation convention is the fallback for patterns too custom for auto-detection. Both under META-migil umbrella."  # 3cbe
+- op: update  # cec6
+  at: '2026-03-18T02:40:02Z'  # cec6
+  by: agent  # cec6
+  actor: jgstern_agent  # cec6
+  clock: 8  # cec6
+  nonce: cec6  # cec6
+  set:  # cec6
+    status: done  # cec6
+- op: discuss  # f99e
+  at: '2026-03-18T02:40:02Z'  # f99e
+  by: agent  # f99e
+  actor: jgstern_agent  # f99e
+  clock: 9  # f99e
+  nonce: f99e  # f99e
+  message: "Implemented @hg:route (creates route symbols) and @hg:dispatches (creates annotated_dispatches edges to matching symbols) in PR #2335. All four annotation directives now functional: publishes, subscribes, route, dispatches."  # f99e

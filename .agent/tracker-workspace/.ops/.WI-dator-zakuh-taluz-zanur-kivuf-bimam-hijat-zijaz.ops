@@ -28,3 +28,18 @@
   nonce: f411  # f411
   set:  # f411
     status: todo_soft  # f411
+- op: update  # d948
+  at: '2026-03-18T02:23:03Z'  # d948
+  by: agent  # d948
+  actor: jgstern_agent  # d948
+  clock: 3  # d948
+  nonce: d948  # d948
+  set:  # d948
+    status: needs_human_review  # d948
+- op: discuss  # 8068
+  at: '2026-03-18T02:23:03Z'  # 8068
+  by: agent  # 8068
+  actor: jgstern_agent  # 8068
+  clock: 4  # 8068
+  nonce: '8068'  # 8068
+  message: "This task requires injecting tracker-governance content into AGENTS.md, which is a governance file. Per AGENTS.md rules, governance file changes require human approval before implementation. Awaiting human triage."  # 8068

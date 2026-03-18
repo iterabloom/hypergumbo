@@ -42,3 +42,18 @@
   clock: 4  # 577c
   nonce: 577c  # 577c
   message: "Acknowledged. INV-jisit (cross-linker integration) validated that slice BFS traverses all linker edge types. But META-migil is a broader quality claim — keeping violated until we demonstrate on real polyglot repos."  # 577c
+- op: discuss  # bfad
+  at: '2026-03-18T02:23:29Z'  # bfad
+  by: agent  # bfad
+  actor: jgstern_agent  # bfad
+  clock: 5  # bfad
+  nonce: bfad  # bfad
+  message: "Significant progress: 5/6 boundary types verified on real repos. Tauri IPC: 56 edges (readest), 67 (yaak). Yjs/BlockSuite: 560 (readest). Wire protocol dispatch: 268 (readest), 767 (yaak). Crypto-flow: 79 (yaak). Multi-crate Rust: 913 (ripgrep), 664 (firecracker). Remaining gap: multi-WASM module boundaries (WI-pitam). Reducing priority to P3 — no longer an active gap for PlazaFlow v0.1-v0.6 scope."  # bfad
+- op: update  # dc05
+  at: '2026-03-18T02:23:38Z'  # dc05
+  by: agent  # dc05
+  actor: jgstern_agent  # dc05
+  clock: 6  # dc05
+  nonce: dc05  # dc05
+  set:  # dc05
+    priority: 3  # dc05
