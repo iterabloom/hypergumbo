@@ -2908,6 +2908,104 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify_claims(args: argparse.Namespace) -> int:
+    """Verify security claims against I/O boundary map (ADR-0016 Phase 3).
+
+    Loads claims from a YAML file, computes the I/O boundary map, and
+    checks each claim. Returns exit code 1 if any claim is violated.
+    """
+    repo_root = Path(args.path).resolve()
+    claims_path = Path(args.claims)
+
+    if not claims_path.exists():
+        print(f"Error: Claims file not found: {claims_path}", file=sys.stderr)
+        return 1
+
+    # Load claims
+    from .verify_claims import load_claims, verify_claims as _verify
+
+    claims = load_claims(claims_path)
+    if not claims:
+        print("No claims found in file.")
+        return 0
+
+    # Get boundary map
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=getattr(args, "input", None),
+        show_progress=True,
+    )
+    if input_path is None:
+        print(
+            f"Error: Input file not found: {getattr(args, 'input', None)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    behavior_map = json.loads(input_path.read_text())
+    raw_edges = behavior_map.get("edges", [])
+
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _Edge:
+        src: str
+        dst: str
+        edge_type: str
+        meta: Optional[dict] = None
+
+    edges = [
+        _Edge(
+            src=e.get("src", ""),
+            dst=e.get("dst", ""),
+            edge_type=e.get("type", ""),
+            meta=dict(e.get("meta", {})) if e.get("meta") else None,
+        )
+        for e in raw_edges
+    ]
+
+    from .io_boundary import compute_boundary_map, load_catalog
+
+    languages: set[str] = set()
+    for node in behavior_map.get("nodes", []):
+        lang = node.get("language")
+        if lang:
+            languages.add(lang)
+
+    catalogs = {}
+    for lang in languages:
+        catalog = load_catalog(lang)
+        if catalog.primitives:
+            catalogs[lang] = catalog
+
+    bmap = compute_boundary_map(edges, catalogs)
+
+    # Verify claims
+    verdicts = _verify(claims, bmap)
+
+    # Output
+    if getattr(args, "json_output", False):
+        print(json.dumps([v.to_dict() for v in verdicts], indent=2))
+    else:
+        violated = 0
+        for v in verdicts:
+            icon = "✓" if v.verdict == "confirmed" else "✗"
+            print(f"  {icon} [{v.claim_id}] {v.claim_text}")
+            print(f"    Verdict: {v.verdict}")
+            if v.details:
+                print(f"    {v.details}")
+            if v.verdict == "violated":
+                violated += 1
+        print()
+        if violated:
+            print(f"{violated}/{len(verdicts)} claim(s) VIOLATED")
+        else:
+            print(f"All {len(verdicts)} claim(s) CONFIRMED")
+
+    has_violations = any(v.verdict == "violated" for v in verdicts)
+    return 1 if has_violations else 0
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -4174,11 +4272,41 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
     )
     p_io.set_defaults(func=cmd_io_boundaries)
 
+    # hypergumbo verify-claims
+    p_vc = sub.add_parser(
+        "verify-claims",
+        help="Verify security claims against I/O boundary map (ADR-0016)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_vc.add_argument(
+        "--claims",
+        required=True,
+        metavar="FILE",
+        help="YAML file with security claims to verify",
+    )
+    p_vc.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_vc.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: auto-discover or run analysis)",
+    )
+    p_vc.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output as JSON",
+    )
+    p_vc.set_defaults(func=cmd_verify_claims)
+
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
                  "catalog", "test-coverage", "symbols", "compact",
-                 "io-boundaries"]
+                 "io-boundaries", "verify-claims"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
 
@@ -4862,7 +4990,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
