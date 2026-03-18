@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Setup root .gitignore**: `tracker setup` manages root `.gitignore` entries for tracker ephemeral files (`.agent/.cache-*.db`, `.agent/.sync-logs/`, `.ci/pytest-output.log`).
 - **Setup managed AGENTS.md block**: `tracker setup` now injects and maintains a fenced `<!-- BEGIN tracker-governance -->` block in AGENTS.md with tool-usage rules (context protection, auto-sync, task selection, batching, commit convention, resolution rationale, unread messages, quick reference). Existing content outside the block is preserved. Creates AGENTS.md if missing. Optional `--with-policy-template` scaffolds a project-owned status policy section.
 - **gRPC CSI-style server interface linking**: gRPC linker now detects Go structs implementing `XxxServer` interfaces (e.g., `IdentityServer`, `ControllerServer`, `NodeServer`) without `UnimplementedXxxServer` embedding. Creates `implements_rpc` edges for CSI and similar external library patterns.
+- **ADR-0016: I/O Boundary Analysis**: Design proposal for exhaustive I/O primitive detection, reverse-trace chain computation, transparency tier classification, and optional security claim verification against the boundary map.
 
 ### Fixed
 
