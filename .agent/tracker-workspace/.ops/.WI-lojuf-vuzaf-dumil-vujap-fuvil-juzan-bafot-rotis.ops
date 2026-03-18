@@ -1,0 +1,22 @@
+- op: create  # df19
+  at: '2026-03-18T06:53:51Z'  # df19
+  by: agent  # df19
+  actor: jgstern_agent  # df19
+  clock: 1  # df19
+  nonce: df19  # df19
+  data:  # df19
+    kind: work_item  # df19
+    title: "ADR-0016 Phase 2: multi-language I/O catalogs (Rust, JS/TS, C, Go, Java) and FFI integration"  # df19
+    status: todo_soft  # df19
+    priority: 4  # df19
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # df19
+    tags:  # df19
+    - adr-0016  # df19
+    - io-boundary  # df19
+    before:  # df19
+    - WI-zozok-supaz-fizir-nurun-vipup-panis-luzol-kokit  # df19
+    duplicate_of: []  # df19
+    not_duplicate_of: []  # df19
+    pr_ref:  # df19
+    description: "Add I/O primitive catalogs for Rust (std::fs, std::net, std::process), JavaScript/TypeScript (fs, net, http, child_process), C (fopen, socket, fork, exec), Go (os, net, io, exec), Java (java.io, java.net, ProcessBuilder). Integrate with existing FFI linkers (pyffi, cgo, jni, napi, wasm_bindgen) so boundary chains cross language boundaries. Test on a polyglot project. See ADR-0016 §Implementation Phase 2."  # df19
+    fields: {}  # df19
