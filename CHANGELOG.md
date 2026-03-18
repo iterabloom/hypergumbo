@@ -37,6 +37,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Python I/O primitive catalog** (ADR-0016 Phase 1a): YAML catalog of Python stdlib I/O functions classified by boundary type (fs_read, fs_write, net_send, net_recv, ipc_send, ipc_recv, env_read, subprocess). Includes `load_catalog()`, `match_edge_to_primitive()`, and `IoBoundaryCatalog` with O(1) lookup.
 - **I/O boundary-tagging pass** (ADR-0016 Phase 1b): `tag_io_boundaries()` walks call edges, matches callee names against I/O primitive catalogs, and stamps `io_boundary`/`io_primitive` metadata on matching edges.
 - **Boundary map computation** (ADR-0016 Phase 1c): `compute_boundary_map()` aggregates tagged edges by boundary type, producing a `BoundaryMap` with per-boundary chain counts, entry points, and primitives used. JSON-serializable via `.to_dict()`.
+- **`hypergumbo io-boundaries` CLI command** (ADR-0016 Phase 1c): Displays I/O boundary map for a repository, showing which call edges reach filesystem, network, subprocess, and environment primitives. Supports `--json` output.
 
 ### Fixed
 

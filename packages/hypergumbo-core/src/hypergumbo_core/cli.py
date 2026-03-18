@@ -2826,6 +2826,88 @@ def cmd_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_io_boundaries(args: argparse.Namespace) -> int:
+    """Display I/O boundary map for a repository (ADR-0016).
+
+    Identifies call edges that reach I/O primitives (filesystem, network,
+    subprocess, environment) and groups them by boundary type. Loads a
+    cached behavior map or auto-runs analysis if needed.
+    """
+    repo_root = Path(args.path).resolve()
+
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=getattr(args, "input", None),
+        show_progress=True,
+    )
+    if input_path is None:
+        print(
+            f"Error: Input file not found: {getattr(args, 'input', None)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    behavior_map = json.loads(input_path.read_text())
+    raw_edges = behavior_map.get("edges", [])
+
+    # Build lightweight edge objects for the tagging pass
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _Edge:
+        src: str
+        dst: str
+        edge_type: str
+        meta: Optional[Dict[str, Any]] = None
+
+    edges = [
+        _Edge(
+            src=e.get("src", ""),
+            dst=e.get("dst", ""),
+            edge_type=e.get("type", ""),
+            meta=dict(e.get("meta", {})) if e.get("meta") else None,
+        )
+        for e in raw_edges
+    ]
+
+    # Detect languages in the graph
+    from .io_boundary import compute_boundary_map, load_catalog
+
+    languages: set[str] = set()
+    for node in behavior_map.get("nodes", []):
+        lang = node.get("language")
+        if lang:
+            languages.add(lang)
+
+    # Load catalogs for detected languages
+    catalogs = {}
+    for lang in languages:
+        catalog = load_catalog(lang)
+        if catalog.primitives:
+            catalogs[lang] = catalog
+
+    # Compute boundary map
+    bmap = compute_boundary_map(edges, catalogs)
+
+    # Output
+    if getattr(args, "json_output", False):
+        print(json.dumps(bmap.to_dict(), indent=2, sort_keys=True))
+    else:
+        if bmap.total_io_edges == 0:
+            print("No I/O boundary calls detected.")
+            return 0
+
+        print(f"I/O Boundary Map ({bmap.total_io_edges} boundary calls)\n")
+        for boundary_type in sorted(bmap.entries.keys()):
+            entry = bmap.entries[boundary_type]
+            print(f"  {boundary_type}: {len(entry.chains)} call(s)")
+            for prim in entry.primitives_used:
+                print(f"    - {prim}")
+        print()
+
+    return 0
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -4058,10 +4140,45 @@ without re-running the full analysis."""
     )
     p_compact.set_defaults(func=cmd_compact)
 
+    # hypergumbo io-boundaries
+    io_boundaries_epilog = """\
+Examples:
+  hypergumbo io-boundaries .                    # Show I/O boundary map
+  hypergumbo io-boundaries . --json             # JSON output
+  hypergumbo io-boundaries . --input hg.json    # From existing analysis
+
+Identifies call edges that reach I/O primitives (filesystem, network,
+subprocess, environment) and groups them by boundary type. See ADR-0016."""
+
+    p_io = sub.add_parser(
+        "io-boundaries",
+        help="Show I/O boundary map (ADR-0016)",
+        epilog=io_boundaries_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_io.add_argument(
+        "--path",
+        default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_io.add_argument(
+        "--input",
+        default=None,
+        help="Input behavior map file (default: auto-discover or run analysis)",
+    )
+    p_io.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output as JSON",
+    )
+    p_io.set_defaults(func=cmd_io_boundaries)
+
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
-                 "catalog", "test-coverage", "symbols", "compact"]
+                 "catalog", "test-coverage", "symbols", "compact",
+                 "io-boundaries"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
 
@@ -4075,9 +4192,9 @@ without re-running the full analysis."""
     # Set custom metavar to control the order in usage line
     sub.metavar = (
         "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
-        "symbols,compact,add-extras,remove-extras,build-grammars,"
-        "install-gitleaks,uninstall-gitleaks,install-embeddings,"
-        "uninstall-embeddings}"
+        "symbols,compact,io-boundaries,add-extras,remove-extras,"
+        "build-grammars,install-gitleaks,uninstall-gitleaks,"
+        "install-embeddings,uninstall-embeddings}"
     )
 
     return p
