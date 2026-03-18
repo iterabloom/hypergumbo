@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Python
+#
+# Maps stdlib functions/methods to I/O boundary types. Used by the
+# boundary-tagging pass to identify which call edges reach system I/O.
+# Covers Python 3.10+ stdlib. Third-party libraries (requests, aiohttp,
+# etc.) are detected transitively — they ultimately call these primitives.
+language: python
+
+fs_read:
+  - module: builtins
+    functions: [open]
+    notes: "Dual-classified: fs_read when mode is 'r'/'rb' (default), fs_write when 'w'/'a'/'x'"
+  - module: pathlib.Path
+    methods: [read_text, read_bytes, stat, exists, is_file, is_dir, iterdir, glob, rglob]
+  - module: os
+    functions: [listdir, scandir, stat, access, readlink, walk]
+  - module: os.path
+    functions: [exists, isfile, isdir, getsize, getmtime, getatime, realpath, abspath]
+  - module: shutil
+    functions: [which, disk_usage]
+  - module: importlib.resources
+    functions: [read_text, read_binary, files]
+  - module: io
+    functions: [open]
+    notes: "io.open is the same as builtins.open"
+  - module: fileinput
+    functions: [input, FileInput]
+
+fs_write:
+  - module: builtins
+    functions: [open]
+    notes: "Dual-classified: fs_write when mode is 'w'/'wb'/'a'/'x'"
+  - module: pathlib.Path
+    methods: [write_text, write_bytes, mkdir, touch, unlink, rename, replace, symlink_to, rmdir, chmod]
+  - module: os
+    functions: [mkdir, makedirs, remove, unlink, rename, replace, symlink, link, chmod, chown, rmdir]
+  - module: shutil
+    functions: [copy, copy2, copytree, move, rmtree, make_archive, unpack_archive]
+  - module: tempfile
+    functions: [mkstemp, mkdtemp, NamedTemporaryFile, TemporaryDirectory, TemporaryFile]
+  - module: json
+    functions: [dump]
+    notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
+  - module: pickle
+    functions: [dump]
+  - module: csv
+    functions: [writer]
+    notes: "csv.writer wraps a file object for writing"
+
+net_send:
+  - module: socket.socket
+    methods: [send, sendto, sendall, sendmsg, connect, connect_ex]
+  - module: http.client.HTTPConnection
+    methods: [request, putrequest, endheaders, send]
+  - module: http.client.HTTPSConnection
+    methods: [request, putrequest, endheaders, send]
+  - module: urllib.request
+    functions: [urlopen, Request, urlretrieve]
+  - module: smtplib.SMTP
+    methods: [sendmail, send_message]
+  - module: xmlrpc.client.ServerProxy
+    notes: "Any method call on ServerProxy triggers an XML-RPC network request"
+  - module: ftplib.FTP
+    methods: [storbinary, storlines, sendcmd]
+
+net_recv:
+  - module: socket.socket
+    methods: [recv, recvfrom, recv_into, recvmsg, accept]
+  - module: http.server.HTTPServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.TCPServer
+    methods: [serve_forever, handle_request]
+  - module: ftplib.FTP
+    methods: [retrbinary, retrlines]
+  - module: xmlrpc.server.SimpleXMLRPCServer
+    methods: [serve_forever, handle_request]
+
+ipc_send:
+  - module: sys
+    attributes: [stdout, stderr]
+    notes: "Writing to stdout/stderr sends data to the parent process or terminal"
+  - module: multiprocessing.Queue
+    methods: [put, put_nowait]
+  - module: multiprocessing.Pipe
+    methods: [send, send_bytes]
+
+ipc_recv:
+  - module: sys
+    attributes: [stdin]
+  - module: multiprocessing.Queue
+    methods: [get, get_nowait]
+  - module: multiprocessing.Pipe
+    methods: [recv, recv_bytes]
+
+subprocess:
+  - module: subprocess
+    functions: [run, Popen, call, check_call, check_output]
+  - module: os
+    functions: [system, popen, execl, execle, execlp, execlpe, execv, execve, execvp, execvpe, spawnl, spawnle, spawnlp, spawnlpe, spawnv, spawnve, spawnvp, spawnvpe]
+  - module: os
+    functions: [fork, forkpty]
+    notes: "Unix only"
+
+env_read:
+  - module: os
+    attributes: [environ]
+    functions: [getenv, get_exec_path]
+  - module: sys
+    attributes: [argv, executable, path, platform, version]
+  - module: platform
+    functions: [system, node, release, version, machine, processor, python_version]
+  - module: locale
+    functions: [getlocale, getdefaultlocale, getpreferredencoding]
