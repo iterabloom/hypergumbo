@@ -32,7 +32,9 @@ fi
 # Check autonomous mode and loop sentinel
 # TRUE, BROAD, and DEEP all enable autonomous behavior
 # OFF and FALSE both mean disabled (see scripts/loop-toggle)
-MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+# Format: "MODE" or "MODE pid=12345" (parallel session support)
+_RAW_MODE=$(head -1 "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null || true)
+MODE=$(echo "$_RAW_MODE" | sed 's/ *pid=[0-9]*//' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
 if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
   exit 0
 fi
@@ -40,8 +42,14 @@ if [[ ! -f "$REPO_ROOT/.agent/LOOP" ]]; then
   exit 0
 fi
 
-# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED,
+#     SESSION_IS_AUTONOMOUS, etc.) ---
 source "$SCRIPT_DIR/../_shared/stop_logic.sh"
+
+# --- PID-based session check (computed by stop_logic.sh) ---
+if [[ "$SESSION_IS_AUTONOMOUS" == "false" ]]; then
+  exit 0
+fi
 
 # --- Path 1: Surface pending TODO items ---
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
