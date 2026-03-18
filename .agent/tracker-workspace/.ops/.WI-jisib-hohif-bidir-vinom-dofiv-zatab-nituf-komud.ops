@@ -54,3 +54,18 @@
   nonce: edc6  # edc6
   set:  # edc6
     status: todo_soft  # edc6
+- op: update  # 8d56
+  at: '2026-03-18T02:11:54Z'  # 8d56
+  by: agent  # 8d56
+  actor: jgstern_agent  # 8d56
+  clock: 6  # 8d56
+  nonce: 8d56  # 8d56
+  set:  # 8d56
+    status: done  # 8d56
+- op: discuss  # 5ef9
+  at: '2026-03-18T02:11:54Z'  # 5ef9
+  by: agent  # 5ef9
+  actor: jgstern_agent  # 5ef9
+  clock: 7  # 5ef9
+  nonce: 5ef9  # 5ef9
+  message: "Message dispatch linker implemented in PR #2333. Covers JS/TS type/action discriminator patterns and Rust serde-tagged enum match arms. Validates against Galene, Hocuspocus, mediasoup protocol patterns."  # 5ef9

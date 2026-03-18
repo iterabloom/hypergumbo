@@ -37,3 +37,18 @@
   nonce: 273d  # 273d
   set:  # 273d
     status: todo_soft  # 273d
+- op: update  # 5387
+  at: '2026-03-18T02:20:00Z'  # 5387
+  by: agent  # 5387
+  actor: jgstern_agent  # 5387
+  clock: 4  # 5387
+  nonce: '5387'  # 5387
+  set:  # 5387
+    status: done  # 5387
+- op: discuss  # f0c1
+  at: '2026-03-18T02:20:00Z'  # f0c1
+  by: agent  # f0c1
+  actor: jgstern_agent  # f0c1
+  clock: 5  # f0c1
+  nonce: f0c1  # f0c1
+  message: "Verified Tauri v2 IPC linker on readest (56 IPC edges) and yaak (67 IPC edges). Plugin invoke syntax (invoke('plugin:name|command')) works correctly. No gaps found — the linker handles invoke(), TAURI_INVOKE(), #[tauri::command], event emit/listen, and specta wrapper resolution. New linkers also validated: crypto-flow (79 edges in yaak), message dispatch (268+767 edges), CRDT (560+19 edges)."  # f0c1

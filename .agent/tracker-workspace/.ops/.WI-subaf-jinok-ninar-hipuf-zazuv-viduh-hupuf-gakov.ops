@@ -51,3 +51,18 @@
   clock: 5  # 0fab
   nonce: 0fab  # 0fab
   message: "Acknowledged. Will test multi-crate resolution against wasmtime, firecracker, ripgrep."  # 0fab
+- op: update  # b41a
+  at: '2026-03-18T02:22:08Z'  # b41a
+  by: agent  # b41a
+  actor: jgstern_agent  # b41a
+  clock: 6  # b41a
+  nonce: b41a  # b41a
+  set:  # b41a
+    status: done  # b41a
+- op: discuss  # ccd9
+  at: '2026-03-18T02:22:08Z'  # ccd9
+  by: agent  # ccd9
+  actor: jgstern_agent  # ccd9
+  clock: 7  # ccd9
+  nonce: ccd9  # ccd9
+  message: "Verified multi-crate Rust workspace resolution on ripgrep (913 cross-crate edges across 6 workspace crates) and firecracker (664 cross-crate edges). The Rust analyzer correctly resolves calls across crate boundaries (e.g., cli→globset, cli→core, vmm→utils). No code changes needed."  # ccd9
