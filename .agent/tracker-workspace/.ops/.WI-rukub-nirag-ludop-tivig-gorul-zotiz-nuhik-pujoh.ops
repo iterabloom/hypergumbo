@@ -1,0 +1,22 @@
+- op: create  # 67f6
+  at: '2026-03-18T06:55:13Z'  # 67f6
+  by: agent  # 67f6
+  actor: jgstern_agent  # 67f6
+  clock: 1  # 67f6
+  nonce: 67f6  # 67f6
+  data:  # 67f6
+    kind: work_item  # 67f6
+    title: "ADR-0016 Phase 4: CI integration, claim templates, community catalogs"  # 67f6
+    status: todo_soft  # 67f6
+    priority: 4  # 67f6
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 67f6
+    tags:  # 67f6
+    - adr-0016  # 67f6
+    - io-boundary  # 67f6
+    before:  # 67f6
+    - WI-kuruv-diloz-hobul-mufoh-gahim-notoj-duzav-fomig  # 67f6
+    duplicate_of: []  # 67f6
+    not_duplicate_of: []  # 67f6
+    pr_ref:  # 67f6
+    description: "GitHub Action / CI step for claim verification on every PR. Standard claim templates for common security properties. Community-maintained I/O primitive catalogs for additional languages. See ADR-0016 §Implementation Phase 4."  # 67f6
+    fields: {}  # 67f6

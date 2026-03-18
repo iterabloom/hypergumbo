@@ -20,3 +20,18 @@
     pr_ref:  # 284a
     description: "Write the Python I/O primitive catalog as a YAML file following the ADR-0015 pattern. Covers: fs_read (open, pathlib, os, shutil), fs_write (open, pathlib, os, shutil, tempfile), net_send (socket, http.client, urllib), net_recv (socket), subprocess (subprocess, os), env_read (os.environ, sys.argv). See ADR-0016 §2 for the full schema."  # 284a
     fields: {}  # 284a
+- op: update  # 01f8
+  at: '2026-03-18T07:16:10Z'  # 01f8
+  by: agent  # 01f8
+  actor: jgstern_agent  # 01f8
+  clock: 2  # 01f8
+  nonce: 01f8  # 01f8
+  set:  # 01f8
+    status: done  # 01f8
+- op: discuss  # 86b3
+  at: '2026-03-18T07:16:10Z'  # 86b3
+  by: agent  # 86b3
+  actor: jgstern_agent  # 86b3
+  clock: 3  # 86b3
+  nonce: 86b3  # 86b3
+  message: "Merged in PR #2348. Python I/O primitive catalog (io_primitives/python.yaml) and IoBoundaryCatalog loading/matching infra."  # 86b3
