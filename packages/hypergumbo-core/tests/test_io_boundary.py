@@ -100,6 +100,37 @@ class TestLoadCatalog:
         assert catalog.lookup("os.listdir").boundary == "fs_read"
         assert catalog.lookup("nonexistent.function") is None
 
+    def test_load_rust_catalog(self) -> None:
+        catalog = load_catalog("rust")
+        assert catalog.language == "rust"
+        assert len(catalog.primitives) > 0
+        names = {p.qualified_name for p in catalog.primitives}
+        assert "std::fs.read" in names or "std::fs.read_to_string" in names
+        assert catalog.lookup("std::fs.read_to_string") is not None
+        assert catalog.lookup("std::fs.read_to_string").boundary == "fs_read"
+
+    def test_load_javascript_catalog(self) -> None:
+        catalog = load_catalog("javascript")
+        assert catalog.language == "javascript"
+        assert len(catalog.primitives) > 0
+        names = {p.qualified_name for p in catalog.primitives}
+        assert "fs.readFileSync" in names
+        assert "child_process.spawn" in names
+        assert catalog.lookup("fs.readFileSync").boundary == "fs_read"
+        assert catalog.lookup("child_process.spawn").boundary == "subprocess"
+
+    def test_rust_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("rust")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
+    def test_javascript_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("javascript")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
     def test_load_nonexistent_language_returns_empty(self) -> None:
         catalog = load_catalog("brainfuck")
         assert catalog.language == "brainfuck"

@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **I/O boundary-tagging pass** (ADR-0016 Phase 1b): `tag_io_boundaries()` walks call edges, matches callee names against I/O primitive catalogs, and stamps `io_boundary`/`io_primitive` metadata on matching edges.
 - **Boundary map computation** (ADR-0016 Phase 1c): `compute_boundary_map()` aggregates tagged edges by boundary type, producing a `BoundaryMap` with per-boundary chain counts, entry points, and primitives used. JSON-serializable via `.to_dict()`.
 - **`hypergumbo io-boundaries` CLI command** (ADR-0016 Phase 1c): Displays I/O boundary map for a repository, showing which call edges reach filesystem, network, subprocess, and environment primitives. Supports `--json` output.
+- **Rust and JavaScript I/O primitive catalogs** (ADR-0016 Phase 2 partial): YAML catalogs for Rust (`std::fs`, `std::net`, `std::process`, `std::env`) and JavaScript/TypeScript (Node.js `fs`, `net`, `http`, `child_process`, `process`).
 
 ### Fixed
 
