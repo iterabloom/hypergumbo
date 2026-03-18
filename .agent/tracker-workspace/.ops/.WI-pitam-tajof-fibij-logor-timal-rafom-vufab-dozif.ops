@@ -56,3 +56,18 @@
   nonce: 4ed9  # 4ed9
   set:  # 4ed9
     status: todo_soft  # 4ed9
+- op: update  # 5418
+  at: '2026-03-18T05:10:18Z'  # 5418
+  by: agent  # 5418
+  actor: jgstern_agent  # 5418
+  clock: 6  # 5418
+  nonce: '5418'  # 5418
+  set:  # 5418
+    priority: 4  # 5418
+- op: discuss  # 856c
+  at: '2026-03-18T05:10:18Z'  # 856c
+  by: agent  # 856c
+  actor: jgstern_agent  # 856c
+  clock: 7  # 856c
+  nonce: 856c  # 856c
+  message: "No repos with multi-WASM module boundaries available for testing. Tauri repos (Cap, readest, yaak, spacedrive) use IPC, not WASM imports. This is a real gap but untestable without appropriate repos."  # 856c
