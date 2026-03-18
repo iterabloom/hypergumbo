@@ -31,6 +31,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Setup auto-install shims**: `tracker setup` now auto-creates `scripts/tracker` and `scripts/tracker-textconv` wrapper scripts when missing, and fixes permissions on existing non-executable ones.
 - **Setup root .gitattributes**: `tracker setup` manages root `.gitattributes` entries for `linguist-generated`, `merge=union`, and `diff=tracker` on `.ops` files.
 - **Setup root .gitignore**: `tracker setup` manages root `.gitignore` entries for tracker ephemeral files (`.agent/.cache-*.db`, `.agent/.sync-logs/`, `.ci/pytest-output.log`).
+- **Setup managed AGENTS.md block**: `tracker setup` now injects and maintains a fenced `<!-- BEGIN tracker-governance -->` block in AGENTS.md with tool-usage rules (context protection, auto-sync, task selection, batching, commit convention, resolution rationale, unread messages, quick reference). Existing content outside the block is preserved. Creates AGENTS.md if missing. Optional `--with-policy-template` scaffolds a project-owned status policy section.
 
 ### Fixed
 

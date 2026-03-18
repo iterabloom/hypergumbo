@@ -1145,7 +1145,10 @@ def _cmd_setup(args: argparse.Namespace) -> int:
             print(generate_human_shim(root))
             return EXIT_SUCCESS
 
-    results = run_setup(root)
+    results = run_setup(
+        root,
+        with_policy_template=getattr(args, "with_policy_template", False),
+    )
 
     if args.json:
         print(json.dumps(results_to_json(results), indent=2))
@@ -1588,6 +1591,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          help="'configure' for interactive config editor")
     p_setup.add_argument("--root", dest="setup_root",
                          help="Path to .agent/ directory (default: auto-detect or cwd/.agent)")
+    p_setup.add_argument("--with-policy-template", action="store_true",
+                         dest="with_policy_template",
+                         help="Scaffold a project-owned tracker status policy section in AGENTS.md")
 
     # --- cache-rebuild ---
     sub.add_parser("cache-rebuild", help="Rebuild SQLite read cache")

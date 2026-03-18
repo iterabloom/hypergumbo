@@ -223,6 +223,159 @@ TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Managed AGENTS.md block — injected/updated by _check_agents_md
+# ---------------------------------------------------------------------------
+
+MANAGED_BLOCK_BEGIN = (
+    "<!-- BEGIN tracker-governance "
+    "(managed by htrac setup — edits may be overwritten) -->"
+)
+MANAGED_BLOCK_END = "<!-- END tracker-governance -->"
+
+MANAGED_BLOCK_CONTENT = """\
+### Tracker (Tool Usage)
+
+The project uses [htrac](https://codeberg.org/iterabloom/hypergumbo), a \
+YAML-backed structured tracker. These rules govern correct tool usage in any \
+repo that adopts the tracker.
+
+**Agent Context Protection:** Always use `scripts/tracker show <ID>` or \
+`scripts/tracker show <ID> --json` to read tracker item state. Always refuse \
+to read files ending in `.ops`. These are internal operation logs that will \
+pollute your context window with historical data you don't need. The CLI \
+compiles ops into current state — that's what you want.
+
+**Auto-Sync:** NEVER manually commit or push tracker `.ops` files. The \
+tracker has a built-in auto-sync mechanism that automatically creates \
+branches, commits, pushes, polls CI, and merges when pending ops exceed the \
+threshold. Do NOT include `.agent/tracker-workspace/.ops/` or \
+`.agent/tracker/.ops/` in feature branch commits.
+
+**Task Selection:** Use `scripts/tracker ready` (not `list`) to pick your \
+next work item. `ready` filters to actionable items sorted by priority.
+
+**Batching:** Batch tracker operations into fewer commits rather than \
+committing after every `scripts/tracker update` call. Perform all tracker \
+updates for a logical unit of work, then commit once with a summary message.
+
+**Commit Convention:** Tracker-only changes use a `tracker:` \
+conventional-commit prefix:
+```
+tracker: close INV-foo, update 3 work items
+```
+
+**Resolution Rationale:** When changing a tracker item to a resolved state \
+(`done`, `holding`, `wontfix`), always record WHY by following up with a \
+discussion entry:
+```bash
+scripts/tracker update WI-foo --status done
+scripts/tracker discuss WI-foo "Fixed in PR #1234. Root cause was X."
+```
+Alternatively, combine: `scripts/tracker update WI-foo --status done \
+--note "Fixed in PR #1234."` (`--note` is shorthand for `discuss`). \
+Omitting the rationale loses context about why work was completed or deferred.
+
+**Unread Messages:** Use `scripts/tracker check-messages` to see items \
+with unread human discussion messages.
+
+**Quick Reference:**
+| Command | Purpose |
+|---------|---------|
+| `scripts/tracker ready` | Pick next work item |
+| `scripts/tracker show <ID>` | Read item state |
+| `scripts/tracker add --kind work_item ...` | Create work item |
+| `scripts/tracker add --kind invariant ...` | Create invariant |
+| `scripts/tracker update <ID> --status done --note "..."` | Resolve item |
+| `scripts/tracker discuss <ID> "message"` | Add discussion |
+| `scripts/tracker check-messages` | Check unread messages |
+| `scripts/tracker count-todos` | Count blocking items |
+| `scripts/tracker batch <file>` | Batch operations |
+
+**`needs_human_review` status:** Use this for governance proposals, \
+architectural questions, or anything requiring human judgment. Items with \
+this status are visible in the TUI for human triage.
+
+Configure which statuses block agent stopping, and what each status means \
+for agent behavior, in your project's governance policy.\
+"""
+
+_POLICY_TEMPLATE = """\
+### Tracker Status Policy
+
+> **This section is yours** — `htrac setup` will never modify it. Customize
+> the status semantics, stopping behavior, and investigation depth for your
+> project.
+
+| Status | Blocks stopping? | Agent behavior |
+|--------|-----------------|----------------|
+| `violated` | Yes | Investigate deeply; assume structural |
+| `todo_hard` | Yes | Investigate deeply; assume structural |
+| `todo_soft` | Yes | Resolve normally |
+| `needs_human_review` | No | Do not work on; await human triage |
+| `done` | No | Resolved |
+| `holding` | No | Parked; revisit later |
+| `wontfix` | No | Decided against |
+
+**Decision tree for choosing a status:**
+- Is this a structural/invariant issue? → `violated` or `todo_hard`
+- Is this a normal backlog item? → `todo_soft`
+- Does this need human judgment? → `needs_human_review`
+"""
+
+
+def _inject_managed_block(
+    content: str,
+    *,
+    with_policy_template: bool = False,
+) -> tuple[str, str]:
+    """Inject or replace the managed tracker-governance block in AGENTS.md.
+
+    Returns (new_content, action) where action is one of:
+    - "injected" if the block was newly inserted
+    - "updated" if existing block content was replaced
+    - "" if the block already matches (no change needed)
+    """
+    block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+
+    begin_idx = content.find(MANAGED_BLOCK_BEGIN)
+    end_idx = content.find(MANAGED_BLOCK_END)
+
+    if begin_idx != -1 and end_idx != -1:
+        # Replace existing block
+        old_block = content[begin_idx : end_idx + len(MANAGED_BLOCK_END)]
+        if old_block == block:
+            return content, ""
+        new_content = content[:begin_idx] + block + content[end_idx + len(MANAGED_BLOCK_END) :]
+        return new_content, "updated"
+
+    # No delimiters — find insertion point
+    suffix = ""
+    if with_policy_template:
+        suffix = "\n\n" + _POLICY_TEMPLATE
+
+    # Look for an existing ### Tracker or ## Tracker section
+    tracker_heading = re.search(
+        r"^(#{2,3})\s+Tracker\b.*$", content, re.MULTILINE,
+    )
+    if tracker_heading:
+        # Insert after the heading line
+        insert_pos = tracker_heading.end()
+        new_content = (
+            content[:insert_pos]
+            + "\n\n"
+            + block
+            + suffix
+            + content[insert_pos:]
+        )
+        return new_content, "injected"
+
+    # No Tracker section — append at end
+    if content and not content.endswith("\n"):
+        content += "\n"
+    new_content = content + "\n" + block + suffix + "\n"
+    return new_content, "injected"
+
 
 def _detect_shared_group(root: Path) -> int | None:
     """Detect a shared group on tracker directories or their parent.
@@ -1544,8 +1697,21 @@ def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
     )
 
 
-def _check_agents_md(repo_root: Path | None) -> CheckResult:
-    """Check #16: Scan AGENTS.md for key tracker concepts."""
+def _check_agents_md(
+    repo_root: Path | None,
+    *,
+    with_policy_template: bool = False,
+) -> CheckResult:
+    """Check #16: Inject/update managed tracker-governance block in AGENTS.md.
+
+    If AGENTS.md exists with delimiters: replaces content between them.
+    If AGENTS.md exists without delimiters: inserts block at a Tracker heading
+    or appends.
+    If no AGENTS.md or CLAUDE.md: creates a minimal AGENTS.md with the block.
+
+    After injection, scans for tracker concepts and warns about any still
+    missing (concepts outside the managed block).
+    """
     if repo_root is None:
         return CheckResult(
             name="agents_md",
@@ -1553,54 +1719,89 @@ def _check_agents_md(repo_root: Path | None) -> CheckResult:
             message="AGENTS.md check skipped (no git repo)",
         )
 
-    # Look for AGENTS.md or CLAUDE.md
-    agents_content = None
+    # Find the target file (prefer AGENTS.md, fall back to CLAUDE.md)
+    target_path: Path | None = None
+    agents_content: str | None = None
     for name in ("AGENTS.md", "CLAUDE.md"):
         path = repo_root / name
         if path.exists():
+            target_path = path
             agents_content = path.read_text()
             break
 
+    details: list[str] = []
+    action = ""
+
     if agents_content is None:
-        return CheckResult(
-            name="agents_md",
-            status="warn",
-            message="No AGENTS.md or CLAUDE.md found",
-            details=["Agent instruction files help agents use the tracker correctly."],
+        # No file exists — create minimal AGENTS.md
+        target_path = repo_root / "AGENTS.md"
+        block = (
+            f"# Agent Instructions\n\n"
+            f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}\n"
         )
+        if with_policy_template:
+            block += "\n" + _POLICY_TEMPLATE + "\n"
+        block += (
+            "\n<!-- Add your project-specific agent policy below this line. -->\n"
+        )
+        target_path.write_text(block)
+        action = "created"
+        agents_content = block
+        details.append(f"Created {target_path.name} with managed tracker-governance block.")
+    else:
+        # File exists — inject or update
+        new_content, action = _inject_managed_block(
+            agents_content, with_policy_template=with_policy_template,
+        )
+        if action:
+            assert target_path is not None  # for type checker
+            target_path.write_text(new_content)
+            agents_content = new_content
+            details.append(
+                f"{action.capitalize()} managed tracker-governance block "
+                f"in {target_path.name}."
+            )
 
+    # Concept scan (post-injection) — warn about anything still missing
     missing: list[str] = []
-    present: list[str] = []
-
     for concept_name, concept in TRACKER_CONCEPTS.items():
         found = False
         for pattern in concept["patterns"]:
             if re.search(pattern, agents_content, re.IGNORECASE):
                 found = True
                 break
-        if found:
-            present.append(concept_name)
-        else:
+        if not found:
             missing.append(concept_name)
 
-    if not missing:
+    if missing:
+        for concept_name in missing:
+            concept = TRACKER_CONCEPTS[concept_name]
+            details.append(
+                f"Missing concept '{concept_name}': {concept['description']}"
+            )
+            details.append(concept["suggestion"])
+
+    if action:
         return CheckResult(
             name="agents_md",
-            status="ok",
-            message="AGENTS.md covers all tracker concepts",
+            status="fixed",
+            message=f"AGENTS.md: managed block {action}"
+            + (f" ({len(missing)} concept(s) still missing)" if missing else ""),
+            details=details,
         )
 
-    details: list[str] = []
-    for concept_name in missing:
-        concept = TRACKER_CONCEPTS[concept_name]
-        details.append(f"Missing concept '{concept_name}': {concept['description']}")
-        details.append(concept["suggestion"])
+    if missing:
+        return CheckResult(
+            name="agents_md",
+            status="warn",
+            message=f"AGENTS.md: {len(missing)} tracker concept(s) missing",
+            details=details,
+        )
 
     return CheckResult(
         name="agents_md",
-        status="warn",
-        message=f"AGENTS.md: {len(missing)} tracker concept(s) missing",
-        details=details,
+        status="ok",
+        message="AGENTS.md covers all tracker concepts",
     )
 
 
@@ -2056,13 +2257,20 @@ def _check_sync_prerequisites(
 # ---------------------------------------------------------------------------
 
 
-def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
+def run_setup(
+    root: Path,
+    repo_root: Path | None = None,
+    *,
+    with_policy_template: bool = False,
+) -> list[CheckResult]:
     """Run all setup checks and return results.
 
     Args:
         root: Path to the .agent/ directory.
         repo_root: Git repo root (for agentic infra checks). If None,
             auto-detected from root via _find_git_dir().
+        with_policy_template: If True, scaffold a project-owned tracker
+            status policy section when injecting the AGENTS.md block.
 
     Returns:
         List of CheckResult objects for all checks.
@@ -2095,7 +2303,9 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
 
     # Part 2: Agentic infrastructure
     results.append(_check_tracker_wrapper(repo_root))      # 16
-    results.append(_check_agents_md(repo_root))            # 17
+    results.append(_check_agents_md(                         # 17
+        repo_root, with_policy_template=with_policy_template,
+    ))
     results.append(_check_stop_hook(repo_root))            # 18
     results.append(_check_precommit_hook(repo_root))       # 19
     results.append(_check_hooks_path(repo_root))           # 19b

@@ -21,7 +21,12 @@ import yaml
 
 from hypergumbo_tracker.cli import EXIT_SUCCESS, EXIT_USER_ERROR, main
 from hypergumbo_tracker.setup import (
+    MANAGED_BLOCK_BEGIN,
+    MANAGED_BLOCK_CONTENT,
+    MANAGED_BLOCK_END,
     TRACKER_CONCEPTS,
+    _POLICY_TEMPLATE,
+    _inject_managed_block,
     CheckResult,
     _check_actor_resolution,
     _check_agents_md,
@@ -2685,78 +2690,217 @@ class TestCheckTrackerWrapper:
 # ---------------------------------------------------------------------------
 
 
+class TestInjectManagedBlock:
+    """Tests for _inject_managed_block() helper."""
+
+    def test_empty_content_appends(self) -> None:
+        content, action = _inject_managed_block("")
+        assert action == "injected"
+        assert MANAGED_BLOCK_BEGIN in content
+        assert MANAGED_BLOCK_END in content
+        assert MANAGED_BLOCK_CONTENT in content
+
+    def test_no_delimiters_appends_at_end(self) -> None:
+        original = "# My Project\nSome text.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        assert content.startswith(original.rstrip("\n"))
+        assert MANAGED_BLOCK_BEGIN in content
+
+    def test_inserts_after_tracker_heading(self) -> None:
+        original = "# Agent Instructions\n\n## Tracker\n\nOld content.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        # Block should appear after the ## Tracker heading
+        tracker_idx = content.index("## Tracker")
+        block_idx = content.index(MANAGED_BLOCK_BEGIN)
+        assert block_idx > tracker_idx
+        # Old content should still be there
+        assert "Old content." in content
+
+    def test_inserts_after_h3_tracker_heading(self) -> None:
+        original = "# Instructions\n\n### Tracker\n\nOld content.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        tracker_idx = content.index("### Tracker")
+        block_idx = content.index(MANAGED_BLOCK_BEGIN)
+        assert block_idx > tracker_idx
+
+    def test_replaces_existing_block(self) -> None:
+        original = (
+            f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold stuff\n{MANAGED_BLOCK_END}\n\n# End\n"
+        )
+        content, action = _inject_managed_block(original)
+        assert action == "updated"
+        assert "old stuff" not in content
+        assert MANAGED_BLOCK_CONTENT in content
+        assert "# End" in content
+
+    def test_idempotent_when_current(self) -> None:
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        original = f"# Doc\n\n{block}\n"
+        content, action = _inject_managed_block(original)
+        assert action == ""
+        assert content == original
+
+    def test_with_policy_template(self) -> None:
+        content, action = _inject_managed_block("# Doc\n", with_policy_template=True)
+        assert action == "injected"
+        assert _POLICY_TEMPLATE in content
+        assert MANAGED_BLOCK_BEGIN in content
+
+    def test_policy_template_not_added_on_update(self) -> None:
+        """Policy template is only added on fresh injection, not on update."""
+        original = (
+            f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold\n{MANAGED_BLOCK_END}\n"
+        )
+        content, action = _inject_managed_block(
+            original, with_policy_template=True,
+        )
+        assert action == "updated"
+        # Policy template is NOT injected on update (only on fresh inject)
+        assert _POLICY_TEMPLATE not in content
+
+    def test_no_trailing_newline_handled(self) -> None:
+        content, action = _inject_managed_block("no newline")
+        assert action == "injected"
+        assert MANAGED_BLOCK_BEGIN in content
+
+
 class TestCheckAgentsMd:
-    """Tests for _check_agents_md (check #14)."""
+    """Tests for _check_agents_md (check #16)."""
 
     def test_no_repo(self) -> None:
         result = _check_agents_md(None)
         assert result.status == "ok"
         assert "skipped" in result.message
 
-    def test_no_agents_md(self, tmp_path: Path) -> None:
+    def test_no_agents_md_creates_file(self, tmp_path: Path) -> None:
         result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        assert "found" in result.message.lower()
+        assert result.status == "fixed"
+        assert "created" in result.message
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
+        assert MANAGED_BLOCK_CONTENT in content
+        assert MANAGED_BLOCK_END in content
 
-    def test_all_concepts_present(self, tmp_path: Path) -> None:
-        content = textwrap.dedent("""\
-        # Agent Instructions
-        Use `scripts/tracker show <ID>` to read state.
-        Don't read .ops files — they pollute context.
-        Use `tracker ready` to pick tasks.
-        tracker: commit prefix for tracker-only changes.
+    def test_no_agents_md_with_policy_template(self, tmp_path: Path) -> None:
+        result = _check_agents_md(tmp_path, with_policy_template=True)
+        assert result.status == "fixed"
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert _POLICY_TEMPLATE in content
+
+    def test_existing_file_gets_block_injected(self, tmp_path: Path) -> None:
+        (tmp_path / "AGENTS.md").write_text("# Agent Instructions\n\nCustom policy.\n")
+        result = _check_agents_md(tmp_path)
+        assert result.status == "fixed"
+        assert "injected" in result.message.lower()
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
+        assert "Custom policy." in content
+
+    def test_existing_block_updated_when_stale(self, tmp_path: Path) -> None:
+        stale = f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold content\n{MANAGED_BLOCK_END}\n"
+        (tmp_path / "AGENTS.md").write_text(stale)
+        result = _check_agents_md(tmp_path)
+        assert result.status == "fixed"
+        assert "updated" in result.message.lower()
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert "old content" not in content
+        assert MANAGED_BLOCK_CONTENT in content
+
+    def test_idempotent_when_block_current(self, tmp_path: Path) -> None:
+        """Second run returns warn (not fixed) — block is up to date."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        full = f"# Doc\n\n{block}\n"
+        (tmp_path / "AGENTS.md").write_text(full)
+        result = _check_agents_md(tmp_path)
+        # Block is current (no "fixed"), but governance concepts still missing
+        assert result.status == "warn"
+        assert "missing" in result.message.lower()
+        # Run again — still warn, no file modifications
+        content_before = (tmp_path / "AGENTS.md").read_text()
+        result2 = _check_agents_md(tmp_path)
+        content_after = (tmp_path / "AGENTS.md").read_text()
+        assert content_before == content_after
+        assert result2.status == "warn"
+
+    def test_all_concepts_satisfied(self, tmp_path: Path) -> None:
+        """When both managed block and governance concepts present → ok."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        governance = textwrap.dedent("""\
         Assume structural until proven otherwise.
         Name the invariant before fixing.
         Follow TDD: Red, Green, Refactor.
         Write a failing test first.
         Must maintain 100% coverage with cov-fail-under.
-        Batch tracker operations into fewer commits.
-        Use needs_human_review for governance proposals.
         """)
-        (tmp_path / "AGENTS.md").write_text(content)
+        (tmp_path / "AGENTS.md").write_text(f"# Doc\n\n{block}\n\n{governance}\n")
         result = _check_agents_md(tmp_path)
         assert result.status == "ok"
-
-    def test_missing_concepts(self, tmp_path: Path) -> None:
-        content = "# Agent Instructions\nNothing relevant here.\n"
-        (tmp_path / "AGENTS.md").write_text(content)
-        result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        assert str(len(TRACKER_CONCEPTS)) in result.message
-
-    def test_partial_concepts(self, tmp_path: Path) -> None:
-        content = "# Agent Instructions\nUse tracker ready for tasks.\n"
-        (tmp_path / "AGENTS.md").write_text(content)
-        result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        expected_missing = len(TRACKER_CONCEPTS) - 1
-        assert str(expected_missing) in result.message
 
     def test_claude_md_fallback(self, tmp_path: Path) -> None:
-        content = textwrap.dedent("""\
-        tracker show <ID> for state.
-        .ops files pollute context.
-        tracker ready for tasks.
-        tracker: prefix for commits.
-        Assume structural until proven otherwise.
-        Red, Green, Refactor cycle.
-        100% coverage requirement.
-        Batch tracker operations.
-        Use needs_human_review for human-judgment items.
-        """)
-        (tmp_path / "CLAUDE.md").write_text(content)
+        (tmp_path / "CLAUDE.md").write_text("# Instructions\n")
         result = _check_agents_md(tmp_path)
-        assert result.status == "ok"
+        assert result.status == "fixed"
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
 
     def test_agents_md_preferred_over_claude_md(self, tmp_path: Path) -> None:
-        # AGENTS.md has nothing, CLAUDE.md has everything
-        (tmp_path / "AGENTS.md").write_text("nothing here\n")
-        (tmp_path / "CLAUDE.md").write_text(
-            "tracker show <ID>\ntracker ready\ntracker: prefix\n"
-        )
+        (tmp_path / "AGENTS.md").write_text("# AGENTS\n")
+        (tmp_path / "CLAUDE.md").write_text("# CLAUDE\n")
         result = _check_agents_md(tmp_path)
-        # Should use AGENTS.md (first match), so concepts missing
+        assert result.status == "fixed"
+        # Should modify AGENTS.md, not CLAUDE.md
+        agents_content = (tmp_path / "AGENTS.md").read_text()
+        claude_content = (tmp_path / "CLAUDE.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in agents_content
+        assert MANAGED_BLOCK_BEGIN not in claude_content
+
+    def test_managed_block_covers_tool_concepts(self, tmp_path: Path) -> None:
+        """The managed block covers tool-usage concepts.
+
+        Project-governance concepts (structural_fix_protocol, tdd_protocol,
+        coverage_requirement) are intentionally NOT in the managed block —
+        they belong in project-specific policy.
+        """
+        import re
+
+        from hypergumbo_tracker.setup import TRACKER_CONCEPTS
+
+        tool_concepts = {
+            "context_protection", "task_selection", "commit_convention",
+            "batching", "human_review_status",
+        }
+        for name in tool_concepts:
+            concept = TRACKER_CONCEPTS[name]
+            found = any(
+                re.search(p, MANAGED_BLOCK_CONTENT, re.IGNORECASE)
+                for p in concept["patterns"]
+            )
+            assert found, f"Managed block should cover tool concept '{name}'"
+
+    def test_managed_block_warns_about_governance_concepts(self, tmp_path: Path) -> None:
+        """After injection, governance concepts still show as missing warnings."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        (tmp_path / "AGENTS.md").write_text(f"# Doc\n\n{block}\n")
+        result = _check_agents_md(tmp_path)
+        # 3 governance concepts are missing: structural_fix, tdd, coverage
         assert result.status == "warn"
+        assert "3" in result.message
+
+    def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
+        original = (
+            f"# Header\n\nBefore.\n\n"
+            f"{MANAGED_BLOCK_BEGIN}\nold\n{MANAGED_BLOCK_END}\n\n"
+            f"After.\n"
+        )
+        (tmp_path / "AGENTS.md").write_text(original)
+        _check_agents_md(tmp_path)
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert "# Header" in content
+        assert "Before." in content
+        assert "After." in content
 
 
 # ---------------------------------------------------------------------------
