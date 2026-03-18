@@ -79,3 +79,25 @@
   nonce: e291  # e291
   message: "Please run bakeoffs using the repos referenced in the below table (\"filesystem location\" column). Genuine multi-WASM-module boundaries in production browser applications remain uncommon — **JavaScript almost always serves as the intermediary**, with each WASM module occupying its own linear memory and data copied through JS. No project was found where multiple separately-compiled WASM modules share memory directly in a browser context outside of Emscripten's own main/side module system. The practical implication for linker testing is that **the most realistic browser test targets are Squoosh, pdfium-render, and the speech/ML stacking projects** (voice-chat, tts.rocks, sherpa-onnx), while the most rigorous linker-correctness tests come from Binaryen's wasm-merge suite, Emscripten's dylink tests, and the Component Model composition tools. wasm-bindgen provides evidence of specific boundary failures — namespace collision, heap isolation, and ABI mismatch — that any linker quality test should exercise. The emerging Component Model (with WIT interfaces and `wac` composition) represents the future of structured multi-module WASM, though it is not yet widely adopted in browser applications.\n\n\n| Repo | Modules combined | Boundary type | Best tests | URL | filesystem location |\n|---|---|---|---|---|---|\n| **Emscripten dynamic linking** | Main + side modules | Shared memory/tables | dlopen/dlsym, function pointer equality | https://github.com/emscripten-core/emscripten | /home/jgstern_agent/whole_bunch_of_repos/emscripten |\n| **GoogleChromeLabs/squoosh** | C++ Emscripten + Rust wasm-bindgen + AssemblyScript | Separate memories, JS glue | 3 toolchains, production app | https://github.com/GoogleChromeLabs/squoosh | /home/jgstern_agent/whole_bunch_of_repos/squoosh |\n| **ajrcarey/pdfium-render** | Rust wasm-bindgen + C++ Emscripten | Separate memories, JS bridge | Documented cross-toolchain bugs | https://github.com/ajrcarey/pdfium-render | /home/jgstern_agent/whole_bunch_of_repos/pdfium-render |\n| **irelate-ai/voice-chat** | ORT WASM (VAD/STT) + WebLLM WASM + TTS WASM | Multi-worker, JS data flow | 3–4 independent WASM modules | https://github.com/irelate-ai/voice-chat | /home/jgstern_agent/whole_bunch_of_repos/voice-chat |\n| **steveseguin/tts.rocks** | Kokoro + Piper + eSpeak + Kitten WASM | Dynamic engine selection | 4 TTS engines, mixed toolchains | https://github.com/steveseguin/tts.rocks | /home/jgstern_agent/whole_bunch_of_repos/tts.rocks |\n| **k2-fsa/sherpa-onnx** | ASR + TTS + VAD WASM (Emscripten) | Separate CMake targets | 7+ speech WASM modules | https://github.com/k2-fsa/sherpa-onnx | /home/jgstern_agent/whole_bunch_of_repos/sherpa-onnx |\n| **WebAssembly/binaryen** (test/merge/) | Any paired modules | Import/export fusing | Extensive merge test suite | https://github.com/WebAssembly/binaryen | /home/jgstern_agent/whole_bunch_of_repos/binaryen |\n| **Poket-Jony/piper-tts-web** | piper-phonemize + onnxruntime-web | Two Emscripten builds | Clean 2-module boundary | https://github.com/Poket-Jony/piper-tts-web | /home/jgstern_agent/whole_bunch_of_repos/piper-tts-web |\n| **bytecodealliance/wasmtime** (linking examples) | WAT module pairs | Import/export resolution | Canonical linker test, 4 language bindings | https://github.com/bytecodealliance/wasmtime | /home/jgstern_agent/whole_bunch_of_repos/wasmtime |\n| **mytechnotalent/webassembly-component-tutorial** | 4 Rust components | WIT interfaces, wac compose | Component Model type checking | https://github.com/mytechnotalent/webassembly-component-tutorial | /home/jgstern_agent/whole_bunch_of_repos/webassembly-component-tutorial |\n| **MediosZ/component-model-demo** | Rust + Python + JS components | WIT interfaces | Cross-language composition | https://github.com/MediosZ/component-model-demo | /home/jgstern_agent/whole_bunch_of_repos/component-model-demo |\n| **DouglasDwyer/wasm_component_layer** | Multi-backend components | Component Model, wasmi + wasmtime | Backend-comparative testing | https://github.com/DouglasDwyer/wasm_component_layer| /home/jgstern_agent/whole_bunch_of_repos/wasm_component_layer  # e291
     |"  # e291
+- op: update  # ea14
+  at: '2026-03-18T16:44:28Z'  # ea14
+  by: agent  # ea14
+  actor: jgstern_agent  # ea14
+  clock: 9  # ea14
+  nonce: ea14  # ea14
+  set:  # ea14
+    priority: 3  # ea14
+- op: discuss  # d958
+  at: '2026-03-18T16:44:28Z'  # d958
+  by: agent  # d958
+  actor: jgstern_agent  # d958
+  clock: 10  # d958
+  nonce: d958  # d958
+  message: "Human provided 12 multi-WASM repos with diverse boundary patterns. Upgrading priority for investigation."  # d958
+- op: discuss  # aaa9
+  at: '2026-03-18T16:44:41Z'  # aaa9
+  by: agent  # aaa9
+  actor: jgstern_agent  # aaa9
+  clock: 11  # aaa9
+  nonce: aaa9  # aaa9
+  message: "Thank you for the comprehensive multi-WASM repo list. This is exactly what was needed — real production apps (squoosh, voice-chat, tts.rocks) plus rigorous test suites (binaryen, wasmtime). Will run a DEEP bakeoff on the realistic browser targets first (squoosh, pdfium-render, voice-chat, sherpa-onnx)."  # aaa9
