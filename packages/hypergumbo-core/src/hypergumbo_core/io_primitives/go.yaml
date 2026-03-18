@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Go
+#
+# Maps Go standard library functions to I/O boundary types.
+language: go
+
+fs_read:
+  - module: os
+    functions: [Open, ReadFile, ReadDir, Stat, Lstat, Readlink]
+  - module: io
+    functions: [ReadAll, ReadFull, Copy]
+  - module: io/ioutil
+    functions: [ReadFile, ReadDir, ReadAll]
+    notes: "Deprecated in Go 1.16 but still widely used"
+  - module: filepath
+    functions: [Walk, WalkDir, Glob]
+
+fs_write:
+  - module: os
+    functions: [Create, CreateTemp, Mkdir, MkdirAll, MkdirTemp, Remove, RemoveAll, Rename, WriteFile, Chmod, Chown, Chtimes, Link, Symlink, Truncate]
+  - module: io/ioutil
+    functions: [WriteFile, TempFile, TempDir]
+  - module: io
+    functions: [WriteString]
+
+net_send:
+  - module: net
+    functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
+  - module: net.Conn
+    methods: [Write]
+  - module: net/http
+    functions: [Get, Post, PostForm, Head, NewRequest]
+  - module: net/http.Client
+    methods: [Do, Get, Post, Head]
+
+net_recv:
+  - module: net
+    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+  - module: net.Listener
+    methods: [Accept]
+  - module: net.Conn
+    methods: [Read]
+  - module: net/http
+    functions: [ListenAndServe, ListenAndServeTLS, Serve]
+
+subprocess:
+  - module: os/exec
+    functions: [Command, CommandContext, LookPath]
+  - module: os/exec.Cmd
+    methods: [Run, Start, Output, CombinedOutput]
+  - module: syscall
+    functions: [Exec, ForkExec]
+
+env_read:
+  - module: os
+    functions: [Getenv, LookupEnv, Environ, Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
+  - module: runtime
+    functions: [GOOS, GOARCH]
+    notes: "Constants, not functions, but captured as env_read"
+
+ipc_send:
+  - module: os
+    attributes: [Stdout, Stderr]
+  - module: fmt
+    functions: [Print, Println, Printf, Fprint, Fprintln, Fprintf]
+    notes: "When writing to os.Stdout/Stderr"
+
+ipc_recv:
+  - module: os
+    attributes: [Stdin]
+  - module: bufio
+    functions: [NewScanner, NewReader]
+    notes: "When wrapping os.Stdin"

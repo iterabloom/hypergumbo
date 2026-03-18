@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for C
+#
+# Maps C standard library and POSIX functions to I/O boundary types.
+language: c
+
+fs_read:
+  - module: stdio
+    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf]
+  - module: unistd
+    functions: [read, readlink, access, stat, lstat, fstat]
+  - module: dirent
+    functions: [opendir, readdir, scandir]
+  - module: sys/stat
+    functions: [stat, fstat, lstat]
+
+fs_write:
+  - module: stdio
+    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename]
+  - module: unistd
+    functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
+  - module: sys/stat
+    functions: [mkdir, chmod]
+
+net_send:
+  - module: sys/socket
+    functions: [connect, send, sendto, sendmsg]
+  - module: unistd
+    functions: [write]
+    notes: "write() on a socket fd"
+
+net_recv:
+  - module: sys/socket
+    functions: [socket, bind, listen, accept, recv, recvfrom, recvmsg]
+  - module: unistd
+    functions: [read]
+    notes: "read() on a socket fd"
+
+subprocess:
+  - module: unistd
+    functions: [fork, exec, execl, execlp, execle, execv, execvp, execve]
+  - module: stdlib
+    functions: [system, popen]
+  - module: sys/wait
+    functions: [wait, waitpid]
+  - module: spawn
+    functions: [posix_spawn, posix_spawnp]
+
+env_read:
+  - module: stdlib
+    functions: [getenv]
+  - module: unistd
+    functions: [getcwd, gethostname, getuid, getgid, getpid]
+
+ipc_send:
+  - module: stdio
+    attributes: [stdout, stderr]
+  - module: unistd
+    functions: [write]
+    notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...)"
+
+ipc_recv:
+  - module: stdio
+    attributes: [stdin]
+  - module: unistd
+    functions: [read]
+    notes: "read(STDIN_FILENO, ...)"

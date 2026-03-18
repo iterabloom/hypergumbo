@@ -131,6 +131,46 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_load_go_catalog(self) -> None:
+        catalog = load_catalog("go")
+        assert catalog.language == "go"
+        assert len(catalog.primitives) > 0
+        assert catalog.lookup("os.ReadFile").boundary == "fs_read"
+        assert catalog.lookup("net/http.Get").boundary == "net_send"
+        assert catalog.lookup("os/exec.Command").boundary == "subprocess"
+
+    def test_go_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("go")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
+    def test_load_c_catalog(self) -> None:
+        catalog = load_catalog("c")
+        assert catalog.language == "c"
+        assert len(catalog.primitives) > 0
+        assert catalog.lookup("stdio.fopen").boundary == "fs_read"
+        assert catalog.lookup("unistd.fork").boundary == "subprocess"
+
+    def test_c_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("c")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
+    def test_load_java_catalog(self) -> None:
+        catalog = load_catalog("java")
+        assert catalog.language == "java"
+        assert len(catalog.primitives) > 0
+        assert catalog.lookup("java.nio.file.Files.readAllBytes").boundary == "fs_read"
+        assert catalog.lookup("java.lang.ProcessBuilder.start").boundary == "subprocess"
+
+    def test_java_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("java")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
     def test_load_nonexistent_language_returns_empty(self) -> None:
         catalog = load_catalog("brainfuck")
         assert catalog.language == "brainfuck"
