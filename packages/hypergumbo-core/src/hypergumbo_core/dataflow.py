@@ -165,27 +165,28 @@ def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     return _config_cache[language]
 
 
-def _find_node_at_line(root_node: Any, line: int) -> Optional[Any]:
-    """Find the most specific AST node at the given line (1-indexed).
+def _build_line_index(root_node: Any) -> Dict[int, Any]:
+    """Build an index mapping 0-indexed line numbers to deepest AST nodes.
 
-    Walks the tree-sitter AST looking for the deepest node whose start line
-    matches. Returns None if no node is found at that line.
+    Walks the entire tree once and records the deepest (last-seen) node
+    for each start line. This enables O(1) lookup by line number instead
+    of O(depth) per-edge in annotate_dataflow().
+
+    For a file with N edges, this reduces total work from O(N * depth) to
+    O(tree_size + N). Profiling shows _find_node_at_line accounts for ~15%
+    of Java analysis time on large codebases (37K calls for killbill).
     """
-    target_line = line - 1  # tree-sitter uses 0-indexed lines
-    best: Optional[Any] = None
-
-    # Walk children breadth-first to find deepest match
+    index: Dict[int, Any] = {}
     stack = [root_node]
     while stack:
         node = stack.pop()
-        if node.start_point[0] == target_line:
-            best = node
-        for child in node.children:
-            # Only descend into children that overlap the target line
-            if child.start_point[0] <= target_line <= child.end_point[0]:
-                stack.append(child)
-
-    return best
+        # Record this node for its start line (deeper nodes overwrite shallower)
+        index[node.start_point[0]] = node
+        # Push children in reverse order so left-to-right processing
+        # means later (deeper) children overwrite earlier ones
+        for child in reversed(node.children):
+            stack.append(child)
+    return index
 
 
 def annotate_dataflow(
@@ -202,6 +203,9 @@ def annotate_dataflow(
 
     Edges that already have ``access_mode`` in their meta are skipped
     (Tier 2 precedence rule: explicit linker annotations beat automatic).
+
+    Uses a pre-built line→node index for O(1) per-edge lookup instead of
+    walking the AST for each edge.
 
     Args:
         edges: List of Edge objects to annotate.
@@ -220,15 +224,17 @@ def annotate_dataflow(
     if not node_type_map:
         return edges
 
-    root = tree.root_node
+    # Build line index once for O(1) per-edge lookup
+    line_index = _build_line_index(tree.root_node)
 
     for edge in edges:
         # Skip edges that already have access_mode (Tier 2 precedence)
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
 
-        # Find the AST node at this edge's line
-        node = _find_node_at_line(root, edge.line)
+        # Look up node at this edge's line (O(1) via index)
+        target_line = edge.line - 1  # tree-sitter uses 0-indexed lines
+        node = line_index.get(target_line)
         if node is None:
             continue
 

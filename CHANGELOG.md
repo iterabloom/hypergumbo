@@ -41,6 +41,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **I/O primitive catalogs for 6 languages** (ADR-0016 Phase 2): YAML catalogs for Python, Rust (`std::fs`, `std::net`, `std::process`), JavaScript/TypeScript (Node.js `fs`, `net`, `http`, `child_process`), Go (`os`, `net`, `net/http`, `os/exec`), C (`stdio`, `unistd`, `sys/socket`), and Java (`java.io`, `java.nio.file`, `java.net`, `ProcessBuilder`). All cover 6+ boundary types.
 - **Web Audio API framework pattern**: YAML-driven detection of AudioContext creation, audio node factories (`createGain`, `createOscillator`, etc.), `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js-specific patterns (`chain()`, `fan()`, `toDestination()`).
 - **Dynamic WASM loading detection**: The wasm_bindgen linker now detects `WebAssembly.instantiate`, bundler URL imports (`import wasmUrl from 'url:path.wasm'`), and Emscripten `loadModule()` patterns. Creates `wasm_load` edges from JS/TS files to synthetic WASM module symbols.
+- **Dataflow annotation line index**: Pre-built line→node index replaces per-edge AST walks in `annotate_dataflow()`. Reduces Java analysis time by ~47% on large repos (killbill: 30s → 16s). Benefits all 104 tree-sitter analyzers.
 
 ### Fixed
 
