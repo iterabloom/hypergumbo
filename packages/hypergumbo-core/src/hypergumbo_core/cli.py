@@ -88,6 +88,9 @@ import hypergumbo_core.linkers.react_component as _react_component_linker  # noq
 import hypergumbo_core.linkers.tauri_ipc as _tauri_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.solidity_abi as _solidity_abi_linker  # noqa: F401
 import hypergumbo_core.linkers.wasm_bindgen as _wasm_bindgen_linker  # noqa: F401
+import hypergumbo_core.linkers.yjs_crdt as _yjs_crdt_linker  # noqa: F401
+import hypergumbo_core.linkers.annotation_convention as _annotation_convention_linker  # noqa: F401
+import hypergumbo_core.linkers.crypto_flow as _crypto_flow_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
