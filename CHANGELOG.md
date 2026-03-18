@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Web Audio API framework pattern**: YAML-driven detection of AudioContext creation, audio node factories (`createGain`, `createOscillator`, etc.), `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js-specific patterns (`chain()`, `fan()`, `toDestination()`).
 - **Dynamic WASM loading detection**: The wasm_bindgen linker now detects `WebAssembly.instantiate`, bundler URL imports (`import wasmUrl from 'url:path.wasm'`), and Emscripten `loadModule()` patterns. Creates `wasm_load` edges from JS/TS files to synthetic WASM module symbols.
 - **Dataflow annotation line index**: Pre-built line→node index replaces per-edge AST walks in `annotate_dataflow()`. Reduces Java analysis time by ~47% on large repos (killbill: 30s → 16s). Benefits all 104 tree-sitter analyzers.
+- **Security claim verification** (ADR-0016 Phase 3): `verify_claims` module loads security claims from YAML, checks `must_not_exist` and `max_chains` constraints against I/O boundary maps, and returns confirmed/violated verdicts with evidence counts.
 
 ### Fixed
 
