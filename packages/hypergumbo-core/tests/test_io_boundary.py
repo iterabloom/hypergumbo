@@ -11,9 +11,12 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.io_boundary import (
+    BoundaryMap,
     IoBoundaryCatalog,
+    IoChain,
     IoPrimitive,
     _extract_callee_name,
+    compute_boundary_map,
     load_catalog,
     match_edge_to_primitive,
     tag_io_boundaries,
@@ -305,3 +308,123 @@ class TestTagIoBoundaries:
         edge = self._make_edge(src="python:a", dst="", edge_type="calls")
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 0
+
+
+class TestComputeBoundaryMap:
+    """Tests for the full boundary map computation."""
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_basic_boundary_map(self) -> None:
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(
+                src="python:/app/main.py:10:main:function",
+                dst="python:/os.py:1:os.listdir:function",
+            ),
+            self._make_edge(
+                src="python:/app/main.py:20:main:function",
+                dst="python:/sub.py:1:subprocess.run:function",
+            ),
+            self._make_edge(
+                src="python:/app/main.py:30:main:function",
+                dst="python:/math.py:1:math.sqrt:function",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        assert bmap.total_io_edges == 2
+        assert "fs_read" in bmap.entries
+        assert "subprocess" in bmap.entries
+        assert len(bmap.entries["fs_read"].chains) == 1
+        assert bmap.entries["fs_read"].primitives_used == ["os.listdir"]
+
+    def test_boundary_map_to_dict(self) -> None:
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/os.py:1:os.listdir:function",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        d = bmap.to_dict()
+        assert d["total_io_edges"] == 1
+        assert "fs_read" in d["boundaries"]
+        assert d["boundaries"]["fs_read"]["chain_count"] == 1
+
+    def test_empty_edges(self) -> None:
+        bmap = compute_boundary_map([], {"python": load_catalog("python")})
+        assert bmap.total_io_edges == 0
+        assert len(bmap.entries) == 0
+
+    def test_io_chain_dataclass(self) -> None:
+        chain = IoChain(
+            boundary="fs_read",
+            primitive="os.listdir",
+            io_edge_src="python:/a.py:1:f:function",
+            io_edge_dst="python:/os.py:1:os.listdir:function",
+            entry_points=["main"],
+        )
+        assert chain.boundary == "fs_read"
+        assert chain.entry_points == ["main"]
+
+    def test_edges_with_non_io_meta_skipped(self) -> None:
+        """Edges with meta but no io_boundary are not counted."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/a.py:1:f:function",
+            dst="python:/b.py:1:g:function",
+        )
+        edge.meta = {"access_mode": "read"}  # non-IO meta
+        bmap = compute_boundary_map([edge], {"python": catalog})
+        assert bmap.total_io_edges == 0
+        assert len(bmap.entries) == 0
+
+    def test_chains_with_entry_points(self) -> None:
+        """IoChain entry_points are aggregated into BoundaryMapEntry."""
+        from hypergumbo_core.io_boundary import BoundaryMapEntry
+        chain = IoChain(
+            boundary="fs_read",
+            primitive="os.listdir",
+            io_edge_src="python:/a.py:1:f:function",
+            io_edge_dst="python:/os.py:1:os.listdir:function",
+            entry_points=["main", "cli_handler"],
+        )
+        entry = BoundaryMapEntry(boundary="fs_read")
+        entry.chains.append(chain)
+        ep_set: set[str] = set()
+        for c in entry.chains:
+            for ep in c.entry_points:
+                ep_set.add(ep)
+        entry.entry_points = sorted(ep_set)
+        assert entry.entry_points == ["cli_handler", "main"]
+
+    def test_multiple_primitives_same_boundary(self) -> None:
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/os.py:1:os.listdir:function",
+            ),
+            self._make_edge(
+                src="python:/b.py:1:g:function",
+                dst="python:/os.py:2:os.walk:function",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        assert bmap.total_io_edges == 2
+        assert len(bmap.entries["fs_read"].chains) == 2
+        assert sorted(bmap.entries["fs_read"].primitives_used) == [
+            "os.listdir", "os.walk",
+        ]

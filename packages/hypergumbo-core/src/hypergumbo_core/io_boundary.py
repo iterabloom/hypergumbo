@@ -213,6 +213,135 @@ def match_edge_to_primitive(
 
 
 # ---------------------------------------------------------------------------
+# Boundary map computation (ADR-0016 Phase 1c)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class IoChain:
+    """A call chain from an entry point to an I/O boundary call.
+
+    Attributes:
+        boundary: The I/O boundary type (e.g., "fs_read").
+        primitive: The matched I/O primitive qualified name.
+        io_edge_src: The symbol ID of the caller of the I/O primitive.
+        io_edge_dst: The symbol ID of the I/O primitive itself.
+        entry_points: Set of entry-point symbol IDs that can reach this I/O call.
+    """
+
+    boundary: str
+    primitive: str
+    io_edge_src: str
+    io_edge_dst: str
+    entry_points: list[str] = field(default_factory=list)
+
+
+@dataclass
+class BoundaryMapEntry:
+    """Aggregated boundary map for one boundary type.
+
+    Attributes:
+        boundary: The I/O boundary type.
+        chains: Individual I/O chains reaching this boundary.
+        entry_points: Deduplicated entry-point symbol IDs across all chains.
+        primitives_used: Deduplicated I/O primitive names across all chains.
+    """
+
+    boundary: str
+    chains: list[IoChain] = field(default_factory=list)
+    entry_points: list[str] = field(default_factory=list)
+    primitives_used: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-friendly dict."""
+        return {
+            "boundary": self.boundary,
+            "chain_count": len(self.chains),
+            "entry_points": self.entry_points,
+            "primitives_used": self.primitives_used,
+        }
+
+
+@dataclass
+class BoundaryMap:
+    """Complete I/O boundary map for a repository.
+
+    Attributes:
+        entries: Mapping from boundary type to aggregated entry.
+        total_io_edges: Total number of boundary-tagged edges found.
+    """
+
+    entries: dict[str, BoundaryMapEntry] = field(default_factory=dict)
+    total_io_edges: int = 0
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-friendly dict."""
+        return {
+            "total_io_edges": self.total_io_edges,
+            "boundaries": {
+                k: v.to_dict() for k, v in sorted(self.entries.items())
+            },
+        }
+
+
+def compute_boundary_map(
+    edges: list,
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> BoundaryMap:
+    """Compute the I/O boundary map from a set of edges.
+
+    Tags edges with I/O boundary metadata (in-place), then aggregates
+    tagged edges by boundary type. Entry-point tracing (reverse slice)
+    is deferred to Phase 1c CLI integration — this function provides the
+    per-boundary aggregation.
+
+    Args:
+        edges: List of Edge objects (mutated: io_boundary metadata stamped).
+        catalogs: Language → IoBoundaryCatalog mapping.
+
+    Returns:
+        BoundaryMap with per-boundary-type aggregation.
+    """
+    tagged_count = tag_io_boundaries(edges, catalogs)
+
+    # Aggregate tagged edges by boundary type
+    by_boundary: dict[str, list[IoChain]] = {}
+    for edge in edges:
+        meta = edge.meta
+        if meta is None:
+            continue
+        boundary = meta.get("io_boundary")
+        if boundary is None:
+            continue
+        primitive = meta.get("io_primitive", "")
+        chain = IoChain(
+            boundary=boundary,
+            primitive=primitive,
+            io_edge_src=edge.src,
+            io_edge_dst=edge.dst,
+        )
+        by_boundary.setdefault(boundary, []).append(chain)
+
+    # Build boundary map entries
+    bmap = BoundaryMap(total_io_edges=tagged_count)
+    for boundary, chains in by_boundary.items():
+        entry_points_set: set[str] = set()
+        primitives_set: set[str] = set()
+        for chain in chains:
+            primitives_set.add(chain.primitive)
+            for ep in chain.entry_points:  # pragma: no cover — populated by reverse-trace (Phase 1c CLI)
+                entry_points_set.add(ep)
+        bmap.entries[boundary] = BoundaryMapEntry(
+            boundary=boundary,
+            chains=chains,
+            entry_points=sorted(entry_points_set),
+            primitives_used=sorted(primitives_set),
+        )
+
+    return bmap
+
+
+# ---------------------------------------------------------------------------
 # Boundary-tagging pass (ADR-0016 Phase 1b)
 # ---------------------------------------------------------------------------
 
