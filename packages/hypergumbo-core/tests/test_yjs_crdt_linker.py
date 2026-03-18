@@ -252,6 +252,173 @@ class TestLinkYjsCrdt:
         assert len(result.edges) == 0
 
 
+class TestScanSubDocPatterns:
+    """Tests for Yjs sub-document and shared type accessor patterns."""
+
+    def test_detects_doc_get_map(self, tmp_path: Path) -> None:
+        """doc.getMap('name') should be detected as a write (named shared type access)."""
+        f = tmp_path / "state.ts"
+        f.write_text("const yMap = doc.getMap('blocks');\n")
+        sites = _scan_file_for_yjs_patterns(f, "state.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "blocks"
+        assert writes[0].api == "yjs"
+
+    def test_detects_doc_get_array(self, tmp_path: Path) -> None:
+        """doc.getArray('name') should be detected as a write (named shared type access)."""
+        f = tmp_path / "list.ts"
+        f.write_text("const yArray = doc.getArray('items');\n")
+        sites = _scan_file_for_yjs_patterns(f, "list.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "items"
+
+    def test_detects_doc_get_text(self, tmp_path: Path) -> None:
+        """doc.getText('name') should be detected as a write (named shared type access)."""
+        f = tmp_path / "editor.ts"
+        f.write_text("const yText = doc.getText('content');\n")
+        sites = _scan_file_for_yjs_patterns(f, "editor.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "content"
+
+    def test_detects_doc_get_xml_fragment(self, tmp_path: Path) -> None:
+        """doc.getXmlFragment('name') should be detected as a write."""
+        f = tmp_path / "xml.ts"
+        f.write_text("const yXml = doc.getXmlFragment('prosemirror');\n")
+        sites = _scan_file_for_yjs_patterns(f, "xml.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "prosemirror"
+
+    def test_detects_subdocs_event(self, tmp_path: Path) -> None:
+        """doc.on('subdocs', handler) should be detected as a read."""
+        f = tmp_path / "sync.ts"
+        f.write_text("doc.on('subdocs', ({ added, removed }) => { sync(); });\n")
+        sites = _scan_file_for_yjs_patterns(f, "sync.ts")
+        reads = [s for s in sites if s.kind == "read"]
+        assert len(reads) >= 1
+        assert reads[0].api == "yjs"
+
+    def test_links_getmap_to_observer_cross_file(self, tmp_path: Path) -> None:
+        """doc.getMap('x') in one file + observe in another creates an edge."""
+        w = tmp_path / "src" / "provider.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("const yMap = doc.getMap('state');\nyMap.set('cursor', pos);\n")
+
+        r = tmp_path / "src" / "consumer.ts"
+        r.write_text("yMap.observe(handler);\n")
+
+        syms = [_make_ts_sym("src/provider.ts"), _make_ts_sym("src/consumer.ts")]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) >= 1
+
+
+class TestScanBlockSuitePatterns:
+    """Tests for BlockSuite framework pattern detection."""
+
+    def test_detects_add_block(self, tmp_path: Path) -> None:
+        """store.addBlock('flavour', ...) should be detected as a blocksuite write."""
+        f = tmp_path / "editor.ts"
+        f.write_text("store.addBlock('affine:paragraph', { type: 'text' }, noteId);\n")
+        sites = _scan_file_for_yjs_patterns(f, "editor.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "affine:paragraph"
+        assert writes[0].api == "blocksuite"
+
+    def test_detects_block_updated_subscribe(self, tmp_path: Path) -> None:
+        """store.slots.blockUpdated.subscribe() should be detected as a blocksuite read."""
+        f = tmp_path / "listener.ts"
+        f.write_text("store.slots.blockUpdated.subscribe(handler);\n")
+        sites = _scan_file_for_yjs_patterns(f, "listener.ts")
+        reads = [s for s in sites if s.kind == "read"]
+        assert len(reads) >= 1
+        assert reads[0].api == "blocksuite"
+
+    def test_detects_props_updated_subscribe(self, tmp_path: Path) -> None:
+        """model.propsUpdated.subscribe() should be detected as a blocksuite read."""
+        f = tmp_path / "watcher.ts"
+        f.write_text("model.propsUpdated.subscribe(({ key }) => { refresh(); });\n")
+        sites = _scan_file_for_yjs_patterns(f, "watcher.ts")
+        reads = [s for s in sites if s.kind == "read"]
+        assert len(reads) >= 1
+        assert reads[0].api == "blocksuite"
+
+    def test_detects_define_block_schema(self, tmp_path: Path) -> None:
+        """defineBlockSchema({ flavour: 'x' }) should be detected as a blocksuite write."""
+        f = tmp_path / "schema.ts"
+        f.write_text(
+            "export const ParagraphBlockSchema = defineBlockSchema({\n"
+            "  flavour: 'affine:paragraph',\n"
+            "  props: (internal) => ({ text: internal.Text() }),\n"
+            "});\n"
+        )
+        sites = _scan_file_for_yjs_patterns(f, "schema.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].channel == "affine:paragraph"
+        assert writes[0].api == "blocksuite"
+
+    def test_detects_slots_root_added(self, tmp_path: Path) -> None:
+        """store.slots.rootAdded.subscribe() should be detected as a blocksuite read."""
+        f = tmp_path / "init.ts"
+        f.write_text("store.slots.rootAdded.subscribe((id) => { load(id); });\n")
+        sites = _scan_file_for_yjs_patterns(f, "init.ts")
+        reads = [s for s in sites if s.kind == "read"]
+        assert len(reads) >= 1
+        assert reads[0].api == "blocksuite"
+
+    def test_blocksuite_write_links_to_blocksuite_read(self, tmp_path: Path) -> None:
+        """addBlock in one file + slots.blockUpdated in another creates edge."""
+        w = tmp_path / "src" / "creator.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("store.addBlock('affine:note', {}, rootId);\n")
+
+        r = tmp_path / "src" / "reactor.ts"
+        r.write_text("store.slots.blockUpdated.subscribe(handler);\n")
+
+        syms = [_make_ts_sym("src/creator.ts"), _make_ts_sym("src/reactor.ts")]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.edge_type == "crdt_publishes"
+
+    def test_no_cross_api_blocksuite_to_yjs(self, tmp_path: Path) -> None:
+        """BlockSuite writes should not match raw Yjs reads."""
+        w = tmp_path / "src" / "bs_writer.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("store.addBlock('affine:paragraph', {}, noteId);\n")
+
+        r = tmp_path / "src" / "yjs_reader.ts"
+        r.write_text("yMap.observe(handler);\n")
+
+        syms = [_make_ts_sym("src/bs_writer.ts"), _make_ts_sym("src/yjs_reader.ts")]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) == 0
+
+    def test_detects_delete_block(self, tmp_path: Path) -> None:
+        """store.deleteBlock() should be detected as a blocksuite write."""
+        f = tmp_path / "cleanup.ts"
+        f.write_text("store.deleteBlock(model);\n")
+        sites = _scan_file_for_yjs_patterns(f, "cleanup.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        assert len(writes) >= 1
+        assert writes[0].api == "blocksuite"
+
+    def test_detects_transact(self, tmp_path: Path) -> None:
+        """store.transact() should be detected as a blocksuite write."""
+        f = tmp_path / "batch.ts"
+        f.write_text("store.transact(() => {\n  store.addBlock('affine:paragraph', {}, id);\n});\n")
+        sites = _scan_file_for_yjs_patterns(f, "batch.ts")
+        writes = [s for s in sites if s.kind == "write"]
+        # Should detect both transact and addBlock
+        assert len(writes) >= 1
+        bs_writes = [w for w in writes if w.api == "blocksuite"]
+        assert len(bs_writes) >= 1
+
+
 class TestYjsSite:
     """Tests for the YjsSite dataclass."""
 

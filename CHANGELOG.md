@@ -16,6 +16,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Electron contextBridge function exposure**: IPC linker now detects individual function exposures via `contextBridge.exposeInMainWorld('funcName', () => ...)` and traces `window.funcName()` calls through to IPC channels. Also supports custom wrappers like `ipcInvoke('channel')` (e.g., podman-desktop pattern).
 - **React.lazy() route detection**: JSX `<Route>` elements referencing `React.lazy()` or `lazy()` components now include `lazy_import` metadata with the dynamic import path.
 - **Cross-linker integration tests**: Validates that slice BFS traverses edges from 4+ linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single trace through a polyglot graph.
+- **Yjs sub-document and shared type accessors**: `doc.getMap('name')`, `doc.getArray('name')`, `doc.getText('name')`, `doc.getXmlFragment('name')` detected as named channel writes, enabling cross-file linking between shared type access and observers.
+- **BlockSuite document model linker**: Detects BlockSuite API patterns — `store.addBlock()`, `store.deleteBlock()`, `store.transact()`, `defineBlockSchema()` as writes; `store.slots.blockUpdated.subscribe()`, `model.propsUpdated.subscribe()` as reads. Creates `crdt_publishes` edges across BlockSuite's Yjs abstraction layer (used by AFFiNE).
 
 #### Tracker
 
