@@ -221,9 +221,10 @@ If the JSON contains a `guidance_file` field, read that file for the most recent
 - After hitting an obstacle: record what's blocked and alternative approaches
 
 ```bash
-# Update notes (uses jq to modify in-place)
-jq --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
-  '. + {notes: $n}' ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json \
+# Update notes (works whether or not the file exists — seeds from {} if missing)
+jq -n --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
+  --argjson existing "$(cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null || echo '{}')" \
+  '$existing + {notes: $n}' \
   > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json
 ```
 

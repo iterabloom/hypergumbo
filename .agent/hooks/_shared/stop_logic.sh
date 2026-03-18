@@ -192,15 +192,20 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
     printf '%s' "$BAKEOFF_SUFFIX" >> "$GUIDANCE_FILE"
   fi
 
-  # Update last_stop_check.json with guidance_file pointer + bakeoff convergence
+  # Update last_stop_check.json with guidance_file pointer + bakeoff convergence.
+  # Seeds the file from scratch if it doesn't exist yet (closes bootstrap gap).
   if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     STATE_FILE_FOR_GF="$HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-    if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
+    if command -v jq &>/dev/null; then
       TMP=$(mktemp)
-      if jq --arg gf "$GUIDANCE_FILE" \
+      _EXISTING="{}"
+      if [[ -f "$STATE_FILE_FOR_GF" ]]; then
+        _EXISTING=$(cat "$STATE_FILE_FOR_GF")
+      fi
+      if printf '%s' "$_EXISTING" | jq --arg gf "$GUIDANCE_FILE" \
             --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
             '. + {guidance_file: $gf} + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)' \
-            "$STATE_FILE_FOR_GF" > "$TMP" 2>/dev/null; then
+            > "$TMP" 2>/dev/null; then
         mv "$TMP" "$STATE_FILE_FOR_GF"
       else
         rm -f "$TMP"
