@@ -1,0 +1,22 @@
+- op: create  # 284a
+  at: '2026-03-18T06:50:15Z'  # 284a
+  by: agent  # 284a
+  actor: jgstern_agent  # 284a
+  clock: 1  # 284a
+  nonce: 284a  # 284a
+  data:  # 284a
+    kind: work_item  # 284a
+    title: "ADR-0016 Phase 1a: Python I/O primitive catalog (io_primitives/python.yaml)"  # 284a
+    status: todo_soft  # 284a
+    priority: 3  # 284a
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 284a
+    tags:  # 284a
+    - adr-0016  # 284a
+    - io-boundary  # 284a
+    - python  # 284a
+    before: []  # 284a
+    duplicate_of: []  # 284a
+    not_duplicate_of: []  # 284a
+    pr_ref:  # 284a
+    description: "Write the Python I/O primitive catalog as a YAML file following the ADR-0015 pattern. Covers: fs_read (open, pathlib, os, shutil), fs_write (open, pathlib, os, shutil, tempfile), net_send (socket, http.client, urllib), net_recv (socket), subprocess (subprocess, os), env_read (os.environ, sys.argv). See ADR-0016 §2 for the full schema."  # 284a
+    fields: {}  # 284a
