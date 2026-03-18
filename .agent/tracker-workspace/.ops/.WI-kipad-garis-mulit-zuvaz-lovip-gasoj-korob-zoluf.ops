@@ -52,3 +52,19 @@
   clock: 5  # f0c1
   nonce: f0c1  # f0c1
   message: "Verified Tauri v2 IPC linker on readest (56 IPC edges) and yaak (67 IPC edges). Plugin invoke syntax (invoke('plugin:name|command')) works correctly. No gaps found — the linker handles invoke(), TAURI_INVOKE(), #[tauri::command], event emit/listen, and specta wrapper resolution. New linkers also validated: crypto-flow (79 edges in yaak), message dispatch (268+767 edges), CRDT (560+19 edges)."  # f0c1
+- op: update  # bc4d
+  at: '2026-03-18T02:54:37Z'  # bc4d
+  by: human  # bc4d
+  actor: jgstern  # bc4d
+  clock: 6  # bc4d
+  nonce: bc4d  # bc4d
+  set:  # bc4d
+    status: todo_soft  # bc4d
+    priority: 3  # bc4d
+- op: discuss  # d9aa
+  at: '2026-03-18T02:54:42Z'  # d9aa
+  by: human  # d9aa
+  actor: jgstern  # d9aa
+  clock: 7  # d9aa
+  nonce: d9aa  # d9aa
+  message: "Did you run a bakeoff recently using these repos?\n\npodman-desktop: /home/jgstern_agent/whole_bunch_of_repos/podman-desktop\nspacedrive: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/spacedrive/\nyaak: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/yaak/\nCap: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/Cap/\nreadest: /home/jgstern_agent/plazaflow_deep_repos/cohort1_desktop/readest/"  # d9aa

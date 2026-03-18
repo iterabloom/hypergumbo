@@ -20,3 +20,18 @@
     pr_ref:  # a6c8
     description: "PlazaFlow spatial audio is a per-peer Web Audio node graph: AudioContext -> GainNode -> StereoPannerNode -> destination, with dynamic gain/pan driven by distance and wall raycasts. Need a YAML-driven framework pattern detecting AudioContext creation, createGain/createStereoPanner/createMediaStreamSource, and .connect() chains. Emit framework pattern nodes for audio graph topology. No existing pattern. Bakeoff repos: dash.js (media player with Web Audio), hls.js (media with audio processing), shaka-player (media). Cross-refs: No existing Web Audio support. Lower priority than linker items — useful for developer understanding but not cross-boundary edge quality."  # a6c8
     fields: {}  # a6c8
+- op: discuss  # e4e0
+  at: '2026-03-18T02:49:08Z'  # e4e0
+  by: human  # e4e0
+  actor: jgstern  # e4e0
+  clock: 2  # e4e0
+  nonce: e4e0  # e4e0
+  message: "dash.js: /home/jgstern_agent/whole_bunch_of_repos/dash.js\nhls.js: /home/jgstern_agent/whole_bunch_of_repos/hls.js\nshaka-player: /home/jgstern_agent/whole_bunch_of_repos/shaka-player"  # e4e0
+- op: update  # ee93
+  at: '2026-03-18T02:49:38Z'  # ee93
+  by: human  # ee93
+  actor: jgstern  # ee93
+  clock: 3  # ee93
+  nonce: ee93  # ee93
+  set:  # ee93
+    status: todo_soft  # ee93
