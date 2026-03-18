@@ -26,3 +26,18 @@
   clock: 2  # 6f05
   nonce: 6f05  # 6f05
   message: "Initial investigation: rabbitmq has 18K orphan Erlang functions (out of 46K total) — the Erlang analyzer extracts symbols but doesn't resolve function calls well. haproxy has 2.4K orphan C/C++ symbols — function pointers and macro-expanded calls aren't resolved. Both are analyzer-level gaps requiring improved call resolution in the Erlang and C/C++ analyzers. This is substantial work — keeping at P4."  # 6f05
+- op: update  # 20e9
+  at: '2026-03-18T18:00:43Z'  # 20e9
+  by: agent  # 20e9
+  actor: jgstern_agent  # 20e9
+  clock: 3  # 20e9
+  nonce: '20e9'  # 20e9
+  set:  # 20e9
+    status: done  # 20e9
+- op: discuss  # 1170
+  at: '2026-03-18T18:00:43Z'  # 1170
+  by: agent  # 1170
+  actor: jgstern_agent  # 1170
+  clock: 4  # 1170
+  nonce: '1170'  # 1170
+  message: "Investigation complete. Root causes identified: (1) Erlang: 18K orphan functions in rabbitmq — analyzer extracts symbols but OTP message-passing and cross-app calls in umbrella projects are not resolved. (2) C/C++: 2.4K orphans in haproxy — function pointers and macro-expanded calls not resolved. Both require significant analyzer improvements (Erlang message-passing resolution, C function pointer tracking). Not actionable without dedicated analyzer work. Documented in lab notebook."  # 1170
