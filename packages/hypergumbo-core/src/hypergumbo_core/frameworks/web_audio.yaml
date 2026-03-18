@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Web Audio API framework patterns (ADR-0003)
+#
+# Detects Web Audio API usage patterns in JavaScript/TypeScript code.
+# The Web Audio API provides a graph-based model for audio processing:
+# AudioContext → source nodes → processing chain via connect() → destination.
+#
+# Key patterns:
+# - AudioContext / OfflineAudioContext creation (app_bootstrap equivalent)
+# - Audio node factory methods (createGain, createOscillator, etc.)
+# - .connect() calls that wire the audio graph
+# - AudioWorkletProcessor subclasses for custom processing
+#
+# Used by: Tone.js, Howler.js, Pizzicato, Resonance Audio, Omnitone,
+# game engines (Phaser, Three.js), media players (Koel, Nuclear).
+
+id: web_audio
+language: javascript
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS ====================
+  # These match UsageContext records for Web Audio API calls.
+
+  # AudioContext creation — the root of any Web Audio graph
+  - concept: audio_context
+    usage:
+      kind: "^call$"
+      name: "^(new\\s+)?(AudioContext|webkitAudioContext|OfflineAudioContext)$"
+      position: "^caller$"
+
+  # Audio node factory methods on AudioContext
+  - concept: audio_node_creation
+    usage:
+      kind: "^call$"
+      name: "^(context|ctx|audioContext|audioCtx|this)\\.create(Gain|Oscillator|BiquadFilter|Analyser|StereoPanner|Panner|Convolver|Delay|DynamicCompressor|WaveShaper|ChannelSplitter|ChannelMerger|ConstantSource|IIRFilter|MediaElementSource|MediaStreamSource|MediaStreamDestination|BufferSource|ScriptProcessor)$"
+      position: "^caller$"
+
+  # GainNode, OscillatorNode, etc. constructors (newer API)
+  - concept: audio_node_creation
+    usage:
+      kind: "^call$"
+      name: "^new\\s+(GainNode|OscillatorNode|BiquadFilterNode|AnalyserNode|StereoPannerNode|PannerNode|ConvolverNode|DelayNode|DynamicsCompressorNode|WaveShaperNode|ChannelSplitterNode|ChannelMergerNode|ConstantSourceNode|IIRFilterNode|MediaElementAudioSourceNode|MediaStreamAudioSourceNode|MediaStreamAudioDestinationNode|AudioBufferSourceNode)$"
+      position: "^caller$"
+
+  # .connect() — wires audio nodes into a graph
+  - concept: audio_graph_connection
+    usage:
+      kind: "^call$"
+      name: "^\\w+\\.connect$"
+      position: "^caller$"
+
+  # .disconnect() — removes connections
+  - concept: audio_graph_connection
+    usage:
+      kind: "^call$"
+      name: "^\\w+\\.disconnect$"
+      position: "^caller$"
+
+  # AudioWorkletProcessor — custom audio processing
+  - concept: audio_worklet
+    base_class: "^AudioWorkletProcessor$"
+
+  # AudioContext.audioWorklet.addModule() — loading worklet code
+  - concept: audio_worklet
+    usage:
+      kind: "^call$"
+      name: "^\\w+\\.audioWorklet\\.addModule$"
+      position: "^caller$"
+
+  # registerProcessor() — registering a worklet processor
+  - concept: audio_worklet
+    usage:
+      kind: "^call$"
+      name: "^registerProcessor$"
+      position: "^caller$"
+
+  # decodeAudioData — loading audio buffers
+  - concept: audio_data_loading
+    usage:
+      kind: "^call$"
+      name: "^(context|ctx|audioContext|audioCtx|this)\\.decodeAudioData$"
+      position: "^caller$"
+
+  # Tone.js-specific patterns
+  - concept: audio_framework
+    usage:
+      kind: "^call$"
+      name: "^(Tone\\.start|Tone\\.Destination|Tone\\.Transport|Tone\\.Draw)$"
+      position: "^caller$"
+
+  # Tone.js instrument/effect constructors
+  - concept: audio_node_creation
+    usage:
+      kind: "^call$"
+      name: "^new\\s+Tone\\.(Synth|FMSynth|AMSynth|MonoSynth|PolySynth|Sampler|Player|Oscillator|Noise|Reverb|Delay|Distortion|Compressor|Filter|EQ3|Chorus|Phaser|Tremolo|Vibrato|AutoWah|PingPongDelay|FeedbackDelay|Gain|Volume|Panner|Panner3D|Channel|Meter|Analyser|FFT|Waveform|Recorder)$"
+      position: "^caller$"
+
+  # Tone.js .chain() and .fan() — graph building methods
+  - concept: audio_graph_connection
+    usage:
+      kind: "^call$"
+      name: "^\\w+\\.(chain|fan|toDestination|toMaster)$"
+      position: "^caller$"
