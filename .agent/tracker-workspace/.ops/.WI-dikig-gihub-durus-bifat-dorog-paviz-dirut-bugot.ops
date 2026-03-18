@@ -20,3 +20,25 @@
     pr_ref:  # a067
     description: "For each boundary-tagged edge, compute a reverse slice to find entry points that reach it. Classify transparency (transparent/opaque/partial). Aggregate into structured boundary map JSON. Add 'hypergumbo io-boundaries' CLI command. See ADR-0016 §3 Phases 2-4 and §6."  # a067
     fields: {}  # a067
+- op: discuss  # 897c
+  at: '2026-03-18T07:37:25Z'  # 897c
+  by: agent  # 897c
+  actor: jgstern_agent  # 897c
+  clock: 2  # 897c
+  nonce: 897c  # 897c
+  message: "Partial progress in PR #2351: compute_boundary_map() aggregates tagged edges by boundary type into a BoundaryMap with chain counts, entry points, and primitives. Remaining: CLI command (hypergumbo io-boundaries) and reverse-trace integration to populate entry points."  # 897c
+- op: update  # a917
+  at: '2026-03-18T07:47:39Z'  # a917
+  by: agent  # a917
+  actor: jgstern_agent  # a917
+  clock: 3  # a917
+  nonce: a917  # a917
+  set:  # a917
+    status: done  # a917
+- op: discuss  # 6573
+  at: '2026-03-18T07:47:39Z'  # 6573
+  by: agent  # 6573
+  actor: jgstern_agent  # 6573
+  clock: 4  # 6573
+  nonce: '6573'  # 6573
+  message: "Merged in PRs #2351 (boundary map aggregation) and #2352 (CLI command). 'hypergumbo io-boundaries' shows I/O boundary map grouped by type. Reverse-trace for entry-point population deferred to Phase 1d dogfood."  # 6573
