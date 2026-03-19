@@ -92,9 +92,28 @@ for arg in "${PYTEST_ARGS[@]}"; do
 done
 
 if [[ "$HAS_N_FLAG" == "false" ]] && ! is_in_container; then
-    # Note: log function not defined yet, use conditional echo
-    [[ "$VERBOSE" == "true" ]] && echo "[smart-test] Auto-adding -n auto for parallel execution (not in container)" >&2
-    PYTEST_ARGS+=("-n" "auto")
+    # Memory-aware parallelism: each pytest worker can use ~2 GB during
+    # analysis-heavy tests.  Cap workers so total doesn't exceed available
+    # memory minus 2 GB headroom for OS/other processes.
+    NCPU=$(nproc 2>/dev/null || echo 4)
+    AVAIL_MB=999999
+    if [[ -f /proc/meminfo ]]; then
+        AVAIL_MB=$(awk '/^MemAvailable:/ { printf "%d", $2/1024 }' /proc/meminfo)
+    fi
+    HEADROOM_MB=2048
+    PER_WORKER_MB=2048
+    MAX_WORKERS=$(( (AVAIL_MB - HEADROOM_MB) / PER_WORKER_MB ))
+    # Clamp to [1, NCPU]
+    [[ $MAX_WORKERS -lt 1 ]] && MAX_WORKERS=1
+    [[ $MAX_WORKERS -gt $NCPU ]] && MAX_WORKERS=$NCPU
+
+    if [[ $MAX_WORKERS -lt $NCPU ]]; then
+        [[ "$VERBOSE" == "true" ]] && echo "[smart-test] Memory-aware: capping workers to $MAX_WORKERS (${AVAIL_MB} MB available, ${NCPU} CPUs)" >&2
+        PYTEST_ARGS+=("-n" "$MAX_WORKERS")
+    else
+        [[ "$VERBOSE" == "true" ]] && echo "[smart-test] Auto-adding -n auto for parallel execution (not in container)" >&2
+        PYTEST_ARGS+=("-n" "auto")
+    fi
 fi
 
 # Output file for full pytest log
