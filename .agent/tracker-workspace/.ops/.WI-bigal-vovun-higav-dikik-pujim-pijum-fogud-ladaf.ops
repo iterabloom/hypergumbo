@@ -92,3 +92,18 @@
   clock: 11  # 93a2
   nonce: 93a2  # 93a2
   message: "Will implement struct field function pointer tracking. Plan: (1) In Pass 1, extract struct initializer assignments (.field = func), (2) In Pass 2, resolve ptr->field() calls through the assignment map."  # 93a2
+- op: update  # b531
+  at: '2026-03-19T06:40:02Z'  # b531
+  by: agent  # b531
+  actor: jgstern_agent  # b531
+  clock: 12  # b531
+  nonce: b531  # b531
+  set:  # b531
+    status: done  # b531
+- op: discuss  # a6de
+  at: '2026-03-19T06:40:02Z'  # a6de
+  by: agent  # a6de
+  actor: jgstern_agent  # a6de
+  clock: 13  # a6de
+  nonce: a6de  # a6de
+  message: "Struct designated initializer function pointer tracking merged in PR #2402. Detects .field = func patterns in C struct initializers and creates dispatches_to edges. Records field name in meta for future indirect call resolution. Combined with existing dispatch table detection, this should reduce the C orphan rate in callback-heavy codebases like haproxy."  # a6de

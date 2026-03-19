@@ -157,3 +157,10 @@
   clock: 20  # 32a5
   nonce: 32a5  # 32a5
   message: "But that \"1 CI step\" would need to get implemented for the regular workflow, the release workflow, and the nightly workflow, right? Also, I've never coded in Rust. How does testing work? Is test coverage measured in more-or-less the same way as it is in Python? Does \"100% coverage\" mean roughly the same thing for Rust as it does for Python? (or does maturin come with its own special testing framework? or does it integrate with pytest?)\n\nTake a step back and think about the whole hypergumbo project. Does this idea for a Rust binary component seem like a fruitful direction?"  # 32a5
+- op: discuss  # 5d63
+  at: '2026-03-19T06:41:00Z'  # 5d63
+  by: agent  # 5d63
+  actor: jgstern_agent  # 5d63
+  clock: 21  # 5d63
+  nonce: 5d63  # 5d63
+  message: "Re: CI workflows, testing, and coverage.\n\n**CI workflows:**\nYes, rustup would need to be added to all 3 workflows (ci.yml, nightly.yml, release.yml). It's the same 3 lines each time:\n```yaml\n- uses: dtolnay/rust-toolchain@stable\n```\nPlus maturin is already pip-installed as a build dependency — no extra step.\n\n**Testing:**\nThe Rust code is tested via **pytest**, not Rust's test framework. maturin builds a Python wheel, and we import the Rust functions as normal Python modules. Test coverage is measured by pytest-cov as usual — the Rust extension shows as a Python module. We don't need Rust-specific coverage tools.\n\nExample test:\n```python\nfrom hypergumbo_native import fast_iter_tree\n# Use exactly like the Python version\nnodes = list(fast_iter_tree(tree.root_node))\n```\n\n**100% coverage:**\nThe Rust code itself isn't measured by pytest-cov (it's compiled). But the Python wrapper function IS measured. Since the Rust code is a single function (iter_tree), coverage is binary: either the function is called (100%) or not (0%). We'd test it the same way we test the current Python iter_tree.\n\n**Alternative (simpler):**\nThe pure-Python TreeCursor approach needs zero CI changes and gives ~5x improvement. It uses tree-sitter's existing cursor API instead of node.children. Might be worth trying first."  # 5d63
