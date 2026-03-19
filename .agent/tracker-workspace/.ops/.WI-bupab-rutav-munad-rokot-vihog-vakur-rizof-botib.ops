@@ -19,3 +19,18 @@
     pr_ref:  # b0a6
     description: "Machine crashed from concurrent analyses exceeding 22GB RAM. Need mechanical prevention: memory limits, bakeoff memory checks, capped parallelism."  # b0a6
     fields: {}  # b0a6
+- op: update  # 5459
+  at: '2026-03-19T17:23:20Z'  # 5459
+  by: agent  # 5459
+  actor: jgstern_agent  # 5459
+  clock: 2  # 5459
+  nonce: '5459'  # 5459
+  set:  # 5459
+    status: done  # 5459
+- op: discuss  # 19ad
+  at: '2026-03-19T17:23:20Z'  # 19ad
+  by: agent  # 19ad
+  actor: jgstern_agent  # 19ad
+  clock: 3  # 19ad
+  nonce: 19ad  # 19ad
+  message: "Duplicate of WI-timoj. Same fix: PRs #2404, #2405, #2406."  # 19ad

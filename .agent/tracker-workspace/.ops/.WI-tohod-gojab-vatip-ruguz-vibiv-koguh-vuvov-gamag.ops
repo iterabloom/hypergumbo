@@ -164,3 +164,31 @@
   clock: 21  # 5d63
   nonce: 5d63  # 5d63
   message: "Re: CI workflows, testing, and coverage.\n\n**CI workflows:**\nYes, rustup would need to be added to all 3 workflows (ci.yml, nightly.yml, release.yml). It's the same 3 lines each time:\n```yaml\n- uses: dtolnay/rust-toolchain@stable\n```\nPlus maturin is already pip-installed as a build dependency — no extra step.\n\n**Testing:**\nThe Rust code is tested via **pytest**, not Rust's test framework. maturin builds a Python wheel, and we import the Rust functions as normal Python modules. Test coverage is measured by pytest-cov as usual — the Rust extension shows as a Python module. We don't need Rust-specific coverage tools.\n\nExample test:\n```python\nfrom hypergumbo_native import fast_iter_tree\n# Use exactly like the Python version\nnodes = list(fast_iter_tree(tree.root_node))\n```\n\n**100% coverage:**\nThe Rust code itself isn't measured by pytest-cov (it's compiled). But the Python wrapper function IS measured. Since the Rust code is a single function (iter_tree), coverage is binary: either the function is called (100%) or not (0%). We'd test it the same way we test the current Python iter_tree.\n\n**Alternative (simpler):**\nThe pure-Python TreeCursor approach needs zero CI changes and gives ~5x improvement. It uses tree-sitter's existing cursor API instead of node.children. Might be worth trying first."  # 5d63
+- op: discuss  # 8003
+  at: '2026-03-19T17:53:33Z'  # 8003
+  by: human  # 8003
+  actor: jgstern  # 8003
+  clock: 22  # 8003
+  nonce: '8003'  # 8003
+  message: "as you may have seen, we attempted TreeCursor but it caused memory problems in CI and so is dead. unless we want to dive into hardcore concurrency memory management troubleshooting.\n\nre testing and rust -- since we are writing Rust code, shouldn't we be also testing the way proper Rust apps test things (of which I know nothing)?"  # 8003
+- op: discuss  # 0d5b
+  at: '2026-03-19T17:57:39Z'  # 0d5b
+  by: agent  # 0d5b
+  actor: jgstern_agent  # 0d5b
+  clock: 23  # 0d5b
+  nonce: 0d5b  # 0d5b
+  message: "Confirmed — TreeCursor is dead for now. Two attempts, both OOM-killed workers at 93-94% of pytest.\n\nRe: Rust testing — yes. A proper PyO3 extension would have two test layers:\n\n1. **Rust-side tests** (`cargo test`): Unit tests written in Rust, run by the Rust toolchain. These test the C/Rust logic in isolation — correct traversal order, edge cases (empty tree, deeply nested), no memory leaks (Rust's ownership model prevents most leaks by construction). Coverage via `cargo tarpaulin` or `cargo llvm-cov`.\n\n2. **Python-side tests** (pytest): Integration tests that import the compiled extension and verify it produces identical results to the Python iter_tree. These are the ones that catch binding issues, reference counting bugs, and GIL interactions.\n\nBoth matter. The Rust tests catch logic bugs cheaply (millisecond runs, no Python overhead). The pytest tests catch the exact problem that killed TreeCursor — concurrency and memory behavior under real workload.\n\nFor CI, we'd add `cargo test` as a job in ci.yml (runs in seconds) alongside the existing pytest. Coverage would be Rust-side via tarpaulin + Python-side via pytest-cov as usual.\n\nThis is real work — shall I proceed with the PyO3 implementation?"  # 0d5b
+- op: discuss  # 9526
+  at: '2026-03-19T18:04:25Z'  # 9526
+  by: human  # 9526
+  actor: jgstern  # 9526
+  clock: 24  # 9526
+  nonce: '9526'  # 9526
+  message: "yes with both kinds of testing and all the CI and packaging baggage as we've discussed."  # 9526
+- op: discuss  # 9d12
+  at: '2026-03-19T18:05:11Z'  # 9d12
+  by: agent  # 9d12
+  actor: jgstern_agent  # 9d12
+  clock: 25  # 9d12
+  nonce: 9d12  # 9d12
+  message: "Acknowledged. Will implement:\n1. packages/hypergumbo-native/ — PyO3 crate with fast_iter_tree\n2. Rust tests (cargo test) for traversal correctness\n3. Python tests (pytest) for binding correctness and parity with Python iter_tree\n4. CI: cargo test job + maturin build\n5. dev-install: pip install the native package\n6. Graceful fallback: if native not installed, use Python iter_tree"  # 9d12
