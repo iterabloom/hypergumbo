@@ -555,6 +555,18 @@ def cmd_cohort(args):
             print("No more repos available in pool!")
             return 1
 
+    dry_run = getattr(args, "dry_run", False)
+
+    if dry_run:
+        print(f"\n[DRY RUN] Would select cohort #{state.cohort_number + 1} ({len(cohort)} repos):")
+        print()
+        for r in cohort:
+            langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+        remaining = len(available) - len(cohort) if not explicit_repos else 0
+        print(f"\nRemaining in pool: {remaining}")
+        return 0
+
     # Update state
     state.cohort_number += 1
     state.iteration = 0
@@ -1450,6 +1462,8 @@ def main():
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
     p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
     p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection and size filter)")
+    p_cohort.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Show what would be selected without saving (safe for scripting loops)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run
