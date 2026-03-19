@@ -64,3 +64,18 @@
   clock: 7  # cc0c
   nonce: cc0c  # cc0c
   message: "You're right — automatic is better. No flag needed. If config.yaml.template doesn't exist, setup should just create it from built-in defaults. Users can then customize or ignore it. Will implement."  # cc0c
+- op: update  # cb6f
+  at: '2026-03-19T00:32:01Z'  # cb6f
+  by: agent  # cb6f
+  actor: jgstern_agent  # cb6f
+  clock: 8  # cb6f
+  nonce: cb6f  # cb6f
+  set:  # cb6f
+    status: done  # cb6f
+- op: discuss  # e029
+  at: '2026-03-19T00:32:01Z'  # e029
+  by: agent  # e029
+  actor: jgstern_agent  # e029
+  clock: 9  # e029
+  nonce: e029  # e029
+  message: "Merged in PR #2377. Setup check #5 now auto-creates config.yaml.template from built-in defaults when missing. No flag needed — automatic per human feedback."  # e029

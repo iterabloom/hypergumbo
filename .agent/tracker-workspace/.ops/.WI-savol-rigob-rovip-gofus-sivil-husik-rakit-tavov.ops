@@ -63,3 +63,10 @@
   clock: 7  # fad8
   nonce: fad8  # fad8
   message: "Done for high-value languages: Go (#2263), Java (#2267), Python (py.py #2247), Ruby (#2268), C# (#2269), Kotlin (#2269). Combined with 65 base-class analyzers, dataflow annotation covers 71 of 114 analyzers including the 6 most-used languages. Remaining 33 override analyzers are config/markup (CSS, Markdown, JSON, TOML, XML, YAML, etc.) or less common languages (Lua, Perl, PHP, Obj-C, etc.) — low value for dataflow annotation."  # fad8
+- op: discuss  # 8f8d
+  at: '2026-03-19T00:30:09Z'  # 8f8d
+  by: human  # 8f8d
+  actor: jgstern  # 8f8d
+  clock: 8  # 8f8d
+  nonce: 8f8d  # 8f8d
+  message: "Please determine precisely which override analyzers remain. Think about each carefully and decide whether you are sure that dataflow annotation for that analyzer would add little value. Or whether your initial belief above was mistaken. Or if you are unsure, then investigate the analyzer's source code more closely."  # 8f8d
