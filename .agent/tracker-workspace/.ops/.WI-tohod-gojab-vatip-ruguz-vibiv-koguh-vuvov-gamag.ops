@@ -78,3 +78,25 @@
   clock: 9  # 1d3d
   nonce: 1d3d  # 1d3d
   message: "ok - please double-check: is the average number of suffixes per symbol truly going to only be 3? what's the most it could conceivably be, how common is that scenario, and what are the implications? if the upshot is \"still trivially fits in memory\", then by all means, implement this right away. and investigate how generalizable it is throughout the hypergumbo codebase."  # 1d3d
+- op: discuss  # 40ff
+  at: '2026-03-19T00:49:45Z'  # 40ff
+  by: agent  # 40ff
+  actor: jgstern_agent  # 40ff
+  clock: 10  # 40ff
+  nonce: 40ff  # 40ff
+  message: "Correction: the suffix index is already hash-based (built lazily on first use). _lookup_suffix is O(1) per call, not O(n). Re-profiling killbill post-optimization:\n\nTop bottleneck: iter_tree at 9.9s (11M function calls) — this is the generic tree-sitter node iterator. For Flink's ~88M calls, this would be ~80s alone. The overhead is Python function call overhead for each node visit.\n\nOptions for Flink improvement:\n1. Cython/C extension for iter_tree (~10x faster, but adds build complexity)\n2. Avoid full tree iteration in extract_edges — only visit nodes of specific types\n3. Use tree-sitter cursor API instead of recursive children walk\n4. Accept 25-30 min for repos with 14K+ files as a known limitation\n\nThe hash-based resolver hypothesis was wrong. The actual bottleneck is tree traversal overhead."  # 40ff
+- op: update  # 2605
+  at: '2026-03-19T00:50:12Z'  # 2605
+  by: agent  # 2605
+  actor: jgstern_agent  # 2605
+  clock: 11  # 2605
+  nonce: '2605'  # 2605
+  set:  # 2605
+    status: needs_human_review  # 2605
+- op: discuss  # cda9
+  at: '2026-03-19T00:50:12Z'  # cda9
+  by: agent  # cda9
+  actor: jgstern_agent  # cda9
+  clock: 12  # cda9
+  nonce: cda9  # cda9
+  message: "Root cause identified: iter_tree's 11M Python function calls (per killbill, ~88M for Flink). Options: (1) tree-sitter cursor API — avoids node.children list allocation, ~5x faster, requires API change; (2) Cython — compiles iter_tree to C, ~10x faster, adds build complexity; (3) accept 25-30 min for 14K+ file repos. Recommend human decision on which approach to pursue."  # cda9

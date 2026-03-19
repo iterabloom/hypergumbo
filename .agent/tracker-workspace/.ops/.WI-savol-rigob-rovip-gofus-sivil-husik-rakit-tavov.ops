@@ -84,3 +84,25 @@
   clock: 10  # bb0d
   nonce: bb0d  # bb0d
   message: "Thorough review complete. 6 override analyzers already have dataflow: Go, Java, C#, Kotlin, Ruby, Python.\n\nRemaining override analyzers without dataflow, by value:\n\n**HIGH VALUE (produce rich call edges, dataflow annotation adds significant value):**\n- **js_ts** — MOST IMPORTANT. Standalone analyzer (not TreeSitterAnalyzer). No dataflow at all. JS/TS is the most-used frontend language.\n- **rust** — Rich analyzer with method resolution. Would benefit from read/write on assignments.\n- **c, cpp** — Function calls, pointer assignments. C has 2.4K orphans in haproxy.\n- **swift** — Method calls, closures.\n- **scala** — Functional + OO, already has complex analyzer.\n- **php** — Web framework method calls (Laravel, Symfony).\n- **lua** — Game engines (Löve2D, Defold). Custom analyzer.\n- **perl** — System scripts. Has call resolution.\n- **dart** — Flutter apps.\n- **elixir, erlang** — OTP patterns, message passing.\n\n**MEDIUM VALUE (some call edges, dataflow adds moderate value):**\n- objc, groovy, bash, powershell, sql, graphql, haskell, ocaml, fsharp, clojure, julia, r_lang, fortran, cuda\n\n**LOW/NO VALUE (config, markup, data — no function call semantics):**\n- css, scss, markdown, rst, latex, json_config, toml_config, xml_config, yaml_ansible, ini, properties, dockerfile, make, cmake, gitignore, requirements, proto, thrift, capnp, smithy, prisma, bibtex, kdl, sparql, and ~20 more extended1 languages\n\nMy initial assessment that config/markup analyzers add little value was correct. But I was wrong to lump all remaining languages as 'lower-priority' — **js_ts is a critical gap** since it's the most common language without dataflow annotation. Rust, C/C++, Swift, Scala, PHP are also high-value.\n\nRecommend implementing js_ts first, then rust, then the rest of the high-value list."  # bb0d
+- op: update  # da9a
+  at: '2026-03-19T00:50:16Z'  # da9a
+  by: human  # da9a
+  actor: jgstern  # da9a
+  clock: 11  # da9a
+  nonce: da9a  # da9a
+  set:  # da9a
+    status: todo_soft  # da9a
+- op: discuss  # 8901
+  at: '2026-03-19T00:50:20Z'  # 8901
+  by: human  # 8901
+  actor: jgstern  # 8901
+  clock: 12  # 8901
+  nonce: '8901'  # 8901
+  message: "I'm a little confused because I thought dataflow was already working for rust. but now I am hearing it is missing from rust? or is it that one aspect of it was already implemented and another aspect is missing?"  # 8901
+- op: discuss  # 7e82
+  at: '2026-03-19T00:51:35Z'  # 7e82
+  by: agent  # 7e82
+  actor: jgstern_agent  # 7e82
+  clock: 13  # 7e82
+  nonce: '7e82'  # 7e82
+  message: "Clarification on Rust: **Rust DOES have Tier 1 dataflow annotation.** It inherits from TreeSitterAnalyzer which auto-applies dataflow in the base class's analyze() method. The rust.yaml config defines patterns for let_declaration (write/read), assignment_expression (write/read), reference_expression (mutate/read for &mut/& borrows), and call/macro invocations. I was wrong to list it as missing — my earlier search only checked for explicit annotate_dataflow() calls, missing the base class's automatic application.\n\nCorrected HIGH VALUE list of analyzers without dataflow:\n- **js_ts** — DONE (PR #2379, this session)\n- **rust** — ALREADY HAS IT (via base class + rust.yaml)\n- **c, cpp** — Override analyzers, NOT TreeSitterAnalyzer subclass → needs explicit call\n- **swift** — TreeSitterAnalyzer → has it if swift.yaml exists (checking...)\n- **scala** — Override → needs explicit call\n- **php** — Override → needs explicit call\n- **lua** — Override → needs explicit call"  # 7e82
