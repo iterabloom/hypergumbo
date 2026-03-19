@@ -186,3 +186,25 @@
   clock: 24  # cb35
   nonce: cb35  # cb35
   message: "Rigorous comparison complete: tested 7 repos (flask-restful, prometheus, django, killbill, ripgrep, harbor, kafka). Result: **sketches are identical with and without edge-type weighting.**\n\nRoot cause: `rank_symbols()` already has `exclude_import_edges=True` which filters out import/imports_module edges entirely. Since calls (weight 1.0) are the dominant remaining edge type, the weighting has no effect on rankings.\n\nThe weighting would matter if we changed to `exclude_import_edges=False` and used weights instead of binary filtering. This is a smoother approach (imports contribute 0.3 instead of 0.0) but the current binary filtering works well.\n\n**Assessment: the change is safe (no regressions) but currently has no observable effect.** It's a correct infrastructure addition that will become valuable when/if we switch from binary import exclusion to weighted inclusion. No user-facing impact to worry about."  # cb35
+- op: discuss  # 51e1
+  at: '2026-03-19T20:53:48Z'  # 51e1
+  by: human  # 51e1
+  actor: jgstern  # 51e1
+  clock: 25  # 51e1
+  nonce: '51e1'  # 51e1
+  message: "\"The weighting would matter if we changed...\" -- then make the change and iterate your experiment accordingly. We want to know whether this code is good or not. If it's good, it's going to replace other code that we know mostly already works. So we should be confident. We need evidence for that. We need a rigorous experimental mindset."  # 51e1
+- op: discuss  # dccd
+  at: '2026-03-19T20:55:01Z'  # dccd
+  by: human  # dccd
+  actor: jgstern  # dccd
+  clock: 26  # dccd
+  nonce: dccd  # dccd
+  message: "It's not going to be another feature flag. The feature flag is for us while we figure out if it's good or not. It's not for the users. We shouldn't make people's lives more complicated than they need to be."  # dccd
+- op: update  # d0aa
+  at: '2026-03-19T20:55:24Z'  # d0aa
+  by: human  # d0aa
+  actor: jgstern  # d0aa
+  clock: 27  # d0aa
+  nonce: d0aa  # d0aa
+  set:  # d0aa
+    priority: 3  # d0aa

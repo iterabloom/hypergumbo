@@ -192,3 +192,25 @@
   clock: 25  # 9d12
   nonce: 9d12  # 9d12
   message: "Acknowledged. Will implement:\n1. packages/hypergumbo-native/ — PyO3 crate with fast_iter_tree\n2. Rust tests (cargo test) for traversal correctness\n3. Python tests (pytest) for binding correctness and parity with Python iter_tree\n4. CI: cargo test job + maturin build\n5. dev-install: pip install the native package\n6. Graceful fallback: if native not installed, use Python iter_tree"  # 9d12
+- op: discuss  # f663
+  at: '2026-03-19T19:32:21Z'  # f663
+  by: agent  # f663
+  actor: jgstern_agent  # f663
+  clock: 26  # f663
+  nonce: f663  # f663
+  message: "Scanned all analyzers for O(n*m) anti-patterns. Findings:\n\n**FIXED:**\n- java.py:1863 — sym_file_imports nested loop (434M iterations on kafka). Fixed in PR #2410.\n\n**SAFE (single-pass, O(n)):**\n- go.py:3239 — builds struct_syms dict, not nested\n- c.py:876,885 — dedup pass, not nested\n- js_ts.py:4359,4439 — index building, not nested\n- php.py:1000 — index building, not nested\n- All `sym.path ==` checks in js_ts.py, php.py, c.py, dockerfile.py — inside dict lookups (O(1)), not full scans\n\n**POTENTIAL ISSUE (per-call-site, not per-file):**\n- py.py:217,2632,2647,2675 — 4 places iterate ALL global_symbols.items() to find a symbol by (path, name). Called per typed method call, not per file. O(calls * symbols) — could be 500M iterations on a large Python monorepo. Fixable with a (path, name) dict.\n\nNo other analyzers have the exact file*symbol nested loop pattern. The py.py issue is the only remaining concern — less severe than the Java one (per-call not per-file) but worth fixing for large Python repos like Django or ansible."  # f663
+- op: discuss  # c469
+  at: '2026-03-19T20:48:31Z'  # c469
+  by: human  # c469
+  actor: jgstern  # c469
+  clock: 27  # c469
+  nonce: c469  # c469
+  message: "py.py issue fixed with PR 2412"  # c469
+- op: update  # 81f3
+  at: '2026-03-19T20:48:39Z'  # 81f3
+  by: human  # 81f3
+  actor: jgstern  # 81f3
+  clock: 28  # 81f3
+  nonce: 81f3  # 81f3
+  set:  # 81f3
+    status: done  # 81f3
