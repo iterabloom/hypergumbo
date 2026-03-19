@@ -1821,3 +1821,57 @@ class TestCallbackArgDetection:
         ]
         assert len(self_cb) == 0
 
+
+class TestStructDesignatedInitFptr:
+    """Tests for struct designated initializer function pointer tracking."""
+
+    def test_creates_edge(self, tmp_path: Path) -> None:
+        """Designated initializer .field = func creates dispatches_to edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "ops.c").write_text(
+            "struct ops { int (*connect)(int); };\n"
+            "int tcp_connect(int fd) { return 0; }\n"
+            "static struct ops tcp_ops = { .connect = tcp_connect };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) >= 1
+        assert any("tcp_connect" in e.dst for e in ptr_edges)
+
+    def test_non_function_value_skipped(self, tmp_path: Path) -> None:
+        """Integer values in designated initializers are skipped."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "config.c").write_text(
+            "struct config { int timeout; };\n"
+            "static struct config defaults = { .timeout = 30 };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 0
+
+    def test_unknown_function_skipped(self, tmp_path: Path) -> None:
+        """Unknown function name creates no edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "ops.c").write_text(
+            "struct ops { int (*connect)(int); };\n"
+            "static struct ops tcp_ops = { .connect = unknown_func };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 0
+
+    def test_multiple_fields(self, tmp_path: Path) -> None:
+        """Multiple fields create multiple edges with field metadata."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "multi.c").write_text(
+            "struct ops { int (*open)(void); int (*close)(void); };\n"
+            "int my_open(void) { return 0; }\n"
+            "int my_close(void) { return 0; }\n"
+            "static struct ops my_ops = { .open = my_open, .close = my_close };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 2
+        names = sorted(e.meta.get("field", "") for e in ptr_edges)
+        assert names == ["close", "open"]
+

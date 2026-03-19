@@ -582,6 +582,55 @@ def _extract_edges(
         if seen_funcs:
             dispatch_tables[array_name] = array_src_id
 
+    # Designated initializer function pointer detection:
+    # Pattern: static struct ops tcp_ops = { .connect = tcp_connect, ... };
+    # Creates edges from the struct variable to each function pointer target.
+    for node in iter_tree(tree.root_node):
+        if node.type != "initializer_pair":
+            continue
+        field_des = None
+        value_ident = None
+        for child in node.children:
+            if child.type == "field_designator":
+                field_des = child
+            elif child.type == "identifier":
+                value_ident = child
+        if field_des is None or value_ident is None:
+            continue
+        func_name = node_text(value_ident, source)
+        lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
+        if not lookup_result.found or lookup_result.symbol is None:
+            continue
+        if lookup_result.symbol.kind != "function":
+            continue  # pragma: no cover — designator values are typically function ptrs
+        parent = node.parent
+        grandparent = parent.parent if parent else None
+        if grandparent is None or grandparent.type != "init_declarator":
+            continue  # pragma: no cover — valid C has parent init_declarator
+        var_name = None
+        for child in grandparent.children:
+            if child.type == "identifier":
+                var_name = node_text(child, source)
+                break
+        if not var_name:
+            continue  # pragma: no cover — init_declarator has identifier
+        var_line = grandparent.start_point[0] + 1
+        var_src_id = make_symbol_id(
+            "c", str(file_path), var_line, var_line, var_name, "variable",
+        )
+        field_name = node_text(field_des, source).lstrip(".")
+        edges.append(Edge.create(
+            src=var_src_id,
+            dst=lookup_result.symbol.id,
+            edge_type="dispatches_to",
+            line=value_ident.start_point[0] + 1,
+            confidence=0.85 * lookup_result.confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="designated_init_fptr",
+            meta={"field": field_name},
+        ))
+
     # Scan function bodies for references to discovered dispatch table
     # variables, creating uses_dispatch_table edges.  This connects
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
