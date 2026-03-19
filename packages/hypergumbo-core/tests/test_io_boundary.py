@@ -381,6 +381,32 @@ class TestTagIoBoundaries:
         assert count == 0
 
 
+    def test_ffi_edge_types_traced(self) -> None:
+        """FFI edge types (wasm_bridge, ipc_calls, etc.) are included in boundary tagging."""
+        catalog = load_catalog("python")
+        # A wasm_bridge edge where the target is a Python I/O function
+        edge = self._make_edge(
+            src="typescript:/app/wasm.ts:1:loadWasm:function",
+            dst="python:/stdlib/os.py:1:os.listdir:function",
+            edge_type="wasm_bridge",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
+    def test_ipc_calls_edge_traced(self) -> None:
+        """ipc_calls edges are traced for I/O boundary tagging."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="rust:/app/main.rs:1:invoke:function",
+            dst="python:/handler.py:1:subprocess.run:function",
+            edge_type="ipc_calls",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "subprocess"
+
+
 class TestComputeBoundaryMap:
     """Tests for the full boundary map computation."""
 

@@ -368,7 +368,13 @@ def tag_io_boundaries(
     edges: list,
     catalogs: dict[str, IoBoundaryCatalog],
     *,
-    call_types: frozenset[str] = frozenset({"calls", "imports"}),
+    call_types: frozenset[str] = frozenset({
+        "calls", "imports",
+        # FFI edges — trace I/O boundaries across language boundaries
+        "wasm_bridge", "wasm_load", "bridge_invokes",
+        "ipc_calls", "ipc_event",
+        "grpc_calls", "implements_rpc",
+    }),
 ) -> int:
     """Tag edges that reach I/O primitives with boundary metadata.
 
@@ -379,7 +385,9 @@ def tag_io_boundaries(
     Args:
         edges: List of Edge objects to scan (mutated in place).
         catalogs: Language → IoBoundaryCatalog mapping.
-        call_types: Edge types to consider (default: calls, imports).
+        call_types: Edge types to consider. Default includes calls,
+            imports, and FFI edge types (wasm_bridge, ipc_calls, etc.)
+            so boundary tracing crosses language boundaries.
 
     Returns:
         Number of edges tagged.
