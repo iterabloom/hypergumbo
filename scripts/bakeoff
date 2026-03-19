@@ -263,6 +263,96 @@ def save_state(state: BakeoffState):
         json.dump(data, f, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Memory safety: prevent OOM/swap thrashing from large analyses
+# ---------------------------------------------------------------------------
+
+MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
+
+# Shared memory profile store with bakeoff-features
+_MEMORY_PROFILE_PATH = os.path.join(
+    os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
+)
+
+
+def _load_memory_profiles() -> dict:
+    try:
+        with open(_MEMORY_PROFILE_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _get_estimated_memory_mb(repo_name: str, repo_size_mb: float) -> int:
+    profiles = _load_memory_profiles()
+    entries = profiles.get(repo_name, [])
+    if entries:
+        max_observed = max(e.get("memory_used_mb", 0) for e in entries)
+        return max(512, int(max_observed * 1.2))
+    return max(512, int(repo_size_mb * 20))
+
+
+def get_memory_snapshot() -> dict:
+    """Return a memory snapshot dict from /proc/meminfo.
+
+    Keys: available_mb, total_mb, free_mb, swap_total_mb, swap_free_mb.
+    Falls back to empty dict on non-Linux or read failure.
+    """
+    snap = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                key, val_kb = parts[0].rstrip(":"), int(parts[1])
+                if key == "MemAvailable":
+                    snap["available_mb"] = val_kb // 1024
+                elif key == "MemTotal":
+                    snap["total_mb"] = val_kb // 1024
+                elif key == "MemFree":
+                    snap["free_mb"] = val_kb // 1024
+                elif key == "SwapTotal":
+                    snap["swap_total_mb"] = val_kb // 1024
+                elif key == "SwapFree":
+                    snap["swap_free_mb"] = val_kb // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return snap
+
+
+def check_memory_before_analysis(
+    repo_name: str,
+    repo_size_mb: float,
+    min_mb: int = MIN_AVAILABLE_MEMORY_MB,
+) -> tuple[str | None, dict]:
+    """Check if enough memory is available to analyze a repo.
+
+    The check is *proportional* to repo size — small repos can run with
+    less free memory than large ones.  No flat floor is enforced beyond
+    the estimated need + 1 GB headroom.
+
+    Returns (skip_reason_or_None, memory_snapshot).  Snapshot is always
+    returned for data collection.
+    """
+    snap = get_memory_snapshot()
+    available_mb = snap.get("available_mb", 999999)
+
+    estimated_need_mb = _get_estimated_memory_mb(repo_name, repo_size_mb)
+    required_mb = estimated_need_mb + 1024  # + 1 GB headroom
+
+    snap["required_mb"] = required_mb
+    snap["estimated_need_mb"] = estimated_need_mb
+    snap["repo_size_mb"] = round(repo_size_mb, 1)
+
+    if available_mb < required_mb:
+        reason = (
+            f"Skipping {repo_name}: {available_mb} MB available, "
+            f"need ~{required_mb} MB (repo {repo_size_mb:.0f} MB + 1 GB headroom). "
+            f"Set BAKEOFF_MIN_MEMORY_MB to override."
+        )
+        return reason, snap
+    return None, snap
+
+
 def run_cmd(cmd: list, cwd: str = None, timeout: int = 600) -> tuple:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
@@ -679,6 +769,21 @@ def cmd_run(args):
                 os.makedirs(repo_out, exist_ok=True)
                 print(f"[{repo_name}]")
                 start_time = time.time()
+
+                # Memory safety check
+                repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+                skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+                # Always log memory snapshot for data collection
+                with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                    json.dump({"pre_analysis": mem_snap, "skipped": skip_reason is not None}, f, indent=2)
+                if skip_reason:
+                    print(f"  ⚠️  {skip_reason}")
+                    with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                        f.write("-2")
+                    elapsed = time.time() - start_time
+                    print(f"  done ({elapsed:.1f}s) [SKIPPED — low memory]")
+                    continue
+
                 commands = [
                     ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
                     ("routes", ["hypergumbo", "routes", "--input", os.path.join(repo_out, "hg.json")]),
@@ -739,6 +844,19 @@ def cmd_run(args):
         print(f"[{repo_name}]")
         start_time = time.time()
 
+        # Memory safety check
+        repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+        skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+        with open(os.path.join(repo_out, "memory.json"), "w") as f:
+            json.dump({"pre_analysis": mem_snap, "skipped": skip_reason is not None}, f, indent=2)
+        if skip_reason:
+            print(f"  ⚠️  {skip_reason}")
+            with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                f.write("-2")
+            elapsed = time.time() - start_time
+            print(f"  done ({elapsed:.1f}s) [SKIPPED — low memory]")
+            continue
+
         # Run hypergumbo commands
         commands = [
             ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
@@ -756,6 +874,12 @@ def cmd_run(args):
             # Allow long analysis times - large repos (5000+ files) may take 15-30 min
             # Use 1 hour as safety limit only for runaway processes
             rc, stdout, stderr = run_cmd(cmd, timeout=3600)
+
+            # Capture post-run memory snapshot (for model building)
+            if cmd_name == "run":
+                mem_snap["post_analysis"] = get_memory_snapshot()
+                with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                    json.dump({"pre_analysis": mem_snap, "post_analysis": mem_snap.get("post_analysis", {}), "skipped": False}, f, indent=2)
 
             # Save outputs
             if stdout:

@@ -626,6 +626,156 @@ def save_state(state: BakeoffFeaturesState):
         json.dump(data, f, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Memory safety: prevent OOM/swap thrashing from large analyses
+# ---------------------------------------------------------------------------
+
+# Minimum available memory (in MB) required before launching an analysis.
+# If available memory is below this, the repo is skipped with a warning.
+# Default 4096 MB (4 GB) — enough headroom for a ~200MB repo analysis
+# plus OS/system overhead on a 22GB machine with 512MB swap.
+MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
+
+# Rolling memory profile store: tracks actual memory usage per repo
+# so estimates improve over time (similar to test timing store).
+_MEMORY_PROFILE_PATH = os.path.join(
+    os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
+)
+_MEMORY_PROFILE_MAX_ENTRIES = 5  # Keep last N observations per repo
+
+
+def _load_memory_profiles() -> dict:
+    """Load the memory profile store (repo_name → list of observations)."""
+    try:
+        with open(_MEMORY_PROFILE_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_memory_profiles(profiles: dict) -> None:
+    """Save the memory profile store."""
+    os.makedirs(os.path.dirname(_MEMORY_PROFILE_PATH), exist_ok=True)
+    with open(_MEMORY_PROFILE_PATH, "w") as f:
+        json.dump(profiles, f, indent=2)
+
+
+def record_memory_observation(
+    repo_name: str,
+    repo_size_mb: float,
+    pre_available_mb: int,
+    post_available_mb: int,
+    duration_s: float = 0.0,
+    file_count: int = 0,
+    dominant_language: str = "",
+) -> None:
+    """Record an observation of memory used by analyzing a repo.
+
+    Stores the delta (pre - post) as an estimate of actual memory consumed,
+    plus repo metadata (size, files, language, duration) for model building.
+    Keeps a rolling buffer of the last N observations per repo.
+    """
+    delta_mb = pre_available_mb - post_available_mb
+    if delta_mb < 0:
+        delta_mb = 0  # Memory was freed by GC/cache during analysis
+
+    profiles = _load_memory_profiles()
+    entries = profiles.setdefault(repo_name, [])
+    entries.append({
+        "repo_size_mb": round(repo_size_mb, 1),
+        "memory_used_mb": delta_mb,
+        "duration_s": round(duration_s, 1),
+        "file_count": file_count,
+        "dominant_language": dominant_language,
+        "timestamp": datetime.datetime.now().isoformat(),
+    })
+    # Keep only last N entries
+    profiles[repo_name] = entries[-_MEMORY_PROFILE_MAX_ENTRIES:]
+    _save_memory_profiles(profiles)
+
+
+def get_estimated_memory_mb(repo_name: str, repo_size_mb: float) -> int:
+    """Estimate memory needed for a repo, using historical data if available.
+
+    If we have prior observations for this repo, use the max observed.
+    Otherwise fall back to the heuristic (repo_size_mb * 20, min 512 MB).
+    """
+    profiles = _load_memory_profiles()
+    entries = profiles.get(repo_name, [])
+    if entries:
+        max_observed = max(e.get("memory_used_mb", 0) for e in entries)
+        # Use max observed + 20% safety margin
+        return max(512, int(max_observed * 1.2))
+    # No history — use heuristic
+    return max(512, int(repo_size_mb * 20))
+
+
+def get_memory_snapshot() -> dict:
+    """Return a memory snapshot dict from /proc/meminfo.
+
+    Keys: available_mb, total_mb, free_mb, swap_total_mb, swap_free_mb.
+    Falls back to empty dict on non-Linux or read failure.
+    """
+    snap = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                key, val_kb = parts[0].rstrip(":"), int(parts[1])
+                if key == "MemAvailable":
+                    snap["available_mb"] = val_kb // 1024
+                elif key == "MemTotal":
+                    snap["total_mb"] = val_kb // 1024
+                elif key == "MemFree":
+                    snap["free_mb"] = val_kb // 1024
+                elif key == "SwapTotal":
+                    snap["swap_total_mb"] = val_kb // 1024
+                elif key == "SwapFree":
+                    snap["swap_free_mb"] = val_kb // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return snap
+
+
+def check_memory_before_analysis(
+    repo_name: str,
+    repo_size_mb: float,
+    min_mb: int = MIN_AVAILABLE_MEMORY_MB,
+) -> tuple[str | None, dict]:
+    """Check if enough memory is available to analyze a repo.
+
+    The check compares available memory against the *estimated need* for
+    this specific repo.  It does NOT enforce a flat floor — a 5 MB repo
+    can run with 1 GB free even though a 200 MB repo cannot.
+
+    Returns (skip_reason_or_None, memory_snapshot).  The snapshot is always
+    returned so callers can log it for data collection (building a model of
+    actual memory usage vs. repo size over time).
+    """
+    snap = get_memory_snapshot()
+    available_mb = snap.get("available_mb", 999999)
+
+    # Use historical data if available, else heuristic
+    estimated_need_mb = get_estimated_memory_mb(repo_name, repo_size_mb)
+
+    # Add a safety margin: need estimated + 1 GB headroom for OS/other processes.
+    # This is the key check — it's repo-proportional, not a flat floor.
+    required_mb = estimated_need_mb + 1024
+
+    snap["required_mb"] = required_mb
+    snap["estimated_need_mb"] = estimated_need_mb
+    snap["repo_size_mb"] = round(repo_size_mb, 1)
+
+    if available_mb < required_mb:
+        reason = (
+            f"Skipping {repo_name}: {available_mb} MB available, "
+            f"need ~{required_mb} MB (repo {repo_size_mb:.0f} MB + 1 GB headroom). "
+            f"Set BAKEOFF_MIN_MEMORY_MB to override."
+        )
+        return reason, snap
+    return None, snap
+
+
 def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
@@ -1429,12 +1579,69 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
 
         hg_json = os.path.join(repo_out, "hg.json")
 
+        # Memory safety: check before launching analysis
+        repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+        skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+        mem_record = {"pre_analysis": mem_snap, "skipped": skip_reason is not None}
+        if skip_reason:
+            print(f"  ⚠️  {skip_reason}")
+            with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                f.write("-2")
+            with open(os.path.join(repo_out, "run.err"), "w") as f:
+                f.write(skip_reason)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+            continue
+
         # 1. Full analysis
         print("  run...", end=" ", flush=True)
         rc, stdout, stderr = run_cmd(
             ["hypergumbo", "run", repo_path, "--out", hg_json],
             timeout=None,  # No timeout — large repos (100MB+) can take hours
         )
+        # Capture post-analysis memory snapshot and duration for model building
+        post_snap = get_memory_snapshot()
+        run_duration_s = time.time() - start_time
+        pre_avail = mem_snap.get("available_mb", 0)
+        post_avail = post_snap.get("available_mb", 0)
+        mem_record["post_analysis"] = post_snap
+        mem_record["run_duration_s"] = round(run_duration_s, 1)
+        mem_record["memory_delta_mb"] = pre_avail - post_avail
+        with open(os.path.join(repo_out, "memory.json"), "w") as f:
+            json.dump(mem_record, f, indent=2)
+
+        # Record to rolling profile store (for future estimates)
+        if rc == 0:
+            _fc = count_files(repo_path) if os.path.isdir(repo_path) else 0
+            _langs = detect_languages(repo_path) if os.path.isdir(repo_path) else []
+
+            # Extract graph stats from output for profile enrichment
+            _graph_nodes = 0
+            _graph_edges = 0
+            _output_size_mb = 0.0
+            if os.path.exists(hg_json):
+                _output_size_mb = os.path.getsize(hg_json) / (1024 * 1024)
+                try:
+                    with open(hg_json) as _f:
+                        _hg = json.load(_f)
+                    _graph_nodes = len(_hg.get("nodes", _hg.get("symbols", [])))
+                    _graph_edges = len(_hg.get("edges", []))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            record_memory_observation(
+                repo_name, repo_size_mb, pre_avail, post_avail,
+                duration_s=run_duration_s,
+                file_count=_fc,
+                dominant_language=_langs[0] if _langs else "",
+            )
+            # Also store graph stats in the memory.json for this run
+            mem_record["graph_nodes"] = _graph_nodes
+            mem_record["graph_edges"] = _graph_edges
+            mem_record["output_size_mb"] = round(_output_size_mb, 1)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+
         with open(os.path.join(repo_out, "run.exit"), "w") as f:
             f.write(str(rc))
         if stderr:
