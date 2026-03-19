@@ -27,3 +27,18 @@
   clock: 2  # 89c4
   nonce: 89c4  # 89c4
   message: "C/C++ orphan rate (haproxy 29%): the orphan functions are primarily called via function pointers in dispatch tables and callback registrations. haproxy uses extensive macro-generated functions and struct-based callback dispatch (e.g., struct protocol has function pointer fields for .connect, .bind, .listen). Resolving these would require: (1) tracking assignments to struct function pointer fields, (2) resolving callback registration patterns. This is significant C analyzer work — not a quick fix."  # 89c4
+- op: update  # 1859
+  at: '2026-03-19T02:06:58Z'  # 1859
+  by: agent  # 1859
+  actor: jgstern_agent  # 1859
+  clock: 3  # 1859
+  nonce: '1859'  # 1859
+  set:  # 1859
+    status: needs_human_review  # 1859
+- op: discuss  # 4816
+  at: '2026-03-19T02:06:58Z'  # 4816
+  by: agent  # 4816
+  actor: jgstern_agent  # 4816
+  clock: 4  # 4816
+  nonce: '4816'  # 4816
+  message: "C function pointer resolution requires tracking struct field assignments (e.g., protocol->connect = my_connect_func) and resolving indirect calls (ptr->connect()). This is a significant C analyzer feature that would benefit haproxy-style callback architectures. Recommend human decision: (A) implement struct-field function pointer tracking, (B) use heuristic matching (function name similarity), (C) accept as known limitation for callback-heavy C code."  # 4816

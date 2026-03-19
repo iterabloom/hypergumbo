@@ -78,3 +78,18 @@
   clock: 9  # d40b
   nonce: d40b  # d40b
   message: "Acknowledged. Keeping open as P4 for explicit FFI integration. The common case works today (FFI linkers create cross-language edges → boundary tagging finds primitives on both sides). Explicit integration would improve edge cases where intermediate C/FFI functions wrap I/O primitives without being directly annotated."  # d40b
+- op: update  # 16b0
+  at: '2026-03-19T02:07:18Z'  # 16b0
+  by: agent  # 16b0
+  actor: jgstern_agent  # 16b0
+  clock: 10  # 16b0
+  nonce: 16b0  # 16b0
+  set:  # 16b0
+    status: needs_human_review  # 16b0
+- op: discuss  # 26d9
+  at: '2026-03-19T02:07:18Z'  # 26d9
+  by: agent  # 26d9
+  actor: jgstern_agent  # 26d9
+  clock: 11  # 26d9
+  nonce: 26d9  # 26d9
+  message: "FFI integration works implicitly for the common case (existing FFI linkers create cross-language edges, boundary tagging traverses them). Explicit FFI integration for edge cases (C wrapper functions hiding I/O) is a genuine enhancement but low-priority. Keeping as needs_human_review per human instruction to keep open until implemented."  # 26d9

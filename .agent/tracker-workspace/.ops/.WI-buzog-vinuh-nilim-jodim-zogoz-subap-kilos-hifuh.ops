@@ -33,3 +33,18 @@
   clock: 3  # d7cd
   nonce: d7cd  # d7cd
   message: "Further analysis: 13,421 Erlang orphan functions in rabbitmq, 78% in non-test files. These are production functions that should have callers resolved. The analyzer creates 53,895 call edges but misses ~10K production functions. The gap is likely in remote call resolution: module:function() patterns where the module name matches but the function name with arity doesn't resolve correctly. Investigation needed: compare the symbol names in the registry with the names used in remote calls to identify the matching failure pattern."  # d7cd
+- op: update  # 4e48
+  at: '2026-03-19T02:06:20Z'  # 4e48
+  by: agent  # 4e48
+  actor: jgstern_agent  # 4e48
+  clock: 4  # 4e48
+  nonce: '4e48'  # 4e48
+  set:  # 4e48
+    status: done  # 4e48
+- op: discuss  # e3eb
+  at: '2026-03-19T02:06:20Z'  # e3eb
+  by: agent  # e3eb
+  actor: jgstern_agent  # e3eb
+  clock: 5  # e3eb
+  nonce: e3eb  # e3eb
+  message: "Fixed in PR #2389. Local function calls now resolve via base_name lookup before falling back to global resolver. Root cause: functions registered as 'a/1' (with arity) but calls use bare 'a'. Tested on rabbitmq: a/1 in rabbit_priority_queue gets 6 edges (was 0). Should significantly reduce the 45% Erlang orphan rate."  # e3eb
