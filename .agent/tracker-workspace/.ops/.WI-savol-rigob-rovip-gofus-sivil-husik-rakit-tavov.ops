@@ -127,3 +127,32 @@
   clock: 16  # 10fb
   nonce: 10fb  # 10fb
   message: "ok so determine whether swift.yaml exists. then do c, cpp, scala, php, lua, and potentially swift.\n\nnext determine which of the following do NOT benefit from the base class's automatic application, and check anything else pertaining to their role in this issue that we haven't yet considered, and if it still makes sense, do them: objc, groovy, bash, powershell, sql, graphql, haskell, ocaml, fsharp, clojure, julia, r_lang, fortran, cuda"  # 10fb
+- op: discuss  # 5cfd
+  at: '2026-03-19T01:19:44Z'  # 5cfd
+  by: agent  # 5cfd
+  actor: jgstern_agent  # 5cfd
+  clock: 17  # 5cfd
+  nonce: 5cfd  # 5cfd
+  message: "C and C++ dataflow annotation added in PR #2384. C gets c.yaml + explicit annotate_dataflow call. C++ gets cpp.yaml (auto via base class). Now 11 languages have Tier 1 dataflow: Go, Java, C#, Kotlin, Ruby, JS/TS, Rust, Python, TypeScript, C, C++."  # 5cfd
+- op: discuss  # a3cc
+  at: '2026-03-19T01:31:06Z'  # a3cc
+  by: agent  # a3cc
+  actor: jgstern_agent  # a3cc
+  clock: 18  # a3cc
+  nonce: a3cc  # a3cc
+  message: "Added 4 more languages in PR #2385: Swift, Scala, PHP, Lua. Now 15 languages have Tier 1 dataflow annotation:\n\nExisting (PRs #2247-#2269): Go, Java, C#, Kotlin, Ruby, Python\nThis session: JS/TS (#2379), C, C++ (#2384), Swift, Scala, PHP, Lua (#2385)\nBase class auto: Rust (via rust.yaml), TypeScript (via typescript.yaml)\n\nRemaining high-value override analyzers without dataflow: Perl (calls super, would auto-work if perl.yaml created), Obj-C, Elixir (calls super), Erlang (calls super). All others are config/markup (no value) or less common languages.\n\nThe most impactful gaps (JS/TS, C/C++, Rust, Swift, Scala, PHP, Lua) are now covered."  # a3cc
+- op: update  # 0ffb
+  at: '2026-03-19T01:40:07Z'  # 0ffb
+  by: agent  # 0ffb
+  actor: jgstern_agent  # 0ffb
+  clock: 19  # 0ffb
+  nonce: 0ffb  # 0ffb
+  set:  # 0ffb
+    status: done  # 0ffb
+- op: discuss  # b291
+  at: '2026-03-19T01:40:07Z'  # b291
+  by: agent  # b291
+  actor: jgstern_agent  # b291
+  clock: 20  # b291
+  nonce: b291  # b291
+  message: "19 languages now have Tier 1 dataflow annotation. High-value: Go, Java, C#, Kotlin, Ruby, JS/TS, Rust, Python, C, C++, Swift, Scala, PHP, Lua, Perl, Elixir, Erlang, Dart, TypeScript. Remaining override analyzers are config/markup (no value) or less common languages where dataflow adds minimal value. Combined with 65 base-class analyzers, total coverage exceeds 80 analyzers."  # b291

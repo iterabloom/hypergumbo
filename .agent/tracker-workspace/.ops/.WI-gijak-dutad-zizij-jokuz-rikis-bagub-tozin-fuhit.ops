@@ -106,3 +106,10 @@
   clock: 13  # 8eae
   nonce: 8eae  # 8eae
   message: "sorry please break it down for the human in plain language. what are we deciding here and what is at stake?"  # 8eae
+- op: discuss  # 2e44
+  at: '2026-03-19T01:20:41Z'  # 2e44
+  by: agent  # 2e44
+  actor: jgstern_agent  # 2e44
+  clock: 14  # 2e44
+  nonce: '2e44'  # 2e44
+  message: "In plain language:\n\n**What we're deciding:** Should we replace 8+ scattered hacks in ranking.py (each dampening a specific symptom like 'utility functions rank too high' or 'derive macros inflate centrality') with a single principled solution (weighted PageRank where edge types like 'calls' count more than 'imports')?\n\n**What's at stake:** The current approach works but is fragile — every time a new false-positive pattern appears, someone adds another dampening heuristic. A unified PageRank solution would handle all cases from a single configuration (edge type → weight), making the system predictable and maintainable. But it would require removing or adjusting those 8+ existing heuristics, which risks breaking repos where the current heuristics work well.\n\n**My recommendation:** Start with weighted PageRank as an optional mode (flag), keep the existing heuristics as default, and compare results on the bakeoff suite. If weighted PageRank produces equal-or-better rankings, switch to it. If not, keep both and let users choose."  # 2e44

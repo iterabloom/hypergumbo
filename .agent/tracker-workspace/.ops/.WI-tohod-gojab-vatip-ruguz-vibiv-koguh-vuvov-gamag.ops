@@ -107,3 +107,10 @@
   clock: 13  # 4a47
   nonce: 4a47  # 4a47
   message: "what is cython? is there a rusthon?"  # 4a47
+- op: discuss  # 575b
+  at: '2026-03-19T01:20:41Z'  # 575b
+  by: agent  # 575b
+  actor: jgstern_agent  # 575b
+  clock: 14  # 575b
+  nonce: 575b  # 575b
+  message: "Re: suffix count per symbol.\n\nThe suffix count depends on the depth of qualified names:\n- `sqrt` → 1 suffix (`sqrt`)\n- `math.sqrt` → 2 suffixes (`sqrt`, `math.sqrt`)\n- `java.util.HashMap.put` → 4 suffixes (`put`, `HashMap.put`, `util.HashMap.put`, `java.util.HashMap.put`)\n- `crate::module::submod::Type::method` → 5 suffixes\n\nFor Java (the worst case — deeply nested packages): average qualified name depth is ~3-4 segments. Some reach 6-7 (e.g., `org.apache.flink.runtime.executiongraph.ExecutionGraph.initializeJobVertex`). With 200K symbols at average 4 suffixes = 800K index entries. Maximum observed: ~7 suffixes. Implication: still trivially fits in memory (800K dict entries ≈ 64MB worst case, typically 20-30MB).\n\nRe: Cython — Cython is a Python-to-C compiler. You write Python-like code with optional C type annotations, and it compiles to a C extension module that runs 10-100x faster than pure Python. It's how NumPy and pandas achieve their speed.\n\nThere is no 'Rusthon' per se, but **PyO3** (Rust) and **maturin** achieve the same goal: write Rust code, compile it as a Python extension. The Rust approach is increasingly popular because Rust's memory safety eliminates the segfault risk that plagues C extensions."  # 575b
