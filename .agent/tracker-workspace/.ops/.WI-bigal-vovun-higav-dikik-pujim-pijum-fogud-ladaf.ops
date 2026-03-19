@@ -20,3 +20,10 @@
     pr_ref:  # edf0
     description: "haproxy bakeoff: 2.4K orphan C/C++ symbols (29% orphan rate). Root cause: function pointer calls (callback patterns, dispatch tables) and macro-expanded function calls are not resolved by the tree-sitter C/C++ analyzer. Common patterns: (1) struct with function pointer fields called via ptr->callback(), (2) macro-generated function definitions (HAProxy uses extensive macro patterns), (3) callback registration (register_handler(name, func_ptr)). Fixing requires: (1) tracking function pointer assignments to struct fields, (2) expanding simple macro patterns to resolve generated names, (3) detecting callback registration patterns. Cross-ref: WI-fukik (investigation)."  # edf0
     fields: {}  # edf0
+- op: discuss  # 89c4
+  at: '2026-03-19T01:43:28Z'  # 89c4
+  by: agent  # 89c4
+  actor: jgstern_agent  # 89c4
+  clock: 2  # 89c4
+  nonce: 89c4  # 89c4
+  message: "C/C++ orphan rate (haproxy 29%): the orphan functions are primarily called via function pointers in dispatch tables and callback registrations. haproxy uses extensive macro-generated functions and struct-based callback dispatch (e.g., struct protocol has function pointer fields for .connect, .bind, .listen). Resolving these would require: (1) tracking assignments to struct function pointer fields, (2) resolving callback registration patterns. This is significant C analyzer work — not a quick fix."  # 89c4

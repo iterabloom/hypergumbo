@@ -71,3 +71,10 @@
   clock: 8  # 475e
   nonce: 475e  # 475e
   message: "ok. we should implement explicit FFI integration at low priority. this item should remain open for however long it takes until we've done that."  # 475e
+- op: discuss  # d40b
+  at: '2026-03-19T01:41:28Z'  # d40b
+  by: agent  # d40b
+  actor: jgstern_agent  # d40b
+  clock: 9  # d40b
+  nonce: d40b  # d40b
+  message: "Acknowledged. Keeping open as P4 for explicit FFI integration. The common case works today (FFI linkers create cross-language edges → boundary tagging finds primitives on both sides). Explicit integration would improve edge cases where intermediate C/FFI functions wrap I/O primitives without being directly annotated."  # d40b
