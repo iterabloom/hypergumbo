@@ -12,40 +12,57 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **React Router v6.4+ loader/action linking**: Route symbols with `loader_ref` or `action_ref` metadata now produce `routes_to` edges (with `role: loader`/`role: action`) to the corresponding function symbols.
-- **Electron contextBridge function exposure**: IPC linker now detects individual function exposures via `contextBridge.exposeInMainWorld('funcName', () => ...)` and traces `window.funcName()` calls through to IPC channels. Also supports custom wrappers like `ipcInvoke('channel')` (e.g., podman-desktop pattern).
-- **React.lazy() route detection**: JSX `<Route>` elements referencing `React.lazy()` or `lazy()` components now include `lazy_import` metadata with the dynamic import path.
-- **Cross-linker integration tests**: Validates that slice BFS traverses edges from 4+ linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single trace through a polyglot graph.
-- **Yjs sub-document and shared type accessors**: `doc.getMap('name')`, `doc.getArray('name')`, `doc.getText('name')`, `doc.getXmlFragment('name')` detected as named channel writes, enabling cross-file linking between shared type access and observers.
-- **BlockSuite document model linker**: Detects BlockSuite API patterns — `store.addBlock()`, `store.deleteBlock()`, `store.transact()`, `defineBlockSchema()` as writes; `store.slots.blockUpdated.subscribe()`, `model.propsUpdated.subscribe()` as reads. Creates `crdt_publishes` edges across BlockSuite's Yjs abstraction layer (used by AFFiNE).
-- **Crypto-flow linker**: Detects WebCrypto API (`crypto.subtle.encrypt/decrypt/deriveKey/importKey`) and Rust crypto crate patterns (`hkdf::Hkdf`, `Aes256Gcm`, `ChaCha20Poly1305`). Creates `crypto_flow` edges between encryption/key-derivation and decryption sites across files, enabling `slice --dataflow` to trace key derivation chains (e.g., PlazaFlow's three-tier HKDF→AES-GCM model).
-- **Message dispatch linker**: Detects typed wire protocol message patterns — JS/TS object literals with `type`/`action` discriminator fields matched against `switch/case` dispatch and equality comparisons; Rust `#[serde(rename)]` enum variants matched against `match` arms. Creates `message_dispatch` edges by message type name (e.g., `'JOIN'`, `'offer'`, `'SDP_OFFER'`).
-- **Annotation convention: `@hg:route` and `@hg:dispatches` matching**: `@hg:route METHOD path` creates route symbols visible in behavior maps. `@hg:dispatches target_name` creates `annotated_dispatches` edges from the annotation site to any symbol matching the target name.
+#### I/O boundary analysis (ADR-0016)
+
+- **Phase 1 — Python I/O tracing pipeline**: YAML catalog of Python stdlib I/O primitives (fs, net, subprocess, env) with O(1) lookup. `tag_io_boundaries()` stamps `io_boundary`/`io_primitive` metadata on matching call edges. `compute_boundary_map()` aggregates by boundary type. `hypergumbo io-boundaries` CLI command with `--json` output.
+- **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
+- **Phase 3 — Security claim verification**: `verify_claims` checks `must_not_exist` and `max_chains` constraints against boundary maps. `hypergumbo verify-claims --claims security-claims.yaml` with `--json` output; exit code 1 on violations.
+- **ADR-0016 design**: Proposal for exhaustive I/O primitive detection, reverse-trace chains, transparency tiers, and security claim verification.
+
+#### Cross-language linkers
+
+- **React Router v6.4+ loader/action linking**: `routes_to` edges (with `role: loader`/`role: action`) from route symbols with `loader_ref`/`action_ref` metadata.
+- **Electron contextBridge exposure**: IPC linker detects `contextBridge.exposeInMainWorld` function exposures and traces `window.funcName()` calls through to IPC channels. Supports custom wrappers like `ipcInvoke('channel')`.
+- **React.lazy() route detection**: `<Route>` elements referencing `React.lazy()` components include `lazy_import` metadata with the dynamic import path.
+- **Yjs sub-document accessors**: `doc.getMap/getArray/getText/getXmlFragment('name')` detected as named channel writes, enabling cross-file shared type linking.
+- **BlockSuite document model linker**: Detects `store.addBlock/deleteBlock/transact`, `defineBlockSchema` (writes) and `store.slots.blockUpdated.subscribe` (reads). Creates `crdt_publishes` edges across BlockSuite's Yjs abstraction layer.
+- **Crypto-flow linker**: `crypto_flow` edges between WebCrypto/Rust crypto encryption and decryption sites. Enables `slice --dataflow` through key derivation chains.
+- **Message dispatch linker**: `message_dispatch` edges between JS/TS object literals with `type`/`action` discriminators and `switch/case` dispatch; Rust `#[serde(rename)]` variants against `match` arms.
+- **gRPC CSI-style linking**: Detects Go structs implementing `XxxServer` interfaces without `UnimplementedXxxServer` embedding. Creates `implements_rpc` edges.
+- **Annotation convention**: `@hg:route METHOD path` creates route symbols; `@hg:dispatches target_name` creates `annotated_dispatches` edges to matching symbols.
+- **Dynamic WASM loading**: `wasm_load` edges from `WebAssembly.instantiate`, bundler URL imports, and Emscripten `loadModule()` to synthetic WASM module symbols.
+
+#### Dataflow (ADR-0015)
+
+- **Tier 1 dataflow for 12 languages**: Automatic `access_mode` annotation on call edges from AST context for JS/TS, C, C++, Swift, Scala, PHP, Lua, Perl, Elixir, Erlang, and Dart.
+
+#### Language analyzers
+
+- **C struct designated initializer function pointers**: Detects function pointers assigned via designated initializers (e.g., `.callback = my_handler`), creating call edges to the referenced functions.
+
+#### Framework patterns
+
+- **Web Audio API**: YAML-driven detection of AudioContext, audio node factories, `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js patterns.
+
+#### Analysis core
+
+- **Edge-type-weighted centrality**: `compute_centrality()` accepts per-type weights for 19 edge types (calls=1.0, imports=0.3, structural=0.1). Prevents widely-imported utilities from outranking architecturally important call targets.
+- **Dataflow annotation line index**: Pre-built line→node index replaces per-edge AST walks in `annotate_dataflow()`. ~47% faster Java analysis on large repos.
+- **Runtime memory pressure guard**: Analysis pipeline monitors RSS and skips analyzers when memory pressure exceeds configurable thresholds, preventing OOM on large repos.
+- **Cross-linker integration tests**: Validates slice BFS traversal across 4+ linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single polyglot graph trace.
 
 #### Tracker
 
-- **Verbose update confirmations**: `tracker update` prints human-readable change details (e.g., `status: todo_hard → done`, `priority: P2 → P1`, `WI-alpha now blocks WI-beta (Beta task)`) instead of bare `updated`. JSON mode includes a structured `changes` array.
-- **Batch command**: `tracker batch <file>` reads a `.htrac` file (or stdin with `-`) with one tracker command per line. Auto-sync deferred to end of batch. Reports per-operation results.
-- **Inverse blocking flags**: `--add-blocked-by` and `--remove-blocked-by` on `tracker update` express fan-in dependencies in one command (e.g., `tracker update INV-x --add-blocked-by WI-a --add-blocked-by WI-b`).
-- **Dependency graph view**: `tracker deps <item>` shows parent, children, items it blocks, and items that block it, with directional arrows in text mode and structured output in JSON mode.
-- **Setup auto-install shims**: `tracker setup` now auto-creates `scripts/tracker` and `scripts/tracker-textconv` wrapper scripts when missing, and fixes permissions on existing non-executable ones.
-- **Setup root .gitattributes**: `tracker setup` manages root `.gitattributes` entries for `linguist-generated`, `merge=union`, and `diff=tracker` on `.ops` files.
-- **Setup root .gitignore**: `tracker setup` manages root `.gitignore` entries for tracker ephemeral files (`.agent/.cache-*.db`, `.agent/.sync-logs/`, `.ci/pytest-output.log`).
-- **Setup managed AGENTS.md block**: `tracker setup` now injects and maintains a fenced `<!-- BEGIN tracker-governance -->` block in AGENTS.md with tool-usage rules (context protection, auto-sync, task selection, batching, commit convention, resolution rationale, unread messages, quick reference). Existing content outside the block is preserved. Creates AGENTS.md if missing. Optional `--with-policy-template` scaffolds a project-owned status policy section.
-- **gRPC CSI-style server interface linking**: gRPC linker now detects Go structs implementing `XxxServer` interfaces (e.g., `IdentityServer`, `ControllerServer`, `NodeServer`) without `UnimplementedXxxServer` embedding. Creates `implements_rpc` edges for CSI and similar external library patterns.
-- **ADR-0016: I/O Boundary Analysis**: Design proposal for exhaustive I/O primitive detection, reverse-trace chain computation, transparency tier classification, and optional security claim verification against the boundary map.
-- **Python I/O primitive catalog** (ADR-0016 Phase 1a): YAML catalog of Python stdlib I/O functions classified by boundary type (fs_read, fs_write, net_send, net_recv, ipc_send, ipc_recv, env_read, subprocess). Includes `load_catalog()`, `match_edge_to_primitive()`, and `IoBoundaryCatalog` with O(1) lookup.
-- **I/O boundary-tagging pass** (ADR-0016 Phase 1b): `tag_io_boundaries()` walks call edges, matches callee names against I/O primitive catalogs, and stamps `io_boundary`/`io_primitive` metadata on matching edges.
-- **Boundary map computation** (ADR-0016 Phase 1c): `compute_boundary_map()` aggregates tagged edges by boundary type, producing a `BoundaryMap` with per-boundary chain counts, entry points, and primitives used. JSON-serializable via `.to_dict()`.
-- **`hypergumbo io-boundaries` CLI command** (ADR-0016 Phase 1c): Displays I/O boundary map for a repository, showing which call edges reach filesystem, network, subprocess, and environment primitives. Supports `--json` output.
-- **I/O primitive catalogs for 6 languages** (ADR-0016 Phase 2): YAML catalogs for Python, Rust (`std::fs`, `std::net`, `std::process`), JavaScript/TypeScript (Node.js `fs`, `net`, `http`, `child_process`), Go (`os`, `net`, `net/http`, `os/exec`), C (`stdio`, `unistd`, `sys/socket`), and Java (`java.io`, `java.nio.file`, `java.net`, `ProcessBuilder`). All cover 6+ boundary types.
-- **Web Audio API framework pattern**: YAML-driven detection of AudioContext creation, audio node factories (`createGain`, `createOscillator`, etc.), `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js-specific patterns (`chain()`, `fan()`, `toDestination()`).
-- **Dynamic WASM loading detection**: The wasm_bindgen linker now detects `WebAssembly.instantiate`, bundler URL imports (`import wasmUrl from 'url:path.wasm'`), and Emscripten `loadModule()` patterns. Creates `wasm_load` edges from JS/TS files to synthetic WASM module symbols.
-- **Dataflow annotation line index**: Pre-built line→node index replaces per-edge AST walks in `annotate_dataflow()`. Reduces Java analysis time by ~47% on large repos (killbill: 30s → 16s). Benefits all 104 tree-sitter analyzers.
-- **Security claim verification** (ADR-0016 Phase 3): `verify_claims` module loads security claims from YAML, checks `must_not_exist` and `max_chains` constraints against I/O boundary maps, and returns confirmed/violated verdicts with evidence counts. `hypergumbo verify-claims --claims security-claims.yaml` CLI command with `--json` output. Returns exit code 1 if any claim is violated.
-- **JS/TS Tier 1 dataflow annotation** (ADR-0015): JavaScript/TypeScript analyzer now applies automatic `access_mode` annotation on call edges from AST context. Previously the most-used language without dataflow support.
-- **Auto-create config.yaml.template**: Tracker setup creates `config.yaml.template` from built-in defaults when missing.
-- **Bakeoff `--dry-run`**: `bakeoff cohort --dry-run` and `bakeoff-features cohort --dry-run` show what would be selected without mutating session state.
+- **Verbose update confirmations**: `tracker update` prints human-readable change details (e.g., `status: todo_hard → done`) instead of bare `updated`. JSON mode includes structured `changes` array.
+- **Batch command**: `tracker batch <file>` reads `.htrac` files (or stdin with `-`) with one command per line. Auto-sync deferred to end of batch.
+- **Inverse blocking flags**: `--add-blocked-by` and `--remove-blocked-by` express fan-in dependencies in one command.
+- **Dependency graph view**: `tracker deps <item>` shows blocking/blocked-by relationships with directional arrows (text) or structured output (JSON).
+- **Setup improvements**: `tracker setup` auto-creates wrapper scripts, manages `.gitattributes`/`.gitignore` entries for `.ops` files, and injects a fenced governance block in AGENTS.md (with optional `--with-policy-template`).
+- **Auto-create config.yaml.template**: Tracker setup creates template from built-in defaults when missing.
+
+#### Developer tooling
+
+- **Bakeoff `--dry-run`**: `bakeoff cohort --dry-run` and `bakeoff-features cohort --dry-run` preview selection without mutating session state.
 
 ### Changed
 
@@ -56,6 +73,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
 - **`rank_files()` centrality consistency**: `rank_files()` now uses the same `compute_centrality()` parameters as `rank_symbols()` (within_file_weight=0.3, max_per_file_in=5, edge_type_weights). Previously it used defaults, making file ranking inconsistent with symbol ranking.
 - **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.
+- **Erlang local call resolution**: Local function calls now resolved via `local_symbols.get()` and `base_name` lookup. Previously, intra-module calls without explicit module qualification were missed.
+
+### Performance
+
+- **Java symbol import resolution**: Replaced O(n*m) `sym_file_imports` loop with indexed lookup, ~10x faster on large repos (e.g., kafka).
+- **Python global symbol resolution**: Replaced O(n) `global_symbols` linear scans with (path, name) index for O(1) lookup.
 
 ## [2.3.0] - 2026-03-16
 
