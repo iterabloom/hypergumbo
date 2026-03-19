@@ -580,7 +580,12 @@ def _check_gitignore(root: Path, repo_root: Path | None = None) -> CheckResult:
 
 
 def _check_config_template(root: Path) -> CheckResult:
-    """Check #5: Warn if config.yaml.template is missing."""
+    """Check #5: Create config.yaml.template from built-in defaults if missing.
+
+    The template is a version-controlled governance file that shows users
+    what configuration options are available. If it doesn't exist, we
+    auto-create it from built-in defaults so users can see and customize it.
+    """
     template = root / "tracker" / "config.yaml.template"
     if template.exists():
         return CheckResult(
@@ -588,14 +593,24 @@ def _check_config_template(root: Path) -> CheckResult:
             status="ok",
             message="config.yaml.template found",
         )
+
+    # Auto-create from built-in defaults
+    tracker_dir = root / "tracker"
+    tracker_dir.mkdir(parents=True, exist_ok=True)
+
+    from hypergumbo_tracker.models import _DEFAULT_CONFIG_RAW
+
+    template.write_text(
+        "# Tracker configuration template (auto-generated from built-in defaults)\n"
+        "# Customize this file and rename to config.yaml to override defaults.\n"
+        "# See docs for available options.\n"
+        + yaml.dump(_DEFAULT_CONFIG_RAW, default_flow_style=False, sort_keys=False)
+    )
+
     return CheckResult(
         name="config_template",
-        status="warn",
-        message="config.yaml.template not found",
-        details=[
-            "This tracked governance file should come from the repo.",
-            "Run 'htrac init' in a repo that has it, or create one manually.",
-        ],
+        status="fixed",
+        message="config.yaml.template created from built-in defaults",
     )
 
 

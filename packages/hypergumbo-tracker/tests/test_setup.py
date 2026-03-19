@@ -452,11 +452,23 @@ class TestCheckConfigTemplate:
         result = _check_config_template(root)
         assert result.status == "ok"
 
-    def test_missing(self, tmp_path: Path) -> None:
+    def test_missing_creates_from_defaults(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
         result = _check_config_template(root)
-        assert result.status == "warn"
-        assert "not found" in result.message
+        assert result.status == "fixed"
+        assert "created" in result.message
+        template = root / "tracker" / "config.yaml.template"
+        assert template.exists()
+        content = template.read_text()
+        assert "kinds" in content
+        assert "statuses" in content
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        result1 = _check_config_template(root)
+        assert result1.status == "fixed"
+        result2 = _check_config_template(root)
+        assert result2.status == "ok"
 
 
 # ---------------------------------------------------------------------------
