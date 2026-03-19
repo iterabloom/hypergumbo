@@ -991,6 +991,7 @@ def rank_symbols(
     raw_centrality = compute_centrality(
         symbols, filtered_edges, hub_threshold=100,
         within_file_weight=0.3, max_per_file_in=5,
+        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
     )
 
     # Apply tier weighting if enabled
