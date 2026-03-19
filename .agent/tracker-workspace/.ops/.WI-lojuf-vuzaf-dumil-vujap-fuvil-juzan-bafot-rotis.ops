@@ -108,3 +108,10 @@
   nonce: b0cb  # b0cb
   set:  # b0cb
     status: todo_soft  # b0cb
+- op: discuss  # 87d0
+  at: '2026-03-19T02:32:37Z'  # 87d0
+  by: agent  # 87d0
+  actor: jgstern_agent  # 87d0
+  clock: 14  # 87d0
+  nonce: 87d0  # 87d0
+  message: "Understood. Keeping as todo_soft P4. Will implement explicit FFI integration when other higher-priority work is complete."  # 87d0

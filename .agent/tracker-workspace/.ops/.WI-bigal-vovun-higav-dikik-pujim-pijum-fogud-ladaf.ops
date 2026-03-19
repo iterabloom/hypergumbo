@@ -49,3 +49,17 @@
   clock: 5  # 5330
   nonce: '5330'  # 5330
   message: "is this the sort of thing that a language server or other high-fidelity analyzer already does? or would doing this be a novel contribution?"  # 5330
+- op: discuss  # 5866
+  at: '2026-03-19T02:32:37Z'  # 5866
+  by: agent  # 5866
+  actor: jgstern_agent  # 5866
+  clock: 6  # 5866
+  nonce: '5866'  # 5866
+  message: "Function pointer resolution in C is well-studied but not commonly implemented in static analyzers at the level we need:\n\n**What language servers do:**\n- **clangd/clang-tidy**: Full type-aware analysis. Resolves function pointers through type inference and dataflow. But requires a compile_commands.json (build system integration). Not practical for repos analyzed without building.\n- **cquery/ccls**: Similar to clangd — build-dependent.\n\n**What static analyzers do:**\n- **Infer (Facebook)**: Resolves function pointers for null-safety and thread-safety checks. Requires build integration.\n- **Cppcheck**: Limited function pointer tracking. Heuristic-based.\n- **tree-sitter based**: No existing tool does function pointer resolution from tree-sitter ASTs alone.\n\n**Would this be novel?** Doing function pointer resolution from tree-sitter (without build system) would be a genuine contribution. The approach would be heuristic: match struct field types to function signatures, track assignments in initialization code. Not as precise as clangd, but useful for the 'good enough' level hypergumbo targets.\n\n**Recommendation:** Start with the heuristic approach (match function pointer assignments by name/signature similarity). This handles the common pattern where callback structs are initialized with named functions (e.g., `.connect = my_connect_func`)."  # 5866
+- op: discuss  # db76
+  at: '2026-03-19T02:50:25Z'  # db76
+  by: human  # db76
+  actor: jgstern  # db76
+  clock: 7  # db76
+  nonce: db76  # db76
+  message: "maybe this is what you already said, or maybe it is different; I'm not sure: what if we implemented just enough of a minimal C interpreter so that the function pointer assignments were genuinely tracked rather than similarity-matched? I know very little about C, but I figure that whatever information it is that we are trying to keep track of is presumably stated explicitly and precisely, or is deducible from explicit and precise expressions, somewhere in the C source code."  # db76

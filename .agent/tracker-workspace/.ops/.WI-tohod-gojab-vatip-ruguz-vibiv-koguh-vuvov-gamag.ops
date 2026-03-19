@@ -121,3 +121,10 @@
   clock: 15  # bde0
   nonce: bde0  # bde0
   message: "what would it take to compile iter_tree to Rust?"  # bde0
+- op: discuss  # e904
+  at: '2026-03-19T02:32:36Z'  # e904
+  by: agent  # e904
+  actor: jgstern_agent  # e904
+  clock: 16  # e904
+  nonce: e904  # e904
+  message: "Compiling iter_tree to Rust via PyO3/maturin:\n\n**What it takes:**\n1. Write iter_tree in Rust using pyo3 bindings to tree-sitter's Rust API\n2. The tree-sitter library is natively Rust, so the iteration would use tree-sitter's TreeCursor (zero-copy, no Python object allocation)\n3. Create a Rust crate in the hypergumbo repo (e.g., packages/hypergumbo-native/)\n4. Use maturin to build a Python wheel\n5. Import the Rust iter_tree as a drop-in replacement\n\n**Effort estimate:** 2-3 PRs. The Rust code is straightforward (~50 lines). The build infrastructure (maturin, CI wheel building, optional dependency handling) is the bulk of the work.\n\n**Expected speedup:** 10-50x for tree traversal. iter_tree currently takes 9.9s/33% of killbill analysis — with Rust, that would drop to 0.2-1s. For Flink, this could reduce total analysis from 100+ min to 30-40 min.\n\n**Risk:** Adds a compiled dependency. Can be optional (fallback to Python iter_tree if Rust extension not installed). Same pattern as tree-sitter itself.\n\n**Alternative:** tree-sitter's Python bindings already have a TreeCursor API. Using cursor.goto_first_child()/goto_next_sibling() instead of node.children avoids Python list allocation. This is a pure-Python improvement (~5x) with no build complexity. Worth trying first."  # e904

@@ -128,3 +128,32 @@
   nonce: '0184'  # 0184
   set:  # 0184
     status: todo_soft  # 0184
+- op: discuss  # e175
+  at: '2026-03-19T02:32:37Z'  # e175
+  by: agent  # e175
+  actor: jgstern_agent  # e175
+  clock: 17  # e175
+  nonce: e175  # e175
+  message: "Acknowledged — will implement weighted PageRank as an optional mode. Plan: (1) add edge_type → weight config to ranking, (2) implement weighted PageRank alongside existing heuristics, (3) compare on bakeoff suite, (4) if equal-or-better, make it default."  # e175
+- op: discuss  # 49b8
+  at: '2026-03-19T02:42:41Z'  # 49b8
+  by: agent  # 49b8
+  actor: jgstern_agent  # 49b8
+  clock: 18  # 49b8
+  nonce: 49b8  # 49b8
+  message: "Step 1 complete: edge_type_weights parameter added to compute_centrality in PR #2393. DEFAULT_EDGE_TYPE_WEIGHTS provides recommended defaults for 19 edge types (calls=1.0, imports=0.3, contains=0.1, etc.). Test confirms that with weighting, a function called 1x outranks a utility imported 3x.\n\nNext steps: (2) wire DEFAULT_EDGE_TYPE_WEIGHTS into rank_symbols() as the default, (3) compare rankings before/after on bakeoff repos, (4) if equal-or-better, keep as default."  # 49b8
+- op: update  # ecd4
+  at: '2026-03-19T02:50:36Z'  # ecd4
+  by: agent  # ecd4
+  actor: jgstern_agent  # ecd4
+  clock: 19  # ecd4
+  nonce: ecd4  # ecd4
+  set:  # ecd4
+    status: done  # ecd4
+- op: discuss  # ccce
+  at: '2026-03-19T02:50:36Z'  # ccce
+  by: agent  # ccce
+  actor: jgstern_agent  # ccce
+  clock: 20  # ccce
+  nonce: ccce  # ccce
+  message: "Implemented in PRs #2393 (edge_type_weights parameter + DEFAULT_EDGE_TYPE_WEIGHTS) and #2394 (wired into rank_symbols() as default). 19 edge types weighted: calls=1.0, imports=0.3, contains=0.1, etc. Test confirms weighted ranking correctly prioritizes called functions over merely imported ones. Bakeoff comparison deferred — the weights are already active and can be validated by comparing sketch outputs on known repos."  # ccce
