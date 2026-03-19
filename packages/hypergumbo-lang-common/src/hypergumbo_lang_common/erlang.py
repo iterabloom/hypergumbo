@@ -464,14 +464,24 @@ def _extract_edges_from_file(
                     atom = find_child_by_type(node, "atom")
                     if atom:
                         func_name = node_text(atom, source)
-                        # ADR-0007: Use import module as path_hint if available
-                        path_hint = None
-                        if import_aliases and func_name in import_aliases:
-                            path_hint = import_aliases[func_name]
-                        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-                        if lookup_result.found and lookup_result.symbol:
-                            callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
+                        # Prefer local symbols (same-file functions by base_name)
+                        callee = local_symbols.get(func_name)
+                        if callee is not None:
+                            confidence = 0.90
+                        else:
+                            # ADR-0007: Use import module as path_hint
+                            path_hint = None
+                            if import_aliases and func_name in import_aliases:
+                                path_hint = import_aliases[func_name]
+                            lookup_result = resolver.lookup(
+                                func_name, path_hint=path_hint,
+                            )
+                            if lookup_result.found and lookup_result.symbol:
+                                callee = lookup_result.symbol
+                                confidence = 0.85 * lookup_result.confidence
+                            else:
+                                callee = None
+                        if callee is not None:
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
