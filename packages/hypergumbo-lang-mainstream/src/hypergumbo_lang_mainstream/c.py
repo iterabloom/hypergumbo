@@ -51,11 +51,15 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("c")
+
+# ADR-0015: Dataflow config for C — loaded once at module level
+_df_config = get_dataflow_config("c")
 
 
 def _remap_edge_ids(
@@ -811,6 +815,9 @@ class CAnalyzer(TreeSitterAnalyzer):
                 analysis.symbol_by_name, global_symbols, run,
                 import_aliases, resolver,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation from AST context
+            if _df_config is not None:
+                annotate_dataflow(edges, tree, source, _df_config)
             all_edges.extend(edges)
 
         # Deduplicate: remove declaration-only symbols when a definition

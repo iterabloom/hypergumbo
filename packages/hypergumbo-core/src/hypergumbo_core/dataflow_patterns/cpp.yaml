@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for C++ (tree-sitter grammar)
+language: cpp
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+  - node_type: init_declarator
+    write: declarator
+    read: value
+
+calls:
+  - node_type: call_expression
+    read: arguments
+
+deletions:
+  - node_type: delete_expression
+    delete: argument
