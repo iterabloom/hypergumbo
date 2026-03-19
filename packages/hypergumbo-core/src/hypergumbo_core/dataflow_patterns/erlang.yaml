@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Erlang (tree-sitter grammar)
+language: erlang
+
+assignments:
+  - node_type: match_expression
+    write: left
+    read: right
+
+calls:
+  - node_type: call
+    read: arguments

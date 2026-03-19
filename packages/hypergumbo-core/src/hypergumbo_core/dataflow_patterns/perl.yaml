@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Perl (tree-sitter grammar)
+language: perl
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+
+calls:
+  - node_type: call_expression
+    read: arguments
+  - node_type: method_call_expression
+    read: arguments

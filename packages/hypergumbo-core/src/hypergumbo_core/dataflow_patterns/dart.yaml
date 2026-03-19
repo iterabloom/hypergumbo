@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Dart (tree-sitter grammar)
+language: dart
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+  - node_type: initialized_variable_definition
+    write: name
+    read: value
+
+calls:
+  - node_type: function_expression_invocation
+    read: arguments
