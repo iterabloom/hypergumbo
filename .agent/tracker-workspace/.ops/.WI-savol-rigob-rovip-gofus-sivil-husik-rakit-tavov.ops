@@ -70,3 +70,17 @@
   clock: 8  # 8f8d
   nonce: 8f8d  # 8f8d
   message: "Please determine precisely which override analyzers remain. Think about each carefully and decide whether you are sure that dataflow annotation for that analyzer would add little value. Or whether your initial belief above was mistaken. Or if you are unsure, then investigate the analyzer's source code more closely."  # 8f8d
+- op: discuss  # 0d58
+  at: '2026-03-19T00:33:57Z'  # 0d58
+  by: agent  # 0d58
+  actor: jgstern_agent  # 0d58
+  clock: 9  # 0d58
+  nonce: 0d58  # 0d58
+  message: "Acknowledged. Will perform a thorough review of all remaining override analyzers, checking each one's source code to determine whether Tier 1 dataflow annotation would add value. Will not make assumptions based on language category alone."  # 0d58
+- op: discuss  # bb0d
+  at: '2026-03-19T00:35:56Z'  # bb0d
+  by: agent  # bb0d
+  actor: jgstern_agent  # bb0d
+  clock: 10  # bb0d
+  nonce: bb0d  # bb0d
+  message: "Thorough review complete. 6 override analyzers already have dataflow: Go, Java, C#, Kotlin, Ruby, Python.\n\nRemaining override analyzers without dataflow, by value:\n\n**HIGH VALUE (produce rich call edges, dataflow annotation adds significant value):**\n- **js_ts** — MOST IMPORTANT. Standalone analyzer (not TreeSitterAnalyzer). No dataflow at all. JS/TS is the most-used frontend language.\n- **rust** — Rich analyzer with method resolution. Would benefit from read/write on assignments.\n- **c, cpp** — Function calls, pointer assignments. C has 2.4K orphans in haproxy.\n- **swift** — Method calls, closures.\n- **scala** — Functional + OO, already has complex analyzer.\n- **php** — Web framework method calls (Laravel, Symfony).\n- **lua** — Game engines (Löve2D, Defold). Custom analyzer.\n- **perl** — System scripts. Has call resolution.\n- **dart** — Flutter apps.\n- **elixir, erlang** — OTP patterns, message passing.\n\n**MEDIUM VALUE (some call edges, dataflow adds moderate value):**\n- objc, groovy, bash, powershell, sql, graphql, haskell, ocaml, fsharp, clojure, julia, r_lang, fortran, cuda\n\n**LOW/NO VALUE (config, markup, data — no function call semantics):**\n- css, scss, markdown, rst, latex, json_config, toml_config, xml_config, yaml_ansible, ini, properties, dockerfile, make, cmake, gitignore, requirements, proto, thrift, capnp, smithy, prisma, bibtex, kdl, sparql, and ~20 more extended1 languages\n\nMy initial assessment that config/markup analyzers add little value was correct. But I was wrong to lump all remaining languages as 'lower-priority' — **js_ts is a critical gap** since it's the most common language without dataflow annotation. Rust, C/C++, Swift, Scala, PHP are also high-value.\n\nRecommend implementing js_ts first, then rust, then the rest of the high-value list."  # bb0d

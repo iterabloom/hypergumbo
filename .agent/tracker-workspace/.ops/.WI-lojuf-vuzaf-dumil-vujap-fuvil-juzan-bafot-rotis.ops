@@ -42,3 +42,17 @@
   clock: 4  # ec9e
   nonce: ec9e  # ec9e
   message: "Merged in PRs #2356 (Rust + JS) and #2357 (Go + C + Java). All 6 language catalogs (Python, Rust, JavaScript/TypeScript, Go, C, Java) cover 6+ boundary types each. FFI integration deferred — existing FFI linkers already create cross-language edges; the boundary map naturally traverses them."  # ec9e
+- op: discuss  # 09f5
+  at: '2026-03-19T00:45:21Z'  # 09f5
+  by: human  # 09f5
+  actor: jgstern  # 09f5
+  clock: 5  # 09f5
+  nonce: 09f5  # 09f5
+  message: "are you saying FFI integration is now pointless?"  # 09f5
+- op: discuss  # 93ea
+  at: '2026-03-19T00:46:31Z'  # 93ea
+  by: agent  # 93ea
+  actor: jgstern_agent  # 93ea
+  clock: 6  # 93ea
+  nonce: 93ea  # 93ea
+  message: "Not pointless, but lower priority than originally expected. The I/O boundary map already traverses FFI edges because the existing linkers (pyffi, cgo, jni, napi, wasm_bindgen) create cross-language call edges, and the boundary tagging pass stamps io_boundary on ANY call edge whose target matches an I/O primitive — regardless of which linker created the edge.\n\nWhat dedicated FFI integration would add: when a Python call crosses into C via pyffi, and the C code calls fopen(), the boundary map would show the chain: python_func → c_func → fopen [fs_read]. Currently, the C-side fopen() is only tagged if the C analyzer produced a call edge to fopen — which it does in most cases.\n\nSo the existing behavior works for the common case. Explicit FFI integration would help for edge cases where the C/FFI target function isn't directly tagged (e.g., a C extension that wraps fopen inside a custom function). That's real but low-frequency."  # 93ea

@@ -62,3 +62,19 @@
   clock: 7  # af36
   nonce: af36  # af36
   message: "Re: prefix tree / hash-based resolver for Flink.\n\nThe current NameResolver uses a dict-based lookup with suffix matching fallback. For killbill (1688 files, 259K lookups), this is fine — 30s total (now 16s with line index fix).\n\nFor Flink (14K files), the bottleneck is likely in suffix matching: when an exact lookup fails, the resolver walks all registered names looking for suffix matches. With ~200K+ registered symbols, each suffix lookup is O(n). If 50% of 2M+ lookups fall through to suffix matching, that's O(n*m) = O(200K * 1M) = catastrophic.\n\nA **trie (prefix tree)** for suffix matching would reduce each lookup from O(n) to O(k) where k is the key length. Estimated improvement: if suffix matching accounts for ~60% of the 100+ minute runtime (60 min), a trie would reduce that to seconds, bringing total from 100+ min to ~40-50 min. Combined with the line index fix (already merged), total could be ~25-30 min.\n\nA **hash-based approach** (pre-computing all suffixes into a dict at registration time) would be even simpler: O(1) lookup. For 200K symbols with avg 3 suffixes each, that's ~600K entries — trivially fits in memory. This would reduce suffix matching to near-zero, bringing Flink total to ~20-25 min.\n\nRecommendation: hash-based suffix index (simplest, biggest win). The implementation would modify NameResolver._register_by_suffix to pre-compute all meaningful suffixes into a dict at registration time."  # af36
+- op: update  # ed39
+  at: '2026-03-19T00:43:47Z'  # ed39
+  by: human  # ed39
+  actor: jgstern  # ed39
+  clock: 8  # ed39
+  nonce: ed39  # ed39
+  set:  # ed39
+    status: todo_soft  # ed39
+    priority: 3  # ed39
+- op: discuss  # 1d3d
+  at: '2026-03-19T00:43:54Z'  # 1d3d
+  by: human  # 1d3d
+  actor: jgstern  # 1d3d
+  clock: 9  # 1d3d
+  nonce: 1d3d  # 1d3d
+  message: "ok - please double-check: is the average number of suffixes per symbol truly going to only be 3? what's the most it could conceivably be, how common is that scenario, and what are the implications? if the upshot is \"still trivially fits in memory\", then by all means, implement this right away. and investigate how generalizable it is throughout the hypergumbo codebase."  # 1d3d
