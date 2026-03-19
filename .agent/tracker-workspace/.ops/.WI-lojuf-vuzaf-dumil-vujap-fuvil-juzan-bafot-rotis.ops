@@ -56,3 +56,18 @@
   clock: 6  # 93ea
   nonce: 93ea  # 93ea
   message: "Not pointless, but lower priority than originally expected. The I/O boundary map already traverses FFI edges because the existing linkers (pyffi, cgo, jni, napi, wasm_bindgen) create cross-language call edges, and the boundary tagging pass stamps io_boundary on ANY call edge whose target matches an I/O primitive — regardless of which linker created the edge.\n\nWhat dedicated FFI integration would add: when a Python call crosses into C via pyffi, and the C code calls fopen(), the boundary map would show the chain: python_func → c_func → fopen [fs_read]. Currently, the C-side fopen() is only tagged if the C analyzer produced a call edge to fopen — which it does in most cases.\n\nSo the existing behavior works for the common case. Explicit FFI integration would help for edge cases where the C/FFI target function isn't directly tagged (e.g., a C extension that wraps fopen inside a custom function). That's real but low-frequency."  # 93ea
+- op: update  # e32b
+  at: '2026-03-19T01:03:17Z'  # e32b
+  by: human  # e32b
+  actor: jgstern  # e32b
+  clock: 7  # e32b
+  nonce: e32b  # e32b
+  set:  # e32b
+    status: todo_soft  # e32b
+- op: discuss  # 475e
+  at: '2026-03-19T01:03:20Z'  # 475e
+  by: human  # 475e
+  actor: jgstern  # 475e
+  clock: 8  # 475e
+  nonce: 475e  # 475e
+  message: "ok. we should implement explicit FFI integration at low priority. this item should remain open for however long it takes until we've done that."  # 475e

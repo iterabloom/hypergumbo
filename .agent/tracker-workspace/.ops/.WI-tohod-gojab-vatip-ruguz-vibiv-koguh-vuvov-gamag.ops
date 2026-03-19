@@ -100,3 +100,10 @@
   clock: 12  # cda9
   nonce: cda9  # cda9
   message: "Root cause identified: iter_tree's 11M Python function calls (per killbill, ~88M for Flink). Options: (1) tree-sitter cursor API — avoids node.children list allocation, ~5x faster, requires API change; (2) Cython — compiles iter_tree to C, ~10x faster, adds build complexity; (3) accept 25-30 min for 14K+ file repos. Recommend human decision on which approach to pursue."  # cda9
+- op: discuss  # 4a47
+  at: '2026-03-19T00:52:42Z'  # 4a47
+  by: human  # 4a47
+  actor: jgstern  # 4a47
+  clock: 13  # 4a47
+  nonce: 4a47  # 4a47
+  message: "what is cython? is there a rusthon?"  # 4a47

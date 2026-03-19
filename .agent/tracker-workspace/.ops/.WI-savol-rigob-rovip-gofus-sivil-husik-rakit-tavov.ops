@@ -106,3 +106,24 @@
   clock: 13  # 7e82
   nonce: '7e82'  # 7e82
   message: "Clarification on Rust: **Rust DOES have Tier 1 dataflow annotation.** It inherits from TreeSitterAnalyzer which auto-applies dataflow in the base class's analyze() method. The rust.yaml config defines patterns for let_declaration (write/read), assignment_expression (write/read), reference_expression (mutate/read for &mut/& borrows), and call/macro invocations. I was wrong to list it as missing — my earlier search only checked for explicit annotate_dataflow() calls, missing the base class's automatic application.\n\nCorrected HIGH VALUE list of analyzers without dataflow:\n- **js_ts** — DONE (PR #2379, this session)\n- **rust** — ALREADY HAS IT (via base class + rust.yaml)\n- **c, cpp** — Override analyzers, NOT TreeSitterAnalyzer subclass → needs explicit call\n- **swift** — TreeSitterAnalyzer → has it if swift.yaml exists (checking...)\n- **scala** — Override → needs explicit call\n- **php** — Override → needs explicit call\n- **lua** — Override → needs explicit call"  # 7e82
+- op: discuss  # 265c
+  at: '2026-03-19T00:53:35Z'  # 265c
+  by: agent  # 265c
+  actor: jgstern_agent  # 265c
+  clock: 14  # 265c
+  nonce: 265c  # 265c
+  message: "Further correction after deeper analysis:\n\nAll analyzers inherit from TreeSitterAnalyzer, but JS/TS overrides analyze() to call its own _analyze_javascript_impl, bypassing the base class's auto-dataflow. So my earlier fix (PR #2379, adding annotate_dataflow inside _analyze_javascript_impl) was correct.\n\nCurrent state of high-value languages:\n- Go, Java, C#, Kotlin, Ruby — have explicit annotate_dataflow calls (PRs #2263-#2269)\n- Python — uses ast-based annotation (separate mechanism)\n- Rust — inherits from base class (does NOT override analyze()), auto-dataflow works\n- JS/TS — overrides analyze(), now has explicit call (PR #2379)\n\nALL 9 dataflow YAML languages now have working Tier 1 annotation.\n\nFor additional languages (C, C++, Swift, Scala, PHP, Lua, etc.): these would need BOTH a new YAML config AND verification that they don't override analyze(). Most of them inherit from TreeSitterAnalyzer without overriding analyze(), so adding a YAML config alone would enable dataflow. Let me check which ones override analyze()."  # 265c
+- op: discuss  # 861f
+  at: '2026-03-19T00:54:16Z'  # 861f
+  by: agent  # 861f
+  actor: jgstern_agent  # 861f
+  clock: 15  # 861f
+  nonce: 861f  # 861f
+  message: "Complete analysis of override vs. base class flow:\n\n**Analyzers that call super().analyze() (base class dataflow auto-works):**\nelixir, erlang, markdown, perl, requirements\n\n**Analyzers that BYPASS base class (need explicit annotate_dataflow if YAML exists):**\nc, cmake, cpp, css, csharp, dockerfile, go, java, json_config, js_ts, kotlin, latex, lua, make, matlab, meson, objc, php, proto, puppet, purescript, r_lang, racket, robot, rst, ruby, scheme, scss, starlark, svelte, thrift, toml_config, vue, xml_config, yaml_ansible\n\n**Analyzers that DON'T override analyze() (all others — base class auto-works if YAML exists):**\n~70 analyzers in common/extended1 packages: ada, agda, apex, asm, bash, dart, fsharp, etc.\n\n**Current coverage (languages with both YAML + working dataflow):**\nGo ✓, Java ✓, C# ✓, Kotlin ✓, Ruby ✓, JS/TS ✓, Rust ✓, Python ✓ (ast-based), TypeScript ✓ (via javascript.yaml + JS analyzer)\n\n**Next highest-value additions (need YAML config creation):**\n1. C/C++ — assignments and function calls\n2. Swift — let/var declarations\n3. Scala — val/var declarations\n4. PHP — assignments\n5. Lua — local declarations\n\nFor these, I need to create language-specific YAML files defining AST node types for assignments, deletions, and calls. The tree-sitter node type names differ per grammar."  # 861f
+- op: discuss  # 10fb
+  at: '2026-03-19T00:57:19Z'  # 10fb
+  by: human  # 10fb
+  actor: jgstern  # 10fb
+  clock: 16  # 10fb
+  nonce: 10fb  # 10fb
+  message: "ok so determine whether swift.yaml exists. then do c, cpp, scala, php, lua, and potentially swift.\n\nnext determine which of the following do NOT benefit from the base class's automatic application, and check anything else pertaining to their role in this issue that we haven't yet considered, and if it still makes sense, do them: objc, groovy, bash, powershell, sql, graphql, haskell, ocaml, fsharp, clojure, julia, r_lang, fortran, cuda"  # 10fb
