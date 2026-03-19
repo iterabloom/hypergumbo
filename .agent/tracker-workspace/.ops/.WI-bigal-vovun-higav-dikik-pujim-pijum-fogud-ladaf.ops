@@ -63,3 +63,25 @@
   clock: 7  # db76
   nonce: db76  # db76
   message: "maybe this is what you already said, or maybe it is different; I'm not sure: what if we implemented just enough of a minimal C interpreter so that the function pointer assignments were genuinely tracked rather than similarity-matched? I know very little about C, but I figure that whatever information it is that we are trying to keep track of is presumably stated explicitly and precisely, or is deducible from explicit and precise expressions, somewhere in the C source code."  # db76
+- op: discuss  # 2999
+  at: '2026-03-19T03:03:58Z'  # 2999
+  by: agent  # 2999
+  actor: jgstern_agent  # 2999
+  clock: 8  # 2999
+  nonce: '2999'  # 2999
+  message: "You're right — the information IS stated explicitly in the source. When you write:\n\n```c\nstruct protocol {\n    int (*connect)(int fd);\n    int (*bind)(int fd, struct sockaddr *);\n};\n\nstatic struct protocol tcp_proto = {\n    .connect = tcp_connect,\n    .bind = tcp_bind,\n};\n```\n\nThe assignment `.connect = tcp_connect` explicitly says 'the connect field of this struct holds a pointer to tcp_connect'. And when code later calls `proto->connect(fd)`, we can trace it to `tcp_connect` by looking up what was assigned to that field.\n\nThis is NOT a full C interpreter — it's **struct field assignment tracking**. The implementation would:\n\n1. **Pass 1**: When parsing struct initializers (`{.field = func_name}`) and assignments (`s->field = func_name`), record the mapping: (struct_type, field_name) → function_symbol\n2. **Pass 2**: When encountering `ptr->field(args)` or `s.field(args)`, look up (struct_type_of_ptr, field_name) to find the target function\n\nThe struct type of `ptr` can often be determined from the declaration (`struct protocol *proto`) without full type inference.\n\nThis is closer to what I originally described as 'tracking function pointer assignments to struct fields' but your framing is better — it's not heuristic matching, it's following the explicit assignments the programmer wrote. The tree-sitter AST gives us designated initializers (`.field = value`) and field expressions (`ptr->field`) directly.\n\nShall I implement this?"  # 2999
+- op: discuss  # 7505
+  at: '2026-03-19T03:13:50Z'  # 7505
+  by: human  # 7505
+  actor: jgstern  # 7505
+  clock: 9  # 7505
+  nonce: '7505'  # 7505
+  message: "yes please"  # 7505
+- op: update  # f5c4
+  at: '2026-03-19T03:14:01Z'  # f5c4
+  by: human  # f5c4
+  actor: jgstern  # f5c4
+  clock: 10  # f5c4
+  nonce: f5c4  # f5c4
+  set:  # f5c4
+    status: todo_soft  # f5c4

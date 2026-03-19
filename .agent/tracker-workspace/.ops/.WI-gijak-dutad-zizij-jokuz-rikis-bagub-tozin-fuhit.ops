@@ -157,3 +157,18 @@
   clock: 20  # ccce
   nonce: ccce  # ccce
   message: "Implemented in PRs #2393 (edge_type_weights parameter + DEFAULT_EDGE_TYPE_WEIGHTS) and #2394 (wired into rank_symbols() as default). 19 edge types weighted: calls=1.0, imports=0.3, contains=0.1, etc. Test confirms weighted ranking correctly prioritizes called functions over merely imported ones. Bakeoff comparison deferred — the weights are already active and can be validated by comparing sketch outputs on known repos."  # ccce
+- op: update  # 29d5
+  at: '2026-03-19T03:15:17Z'  # 29d5
+  by: human  # 29d5
+  actor: jgstern  # 29d5
+  clock: 21  # 29d5
+  nonce: 29d5  # 29d5
+  set:  # 29d5
+    status: todo_soft  # 29d5
+- op: discuss  # d215
+  at: '2026-03-19T03:20:32Z'  # d215
+  by: human  # d215
+  actor: jgstern  # d215
+  clock: 22  # d215
+  nonce: d215  # d215
+  message: "please test what you implemented here rigorously -- either using bakeoffs or using sketch outputs. compare with the flag to without the flag, and be sure to get a diverse sampling. it seems like a pretty consequential change so we ought to be confident it is for the better -- or at least, doesn't make things worse. Our goal is NOT to provide the user with a zillion options; our goal is eliminate options until all that remain are the ones that are genuinely important for the user to be intentional about. The purpose of the flag here is for us, the developers."  # d215

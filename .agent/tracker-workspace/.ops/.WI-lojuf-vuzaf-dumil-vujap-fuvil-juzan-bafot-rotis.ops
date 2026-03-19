@@ -115,3 +115,18 @@
   clock: 14  # 87d0
   nonce: 87d0  # 87d0
   message: "Understood. Keeping as todo_soft P4. Will implement explicit FFI integration when other higher-priority work is complete."  # 87d0
+- op: update  # 51aa
+  at: '2026-03-19T03:01:52Z'  # 51aa
+  by: agent  # 51aa
+  actor: jgstern_agent  # 51aa
+  clock: 15  # 51aa
+  nonce: 51aa  # 51aa
+  set:  # 51aa
+    status: done  # 51aa
+- op: discuss  # 3604
+  at: '2026-03-19T03:01:52Z'  # 3604
+  by: agent  # 3604
+  actor: jgstern_agent  # 3604
+  clock: 16  # 3604
+  nonce: '3604'  # 3604
+  message: "FFI integration merged in PR #2396. tag_io_boundaries() now includes FFI edge types (wasm_bridge, wasm_load, bridge_invokes, ipc_calls, ipc_event, grpc_calls, implements_rpc) in its call_types set. I/O boundaries are traced across language boundaries. Combined with 6 language catalogs (PRs #2348-2357), ADR-0016 Phase 2 is complete."  # 3604
