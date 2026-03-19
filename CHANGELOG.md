@@ -47,8 +47,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Auto-create config.yaml.template**: Tracker setup creates `config.yaml.template` from built-in defaults when missing.
 - **Bakeoff `--dry-run`**: `bakeoff cohort --dry-run` and `bakeoff-features cohort --dry-run` show what would be selected without mutating session state.
 
+### Changed
+
+- **Weighted import inclusion in ranking**: `rank_symbols()` and `rank_files()` now include import edges with reduced weight (imports=0.3, imports_module=0.2) instead of excluding them entirely. This gives Python-style imports a small centrality signal: core types that are widely imported rise in rankings (e.g., kserve's InferRequest rose from #35 to #6) while call edges (weight 1.0) still dominate. Neutral for Go/Java repos (identical rankings). Binary exclusion is still available via `exclude_import_edges=True`.
+
 ### Fixed
 
+- **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
+- **`rank_files()` centrality consistency**: `rank_files()` now uses the same `compute_centrality()` parameters as `rank_symbols()` (within_file_weight=0.3, max_per_file_in=5, edge_type_weights). Previously it used defaults, making file ranking inconsistent with symbol ranking.
 - **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.
 
 ## [2.3.0] - 2026-03-16
