@@ -135,3 +135,25 @@
   clock: 17  # a04d
   nonce: a04d  # a04d
   message: "what kind of extra stuff would we need to add to the CI infrastructure? and to /scripts/dev-install?"  # a04d
+- op: update  # efc7
+  at: '2026-03-19T04:15:41Z'  # efc7
+  by: human  # efc7
+  actor: jgstern  # efc7
+  clock: 18  # efc7
+  nonce: efc7  # efc7
+  set:  # efc7
+    status: todo_soft  # efc7
+- op: discuss  # 90cc
+  at: '2026-03-19T05:58:14Z'  # 90cc
+  by: agent  # 90cc
+  actor: jgstern_agent  # 90cc
+  clock: 19  # 90cc
+  nonce: 90cc  # 90cc
+  message: "CI and dev-install additions for a Rust/PyO3 extension:\n\n**CI (ci.yml):**\n- Add Rust toolchain setup step (rustup, stable channel) — ~30s\n- maturin builds the wheel automatically during pip install\n- No separate build step needed — maturin integrates with pip\n\n**dev-install:**\n- Add `pip install maturin` to dev dependencies\n- Add `pip install -e packages/hypergumbo-native/` (maturin-based editable install)\n- Fallback: if Rust/maturin not available, pure-Python iter_tree is used (existing code)\n\n**pyproject.toml (new package: packages/hypergumbo-native/):**\n```toml\n[build-system]\nrequires = [\"maturin>=1.0\"]\nbuild-backend = \"maturin\"\n\n[project]\nname = \"hypergumbo-native\"\nrequires-python = \">=3.10\"\n```\n\n**Total additions:**\n- 1 new package directory (`packages/hypergumbo-native/`)\n- ~50 lines of Rust code (iter_tree + TreeCursor wrapper)\n- 1 CI step (rustup install)\n- 1 line in dev-install (pip install the native package)\n- Optional dependency — everything works without it, just slower\n\nThe alternative (pure-Python TreeCursor API) needs zero infrastructure changes but gives ~5x instead of ~50x improvement."  # 90cc
+- op: discuss  # 32a5
+  at: '2026-03-19T06:07:37Z'  # 32a5
+  by: human  # 32a5
+  actor: jgstern  # 32a5
+  clock: 20  # 32a5
+  nonce: 32a5  # 32a5
+  message: "But that \"1 CI step\" would need to get implemented for the regular workflow, the release workflow, and the nightly workflow, right? Also, I've never coded in Rust. How does testing work? Is test coverage measured in more-or-less the same way as it is in Python? Does \"100% coverage\" mean roughly the same thing for Rust as it does for Python? (or does maturin come with its own special testing framework? or does it integrate with pytest?)\n\nTake a step back and think about the whole hypergumbo project. Does this idea for a Rust binary component seem like a fruitful direction?"  # 32a5

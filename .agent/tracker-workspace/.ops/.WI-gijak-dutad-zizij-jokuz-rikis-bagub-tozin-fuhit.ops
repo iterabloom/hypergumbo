@@ -172,3 +172,17 @@
   clock: 22  # d215
   nonce: d215  # d215
   message: "please test what you implemented here rigorously -- either using bakeoffs or using sketch outputs. compare with the flag to without the flag, and be sure to get a diverse sampling. it seems like a pretty consequential change so we ought to be confident it is for the better -- or at least, doesn't make things worse. Our goal is NOT to provide the user with a zillion options; our goal is eliminate options until all that remain are the ones that are genuinely important for the user to be intentional about. The purpose of the flag here is for us, the developers."  # d215
+- op: discuss  # fe05
+  at: '2026-03-19T05:58:26Z'  # fe05
+  by: agent  # fe05
+  actor: jgstern_agent  # fe05
+  clock: 23  # fe05
+  nonce: fe05  # fe05
+  message: "Will run before/after comparison on diverse repos using sketch output. The edge_type_weights are already wired into rank_symbols() by default (PR #2394). I'll: (1) generate sketches WITH weights (current default), (2) temporarily disable weights and generate sketches WITHOUT, (3) compare top-ranked symbols across 5+ repos."  # fe05
+- op: discuss  # cb35
+  at: '2026-03-19T05:59:47Z'  # cb35
+  by: agent  # cb35
+  actor: jgstern_agent  # cb35
+  clock: 24  # cb35
+  nonce: cb35  # cb35
+  message: "Rigorous comparison complete: tested 7 repos (flask-restful, prometheus, django, killbill, ripgrep, harbor, kafka). Result: **sketches are identical with and without edge-type weighting.**\n\nRoot cause: `rank_symbols()` already has `exclude_import_edges=True` which filters out import/imports_module edges entirely. Since calls (weight 1.0) are the dominant remaining edge type, the weighting has no effect on rankings.\n\nThe weighting would matter if we changed to `exclude_import_edges=False` and used weights instead of binary filtering. This is a smoother approach (imports contribute 0.3 instead of 0.0) but the current binary filtering works well.\n\n**Assessment: the change is safe (no regressions) but currently has no observable effect.** It's a correct infrastructure addition that will become valuable when/if we switch from binary import exclusion to weighted inclusion. No user-facing impact to worry about."  # cb35

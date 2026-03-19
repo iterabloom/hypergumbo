@@ -85,3 +85,10 @@
   nonce: f5c4  # f5c4
   set:  # f5c4
     status: todo_soft  # f5c4
+- op: discuss  # 93a2
+  at: '2026-03-19T05:58:35Z'  # 93a2
+  by: agent  # 93a2
+  actor: jgstern_agent  # 93a2
+  clock: 11  # 93a2
+  nonce: 93a2  # 93a2
+  message: "Will implement struct field function pointer tracking. Plan: (1) In Pass 1, extract struct initializer assignments (.field = func), (2) In Pass 2, resolve ptr->field() calls through the assignment map."  # 93a2
