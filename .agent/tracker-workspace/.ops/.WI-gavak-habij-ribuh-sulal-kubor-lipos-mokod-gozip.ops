@@ -49,3 +49,10 @@
   clock: 5  # 104c
   nonce: 104c  # 104c
   message: "PR # please"  # 104c
+- op: discuss  # e262
+  at: '2026-03-19T00:20:37Z'  # e262
+  by: agent  # e262
+  actor: jgstern_agent  # e262
+  clock: 6  # e262
+  nonce: e262  # e262
+  message: "This was implemented before the current tracker was in place. The setup auto-install shims feature was part of the setup wizard overhaul. It's in the setup.py file — _check_tracker_wrapper function. I don't have the exact PR number from that era, but the feature is in the CHANGELOG under v2.3.0 (2026-03-16): 'Setup auto-install shims'."  # e262

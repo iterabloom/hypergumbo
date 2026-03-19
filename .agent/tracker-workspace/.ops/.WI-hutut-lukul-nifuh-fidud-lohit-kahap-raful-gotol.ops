@@ -57,3 +57,10 @@
   clock: 6  # 587f
   nonce: 587f  # 587f
   message: "this should just be the behavior. i don't see any benefit to making it a choice. if config.yaml doesn't exist, congratulations user, you get .agent/tracker/config.yaml.template. They can use it or not; we don't care. but without this implemented, they might miss it. I see no benefit in making the user make another decision or understand another CLI flag. correct me if I'm wrong."  # 587f
+- op: discuss  # cc0c
+  at: '2026-03-19T00:20:19Z'  # cc0c
+  by: agent  # cc0c
+  actor: jgstern_agent  # cc0c
+  clock: 7  # cc0c
+  nonce: cc0c  # cc0c
+  message: "You're right — automatic is better. No flag needed. If config.yaml.template doesn't exist, setup should just create it from built-in defaults. Users can then customize or ignore it. Will implement."  # cc0c

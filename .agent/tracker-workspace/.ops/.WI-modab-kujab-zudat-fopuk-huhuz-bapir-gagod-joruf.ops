@@ -63,3 +63,10 @@
   clock: 7  # 3d38
   nonce: 3d38  # 3d38
   message: "PR # please?"  # 3d38
+- op: discuss  # eab5
+  at: '2026-03-19T00:20:37Z'  # eab5
+  by: agent  # eab5
+  actor: jgstern_agent  # eab5
+  clock: 8  # eab5
+  nonce: eab5  # eab5
+  message: "Batch command was merged in the v2.3.0 release cycle. It's in the CHANGELOG under [Unreleased]: 'Batch command: tracker batch <file> reads a .htrac file'. The implementation is in cli.py (_cmd_batch)."  # eab5
