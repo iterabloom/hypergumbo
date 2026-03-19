@@ -153,12 +153,36 @@ class RankedFile:
     rank: int
 
 
+DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
+    "calls": 1.0,
+    "implements_rpc": 1.0,
+    "ipc_calls": 1.0,
+    "ipc_event": 0.9,
+    "wasm_bridge": 0.9,
+    "grpc_calls": 0.9,
+    "routes_to": 0.8,
+    "crdt_publishes": 0.8,
+    "message_dispatch": 0.8,
+    "crypto_flow": 0.8,
+    "renders_component": 0.7,
+    "imports": 0.3,
+    "imports_module": 0.2,
+    "module_exports": 0.1,
+    "contains": 0.1,
+    "extends": 0.5,
+    "implements": 0.5,
+    "depends_on": 0.2,
+    "depends_on_manifest": 0.1,
+}
+
+
 def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
     hub_threshold: int | None = None,
     within_file_weight: float = 1.0,
     max_per_file_in: int | None = None,
+    edge_type_weights: Dict[str, float] | None = None,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -216,6 +240,11 @@ def compute_centrality(
             passes 0.3 to dampen local-variable inflation.
         max_per_file_in: Maximum in-degree contribution from any single
             source file. None disables capping. ``rank_symbols`` passes 5.
+        edge_type_weights: Optional mapping of edge type to weight (0.0-1.0).
+            ``calls`` edges get full weight, ``imports`` edges get reduced
+            weight. Unlisted edge types default to 0.5. Use
+            ``DEFAULT_EDGE_TYPE_WEIGHTS`` for the recommended defaults.
+            None disables edge-type weighting (all types equal).
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
@@ -236,10 +265,16 @@ def compute_centrality(
     for edge in edges:
         target = edge.dst
         if target and target in in_degree:
+            # Base weight from edge type (if edge_type_weights provided)
+            type_weight = 1.0
+            if edge_type_weights is not None:
+                type_weight = edge_type_weights.get(edge.edge_type, 0.5)
+
             if use_file_weighting:
                 src_path = symbol_path.get(edge.src, "")
                 dst_path = symbol_path.get(target, "")
                 weight = within_file_weight if (src_path and src_path == dst_path) else 1.0
+                weight *= type_weight
 
                 # Per-file in-degree capping
                 if max_per_file_in is not None and src_path:
@@ -252,7 +287,7 @@ def compute_centrality(
 
                 in_degree[target] += weight
             else:
-                in_degree[target] += 1
+                in_degree[target] += type_weight
         source = edge.src
         if source and source in out_degree:
             out_degree[source] += 1

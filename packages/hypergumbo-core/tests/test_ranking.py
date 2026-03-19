@@ -156,6 +156,66 @@ class TestComputeCentrality:
 
         assert result[foo.id] == 0.0
 
+    def test_edge_type_weights(self):
+        """Edge type weighting reduces import edge influence."""
+        target = make_symbol("core")
+        caller1 = make_symbol("caller1")
+        caller2 = make_symbol("caller2")
+
+        # One call edge + one import edge to target
+        call_edge = make_edge(caller1.id, target.id, edge_type="calls")
+        import_edge = make_edge(caller2.id, target.id, edge_type="imports")
+
+        # Without weights: both count equally
+        result_equal = compute_centrality(
+            [target, caller1, caller2],
+            [call_edge, import_edge],
+        )
+
+        # With weights: imports count less
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+        result_weighted = compute_centrality(
+            [target, caller1, caller2],
+            [call_edge, import_edge],
+            edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+
+        # Both give target the highest score, but weighted score is lower
+        # because import edge contributes less
+        assert result_equal[target.id] == 1.0
+        assert result_weighted[target.id] == 1.0  # Still normalized to 1.0
+        # The absolute score before normalization is lower with weighting
+
+    def test_edge_type_weights_changes_ranking(self):
+        """Edge type weighting can change relative rankings."""
+        api = make_symbol("api_handler")
+        util = make_symbol("utility")
+        c1 = make_symbol("c1")
+        c2 = make_symbol("c2")
+        c3 = make_symbol("c3")
+
+        # api_handler: called 1 time (calls edge)
+        # utility: imported 3 times (import edges)
+        edges = [
+            make_edge(c1.id, api.id, edge_type="calls"),
+            make_edge(c1.id, util.id, edge_type="imports"),
+            make_edge(c2.id, util.id, edge_type="imports"),
+            make_edge(c3.id, util.id, edge_type="imports"),
+        ]
+
+        # Without weights: utility ranks higher (3 > 1)
+        result_equal = compute_centrality(
+            [api, util, c1, c2, c3], edges,
+        )
+        assert result_equal[util.id] > result_equal[api.id]
+
+        # With weights: imports at 0.3 → utility gets 0.9, api gets 1.0
+        result_weighted = compute_centrality(
+            [api, util, c1, c2, c3], edges,
+            edge_type_weights={"calls": 1.0, "imports": 0.3},
+        )
+        assert result_weighted[api.id] > result_weighted[util.id]
+
 
 class TestBidirectionalCentrality:
     """Tests for bidirectional centrality boost.
