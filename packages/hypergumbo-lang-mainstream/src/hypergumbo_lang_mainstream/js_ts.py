@@ -72,11 +72,15 @@ from hypergumbo_core.analyze.base import (
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("javascript")
+
+# ADR-0015: Dataflow config for JS/TS — loaded once at module level
+_df_config = get_dataflow_config("javascript")
 
 
 def find_js_ts_files(
@@ -4387,6 +4391,9 @@ def _analyze_javascript_impl(
             symbols_by_name,
             module_symbol=file_mod_sym,
         )
+        # ADR-0015 Tier 1: automatic dataflow annotation from AST context
+        if _df_config is not None:
+            annotate_dataflow(edges, pf.tree, pf.source, _df_config)
         all_edges.extend(edges)
 
     # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)
