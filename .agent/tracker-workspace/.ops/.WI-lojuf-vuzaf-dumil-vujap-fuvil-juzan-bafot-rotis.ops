@@ -93,3 +93,18 @@
   clock: 11  # 26d9
   nonce: 26d9  # 26d9
   message: "FFI integration works implicitly for the common case (existing FFI linkers create cross-language edges, boundary tagging traverses them). Explicit FFI integration for edge cases (C wrapper functions hiding I/O) is a genuine enhancement but low-priority. Keeping as needs_human_review per human instruction to keep open until implemented."  # 26d9
+- op: discuss  # f197
+  at: '2026-03-19T02:20:04Z'  # f197
+  by: human  # f197
+  actor: jgstern  # f197
+  clock: 12  # f197
+  nonce: f197  # f197
+  message: "to clarify: this item should remain in a todo_soft state for however long it takes until we've done the contemplated work"  # f197
+- op: update  # b0cb
+  at: '2026-03-19T02:20:13Z'  # b0cb
+  by: human  # b0cb
+  actor: jgstern  # b0cb
+  clock: 13  # b0cb
+  nonce: b0cb  # b0cb
+  set:  # b0cb
+    status: todo_soft  # b0cb

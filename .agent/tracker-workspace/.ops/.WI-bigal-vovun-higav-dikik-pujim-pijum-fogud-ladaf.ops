@@ -42,3 +42,10 @@
   clock: 4  # 4816
   nonce: '4816'  # 4816
   message: "C function pointer resolution requires tracking struct field assignments (e.g., protocol->connect = my_connect_func) and resolving indirect calls (ptr->connect()). This is a significant C analyzer feature that would benefit haproxy-style callback architectures. Recommend human decision: (A) implement struct-field function pointer tracking, (B) use heuristic matching (function name similarity), (C) accept as known limitation for callback-heavy C code."  # 4816
+- op: discuss  # 5330
+  at: '2026-03-19T02:23:28Z'  # 5330
+  by: human  # 5330
+  actor: jgstern  # 5330
+  clock: 5  # 5330
+  nonce: '5330'  # 5330
+  message: "is this the sort of thing that a language server or other high-fidelity analyzer already does? or would doing this be a novel contribution?"  # 5330
