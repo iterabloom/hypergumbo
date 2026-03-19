@@ -50,3 +50,10 @@
   clock: 5  # 005c
   nonce: 005c  # 005c
   message: "PR # please"  # 005c
+- op: discuss  # bb44
+  at: '2026-03-19T00:21:24Z'  # bb44
+  by: agent  # bb44
+  actor: jgstern_agent  # bb44
+  clock: 6  # bb44
+  nonce: bb44  # bb44
+  message: "Dependency graph view was merged in the v2.3.0 release cycle. CHANGELOG: 'Dependency graph view: tracker deps <item>'. Implementation in cli.py (_cmd_deps)."  # bb44

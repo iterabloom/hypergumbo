@@ -48,3 +48,10 @@
   clock: 5  # e713
   nonce: e713  # e713
   message: "please review that lab notebook documentation and use it to create the tracker items needed to address the issues. connect and cross-reference the tracker items as appropriate."  # e713
+- op: discuss  # 6eb4
+  at: '2026-03-19T00:21:34Z'  # 6eb4
+  by: agent  # 6eb4
+  actor: jgstern_agent  # 6eb4
+  clock: 6  # 6eb4
+  nonce: 6eb4  # 6eb4
+  message: "Will create tracker items for the two root causes identified:\n1. Erlang: OTP message-passing and cross-app calls not resolved (18K orphans in rabbitmq)\n2. C/C++: Function pointer calls and macro-expanded code not resolved (2.4K orphans in haproxy)"  # 6eb4

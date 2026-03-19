@@ -50,3 +50,10 @@
   clock: 5  # 2b4b
   nonce: 2b4b  # 2b4b
   message: "PR # please"  # 2b4b
+- op: discuss  # 8af7
+  at: '2026-03-19T00:21:24Z'  # 8af7
+  by: agent  # 8af7
+  actor: jgstern_agent  # 8af7
+  clock: 6  # 8af7
+  nonce: 8af7  # 8af7
+  message: "Inverse blocking flags were merged in the v2.3.0 release cycle. CHANGELOG: 'Inverse blocking flags: --add-blocked-by and --remove-blocked-by on tracker update'. Implementation in cli.py."  # 8af7
