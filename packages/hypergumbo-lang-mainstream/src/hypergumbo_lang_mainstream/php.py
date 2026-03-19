@@ -51,11 +51,15 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("php")
+
+# ADR-0015: Dataflow config for PHP
+_df_config = get_dataflow_config("php")
 
 # Laravel HTTP route methods - used by _extract_laravel_routes
 LARAVEL_HTTP_METHODS = {
@@ -1018,6 +1022,9 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 use_aliases=pf.use_aliases,
                 module_symbol=file_mod_sym,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation
+            if _df_config is not None:
+                annotate_dataflow(edges, pf.tree, pf.source, _df_config)
             all_edges.extend(edges)
 
         # Pass 3: Extract UsageContexts and route symbols for framework pattern matching

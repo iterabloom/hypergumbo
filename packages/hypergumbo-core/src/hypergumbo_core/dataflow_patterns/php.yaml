@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for PHP (tree-sitter grammar)
+language: php
+
+assignments:
+  - node_type: assignment_expression
+    write: left
+    read: right
+  - node_type: augmented_assignment_expression
+    mutate: left
+    read: right
+
+calls:
+  - node_type: function_call_expression
+    read: arguments
+  - node_type: member_call_expression
+    read: arguments
+
+deletions:
+  - node_type: unset_statement
+    delete: argument
