@@ -1856,13 +1856,19 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
 
     # Build per-symbol file imports for extends/implements disambiguation
     # Maps symbol ID -> file-level imports (simple_name -> fqn)
+    #
+    # Uses a path-to-symbol-IDs index for O(n+m) instead of O(n*m).
+    # The old nested loop iterated all 76K symbols for each of 5.6K files
+    # (434M iterations, 400s on kafka).  This version: two linear passes.
     sym_file_imports: dict[str, dict[str, str]] = {}
+    syms_by_path: dict[str, list[str]] = {}
+    for sym in all_symbols:
+        syms_by_path.setdefault(sym.path, []).append(sym.id)
     for pf in parsed_files:
         file_imports = pf.imports or {}
         if file_imports:
-            for sym in all_symbols:
-                if sym.path == str(pf.path):
-                    sym_file_imports[sym.id] = file_imports
+            for sym_id in syms_by_path.get(str(pf.path), []):
+                sym_file_imports[sym_id] = file_imports
 
     # Build global class inheritance map for inherited method resolution.
     # Maps child class name -> parent class name (resolved to symbol name).
