@@ -1630,6 +1630,7 @@ def _extract_edges_from_file(
     resolver: ListNameResolver | None = None,
     module_path: str | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
+    interface_method_sets: dict[str, set[str]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1654,6 +1655,8 @@ def _extract_edges_from_file(
         resolver = ListNameResolver(global_symbols, ambiguity_threshold=3)
     if field_type_registry is None:
         field_type_registry = {}
+    if interface_method_sets is None:
+        interface_method_sets = {}
 
     try:
         source = file_path.read_bytes()
@@ -1868,24 +1871,58 @@ def _extract_edges_from_file(
                         # lowered to 2 because 2-candidate collisions (e.g.
                         # Close(), Error(), String()) cause widespread false
                         # positives that inflate centrality rankings.
+                        #
+                        # Exception: if one of the ambiguous candidates is an
+                        # interface method, prefer it.  The type hierarchy linker
+                        # creates dispatches_to edges from interface methods to
+                        # concrete implementations, so resolving to the interface
+                        # method enables slice traversal through the dispatch.
                         if (
                             callee_name
                             and import_path_hint is None
                             and callee_name in global_symbols
                             and len(global_symbols[callee_name]) >= 2
                         ):
-                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ambiguous_method_call",
-                                confidence=0.50,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
-                            callee_name = None  # Already handled
+                            # Check if any candidate is an interface method
+                            _iface_candidate = None
+                            for _cand in global_symbols[callee_name]:
+                                # Interface method symbols are named
+                                # InterfaceName.MethodName; check if InterfaceName
+                                # is in interface_method_sets.
+                                if "." in _cand.name:
+                                    _iface_name = _cand.name.rsplit(".", 1)[0]
+                                    if _iface_name in interface_method_sets:
+                                        _iface_candidate = _cand
+                                        break
+
+                            if _iface_candidate is not None:
+                                # Resolve to the interface method instead of
+                                # unresolved — dispatches_to edges will route
+                                # the slice to concrete implementations.
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=_iface_candidate.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="interface_dispatch",
+                                    confidence=0.75,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                callee_name = None  # Already handled
+                            else:
+                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="ambiguous_method_call",
+                                    confidence=0.50,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                callee_name = None  # Already handled
 
                         # Go visibility guard: lowercase methods are unexported
                         # (package-private).  When receiver type is unknown and
@@ -3154,6 +3191,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             for fname, ftype in fields.items():
                 field_type_registry[class_name].setdefault(fname, ftype)
 
+    # Aggregate interface_method_sets across all files for the ambiguity
+    # guard's interface-dispatch preference (go.py ambiguity guard).
+    all_interface_method_sets: dict[str, set[str]] = {}
+    for analysis in file_analyses.values():
+        all_interface_method_sets.update(analysis.interface_method_sets)
+
     # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -3169,6 +3212,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             go_file, parser, analysis.symbol_by_name, global_symbols, run,
             analysis.import_aliases, module_path=go_module_path,
             field_type_registry=field_type_registry,
+            interface_method_sets=all_interface_method_sets,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes

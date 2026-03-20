@@ -5521,6 +5521,63 @@ type Any interface{}
         ]
         assert len(iface_methods) == 0
 
+    def test_interface_call_via_range_resolves_to_interface_method(
+        self, tmp_path: Path
+    ) -> None:
+        """Calling a method on a range-loop variable of interface type should
+        resolve to the interface method symbol, not produce an unresolved edge.
+
+        When Plugin.Eval, BlockPlugin.Eval, and AllowPlugin.Eval all exist
+        in global_symbols, iterating over ``[]Plugin`` and calling
+        ``p.Eval()`` triggers the ambiguity guard (go.py:1871) which
+        produces ``go:external:0-0:Eval:unresolved``.  It should instead
+        prefer the interface method ``Plugin.Eval`` because dispatches_to
+        edges will route the slice to concrete implementations.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "dispatch.go").write_text("""package main
+
+type Plugin interface {
+    Eval(input string) string
+}
+
+type BlockPlugin struct{}
+func (b *BlockPlugin) Eval(input string) string { return "blocked" }
+
+type AllowPlugin struct{}
+func (a *AllowPlugin) Eval(input string) string { return input }
+
+func applyPlugins(plugins []Plugin, data string) string {
+    for _, p := range plugins {
+        data = p.Eval(data)
+    }
+    return data
+}
+""")
+
+        result = analyze_go(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        apply_calls = [e for e in call_edges if "applyPlugins" in e.src]
+
+        # Should have a call edge for p.Eval(data)
+        eval_calls = [e for e in apply_calls if "Eval" in e.dst]
+        assert len(eval_calls) >= 1, (
+            f"applyPlugins should have a call edge for p.Eval(), found: {apply_calls}"
+        )
+
+        # The edge should resolve to the interface method Plugin.Eval,
+        # NOT to unresolved
+        for edge in eval_calls:
+            assert "unresolved" not in edge.dst, (
+                f"p.Eval() should resolve to Plugin.Eval interface method, "
+                f"not to unresolved. Got dst={edge.dst}"
+            )
+            assert "Plugin.Eval" in edge.dst, (
+                f"p.Eval() should resolve to Plugin.Eval, got dst={edge.dst}"
+            )
+
     def test_interface_method_symbols_enable_dispatches_to(
         self, tmp_path: Path
     ) -> None:
