@@ -98,3 +98,10 @@
   clock: 12  # 77a1
   nonce: 77a1  # 77a1
   message: "ok let's do that then. presumably it will apply to the 100+ languages as applicable?"  # 77a1
+- op: discuss  # 26af
+  at: '2026-03-20T15:55:01Z'  # 26af
+  by: agent  # 26af
+  actor: jgstern_agent  # 26af
+  clock: 13  # 26af
+  nonce: 26af  # 26af
+  message: "Yes — module-qualified matching in match_edge_to_primitive() is language-agnostic. The catalogs already have module info for all 6 languages with IO catalogs (Python, JS/TS, Go, C, Java, Rust). The fix enforces it during matching so it applies to all current and future catalogs automatically.\n\nFor languages where call edges include import/module path info (Python, JS/TS — already working correctly), this is a no-op. For languages where bare method names are common (Go, Rust, C++), it eliminates false positives. For future languages, as long as the catalog entries have module fields, the matching constraint applies.\n\nWill implement: change match_edge_to_primitive() to check the catalog entry's module against the edge's import path hint or callee's resolved module path. Fall back to name-only matching with reduced confidence when no module info is available on the edge."  # 26af

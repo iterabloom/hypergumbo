@@ -103,3 +103,18 @@
   clock: 13  # c8f0
   nonce: c8f0  # c8f0
   message: "Human approved: make all analyzers emit unresolved-external edges for all calls (like Python already does). Supply-chain tier filtering handles graph density. No IO-catalog-scoped shortcut — do it universally."  # c8f0
+- op: update  # 15d4
+  at: '2026-03-20T17:41:37Z'  # 15d4
+  by: agent  # 15d4
+  actor: jgstern_agent  # 15d4
+  clock: 14  # 15d4
+  nonce: 15d4  # 15d4
+  set:  # 15d4
+    status: done  # 15d4
+- op: discuss  # 5549
+  at: '2026-03-20T17:41:37Z'  # 5549
+  by: agent  # 5549
+  actor: jgstern_agent  # 5549
+  clock: 15  # 5549
+  nonce: '5549'  # 5549
+  message: "Fixed in PR #2439. All 9 analyzers (C, C++, Java, Rust, Kotlin, Scala, Swift, PHP, ObjC) now emit unresolved_external_call edges for stdlib/external calls. Shared make_unresolved_edge() in analyze/base.py ensures DRY. IO boundary analysis now works for C/Java repos."  # 5549
