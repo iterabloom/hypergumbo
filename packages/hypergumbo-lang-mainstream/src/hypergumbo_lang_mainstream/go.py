@@ -2648,7 +2648,7 @@ def _extract_go_routes(
                                             f"MOUNT {mount_prefix}",
                                             "route_mount",
                                         ),
-                                        stable_id=f"go:mount:{mount_prefix}",
+                                        stable_id=make_route_stable_id("MOUNT", mount_prefix),
                                         name=handler_ref,
                                         kind="route_mount",
                                         language="go",

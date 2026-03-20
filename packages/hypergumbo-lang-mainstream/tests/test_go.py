@@ -1683,6 +1683,10 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
         assert mount.meta is not None
         assert mount.meta["mount_prefix"] == "/api/v1"
         assert mount.meta["handler_ref"] == "apiRoutes"
+        # Mount stable_id uses hash-based format (ADR-0014 Phase 0)
+        assert mount.stable_id is not None
+        # make_route_stable_id returns raw hex digest
+        assert len(mount.stable_id) == 64  # SHA-256 hex length
 
     def test_mount_creates_edge_to_handler(self, tmp_path: Path) -> None:
         """Mount creates a calls edge from enclosing function to handler."""
