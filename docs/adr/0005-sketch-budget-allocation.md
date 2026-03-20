@@ -2,7 +2,8 @@
 # 5. Sketch Budget Allocation and Section Composition
 
 Date: 2025-01-15
-Status: Draft
+Updated: 2026-03-19
+Status: Accepted
 
 ## Context
 

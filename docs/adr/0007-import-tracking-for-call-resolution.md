@@ -2,7 +2,8 @@
 # 7. Import Tracking for Cross-File Call Resolution
 
 Date: 2026-01-22
-Status: Proposed
+Updated: 2026-03-19
+Status: Accepted
 
 ## Context
 

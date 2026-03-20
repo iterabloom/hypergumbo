@@ -2,7 +2,8 @@
 # ADR-0014: Generalized Symbol Identity (stable_id / shape_id)
 
 Date: 2026-02-20
-Status: Proposed
+Updated: 2026-03-19
+Status: Accepted. Phases 1-2 (shape_id, untyped stable_id) complete for all TreeSitterAnalyzer languages. Phase 3 (typed stable_id) implemented for 12 analyzers; remaining languages are design targets.
 
 ## Context
 

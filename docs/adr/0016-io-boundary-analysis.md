@@ -2,7 +2,8 @@
 # ADR-0016: I/O Boundary Analysis and Security Claim Verification
 
 Date: 2026-03-18
-Status: Proposed
+Updated: 2026-03-19
+Status: Accepted
 
 ## Context
 
