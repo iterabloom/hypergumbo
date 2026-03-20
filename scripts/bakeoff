@@ -1058,15 +1058,24 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
 
         # --- IO boundary and dataflow diagnostics ---
-        # Count edges with io_boundary and access_mode metadata
+        # IO tag count comes from the io-boundaries artifact (not hg.json
+        # edge metadata) because tag_io_boundaries() produces a boundary
+        # map at query time — it does not persist tags into the serialized
+        # behavior map.
+        io_boundaries_path = os.path.join(out_dir, repo_name, "io-boundaries.txt")
         io_tagged = 0
-        access_mode_tagged = 0
-        for e in edges:
-            meta = e.get("meta") or {}
-            if "io_boundary" in meta:
-                io_tagged += 1
-            if "access_mode" in meta:
-                access_mode_tagged += 1
+        has_io_chains = False
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                io_tagged = io_data.get("total_io_edges", 0)
+                has_io_chains = io_tagged > 0
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        access_mode_tagged = sum(
+            1 for e in edges if (e.get("meta") or {}).get("access_mode")
+        )
 
         metrics["io_tagged_edges"] = io_tagged
         metrics["access_mode_edges"] = access_mode_tagged
@@ -1074,7 +1083,7 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
         metrics["access_mode_rate"] = (access_mode_tagged / len(edges) * 100) if edges else 0.0
 
         # NO_IO_BOUNDARY_TAGS: language has IO catalog, repo has call edges,
-        # but zero edges got io_boundary metadata
+        # but zero IO boundary chains detected
         if (io_tagged == 0
                 and calls_total > 10
                 and dom_lang.lower() in IO_CATALOG_LANGS):
@@ -1082,14 +1091,6 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
 
         # LOW_IO_TAG_RATE: some IO tags exist but fewer than 5% of call edges
         # in repos that look IO-heavy (name heuristic or IO boundary JSON had chains)
-        io_boundaries_path = os.path.join(out_dir, repo_name, "io-boundaries.txt")
-        has_io_chains = False
-        if os.path.exists(io_boundaries_path):
-            try:
-                io_data = json.loads(open(io_boundaries_path).read())
-                has_io_chains = io_data.get("total_io_edges", 0) > 0
-            except (json.JSONDecodeError, OSError):
-                pass
         name_suggests_io = any(
             x in repo_name.lower()
             for x in ["server", "client", "proxy", "db", "redis", "http", "grpc"]

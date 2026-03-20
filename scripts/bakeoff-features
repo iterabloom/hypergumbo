@@ -204,9 +204,10 @@ QUALITY_THRESHOLDS = {
     # IO boundary: 5-60% of call edges tagged is healthy; <1% means the catalog
     # is missing entries, >80% suggests over-matching non-IO functions.
     "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 1, "warn_max": 80},
-    # Dataflow slice should be meaningfully tighter than regular slice (ratio <0.9)
-    # but not degenerate (ratio >0.1). Ratio of 1.0 means --dataflow adds no value.
-    "dataflow_slice_ratio": {"good_min": 0.1, "good_max": 0.9, "warn_min": 0.01, "warn_max": 0.99},
+    # Dataflow slice should be meaningfully tighter than regular slice (ratio <90%)
+    # but not degenerate (ratio >10%). Ratio of 100% means --dataflow adds no value.
+    # Stored as 0-1 ratio but assessed as percentage (multiplied by 100 in metric_assessments).
+    "dataflow_slice_ratio": {"good_min": 10, "good_max": 90, "warn_min": 1, "warn_max": 99},
     # Access mode annotations on 10-80% of edges is healthy. <2% means dataflow
     # YAML is missing patterns; >95% suggests annotation is too aggressive.
     "access_mode_coverage": {"good_min": 10, "good_max": 80, "warn_min": 2, "warn_max": 95},
@@ -1550,7 +1551,7 @@ def cmd_run(args):
             print(f"Cohort #{cohort_num} ({len(repos)} repos), iteration #{state.iteration}")
             print(f"Output: {iter_dir}")
             print(f"{'='*60}")
-            rc = _run_cohort_repos(repos, pool_path, iter_dir)
+            rc = _run_cohort_repos(repos, pool_path, iter_dir, workdir=workdir)
             ran_count += 1
             if rc != 0:
                 overall_rc = rc
@@ -1583,10 +1584,10 @@ def cmd_run(args):
         print(f"Code hash: {current_hash}")
     print()
 
-    return _run_cohort_repos(state.current_cohort, pool_path, out_dir)
+    return _run_cohort_repos(state.current_cohort, pool_path, out_dir, workdir=workdir)
 
 
-def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
+def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = "") -> int:
     """Run the full feature battery on a list of repos.
 
     This is the inner loop shared by single-cohort ``run`` and batch ``run --all``.
@@ -2088,19 +2089,17 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         metrics.entrypoints_in_tests = test_entrypoints
         metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
 
-        # IO boundary metrics — count edges with io_boundary/access_mode metadata
+        # IO boundary and dataflow metrics
         calls_total = sum(1 for e in edges if e.get("type") == "calls")
-        io_tagged = 0
-        access_mode_tagged = 0
-        for e in edges:
-            meta = e.get("meta") or {}
-            if "io_boundary" in meta:
-                io_tagged += 1
-            if "access_mode" in meta:
-                access_mode_tagged += 1
-        metrics.io_tag_rate = (io_tagged / calls_total * 100) if calls_total > 0 else 0.0
+        access_mode_tagged = sum(
+            1 for e in edges if (e.get("meta") or {}).get("access_mode")
+        )
         metrics.access_mode_coverage = (access_mode_tagged / len(edges) * 100) if edges else 0.0
 
+        # io_tag_rate: computed from io-boundaries artifact (total_io_edges)
+        # rather than hg.json edge metadata, because tag_io_boundaries()
+        # produces a separate boundary map at query time — it does not
+        # persist io_boundary metadata into the serialized behavior map.
         # Count distinct IO boundary types from io-boundaries output
         io_boundaries_path = os.path.join(repo_out, "io-boundaries.txt")
         if os.path.exists(io_boundaries_path):
@@ -2111,8 +2110,11 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                     1 for b in boundaries.values()
                     if b.get("chain_count", 0) > 0
                 )
-                # Cross-language IO: count chains with linker edges
+                # io_tag_rate from artifact total
                 total_io_chains = io_data.get("total_io_edges", 0)
+                if calls_total > 0:
+                    metrics.io_tag_rate = total_io_chains / calls_total * 100
+                # Cross-language IO: count chains with linker edges
                 _LINKER_EDGE_TYPES = {
                     "wasm_bridge", "wasm_load", "bridge_invokes",
                     "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
