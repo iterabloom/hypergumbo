@@ -70,6 +70,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - **Weighted import inclusion in ranking**: `rank_symbols()` and `rank_files()` now include import edges with reduced weight (imports=0.3, imports_module=0.2) instead of excluding them entirely. This gives Python-style imports a small centrality signal: core types that are widely imported rise in rankings (e.g., kserve's InferRequest rose from #35 to #6) while call edges (weight 1.0) still dominate. Neutral for Go/Java repos (identical rankings). Binary exclusion is still available via `exclude_import_edges=True`.
+- **Vendored directory tier classification**: `third-party/`, `thirdparty/`, `external/`, and `deps/` directories now classified as tier 3 (external_dep). Previously only `third_party/` (underscore) was recognized, causing vendored code like `third-party/gtest-1.8.1/` in rocksdb to pollute tier 1 with 1823+ false first-party nodes.
 
 ### Fixed
 
