@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -1443,6 +1444,13 @@ def _extract_edges_from_file(
                                         confidence=confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                    ))
+                                elif callee_name not in _RUST_GENERIC_TRAIT_METHODS:
+                                    # Use scoped name as callee for richer context
+                                    unresolved_name = full_scoped_name or callee_name
+                                    edges.append(make_unresolved_edge(
+                                        "rust", current_function.id, unresolved_name,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
                                     ))
 
         # Detect calls inside macro bodies (tokio::select!, assert!, etc.).

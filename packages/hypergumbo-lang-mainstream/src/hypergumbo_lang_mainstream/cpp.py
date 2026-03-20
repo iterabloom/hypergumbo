@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id as _base_make_file_id,
     make_symbol_id as _base_make_symbol_id,
+    make_unresolved_edge,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -899,6 +900,11 @@ def _extract_edges_from_tree(
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                            ))
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "cpp", current_function.id, short_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
                             ))
 
                     # Callback argument detection: bare identifiers in the

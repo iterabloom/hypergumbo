@@ -4224,3 +4224,58 @@ class TestJavaShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestJavaUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges (stdlib calls like InputStream.read)."""
+
+    def test_stdlib_method_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to stdlib methods emit unresolved edges."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "IO.java").write_text("""
+public class IO {
+    public void readFile(String path) throws Exception {
+        java.io.FileInputStream fis = new java.io.FileInputStream(path);
+        fis.read();
+        fis.close();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        # fis.read() and fis.close() should appear as unresolved
+        assert "fis.read" in callee_names or "read" in callee_names
+        for e in unresolved:
+            assert e.confidence == 0.50
+
+    def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
+        """When callee IS in project, no unresolved edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void helper() {}
+    public void run() { helper(); }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "helper" in e.dst
+        ]
+        assert any(e.evidence_type == "ast_call_direct" for e in call_edges)
+        # helper() should NOT produce an unresolved edge
+        unresolved_helper = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+        ]
+        assert len(unresolved_helper) == 0

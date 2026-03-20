@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
 )
@@ -460,6 +461,11 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "c", current_function.id, callee_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                        ))
 
                 # Callback argument detection: bare identifiers in the
                 # argument list that resolve to known functions are likely

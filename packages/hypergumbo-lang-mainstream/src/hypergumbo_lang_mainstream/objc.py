@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -545,6 +546,11 @@ def _extract_edges_from_file(
                             confidence=0.75 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                        ))
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "objc", current_method.id, selector,
+                            line, PASS_ID, run.execution_id,
                         ))
 
     return edges

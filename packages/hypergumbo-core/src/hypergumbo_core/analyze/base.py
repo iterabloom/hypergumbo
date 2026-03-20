@@ -274,6 +274,44 @@ def make_file_id(lang: str, path: str) -> str:
     return f"{lang}:{path}:1-1:file:file"
 
 
+def make_unresolved_edge(
+    lang: str,
+    src_id: str,
+    callee_name: str,
+    line: int,
+    pass_id: str,
+    run_id: str,
+    *,
+    module_hint: str = "external",
+) -> Edge:
+    """Create an unresolved-external call edge for a callee not in the project.
+
+    All language analyzers use this when a function/method call cannot be
+    resolved to a project symbol.  The resulting edge has confidence 0.50
+    and a standardized dst ID format:  {lang}:{module_hint}:0-0:{name}:unresolved
+
+    Args:
+        lang: Language identifier (e.g., "c", "java", "rust")
+        src_id: Symbol ID of the caller
+        callee_name: Name of the called function/method
+        line: Source line number of the call
+        pass_id: Analyzer pass ID
+        run_id: Execution run ID
+        module_hint: Module/package context when known (default "external")
+    """
+    dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
+    return Edge.create(
+        src=src_id,
+        dst=dst_id,
+        edge_type="calls",
+        line=line,
+        confidence=0.50,
+        origin=pass_id,
+        origin_run_id=run_id,
+        evidence_type="unresolved_external_call",
+    )
+
+
 def make_route_stable_id(method: str, path: str) -> str:
     """Compute a collision-free stable_id for route symbols.
 

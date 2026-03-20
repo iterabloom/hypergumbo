@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -775,6 +776,12 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "php", current_function.id, callee_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=path_hint or "external",
+                        ))
 
         # Method calls: $this->method() or $obj->method()
         elif node.type == "member_call_expression":
@@ -823,6 +830,11 @@ def _extract_edges(
                                 evidence_type="ast_method_inferred",
                             )
                             edges.append(edge)
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "php", current_function.id, method_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            ))
 
         # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":

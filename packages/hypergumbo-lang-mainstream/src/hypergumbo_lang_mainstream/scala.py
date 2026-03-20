@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -677,6 +678,12 @@ def _extract_edges_from_file(
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                            ))
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "scala", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                                module_hint=path_hint or "external",
                             ))
 
         # Scala eta-expansion: ``transform _`` produces a postfix_expression

@@ -79,6 +79,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text as _node_text,
     visibility_from_modifiers,
 )
@@ -1506,7 +1507,24 @@ def _extract_edges(
                                     evidence_type="ast_call_direct",
                                 )
                                 edges.append(edge)
+                                edge_added = True
                                 break
+
+                    # Emit unresolved external edge when no resolution strategy succeeded
+                    if not edge_added:
+                        # Use qualified name when receiver is known
+                        unresolved_name = (
+                            f"{receiver_name}.{method_name}"
+                            if receiver_name and receiver_name != "this"
+                            else method_name
+                        )
+                        # Use import path as module hint when available
+                        module = imports.get(receiver_name, "external") if receiver_name else "external"
+                        edges.append(make_unresolved_edge(
+                            "java", current_method.id, unresolved_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=module,
+                        ))
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":

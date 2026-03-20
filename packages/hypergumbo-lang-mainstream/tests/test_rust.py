@@ -1629,9 +1629,15 @@ class TestRustMethodCallAmbiguity:
             method_resolver=method_resolver,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        # With 20 candidates and ambiguity_threshold=3, no edge should be created
-        assert len(call_edges) == 0
+        resolved_edges = [
+            e for e in edges
+            if e.edge_type == "calls" and e.evidence_type != "unresolved_external_call"
+        ]
+        # With 20 candidates and ambiguity_threshold=3, no resolved edge
+        assert len(resolved_edges) == 0
+        # But an unresolved external edge is emitted
+        unresolved = [e for e in edges if e.evidence_type == "unresolved_external_call"]
+        assert len(unresolved) == 1
 
     def test_method_call_prefers_same_module(self, tmp_path: Path) -> None:
         """Method call prefers candidate from the same module path.
@@ -2077,9 +2083,18 @@ class TestRustScopedIdentifierResolution:
             source, {"main": caller}, {},
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        # No symbols registered, so no edges should be produced
-        assert len(call_edges) == 0
+        resolved_edges = [
+            e for e in edges
+            if e.edge_type == "calls" and e.evidence_type != "unresolved_external_call"
+        ]
+        # No symbols registered, so no resolved edges should be produced
+        assert len(resolved_edges) == 0
+        # But an unresolved edge should exist for the external call
+        unresolved = [
+            e for e in edges if e.evidence_type == "unresolved_external_call"
+        ]
+        assert len(unresolved) == 1
+        assert "Unknown::method" in unresolved[0].dst
 
     def test_scoped_call_falls_back_to_short_name(self, tmp_path: Path) -> None:
         """When full scoped name not found, falls back to short name lookup.
@@ -4589,3 +4604,47 @@ async fn main_loop() {
         ]
         assert len(cleanup_edges) >= 1, f"cleanup not found: {call_edges}"
         assert len(save_edges) >= 1, f"save not found: {call_edges}"
+
+
+class TestRustUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges."""
+
+    def test_stdlib_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to external functions emit unresolved edges."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "main.rs").write_text("""
+fn read_file(path: &str) {
+    let f = std::fs::File::open(path).unwrap();
+    println!("opened");
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        # open() should be unresolved (std::fs::File::open is not in project)
+        assert len(unresolved) >= 1
+        for e in unresolved:
+            assert e.confidence == 0.50
+            assert ":unresolved" in e.dst
+
+    def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
+        """When callee IS in project, no unresolved edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""
+fn helper() -> i32 { 42 }
+fn main() { helper(); }
+""")
+
+        result = analyze_rust(tmp_path)
+
+        unresolved_helper = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+        ]
+        assert len(unresolved_helper) == 0

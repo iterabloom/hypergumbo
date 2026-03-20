@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Language analyzers
 
+- **Unresolved-external call edges for 9 analyzers**: C, C++, Java, Rust, Kotlin, Scala, Swift, PHP, and Objective-C now emit `unresolved_external_call` edges (confidence 0.50) for function/method calls that cannot be resolved to project symbols (stdlib, third-party). Previously these calls were silently discarded. Python, Go, Lua, Ruby, Perl, and JS/TS already had this behavior. Shared `make_unresolved_edge()` utility in `analyze/base.py` ensures DRY implementation. Enables IO boundary analysis for C/Java repos (fopen, InputStream.read, etc.) and makes supply-chain tier classification accurate for all languages.
 - **C struct designated initializer function pointers**: Detects function pointers assigned via designated initializers (e.g., `.callback = my_handler`), creating call edges to the referenced functions.
 
 #### Framework patterns

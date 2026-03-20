@@ -1898,6 +1898,79 @@ class TestCStableId:
         assert struct.stable_id.startswith("sha256:")
 
 
+class TestCUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges (stdlib calls like fopen, fread)."""
+
+    def test_stdlib_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to stdlib functions (fopen, fread) emit unresolved edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "io.c"
+        c_file.write_text("""
+#include <stdio.h>
+
+void read_file(const char *path) {
+    FILE *f = fopen(path, "r");
+    char buf[256];
+    fread(buf, 1, 256, f);
+    fclose(f);
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "fopen" in callee_names
+        assert "fread" in callee_names
+        assert "fclose" in callee_names
+        # All should have confidence 0.50
+        for e in unresolved:
+            assert e.confidence == 0.50
+            assert ":unresolved" in e.dst
+
+    def test_resolved_call_still_uses_resolved_edge(self, tmp_path: Path) -> None:
+        """When callee IS in project, use resolved edge (not unresolved)."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "calls.c"
+        c_file.write_text("""
+int helper() { return 42; }
+int main() { return helper(); }
+""")
+
+        result = analyze_c(tmp_path)
+
+        # helper() call should be resolved, not unresolved
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any(e.evidence_type == "ast_call_direct" for e in call_edges)
+        assert not any(e.evidence_type == "unresolved_external_call" for e in call_edges)
+
+    def test_unresolved_edge_has_correct_id_format(self, tmp_path: Path) -> None:
+        """Unresolved edge dst follows c:external:0-0:name:unresolved format."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "simple.c"
+        c_file.write_text("""
+void do_stuff() {
+    printf("hello");
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        assert len(unresolved) >= 1
+        printf_edge = next(e for e in unresolved if "printf" in e.dst)
+        assert printf_edge.dst == "c:external:0-0:printf:unresolved"
+
+
 class TestCShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 

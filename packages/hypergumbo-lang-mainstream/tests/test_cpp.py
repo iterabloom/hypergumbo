@@ -2106,3 +2106,46 @@ class TestCppShapeId:
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
 
+
+class TestCppUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges (stdlib calls)."""
+
+    def test_stdlib_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to stdlib functions emit unresolved edges."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "io.cpp").write_text("""
+#include <iostream>
+void greet() {
+    printf("hello");
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "printf" in callee_names
+        for e in unresolved:
+            assert e.confidence == 0.50
+
+    def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
+        """When callee IS in project, no unresolved edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "calls.cpp").write_text("""
+int helper() { return 42; }
+int main() { return helper(); }
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        unresolved_helper = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+        ]
+        assert len(unresolved_helper) == 0
+
