@@ -2886,8 +2886,14 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         if catalog.primitives:
             catalogs[lang] = catalog
 
-    # Compute boundary map
-    bmap = compute_boundary_map(edges, catalogs)
+    # Extract entrypoint IDs for reverse-trace
+    entrypoint_ids = {
+        ep.get("symbol_id", ep.get("node_id", ""))
+        for ep in behavior_map.get("entrypoints", [])
+    }
+
+    # Compute boundary map with entrypoint tracing
+    bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=entrypoint_ids or None)
 
     # Output
     if getattr(args, "json_output", False):
@@ -2978,7 +2984,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         if catalog.primitives:
             catalogs[lang] = catalog
 
-    bmap = compute_boundary_map(edges, catalogs)
+    # Extract entrypoint IDs for reverse-trace
+    vc_entrypoint_ids = {
+        ep.get("symbol_id", ep.get("node_id", ""))
+        for ep in behavior_map.get("entrypoints", [])
+    }
+    bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=vc_entrypoint_ids or None)
 
     # Verify claims
     verdicts = _verify(claims, bmap)

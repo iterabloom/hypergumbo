@@ -335,25 +335,79 @@ class BoundaryMap:
         }
 
 
+def _trace_entry_points(
+    edges: list,
+    entrypoint_ids: set[str],
+) -> dict[str, set[str]]:
+    """Reverse-trace from IO-tagged edges back to entrypoints.
+
+    Builds a reverse call graph (callee → callers) and performs BFS from
+    each IO edge's source symbol backward through the graph until reaching
+    entrypoint symbols.
+
+    Returns a mapping from IO edge source symbol ID to the set of
+    entrypoint IDs that can reach it.
+    """
+    # Build reverse adjacency list: dst → set of src symbols
+    reverse_graph: dict[str, set[str]] = {}
+    for edge in edges:
+        if edge.edge_type in ("calls", "instantiates", "dispatches_to", "references"):
+            reverse_graph.setdefault(edge.dst, set()).add(edge.src)
+
+    # For each IO-tagged edge, BFS backward to find reachable entrypoints
+    io_sources: set[str] = set()
+    for edge in edges:
+        if edge.meta and edge.meta.get("io_boundary"):
+            io_sources.add(edge.src)
+
+    result: dict[str, set[str]] = {}
+    for io_src in io_sources:
+        reachable_eps: set[str] = set()
+        visited: set[str] = set()
+        queue = [io_src]
+        while queue:
+            current = queue.pop(0)
+            if current not in visited:
+                visited.add(current)
+                if current in entrypoint_ids:
+                    reachable_eps.add(current)
+                for caller in reverse_graph.get(current, ()):
+                    if caller not in visited:
+                        queue.append(caller)
+        result[io_src] = reachable_eps
+
+    return result
+
+
 def compute_boundary_map(
     edges: list,
     catalogs: dict[str, IoBoundaryCatalog],
+    *,
+    entrypoint_ids: set[str] | None = None,
 ) -> BoundaryMap:
     """Compute the I/O boundary map from a set of edges.
 
     Tags edges with I/O boundary metadata (in-place), then aggregates
-    tagged edges by boundary type. Entry-point tracing (reverse slice)
-    is deferred to Phase 1c CLI integration — this function provides the
-    per-boundary aggregation.
+    tagged edges by boundary type. When ``entrypoint_ids`` is provided,
+    traces backward from each IO edge through the call graph to find
+    which entrypoints can reach each IO call.
 
     Args:
         edges: List of Edge objects (mutated: io_boundary metadata stamped).
         catalogs: Language → IoBoundaryCatalog mapping.
+        entrypoint_ids: Optional set of entrypoint symbol IDs. When
+            provided, populates ``entry_points`` on each IoChain and
+            BoundaryMapEntry.
 
     Returns:
         BoundaryMap with per-boundary-type aggregation.
     """
     tagged_count = tag_io_boundaries(edges, catalogs)
+
+    # Reverse-trace from IO edges to entrypoints (Phase 1c)
+    ep_map: dict[str, set[str]] = {}
+    if entrypoint_ids:
+        ep_map = _trace_entry_points(edges, entrypoint_ids)
 
     # Aggregate tagged edges by boundary type
     by_boundary: dict[str, list[IoChain]] = {}
@@ -365,11 +419,13 @@ def compute_boundary_map(
         if boundary is None:
             continue
         primitive = meta.get("io_primitive", "")
+        chain_eps = sorted(ep_map.get(edge.src, set()))
         chain = IoChain(
             boundary=boundary,
             primitive=primitive,
             io_edge_src=edge.src,
             io_edge_dst=edge.dst,
+            entry_points=chain_eps,
         )
         by_boundary.setdefault(boundary, []).append(chain)
 
@@ -380,7 +436,7 @@ def compute_boundary_map(
         primitives_set: set[str] = set()
         for chain in chains:
             primitives_set.add(chain.primitive)
-            for ep in chain.entry_points:  # pragma: no cover — populated by reverse-trace (Phase 1c CLI)
+            for ep in chain.entry_points:
                 entry_points_set.add(ep)
         bmap.entries[boundary] = BoundaryMapEntry(
             boundary=boundary,

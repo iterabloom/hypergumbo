@@ -666,3 +666,93 @@ class TestComputeBoundaryMap:
         assert sorted(bmap.entries["fs_read"].primitives_used) == [
             "os.listdir", "os.walk",
         ]
+
+
+class TestEntryPointTracing:
+    """Tests for reverse-tracing IO edges back to entrypoints."""
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_entry_points_populated_when_provided(self) -> None:
+        """When entrypoints are provided, IO chains have entry_points populated."""
+        catalog = load_catalog("python")
+        edges = [
+            # main → helper → os.listdir (IO)
+            self._make_edge(src="main", dst="helper"),
+            self._make_edge(src="helper", dst="python:os:0-0:listdir:function"),
+        ]
+        entrypoint_ids = {"main"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "main" in fs_entry.entry_points
+
+    def test_entry_points_empty_without_entrypoints(self) -> None:
+        """When no entrypoints provided, entry_points remain empty."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="helper", dst="python:os:0-0:listdir:function"),
+        ]
+
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert len(fs_entry.entry_points) == 0
+
+    def test_multiple_entry_points_reach_same_io(self) -> None:
+        """Multiple entrypoints can reach the same IO chain."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="main1", dst="helper"),
+            self._make_edge(src="main2", dst="helper"),
+            self._make_edge(src="helper", dst="python:os:0-0:listdir:function"),
+        ]
+        entrypoint_ids = {"main1", "main2"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        fs_entry = bmap.entries["fs_read"]
+        assert "main1" in fs_entry.entry_points
+        assert "main2" in fs_entry.entry_points
+
+    def test_cyclic_call_graph_terminates(self) -> None:
+        """BFS handles cycles in the call graph without infinite loop."""
+        catalog = load_catalog("python")
+        edges = [
+            # main → a → b → a (cycle) → os.listdir
+            self._make_edge(src="main", dst="a"),
+            self._make_edge(src="a", dst="b"),
+            self._make_edge(src="b", dst="a"),  # cycle
+            self._make_edge(src="a", dst="python:os:0-0:listdir:function"),
+        ]
+        entrypoint_ids = {"main"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        fs_entry = bmap.entries["fs_read"]
+        assert "main" in fs_entry.entry_points
+
+    def test_unreachable_entry_point_excluded(self) -> None:
+        """Entrypoints that can't reach IO are not included."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="main_io", dst="python:os:0-0:listdir:function"),
+            self._make_edge(src="main_noio", dst="pure_func"),
+        ]
+        entrypoint_ids = {"main_io", "main_noio"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        fs_entry = bmap.entries["fs_read"]
+        assert "main_io" in fs_entry.entry_points
+        assert "main_noio" not in fs_entry.entry_points
