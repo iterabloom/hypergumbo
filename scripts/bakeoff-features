@@ -844,6 +844,17 @@ def assess_metric(name: str, value: float, *, total_nodes: int | None = None) ->
         scaled = max(floor, total_nodes * 0.1)
         good_min = min(good_min, scaled)
 
+    # Scale io_tag_rate threshold for large repos.
+    # Large repos (>50K nodes) have IO edges as a tiny fraction of total edges
+    # even with perfect catalog coverage, because most edges are internal plumbing.
+    # Scale: 5% for <10K nodes, down to 0.5% for >100K nodes (log-linear).
+    if name == "io_tag_rate" and good_min is not None and total_nodes is not None:
+        if total_nodes > 10000:
+            import math
+            # Log-scale: 5% at 10K nodes, ~2% at 50K, ~0.5% at 100K
+            scale_factor = max(0.1, 1.0 - math.log10(total_nodes / 10000) * 0.9)
+            good_min = max(thresholds.get("warn_min", 1), good_min * scale_factor)
+
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
     if good_max is not None and value > good_max:
