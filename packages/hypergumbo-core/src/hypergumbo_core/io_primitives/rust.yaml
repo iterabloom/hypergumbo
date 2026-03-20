@@ -16,6 +16,11 @@ fs_read:
   - module: std::env
     functions: [current_dir]
 
+  # Tokio async filesystem
+  - module: tokio::fs
+    functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize]
+    notes: "Tokio async filesystem read operations"
+
 fs_write:
   - module: std::fs
     functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, copy, hard_link, soft_link]
@@ -26,12 +31,32 @@ fs_write:
     notes: "When write/append/create flags are set"
   - module: std::io::Write
     methods: [write, write_all, write_fmt, flush]
+  # Tokio async filesystem
+  - module: tokio::fs
+    functions: [write, create_dir, create_dir_all, remove_file, remove_dir, rename, copy]
+    notes: "Tokio async filesystem write operations"
 
 net_send:
   - module: std::net::TcpStream
     methods: [connect, write, write_all]
   - module: std::net::UdpSocket
     methods: [send, send_to]
+  # Tokio async networking
+  - module: tokio::net::TcpStream
+    methods: [connect, write, write_all, write_buf]
+    notes: "Tokio async TCP client"
+  - module: tokio::net::UdpSocket
+    methods: [send, send_to]
+  # Hyper HTTP
+  - module: hyper::Client
+    methods: [get, request, send_request]
+    notes: "Hyper HTTP client"
+  - module: hyper::client::Client
+    methods: [get, request]
+  # Reqwest
+  - module: reqwest::Client
+    methods: [get, post, put, delete, head, patch, request, execute]
+    notes: "Reqwest HTTP client"
 
 net_recv:
   - module: std::net::TcpListener
@@ -40,6 +65,22 @@ net_recv:
     methods: [read, read_to_end, read_to_string]
   - module: std::net::UdpSocket
     methods: [recv, recv_from, bind]
+  # Tokio async networking
+  - module: tokio::net::TcpListener
+    methods: [bind, accept]
+    notes: "Tokio async TCP server"
+  - module: tokio::net::TcpStream
+    methods: [read, read_buf, read_to_end]
+  # Hyper/Axum server
+  - module: hyper::Server
+    methods: [bind, serve]
+    notes: "Hyper HTTP server"
+  - module: axum::Router
+    methods: [route, into_make_service]
+    notes: "Axum web framework router"
+  - module: actix_web::HttpServer
+    methods: [bind, run]
+    notes: "Actix-web HTTP server"
 
 subprocess:
   - module: std::process::Command

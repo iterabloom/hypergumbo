@@ -127,6 +127,17 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_rust_catalog_has_tokio_framework_entries(self) -> None:
+        """Rust catalog includes Tokio/Hyper/Reqwest framework entries."""
+        catalog = load_catalog("rust")
+        qualified_names = {p.qualified_name for p in catalog.primitives}
+        assert "tokio::net::TcpStream.connect" in qualified_names
+        assert "tokio::net::TcpListener.bind" in qualified_names
+        assert "tokio::fs.read" in qualified_names
+        assert "reqwest::Client.get" in qualified_names
+        assert "hyper::Client.get" in qualified_names
+        assert "axum::Router.route" in qualified_names
+
     def test_javascript_catalog_has_all_boundary_types(self) -> None:
         catalog = load_catalog("javascript")
         boundaries = {p.boundary for p in catalog.primitives}
