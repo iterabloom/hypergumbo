@@ -1,0 +1,26 @@
+- op: create  # 70df
+  at: '2026-03-20T23:56:26Z'  # 70df
+  by: agent  # 70df
+  actor: jgstern_agent  # 70df
+  clock: 1  # 70df
+  nonce: 70df  # 70df
+  data:  # 70df
+    kind: work_item  # 70df
+    title: "PyFFI linker: investigate zero Rust<->Python edges for tokenizers (PyO3)"  # 70df
+    status: todo_soft  # 70df
+    priority: 3  # 70df
+    parent:  # 70df
+    tags: []  # 70df
+    before: []  # 70df
+    duplicate_of: []  # 70df
+    not_duplicate_of: []  # 70df
+    pr_ref:  # 70df
+    description: ""  # 70df
+    fields: {}  # 70df
+- op: discuss  # a51e
+  at: '2026-03-20T23:56:33Z'  # a51e
+  by: agent  # a51e
+  actor: jgstern_agent  # a51e
+  clock: 2  # a51e
+  nonce: a51e  # a51e
+  message: "Bakeoff finding (deep-20260320-163609, tokenizers): Zero Rust<->Python cross-language edges despite PyO3 bindings (#[pyclass], #[pymethods]). The PyFFI linker exists but doesn't create edges for this repo. Need to investigate: (1) Are PyO3 annotations being detected by the Rust analyzer? (2) Does the linker run? (3) What matching criteria fail?"  # a51e
