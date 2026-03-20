@@ -1754,6 +1754,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
+                    stable_id=_analyzer.compute_stable_id(node, kind="method"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1790,6 +1792,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
+                    stable_id=_analyzer.compute_stable_id(node, kind="method"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1833,6 +1837,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    stable_id=_analyzer.compute_stable_id(node, kind="class"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1860,6 +1866,8 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="module"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

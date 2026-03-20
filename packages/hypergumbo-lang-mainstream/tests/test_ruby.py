@@ -4665,3 +4665,33 @@ class TestRubyHashFunctionReferences:
                      if e.edge_type == "references"
                      and e.evidence_type == "hash_field_reference"]
         assert len(ref_edges) == 0
+
+
+class TestRubyStableShapeId:
+    """Tests for stable_id and shape_id in Ruby (ADR-0014 §1-2)."""
+
+    def test_method_has_stable_and_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "example.rb").write_text(
+            "class Foo\n  def bar(x)\n    x + 1\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        method = next(s for s in result.symbols if s.kind == "method")
+        assert method.stable_id is not None
+        assert method.stable_id.startswith("sha256:")
+        assert method.shape_id is not None
+        assert method.shape_id.startswith("sha256:")
+
+    def test_class_has_stable_and_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "example.rb").write_text(
+            "class Foo\n  def bar\n    42\n  end\nend\n"
+        )
+        result = analyze_ruby(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.stable_id is not None
+        assert cls.stable_id.startswith("sha256:")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")
