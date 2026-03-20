@@ -74,3 +74,32 @@
   clock: 9  # f7ac
   nonce: f7ac  # f7ac
   message: "Great questions — both point to the same underlying design tension.\n\n## Why Python doesn't have this problem\n\nPython's analyzer creates call edges for *all* function calls it encounters, including calls to functions that aren't defined in the project. When Python code calls `open('file.txt')` or `os.path.exists(path)`, those appear as call edges to unresolved symbols like `python:builtins:0-0:open:function`. The IO catalog then matches against these unresolved edges and correctly tags them.\n\nThe Go, C, and Java analyzers took a different design path: they only create edges to functions with symbols in the project registry. The reasoning was to avoid graph pollution — C code calls malloc/free/printf on nearly every line, and including all of those as edges would massively inflate the graph.\n\nSo it's a design split across analyzers, not a fundamental limitation.\n\n## The supply-chain tier connection\n\nYou're right that this is exactly what supply-chain tiers were designed to address. Tier 3 (external_dep) and tier 4 (transitive_dep) exist precisely to represent stdlib and third-party code. The problem is that for C/Java, those external symbols never get *created as nodes* in the first place — they exist only as unresolved stubs with no call edges pointing at them.\n\nThe fix that aligns best with the existing architecture would be option 2 from before, reframed: **create lightweight external-call nodes at tier 3/4 for stdlib calls, but only for functions that match the IO primitive catalog**. This is scoped (only IO-relevant stdlib functions get nodes, not every malloc), uses the supply chain classification as intended, and gives the IO boundary scanner edges to match against.\n\nThis avoids the graph inflation concern because we're only creating nodes for ~200 catalog-listed IO functions per language, not the full stdlib surface. And it makes the tier classification actually useful for C/Java repos — currently those repos show 0% tier 3/4 which is misleading."  # f7ac
+- op: discuss  # a212
+  at: '2026-03-20T15:50:10Z'  # a212
+  by: human  # a212
+  actor: jgstern  # a212
+  clock: 10  # a212
+  nonce: a212  # a212
+  message: "but why not just have *all* 100+ language analyzers create edges for all symbols they encounter, the way Python does, and then classify edges by supply-chain tier? isn't that what Python analyzer does? if it works for the Python analyzer why can't it work for everything?"  # a212
+- op: discuss  # cd2d
+  at: '2026-03-20T15:54:02Z'  # cd2d
+  by: agent  # cd2d
+  actor: jgstern_agent  # cd2d
+  clock: 11  # cd2d
+  nonce: cd2d  # cd2d
+  message: "You're right — that's the cleanest approach and I was overcomplicating it.\n\nThe Python analyzer creates edges for every call it encounters. When it can't resolve the callee to a project symbol, it creates an edge to an unresolved node (e.g., `python:builtins:0-0:open:function`). These unresolved nodes naturally fall into tier 3/4 in supply-chain classification. The graph stays navigable because the tier system lets you filter them out when you want a focused view.\n\nThere's no fundamental reason the other analyzers can't do the same. The Go, C, Java, Rust, etc. analyzers all *detect* these calls in the AST — they just discard them when the callee isn't in the project registry. The fix is to stop discarding and instead emit an unresolved-external edge, same as Python does.\n\nThe original concern was graph inflation (C code calls malloc/free/printf everywhere), but that's what tier filtering is for — if you want a clean first-party view, slice with `--max-tier 1`. The full graph has the external calls available for IO boundary analysis and security auditing.\n\nI'll reopen this as `todo_hard` and implement the change across analyzers. The pattern is the same for each: where the analyzer currently does `if not resolved: skip`, change it to `if not resolved: emit unresolved edge`. Python already proves it works."  # cd2d
+- op: update  # 7b92
+  at: '2026-03-20T15:54:09Z'  # 7b92
+  by: agent  # 7b92
+  actor: jgstern_agent  # 7b92
+  clock: 12  # 7b92
+  nonce: 7b92  # 7b92
+  set:  # 7b92
+    status: todo_hard  # 7b92
+- op: discuss  # c8f0
+  at: '2026-03-20T15:54:09Z'  # c8f0
+  by: agent  # c8f0
+  actor: jgstern_agent  # c8f0
+  clock: 13  # c8f0
+  nonce: c8f0  # c8f0
+  message: "Human approved: make all analyzers emit unresolved-external edges for all calls (like Python already does). Supply-chain tier filtering handles graph density. No IO-catalog-scoped shortcut — do it universally."  # c8f0
