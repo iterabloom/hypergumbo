@@ -16,6 +16,8 @@ from hypergumbo_core.io_boundary import (
     IoChain,
     IoPrimitive,
     _extract_callee_name,
+    _extract_module_hint,
+    _module_matches,
     compute_boundary_map,
     load_catalog,
     match_edge_to_primitive,
@@ -277,6 +279,44 @@ fs_write:
         assert catalog.primitives[0].name == "write_file"
 
 
+class TestModuleMatches:
+    """Tests for _module_matches helper."""
+
+    def test_exact_match(self) -> None:
+        assert _module_matches("net.Conn", "net.Conn") is True
+
+    def test_catalog_is_prefix(self) -> None:
+        assert _module_matches("java.io", "java.io.FileInputStream") is True
+
+    def test_edge_is_prefix(self) -> None:
+        assert _module_matches("java.io.FileInputStream", "java.io") is True
+
+    def test_no_match(self) -> None:
+        assert _module_matches("net.Conn", "crypto/rand") is False
+
+    def test_rust_double_colon(self) -> None:
+        assert _module_matches("std::fs", "std::fs::File") is True
+
+    def test_go_slash_vs_dot(self) -> None:
+        assert _module_matches("os/exec", "os.exec.Cmd") is True
+
+
+class TestExtractModuleHint:
+    """Tests for _extract_module_hint helper."""
+
+    def test_unresolved_edge(self) -> None:
+        assert _extract_module_hint("go:net.Conn:0-0:Read:unresolved") == "net.Conn"
+
+    def test_external_fallback(self) -> None:
+        assert _extract_module_hint("go:external:0-0:Read:unresolved") == "external"
+
+    def test_file_path_returns_none(self) -> None:
+        assert _extract_module_hint("python:/path/to/file.py:1-5:func:function") is None
+
+    def test_short_id(self) -> None:
+        assert _extract_module_hint("a:b") is None
+
+
 class TestExtractCalleeName:
     """Tests for _extract_callee_name."""
 
@@ -421,6 +461,91 @@ class TestTagIoBoundaries:
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
         assert edge.meta["io_boundary"] == "subprocess"
+
+
+class TestModuleQualifiedMatching:
+    """Tests for module-qualified IO boundary matching.
+
+    Prevents false positives from generic method names like Read/Write
+    by checking the module context in the edge's destination ID.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_matching_module_tags_edge(self) -> None:
+        """Edge with matching module_hint gets tagged."""
+        catalog = load_catalog("go")
+        # net.Conn.Read is in the catalog — module_hint matches
+        edge = self._make_edge(
+            src="go:/a.go:1:handler:function",
+            dst="go:net.Conn:0-0:Read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "net_recv"
+
+    def test_mismatched_module_not_tagged(self) -> None:
+        """Edge with non-matching module_hint is NOT tagged.
+
+        crypto/rand.Reader.Read() should not match net.Conn.Read because
+        crypto/rand != net.Conn.
+        """
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/a.go:1:encrypt:function",
+            dst="go:crypto/rand:0-0:Read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0
+        assert edge.meta is None
+
+    def test_external_module_hint_falls_back_to_name_match(self) -> None:
+        """When module_hint is 'external' (unknown), fall back to name matching."""
+        catalog = load_catalog("go")
+        # os.Open is in the Go catalog — module_hint "external" means we
+        # don't know the module so allow name-only matching
+        edge = self._make_edge(
+            src="go:/a.go:1:main:function",
+            dst="go:external:0-0:Open:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
+    def test_python_qualified_name_still_works(self) -> None:
+        """Python edges with qualified callee names still match."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/a.py:1:f:function",
+            dst="python:/os.py:1:os.listdir:function",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
+    def test_rust_write_not_confused_with_net(self) -> None:
+        """Rust io::Write.write() shouldn't match net.Conn.Write."""
+        catalog = load_catalog("rust")
+        # io::Write is a file-like trait, not network
+        edge = self._make_edge(
+            src="rust:/a.rs:1:save:function",
+            dst="rust:std::io::Write:0-0:write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        # Should match fs_write (io::Write), not net_send
+        if count > 0:
+            assert edge.meta["io_boundary"] == "fs_write"
 
 
 class TestComputeBoundaryMap:

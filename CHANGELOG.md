@@ -71,6 +71,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Module-qualified IO boundary matching**: `tag_io_boundaries()` now checks the module context in edge destination IDs against catalog entry modules. Prevents false positives where `crypto/rand.Read()` matched `net.Conn.Read` (tagged as network IO). Affects Go, Rust, C++, and any language where generic method names (Read, Write, Close) overlap across stdlib modules. Falls back to name-only matching when module context is unknown (`external`).
 - **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
 - **`rank_files()` centrality consistency**: `rank_files()` now uses the same `compute_centrality()` parameters as `rank_symbols()` (within_file_weight=0.3, max_per_file_in=5, edge_type_weights). Previously it used defaults, making file ranking inconsistent with symbol ranking.
 - **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.

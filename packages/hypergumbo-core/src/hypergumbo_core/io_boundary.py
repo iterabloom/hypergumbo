@@ -119,6 +119,44 @@ class IoBoundaryCatalog:
             return [hit]
         return list(self._by_short.get(name, []))
 
+    def lookup_with_module(
+        self, name: str, module_hint: str | None = None,
+    ) -> Optional[IoPrimitive]:
+        """Look up a primitive with optional module context for disambiguation.
+
+        When ``module_hint`` is provided and is not ``"external"``, filters
+        short-name matches to only those whose ``module`` field is contained
+        in the hint (or vice versa).  This prevents false positives like
+        ``crypto/rand.Read`` matching ``net.Conn.Read``.
+
+        Falls back to unfiltered short-name matching when:
+        - ``module_hint`` is None or ``"external"`` (no module info available)
+        - No filtered match is found (defensive fallback)
+        """
+        # Qualified-name match always wins (exact)
+        hit = self._by_qualified.get(name)
+        if hit is not None:
+            return hit
+
+        hits = self._by_short.get(name)
+        if not hits:
+            return None
+
+        # If we have module context, filter matches
+        if module_hint and module_hint != "external":
+            filtered = [
+                p for p in hits
+                if _module_matches(p.module, module_hint)
+            ]
+            if filtered:
+                return filtered[0]
+            # No match with module filtering — this is likely NOT an IO
+            # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
+            return None
+
+        # No module context — fall back to first match
+        return hits[0]
+
     @classmethod
     def from_yaml(cls, path: Path) -> IoBoundaryCatalog:
         """Load a catalog from a YAML file."""
@@ -359,6 +397,43 @@ def compute_boundary_map(
 # ---------------------------------------------------------------------------
 
 
+def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
+    """Check if a catalog entry's module matches the edge's module hint.
+
+    Uses substring matching in both directions to handle different
+    naming conventions:
+    - Go: catalog has ``net.Conn``, edge has ``net.Conn`` → match
+    - Go: catalog has ``os``, edge has ``os`` → match
+    - Go: catalog has ``net.Conn``, edge has ``crypto/rand`` → no match
+    - Rust: catalog has ``std::fs``, edge has ``std::fs::File`` → match
+    - Java: catalog has ``java.io``, edge has ``java.io.FileInputStream`` → match
+    """
+    # Normalize: treat :: and / as . for uniform comparison
+    cm = catalog_module.replace("::", ".").replace("/", ".")
+    em = edge_module_hint.replace("::", ".").replace("/", ".")
+    return cm in em or em in cm
+
+
+def _extract_module_hint(edge_dst: str) -> str | None:
+    """Extract the module hint from an edge destination symbol ID.
+
+    For unresolved edges with format ``{lang}:{module_hint}:0-0:{name}:unresolved``,
+    returns the module_hint part (2nd colon-separated field).
+
+    For resolved edges (file paths in position 2), returns None since the
+    path is not a useful module hint.
+    """
+    parts = edge_dst.split(":")
+    if len(parts) >= 5:
+        candidate = parts[1]
+        # Heuristic: file paths start with / or contain .py/.java/.go etc.
+        # Module hints are identifiers like "external", "net.Conn", "os"
+        if candidate.startswith("/") or candidate.startswith("\\"):
+            return None
+        return candidate
+    return None
+
+
 def _extract_callee_name(edge_dst: str) -> str:
     """Extract a callable name from an edge destination symbol ID.
 
@@ -419,7 +494,8 @@ def tag_io_boundaries(
             continue
 
         callee = _extract_callee_name(edge.dst)
-        match = catalog.lookup(callee)
+        module_hint = _extract_module_hint(edge.dst)
+        match = catalog.lookup_with_module(callee, module_hint)
         if match is None:
             continue
 
