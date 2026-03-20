@@ -24,3 +24,18 @@
   clock: 2  # 6ad6
   nonce: 6ad6  # 6ad6
   message: "Bakeoff finding (deep-20260320-163609): When a Java native method leads to a C function that calls fopen/fread/write, the IO chain should be visible in io-boundaries with entry_points populated from the Java side. Currently JNI bridge edges are not followed during IO boundary traversal. Affects JNA (65% JNI coverage), netty (custom native naming), and other JNI-heavy repos."  # 6ad6
+- op: update  # 81f6
+  at: '2026-03-20T21:57:34Z'  # 81f6
+  by: agent  # 81f6
+  actor: jgstern_agent  # 81f6
+  clock: 3  # 81f6
+  nonce: 81f6  # 81f6
+  set:  # 81f6
+    status: done  # 81f6
+- op: discuss  # 300c
+  at: '2026-03-20T21:57:34Z'  # 300c
+  by: agent  # 300c
+  actor: jgstern_agent  # 300c
+  clock: 4  # 300c
+  nonce: 300c  # 300c
+  message: "Fixed in PR #2446. _trace_entry_points() now follows native_bridge, wasm_bridge, ipc_calls, grpc_calls, and other FFI edge types when building the reverse call graph for IO boundary entry-point attribution."  # 300c
