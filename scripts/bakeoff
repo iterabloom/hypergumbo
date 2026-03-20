@@ -115,6 +115,7 @@ FLAG_SEVERITY = {
     "LOW_IO_TAG_RATE": SEVERITY_MEDIUM,
     "IO_OVER_TAGGING": SEVERITY_MEDIUM,
     "NO_ACCESS_MODE_ANNOTATIONS": SEVERITY_MEDIUM,
+    "LOW_ACCESS_MODE_RATE": SEVERITY_MEDIUM,
 }
 
 # Languages where call edges are expected (procedural/OO languages)
@@ -153,6 +154,7 @@ FLAG_CODE_HINTS = {
     "LOW_IO_TAG_RATE": "Check IO primitive catalog completeness for {lang} (io_primitives/{lang}.yaml)",
     "IO_OVER_TAGGING": "Check IO primitive catalog for false positives — non-IO functions matching catalog entries",
     "NO_ACCESS_MODE_ANNOTATIONS": "Check dataflow YAML for {lang} (dataflow_patterns/{lang}.yaml)",
+    "LOW_ACCESS_MODE_RATE": "Check dataflow YAML pattern coverage for {lang} (dataflow_patterns/{lang}.yaml)",
 }
 
 
@@ -1111,6 +1113,14 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
                 and len(edges) > 20
                 and dom_lang.lower() in DATAFLOW_LANGS):
             flags.append("NO_ACCESS_MODE_ANNOTATIONS")
+
+        # LOW_ACCESS_MODE_RATE: some annotations exist but fewer than 10%
+        # of edges — dataflow YAML covers only a handful of patterns.
+        # Threshold aligns with DEEP mode good_min for access_mode_coverage.
+        if (0 < access_mode_tagged < len(edges) * 0.10
+                and len(edges) > 20
+                and dom_lang.lower() in DATAFLOW_LANGS):
+            flags.append("LOW_ACCESS_MODE_RATE")
 
         for flag in flags:
             severity = FLAG_SEVERITY.get(flag, SEVERITY_MEDIUM)

@@ -389,6 +389,7 @@ class FeatureMetrics:
     claims_total: int = 0
     claims_confirmed: int = 0
     claims_violated: int = 0
+    claim_verdict_pct: float = 0.0  # % of claims with definitive verdict
 
 
 @dataclass
@@ -2149,6 +2150,9 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                 metrics.claims_total = len(verdicts_list)
                 metrics.claims_confirmed = sum(1 for v in verdicts_list if v.get("verdict") == "confirmed")
                 metrics.claims_violated = sum(1 for v in verdicts_list if v.get("verdict") == "violated")
+                decided = metrics.claims_confirmed + metrics.claims_violated
+                if metrics.claims_total > 0:
+                    metrics.claim_verdict_pct = decided / metrics.claims_total * 100
             except (json.JSONDecodeError, OSError):
                 pass
 
