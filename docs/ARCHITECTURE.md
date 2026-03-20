@@ -2,6 +2,7 @@
 # Architecture
 
 > **Auto-generated** by running hypergumbo on itself.
+> Sections marked with (auto) are computed at generation time; unmarked sections are curated.
 > Run `./scripts/generate-architecture` to update.
 
 hypergumbo is a local-first CLI that analyzes source code and emits
@@ -10,19 +11,19 @@ and cross-language links. It supports three output modes: a Markdown sketch
 for human reading, a full JSON behavior map for tooling, and graph slices
 for focused LLM context.
 
-## Self-Analysis Summary
+## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **201** Python modules (117 analyzers, 41 linkers, 25 core, 4 CLI, 14 tracker)
-- **3577** symbols (functions, classes, methods)
-- **37262** edges by type:
-  - calls: 22444
-  - imports: 7403
-  - instantiates: 5235
-  - contains: 987
-  - dispatches_to: 512
-  - decorated_by: 263
-  - other: 418
+- **205** Python modules (117 analyzers, 43 linkers, 27 core, 4 CLI, 14 tracker)
+- **3652** symbols (functions, classes, methods)
+- **38013** edges by type:
+  - calls: 22925
+  - imports: 7550
+  - instantiates: 5316
+  - contains: 1008
+  - dispatches_to: 514
+  - decorated_by: 266
+  - other: 434
 
 ## Package Architecture
 
@@ -49,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 41 linkers, 98 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 43 linkers, 99 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 36 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 40 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -83,7 +84,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 3577 Symbols + 37262 Edges + UsageContexts             │
+│  Output: 3652 Symbols + 38013 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -91,7 +92,7 @@ Source Files
 │                     4. PATTERN ENRICHMENT                       │
 │  YAML-driven pattern matching (ADR-0003):                       │
 │  - 7 convention patterns (always loaded)                        │
-│  - 91 framework patterns (loaded when framework detected)       │
+│  - 92 framework patterns (loaded when framework detected)       │
 │  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -100,7 +101,7 @@ Source Files
 │                        5. LINKERS                               │
 │  Cross-language/cross-file edge creation                        │
 │  Match via meta.concepts (route paths, gRPC services, etc.)     │
-│  41 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  43 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -220,35 +221,35 @@ A relationship between two symbols (e.g., function calls).
 - `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
 
 
-## Most-Connected Symbols
+## Most-Connected Symbols (auto)
 
 These symbols have the highest bidirectional centrality
 (`score = in_degree * (1 + ln(1 + out_degree))`):
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4000.3 | ir.py |
-| `Span` | class | 3435.4 | ir.py |
+| `Symbol` | class | 4047.2 | ir.py |
+| `Span` | class | 3483.7 | ir.py |
 | `run_behavior_map` | function | 2264.0 | cli.py |
 | `TrackerApp` | class | 1647.2 | tui.py |
-| `load_framework_patterns` | function | 1124.9 | framework_patterns.py |
-| `LinkerContext` | class | 1119.4 | registry.py |
+| `LinkerContext` | class | 1140.1 | registry.py |
+| `load_framework_patterns` | function | 1137.4 | framework_patterns.py |
+| `main` | function | 1032.8 | cli.py |
 | `TreeSitterAnalyzer` | class | 851.1 | base.py |
-| `main` | function | 815.9 | cli.py |
 | `find_files` | function | 782.8 | discovery.py |
 | `Store` | class | 760.4 | store.py |
-| `clear_pattern_cache` | function | 614.0 | framework_patterns.py |
-| `Edge` | class | 560.8 | ir.py |
-| `UsageContext.create` | method | 558.1 | ir.py |
+| `clear_pattern_cache` | function | 620.0 | framework_patterns.py |
+| `UsageContext.create` | method | 574.6 | ir.py |
+| `Edge` | class | 565.6 | ir.py |
 | `Store.add` | method | 535.4 | store.py |
-| `node_text` | function | 521.0 | base.py |
+| `node_text` | function | 522.0 | base.py |
 
 ## Pattern System
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 98 pattern files (7 convention + 91 framework)
+- **`frameworks/*.yaml`**: 99 pattern files (7 convention + 92 framework)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -324,6 +325,71 @@ managing work items, invariants, and project state. Key design choices:
 - **TUI:** Textual-based terminal UI (`TrackerApp`) for interactive browsing,
   filtering, and discussion.
 
+## Scripts & Tooling (auto)
+
+The `scripts/` directory contains operational tooling. Descriptions are extracted from each script's header comment or docstring.
+
+### CI & Release
+
+| Script | Description |
+|--------|-------------|
+| `auto-pr` | Push branch, poll CI, merge PR (with vPR queue for offline resilience) |
+| `ci-debug` | CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs |
+| `ci-failover` | Switch CI targeting between Codeberg and self-hosted Forgejo |
+| `merge-pr` | Focused recovery script for merging existing PRs |
+| `prepare-release` | Prepare a release for human approval. |
+| `release` | Release script - creates a new release. |
+| `release-check` | Pre-release validation script for multi-package hypergumbo. |
+| `tag-release` | Create and push a signed release tag. |
+
+### Testing & Quality
+
+| Script | Description |
+|--------|-------------|
+| `check-package-coverage` | Verify each package achieves 100% coverage in isolation |
+| `integration-test` | Integration tests against real-world repositories. |
+| `license-headers` | Check and repair SPDX license headers on source files in the repository. |
+| `smart-test` | Run only tests affected by changed files |
+| `validate-agents.sh` | (no description) |
+
+### Development
+
+| Script | Description |
+|--------|-------------|
+| `build-source-grammars` | Build tree-sitter grammars that are not available on PyPI. |
+| `bump-version` | Version bump script for multi-package hypergumbo. |
+| `dev-install` | Dev install for hypergumbo monorepo. |
+| `install-embeddings` | Install embedding dependencies for hypergumbo. |
+| `install-hooks` | (no description) |
+| `loop-toggle` | Toggle autonomous mode on/off with support for multiple modes |
+| `stop-hook-preview` | stop-hook-preview — Dry-run stop hook simulator. |
+| `tracker` | Thin wrapper for hypergumbo-tracker CLI. |
+| `tracker-textconv` | Git textconv driver for hypergumbo-tracker .ops files. |
+| `uninstall-embeddings` | Uninstall embedding dependencies from hypergumbo. |
+
+### Analysis & Bakeoff
+
+| Script | Description |
+|--------|-------------|
+| `analyze-artifacts` | Analyze hypergumbo bakeoff artifacts to extract insights. |
+| `bakeoff` | bakeoff - Automated hypergumbo bakeoff runner and analyzer |
+| `bakeoff-features` | bakeoff-features - Feature-focused hypergumbo bakeoff runner |
+| `bakeoff-features-reflect` | bakeoff-features-reflect - LLM-driven qualitative assessment of hypergumbo outputs |
+| `bakeoff-reflect` | bakeoff-reflect - LLM-driven parse correctness assessment for BROAD bakeoff |
+| `changelog-date-bucket` | Rewrite CHANGELOG.md's "## [Unreleased]" into date-grouped subheadings. |
+| `compute_probe_embeddings.py` | Compute probe embeddings for sketch_embeddings.py. |
+| `generate-architecture` | Generate ARCHITECTURE.md using hypergumbo to analyze itself. |
+| `generate-schema` | Generate JSON Schema from hypergumbo's Python dataclasses. |
+| `hypergumbo_diag.py` | hypergumbo_diag.py - Unified diagnostic script for hypergumbo bakeoff analysis |
+| `test-leaderboard` | Test timing leaderboard — tracks per-test durations across runs. |
+
+### Contribution
+
+| Script | Description |
+|--------|-------------|
+| `contribute` | Contributor workflow script for fork-based development. |
+| `list-my-prs` | List open PRs for this repository |
+
 ## Adding a New Analyzer
 
 1. Create analyzer in the appropriate lang package:
@@ -352,7 +418,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 3. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`
 
-## Module Reference
+## Module Reference (auto)
 
 ### Core
 
@@ -365,6 +431,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
+- **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalog loading and edge matching (ADR-0016).
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
@@ -381,6 +448,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
+- **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary maps (ADR-0016 Pha...
 
 ### Analyzers
 
@@ -508,6 +576,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.build_target`**: Build target linker for connecting manifest entries to main() funct...
 - **`hypergumbo_core.linkers.cgo`**: Cgo linker for connecting Go C function calls to C/C++ implementati...
 - **`hypergumbo_core.linkers.containment`**: Containment linker for creating `contains` edges between containers...
+- **`hypergumbo_core.linkers.crypto_flow`**: Crypto-flow linker for detecting encryption/decryption boundary cro...
 - **`hypergumbo_core.linkers.database_query`**: Database query linker for detecting SQL queries in application code.
 - **`hypergumbo_core.linkers.decorator_dispatch`**: Decorator dispatch linker for registry-based dynamic call resolution.
 - **`hypergumbo_core.linkers.dependency`**: Dependency linker for connecting manifest dependencies to code impo...
@@ -522,6 +591,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.jni`**: JNI linker for connecting Java native methods to C/C++/Rust impleme...
 - **`hypergumbo_core.linkers.js_module`**: JS/TS module resolution linker for cross-file import edges.
 - **`hypergumbo_core.linkers.lua_ffi`**: Lua FFI linker for connecting LuaJIT FFI calls to C function implem...
+- **`hypergumbo_core.linkers.message_dispatch`**: Message dispatch linker for typed wire protocol message patterns.
 - **`hypergumbo_core.linkers.message_queue`**: Message queue linker for detecting pub/sub communication patterns.
 - **`hypergumbo_core.linkers.middleware_chain`**: Middleware chain linker for connecting consecutive middleware funct...
 - **`hypergumbo_core.linkers.napi`**: Node.js N-API linker for connecting JavaScript/TypeScript calls to ...
@@ -570,395 +640,11 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.tui`**: Textual TUI for the hypergumbo tracker.
 - **`hypergumbo_tracker.validation`**: Op log and cross-file validation for the hypergumbo tracker.
 
-## Appendix: Full Sketch Output
-
-<details>
-<summary>Click to expand hypergumbo's self-analysis sketch (data models, source files, key symbols)</summary>
-
-````markdown
-# hypergumbo
-
-hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+.
-
-## Overview
-Python (92%), Markdown (4%), Yaml (3%)
-776 files    (408 non-test + 368 test)
-~358,608 LOC (~142,251 non-test + ~216,357 test)
-
-## Structure
-
-hypergumbo/
-├── .ci
-│   ├── pytest-results.xml
-│   └── [and 3 other items]
-├── .githooks
-│   ├── commit-msg
-│   └── [and 9 other items]
-├── docs
-│   ├── FRAMEWORKS.md
-│   └── [and 23 other items]
-├── packages
-│   ├── hypergumbo
-│   │   ├── src
-│   │   │   └── hypergumbo
-│   │   │       ├── __main__.py
-│   │   │       └── [and 1 other items]
-│   │   └── [and 3 other items]
-│   ├── hypergumbo-core
-│   │   ├── src
-│   │   │   └── hypergumbo_core
-│   │   │       ├── analyze
-│   │   │       │   ├── base.py
-│   │   │       │   └── [and 3 other items]
-│   │   │       ├── cli.py
-│   │   │       ├── ir.py
-│   │   │       └── [and 30 other items]
-│   │   ├── tests
-│   │   │   ├── test_framework_patterns.py
-│   │   │   └── [and 106 other items]
-│   │   └── [and 2 other items]
-│   ├── hypergumbo-tracker
-│   │   ├── src
-│   │   │   └── hypergumbo_tracker
-│   │   │       ├── cli.py
-│   │   │       └── [and 14 other items]
-│   │   └── [and 6 other items]
-│   └── [and 3 other items]
-├── scripts
-│   ├── lib
-│   │   └── forgejo-api.sh
-│   └── [and 36 other items]
-├── tests
-│   ├── test_bakeoff_features_reflect.py
-│   └── [and 3 other items]
-├── .yamllint.yaml
-├── conftest.py
-├── pyproject.toml
-├── setup.py
-└── [and 24 other items]
-
-## Frameworks
-
-- pytest
-- pytorch
-- transformers
-
-## Tests
-
-368 test files · hypothesis, pytest, unittest
-
-*~94% estimated coverage (2880/3061 functions called by tests)*
-
-## Configuration
-
-LICENSE: AGPL
-
---- Additional context (semantic) ---
-
-[packages/hypergumbo-core/pyproject.toml]
-  > [build-system] requires = ["hatchling>=1.24"]
-  > # YAML parsing for framework patterns "pyyaml~=6.0.3", ]
-
-[packages/hypergumbo-lang-common/pyproject.toml]
-  > "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only", ]
-
-[packages/hypergumbo-lang-extended1/pyproject.toml]
-  > readme = "README.md" requires-python = ">=3.10" license = { text = "AGPL-3.0-or-later" }
-
-
-[packages/hypergumbo-lang-mainstream/pyproject.toml]
-  > "tree-sitter-typescript~=0.23.2", "tree-sitter-php~=0.24.1", "tree-sitter-c~=0.24.1",
-
-[packages/hypergumbo-tracker/pyproject.toml]
-  > ] dependencies = [ "ruamel.yaml>=0.18",
-  > dev = [ "pytest>=8.0,<10", "pytest-cov~=7.0.0",
-
-[packages/hypergumbo/pyproject.toml]
-  > [project] name = "hypergumbo" version = "2.2.1"
-
-
-[pyproject.toml]
-  > # Root pyproject.toml - shared tool configuration only # Packages are defined in packages/*/pyproject.toml
-
-[setup.py]
-  > "ERROR: This repository is a monorepo. The root is not an installable package.\n" "\n" "For development setup:\n"
-
-## Data Models
-
-`packages/hypergumbo-core/src/hypergumbo_core/ir.py`:
-  - `Symbol` (Python @dataclass)
-  - `Span` (Python @dataclass)
-  - `AnalysisRun` (Python @dataclass)
-  - `Edge` (Python @dataclass)
-  - `UsageContext` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`:
-  - `FileAnalysis` (Python @dataclass)
-  - `AnalysisResult` (Python @dataclass)
-  - `ArityFlags` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py`:
-  - `LinkerContext` (Python @dataclass)
-  - `LinkerResult` (Python @dataclass)
-  - `LinkerActivation` (Python @dataclass)
-  - `LinkerRequirement` (Python @dataclass)
-  - `RegisteredLinker` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py`:
-  - `LookupResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/limits.py`:
-  - `Limits` (Python @dataclass)
-  - `FailedFile` (Python @dataclass)
-  - `AmbiguousPath` (Python @dataclass)
-  - `ClassificationFailure` (Python @dataclass)
-  - `SupplyChainLimits` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py`:
-  - `ValidationResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/sketch.py`:
-  - `SketchStats` (Python @dataclass)
-  - `_TestAnalysis` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/datamodels.py`:
-  - `DataModel` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/slice.py`:
-  - `SliceQuery` (Python @dataclass)
-  - `SliceResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py`:
-  - `Pattern` (Python @dataclass)
-  - `UsagePatternSpec` (Python @dataclass)
-  - `FrameworkPatternDef` (Python @dataclass)
-  - `DeferredResolutionStats` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py`:
-  - `Entrypoint` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py`:
-  - `RegisteredAnalyzer` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/catalog.py`:
-  - `Catalog` (Python @dataclass)
-  - `Pass` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/profile.py`:
-  - `LanguageStats` (Python @dataclass)
-  - `RepoProfile` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/compact.py`:
-  - `CompactConfig` (Python @dataclass)
-  - `IncludedSummary` (Python @dataclass)
-  - `OmittedSummary` (Python @dataclass)
-  - `CompactResult` (Python @dataclass)
-  - `ConnectivityResult` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/models.py`:
-  - `CompiledItem` (Python @dataclass)
-  - `FieldSchema` (Python @dataclass)
-  - `DiscussionEntry` (Python @dataclass)
-  - `KindConfig` (Python @dataclass)
-  - `TrackerConfig` (Python @dataclass)
-  - `UpdateOp` (Python @dataclass)
-  - `CreateOp` (Python @dataclass)
-  - `DemoteOp` (Python @dataclass)
-  - `DiscussClearOp` (Python @dataclass)
-  - `DiscussOp` (Python @dataclass)
-  - `DiscussSummarizeOp` (Python @dataclass)
-  - `LockOp` (Python @dataclass)
-  - `PromoteOp` (Python @dataclass)
-  - `ReconcileOp` (Python @dataclass)
-  - `StealthOp` (Python @dataclass)
-  - `UnlockOp` (Python @dataclass)
-  - `UnstealthOp` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py`:
-  - `SupplyChainConfig` (Python @dataclass)
-  - `FileClassification` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py`:
-  - `PreflightResult` (Python @dataclass)
-  - `SyncResult` (Python @dataclass)
-  - `_FailoverState` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/setup.py`:
-  - `CheckResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/http.py`:
-  - `HttpClientCall` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/event_sourcing.py`:
-  - `EventPattern` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql.py`:
-  - `GraphQLClientCall` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py`:
-  - `EmbeddingDuplicateResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/build_grammars.py`:
-  - `GrammarSpec` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/gitleaks.py`:
-  - `SecretFinding` (Python @dataclass)
-`packages/hypergumbo-core/tests/test_tree_sitter_analyzer.py`:
-  - `MockNode` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py`:
-  - `DIBinding` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py`:
-  - `GrpcPattern` (Python @dataclass)
-`packages/hypergumbo-tracker/src/hypergumbo_tracker/migration.py`:
-  - `ParsedItem` (Python @dataclass)
-  - `MigrationResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/subprocess_cli.py`:
-  - `SubprocessCall` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/dataflow.py`:
-  - `DataflowSite` (Python @dataclass)
-  - `DataflowConfig` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`:
-  - `LanguageSpec` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/database_query.py`:
-  - `DatabaseQueryPattern` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py`:
-  - `ResolverPattern` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/partial_install_warnings.py`:
-  - `PartialInstallWarning` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/annotation_convention.py`:
-  - `AnnotationSite` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/yjs_crdt.py`:
-  - `YjsSite` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/ranking.py`:
-  - `CentralityResult` (Python @dataclass)
-  - `RankedFile` (Python @dataclass)
-  - `RankedSymbol` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py`:
-  - `WebSocketPattern` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/dependency.py`:
-  - `DependencyLinkResult` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/openapi.py`:
-  - `OpenApiOperation` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/discovery.py`:
-  - `LocaleInfo` (Python @dataclass)
-`packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py`:
-  - `_ParsedFile` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/route_handler.py`:
-  - `_RailsIndex` (Python @dataclass)
-`packages/hypergumbo-core/src/hypergumbo_core/linkers/type_hierarchy.py`:
-  - `_TypeHierarchyIndex` (Python @dataclass)
-- ... and 51 more data models
-
-## Source Files
-
-- `packages/hypergumbo-core/src/hypergumbo_core/ir.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/discovery.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/trackerset.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/models.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/profile.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/cache.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/manifest_targets.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/json_config.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/cli.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/paths.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/ranking.py`
-- `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/ada.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/dataflow.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py`
-- `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/d_lang.py`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/setup.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/sketch.py`
-- `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/apex.py`
-- `scripts/lib/forgejo-api.sh`
-- `packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/xml_config.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py`
-- `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/nim.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/php.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/rst.py`
-- `packages/hypergumbo-core/src/hypergumbo_core/compact.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/robot.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/clojure.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/c.py`
-- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/groovy.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/racket.py`
-- `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/vue.py`
-- ... and 539 more files
-
-## Key Symbols
-
-*★ = centrality ≥ 50% of max*
-
-### `packages/hypergumbo-core/src/hypergumbo_core/ir.py`
-- `Symbol` (class) ★ — A code symbol (function, class, etc.) detected by analysis.
-- `Span` (class) ★ — Source code location with line and column info.
-- `Edge` (class) — A relationship between two symbols (e.g., function calls).
-- `AnalysisRun` (class) — Provenance tracking for an analysis pass execution.
-
-### `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`
-- `TreeSitterAnalyzer` (class) ★ — Base class for tree-sitter-based language analyzers.
-- `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
-- `AnalysisResult` (class) — Universal result type for all language analyzers.
-- `populate_docstrings_from_tree(root_node: 'tree_sitter.Node', source: bytes, symbols: lis…` (function) — Populate docstrings for symbols by finding their tree-sitter nodes via position.
-
-### `packages/hypergumbo-core/src/hypergumbo_core/discovery.py`
-- `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) ★ — Find files matching patterns while respecting exclude rules.
-
-### `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py`
-- `LinkerContext` (class) — Context passed to all linkers.
-- `register_linker(name: str, priority: int=…, description: str=…, requiremen…` (function) — Decorator to register a linker function.
-
-### `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py`
-- `register_analyzer(name: str, priority: int=…, requires_symbols: list[str] | …` (function) — Decorator to register an analyzer function.
-
-### `packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py`
-- `NameResolver` (class) — Symbol resolver for string-keyed registries (dict[str, Symbol]).
-- `ListNameResolver` (class) — Symbol resolver for list-valued registries (dict[str, list[Symbol]]).
-
-### `packages/hypergumbo-core/src/hypergumbo_core/cli.py`
-- `run_behavior_map(repo_root: Path, out_path: Path | None=…, max_tier: int | …` (function) — Run the behavior_map analysis for a repo and write JSON to out_path.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py`
-- `compile_ops(ops: list[dict[str, Any]], item_id: str=…) -> CompiledItem` (function) — Compile an op log (list of op dicts) into a CompiledItem.
-- `_parse_ops_file(filepath: Path) -> list[dict[str, Any]]` (function) — Parse an ops file using PyYAML CSafeLoader (fast C extension).
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/trackerset.py`
-- `TrackerSet` (class) — Multi-tier unified view over canonical, workspace, and stealth Stores.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/models.py`
-- `resolve_actor(agent_patterns: list[str] | None=…) -> tuple[str, str]` (function) — Resolve the current OS user to (by, actor) tuple.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py`
-- `TrackerApp._reload_active_table(self) -> None` (method) — Repopulate whichever view is active, using _filtered_items().
-
-### `packages/hypergumbo-core/src/hypergumbo_core/profile.py`
-- `_read_all_manifest_files(repo_root: Path, filename: str, max_depth: int=…) -> str` (function) — Read all manifest files with given name, recursively.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/cache.py`
-- `Cache` (class) — SQLite read cache for a single tier's Store.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py`
-- `validate_all(tracker_root: Path, config: TrackerConfig | None=…, check_…` (function) — Validate all ops files across all tiers.
-
-### `packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py`
-- `main(argv: list[str] | None=…) -> None` (function) — Primary CLI entry point.
-
-(... and 3547 more symbols across 229 other files)
-
-## Additional Files
-
-- `README.md`
-- `CONTRIBUTING.md`
-- `docs/governance-case-critiques.md`
-- `packages/hypergumbo-core/README.md`
-- `packages/hypergumbo-tracker/README.md`
-- `docs/future/roadmap-details.md`
-- `packages/hypergumbo-core/src/hypergumbo_core/dataflow_patterns/python.yaml`
-- `docs/adr/0001-portable-agent-instructions.md`
-- `docs/LANGUAGES.md`
-- `docs/adr/0009-feature-focused-bakeoff.md`
-- `docs/MIGRATION-2.0.md`
-- `docs/LINKERS.md`
-- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/shiny.yaml`
-- `docs/GOVERNANCE.md`
-- ... and 159 more files
-````
-
-</details>
-
 ---
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 5dec9d796827
-  hypergumbo: 2.2.1
+  commit: 6272e420d6b6
+  hypergumbo: 2.3.0
   python: 3.12.3
 -->

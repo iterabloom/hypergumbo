@@ -708,6 +708,128 @@ def extract_tracker_architecture() -> str:
     return " ".join(para_lines)
 
 
+SCRIPT_CATEGORIES: dict[str, list[str]] = {
+    "CI & Release": [
+        "auto-pr", "merge-pr", "prepare-release", "release-check",
+        "ci-debug", "ci-failover", "tag-release", "release",
+    ],
+    "Testing & Quality": [
+        "smart-test", "check-package-coverage", "integration-test",
+        "license-headers", "validate-agents.sh",
+    ],
+    "Development": [
+        "dev-install", "build-source-grammars", "bump-version",
+        "install-hooks", "tracker", "tracker-textconv", "loop-toggle",
+        "install-embeddings", "uninstall-embeddings", "stop-hook-preview",
+    ],
+    "Analysis & Bakeoff": [
+        "bakeoff", "bakeoff-features", "bakeoff-reflect",
+        "bakeoff-features-reflect", "generate-architecture",
+        "generate-schema", "analyze-artifacts", "test-leaderboard",
+        "changelog-date-bucket", "compute_probe_embeddings.py",
+        "hypergumbo_diag.py",
+    ],
+    "Contribution": ["contribute", "list-my-prs"],
+}
+
+
+def _extract_script_description(path: Path) -> str:
+    """Extract a one-line description from a script file.
+
+    For Python scripts: uses ast.parse to get the module docstring's first line.
+    For Bash scripts: takes the first comment line after shebang and SPDX header.
+    Returns "(no description)" if extraction fails.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception:
+        return "(no description)"
+
+    lines = content.splitlines()
+    if not lines:
+        return "(no description)"
+
+    # Python script: extract module docstring via ast
+    if lines[0].startswith("#!") and "python" in lines[0]:
+        try:
+            tree = ast.parse(content)
+            docstring = ast.get_docstring(tree)
+            if docstring:
+                first_line = next(
+                    (ln.strip() for ln in docstring.splitlines() if ln.strip()),
+                    "",
+                )
+                return first_line or "(no description)"
+        except Exception:
+            pass
+
+    # Bash script (or Python fallback): scan comment lines
+    # Skip shebang, SPDX, set -euo pipefail, blank lines, dash-only lines
+    skip_prefixes = ("#!/", "# SPDX", "set -")
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(stripped.startswith(p) for p in skip_prefixes):
+            continue
+        if stripped.startswith("#"):
+            desc = stripped.lstrip("# ").strip()
+            # Skip dash-only separator lines (e.g. "# --------")
+            if not desc or set(desc) <= {"-", "="}:
+                continue
+            # Remove "scriptname: " prefix if present
+            name = path.name
+            if desc.lower().startswith(name.lower() + ":"):
+                desc = desc[len(name) + 1:].strip()
+            elif ":" in desc:
+                prefix = desc.split(":")[0]
+                # Heuristic: short alphanumeric-with-dashes prefix = script name
+                if (prefix.replace("-", "").replace("_", "").isalnum()
+                        and len(prefix) < 30):
+                    desc = desc[len(prefix) + 1:].strip()
+            return desc
+        # Non-comment, non-blank line — stop looking
+        break
+
+    return "(no description)"
+
+
+def categorize_scripts() -> dict[str, list[tuple[str, str]]]:
+    """Scan scripts/ directory and return categorized (name, description) pairs.
+
+    Groups scripts into categories defined by SCRIPT_CATEGORIES.
+    Scripts not in any category go into "Other".
+    Skips __pycache__ and lib/ subdirectories.
+    """
+    scripts_dir = REPO_ROOT / "scripts"
+    if not scripts_dir.exists():
+        return {}
+
+    # Build reverse mapping: script name -> category
+    name_to_category: dict[str, str] = {}
+    for category, names in SCRIPT_CATEGORIES.items():
+        for name in names:
+            name_to_category[name] = category
+
+    result: dict[str, list[tuple[str, str]]] = {}
+    for category in SCRIPT_CATEGORIES:
+        result[category] = []
+
+    for entry in sorted(scripts_dir.iterdir()):
+        if not entry.is_file():
+            continue
+        if entry.name.startswith("__") or entry.name == "lib":
+            continue
+        category = name_to_category.get(entry.name, "Other")
+        desc = _extract_script_description(entry)
+        if category not in result:
+            result[category] = []
+        result[category].append((entry.name, desc))
+
+    # Remove empty categories
+    return {k: v for k, v in result.items() if v}
+
+
 def generate_architecture_md() -> str:
     """Generate the ARCHITECTURE.md content.
 
@@ -716,22 +838,9 @@ def generate_architecture_md() -> str:
     2. Analysis pipeline (data flow)
     3. Key concepts (output modes, supply chain, symbol resolution)
     4. Extension guides (new analyzers, linkers, patterns)
-    5. Module reference (auto-generated from docstrings)
-    6. Full sketch output (collapsible appendix)
+    5. Scripts & tooling (auto-generated from script headers)
+    6. Module reference (auto-generated from docstrings)
     """
-    print("Running hypergumbo sketch on itself...", file=sys.stderr)
-    sketch = run_hypergumbo_sketch()
-
-    # Post-process sketch: filter AI folders, strip bulky content sections,
-    # and remove section code fences
-    sketch = filter_ai_folders_from_structure(sketch)
-    sketch = _remove_sketch_sections(sketch, [
-        "Entry Points",
-        "Source Files Content",
-        "Additional Files Content",
-    ])
-    sketch = remove_section_code_fences(sketch, ["Structure", "Configuration"])
-
     print("Running hypergumbo analysis on itself...", file=sys.stderr)
     analysis = run_hypergumbo_analysis()
 
@@ -759,6 +868,7 @@ def generate_architecture_md() -> str:
         "# Architecture",
         "",
         "> **Auto-generated** by running hypergumbo on itself.",
+        "> Sections marked with (auto) are computed at generation time; unmarked sections are curated.",
         "> Run `./scripts/generate-architecture` to update.",
         "",
         "hypergumbo is a local-first CLI that analyzes source code and emits",
@@ -767,7 +877,7 @@ def generate_architecture_md() -> str:
         "for human reading, a full JSON behavior map for tooling, and graph slices",
         "for focused LLM context.",
         "",
-        "## Self-Analysis Summary",
+        "## Self-Analysis Summary (auto)",
         "",
         f"hypergumbo analyzed its own source code and found:",
         f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers, {core_count} core, {cli_count} CLI, {len(categories.get('Tracker', []))} tracker)",
@@ -982,7 +1092,7 @@ def generate_architecture_md() -> str:
     # ── Most-Connected Symbols ────────────────────────────────────
     if top_symbols:
         lines.extend([
-            "## Most-Connected Symbols",
+            "## Most-Connected Symbols (auto)",
             "",
             "These symbols have the highest bidirectional centrality",
             "(`score = in_degree * (1 + ln(1 + out_degree))`):",
@@ -1085,6 +1195,25 @@ def generate_architecture_md() -> str:
         "",
     ])
 
+    # ── Scripts & Tooling ─────────────────────────────────────────
+    script_categories = categorize_scripts()
+    if script_categories:
+        lines.extend([
+            "## Scripts & Tooling (auto)",
+            "",
+            "The `scripts/` directory contains operational tooling. "
+            "Descriptions are extracted from each script's header comment or docstring.",
+            "",
+        ])
+        for category, scripts in script_categories.items():
+            lines.append(f"### {category}")
+            lines.append("")
+            lines.append("| Script | Description |")
+            lines.append("|--------|-------------|")
+            for name, desc in scripts:
+                lines.append(f"| `{name}` | {desc} |")
+            lines.append("")
+
     # ── Extension Guides ──────────────────────────────────────────
     lines.extend([
         "## Adding a New Analyzer",
@@ -1111,7 +1240,7 @@ def generate_architecture_md() -> str:
 
     # ── Module Reference ──────────────────────────────────────────
     lines.extend([
-        "## Module Reference",
+        "## Module Reference (auto)",
         "",
     ])
 
@@ -1137,20 +1266,8 @@ def generate_architecture_md() -> str:
 
         lines.append("")
 
-    # ── Sketch Appendix (collapsible) ─────────────────────────────
+    # ── Generation Metadata ──────────────────────────────────────
     lines.extend([
-        "## Appendix: Full Sketch Output",
-        "",
-        "<details>",
-        "<summary>Click to expand hypergumbo's self-analysis sketch "
-        "(data models, source files, key symbols)</summary>",
-        "",
-        "````markdown",
-        sketch.strip(),
-        "````",
-        "",
-        "</details>",
-        "",
         "---",
         "",
         "<!--",
