@@ -155,3 +155,18 @@
   clock: 20  # 461d
   nonce: 461d  # 461d
   message: "Reopened: only 9/79+ analyzers fixed. Need to convert all remaining analyzers (27 files across mainstream and extended1) to use shared make_unresolved_edge(). Also add unresolved emission to groovy.py which currently discards."  # 461d
+- op: update  # dcbc
+  at: '2026-03-20T20:35:36Z'  # dcbc
+  by: agent  # dcbc
+  actor: jgstern_agent  # dcbc
+  clock: 21  # dcbc
+  nonce: dcbc  # dcbc
+  set:  # dcbc
+    status: done  # dcbc
+- op: discuss  # 47f7
+  at: '2026-03-20T20:35:36Z'  # 47f7
+  by: agent  # 47f7
+  actor: jgstern_agent  # 47f7
+  clock: 22  # 47f7
+  nonce: 47f7  # 47f7
+  message: "Completed in PR #2443. All 30+ analyzers with call resolution now use shared make_unresolved_edge(). 9 mainstream (PR #2439) + 21 remaining (5 mainstream + 16 extended1 in PR #2443). Groovy and Solidity also converted from discarding unresolved calls. Non-call edges (decorators, associations, module references) correctly excluded."  # 47f7

@@ -1,0 +1,26 @@
+- op: create  # da45
+  at: '2026-03-20T20:59:31Z'  # da45
+  by: agent  # da45
+  actor: jgstern_agent  # da45
+  clock: 1  # da45
+  nonce: da45  # da45
+  data:  # da45
+    kind: work_item  # da45
+    title: "IO boundary: propagate native_bridge edges into IO chain tracking"  # da45
+    status: todo_soft  # da45
+    priority: 3  # da45
+    parent:  # da45
+    tags: []  # da45
+    before: []  # da45
+    duplicate_of: []  # da45
+    not_duplicate_of: []  # da45
+    pr_ref:  # da45
+    description: ""  # da45
+    fields: {}  # da45
+- op: discuss  # 6ad6
+  at: '2026-03-20T20:59:44Z'  # 6ad6
+  by: agent  # 6ad6
+  actor: jgstern_agent  # 6ad6
+  clock: 2  # 6ad6
+  nonce: 6ad6  # 6ad6
+  message: "Bakeoff finding (deep-20260320-163609): When a Java native method leads to a C function that calls fopen/fread/write, the IO chain should be visible in io-boundaries with entry_points populated from the Java side. Currently JNI bridge edges are not followed during IO boundary traversal. Affects JNA (65% JNI coverage), netty (custom native naming), and other JNI-heavy repos."  # 6ad6
