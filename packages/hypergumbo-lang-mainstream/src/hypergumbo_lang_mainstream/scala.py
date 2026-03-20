@@ -377,6 +377,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -423,6 +424,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -460,6 +462,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
         elif node.type == "object_definition":
@@ -486,6 +489,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
         elif node.type == "trait_definition":
@@ -515,6 +519,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
     return analysis

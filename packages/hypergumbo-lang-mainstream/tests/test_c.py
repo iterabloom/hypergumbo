@@ -1875,3 +1875,25 @@ class TestStructDesignatedInitFptr:
         names = sorted(e.meta.get("field", "") for e in ptr_edges)
         assert names == ["close", "open"]
 
+
+class TestCShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "example.c").write_text("int add(int a, int b) { return a + b; }\n")
+        result = analyze_c(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_struct_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("struct Point { int x; int y; };\n")
+        result = analyze_c(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Point")
+        assert struct.shape_id is not None
+        assert struct.shape_id.startswith("sha256:")
+

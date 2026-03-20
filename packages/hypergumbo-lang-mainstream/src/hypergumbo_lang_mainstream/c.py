@@ -224,10 +224,13 @@ def _extract_symbols(
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
+    node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed C tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally populates *node_for_symbol* to enable base-class shape_id
+    auto-wiring (ADR-0014 §1).
     """
     symbols: list[Symbol] = []
 
@@ -255,6 +258,8 @@ def _extract_symbols(
                     signature=signature,
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Function declarations (prototypes)
         elif node.type == "declaration":
@@ -283,6 +288,8 @@ def _extract_symbols(
                             modifiers=["declaration"],
                         )
                         symbols.append(symbol)
+                        if node_for_symbol is not None:
+                            node_for_symbol[symbol.id] = node
 
         # Struct definitions (with body only — skip references like
         # ``struct stat sb;`` and forward declarations ``struct Foo;``)
@@ -307,6 +314,8 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Enum definitions (with body only — skip references like
         # ``enum Color c;`` and forward declarations ``enum Color;``)
@@ -331,6 +340,8 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Typedef declarations
         elif node.type == "type_definition":
@@ -357,6 +368,8 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
     return symbols
 
@@ -733,7 +746,10 @@ class CAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single C file."""
         analysis = FileAnalysis()
-        symbols = _extract_symbols(tree, source, file_path, run)
+        symbols = _extract_symbols(
+            tree, source, file_path, run,
+            node_for_symbol=analysis.node_for_symbol,
+        )
         analysis.symbols = symbols
         for sym in symbols:
             analysis.symbol_by_name[sym.name] = sym
@@ -839,6 +855,13 @@ class CAnalyzer(TreeSitterAnalyzer):
                 tree, source, source_file, rel_path, run,
             )
             populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
+            # Auto-compute shape_id for symbols with nodes (ADR-0014 §1)
+            if analysis.node_for_symbol:
+                sym_by_id = {s.id: s for s in analysis.symbols}
+                for sym_id, ts_node in analysis.node_for_symbol.items():
+                    sym = sym_by_id.get(sym_id)
+                    if sym is not None and sym.shape_id is None:
+                        sym.shape_id = self.compute_shape_id(ts_node)
             import_aliases = self.get_import_aliases(tree, source)
             file_analyses[source_file] = (analysis, import_aliases)
             files_analyzed += 1

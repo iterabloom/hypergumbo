@@ -202,8 +202,13 @@ def _extract_sql_symbols(
     rel_path: str,
     symbols: list[Symbol],
     symbol_registry: dict[str, Symbol],
+    node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
 ) -> None:
-    """Extract symbols from SQL AST tree (pass 1)."""
+    """Extract symbols from SQL AST tree (pass 1).
+
+    Optionally populates *node_for_symbol* to enable base-class shape_id
+    auto-wiring (ADR-0014 §1).
+    """
     for node in iter_tree(root_node):
         if node.type == "create_table":
             name = _extract_table_name(node, source)
@@ -230,6 +235,8 @@ def _extract_sql_symbols(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 symbol_registry[name.lower()] = sym
 
         elif node.type == "create_view":
@@ -257,6 +264,8 @@ def _extract_sql_symbols(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 symbol_registry[name.lower()] = sym
 
         elif node.type == "create_function":
@@ -285,6 +294,8 @@ def _extract_sql_symbols(
                     signature=_extract_sql_signature(node, source),
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 symbol_registry[name.lower()] = sym
 
         elif node.type == "create_procedure":  # pragma: no cover
@@ -312,6 +323,8 @@ def _extract_sql_symbols(
                     origin=PASS_ID,  # pragma: no cover
                 )  # pragma: no cover
                 symbols.append(sym)  # pragma: no cover
+                if node_for_symbol is not None:  # pragma: no cover
+                    node_for_symbol[sym.id] = node  # pragma: no cover
                 symbol_registry[name.lower()] = sym  # pragma: no cover
 
         elif node.type == "create_trigger":
@@ -339,6 +352,8 @@ def _extract_sql_symbols(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 symbol_registry[name.lower()] = sym
 
         elif node.type == "create_index":
@@ -366,6 +381,8 @@ def _extract_sql_symbols(
                     origin=PASS_ID,
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 symbol_registry[name.lower()] = sym
 
 
@@ -428,6 +445,7 @@ class SqlAnalyzer(TreeSitterAnalyzer):
         _extract_sql_symbols(
             tree.root_node, source, rel_path,
             analysis.symbols, symbol_registry,
+            node_for_symbol=analysis.node_for_symbol,
         )
         analysis.symbol_by_name.update(symbol_registry)
         return analysis

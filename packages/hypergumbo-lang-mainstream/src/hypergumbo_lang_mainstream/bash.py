@@ -219,6 +219,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         signature="()",
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[func_name] = symbol
 
             elif node.type == "declaration_command":
@@ -248,6 +249,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                 origin_run_id=run.execution_id,
                             )
                             analysis.symbols.append(symbol)
+                            analysis.node_for_symbol[symbol.id] = node
 
             elif node.type == "command":
                 cmd_name_node = find_child_by_type(node, "command_name")
@@ -278,6 +280,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                     origin_run_id=run.execution_id,
                                 )
                                 analysis.symbols.append(symbol)
+                                analysis.node_for_symbol[symbol.id] = node
 
         return analysis
 

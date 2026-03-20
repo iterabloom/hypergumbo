@@ -1195,3 +1195,29 @@ class TestScalaFunctionReferences:
         result = analyze_scala(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestScalaShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Example.scala").write_text(
+            "object Example {\n  def greet(): Unit = println(\"hi\")\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        func = next(s for s in result.symbols if s.kind in ("function", "method"))
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Example.scala").write_text(
+            "class Foo {\n  def bar(): Int = 42\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

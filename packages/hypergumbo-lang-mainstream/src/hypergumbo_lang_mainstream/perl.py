@@ -240,6 +240,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         origin_run_id=run.execution_id,
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[package_name] = symbol
 
             elif node.type == "subroutine_declaration_statement":
@@ -278,6 +279,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         signature=_extract_perl_signature(node, source),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     # Store both qualified and unqualified for local lookup
                     analysis.symbol_by_name[qualified_name] = symbol
                     if "::" in qualified_name:

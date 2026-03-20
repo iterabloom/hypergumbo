@@ -235,8 +235,13 @@ def _extract_powershell_symbols(
     run_id: str,
     symbols: list[Symbol],
     symbol_registry: dict[str, Symbol],
+    node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
 ) -> None:
-    """Extract symbols from a parsed PowerShell file (pass 1)."""
+    """Extract symbols from a parsed PowerShell file (pass 1).
+
+    Optionally populates *node_for_symbol* to enable base-class shape_id
+    auto-wiring (ADR-0014 §1).
+    """
     for node in iter_tree(tree.root_node):
         if node.type == "function_statement":
             # Process a function, filter, or workflow definition
@@ -260,6 +265,8 @@ def _extract_powershell_symbols(
                     file_path, run_id, node, func_name, kind, signature=sig
                 )
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 # Register functions for call resolution
                 if kind in ("function", "filter", "workflow"):
                     symbol_registry[func_name] = sym
@@ -352,6 +359,7 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         _extract_powershell_symbols(
             tree, source, rel_path, run.execution_id,
             analysis.symbols, symbol_registry,
+            node_for_symbol=analysis.node_for_symbol,
         )
 
         # Populate symbol_by_name for edge resolution (functions/filters/workflows)

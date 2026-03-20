@@ -381,6 +381,7 @@ def _extract_symbols_from_tree(
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
                 # Extract field types for chained member resolution
@@ -419,6 +420,7 @@ def _extract_symbols_from_tree(
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
                 # Extract field types for chained member resolution
@@ -452,6 +454,7 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Function definition
@@ -487,6 +490,7 @@ def _extract_symbols_from_tree(
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 # Store by both full name and short name
                 analysis.symbol_by_name[name] = symbol
                 short_name = name.split("::")[-1] if "::" in name else name

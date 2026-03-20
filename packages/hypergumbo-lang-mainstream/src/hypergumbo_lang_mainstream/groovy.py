@@ -409,6 +409,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[class_name] = symbol
 
             # Interface declaration
@@ -437,6 +438,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[iface_name] = symbol
 
             # Trait declaration (Groovy-specific)
@@ -467,6 +469,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[trait_name] = symbol
 
             # Enum declaration
@@ -495,6 +498,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[enum_name] = symbol
 
             # Method declaration (inside class/trait)
@@ -544,6 +548,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         meta=method_meta,
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[method_name] = symbol
                     analysis.symbol_by_name[full_name] = symbol
 
@@ -584,6 +589,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=modifiers,
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[func_name] = symbol
 
         return analysis
