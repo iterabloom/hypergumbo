@@ -51,6 +51,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -259,20 +260,20 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                             if called_name not in ("print", "push_error", "push_warning", "printerr"):
                                 result = resolver.lookup(called_name)
                                 if result.symbol is not None:
-                                    dst_id = result.symbol.id
-                                    confidence = 0.85 * result.confidence
+                                    edges.append(Edge.create(
+                                        src=caller.id,
+                                        dst=result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.85 * result.confidence,
+                                        origin=PASS_ID,
+                                    ))
                                 else:
-                                    dst_id = f"gdscript:external:{called_name}:function"
-                                    confidence = 0.70
-
-                                edges.append(Edge.create(
-                                    src=caller.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    confidence=confidence,
-                                    origin=PASS_ID,
-                                ))
+                                    edges.append(make_unresolved_edge(
+                                        "gdscript", caller.id, called_name,
+                                        node.start_point[0] + 1,
+                                        PASS_ID, run.execution_id,
+                                    ))
 
         return edges
 

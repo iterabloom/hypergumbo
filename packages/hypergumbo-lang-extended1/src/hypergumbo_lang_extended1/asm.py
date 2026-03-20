@@ -44,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -227,21 +228,20 @@ class AsmAnalyzer(TreeSitterAnalyzer):
             # Resolve call target
             target_sym = global_symbols.get(target_name)
             if isinstance(target_sym, Symbol):
-                dst_id = target_sym.id
-                confidence = 0.85
+                edges.append(Edge.create(
+                    src=caller.id,
+                    dst=target_sym.id,
+                    edge_type="calls",
+                    line=call_line,
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
             else:
-                dst_id = f"asm:external:{target_name}:function"
-                confidence = 0.70
-
-            edges.append(Edge.create(
-                src=caller.id,
-                dst=dst_id,
-                edge_type="calls",
-                line=call_line,
-                confidence=confidence,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+                edges.append(make_unresolved_edge(
+                    "asm", caller.id, target_name,
+                    call_line, PASS_ID, run.execution_id,
+                ))
 
         return edges
 

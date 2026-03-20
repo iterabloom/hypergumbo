@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -397,18 +398,10 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                 )
                                 edges.append(edge)
                             else:
-                                unresolved_id = f"perl:?:0-0:{func_name}:function"
-                                edge = Edge.create(
-                                    src=caller.id,
-                                    dst=unresolved_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    origin=PASS_ID,
-                                    origin_run_id=run_id,
-                                    evidence_type="function_call",
-                                    confidence=0.50,
-                                )
-                                edges.append(edge)
+                                edges.append(make_unresolved_edge(
+                                    "perl", caller.id, func_name,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                ))
 
             # Handle method calls (arrow operator)
             elif node.type == "method_call_expression":

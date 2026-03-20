@@ -1198,3 +1198,84 @@ contract Token {
         funcs = [s for s in result.symbols if s.kind == "function" and "empty" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature == "()"
+
+
+class TestSolidityUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges in Solidity."""
+
+    def test_external_contract_call_creates_unresolved_edge(self, temp_repo: Path) -> None:
+        """Calls to unknown functions emit unresolved edges."""
+        from hypergumbo_lang_extended1.solidity import analyze_solidity
+
+        (temp_repo / "Test.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Vault {
+    function withdraw() external {
+        unknownExternalCall();
+        someLib.doStuff();
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        assert len(unresolved) >= 1
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "unknownExternalCall" in callee_names or "someLib.doStuff" in callee_names
+        for e in unresolved:
+            assert e.confidence == 0.50
+
+    def test_simple_unresolved_function_call(self, temp_repo: Path) -> None:
+        """Simple unresolved function calls emit unresolved edges."""
+        from hypergumbo_lang_extended1.solidity import analyze_solidity
+
+        (temp_repo / "Test.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Test {
+    function run() external {
+        externalLib();
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        assert len(unresolved) >= 1
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "externalLib" in callee_names
+
+    def test_dotted_member_call_unresolved(self, temp_repo: Path) -> None:
+        """foo.bar() where bar is not in project emits unresolved edge."""
+        from hypergumbo_lang_extended1.solidity import analyze_solidity
+
+        (temp_repo / "Test.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Test {
+    function run() external {
+        msg.sender.call("");
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        # msg.sender.call is a member access that can't be resolved
+        assert any("call" in e.dst or "sender" in e.dst for e in unresolved)

@@ -44,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -375,22 +376,22 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            edges.append(Edge.create(
+                                src=caller.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
                         else:
                             # External procedure (e.g., Ada.Text_IO.Put_Line)
-                            dst_id = f"ada:external:{target_name}:procedure"
-                            confidence = 0.70
-
-                        edges.append(Edge.create(
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                            edges.append(make_unresolved_edge(
+                                "ada", caller.id, target_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            ))
 
             # Process function calls
             elif node.type == "function_call":
@@ -403,22 +404,22 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            edges.append(Edge.create(
+                                src=caller.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
                         else:
                             # External function
-                            dst_id = f"ada:external:{target_name}:function"
-                            confidence = 0.70
-
-                        edges.append(Edge.create(
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                            edges.append(make_unresolved_edge(
+                                "ada", caller.id, target_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            ))
 
         return edges
 

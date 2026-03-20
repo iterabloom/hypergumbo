@@ -258,7 +258,7 @@ class Main
             None
         )
         assert unresolved_edge is not None
-        assert unresolved_edge.confidence == 0.6
+        assert unresolved_edge.confidence == 0.50
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """

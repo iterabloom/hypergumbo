@@ -36,6 +36,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     make_symbol_id,
+    make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -307,29 +308,31 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 
                 if callee_name:
                     if is_qualified:
-                        callee_id = f"gleam:external:{callee_name}"
-                        confidence = 0.8
+                        edge = make_unresolved_edge(
+                            "gleam", caller_id, callee_name,
+                            node.start_point[0] + 1,
+                            PASS_ID, run_id,
+                        )
                     else:
                         callee_sym = global_symbols.get(callee_name)
                         if isinstance(callee_sym, Symbol):
-                            callee_id = callee_sym.id
-                            confidence = 1.0
+                            edge = Edge.create(
+                                src=caller_id,
+                                dst=callee_sym.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="ast_call_direct",
+                                confidence=1.0,
+                                evidence_lang="gleam",
+                            )
                         else:
-                            callee_id = f"gleam:unresolved:{callee_name}"
-                            confidence = 0.6
-
-                    line = node.start_point[0] + 1
-                    edge = Edge.create(
-                        src=caller_id,
-                        dst=callee_id,
-                        edge_type="calls",
-                        line=line,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                        evidence_type="ast_call_direct" if not is_qualified else "ast_call_method",
-                        confidence=confidence,
-                        evidence_lang="gleam",
-                    )
+                            edge = make_unresolved_edge(
+                                "gleam", caller_id, callee_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run_id,
+                            )
                     edges.append(edge)
 
         # Recursively process children

@@ -286,7 +286,7 @@ end IO_Test;
         assert any("Put_Line" in e.dst for e in external_calls)
         # External calls have lower confidence
         for e in external_calls:
-            assert e.confidence == 0.70
+            assert e.confidence == 0.50
 
     def test_resolved_call_confidence(self, temp_repo: Path) -> None:
         """Resolved calls have higher confidence than external calls."""
@@ -349,12 +349,12 @@ end Func_Test;
 
         # Should have call edge to external function
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        external_calls = [e for e in call_edges if "external" in e.dst and "function" in e.dst]
+        external_calls = [e for e in call_edges if "external" in e.dst and ":unresolved" in e.dst]
         assert len(external_calls) >= 1
         assert any("External_Func" in e.dst for e in external_calls)
         # External calls have lower confidence
         for e in external_calls:
-            assert e.confidence == 0.70
+            assert e.confidence == 0.50
 
 
 class TestAdaAnalysisUnavailable:

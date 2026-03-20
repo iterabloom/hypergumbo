@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -281,6 +282,7 @@ def _extract_powershell_edges(
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
     module_symbol: Optional[Symbol] = None,
+    run_id: str = "",
 ) -> None:
     """Extract edges from a parsed PowerShell file (pass 2)."""
     _caller_path = str(file_path)
@@ -301,21 +303,21 @@ def _extract_powershell_edges(
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(command_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            edges.append(Edge.create(
+                                src=caller.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
                         else:
                             # External cmdlet or function
-                            dst_id = f"powershell:external:{command_name}:function"
-                            confidence = 0.70
-
-                        edges.append(Edge.create(
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                        ))
+                            edges.append(make_unresolved_edge(
+                                "powershell", caller.id, command_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                            ))
 
 
 class PowerShellAnalyzer(TreeSitterAnalyzer):
@@ -390,6 +392,7 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         _extract_powershell_edges(
             tree, source, rel_path, edges, local_symbols, resolver,
             module_symbol=module_symbol,
+            run_id=run.execution_id,
         )
         return edges
 

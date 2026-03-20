@@ -749,7 +749,7 @@ end
         assert edge is not None, (
             f"Unresolved method call edge not found. Edges: {call_edges}"
         )
-        assert "?" in edge.dst  # Unresolved target
+        assert "unresolved" in edge.dst  # Unresolved target
         assert edge.confidence == 0.50
 
     def test_non_require_dot_call_unaffected(self, tmp_path: Path) -> None:

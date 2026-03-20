@@ -40,6 +40,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -277,23 +278,23 @@ class FishAnalyzer(TreeSitterAnalyzer):
             if caller:
                 result = resolver.lookup(cmd_name)
                 if result.symbol is not None:
-                    dst_id = result.symbol.id
-                    confidence = 0.85 * result.confidence
-                else:
-                    dst_id = f"fish:external:{cmd_name}:function"
-                    confidence = 0.70
-
-                edges.append(
-                    Edge.create(
-                        src=caller.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=node.start_point[0] + 1,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
+                    edges.append(
+                        Edge.create(
+                            src=caller.id,
+                            dst=result.symbol.id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            confidence=0.85 * result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        )
                     )
-                )
+                else:
+                    edges.append(make_unresolved_edge(
+                        "fish", caller.id, cmd_name,
+                        node.start_point[0] + 1,
+                        PASS_ID, run_id,
+                    ))
 
 
 _analyzer = FishAnalyzer()

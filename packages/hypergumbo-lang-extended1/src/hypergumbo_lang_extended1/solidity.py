@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -474,6 +475,16 @@ def _extract_edges_from_tree(
                                 origin_run_id=run_id,
                             )
                             edges.append(edge)
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "solidity", current_function.id, call_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                            ))
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "solidity", current_function.id, call_name,
+                            node.start_point[0] + 1, PASS_ID, run_id,
+                        ))
 
         # Emit statement: emit Transfer(...) → emits edge to event definition
         elif node.type == "emit_statement":

@@ -210,8 +210,8 @@ class TestAnalyzeHaxe:
             None
         )
         assert edge is not None
-        assert "unresolved" in edge.dst
-        assert edge.confidence == 0.6
+        assert ":unresolved" in edge.dst
+        assert edge.confidence == 0.50
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {
