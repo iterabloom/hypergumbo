@@ -1422,11 +1422,17 @@ def cmd_cycle(args):
         return rc
     if getattr(args, "skip_reflect", False):
         return 0
-    # Run reflect as subprocess (separate script)
+    # Run reflect as subprocess (separate script).
+    # Pass --all/--some through so batch cycles reflect on all cohorts,
+    # not just the latest.
     workdir = resolve_workdir(getattr(args, "workdir", None))
     reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   "bakeoff-reflect")
     cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    if getattr(args, "all", False):
+        cmd.append("--all")
+    elif getattr(args, "some", None):
+        cmd.extend(["--some", str(args.some)])
     print(f"\n=== Running bakeoff-reflect ===\n")
     result = subprocess.run(cmd)
     if result.returncode != 0:
