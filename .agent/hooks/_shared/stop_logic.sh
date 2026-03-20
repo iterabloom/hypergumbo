@@ -218,16 +218,16 @@ except Exception:
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff cohort --count 5\n  - Mine existing artifacts: ./scripts/bakeoff issues --format json\n  - Run LLM assessment: ./scripts/bakeoff-reflect\n  - Or move to other work items (tracker ready)'
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-reflect\n  2. Aggregate findings: ./scripts/bakeoff-reflect aggregate\n  3. Select a new cohort: ./scripts/bakeoff cohort --count 5\n  4. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
       else
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  - Select a new cohort: ./scripts/bakeoff-features cohort --count 4\n  - Compare sessions: ./scripts/bakeoff-features compare <A> <B>\n  - Run LLM assessment: ./scripts/bakeoff-features-reflect\n  - Or move to other work items (tracker ready)'
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-features-reflect\n  2. Aggregate findings: ./scripts/bakeoff-features-reflect aggregate\n  3. Compare with prior sessions: ./scripts/bakeoff-features compare <A> <B>\n  4. Select a new cohort: ./scripts/bakeoff-features cohort --count 4\n  5. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
       fi
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  - View issues: ./scripts/bakeoff issues --format json\n  - Diagnose latest: ./scripts/bakeoff diagnose\n  - Check status: ./scripts/bakeoff status\n  - Re-run after fixes: ./scripts/bakeoff cycle'
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  1. View issues: ./scripts/bakeoff issues --format json\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-reflect\n  3. Diagnose latest: ./scripts/bakeoff diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff cycle\nDuring idle time: ./scripts/bakeoff-reflect aggregate'
       else
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  - Check status: ./scripts/bakeoff-features status\n  - Diagnose repos: ./scripts/bakeoff-features diagnose\n  - Re-run after fixes: ./scripts/bakeoff-features run\n  - View questions: ./scripts/bakeoff-features questions'
+        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  1. Check status: ./scripts/bakeoff-features status\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-features-reflect\n  3. Diagnose repos: ./scripts/bakeoff-features diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-features cycle\nDuring idle time: ./scripts/bakeoff-features-reflect aggregate'
       fi
     fi
   fi
@@ -263,7 +263,9 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
       fi
       if printf '%s' "$_EXISTING" | jq --arg gf "$GUIDANCE_FILE" \
             --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
-            '. + {guidance_file: $gf} + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)' \
+            --arg bs "${_SESSION_DIR:-}" \
+            --arg bt "${_SESSION_TYPE:-}" \
+            '. + {guidance_file: $gf} + (if $bc != "" then {bakeoff_convergence: $bc} else {} end) + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)' \
             > "$TMP" 2>/dev/null; then
         mv "$TMP" "$STATE_FILE_FOR_GF"
       else

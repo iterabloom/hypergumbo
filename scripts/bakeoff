@@ -20,16 +20,17 @@ Key principles:
 - **Distinguish nitpicking from real problems**: Focus on issues that matter
 
 The process:
-1. Select cohort → run → diagnose → find issues
+1. Select cohort → run → diagnose → reflect → find issues
 2. For each issue:
    a. Investigate the root cause
    b. Ask: "What analogous issues might exist elsewhere?"
    c. Check those analogous cases (even if you think they're fine)
    d. Fix both the specific issue and its siblings
-3. Re-run on SAME cohort → diagnose
+3. Re-run on SAME cohort → diagnose → reflect
 4. If new issues emerge, repeat step 2
 5. If no new CRITICAL/HIGH issues for 2+ iterations, cohort is CONVERGED
-6. Move to next cohort
+6. Aggregate findings: bakeoff-reflect aggregate
+7. Move to next cohort
 
 Usage:
     # Initialize a new bakeoff session (creates timestamped dir in canonical default)
@@ -55,9 +56,10 @@ Usage:
     # Check convergence status
     ./scripts/bakeoff status
 
-    # Full cycle: run + diagnose
+    # Full cycle: run + diagnose + reflect
     ./scripts/bakeoff cycle
     ./scripts/bakeoff cycle --all
+    ./scripts/bakeoff cycle --skip-reflect  # Fast iteration
 
     # List detected issues (machine-readable)
     ./scripts/bakeoff issues --format json
@@ -72,6 +74,7 @@ Environment:
 
 import argparse
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -1259,6 +1262,34 @@ def cmd_status(args):
     else:
         print("No iterations yet. Run: ./scripts/bakeoff cycle")
 
+    # --- Reflect/aggregate status ---
+    reflect_dir = os.path.join(workdir, "reflect")
+    if os.path.isdir(reflect_dir):
+        assessments = glob.glob(os.path.join(reflect_dir, "**", "*.yaml"),
+                                recursive=True)
+        summaries = [a for a in assessments
+                     if os.path.basename(a) == "summary.yaml"]
+        non_summary = [a for a in assessments
+                       if os.path.basename(a) != "summary.yaml"]
+        if non_summary and not summaries:
+            print()
+            print("  Reflect: assessments exist but no summary.yaml generated.")
+            print("  Run: ./scripts/bakeoff-reflect aggregate")
+        elif non_summary and summaries:
+            # Check if there are assessment dirs without a matching summary
+            assessed_dirs = set()
+            for a in non_summary:
+                assessed_dirs.add(os.path.dirname(a))
+            summarized_dirs = set()
+            for s in summaries:
+                summarized_dirs.add(os.path.dirname(s))
+            unaggregated = assessed_dirs - summarized_dirs
+            if unaggregated:
+                print()
+                print(f"  Reflect: {len(unaggregated)} cohort(s) have assessments"
+                      f" but no summary.yaml.")
+                print("  Run: ./scripts/bakeoff-reflect aggregate")
+
     return 0
 
 
@@ -1286,11 +1317,31 @@ def cmd_issues(args):
 
 
 def cmd_cycle(args):
-    """Run full cycle: run + diagnose."""
+    """Run full cycle: run + diagnose + reflect.
+
+    Runs analysis, generates diagnostic report, then generates LLM
+    assessment prompts via bakeoff-reflect.  Use --skip-reflect to
+    run only run + diagnose (for fast iteration when you plan to
+    reflect manually later).
+    """
     rc = cmd_run(args)
     if rc != 0:
         return rc
-    return cmd_diagnose(args)
+    rc = cmd_diagnose(args)
+    if rc != 0:
+        return rc
+    if getattr(args, "skip_reflect", False):
+        return 0
+    # Run reflect as subprocess (separate script)
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "bakeoff-reflect")
+    cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    print(f"\n=== Running bakeoff-reflect ===\n")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Warning: bakeoff-reflect failed (non-fatal)", file=sys.stderr)
+    return 0
 
 
 def cmd_questions(args):
@@ -1422,7 +1473,10 @@ def cmd_loop(args):
         if args.dry_run:
             print("[DRY RUN] Would run cycle")
         else:
-            cycle_args = argparse.Namespace(workdir=workdir)
+            cycle_args = argparse.Namespace(
+                workdir=workdir,
+                skip_reflect=getattr(args, "skip_reflect", False),
+            )
             rc = cmd_cycle(cycle_args)
             if rc != 0:
                 print("Error running cycle", file=sys.stderr)
@@ -1615,12 +1669,15 @@ def main():
     p_issues.add_argument("--format", choices=["json", "text"], default="text")
 
     # cycle
-    p_cycle = subparsers.add_parser("cycle", help="Run full cycle")
+    p_cycle = subparsers.add_parser("cycle",
+                                    help="Run full cycle (run + diagnose + reflect)")
     p_cycle.add_argument("--workdir", help="Override workdir")
     p_cycle.add_argument("--all", action="store_true",
-                        help="Run + diagnose all unanalyzed cohorts (batch mode)")
+                        help="Run + diagnose + reflect all unanalyzed cohorts (batch mode)")
     p_cycle.add_argument("--some", type=int, metavar="N",
-                        help="Run + diagnose up to N unanalyzed cohorts")
+                        help="Run + diagnose + reflect up to N unanalyzed cohorts")
+    p_cycle.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip the reflect step (run + diagnose only)")
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan repo pool")
@@ -1637,6 +1694,8 @@ def main():
     p_loop.add_argument("--cohort-size", type=int, default=DEFAULT_COHORT_SIZE, help="Repos per cohort")
     p_loop.add_argument("--dry-run", action="store_true", help="Show what would happen without running")
     p_loop.add_argument("--auto-continue", action="store_true", help="Continue even when issues found")
+    p_loop.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip reflect step in each cycle (fast iteration)")
 
     args = parser.parse_args()
 

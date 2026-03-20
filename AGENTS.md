@@ -210,9 +210,11 @@ When context has been compressed, you may have lost awareness of in-progress wor
 ```bash
 cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null
 ```
-This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), and free-text notes about what to do next. Use it to orient yourself before starting new work.
+This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), free-text notes about what to do next, and the active bakeoff session. Use it to orient yourself before starting new work.
 
 If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
+
+If the JSON contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff status --workdir <path>` or `./scripts/bakeoff-features status --workdir <path>`).
 
 **Keep notes fresh:** Update `last_stop_check.json` notes after key milestones, not just at reflection time. This ensures context survives compaction:
 - After a PR merge: record what was merged and what's next
@@ -485,9 +487,12 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
 
 ### BROAD Mode Priority Queue:
-1. **Assess coverage breadth:** Run `bakeoff-reflect` for LLM-driven coverage assessment
-2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
-3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-reflect` then `./scripts/bakeoff-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps — do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-reflect aggregate` to surface cross-session trends. If `./scripts/bakeoff status` shows unaggregated assessments, aggregate before starting new work.
+3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
+
+**Stall-state guidance:** When waiting for CI, bakeoff runs, or pre-commit hook gates (i.e., you cannot make code changes), use the idle time productively: run `./scripts/bakeoff-reflect aggregate` on prior sessions, review unaggregated assessments, or update lab notebook observations.
 
 BROAD mode scripts:
 ```bash
@@ -510,9 +515,10 @@ BROAD mode scripts:
 ./scripts/bakeoff diagnose --all     # All cohorts in session
 ./scripts/bakeoff diagnose --some 3  # Latest 3 cohorts
 
-# Full cycle: run + diagnose
+# Full cycle: run + diagnose + reflect
 ./scripts/bakeoff cycle
-./scripts/bakeoff cycle --all        # Batch: run + diagnose all
+./scripts/bakeoff cycle --all        # Batch: run + diagnose + reflect all
+./scripts/bakeoff cycle --skip-reflect  # Fast iteration: run + diagnose only
 
 # Session introspection
 ./scripts/bakeoff status            # Convergence status and cohort breakdown
@@ -520,17 +526,21 @@ BROAD mode scripts:
 ./scripts/bakeoff questions         # Diagnostic questions for analysis
 
 # LLM-driven qualitative assessment
-./scripts/bakeoff-reflect
+./scripts/bakeoff-reflect              # Generate assessment prompts
+./scripts/bakeoff-reflect aggregate    # Synthesize findings across repos
 ```
 
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than coverage breadth:
-1. **Slice quality:** Does forward slice capture actual dependencies?
-2. **Reverse slice:** Does it correctly identify callers?
-3. **Supply chain tiers:** Is tier classification accurate for monorepos?
-4. **Centrality ranking:** Do top-ranked symbols match developer intuition?
-5. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment (analogous to BROAD's `bakeoff-reflect`)
-6. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-features-reflect` then `./scripts/bakeoff-features-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** Run `./scripts/bakeoff-features-reflect aggregate --all` and `./scripts/bakeoff-features compare <A> <B>` to track improvement trajectories. If `./scripts/bakeoff-features status` shows unaggregated assessments, aggregate before starting new work.
+3. **Slice quality:** Does forward slice capture actual dependencies?
+4. **Reverse slice:** Does it correctly identify callers?
+5. **Supply chain tiers:** Is tier classification accurate for monorepos?
+6. **Centrality ranking:** Do top-ranked symbols match developer intuition?
+7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+
+**Stall-state guidance:** When waiting for CI, bakeoff runs, or pre-commit hook gates (i.e., you cannot make code changes), use the idle time productively: run `./scripts/bakeoff-features-reflect aggregate` on prior sessions, run `./scripts/bakeoff-features compare` between sessions, or update lab notebook observations.
 
 DEEP mode scripts:
 ```bash
@@ -551,14 +561,18 @@ DEEP mode scripts:
 ./scripts/bakeoff-features diagnose --all    # All cohorts in session
 ./scripts/bakeoff-features diagnose --some 3 # Latest 3 cohorts
 
+# Full cycle: run + diagnose + reflect
+./scripts/bakeoff-features cycle                 # Current cohort
+./scripts/bakeoff-features cycle --skip-reflect  # Fast iteration: run + diagnose only
+
 # Session introspection
 ./scripts/bakeoff-features status           # Per-cohort breakdown: output/diagnose/reflect status
 ./scripts/bakeoff-features active           # Machine-friendly key=value (for stop hooks)
 ./scripts/bakeoff-features compare A B      # Side-by-side metric/score deltas between sessions
 
 # LLM-driven qualitative assessment
-./scripts/bakeoff-features-reflect
-./scripts/bakeoff-features-reflect aggregate
+./scripts/bakeoff-features-reflect              # Generate assessment prompts
+./scripts/bakeoff-features-reflect aggregate    # Synthesize findings across repos
 ```
 
 **Introspection subcommands:**

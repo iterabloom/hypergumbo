@@ -2369,6 +2369,28 @@ def cmd_status(args):
         except Exception:
             pass
 
+    # --- Unaggregated assessment check ---
+    if cohort_dirs and os.path.isdir(reflect_dir):
+        unagg_count = 0
+        for cd in cohort_dirs:
+            cohort_name = os.path.basename(cd)
+            iter_dirs = sorted(glob.glob(os.path.join(cd, "iter-*")))
+            if not iter_dirs:
+                continue
+            iter_name = os.path.basename(iter_dirs[-1])
+            reflect_iter = os.path.join(reflect_dir, cohort_name, iter_name)
+            if os.path.isdir(reflect_iter):
+                has_assessments = glob.glob(
+                    os.path.join(reflect_iter, "*.assessment.yaml"))
+                summary_file = os.path.join(reflect_iter, "summary.yaml")
+                if has_assessments and not os.path.exists(summary_file):
+                    unagg_count += 1
+        if unagg_count > 0:
+            print()
+            print(f"  {unagg_count} cohort(s) have assessments but no"
+                  f" summary.yaml.")
+            print("  Run: ./scripts/bakeoff-features-reflect aggregate")
+
     print()
     print(f"Current cohort: #{state.cohort_number}, iteration: {state.iteration}")
     print(f"  Repos: {', '.join(state.current_cohort)}")
@@ -2642,11 +2664,31 @@ def cmd_compare(args):
 
 
 def cmd_cycle(args):
-    """Run full cycle: run + diagnose."""
+    """Run full cycle: run + diagnose + reflect.
+
+    Runs feature analysis, generates diagnostic report, then generates
+    LLM assessment prompts via bakeoff-features-reflect.  Use
+    --skip-reflect to run only run + diagnose (for fast iteration when
+    you plan to reflect manually later).
+    """
     rc = cmd_run(args)
     if rc != 0:
         return rc
-    return cmd_diagnose(args)
+    rc = cmd_diagnose(args)
+    if rc != 0:
+        return rc
+    if getattr(args, "skip_reflect", False):
+        return 0
+    # Run reflect as subprocess (separate script)
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "bakeoff-features-reflect")
+    cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    print(f"\n=== Running bakeoff-features-reflect ===\n")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Warning: bakeoff-features-reflect failed (non-fatal)", file=sys.stderr)
+    return 0
 
 
 def cmd_recommend(args):
@@ -2744,8 +2786,11 @@ def main():
     p_compare.add_argument("session_b", help="Second session (path or dir name under bakeoff_artifacts)")
 
     # cycle
-    p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
+    p_cycle = subparsers.add_parser("cycle",
+                                    help="Run full cycle (run + diagnose + reflect)")
     p_cycle.add_argument("--workdir", help="Override workdir")
+    p_cycle.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip the reflect step (run + diagnose only)")
 
     # compress
     p_compress = subparsers.add_parser("compress", help="Gzip hg.json files with old derived artifacts")
