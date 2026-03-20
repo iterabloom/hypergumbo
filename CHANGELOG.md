@@ -15,7 +15,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### I/O boundary analysis (ADR-0016)
 
 - **Phase 1 — Python I/O tracing pipeline**: YAML catalog of Python stdlib I/O primitives (fs, net, subprocess, env) with O(1) lookup. `tag_io_boundaries()` stamps `io_boundary`/`io_primitive` metadata on matching call edges. `compute_boundary_map()` aggregates by boundary type. `hypergumbo io-boundaries` CLI command with `--json` output.
-- **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
+- **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). C++ and TypeScript resolve to C and JavaScript catalogs via aliases. Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
 - **Phase 3 — Security claim verification**: `verify_claims` checks `must_not_exist` and `max_chains` constraints against boundary maps. `hypergumbo verify-claims --claims security-claims.yaml` with `--json` output; exit code 1 on violations.
 - **ADR-0016 design**: Proposal for exhaustive I/O primitive detection, reverse-trace chains, transparency tiers, and security claim verification.
 
