@@ -201,6 +201,18 @@ QUALITY_THRESHOLDS = {
     # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
     # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
     "orphan_rate": {"good_max": 20, "warn_max": 35},
+    # IO boundary: 5-60% of call edges tagged is healthy; <1% means the catalog
+    # is missing entries, >80% suggests over-matching non-IO functions.
+    "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 1, "warn_max": 80},
+    # Dataflow slice should be meaningfully tighter than regular slice (ratio <0.9)
+    # but not degenerate (ratio >0.1). Ratio of 1.0 means --dataflow adds no value.
+    "dataflow_slice_ratio": {"good_min": 0.1, "good_max": 0.9, "warn_min": 0.01, "warn_max": 0.99},
+    # Access mode annotations on 10-80% of edges is healthy. <2% means dataflow
+    # YAML is missing patterns; >95% suggests annotation is too aggressive.
+    "access_mode_coverage": {"good_min": 10, "good_max": 80, "warn_min": 2, "warn_max": 95},
+    # Cross-language IO: at least 5% of IO chains should traverse a linker edge
+    # in polyglot repos. Only assessed when repo has 2+ languages.
+    "cross_language_io_pct": {"good_min": 5, "warn_min": 1},
 }
 
 # Recommended larger repos for feature testing (diverse languages)
@@ -363,6 +375,20 @@ class FeatureMetrics:
     entrypoint_count: int = 0
     entrypoints_in_tests: int = 0
     entrypoints_test_ratio: float = 0.0
+
+    # IO boundary metrics
+    io_tag_rate: float = 0.0
+    io_boundary_types_found: int = 0
+    cross_language_io_pct: float = 0.0
+
+    # Dataflow metrics
+    dataflow_slice_ratio: float = 1.0
+    access_mode_coverage: float = 0.0
+
+    # Verify-claims metrics (0 if no claims file)
+    claims_total: int = 0
+    claims_confirmed: int = 0
+    claims_violated: int = 0
 
 
 @dataclass
@@ -1809,6 +1835,57 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
             f.write(stdout)
         print("OK" if rc == 0 else f"FAIL({rc})")
 
+        # 8. IO boundaries
+        print("  io-boundaries...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "io-boundaries",
+            "--input", hg_json,
+            "--json",
+        ])
+        with open(os.path.join(repo_out, "io-boundaries.txt"), "w") as f:
+            f.write(stdout)
+        with open(os.path.join(repo_out, "io-boundaries.exit"), "w") as f:
+            f.write(str(rc))
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 9. Dataflow slices (parallel to regular slices for comparison)
+        # Uses the same top entry as slice.0 so the ratio is meaningful
+        if entries:
+            entry = entries[0]
+            print(f"  dataflow-slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--dataflow",
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, "slice.dataflow.0.json"),
+            ])
+            with open(os.path.join(repo_out, "slice.dataflow.0.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 10. Verify claims (if claims YAML exists for this repo)
+        claims_file = os.path.join(workdir, "claims", f"{repo_name}.yaml")
+        if os.path.exists(claims_file):
+            print("  verify-claims...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "verify-claims",
+                "--input", hg_json,
+                "--claims", claims_file,
+                "--json",
+            ])
+            with open(os.path.join(repo_out, "verify-claims.txt"), "w") as f:
+                f.write(stdout)
+            with open(os.path.join(repo_out, "verify-claims.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
         elapsed = time.time() - start_time
         with open(os.path.join(repo_out, "time.txt"), "w") as f:
             f.write(f"{elapsed:.1f}s\n")
@@ -2010,6 +2087,71 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         metrics.entrypoints_in_tests = test_entrypoints
         metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
 
+        # IO boundary metrics — count edges with io_boundary/access_mode metadata
+        calls_total = sum(1 for e in edges if e.get("type") == "calls")
+        io_tagged = 0
+        access_mode_tagged = 0
+        for e in edges:
+            meta = e.get("meta") or {}
+            if "io_boundary" in meta:
+                io_tagged += 1
+            if "access_mode" in meta:
+                access_mode_tagged += 1
+        metrics.io_tag_rate = (io_tagged / calls_total * 100) if calls_total > 0 else 0.0
+        metrics.access_mode_coverage = (access_mode_tagged / len(edges) * 100) if edges else 0.0
+
+        # Count distinct IO boundary types from io-boundaries output
+        io_boundaries_path = os.path.join(repo_out, "io-boundaries.txt")
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                boundaries = io_data.get("boundaries", {})
+                metrics.io_boundary_types_found = sum(
+                    1 for b in boundaries.values()
+                    if b.get("chain_count", 0) > 0
+                )
+                # Cross-language IO: count chains with linker edges
+                total_io_chains = io_data.get("total_io_edges", 0)
+                _LINKER_EDGE_TYPES = {
+                    "wasm_bridge", "wasm_load", "bridge_invokes",
+                    "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
+                }
+                cross_lang_chains = 0
+                for boundary_entry in boundaries.values():
+                    for chain in boundary_entry.get("chains", []):
+                        if chain.get("edge_type") in _LINKER_EDGE_TYPES:
+                            cross_lang_chains += 1
+                if total_io_chains > 0:
+                    metrics.cross_language_io_pct = cross_lang_chains / total_io_chains * 100
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Dataflow slice ratio — compare dataflow slice size to regular slice
+        regular_slice_path = os.path.join(repo_out, "slice.0.json")
+        dataflow_slice_path = os.path.join(repo_out, "slice.dataflow.0.json")
+        if os.path.exists(regular_slice_path) and os.path.exists(dataflow_slice_path):
+            try:
+                with open(regular_slice_path) as f:
+                    regular_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                with open(dataflow_slice_path) as f:
+                    dataflow_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                if regular_nodes > 0:
+                    metrics.dataflow_slice_ratio = dataflow_nodes / regular_nodes
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Verify-claims metrics
+        claims_output_path = os.path.join(repo_out, "verify-claims.txt")
+        if os.path.exists(claims_output_path):
+            try:
+                claims_data = json.loads(open(claims_output_path).read())
+                verdicts_list = claims_data if isinstance(claims_data, list) else claims_data.get("verdicts", [])
+                metrics.claims_total = len(verdicts_list)
+                metrics.claims_confirmed = sum(1 for v in verdicts_list if v.get("verdict") == "confirmed")
+                metrics.claims_violated = sum(1 for v in verdicts_list if v.get("verdict") == "violated")
+            except (json.JSONDecodeError, OSError):
+                pass
+
         # Generate verdict
         highlights = []
         concerns = []
@@ -2024,7 +2166,20 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             ("tier4_pct", metrics.tier4_pct),
             ("centrality_gini", metrics.centrality_gini * 100),  # Convert to percentage
             ("orphan_rate", metrics.orphan_rate),
+            ("io_tag_rate", metrics.io_tag_rate),
+            ("access_mode_coverage", metrics.access_mode_coverage),
         ]
+        # Only assess dataflow_slice_ratio if a dataflow slice was produced
+        if os.path.exists(os.path.join(repo_out, "slice.dataflow.0.json")):
+            metric_assessments.append(("dataflow_slice_ratio", metrics.dataflow_slice_ratio * 100))
+        # Only assess cross_language_io_pct for polyglot repos (2+ languages)
+        lang_count = {}
+        for n in nodes:
+            lang = n.get("language", "")
+            if lang:
+                lang_count[lang] = lang_count.get(lang, 0) + 1
+        if len(lang_count) >= 2 and metrics.io_boundary_types_found > 0:
+            metric_assessments.append(("cross_language_io_pct", metrics.cross_language_io_pct))
 
         verdict_status = "GOOD"
         for metric_name, value in metric_assessments:

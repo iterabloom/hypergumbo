@@ -33,6 +33,20 @@ For each repo, the agent examines artifacts through the lens of 3 developer task
 - Check: Are cross-file edges actually meaningful relationships?
 - Note: Misleading centrality, missing key components, noise ratio
 
+### D. IO Boundary Assessment
+- Check io-boundaries.txt against actual I/O operations in the source
+- Ask: "Does the boundary map capture the real I/O surface of this repo?"
+- Check: Are boundary types (fs/net/ipc/env/subprocess) correctly classified?
+- Check: Do IO chains cross language boundaries where FFI is involved?
+- Note: Missing I/O paths, false positive tags, uncovered boundary types
+
+### E. Dataflow Quality Assessment
+- Compare slice.dataflow.0.json to slice.0.json for the same entrypoint
+- Ask: "Is the dataflow slice meaningfully tighter? Does it match intuition?"
+- Check: Are access_mode annotations accurate for the edges that have them?
+- Check: Do write/mutate/read classifications reflect actual data flow?
+- Note: Missing dataflow dependencies, incorrect access modes
+
 ## Output Format
 
 ```yaml
@@ -174,6 +188,24 @@ developer_assessment:
       - "misleading or confusing elements"
     notes: "additional observations"
 
+  io_security:
+    io_boundaries_useful: true/false
+    boundary_map_complete: true/false
+    cross_language_chains_visible: true/false
+    missing_io_paths:
+      - "I/O path present in source but not in boundary map"
+    false_positives:
+      - "edge tagged as I/O that isn't real I/O"
+    notes: "additional observations"
+
+  dataflow_quality:
+    dataflow_slice_tighter: true/false
+    access_modes_accurate: true/false
+    dataflow_matches_intuition: true/false
+    missing_dataflow_edges:
+      - "data dependency not captured by access_mode"
+    notes: "additional observations"
+
   task_scores:
     refactoring_score: <0-100>
     new_feature_score: <0-100>
@@ -189,6 +221,8 @@ developer_assessment:
     tier_classification: <1-5>
     entrypoint_detection: <1-5>
     symbol_ranking: <1-5>
+    io_boundary_quality: <1-5>
+    dataflow_annotation_quality: <1-5>
 
   improvement_ideas:
     - "specific, actionable suggestion 1"
@@ -262,6 +296,9 @@ def get_artifact_list(repo_out_dir: str) -> str:
         "rslice.2.prod.json": "Production-only reverse slice (test files excluded)",
         "slice.tier1.json": "Slice limited to tier-1 (first-party) code",
         "slice.tier2.json": "Slice limited to tier-1 and tier-2 code",
+        "io-boundaries.txt": "IO boundary map (boundary types, chains, entry points)",
+        "slice.dataflow.0.json": "Dataflow-aware slice from top entrypoint (--dataflow)",
+        "verify-claims.txt": "Security claim verification results (if claims YAML exists)",
     }
 
     for fname, desc in artifact_descriptions.items():

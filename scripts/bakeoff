@@ -111,6 +111,10 @@ FLAG_SEVERITY = {
     "ENTRYPOINTS_DOMINATED_BY_TESTS": SEVERITY_HIGH,
     "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": SEVERITY_MEDIUM,
     "LOW_CROSS_FILE_CALL_RESOLUTION": SEVERITY_MEDIUM,
+    "NO_IO_BOUNDARY_TAGS": SEVERITY_HIGH,
+    "LOW_IO_TAG_RATE": SEVERITY_MEDIUM,
+    "IO_OVER_TAGGING": SEVERITY_MEDIUM,
+    "NO_ACCESS_MODE_ANNOTATIONS": SEVERITY_MEDIUM,
 }
 
 # Languages where call edges are expected (procedural/OO languages)
@@ -119,6 +123,15 @@ CALL_EDGE_EXPECTED_LANGS = {
     "c", "cpp", "rust", "go", "csharp", "fsharp", "swift", "ruby",
     "php", "elixir", "erlang", "haskell", "ocaml", "clojure",
     "dart", "julia", "r", "lua", "perl",
+}
+
+# Languages with shipped IO primitive catalogs (ADR-0016 Phase 2)
+IO_CATALOG_LANGS = {"python", "javascript", "typescript", "go", "c", "java", "rust"}
+
+# Languages with dataflow access_mode YAML (ADR-0015 Tier 1)
+DATAFLOW_LANGS = {
+    "javascript", "typescript", "c", "cpp", "swift", "scala",
+    "php", "lua", "perl", "elixir", "erlang", "dart",
 }
 
 # Languages where call edges are NOT expected (declarative/config)
@@ -136,6 +149,10 @@ FLAG_CODE_HINTS = {
     "ENTRYPOINTS_DOMINATED_BY_TESTS": "Check entrypoint scoring in entrypoints.py or ranking.py",
     "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": "Check entrypoint ranking - add path taxonomy penalties",
     "LOW_CROSS_FILE_CALL_RESOLUTION": "Check {lang} analyzer's symbol_resolution integration",
+    "NO_IO_BOUNDARY_TAGS": "Check IO primitive catalog for {lang} (io_primitives/{lang}.yaml)",
+    "LOW_IO_TAG_RATE": "Check IO primitive catalog completeness for {lang} (io_primitives/{lang}.yaml)",
+    "IO_OVER_TAGGING": "Check IO primitive catalog for false positives — non-IO functions matching catalog entries",
+    "NO_ACCESS_MODE_ANNOTATIONS": "Check dataflow YAML for {lang} (dataflow_patterns/{lang}.yaml)",
 }
 
 
@@ -793,6 +810,7 @@ def cmd_run(args):
                     ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
                     ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
                     ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+                    ("io-boundaries", ["hypergumbo", "io-boundaries", "--input", os.path.join(repo_out, "hg.json"), "--json"]),
                 ]
                 hg_path = os.path.join(repo_out, "hg.json")
                 for cmd_name, cmd in commands:
@@ -867,6 +885,7 @@ def cmd_run(args):
             ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
             ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
             ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+            ("io-boundaries", ["hypergumbo", "io-boundaries", "--input", os.path.join(repo_out, "hg.json"), "--json"]),
         ]
 
         # Check if compact is needed
@@ -1035,6 +1054,63 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
             name_suggests_web or has_route_edges or has_framework_signal
         ):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
+
+        # --- IO boundary and dataflow diagnostics ---
+        # Count edges with io_boundary and access_mode metadata
+        io_tagged = 0
+        access_mode_tagged = 0
+        for e in edges:
+            meta = e.get("meta") or {}
+            if "io_boundary" in meta:
+                io_tagged += 1
+            if "access_mode" in meta:
+                access_mode_tagged += 1
+
+        metrics["io_tagged_edges"] = io_tagged
+        metrics["access_mode_edges"] = access_mode_tagged
+        metrics["io_tag_rate"] = (io_tagged / calls_total * 100) if calls_total > 0 else 0.0
+        metrics["access_mode_rate"] = (access_mode_tagged / len(edges) * 100) if edges else 0.0
+
+        # NO_IO_BOUNDARY_TAGS: language has IO catalog, repo has call edges,
+        # but zero edges got io_boundary metadata
+        if (io_tagged == 0
+                and calls_total > 10
+                and dom_lang.lower() in IO_CATALOG_LANGS):
+            flags.append("NO_IO_BOUNDARY_TAGS")
+
+        # LOW_IO_TAG_RATE: some IO tags exist but fewer than 5% of call edges
+        # in repos that look IO-heavy (name heuristic or IO boundary JSON had chains)
+        io_boundaries_path = os.path.join(out_dir, repo_name, "io-boundaries.txt")
+        has_io_chains = False
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                has_io_chains = io_data.get("total_io_edges", 0) > 0
+            except (json.JSONDecodeError, OSError):
+                pass
+        name_suggests_io = any(
+            x in repo_name.lower()
+            for x in ["server", "client", "proxy", "db", "redis", "http", "grpc"]
+        )
+        if (0 < io_tagged < calls_total * 0.05
+                and calls_total > 10
+                and dom_lang.lower() in IO_CATALOG_LANGS
+                and (name_suggests_io or has_io_chains)):
+            flags.append("LOW_IO_TAG_RATE")
+
+        # IO_OVER_TAGGING: >40% of call edges tagged — catalog likely
+        # matching non-IO functions
+        if (calls_total > 10
+                and io_tagged > calls_total * 0.40
+                and dom_lang.lower() in IO_CATALOG_LANGS):
+            flags.append("IO_OVER_TAGGING")
+
+        # NO_ACCESS_MODE_ANNOTATIONS: language has dataflow YAML, repo has
+        # enough edges, but zero access_mode metadata
+        if (access_mode_tagged == 0
+                and len(edges) > 20
+                and dom_lang.lower() in DATAFLOW_LANGS):
+            flags.append("NO_ACCESS_MODE_ANNOTATIONS")
 
         for flag in flags:
             severity = FLAG_SEVERITY.get(flag, SEVERITY_MEDIUM)
