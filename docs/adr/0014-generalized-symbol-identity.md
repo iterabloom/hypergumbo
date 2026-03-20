@@ -3,7 +3,7 @@
 
 Date: 2026-02-20
 Updated: 2026-03-19
-Status: Accepted. Phases 1-2 (shape_id, untyped stable_id) complete for all TreeSitterAnalyzer languages. Phase 3 (typed stable_id) implemented for 12 analyzers; remaining languages are design targets.
+Status: Accepted. Infrastructure for Phases 1-2 complete. Phase 1 shape_id wired in 26/~70 code-language analyzers (4 mainstream, 19 extended1, 1 common, plus Python's own); major gaps: Java, Go, JS/TS, C, C++, Kotlin, PHP, Scala, Groovy, Perl, Lua, Bash, PowerShell, Obj-C. Phase 2 untyped stable_id wired in 41/~70 code-language analyzers; gaps: C, C++, Bash, Lua, Perl, PowerShell, Obj-C, Ruby, SQL + niche languages. Phase 3 typed stable_id: 12 analyzers (methods/constructors only, not classes/enums/interfaces). Phase 0: 10/11 done (Go Gorilla mount point collision still uses non-hash format).
 
 ## Context
 
