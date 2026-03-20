@@ -568,6 +568,19 @@ function main() {
         assert any("do_work" in e.dst for e in module_calls)
 
 
+class TestBashStableId:
+    """Tests for stable_id in Bash (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "example.sh").write_text("#!/bin/bash\nfunction greet() { echo hello; }\n")
+        result = analyze_bash(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+
 class TestBashShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 

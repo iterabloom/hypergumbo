@@ -264,6 +264,7 @@ def _extract_powershell_symbols(
                 sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
                 )
+                sym.stable_id = _analyzer.compute_stable_id(node, kind=kind)
                 symbols.append(sym)
                 if node_for_symbol is not None:
                     node_for_symbol[sym.id] = node

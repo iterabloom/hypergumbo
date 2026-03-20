@@ -289,6 +289,21 @@ $$ LANGUAGE plpgsql;
         assert funcs[0].signature == "(x INT) RETURNS INT"
 
 
+class TestSqlStableId:
+    """Tests for stable_id in SQL (ADR-0014 §2)."""
+
+    def test_table_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.sql import analyze_sql_files
+
+        (tmp_path / "schema.sql").write_text(
+            "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));\n"
+        )
+        result = analyze_sql_files(tmp_path)
+        tbl = next(s for s in result.symbols if s.name == "users")
+        assert tbl.stable_id is not None
+        assert tbl.stable_id.startswith("sha256:")
+
+
 class TestSqlShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 

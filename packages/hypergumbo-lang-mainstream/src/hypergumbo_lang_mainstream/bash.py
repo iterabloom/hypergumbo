@@ -217,6 +217,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         signature="()",
+                        stable_id=self.compute_stable_id(node, kind="function"),
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node

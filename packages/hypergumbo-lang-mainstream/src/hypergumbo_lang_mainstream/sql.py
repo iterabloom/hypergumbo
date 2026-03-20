@@ -218,7 +218,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "table")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_analyzer.compute_stable_id(node, kind="table"),
                     shape_id=None,
                     canonical_name=name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
@@ -247,7 +247,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "view")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_analyzer.compute_stable_id(node, kind="view"),
                     shape_id=None,
                     canonical_name=name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
@@ -276,7 +276,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "function")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_analyzer.compute_stable_id(node, kind="function"),
                     shape_id=None,
                     canonical_name=name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
@@ -306,7 +306,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
                 sym = Symbol(  # pragma: no cover
                     id=symbol_id,  # pragma: no cover
-                    stable_id=None,  # pragma: no cover
+                    stable_id=_analyzer.compute_stable_id(node, kind="procedure"),  # pragma: no cover
                     shape_id=None,  # pragma: no cover
                     canonical_name=name,  # pragma: no cover
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],  # pragma: no cover
@@ -335,7 +335,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "trigger")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_analyzer.compute_stable_id(node, kind="trigger"),
                     shape_id=None,
                     canonical_name=name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
@@ -364,7 +364,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "index")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_analyzer.compute_stable_id(node, kind="index"),
                     shape_id=None,
                     canonical_name=name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],

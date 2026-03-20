@@ -594,3 +594,21 @@ class TestObjCInheritanceExtraction:
         # Either no meta or no base_classes key
         if root.meta:
             assert "base_classes" not in root.meta or root.meta["base_classes"] == []
+
+
+class TestObjCStableShapeId:
+    """Tests for stable_id and shape_id in Objective-C (ADR-0014 §1-2)."""
+
+    def test_class_has_stable_and_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Example.m").write_text(
+            "@interface Foo : NSObject\n- (void)bar;\n@end\n"
+            "@implementation Foo\n- (void)bar { }\n@end\n"
+        )
+        result = analyze_objc(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.stable_id is not None
+        assert cls.stable_id.startswith("sha256:")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

@@ -365,6 +365,19 @@ sub answer {
         assert funcs[0].signature == "()"
 
 
+class TestPerlStableId:
+    """Tests for stable_id in Perl (ADR-0014 §2)."""
+
+    def test_subroutine_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.perl import analyze_perl
+
+        (tmp_path / "example.pl").write_text("sub greet { print 'hello'; }\n")
+        result = analyze_perl(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+
 class TestPerlShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 
