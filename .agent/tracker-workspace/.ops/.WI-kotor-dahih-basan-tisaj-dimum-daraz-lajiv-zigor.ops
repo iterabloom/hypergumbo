@@ -24,3 +24,18 @@
   clock: 2  # ca07
   nonce: ca07  # ca07
   message: "Bakeoff finding: For framework-heavy repos like netty, direct stdlib IO calls represent <1% of edges even with perfect detection. Most IO flows through framework abstractions (Channel.write, ByteBuf.readBytes). Adding framework methods to IO catalogs would significantly improve IO tag rates. Target frameworks: Netty (Channel, ByteBuf, ChannelHandlerContext), Spring (RestTemplate, WebClient), OkHttp (Call.execute)."  # ca07
+- op: update  # cbaa
+  at: '2026-03-20T22:39:05Z'  # cbaa
+  by: agent  # cbaa
+  actor: jgstern_agent  # cbaa
+  clock: 3  # cbaa
+  nonce: cbaa  # cbaa
+  set:  # cbaa
+    status: done  # cbaa
+- op: discuss  # f940
+  at: '2026-03-20T22:39:05Z'  # f940
+  by: agent  # f940
+  actor: jgstern_agent  # f940
+  clock: 4  # f940
+  nonce: f940  # f940
+  message: "Fixed in PR #2448. Added Netty (Channel, ByteBuf, ChannelHandlerContext, ServerBootstrap), OkHttp (Call, OkHttpClient), and Spring RestTemplate entries to Java IO catalog."  # f940
