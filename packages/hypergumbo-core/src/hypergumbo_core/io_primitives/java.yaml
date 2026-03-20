@@ -42,6 +42,26 @@ net_send:
     methods: [connect, getOutputStream, setRequestMethod]
   - module: java.net.http.HttpClient
     methods: [send, sendAsync]
+  # Netty framework
+  - module: io.netty.channel.Channel
+    methods: [write, writeAndFlush, flush]
+    notes: "Netty channel write operations"
+  - module: io.netty.channel.ChannelHandlerContext
+    methods: [write, writeAndFlush, flush, fireChannelRead]
+    notes: "Netty handler context write operations"
+  - module: io.netty.buffer.ByteBuf
+    methods: [writeBytes, writeInt, writeLong, writeShort, writeByte, writeFloat, writeDouble, writeCharSequence, writeZero]
+    notes: "Netty ByteBuf write operations"
+  # OkHttp / Retrofit
+  - module: okhttp3.Call
+    methods: [execute, enqueue]
+    notes: "OkHttp synchronous and asynchronous HTTP calls"
+  - module: okhttp3.OkHttpClient
+    methods: [newCall]
+  # Spring Web
+  - module: org.springframework.web.client.RestTemplate
+    methods: [getForObject, getForEntity, postForObject, postForEntity, put, delete, exchange]
+    notes: "Spring RestTemplate HTTP operations"
 
 net_recv:
   - module: java.net.ServerSocket
@@ -50,6 +70,20 @@ net_recv:
     methods: [getInputStream]
   - module: java.net.DatagramSocket
     methods: [receive, bind]
+  # Netty framework
+  - module: io.netty.channel.Channel
+    methods: [read]
+    notes: "Netty channel read operations"
+  - module: io.netty.channel.ChannelHandlerContext
+    methods: [read, fireChannelRead]
+    notes: "Netty handler context read operations"
+  - module: io.netty.buffer.ByteBuf
+    methods: [readBytes, readInt, readLong, readShort, readByte, readFloat, readDouble, readCharSequence, readSlice, readRetainedSlice]
+    notes: "Netty ByteBuf read operations"
+  # Netty server bootstrap
+  - module: io.netty.bootstrap.ServerBootstrap
+    methods: [bind]
+    notes: "Netty server bind — starts accepting connections"
 
 subprocess:
   - module: java.lang.ProcessBuilder

@@ -173,6 +173,23 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_java_catalog_has_netty_framework_entries(self) -> None:
+        """Java catalog includes Netty framework IO methods."""
+        catalog = load_catalog("java")
+        qualified_names = {p.qualified_name for p in catalog.primitives}
+        assert "io.netty.channel.Channel.write" in qualified_names
+        assert "io.netty.channel.Channel.read" in qualified_names
+        assert "io.netty.buffer.ByteBuf.writeBytes" in qualified_names
+        assert "io.netty.buffer.ByteBuf.readBytes" in qualified_names
+        assert "io.netty.bootstrap.ServerBootstrap.bind" in qualified_names
+
+    def test_java_catalog_netty_channel_write_is_net_send(self) -> None:
+        """Netty Channel.write is classified as net_send."""
+        catalog = load_catalog("java")
+        match = catalog.lookup("io.netty.channel.Channel.write")
+        assert match is not None
+        assert match.boundary == "net_send"
+
     def test_load_nonexistent_language_returns_empty(self) -> None:
         catalog = load_catalog("brainfuck")
         assert catalog.language == "brainfuck"
