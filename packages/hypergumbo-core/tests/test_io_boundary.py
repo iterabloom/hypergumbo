@@ -176,6 +176,22 @@ class TestLoadCatalog:
         assert catalog.language == "brainfuck"
         assert len(catalog.primitives) == 0
 
+    def test_cpp_alias_loads_c_catalog(self) -> None:
+        """C++ has no dedicated catalog but falls back to C via alias."""
+        catalog = load_catalog("cpp")
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "fs_write" in boundaries
+
+    def test_typescript_alias_loads_javascript_catalog(self) -> None:
+        """TypeScript falls back to JavaScript catalog via alias."""
+        catalog = load_catalog("typescript")
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "net_send" in boundaries
+
     def test_catalog_from_yaml(self, tmp_path: Path) -> None:
         yaml_content = """\
 language: testlang

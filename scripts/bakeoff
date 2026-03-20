@@ -127,7 +127,8 @@ CALL_EDGE_EXPECTED_LANGS = {
 }
 
 # Languages with shipped IO primitive catalogs (ADR-0016 Phase 2)
-IO_CATALOG_LANGS = {"python", "javascript", "typescript", "go", "c", "java", "rust"}
+# cpp→c and typescript→javascript aliases are resolved by load_catalog().
+IO_CATALOG_LANGS = {"python", "javascript", "typescript", "go", "c", "cpp", "java", "rust"}
 
 # Languages with dataflow access_mode YAML (ADR-0015 Tier 1)
 DATAFLOW_LANGS = {

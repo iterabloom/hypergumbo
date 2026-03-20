@@ -182,14 +182,27 @@ class IoBoundaryCatalog:
 
 _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 
+# Languages that share an IO primitive catalog.  C++ uses C stdlib IO
+# functions (fopen, fread, fwrite, popen, etc.) so it falls back to the
+# C catalog.  TypeScript shares the JavaScript catalog.
+_CATALOG_ALIASES: dict[str, str] = {
+    "cpp": "c",
+    "typescript": "javascript",
+}
+
 
 def load_catalog(language: str) -> IoBoundaryCatalog:
     """Load the I/O primitive catalog for a language.
 
     Looks for ``io_primitives/<language>.yaml`` relative to this module.
-    Returns an empty catalog if the file does not exist.
+    Falls back to language aliases (e.g. cpp → c) if no exact match.
+    Returns an empty catalog if no catalog is found.
     """
     path = _CATALOG_DIR / f"{language}.yaml"
+    if not path.exists():
+        alias = _CATALOG_ALIASES.get(language)
+        if alias:
+            path = _CATALOG_DIR / f"{alias}.yaml"
     if not path.exists():
         return IoBoundaryCatalog(language=language)
     return IoBoundaryCatalog.from_yaml(path)
