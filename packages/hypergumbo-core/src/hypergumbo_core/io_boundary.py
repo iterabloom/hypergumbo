@@ -348,10 +348,18 @@ def _trace_entry_points(
     Returns a mapping from IO edge source symbol ID to the set of
     entrypoint IDs that can reach it.
     """
-    # Build reverse adjacency list: dst → set of src symbols
+    # Build reverse adjacency list: dst → set of src symbols.
+    # Include FFI bridge edges so entry-point traces cross language boundaries
+    # (e.g., Java native method → C JNI function → fopen).
+    _TRACEABLE_TYPES = frozenset({
+        "calls", "instantiates", "dispatches_to", "references",
+        # FFI bridge edges
+        "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
+        "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
+    })
     reverse_graph: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.edge_type in ("calls", "instantiates", "dispatches_to", "references"):
+        if edge.edge_type in _TRACEABLE_TYPES:
             reverse_graph.setdefault(edge.dst, set()).add(edge.src)
 
     # For each IO-tagged edge, BFS backward to find reachable entrypoints

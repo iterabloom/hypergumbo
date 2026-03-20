@@ -743,6 +743,23 @@ class TestEntryPointTracing:
         fs_entry = bmap.entries["fs_read"]
         assert "main" in fs_entry.entry_points
 
+    def test_native_bridge_edge_traced_to_entrypoint(self) -> None:
+        """Entry-point trace crosses native_bridge edges (Java→C JNI)."""
+        catalog = load_catalog("c")
+        edges = [
+            # Java side: main → nativeRead (native_bridge) → C_impl → fopen
+            self._make_edge(src="java_main", dst="native_method"),
+            self._make_edge(src="native_method", dst="c_jni_impl", edge_type="native_bridge"),
+            self._make_edge(src="c_jni_impl", dst="c:external:0-0:fopen:unresolved"),
+        ]
+        entrypoint_ids = {"java_main"}
+
+        bmap = compute_boundary_map(edges, {"c": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "java_main" in fs_entry.entry_points
+
     def test_unreachable_entry_point_excluded(self) -> None:
         """Entrypoints that can't reach IO are not included."""
         catalog = load_catalog("python")
