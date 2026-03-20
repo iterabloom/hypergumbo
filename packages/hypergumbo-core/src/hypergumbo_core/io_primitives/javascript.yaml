@@ -35,6 +35,18 @@ net_send:
   - module: fetch
     functions: [fetch]
     notes: "Global fetch (Node 18+)"
+  # Express response
+  - module: express.Response
+    methods: [send, json, render, redirect, download, sendFile, status]
+    notes: "Express response methods"
+  # Axios HTTP client
+  - module: axios
+    functions: [get, post, put, delete, patch, request, create]
+    notes: "Axios HTTP client"
+  # node-fetch
+  - module: node-fetch
+    functions: [fetch]
+    notes: "node-fetch package (pre Node 18)"
 
 net_recv:
   - module: http
@@ -45,6 +57,18 @@ net_recv:
     functions: [createServer]
   - module: dgram
     functions: [createSocket]
+  # Express/Fastify/Koa server
+  - module: express
+    functions: [listen]
+    notes: "Express server listen"
+  - module: express.Application
+    methods: [listen]
+  - module: fastify.FastifyInstance
+    methods: [listen]
+    notes: "Fastify server listen"
+  - module: koa.Application
+    methods: [listen]
+    notes: "Koa server listen"
 
 subprocess:
   - module: child_process

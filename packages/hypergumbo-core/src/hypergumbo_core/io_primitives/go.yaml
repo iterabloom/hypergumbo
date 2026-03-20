@@ -32,6 +32,17 @@ net_send:
     functions: [Get, Post, PostForm, Head, NewRequest]
   - module: net/http.Client
     methods: [Do, Get, Post, Head]
+  # Gin/Echo/Fiber/Chi frameworks (response writing)
+  - module: gin.Context
+    methods: [JSON, String, HTML, XML, YAML, Data, IndentedJSON]
+    notes: "Gin web framework response methods"
+  - module: echo.Context
+    methods: [JSON, String, HTML, XML, Blob, Stream]
+    notes: "Echo web framework response methods"
+  # gRPC client
+  - module: grpc
+    functions: [Dial, DialContext, NewClient]
+    notes: "gRPC client connection"
 
 net_recv:
   - module: net
@@ -42,6 +53,20 @@ net_recv:
     methods: [Read]
   - module: net/http
     functions: [ListenAndServe, ListenAndServeTLS, Serve]
+  # Gin/Echo/Fiber frameworks (server startup)
+  - module: gin.Engine
+    methods: [Run, RunTLS]
+    notes: "Gin web framework server"
+  - module: echo.Echo
+    methods: [Start, StartTLS]
+    notes: "Echo web framework server"
+  - module: fiber.App
+    methods: [Listen, ListenTLS]
+    notes: "Fiber web framework server"
+  # gRPC server
+  - module: grpc.Server
+    methods: [Serve]
+    notes: "gRPC server"
 
 subprocess:
   - module: os/exec
