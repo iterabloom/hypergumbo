@@ -24,3 +24,40 @@
   clock: 2  # 5a48
   nonce: 5a48  # 5a48
   message: "Go IO catalog matches net.Conn.Read/Write against ANY .Read()/.Write() method call regardless of receiver type. age has zero net package imports but 46 network IO chains (15 net_send, 31 net_recv). Root cause: calls to crypto/rand.Reader.Read() and io.Writer.Write() match the catalog entry for net.Conn.Read/Write by method name alone. Fix requires type-aware matching (Tier 2 IO analysis): track receiver types in Go analyzer call edge metadata, then compare against catalog module/type constraints. For now, the false positives inflate chain counts but boundary TYPE classification is correct."  # 5a48
+- op: update  # c9f1
+  at: '2026-03-20T10:04:09Z'  # c9f1
+  by: agent  # c9f1
+  actor: jgstern_agent  # c9f1
+  clock: 3  # c9f1
+  nonce: c9f1  # c9f1
+  set:  # c9f1
+    priority: 4  # c9f1
+- op: discuss  # 94f5
+  at: '2026-03-20T10:04:09Z'  # 94f5
+  by: agent  # 94f5
+  actor: jgstern_agent  # 94f5
+  clock: 4  # 94f5
+  nonce: 94f5  # 94f5
+  message: "Deprioritized to P4. This is a Tier 2 IO analysis enhancement requiring type-aware matching (receiver type resolution). The false positives inflate chain counts but don't produce incorrect boundary TYPE classification. Confirmed across the full security-claims curriculum (5 cohorts, 17 repos): affects all Go repos but does not cause FAIL verdicts. The bakeoff assessment scores (mean ~60) are driven primarily by Go interface dispatch and C call edge gaps, not by IO false positives."  # 94f5
+- op: update  # cf59
+  at: '2026-03-20T10:09:31Z'  # cf59
+  by: agent  # cf59
+  actor: jgstern_agent  # cf59
+  clock: 5  # cf59
+  nonce: cf59  # cf59
+  set:  # cf59
+    status: done  # cf59
+- op: discuss  # 5593
+  at: '2026-03-20T10:09:31Z'  # 5593
+  by: agent  # 5593
+  actor: jgstern_agent  # 5593
+  clock: 6  # 5593
+  nonce: '5593'  # 5593
+  message: "Resolved as documented/accepted limitation. Fully investigated: Go IO catalog matches net.Conn.Read/Write against any .Read()/.Write() method regardless of receiver type. Confirmed across 17 repos in security-claims curriculum — inflates chain counts but does not produce incorrect boundary TYPE classification or cause FAIL verdicts. Fix requires Tier 2 type-aware matching (receiver type resolution in Go analyzer). Documented in lab notebook notebookjournal_03202026_0445.md under 'Phantom IO Boundary Investigation'. Not blocking any current work."  # 5593
+- op: discuss  # a96e
+  at: '2026-03-20T15:32:08Z'  # a96e
+  by: human  # a96e
+  actor: jgstern  # a96e
+  clock: 7  # a96e
+  nonce: a96e  # a96e
+  message: "so you're saying we need a language server/multi-fidelity analysis to address this issue?"  # a96e

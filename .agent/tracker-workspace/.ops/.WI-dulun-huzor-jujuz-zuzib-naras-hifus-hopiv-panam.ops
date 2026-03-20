@@ -39,3 +39,17 @@
   clock: 4  # 4951
   nonce: '4951'  # 4951
   message: "Investigation complete: by design, not a bug. C/C++ analyzers only create call edges to functions with symbols in the project registry. Stdlib functions (fopen, fread, fwrite) have no local definition, so no edges exist for IO catalog to match against. Fix requires architectural decision: (1) create unresolved-external-call edges in C analyzer (inflates graph), or (2) have io-boundaries scan AST directly for IO function calls (scoped but significant). firejail gets IO matches because it has wrapper functions around stdlib calls that match the catalog."  # 4951
+- op: discuss  # 15dc
+  at: '2026-03-20T10:42:35Z'  # 15dc
+  by: agent  # 15dc
+  actor: jgstern_agent  # 15dc
+  clock: 5  # 15dc
+  nonce: 15dc  # 15dc
+  message: "Same root cause confirmed for Java: 0/3 Java repos get IO boundary matches (commons-compress, jedis, gradle). Java IO is object-method based (socket.getInputStream().read()) but the Java analyzer only creates edges to project-defined classes (RedisOutputStream, RedisInputStream), not to java.io.* stdlib classes. The IO catalog has java.io.FileInputStream.read but there's no edge to it. This is the same 'only resolved symbols get edges' design as C. Affects C (3 repos), C++ (1 repo), Java (3 repos) = 7/42 repos across both curricula."  # 15dc
+- op: discuss  # f2ff
+  at: '2026-03-20T15:29:27Z'  # f2ff
+  by: human  # f2ff
+  actor: jgstern  # f2ff
+  clock: 6  # f2ff
+  nonce: f2ff  # f2ff
+  message: "please give more plain-language explanation/context on this issue and help me understand the stakes."  # f2ff
