@@ -1,0 +1,26 @@
+- op: create  # fbe2
+  at: '2026-03-20T09:25:31Z'  # fbe2
+  by: agent  # fbe2
+  actor: jgstern_agent  # fbe2
+  clock: 1  # fbe2
+  nonce: fbe2  # fbe2
+  data:  # fbe2
+    kind: work_item  # fbe2
+    title: "IO boundary: false-positive net IO chains from generic Read/Write method name matching"  # fbe2
+    status: todo_soft  # fbe2
+    priority: 3  # fbe2
+    parent:  # fbe2
+    tags: []  # fbe2
+    before: []  # fbe2
+    duplicate_of: []  # fbe2
+    not_duplicate_of: []  # fbe2
+    pr_ref:  # fbe2
+    description: ""  # fbe2
+    fields: {}  # fbe2
+- op: discuss  # 5a48
+  at: '2026-03-20T09:25:40Z'  # 5a48
+  by: agent  # 5a48
+  actor: jgstern_agent  # 5a48
+  clock: 2  # 5a48
+  nonce: 5a48  # 5a48
+  message: "Go IO catalog matches net.Conn.Read/Write against ANY .Read()/.Write() method call regardless of receiver type. age has zero net package imports but 46 network IO chains (15 net_send, 31 net_recv). Root cause: calls to crypto/rand.Reader.Read() and io.Writer.Write() match the catalog entry for net.Conn.Read/Write by method name alone. Fix requires type-aware matching (Tier 2 IO analysis): track receiver types in Go analyzer call edge metadata, then compare against catalog module/type constraints. For now, the false positives inflate chain counts but boundary TYPE classification is correct."  # 5a48

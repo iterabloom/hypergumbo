@@ -17,3 +17,25 @@
     pr_ref:  # 6544
     description: ""  # 6544
     fields: {}  # 6544
+- op: discuss  # 23d7
+  at: '2026-03-20T09:25:15Z'  # 23d7
+  by: agent  # 23d7
+  actor: jgstern_agent  # 23d7
+  clock: 2  # 23d7
+  nonce: 23d7  # 23d7
+  message: "minisign and git-crypt use C stdlib IO functions (fopen, fread, fwrite, fgets, fprintf) as direct function calls, but the C analyzer does not create call edges for them. The IO primitive catalog has these functions listed but there are no call edges to match against. This means C repos get 0 IO boundary matches for file operations. Discovered in security-claims bakeoff Cohort 1 (git-crypt: 0 fs_read/fs_write chains) and Cohort 2 (minisign: 0 total IO edges). The C++ alias fix helped git-crypt pick up 4 subprocess edges (execvp/wait) but no fs operations."  # 23d7
+- op: update  # 6cfb
+  at: '2026-03-20T10:03:13Z'  # 6cfb
+  by: agent  # 6cfb
+  actor: jgstern_agent  # 6cfb
+  clock: 3  # 6cfb
+  nonce: 6cfb  # 6cfb
+  set:  # 6cfb
+    status: needs_human_review  # 6cfb
+- op: discuss  # 4951
+  at: '2026-03-20T10:03:13Z'  # 4951
+  by: agent  # 4951
+  actor: jgstern_agent  # 4951
+  clock: 4  # 4951
+  nonce: '4951'  # 4951
+  message: "Investigation complete: by design, not a bug. C/C++ analyzers only create call edges to functions with symbols in the project registry. Stdlib functions (fopen, fread, fwrite) have no local definition, so no edges exist for IO catalog to match against. Fix requires architectural decision: (1) create unresolved-external-call edges in C analyzer (inflates graph), or (2) have io-boundaries scan AST directly for IO function calls (scoped but significant). firejail gets IO matches because it has wrapper functions around stdlib calls that match the catalog."  # 4951
