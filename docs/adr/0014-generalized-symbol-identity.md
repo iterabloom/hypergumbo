@@ -3,7 +3,7 @@
 
 Date: 2026-02-20
 Updated: 2026-03-19
-Status: Accepted. Infrastructure for Phases 1-2 complete. Phase 1 shape_id wired in 26/~70 code-language analyzers (4 mainstream, 19 extended1, 1 common, plus Python's own); major gaps: Java, Go, JS/TS, C, C++, Kotlin, PHP, Scala, Groovy, Perl, Lua, Bash, PowerShell, Obj-C. Phase 2 untyped stable_id wired in 41/~70 code-language analyzers; gaps: C, C++, Bash, Lua, Perl, PowerShell, Obj-C, Ruby, SQL + niche languages. Phase 3 typed stable_id: 12 analyzers (methods/constructors only, not classes/enums/interfaces). Phase 0: 10/11 done (Go Gorilla mount point collision still uses non-hash format).
+Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired + 19 extended1 + Python + 2 common (HLSL, Dart) = ~42 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 9 common without). Phase 2 untyped stable_id: all 20 mainstream + 19 extended1 + 7 common = ~46+ of ~70; remaining gaps are niche languages. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
 
 ## Context
 
