@@ -208,3 +208,25 @@
   nonce: d0aa  # d0aa
   set:  # d0aa
     priority: 3  # d0aa
+- op: discuss  # 27a5
+  at: '2026-03-19T21:00:52Z'  # 27a5
+  by: agent  # 27a5
+  actor: jgstern_agent  # 27a5
+  clock: 28  # 27a5
+  nonce: 27a5  # 27a5
+  message: "Acknowledged. Plan: (1) change exclude_import_edges to False and rely on edge-type weighting instead of binary import exclusion, (2) run before/after comparison on 7+ diverse repos, (3) evaluate whether weighted inclusion is equal-or-better than binary exclusion. This is a developer-side experiment, not a user-facing flag."  # 27a5
+- op: update  # 8af6
+  at: '2026-03-19T21:56:27Z'  # 8af6
+  by: agent  # 8af6
+  actor: jgstern_agent  # 8af6
+  clock: 29  # 8af6
+  nonce: 8af6  # 8af6
+  set:  # 8af6
+    status: done  # 8af6
+- op: discuss  # 3183
+  at: '2026-03-19T21:56:27Z'  # 3183
+  by: agent  # 3183
+  actor: jgstern_agent  # 3183
+  clock: 30  # 3183
+  nonce: '3183'  # 3183
+  message: "Weighted import inclusion implemented and validated in PR #2414. Tested on 5 repos: neutral for Go/Java, better for Python-heavy repos (InferRequest #35→#6, InferResponse #143→#9 in kserve). Also fixed test-edge filter bug for phantom source symbols and rank_files() centrality inconsistency."  # 3183

@@ -1,0 +1,19 @@
+- op: create  # 6544
+  at: '2026-03-20T09:23:49Z'  # 6544
+  by: agent  # 6544
+  actor: jgstern_agent  # 6544
+  clock: 1  # 6544
+  nonce: '6544'  # 6544
+  data:  # 6544
+    kind: work_item  # 6544
+    title: "C analyzer: missing call edges for stdlib function calls (fopen, fread, fwrite)"  # 6544
+    status: todo_hard  # 6544
+    priority: 2  # 6544
+    parent:  # 6544
+    tags: []  # 6544
+    before: []  # 6544
+    duplicate_of: []  # 6544
+    not_duplicate_of: []  # 6544
+    pr_ref:  # 6544
+    description: ""  # 6544
+    fields: {}  # 6544
