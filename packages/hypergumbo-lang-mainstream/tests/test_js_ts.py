@@ -8013,3 +8013,29 @@ type UserOrNull = User | null;
             assert edge.confidence == 0.85, (
                 f"Expected confidence 0.85, got {edge.confidence}"
             )
+
+
+class TestJsTsShapeId:
+    """Tests for shape_id computation in JS/TS (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "example.js").write_text(
+            "function add(a, b) { return a + b; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "example.js").write_text(
+            "class Foo {\n  bar() { return 42; }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

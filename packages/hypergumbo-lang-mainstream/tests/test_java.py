@@ -4194,3 +4194,33 @@ public class App {
                     f"Production code should not resolve to test class. "
                     f"Got dst={edge.dst}"
                 )
+
+
+class TestJavaShapeId:
+    """Tests for shape_id computation in Java (ADR-0014 §1)."""
+
+    def test_method_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Example.java").write_text(
+            "public class Example {\n"
+            "  public int add(int a, int b) { return a + b; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.kind == "method")
+        assert method.shape_id is not None
+        assert method.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Example.java").write_text(
+            "public class Example {\n"
+            "  public void run() {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

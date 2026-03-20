@@ -2140,3 +2140,29 @@ class TestKotlinCallableReferences:
             "helper" in e.dst and "run" in e.src
             for e in ref_edges
         ), f"Expected top-level callable reference edge, got: {ref_edges}"
+
+
+class TestKotlinShapeId:
+    """Tests for shape_id computation in Kotlin (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Example.kt").write_text(
+            "fun greet(name: String): String = \"Hello $name\"\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Example.kt").write_text(
+            "class Foo {\n  fun bar(): Int = 42\n}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

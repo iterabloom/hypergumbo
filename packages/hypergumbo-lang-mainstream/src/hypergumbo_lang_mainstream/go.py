@@ -868,6 +868,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -918,6 +919,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -990,6 +992,7 @@ def _extract_symbols_from_file(
                                     origin_run_id=run.execution_id,
                                     modifiers=m_modifiers,
                                     lines_of_code=1,
+                                    shape_id=_analyzer.compute_shape_id(iface_child),
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
@@ -1028,6 +1031,7 @@ def _extract_symbols_from_file(
                             modifiers=_go_visibility_modifiers(type_name),
                             meta={"base_classes": embedded_types} if embedded_types else None,
                             lines_of_code=end_line - start_line + 1,
+                            shape_id=_analyzer.compute_shape_id(child),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
@@ -1081,6 +1085,7 @@ def _extract_symbols_from_file(
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
                         lines_of_code=end_line - start_line + 1,
+                        shape_id=_analyzer.compute_shape_id(child),
                     )
                     analysis.symbols.append(vsymbol)
                     analysis.symbol_by_name[vname] = vsymbol

@@ -646,6 +646,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -675,6 +676,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -711,6 +713,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 

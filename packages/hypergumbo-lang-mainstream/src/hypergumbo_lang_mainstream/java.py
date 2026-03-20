@@ -754,6 +754,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -793,6 +794,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -819,6 +821,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -901,6 +904,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -940,6 +944,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 

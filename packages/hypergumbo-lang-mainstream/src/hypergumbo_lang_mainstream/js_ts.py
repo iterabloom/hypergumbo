@@ -2957,7 +2957,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3009,6 +3009,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            shape_id=_jsts_analyzer.compute_shape_id(value_node),
                         )
                         symbols.append(symbol)
 
@@ -3044,7 +3045,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3067,7 +3068,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3090,7 +3091,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3117,7 +3118,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3180,7 +3181,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3215,6 +3216,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            shape_id=_jsts_analyzer.compute_shape_id(child),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export

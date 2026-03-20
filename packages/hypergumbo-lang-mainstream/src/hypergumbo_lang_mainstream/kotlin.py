@@ -604,6 +604,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     meta=func_meta,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -654,6 +655,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=_extract_modifiers(node),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -691,6 +693,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     modifiers=_extract_modifiers(node),
                     meta=obj_meta,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol

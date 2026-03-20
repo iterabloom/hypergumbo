@@ -1408,3 +1408,29 @@ class TestNormalizePhpSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.php import normalize_php_signature
         assert normalize_php_signature(None) is None
+
+
+class TestPhpShapeId:
+    """Tests for shape_id computation in PHP (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "example.php").write_text(
+            "<?php\nfunction greet(string $name): string { return 'Hello ' . $name; }\n"
+        )
+        result = analyze_php(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "example.php").write_text(
+            "<?php\nclass Foo {\n  public function bar(): int { return 42; }\n}\n"
+        )
+        result = analyze_php(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

@@ -6024,3 +6024,29 @@ func main() {
         ]
         assert len(run_calls) >= 1
         assert any(e.evidence_type == "typed_receiver_call" for e in run_calls)
+
+
+class TestGoShapeId:
+    """Tests for shape_id computation in Go (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n\nfunc add(a, b int) int { return a + b }\n"
+        )
+        result = analyze_go(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_struct_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n\ntype Point struct {\n\tX int\n\tY int\n}\n"
+        )
+        result = analyze_go(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Point")
+        assert struct.shape_id is not None
+        assert struct.shape_id.startswith("sha256:")
