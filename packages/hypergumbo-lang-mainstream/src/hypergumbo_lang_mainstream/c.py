@@ -256,6 +256,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    stable_id=_analyzer.compute_stable_id(node, kind="function"),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -286,6 +287,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
+                            stable_id=_analyzer.compute_stable_id(node, kind="function"),
                         )
                         symbols.append(symbol)
                         if node_for_symbol is not None:
@@ -312,6 +314,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="struct"),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -338,6 +341,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="enum"),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -366,6 +370,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="typedef"),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:

@@ -2055,6 +2055,32 @@ public:
         )
 
 
+class TestCppStableId:
+    """Tests for stable_id computation in C++ (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+    def test_class_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "class Foo { public: void bar() {} };\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.stable_id is not None
+        assert cls.stable_id.startswith("sha256:")
+
+
 class TestCppShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 

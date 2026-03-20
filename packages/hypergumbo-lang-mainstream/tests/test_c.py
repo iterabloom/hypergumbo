@@ -1876,6 +1876,28 @@ class TestStructDesignatedInitFptr:
         assert names == ["close", "open"]
 
 
+class TestCStableId:
+    """Tests for stable_id computation in C (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "example.c").write_text("int add(int a, int b) { return a + b; }\n")
+        result = analyze_c(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+    def test_struct_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("struct Point { int x; int y; };\n")
+        result = analyze_c(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Point")
+        assert struct.stable_id is not None
+        assert struct.stable_id.startswith("sha256:")
+
+
 class TestCShapeId:
     """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
 
