@@ -105,3 +105,18 @@
   clock: 13  # 26af
   nonce: 26af  # 26af
   message: "Yes — module-qualified matching in match_edge_to_primitive() is language-agnostic. The catalogs already have module info for all 6 languages with IO catalogs (Python, JS/TS, Go, C, Java, Rust). The fix enforces it during matching so it applies to all current and future catalogs automatically.\n\nFor languages where call edges include import/module path info (Python, JS/TS — already working correctly), this is a no-op. For languages where bare method names are common (Go, Rust, C++), it eliminates false positives. For future languages, as long as the catalog entries have module fields, the matching constraint applies.\n\nWill implement: change match_edge_to_primitive() to check the catalog entry's module against the edge's import path hint or callee's resolved module path. Fall back to name-only matching with reduced confidence when no module info is available on the edge."  # 26af
+- op: update  # 6db0
+  at: '2026-03-20T18:02:41Z'  # 6db0
+  by: agent  # 6db0
+  actor: jgstern_agent  # 6db0
+  clock: 14  # 6db0
+  nonce: 6db0  # 6db0
+  set:  # 6db0
+    status: done  # 6db0
+- op: discuss  # 5563
+  at: '2026-03-20T18:02:41Z'  # 5563
+  by: agent  # 5563
+  actor: jgstern_agent  # 5563
+  clock: 15  # 5563
+  nonce: '5563'  # 5563
+  message: "Fixed in PR #2441. tag_io_boundaries() now uses module-qualified matching: extracts module_hint from edge dst and checks against catalog entry modules. crypto/rand.Read no longer matches net.Conn.Read. Applies to all 6 languages with IO catalogs. Falls back to name-only matching when module context is 'external'."  # 5563

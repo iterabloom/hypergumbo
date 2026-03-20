@@ -118,3 +118,40 @@
   clock: 15  # 5549
   nonce: '5549'  # 5549
   message: "Fixed in PR #2439. All 9 analyzers (C, C++, Java, Rust, Kotlin, Scala, Swift, PHP, ObjC) now emit unresolved_external_call edges for stdlib/external calls. Shared make_unresolved_edge() in analyze/base.py ensures DRY. IO boundary analysis now works for C/Java repos."  # 5549
+- op: update  # 28df
+  at: '2026-03-20T18:08:50Z'  # 28df
+  by: human  # 28df
+  actor: jgstern  # 28df
+  clock: 16  # 28df
+  nonce: 28df  # 28df
+  set:  # 28df
+    status: todo_soft  # 28df
+- op: discuss  # c649
+  at: '2026-03-20T18:09:12Z'  # c649
+  by: human  # c649
+  actor: jgstern  # c649
+  clock: 17  # c649
+  nonce: c649  # c649
+  message: "what about the 90+ other analyzers? and remember to always DRY"  # c649
+- op: discuss  # fb72
+  at: '2026-03-20T18:10:50Z'  # fb72
+  by: agent  # fb72
+  actor: jgstern_agent  # fb72
+  clock: 18  # fb72
+  nonce: fb72  # fb72
+  message: "Good catch. PR #2439 only covered 9 mainstream analyzers. Will now: (1) convert all extended1 analyzers that already emit ad-hoc unresolved edges to use shared make_unresolved_edge(), (2) add unresolved edges to remaining analyzers that discard them (Groovy, PowerShell, SQL, Solidity), (3) verify all 79+ analyzers with call resolution use the shared utility."  # fb72
+- op: update  # 6952
+  at: '2026-03-20T18:14:54Z'  # 6952
+  by: agent  # 6952
+  actor: jgstern_agent  # 6952
+  clock: 19  # 6952
+  nonce: '6952'  # 6952
+  set:  # 6952
+    status: todo_hard  # 6952
+- op: discuss  # 461d
+  at: '2026-03-20T18:14:54Z'  # 461d
+  by: agent  # 461d
+  actor: jgstern_agent  # 461d
+  clock: 20  # 461d
+  nonce: 461d  # 461d
+  message: "Reopened: only 9/79+ analyzers fixed. Need to convert all remaining analyzers (27 files across mainstream and extended1) to use shared make_unresolved_edge(). Also add unresolved emission to groovy.py which currently discards."  # 461d
