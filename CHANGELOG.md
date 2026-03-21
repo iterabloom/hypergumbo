@@ -16,7 +16,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Phase 1 — Python I/O tracing pipeline**: YAML catalog of Python stdlib I/O primitives (fs, net, subprocess, env) with O(1) lookup. `tag_io_boundaries()` stamps `io_boundary`/`io_primitive` metadata on matching call edges. `compute_boundary_map()` aggregates by boundary type. `hypergumbo io-boundaries` CLI command with `--json` output.
 - **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). C++ and TypeScript resolve to C and JavaScript catalogs via aliases. Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
-- **Framework IO catalog entries**: Java IO catalog expanded with Netty (Channel.write/read, ByteBuf.readBytes/writeBytes, ChannelHandlerContext, ServerBootstrap.bind), OkHttp (Call.execute/enqueue), and Spring RestTemplate (getForObject, postForEntity, exchange). Improves IO tag rates for framework-heavy Java repos.
+- **Framework IO catalog entries across 5 ecosystems**: Java (Netty Channel/ByteBuf/ChannelHandlerContext, OkHttp, Spring RestTemplate), Rust (Tokio fs/net, Hyper, Reqwest, Axum, Actix), Go (Gin, Echo, Fiber, gRPC + syscall/unix IO), JS/TS (Express, Axios, Fastify, Koa, Deno runtime API), Python (asyncio, requests, aiohttp, httpx, Flask, Django, uvicorn). 60+ framework IO entries total.
+- **JVM language IO catalog aliases**: Kotlin, Scala, and Groovy now use the Java IO catalog via alias, enabling IO boundary detection for JVM polyglot repos without catalog duplication.
 - **Phase 1c — Entry-point reverse tracing**: `compute_boundary_map()` accepts optional `entrypoint_ids` parameter. When provided, traces backward from each IO-tagged edge through the call graph (BFS) to find which entrypoints can reach each IO call. Populates `entry_points` on IoChain and BoundaryMapEntry. Both `io-boundaries` and `verify-claims` CLI commands now pass entrypoint IDs from the behavior map.
 - **Phase 3 — Security claim verification**: `verify_claims` checks `must_not_exist` and `max_chains` constraints against boundary maps. `hypergumbo verify-claims --claims security-claims.yaml` with `--json` output; exit code 1 on violations.
 - **ADR-0016 design**: Proposal for exhaustive I/O primitive detection, reverse-trace chains, transparency tiers, and security claim verification.
@@ -36,7 +37,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Dataflow (ADR-0015)
 
-- **Tier 1 dataflow for 12 languages**: Automatic `access_mode` annotation on call edges from AST context for JS/TS, C, C++, Swift, Scala, PHP, Lua, Perl, Elixir, Erlang, and Dart.
+- **Expanded dataflow patterns for 5 key languages**: Go (range, channel, defer, go, return), Python (for/with/return/yield + ast-based annotations), Rust (for/match/if-let/return/await), Java (enhanced for/try-with-resources/return/throw), C++ (range-for/return/throw). Increased pattern count from ~4 per language to 8-12.
+- **Removed incorrect call-edge annotations**: The `calls` section in all 19 dataflow pattern files incorrectly annotated call edges as `read`, causing forward slices to skip all call chains (gvisor: 0.8% of regular slice). Call edges now pass through the graceful degradation path (always followed). Assignment, return, and borrow patterns retained.
 
 #### Language analyzers
 
@@ -75,6 +77,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 
 - **Module-qualified IO boundary matching**: `tag_io_boundaries()` now checks the module context in edge destination IDs against catalog entry modules. Prevents false positives where `crypto/rand.Read()` matched `net.Conn.Read` (tagged as network IO). Affects Go, Rust, C++, and any language where generic method names (Read, Write, Close) overlap across stdlib modules. Falls back to name-only matching when module context is unknown (`external`).
+- **Vendored directory tier classification**: `third-party/`, `thirdparty/`, `external/`, and `deps/` directories now classified as tier 3 (external_dep). Previously only `third_party/` (underscore) was recognized.
+- **Workspace package files default to first-party**: Non-test files in monorepo workspace packages now classified as tier 1 (first_party) instead of tier 2. Fixes deno's tier1 classification from 3.5% to 89%.
+- **PyO3 crate-name annotation matching**: PyFFI linker now matches `#[pyo3(...)]` annotations (crate-level name) in addition to `#[pyfunction]`/`#[pymethods]`. Fixes zero Rust↔Python cross-language edges for tokenizers (809 of 1823 Rust symbols had pyo3 annotations).
+- **Entrypoint ranking: microbench demotion + in-degree boost**: `microbench/` directories now recognized as utility code (benchmark main() demoted). Library exports with high in-degree (many callers) receive confidence boost up to +0.35. Combined effect: netty's AllocationPatternSimulator.main dropped from #1 to #285; SslHandler rose to #2.
+- **C/C++ library_export detection**: Symbols in `include/` directories detected as library exports via new library-exports.yaml patterns.
 - **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
 - **`rank_files()` centrality consistency**: `rank_files()` now uses the same `compute_centrality()` parameters as `rank_symbols()` (within_file_weight=0.3, max_per_file_in=5, edge_type_weights). Previously it used defaults, making file ranking inconsistent with symbol ranking.
 - **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.
