@@ -9,6 +9,22 @@ assignments:
   - node_type: assignment_expression
     write: left
     read: right
+  # For loop variable binding
+  - node_type: for_expression
+    write: pattern
+    read: value
+  # Match arm binding
+  - node_type: match_arm
+    write: pattern
+    read: value
+  # If-let binding
+  - node_type: if_let_expression
+    write: pattern
+    read: value
+
+returns:
+  - node_type: return_expression
+    read: expression
 
 borrows:
   - node_type: reference_expression
@@ -20,3 +36,9 @@ calls:
     read: arguments
   - node_type: macro_invocation
     read: arguments
+  # Method call: receiver is read
+  - node_type: field_expression
+    read: value
+  # Await: the future is read
+  - node_type: await_expression
+    read: expression

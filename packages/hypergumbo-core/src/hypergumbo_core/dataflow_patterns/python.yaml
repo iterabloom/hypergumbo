@@ -14,10 +14,31 @@ assignments:
   - node_type: augmented_assignment
     mutate: left
     read: right
+  # For loop iteration
+  - node_type: for_statement
+    write: left
+    read: right
+  # With statement (context manager)
+  - node_type: with_clause
+    write: alias
+    read: value
+  # Comprehension variable binding
+  - node_type: for_in_clause
+    write: left
+    read: right
+
+returns:
+  - node_type: return_statement
+    read: expression
+  - node_type: yield
+    read: expression
 
 calls:
   - node_type: call
     read: arguments
+  # Attribute access (method call receiver is read)
+  - node_type: attribute
+    read: object
 
 deletions:
   - node_type: delete_statement
