@@ -6,7 +6,3 @@ assignments:
   - node_type: binary_operator
     write: left
     read: right
-
-calls:
-  - node_type: call
-    read: arguments

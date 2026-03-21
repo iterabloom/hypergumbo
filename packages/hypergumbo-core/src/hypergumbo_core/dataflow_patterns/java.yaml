@@ -23,12 +23,3 @@ returns:
     read: expression
   - node_type: throw_statement
     read: expression
-
-calls:
-  - node_type: method_invocation
-    read: arguments
-  - node_type: object_creation_expression
-    read: arguments
-  # Field access on object (receiver is read)
-  - node_type: field_access
-    read: object

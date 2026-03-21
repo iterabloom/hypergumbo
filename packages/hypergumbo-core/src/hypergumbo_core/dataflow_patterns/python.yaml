@@ -33,13 +33,6 @@ returns:
   - node_type: yield
     read: expression
 
-calls:
-  - node_type: call
-    read: arguments
-  # Attribute access (method call receiver is read)
-  - node_type: attribute
-    read: object
-
 deletions:
   - node_type: delete_statement
     delete: argument

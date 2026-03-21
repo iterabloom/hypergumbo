@@ -30,15 +30,3 @@ borrows:
   - node_type: reference_expression
     mutate_if: mutable
     read_if: immutable
-
-calls:
-  - node_type: call_expression
-    read: arguments
-  - node_type: macro_invocation
-    read: arguments
-  # Method call: receiver is read
-  - node_type: field_expression
-    read: value
-  # Await: the future is read
-  - node_type: await_expression
-    read: expression

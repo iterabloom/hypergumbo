@@ -24,15 +24,3 @@ assignments:
 returns:
   - node_type: return_statement
     read: expression_list
-
-calls:
-  - node_type: call_expression
-    read: arguments
-  # Method calls: receiver is read
-  - node_type: selector_expression
-    read: operand
-  # Defer/go statements: the function call is read
-  - node_type: defer_statement
-    read: call
-  - node_type: go_statement
-    read: call

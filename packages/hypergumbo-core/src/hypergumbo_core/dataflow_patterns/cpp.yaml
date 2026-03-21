@@ -20,13 +20,6 @@ returns:
   - node_type: throw_statement
     read: expression
 
-calls:
-  - node_type: call_expression
-    read: arguments
-  # Field expression on object (receiver is read)
-  - node_type: field_expression
-    read: argument
-
 deletions:
   - node_type: delete_expression
     delete: argument

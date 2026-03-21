@@ -9,7 +9,3 @@ assignments:
   - node_type: init_declarator
     write: declarator
     read: value
-
-calls:
-  - node_type: call_expression
-    read: arguments

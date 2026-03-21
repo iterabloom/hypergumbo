@@ -10,12 +10,6 @@ assignments:
     mutate: left
     read: right
 
-calls:
-  - node_type: function_call_expression
-    read: arguments
-  - node_type: member_call_expression
-    read: arguments
-
 deletions:
   - node_type: unset_statement
     delete: argument
