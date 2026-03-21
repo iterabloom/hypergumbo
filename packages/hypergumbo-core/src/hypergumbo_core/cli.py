@@ -2902,7 +2902,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     boundary_filter = getattr(args, "boundary", None)
     primitive_filter = getattr(args, "primitive", None)
 
-    from .io_boundary import BoundaryMapEntry, is_high_risk
+    from .io_boundary import BoundaryMapEntry
 
     filtered_entries: Dict[str, BoundaryMapEntry] = {}
     for btype, entry in bmap.entries.items():
@@ -2991,9 +2991,9 @@ def _relativize(path: str, repo_root: Optional[Path]) -> str:
 
 
 def _print_io_boundaries_by_type(
-    entries: Dict[str, "BoundaryMapEntry"],
+    entries: Dict[str, Any],
     nodes_by_id: Dict[str, Any],
-    bmap: "BoundaryMap",
+    bmap: Any,
     repo_root: Path,
 ) -> None:
     """Print I/O boundaries grouped by boundary type with call-site detail."""
@@ -3039,7 +3039,7 @@ def _print_io_boundaries_by_type(
 
 
 def _print_io_boundaries_by_file(
-    entries: Dict[str, "BoundaryMapEntry"],
+    entries: Dict[str, Any],
     nodes_by_id: Dict[str, Any],
     repo_root: Path,
 ) -> None:
