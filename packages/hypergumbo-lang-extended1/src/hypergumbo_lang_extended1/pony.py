@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -410,23 +411,23 @@ def _extract_call_edge(
         resolved_id = symbol_registry.get(local_name)
 
     if resolved_id:
-        dst = resolved_id
-        confidence = 1.0
+        return Edge.create(
+            src=src,
+            dst=resolved_id,
+            edge_type="calls",
+            line=node.start_point[0] + 1,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            evidence_type="static",
+            confidence=1.0,
+            evidence_lang="pony",
+        )
     else:
-        dst = f"pony:unresolved:{callee_name}"
-        confidence = 0.6
-
-    return Edge.create(
-        src=src,
-        dst=dst,
-        edge_type="calls",
-        line=node.start_point[0] + 1,
-        origin=PASS_ID,
-        origin_run_id=run_id,
-        evidence_type="static",
-        confidence=confidence,
-        evidence_lang="pony",
-    )
+        return make_unresolved_edge(
+            "pony", src, callee_name,
+            node.start_point[0] + 1,
+            PASS_ID, run_id,
+        )
 
 
 def _extract_pony_edges(

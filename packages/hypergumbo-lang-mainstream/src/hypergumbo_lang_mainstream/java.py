@@ -79,6 +79,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text as _node_text,
     visibility_from_modifiers,
 )
@@ -754,6 +755,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -793,6 +795,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -819,6 +822,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -901,6 +905,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -940,6 +945,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_java_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -1501,7 +1507,24 @@ def _extract_edges(
                                     evidence_type="ast_call_direct",
                                 )
                                 edges.append(edge)
+                                edge_added = True
                                 break
+
+                    # Emit unresolved external edge when no resolution strategy succeeded
+                    if not edge_added:
+                        # Use qualified name when receiver is known
+                        unresolved_name = (
+                            f"{receiver_name}.{method_name}"
+                            if receiver_name and receiver_name != "this"
+                            else method_name
+                        )
+                        # Use import path as module hint when available
+                        module = imports.get(receiver_name, "external") if receiver_name else "external"
+                        edges.append(make_unresolved_edge(
+                            "java", current_method.id, unresolved_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=module,
+                        ))
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
@@ -1856,13 +1879,19 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
 
     # Build per-symbol file imports for extends/implements disambiguation
     # Maps symbol ID -> file-level imports (simple_name -> fqn)
+    #
+    # Uses a path-to-symbol-IDs index for O(n+m) instead of O(n*m).
+    # The old nested loop iterated all 76K symbols for each of 5.6K files
+    # (434M iterations, 400s on kafka).  This version: two linear passes.
     sym_file_imports: dict[str, dict[str, str]] = {}
+    syms_by_path: dict[str, list[str]] = {}
+    for sym in all_symbols:
+        syms_by_path.setdefault(sym.path, []).append(sym.id)
     for pf in parsed_files:
         file_imports = pf.imports or {}
         if file_imports:
-            for sym in all_symbols:
-                if sym.path == str(pf.path):
-                    sym_file_imports[sym.id] = file_imports
+            for sym_id in syms_by_path.get(str(pf.path), []):
+                sym_file_imports[sym_id] = file_imports
 
     # Build global class inheritance map for inherited method resolution.
     # Maps child class name -> parent class name (resolved to symbol name).

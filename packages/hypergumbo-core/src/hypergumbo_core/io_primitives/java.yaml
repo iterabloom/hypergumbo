@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Java
+#
+# Maps Java standard library classes/methods to I/O boundary types.
+language: java
+
+fs_read:
+  - module: java.io.File
+    methods: [exists, isFile, isDirectory, list, listFiles, length, lastModified, canRead]
+  - module: java.io.FileInputStream
+    methods: [read]
+  - module: java.io.FileReader
+    methods: [read]
+  - module: java.io.BufferedReader
+    methods: [readLine, read]
+  - module: java.nio.file.Files
+    methods: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
+  - module: java.nio.file.Path
+    methods: [toFile, toRealPath]
+  - module: java.util.Scanner
+    methods: [next, nextLine, nextInt]
+    notes: "When reading from a file"
+
+fs_write:
+  - module: java.io.File
+    methods: [createNewFile, mkdir, mkdirs, delete, renameTo, setWritable, setReadable]
+  - module: java.io.FileOutputStream
+    methods: [write]
+  - module: java.io.FileWriter
+    methods: [write, append]
+  - module: java.io.BufferedWriter
+    methods: [write, newLine]
+  - module: java.nio.file.Files
+    methods: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
+
+net_send:
+  - module: java.net.Socket
+    methods: [connect, getOutputStream]
+  - module: java.net.URL
+    methods: [openConnection, openStream]
+  - module: java.net.HttpURLConnection
+    methods: [connect, getOutputStream, setRequestMethod]
+  - module: java.net.http.HttpClient
+    methods: [send, sendAsync]
+  # Netty framework
+  - module: io.netty.channel.Channel
+    methods: [write, writeAndFlush, flush]
+    notes: "Netty channel write operations"
+  - module: io.netty.channel.ChannelHandlerContext
+    methods: [write, writeAndFlush, flush, fireChannelRead]
+    notes: "Netty handler context write operations"
+  - module: io.netty.buffer.ByteBuf
+    methods: [writeBytes, writeInt, writeLong, writeShort, writeByte, writeFloat, writeDouble, writeCharSequence, writeZero]
+    notes: "Netty ByteBuf write operations"
+  # OkHttp / Retrofit
+  - module: okhttp3.Call
+    methods: [execute, enqueue]
+    notes: "OkHttp synchronous and asynchronous HTTP calls"
+  - module: okhttp3.OkHttpClient
+    methods: [newCall]
+  # Spring Web
+  - module: org.springframework.web.client.RestTemplate
+    methods: [getForObject, getForEntity, postForObject, postForEntity, put, delete, exchange]
+    notes: "Spring RestTemplate HTTP operations"
+
+net_recv:
+  - module: java.net.ServerSocket
+    methods: [accept, bind]
+  - module: java.net.Socket
+    methods: [getInputStream]
+  - module: java.net.DatagramSocket
+    methods: [receive, bind]
+  # Netty framework
+  - module: io.netty.channel.Channel
+    methods: [read]
+    notes: "Netty channel read operations"
+  - module: io.netty.channel.ChannelHandlerContext
+    methods: [read, fireChannelRead]
+    notes: "Netty handler context read operations"
+  - module: io.netty.buffer.ByteBuf
+    methods: [readBytes, readInt, readLong, readShort, readByte, readFloat, readDouble, readCharSequence, readSlice, readRetainedSlice]
+    notes: "Netty ByteBuf read operations"
+  # Netty server bootstrap
+  - module: io.netty.bootstrap.ServerBootstrap
+    methods: [bind]
+    notes: "Netty server bind — starts accepting connections"
+
+subprocess:
+  - module: java.lang.ProcessBuilder
+    methods: [start, command]
+  - module: java.lang.Runtime
+    methods: [exec]
+
+env_read:
+  - module: java.lang.System
+    methods: [getenv, getProperty, getProperties]
+  - module: java.lang.Runtime
+    methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
+
+ipc_send:
+  - module: java.lang.System
+    attributes: [out, err]
+
+ipc_recv:
+  - module: java.lang.System
+    attributes: [in]

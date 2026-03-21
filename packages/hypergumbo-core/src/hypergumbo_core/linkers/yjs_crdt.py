@@ -5,16 +5,30 @@ Detects data-mediated coupling through Yjs shared types (Y.Map, Y.Array, Y.Text,
 Y.Doc) and Awareness (ephemeral state). Creates ``crdt_publishes`` edges between
 code that writes to shared state and code that observes it.
 
+Three API surfaces are covered:
+
 Detected Patterns
 -----------------
 **Raw Yjs API (shared types):**
-- Write: ``yMap.set('key', value)``, ``yArray.push(items)``, ``yText.insert(pos, text)``
+- Write: ``yMap.set('key', value)``, ``yMap.delete('key')``
+- Shared type access: ``doc.getMap('name')``, ``doc.getArray('name')``,
+  ``doc.getText('name')``, ``doc.getXmlFragment('name')``
 - Read: ``yMap.observe(callback)``, ``yMap.observeDeep(callback)``
-- Doc-level: ``yDoc.on('update', handler)``
+- Doc-level: ``yDoc.on('update', handler)``, ``yDoc.on('subdocs', handler)``
 
 **Yjs Awareness (ephemeral state):**
 - Write: ``awareness.setLocalState(state)``, ``awareness.setLocalStateField('key', value)``
 - Read: ``awareness.on('change', callback)``, ``awareness.on('update', callback)``
+
+**BlockSuite (document model abstraction over Yjs):**
+- Write: ``store.addBlock('flavour', ...)``, ``store.deleteBlock()``,
+  ``store.transact(fn)``, ``defineBlockSchema({ flavour: 'x' })``
+- Read: ``store.slots.blockUpdated.subscribe()``,
+  ``store.slots.rootAdded.subscribe()``, ``model.propsUpdated.subscribe()``
+
+BlockSuite is an abstraction layer over Yjs used by editors like AFFiNE. Block
+mutations map to Yjs operations internally, so tracing through BlockSuite's API
+captures the same data flow as raw Yjs but at the application level.
 
 Why This Design
 ---------------
@@ -51,8 +65,6 @@ PASS_ID = make_pass_id("yjs-crdt-linker")
 # Matches Yjs shared type mutations with literal key names:
 #   yMap.set('key', value)
 #   yMap.delete('key')
-#   yArray.push([items])
-#   yText.insert(pos, 'text')
 # Group 1: the key/channel name (for .set/.delete with string literal)
 _YJS_WRITE_PATTERN = re.compile(
     r"""(?:"""
@@ -60,6 +72,17 @@ _YJS_WRITE_PATTERN = re.compile(
     r"""|"""
     r"""\.delete\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]"""   # .delete('key')
     r""")""",
+)
+
+# Matches Yjs doc-level shared type accessor calls:
+#   doc.getMap('name')
+#   doc.getArray('name')
+#   doc.getText('name')
+#   doc.getXmlFragment('name')
+# These bind a named shared type from a Y.Doc — the name acts as the channel.
+# Group 1: the shared type name
+_YJS_SHARED_TYPE_PATTERN = re.compile(
+    r"""\.get(?:Map|Array|Text|XmlFragment)\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]""",
 )
 
 # Matches Yjs awareness write patterns:
@@ -71,6 +94,45 @@ _AWARENESS_WRITE_PATTERN = re.compile(
     r"""\.setLocalStateField\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]"""
     r"""|"""
     r"""\.setLocalState\s*\("""
+    r""")""",
+)
+
+# ---- BlockSuite patterns ----
+
+# Matches BlockSuite block mutations:
+#   store.addBlock('affine:paragraph', ...)
+#   store.deleteBlock(model)
+#   store.transact(() => { ... })
+# Group 1: flavour string from addBlock (None for deleteBlock/transact)
+_BLOCKSUITE_WRITE_PATTERN = re.compile(
+    r"""(?:"""
+    r"""\.addBlock\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]"""   # addBlock('flavour', ...)
+    r"""|"""
+    r"""\.deleteBlock\s*\("""                                # deleteBlock(model)
+    r"""|"""
+    r"""\.transact\s*\("""                                   # transact(() => { ... })
+    r""")""",
+)
+
+# Matches defineBlockSchema({ flavour: 'x' }) — block schema definition.
+# Group 1: the flavour string
+_BLOCKSUITE_SCHEMA_PATTERN = re.compile(
+    r"""defineBlockSchema\s*\(\s*\{[^}]*?"""
+    r"""flavour\s*:\s*['"]([a-zA-Z0-9_.\-:]+)['"]""",
+    re.DOTALL,
+)
+
+# Matches BlockSuite slot subscriptions (RxJS Subject-based):
+#   store.slots.blockUpdated.subscribe(handler)
+#   store.slots.rootAdded.subscribe(handler)
+#   store.slots.rootDeleted.subscribe(handler)
+#   model.propsUpdated.subscribe(handler)
+_BLOCKSUITE_READ_PATTERN = re.compile(
+    r"""(?:"""
+    r"""\.slots\.(?:blockUpdated|rootAdded|rootDeleted|yBlockUpdated|ready)"""
+    r"""\.subscribe\s*\("""
+    r"""|"""
+    r"""\.propsUpdated\.subscribe\s*\("""
     r""")""",
 )
 
@@ -96,15 +158,24 @@ _AWARENESS_READ_PATTERN = re.compile(
 )
 
 
+# Keywords for quick bailout — avoids scanning files without any Yjs/BlockSuite API.
+_BAILOUT_KEYWORDS = (
+    "observe", "setLocal", ".set(", ".delete(", ".on(",
+    "getMap", "getArray", "getText", "getXmlFragment",
+    "addBlock", "deleteBlock", "transact", "defineBlockSchema",
+    ".slots.", "propsUpdated",
+)
+
+
 @dataclass
 class YjsSite:
     """A source location where a Yjs pub/sub pattern was detected."""
 
     kind: str       # "write" or "read"
-    channel: str    # key name, "awareness", or "yjs" (generic)
+    channel: str    # key name, "awareness", "yjs", or "blocksuite"
     file_path: str  # relative path
     line: int       # 1-indexed
-    api: str        # "yjs" or "awareness"
+    api: str        # "yjs", "awareness", or "blocksuite"
 
 
 def _scan_file_for_yjs_patterns(
@@ -120,12 +191,21 @@ def _scan_file_for_yjs_patterns(
     except OSError:  # pragma: no cover
         return []
 
-    # Quick bailout: skip files that don't mention Yjs-related identifiers
-    if not any(kw in content for kw in ("observe", "setLocal", ".set(", ".delete(", ".on(")):
+    # Quick bailout: skip files that don't mention Yjs/BlockSuite identifiers
+    if not any(kw in content for kw in _BAILOUT_KEYWORDS):
         return []
 
     sites: list[YjsSite] = []
     lines = content.split("\n")
+
+    # BlockSuite schema definitions can span multiple lines — scan full content
+    for m in _BLOCKSUITE_SCHEMA_PATTERN.finditer(content):
+        flavour = m.group(1)
+        line_num = content[:m.start()].count("\n") + 1
+        sites.append(YjsSite(
+            kind="write", channel=flavour, file_path=rel_path,
+            line=line_num, api="blocksuite",
+        ))
 
     for i, line_text in enumerate(lines):
         line_num = i + 1
@@ -138,12 +218,35 @@ def _scan_file_for_yjs_patterns(
                 line=line_num, api="yjs",
             ))
 
+        # Yjs shared type accessor patterns (doc.getMap, doc.getArray, etc.)
+        for m in _YJS_SHARED_TYPE_PATTERN.finditer(line_text):
+            channel = m.group(1)
+            sites.append(YjsSite(
+                kind="write", channel=channel, file_path=rel_path,
+                line=line_num, api="yjs",
+            ))
+
         # Awareness write patterns
         for m in _AWARENESS_WRITE_PATTERN.finditer(line_text):
             channel = m.group(1) or "awareness"
             sites.append(YjsSite(
                 kind="write", channel=f"awareness.{channel}",
                 file_path=rel_path, line=line_num, api="awareness",
+            ))
+
+        # BlockSuite write patterns (addBlock, deleteBlock, transact)
+        for m in _BLOCKSUITE_WRITE_PATTERN.finditer(line_text):
+            channel = m.group(1) or "blocksuite"
+            sites.append(YjsSite(
+                kind="write", channel=channel, file_path=rel_path,
+                line=line_num, api="blocksuite",
+            ))
+
+        # BlockSuite read patterns (slots, propsUpdated)
+        if _BLOCKSUITE_READ_PATTERN.search(line_text):
+            sites.append(YjsSite(
+                kind="read", channel="blocksuite", file_path=rel_path,
+                line=line_num, api="blocksuite",
             ))
 
         # Yjs read patterns

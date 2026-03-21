@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for JavaScript/TypeScript (Node.js)
+#
+# Maps Node.js built-in module functions to I/O boundary types.
+# Third-party packages (express, axios, etc.) trace through these.
+# Also used for TypeScript (same runtime primitives).
+language: javascript
+
+fs_read:
+  - module: fs
+    functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, accessSync, access, readlinkSync, readlink, realpathSync, realpath]
+  - module: fs.promises
+    functions: [readFile, readdir, stat, lstat, access, readlink, realpath]
+  - module: path
+    functions: [resolve, join, dirname, basename, extname, relative, normalize]
+    notes: "Path operations are not I/O but commonly precede fs_read"
+  # Deno runtime API
+  - module: Deno
+    functions: [readFile, readTextFile, readDir, stat, lstat, readLink, realPath, open]
+    notes: "Deno runtime file read operations"
+  - module: Deno
+    methods: [readFile, readTextFile, readDir, stat, lstat]
+
+fs_write:
+  - module: fs
+    functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile]
+  - module: fs.promises
+    functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm]
+  - module: fs
+    methods: [createWriteStream]
+  # Deno runtime API
+  - module: Deno
+    functions: [writeFile, writeTextFile, mkdir, remove, rename, chmod, chown, truncate, create]
+    notes: "Deno runtime file write operations"
+
+net_send:
+  - module: http
+    functions: [request, get]
+  - module: https
+    functions: [request, get]
+  - module: net.Socket
+    methods: [connect, write, end]
+  - module: dgram.Socket
+    methods: [send]
+  - module: fetch
+    functions: [fetch]
+    notes: "Global fetch (Node 18+)"
+  # Express response
+  - module: express.Response
+    methods: [send, json, render, redirect, download, sendFile, status]
+    notes: "Express response methods"
+  # Axios HTTP client
+  - module: axios
+    functions: [get, post, put, delete, patch, request, create]
+    notes: "Axios HTTP client"
+  # node-fetch
+  - module: node-fetch
+    functions: [fetch]
+    notes: "node-fetch package (pre Node 18)"
+  # Deno runtime API
+  - module: Deno
+    functions: [connect, connectTls]
+    notes: "Deno runtime network client operations"
+
+net_recv:
+  - module: http
+    functions: [createServer]
+  - module: https
+    functions: [createServer]
+  - module: net
+    functions: [createServer]
+  - module: dgram
+    functions: [createSocket]
+  # Deno runtime API
+  - module: Deno
+    functions: [listen, listenTls, listenDatagram]
+    notes: "Deno runtime server operations"
+  # Express/Fastify/Koa server
+  - module: express
+    functions: [listen]
+    notes: "Express server listen"
+  - module: express.Application
+    methods: [listen]
+  - module: fastify.FastifyInstance
+    methods: [listen]
+    notes: "Fastify server listen"
+  - module: koa.Application
+    methods: [listen]
+    notes: "Koa server listen"
+
+subprocess:
+  - module: child_process
+    functions: [exec, execSync, execFile, execFileSync, spawn, spawnSync, fork]
+
+env_read:
+  - module: process
+    attributes: [env, argv, platform, arch, version, cwd]
+  - module: os
+    functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
+
+ipc_send:
+  - module: process
+    attributes: [stdout, stderr]
+  - module: process
+    methods: [send]
+    notes: "IPC to parent process in child_process.fork()"
+
+ipc_recv:
+  - module: process
+    attributes: [stdin]
+  - module: process
+    methods: [on]
+    notes: "process.on('message', ...) for IPC from parent"

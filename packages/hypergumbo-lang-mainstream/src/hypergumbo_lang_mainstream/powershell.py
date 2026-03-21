@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -235,8 +236,13 @@ def _extract_powershell_symbols(
     run_id: str,
     symbols: list[Symbol],
     symbol_registry: dict[str, Symbol],
+    node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
 ) -> None:
-    """Extract symbols from a parsed PowerShell file (pass 1)."""
+    """Extract symbols from a parsed PowerShell file (pass 1).
+
+    Optionally populates *node_for_symbol* to enable base-class shape_id
+    auto-wiring (ADR-0014 §1).
+    """
     for node in iter_tree(tree.root_node):
         if node.type == "function_statement":
             # Process a function, filter, or workflow definition
@@ -259,7 +265,10 @@ def _extract_powershell_symbols(
                 sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
                 )
+                sym.stable_id = _analyzer.compute_stable_id(node, kind=kind)
                 symbols.append(sym)
+                if node_for_symbol is not None:
+                    node_for_symbol[sym.id] = node
                 # Register functions for call resolution
                 if kind in ("function", "filter", "workflow"):
                     symbol_registry[func_name] = sym
@@ -273,6 +282,7 @@ def _extract_powershell_edges(
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
     module_symbol: Optional[Symbol] = None,
+    run_id: str = "",
 ) -> None:
     """Extract edges from a parsed PowerShell file (pass 2)."""
     _caller_path = str(file_path)
@@ -293,21 +303,21 @@ def _extract_powershell_edges(
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(command_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            edges.append(Edge.create(
+                                src=caller.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
                         else:
                             # External cmdlet or function
-                            dst_id = f"powershell:external:{command_name}:function"
-                            confidence = 0.70
-
-                        edges.append(Edge.create(
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                        ))
+                            edges.append(make_unresolved_edge(
+                                "powershell", caller.id, command_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                            ))
 
 
 class PowerShellAnalyzer(TreeSitterAnalyzer):
@@ -352,6 +362,7 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         _extract_powershell_symbols(
             tree, source, rel_path, run.execution_id,
             analysis.symbols, symbol_registry,
+            node_for_symbol=analysis.node_for_symbol,
         )
 
         # Populate symbol_by_name for edge resolution (functions/filters/workflows)
@@ -381,6 +392,7 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         _extract_powershell_edges(
             tree, source, rel_path, edges, local_symbols, resolver,
             module_symbol=module_symbol,
+            run_id=run.execution_id,
         )
         return edges
 

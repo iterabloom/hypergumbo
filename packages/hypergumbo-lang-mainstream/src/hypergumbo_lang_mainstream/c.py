@@ -47,15 +47,20 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("c")
+
+# ADR-0015: Dataflow config for C — loaded once at module level
+_df_config = get_dataflow_config("c")
 
 
 def _remap_edge_ids(
@@ -220,10 +225,13 @@ def _extract_symbols(
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
+    node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed C tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+    Optionally populates *node_for_symbol* to enable base-class shape_id
+    auto-wiring (ADR-0014 §1).
     """
     symbols: list[Symbol] = []
 
@@ -249,8 +257,11 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    stable_id=_analyzer.compute_stable_id(node, kind="function"),
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Function declarations (prototypes)
         elif node.type == "declaration":
@@ -277,8 +288,11 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
+                            stable_id=_analyzer.compute_stable_id(node, kind="function"),
                         )
                         symbols.append(symbol)
+                        if node_for_symbol is not None:
+                            node_for_symbol[symbol.id] = node
 
         # Struct definitions (with body only — skip references like
         # ``struct stat sb;`` and forward declarations ``struct Foo;``)
@@ -301,8 +315,11 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="struct"),
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Enum definitions (with body only — skip references like
         # ``enum Color c;`` and forward declarations ``enum Color;``)
@@ -325,8 +342,11 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="enum"),
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
         # Typedef declarations
         elif node.type == "type_definition":
@@ -351,8 +371,11 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="typedef"),
                 )
                 symbols.append(symbol)
+                if node_for_symbol is not None:
+                    node_for_symbol[symbol.id] = node
 
     return symbols
 
@@ -438,6 +461,11 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "c", current_function.id, callee_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                        ))
 
                 # Callback argument detection: bare identifiers in the
                 # argument list that resolve to known functions are likely
@@ -578,6 +606,55 @@ def _extract_edges(
         if seen_funcs:
             dispatch_tables[array_name] = array_src_id
 
+    # Designated initializer function pointer detection:
+    # Pattern: static struct ops tcp_ops = { .connect = tcp_connect, ... };
+    # Creates edges from the struct variable to each function pointer target.
+    for node in iter_tree(tree.root_node):
+        if node.type != "initializer_pair":
+            continue
+        field_des = None
+        value_ident = None
+        for child in node.children:
+            if child.type == "field_designator":
+                field_des = child
+            elif child.type == "identifier":
+                value_ident = child
+        if field_des is None or value_ident is None:
+            continue
+        func_name = node_text(value_ident, source)
+        lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
+        if not lookup_result.found or lookup_result.symbol is None:
+            continue
+        if lookup_result.symbol.kind != "function":
+            continue  # pragma: no cover — designator values are typically function ptrs
+        parent = node.parent
+        grandparent = parent.parent if parent else None
+        if grandparent is None or grandparent.type != "init_declarator":
+            continue  # pragma: no cover — valid C has parent init_declarator
+        var_name = None
+        for child in grandparent.children:
+            if child.type == "identifier":
+                var_name = node_text(child, source)
+                break
+        if not var_name:
+            continue  # pragma: no cover — init_declarator has identifier
+        var_line = grandparent.start_point[0] + 1
+        var_src_id = make_symbol_id(
+            "c", str(file_path), var_line, var_line, var_name, "variable",
+        )
+        field_name = node_text(field_des, source).lstrip(".")
+        edges.append(Edge.create(
+            src=var_src_id,
+            dst=lookup_result.symbol.id,
+            edge_type="dispatches_to",
+            line=value_ident.start_point[0] + 1,
+            confidence=0.85 * lookup_result.confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="designated_init_fptr",
+            meta={"field": field_name},
+        ))
+
     # Scan function bodies for references to discovered dispatch table
     # variables, creating uses_dispatch_table edges.  This connects
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
@@ -680,7 +757,10 @@ class CAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single C file."""
         analysis = FileAnalysis()
-        symbols = _extract_symbols(tree, source, file_path, run)
+        symbols = _extract_symbols(
+            tree, source, file_path, run,
+            node_for_symbol=analysis.node_for_symbol,
+        )
         analysis.symbols = symbols
         for sym in symbols:
             analysis.symbol_by_name[sym.name] = sym
@@ -786,6 +866,13 @@ class CAnalyzer(TreeSitterAnalyzer):
                 tree, source, source_file, rel_path, run,
             )
             populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
+            # Auto-compute shape_id for symbols with nodes (ADR-0014 §1)
+            if analysis.node_for_symbol:
+                sym_by_id = {s.id: s for s in analysis.symbols}
+                for sym_id, ts_node in analysis.node_for_symbol.items():
+                    sym = sym_by_id.get(sym_id)
+                    if sym is not None and sym.shape_id is None:
+                        sym.shape_id = self.compute_shape_id(ts_node)
             import_aliases = self.get_import_aliases(tree, source)
             file_analyses[source_file] = (analysis, import_aliases)
             files_analyzed += 1
@@ -811,6 +898,9 @@ class CAnalyzer(TreeSitterAnalyzer):
                 analysis.symbol_by_name, global_symbols, run,
                 import_aliases, resolver,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation from AST context
+            if _df_config is not None:
+                annotate_dataflow(edges, tree, source, _df_config)
             all_edges.extend(edges)
 
         # Deduplicate: remove declaration-only symbols when a definition

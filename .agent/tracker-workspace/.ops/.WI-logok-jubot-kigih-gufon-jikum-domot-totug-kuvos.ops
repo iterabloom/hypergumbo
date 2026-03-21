@@ -36,3 +36,49 @@
   clock: 3  # 14fa
   nonce: 14fa  # 14fa
   message: "Merged PR #2255. New annotation convention linker: @hg:publishes/@hg:subscribes creates annotated_publishes edges matched by channel name. Language-agnostic comment scanning. Also detects @hg:route and @hg:dispatches (scanner only, matching not yet implemented for these). 18 tests, 100% coverage."  # 14fa
+- op: update  # 0b79
+  at: '2026-03-17T05:21:21Z'  # 0b79
+  by: human  # 0b79
+  actor: jgstern  # 0b79
+  clock: 4  # 0b79
+  nonce: 0b79  # 0b79
+  set:  # 0b79
+    status: todo_soft  # 0b79
+    priority: 3  # 0b79
+- op: discuss  # ef4b
+  at: '2026-03-17T05:21:59Z'  # ef4b
+  by: human  # ef4b
+  actor: jgstern  # ef4b
+  clock: 5  # ef4b
+  nonce: ef4b  # ef4b
+  message: "please implement matching for  @hg:route and @hg:dispatches"  # ef4b
+- op: update  # fd0c
+  at: '2026-03-17T09:20:54Z'  # fd0c
+  by: agent  # fd0c
+  actor: jgstern_agent  # fd0c
+  clock: 6  # fd0c
+  nonce: fd0c  # fd0c
+  set:  # fd0c
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # fd0c
+- op: discuss  # 3cbe
+  at: '2026-03-17T09:21:42Z'  # 3cbe
+  by: agent  # 3cbe
+  actor: jgstern_agent  # 3cbe
+  clock: 7  # 3cbe
+  nonce: 3cbe  # 3cbe
+  message: "Cross-ref: WI-jisib (protocol message dispatch mapping) proposes automatic detection for typed wire protocols. Annotation convention is the fallback for patterns too custom for auto-detection. Both under META-migil umbrella."  # 3cbe
+- op: update  # cec6
+  at: '2026-03-18T02:40:02Z'  # cec6
+  by: agent  # cec6
+  actor: jgstern_agent  # cec6
+  clock: 8  # cec6
+  nonce: cec6  # cec6
+  set:  # cec6
+    status: done  # cec6
+- op: discuss  # f99e
+  at: '2026-03-18T02:40:02Z'  # f99e
+  by: agent  # f99e
+  actor: jgstern_agent  # f99e
+  clock: 9  # f99e
+  nonce: f99e  # f99e
+  message: "Implemented @hg:route (creates route symbols) and @hg:dispatches (creates annotated_dispatches edges to matching symbols) in PR #2335. All four annotation directives now functional: publishes, subscribes, route, dispatches."  # f99e

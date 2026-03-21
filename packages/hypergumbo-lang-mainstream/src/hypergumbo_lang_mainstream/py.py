@@ -178,6 +178,7 @@ def _resolve_return_type_class(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], "Symbol"],
     resolver: "SymbolResolver | None" = None,
+    sym_by_path_name: dict[tuple[str, str], "Symbol"] | None = None,
 ) -> "Symbol | None":
     """Resolve a return type name to a class Symbol.
 
@@ -214,8 +215,9 @@ def _resolve_return_type_class(
             return sym
     # Check function's own module — the return type class is typically
     # defined in the same file as the function
-    for (_mod, sym_name), sym in global_symbols.items():
-        if sym_name == type_name and sym.kind == "class" and sym.path == func_symbol.path:
+    if sym_by_path_name is not None:
+        sym = sym_by_path_name.get((func_symbol.path, type_name))
+        if sym and sym.kind == "class":
             return sym
     return None
 
@@ -2077,6 +2079,7 @@ def _extract_edges(
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str] | None = None,
     resolver: "SymbolResolver | None" = None,
+    _sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -2167,6 +2170,7 @@ def _extract_edges(
                                 ret_class = _resolve_return_type_class(
                                     ret_name, assigned_class, local_symbols,
                                     imports, global_symbols, resolver,
+                                    _sym_by_path_name,
                                 )
                                 if ret_class:
                                     var_types[target.id] = ret_class
@@ -2179,7 +2183,8 @@ def _extract_edges(
             if isinstance(node, ast.Call):
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
-                    module_imports, var_types, edges, resolver
+                    module_imports, var_types, edges, resolver,
+                    sym_by_path_name=_sym_by_path_name,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -2569,6 +2574,7 @@ def _process_call(
     var_types: dict[str, Symbol],
     edges: list[Edge],
     resolver: "SymbolResolver | None" = None,
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -2626,13 +2632,11 @@ def _process_call(
                 # Look for ClassName.method in local symbols
                 qualified_name = f"{class_symbol.name}.{attr_name}"
                 callee_symbol = local_symbols.get(qualified_name)
-                # If not found locally, try global symbols
-                if not callee_symbol:
-                    # Find methods in the file where the class is defined
-                    for (_mod, sym_name), sym in global_symbols.items():
-                        if sym.path == class_symbol.path and sym_name == qualified_name:
-                            callee_symbol = sym
-                            break
+                # If not found locally, try global symbols via index
+                if not callee_symbol and sym_by_path_name is not None:
+                    callee_symbol = sym_by_path_name.get(
+                        (class_symbol.path, qualified_name)
+                    )
 
             # Case 2d: Imported class method calls - Item.model_validate()
             # When Item is imported via "from app.models import Item"
@@ -2644,10 +2648,10 @@ def _process_call(
                 if class_symbol and class_symbol.kind == "class":
                     # Look for ClassName.method (class method/static method)
                     qualified_name = f"{original_name}.{attr_name}"
-                    for (_mod, sym_name), sym in global_symbols.items():
-                        if sym.path == class_symbol.path and sym_name == qualified_name:
-                            callee_symbol = sym
-                            break
+                    if sym_by_path_name is not None:
+                        callee_symbol = sym_by_path_name.get(
+                            (class_symbol.path, qualified_name)
+                        )
 
                 # Case 2e: Imported submodule calls - crud.create_user()
                 # When crud is imported via "from app import crud" (crud is a module)
@@ -2671,11 +2675,10 @@ def _process_call(
                 class_symbol = var_types[field_name]
                 qualified_name = f"{class_symbol.name}.{attr_name}"
                 callee_symbol = local_symbols.get(qualified_name)
-                if not callee_symbol:
-                    for (_mod, sym_name), sym in global_symbols.items():
-                        if sym.path == class_symbol.path and sym_name == qualified_name:
-                            callee_symbol = sym
-                            break
+                if not callee_symbol and sym_by_path_name is not None:
+                    callee_symbol = sym_by_path_name.get(
+                        (class_symbol.path, qualified_name)
+                    )
 
     # Emit edge if we resolved the callee
     if callee_symbol:
@@ -2826,6 +2829,16 @@ def analyze_python(
     from hypergumbo_core.symbol_resolution import SymbolResolver
     resolver = SymbolResolver(global_symbols)
 
+    # Build (path, name) -> symbol index for O(1) lookups in typed method
+    # resolution. Replaces O(n) scans of global_symbols.items() that check
+    # sym.path == target_path and sym_name == target_name.
+    _sym_by_path_name: dict[tuple[str, str], Symbol] = {}
+    for (_mod, sym_name), sym in global_symbols.items():
+        key = (sym.path, sym_name)
+        # First entry wins (same as the break in the old linear scan)
+        if key not in _sym_by_path_name:
+            _sym_by_path_name[key] = sym
+
     # Second pass: extract edges with cross-file resolution
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -2842,7 +2855,7 @@ def analyze_python(
         # Extract call edges
         call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
-            analysis.module_imports, resolver
+            analysis.module_imports, resolver, _sym_by_path_name,
         )
         for edge in call_edges:
             edge.origin = PASS_ID

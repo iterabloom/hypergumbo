@@ -1,0 +1,38 @@
+- op: create  # e35b
+  at: '2026-03-18T06:53:59Z'  # e35b
+  by: agent  # e35b
+  actor: jgstern_agent  # e35b
+  clock: 1  # e35b
+  nonce: e35b  # e35b
+  data:  # e35b
+    kind: work_item  # e35b
+    title: "ADR-0016 Phase 3: security claim verification (verify-claims CLI)"  # e35b
+    status: todo_soft  # e35b
+    priority: 4  # e35b
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # e35b
+    tags:  # e35b
+    - adr-0016  # e35b
+    - io-boundary  # e35b
+    - security  # e35b
+    before:  # e35b
+    - WI-lojuf-vuzaf-dumil-vujap-fuvil-juzan-bafot-rotis  # e35b
+    duplicate_of: []  # e35b
+    not_duplicate_of: []  # e35b
+    pr_ref:  # e35b
+    description: "Design and implement the security claim YAML format. Build the verifier that checks claims against the boundary map, producing verdicts (confirmed/confirmed-with-caveats/violated/inconclusive). Integrate with crypto-flow linker for encrypted-vs-plaintext reasoning. Add 'hypergumbo verify-claims' CLI command. See ADR-0016 §4 and §Implementation Phase 3."  # e35b
+    fields: {}  # e35b
+- op: update  # 9236
+  at: '2026-03-18T18:27:09Z'  # 9236
+  by: agent  # 9236
+  actor: jgstern_agent  # 9236
+  clock: 2  # 9236
+  nonce: '9236'  # 9236
+  set:  # 9236
+    status: done  # 9236
+- op: discuss  # c819
+  at: '2026-03-18T18:27:09Z'  # c819
+  by: agent  # c819
+  actor: jgstern_agent  # c819
+  clock: 3  # c819
+  nonce: c819  # c819
+  message: "Merged in PR #2368. verify_claims module loads YAML claims, checks must_not_exist and max_chains constraints against boundary maps, returns confirmed/violated verdicts. CLI integration (verify-claims subcommand) deferred to WI-rukub (Phase 4)."  # c819

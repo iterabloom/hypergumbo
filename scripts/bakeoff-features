@@ -201,6 +201,19 @@ QUALITY_THRESHOLDS = {
     # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
     # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
     "orphan_rate": {"good_max": 20, "warn_max": 35},
+    # IO boundary: 5-60% of call edges tagged is healthy; <1% means the catalog
+    # is missing entries, >80% suggests over-matching non-IO functions.
+    "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 1, "warn_max": 80},
+    # Dataflow slice should be meaningfully tighter than regular slice (ratio <90%)
+    # but not degenerate (ratio >10%). Ratio of 100% means --dataflow adds no value.
+    # Stored as 0-1 ratio but assessed as percentage (multiplied by 100 in metric_assessments).
+    "dataflow_slice_ratio": {"good_min": 10, "good_max": 90, "warn_min": 1, "warn_max": 99},
+    # Access mode annotations on 10-80% of edges is healthy. <2% means dataflow
+    # YAML is missing patterns; >95% suggests annotation is too aggressive.
+    "access_mode_coverage": {"good_min": 10, "good_max": 80, "warn_min": 2, "warn_max": 95},
+    # Cross-language IO: at least 5% of IO chains should traverse a linker edge
+    # in polyglot repos. Only assessed when repo has 2+ languages.
+    "cross_language_io_pct": {"good_min": 5, "warn_min": 1},
 }
 
 # Recommended larger repos for feature testing (diverse languages)
@@ -363,6 +376,21 @@ class FeatureMetrics:
     entrypoint_count: int = 0
     entrypoints_in_tests: int = 0
     entrypoints_test_ratio: float = 0.0
+
+    # IO boundary metrics
+    io_tag_rate: float = 0.0
+    io_boundary_types_found: int = 0
+    cross_language_io_pct: float = 0.0
+
+    # Dataflow metrics
+    dataflow_slice_ratio: float = 1.0
+    access_mode_coverage: float = 0.0
+
+    # Verify-claims metrics (0 if no claims file)
+    claims_total: int = 0
+    claims_confirmed: int = 0
+    claims_violated: int = 0
+    claim_verdict_pct: float = 0.0  # % of claims with definitive verdict
 
 
 @dataclass
@@ -626,6 +654,156 @@ def save_state(state: BakeoffFeaturesState):
         json.dump(data, f, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Memory safety: prevent OOM/swap thrashing from large analyses
+# ---------------------------------------------------------------------------
+
+# Minimum available memory (in MB) required before launching an analysis.
+# If available memory is below this, the repo is skipped with a warning.
+# Default 4096 MB (4 GB) — enough headroom for a ~200MB repo analysis
+# plus OS/system overhead on a 22GB machine with 512MB swap.
+MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
+
+# Rolling memory profile store: tracks actual memory usage per repo
+# so estimates improve over time (similar to test timing store).
+_MEMORY_PROFILE_PATH = os.path.join(
+    os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
+)
+_MEMORY_PROFILE_MAX_ENTRIES = 5  # Keep last N observations per repo
+
+
+def _load_memory_profiles() -> dict:
+    """Load the memory profile store (repo_name → list of observations)."""
+    try:
+        with open(_MEMORY_PROFILE_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_memory_profiles(profiles: dict) -> None:
+    """Save the memory profile store."""
+    os.makedirs(os.path.dirname(_MEMORY_PROFILE_PATH), exist_ok=True)
+    with open(_MEMORY_PROFILE_PATH, "w") as f:
+        json.dump(profiles, f, indent=2)
+
+
+def record_memory_observation(
+    repo_name: str,
+    repo_size_mb: float,
+    pre_available_mb: int,
+    post_available_mb: int,
+    duration_s: float = 0.0,
+    file_count: int = 0,
+    dominant_language: str = "",
+) -> None:
+    """Record an observation of memory used by analyzing a repo.
+
+    Stores the delta (pre - post) as an estimate of actual memory consumed,
+    plus repo metadata (size, files, language, duration) for model building.
+    Keeps a rolling buffer of the last N observations per repo.
+    """
+    delta_mb = pre_available_mb - post_available_mb
+    if delta_mb < 0:
+        delta_mb = 0  # Memory was freed by GC/cache during analysis
+
+    profiles = _load_memory_profiles()
+    entries = profiles.setdefault(repo_name, [])
+    entries.append({
+        "repo_size_mb": round(repo_size_mb, 1),
+        "memory_used_mb": delta_mb,
+        "duration_s": round(duration_s, 1),
+        "file_count": file_count,
+        "dominant_language": dominant_language,
+        "timestamp": datetime.datetime.now().isoformat(),
+    })
+    # Keep only last N entries
+    profiles[repo_name] = entries[-_MEMORY_PROFILE_MAX_ENTRIES:]
+    _save_memory_profiles(profiles)
+
+
+def get_estimated_memory_mb(repo_name: str, repo_size_mb: float) -> int:
+    """Estimate memory needed for a repo, using historical data if available.
+
+    If we have prior observations for this repo, use the max observed.
+    Otherwise fall back to the heuristic (repo_size_mb * 20, min 512 MB).
+    """
+    profiles = _load_memory_profiles()
+    entries = profiles.get(repo_name, [])
+    if entries:
+        max_observed = max(e.get("memory_used_mb", 0) for e in entries)
+        # Use max observed + 20% safety margin
+        return max(512, int(max_observed * 1.2))
+    # No history — use heuristic
+    return max(512, int(repo_size_mb * 20))
+
+
+def get_memory_snapshot() -> dict:
+    """Return a memory snapshot dict from /proc/meminfo.
+
+    Keys: available_mb, total_mb, free_mb, swap_total_mb, swap_free_mb.
+    Falls back to empty dict on non-Linux or read failure.
+    """
+    snap = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                key, val_kb = parts[0].rstrip(":"), int(parts[1])
+                if key == "MemAvailable":
+                    snap["available_mb"] = val_kb // 1024
+                elif key == "MemTotal":
+                    snap["total_mb"] = val_kb // 1024
+                elif key == "MemFree":
+                    snap["free_mb"] = val_kb // 1024
+                elif key == "SwapTotal":
+                    snap["swap_total_mb"] = val_kb // 1024
+                elif key == "SwapFree":
+                    snap["swap_free_mb"] = val_kb // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return snap
+
+
+def check_memory_before_analysis(
+    repo_name: str,
+    repo_size_mb: float,
+    min_mb: int = MIN_AVAILABLE_MEMORY_MB,
+) -> tuple[str | None, dict]:
+    """Check if enough memory is available to analyze a repo.
+
+    The check compares available memory against the *estimated need* for
+    this specific repo.  It does NOT enforce a flat floor — a 5 MB repo
+    can run with 1 GB free even though a 200 MB repo cannot.
+
+    Returns (skip_reason_or_None, memory_snapshot).  The snapshot is always
+    returned so callers can log it for data collection (building a model of
+    actual memory usage vs. repo size over time).
+    """
+    snap = get_memory_snapshot()
+    available_mb = snap.get("available_mb", 999999)
+
+    # Use historical data if available, else heuristic
+    estimated_need_mb = get_estimated_memory_mb(repo_name, repo_size_mb)
+
+    # Add a safety margin: need estimated + 1 GB headroom for OS/other processes.
+    # This is the key check — it's repo-proportional, not a flat floor.
+    required_mb = estimated_need_mb + 1024
+
+    snap["required_mb"] = required_mb
+    snap["estimated_need_mb"] = estimated_need_mb
+    snap["repo_size_mb"] = round(repo_size_mb, 1)
+
+    if available_mb < required_mb:
+        reason = (
+            f"Skipping {repo_name}: {available_mb} MB available, "
+            f"need ~{required_mb} MB (repo {repo_size_mb:.0f} MB + 1 GB headroom). "
+            f"Set BAKEOFF_MIN_MEMORY_MB to override."
+        )
+        return reason, snap
+    return None, snap
+
+
 def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
@@ -665,6 +843,17 @@ def assess_metric(name: str, value: float, *, total_nodes: int | None = None) ->
         floor = thresholds.get("warn_min", 5)
         scaled = max(floor, total_nodes * 0.1)
         good_min = min(good_min, scaled)
+
+    # Scale io_tag_rate threshold for large repos.
+    # Large repos (>50K nodes) have IO edges as a tiny fraction of total edges
+    # even with perfect catalog coverage, because most edges are internal plumbing.
+    # Scale: 5% for <10K nodes, down to 0.5% for >100K nodes (log-linear).
+    if name == "io_tag_rate" and good_min is not None and total_nodes is not None:
+        if total_nodes > 10000:
+            import math
+            # Log-scale: 5% at 10K nodes, ~2% at 50K, ~0.5% at 100K
+            scale_factor = max(0.1, 1.0 - math.log10(total_nodes / 10000) * 0.9)
+            good_min = max(thresholds.get("warn_min", 1), good_min * scale_factor)
 
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
@@ -1228,6 +1417,20 @@ def cmd_cohort(args):
             print(f"  Criteria: {min_size_mb}MB - {max_size_mb}MB, {MIN_FILE_COUNT}+ files")
             return 1
 
+    dry_run = getattr(args, "dry_run", False)
+
+    if dry_run:
+        # Show what would be selected without mutating state
+        print(f"\n[DRY RUN] Would select cohort #{state.cohort_number + 1} ({len(cohort)} repos):")
+        print()
+        for r in cohort:
+            langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+
+        remaining = len(available) - len(cohort) if not explicit_repos else 0
+        print(f"\nRemaining in pool: {remaining}")
+        return 0
+
     # Update state
     state.cohort_number += 1
     state.iteration = 0
@@ -1359,7 +1562,7 @@ def cmd_run(args):
             print(f"Cohort #{cohort_num} ({len(repos)} repos), iteration #{state.iteration}")
             print(f"Output: {iter_dir}")
             print(f"{'='*60}")
-            rc = _run_cohort_repos(repos, pool_path, iter_dir)
+            rc = _run_cohort_repos(repos, pool_path, iter_dir, workdir=workdir)
             ran_count += 1
             if rc != 0:
                 overall_rc = rc
@@ -1392,10 +1595,10 @@ def cmd_run(args):
         print(f"Code hash: {current_hash}")
     print()
 
-    return _run_cohort_repos(state.current_cohort, pool_path, out_dir)
+    return _run_cohort_repos(state.current_cohort, pool_path, out_dir, workdir=workdir)
 
 
-def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
+def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = "") -> int:
     """Run the full feature battery on a list of repos.
 
     This is the inner loop shared by single-cohort ``run`` and batch ``run --all``.
@@ -1415,12 +1618,69 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
 
         hg_json = os.path.join(repo_out, "hg.json")
 
+        # Memory safety: check before launching analysis
+        repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+        skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+        mem_record = {"pre_analysis": mem_snap, "skipped": skip_reason is not None}
+        if skip_reason:
+            print(f"  ⚠️  {skip_reason}")
+            with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                f.write("-2")
+            with open(os.path.join(repo_out, "run.err"), "w") as f:
+                f.write(skip_reason)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+            continue
+
         # 1. Full analysis
         print("  run...", end=" ", flush=True)
         rc, stdout, stderr = run_cmd(
             ["hypergumbo", "run", repo_path, "--out", hg_json],
             timeout=None,  # No timeout — large repos (100MB+) can take hours
         )
+        # Capture post-analysis memory snapshot and duration for model building
+        post_snap = get_memory_snapshot()
+        run_duration_s = time.time() - start_time
+        pre_avail = mem_snap.get("available_mb", 0)
+        post_avail = post_snap.get("available_mb", 0)
+        mem_record["post_analysis"] = post_snap
+        mem_record["run_duration_s"] = round(run_duration_s, 1)
+        mem_record["memory_delta_mb"] = pre_avail - post_avail
+        with open(os.path.join(repo_out, "memory.json"), "w") as f:
+            json.dump(mem_record, f, indent=2)
+
+        # Record to rolling profile store (for future estimates)
+        if rc == 0:
+            _fc = count_files(repo_path) if os.path.isdir(repo_path) else 0
+            _langs = detect_languages(repo_path) if os.path.isdir(repo_path) else []
+
+            # Extract graph stats from output for profile enrichment
+            _graph_nodes = 0
+            _graph_edges = 0
+            _output_size_mb = 0.0
+            if os.path.exists(hg_json):
+                _output_size_mb = os.path.getsize(hg_json) / (1024 * 1024)
+                try:
+                    with open(hg_json) as _f:
+                        _hg = json.load(_f)
+                    _graph_nodes = len(_hg.get("nodes", _hg.get("symbols", [])))
+                    _graph_edges = len(_hg.get("edges", []))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            record_memory_observation(
+                repo_name, repo_size_mb, pre_avail, post_avail,
+                duration_s=run_duration_s,
+                file_count=_fc,
+                dominant_language=_langs[0] if _langs else "",
+            )
+            # Also store graph stats in the memory.json for this run
+            mem_record["graph_nodes"] = _graph_nodes
+            mem_record["graph_edges"] = _graph_edges
+            mem_record["output_size_mb"] = round(_output_size_mb, 1)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+
         with open(os.path.join(repo_out, "run.exit"), "w") as f:
             f.write(str(rc))
         if stderr:
@@ -1548,6 +1808,53 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
                 f.write(str(rc2))
             print("OK" if rc2 == 0 else f"FAIL({rc2})")
 
+        # 4b. Domain-scored forward slices from high-out-degree methods.
+        # Reverse-slice seeds are high IN-degree (many callers) — great for
+        # reverse slicing but often empty in forward direction (getters,
+        # abstract interfaces). For forward slicing, we want high OUT-degree
+        # non-test methods: functions that CALL many other functions (e.g.,
+        # resolveConfig, SslHandler.channelRead, main processing pipelines).
+        # Build out-degree index from edges (O(E) once)
+        _out_deg: dict[str, int] = {}
+        for e in raw_edges:
+            if e.get("type") == "calls":
+                src = e.get("src", "")
+                _out_deg[src] = _out_deg.get(src, 0) + 1
+        # Find high-out-degree non-test methods
+        from hypergumbo_core.paths import is_test_file, is_utility_file
+        fwd_candidates: list[tuple[str, int]] = []
+        for n in nodes:
+            if n.get("kind") not in ("function", "method"):
+                continue
+            sym_id = n.get("id", "")
+            path = n.get("path", "")
+            if path and (is_test_file(path) or is_utility_file(path)):
+                continue
+            out_deg = _out_deg.get(sym_id, 0)
+            if out_deg > 5:
+                fwd_candidates.append((sym_id, out_deg))
+        fwd_candidates.sort(key=lambda x: -x[1])
+        fwd_seeds = [sym_id for sym_id, _ in fwd_candidates[:3]]
+        if not fwd_seeds:
+            fwd_seeds = [s for s in rslice_seeds[:3] if ":method" in s or ":function" in s]
+        for i, seed in enumerate(fwd_seeds[:3]):
+            print(f"  domain-slice[{seed[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", seed,
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, f"dslice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"dslice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
         # 5. Tier-bounded slices
         # Use --exclude-tests so --entry auto doesn't pick a test main()
         for tier in [1, 2]:
@@ -1587,6 +1894,57 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
         with open(os.path.join(repo_out, "routes.txt"), "w") as f:
             f.write(stdout)
         print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 8. IO boundaries
+        print("  io-boundaries...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "io-boundaries",
+            "--input", hg_json,
+            "--json",
+        ])
+        with open(os.path.join(repo_out, "io-boundaries.txt"), "w") as f:
+            f.write(stdout)
+        with open(os.path.join(repo_out, "io-boundaries.exit"), "w") as f:
+            f.write(str(rc))
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 9. Dataflow slices (parallel to regular slices for comparison)
+        # Uses the same top entry as slice.0 so the ratio is meaningful
+        if entries:
+            entry = entries[0]
+            print(f"  dataflow-slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--dataflow",
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, "slice.dataflow.0.json"),
+            ])
+            with open(os.path.join(repo_out, "slice.dataflow.0.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 10. Verify claims (if claims YAML exists for this repo)
+        claims_file = os.path.join(workdir, "claims", f"{repo_name}.yaml")
+        if os.path.exists(claims_file):
+            print("  verify-claims...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "verify-claims",
+                "--input", hg_json,
+                "--claims", claims_file,
+                "--json",
+            ])
+            with open(os.path.join(repo_out, "verify-claims.txt"), "w") as f:
+                f.write(stdout)
+            with open(os.path.join(repo_out, "verify-claims.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
 
         elapsed = time.time() - start_time
         with open(os.path.join(repo_out, "time.txt"), "w") as f:
@@ -1789,6 +2147,104 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         metrics.entrypoints_in_tests = test_entrypoints
         metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
 
+        # IO boundary and dataflow metrics
+        calls_total = sum(1 for e in edges if e.get("type") == "calls")
+        access_mode_tagged = sum(
+            1 for e in edges if (e.get("meta") or {}).get("access_mode")
+        )
+        metrics.access_mode_coverage = (access_mode_tagged / len(edges) * 100) if edges else 0.0
+
+        # io_tag_rate: computed from io-boundaries artifact (total_io_edges)
+        # rather than hg.json edge metadata, because tag_io_boundaries()
+        # produces a separate boundary map at query time — it does not
+        # persist io_boundary metadata into the serialized behavior map.
+        # Count distinct IO boundary types from io-boundaries output
+        io_boundaries_path = os.path.join(repo_out, "io-boundaries.txt")
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                boundaries = io_data.get("boundaries", {})
+                metrics.io_boundary_types_found = sum(
+                    1 for b in boundaries.values()
+                    if b.get("chain_count", 0) > 0
+                )
+                # io_tag_rate from artifact total
+                total_io_chains = io_data.get("total_io_edges", 0)
+                if calls_total > 0:
+                    metrics.io_tag_rate = total_io_chains / calls_total * 100
+                # Cross-language IO: check if IO primitives from multiple
+                # language catalogs appear. Each primitive's module prefix
+                # indicates the source language (e.g., java.io.* = Java,
+                # stdio.* = C, os.* = Python/Go).
+                _PRIMITIVE_LANG_PREFIXES = {
+                    "java.": "java", "javax.": "java",
+                    "io.netty.": "java", "okhttp3.": "java",
+                    "org.springframework.": "java",
+                    "stdio.": "c", "unistd.": "c", "sys/socket.": "c",
+                    "dirent.": "c", "stdlib.": "c",
+                    "std::": "rust", "tokio::": "rust", "hyper::": "rust",
+                    "reqwest::": "rust", "axum::": "rust", "actix_web::": "rust",
+                    "os.": "go_or_python", "io.": "go_or_python",
+                    "net.": "go", "net/": "go", "filepath.": "go",
+                    "syscall.": "go", "unix.": "go",
+                    "gin.": "go", "echo.": "go", "fiber.": "go",
+                    "grpc.": "go", "fmt.": "go", "bufio.": "go",
+                    "fs.": "js", "http.": "js_or_go", "https.": "js",
+                    "child_process.": "js", "process.": "js",
+                    "express.": "js", "axios.": "js", "fastify.": "js",
+                    "pathlib.": "python", "subprocess.": "python",
+                }
+                io_langs: set[str] = set()
+                for boundary_entry in boundaries.values():
+                    for prim in boundary_entry.get("primitives_used", []):
+                        for prefix, lang in _PRIMITIVE_LANG_PREFIXES.items():
+                            if prim.startswith(prefix):
+                                io_langs.add(lang)
+                                break
+                # If IO primitives from 2+ distinct languages, compute percentage
+                cross_lang_chains = 0
+                if len(io_langs) >= 2:
+                    # Count chains from non-primary languages
+                    total_chains = sum(
+                        b.get("chain_count", 0) for b in boundaries.values()
+                    )
+                    # Heuristic: all chains are considered cross-language
+                    # when primitives from multiple languages are present
+                    cross_lang_chains = total_chains
+                if total_io_chains > 0:
+                    metrics.cross_language_io_pct = cross_lang_chains / total_io_chains * 100
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Dataflow slice ratio — compare dataflow slice size to regular slice
+        regular_slice_path = os.path.join(repo_out, "slice.0.json")
+        dataflow_slice_path = os.path.join(repo_out, "slice.dataflow.0.json")
+        if os.path.exists(regular_slice_path) and os.path.exists(dataflow_slice_path):
+            try:
+                with open(regular_slice_path) as f:
+                    regular_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                with open(dataflow_slice_path) as f:
+                    dataflow_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                if regular_nodes > 0:
+                    metrics.dataflow_slice_ratio = dataflow_nodes / regular_nodes
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Verify-claims metrics
+        claims_output_path = os.path.join(repo_out, "verify-claims.txt")
+        if os.path.exists(claims_output_path):
+            try:
+                claims_data = json.loads(open(claims_output_path).read())
+                verdicts_list = claims_data if isinstance(claims_data, list) else claims_data.get("verdicts", [])
+                metrics.claims_total = len(verdicts_list)
+                metrics.claims_confirmed = sum(1 for v in verdicts_list if v.get("verdict") == "confirmed")
+                metrics.claims_violated = sum(1 for v in verdicts_list if v.get("verdict") == "violated")
+                decided = metrics.claims_confirmed + metrics.claims_violated
+                if metrics.claims_total > 0:
+                    metrics.claim_verdict_pct = decided / metrics.claims_total * 100
+            except (json.JSONDecodeError, OSError):
+                pass
+
         # Generate verdict
         highlights = []
         concerns = []
@@ -1803,7 +2259,20 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             ("tier4_pct", metrics.tier4_pct),
             ("centrality_gini", metrics.centrality_gini * 100),  # Convert to percentage
             ("orphan_rate", metrics.orphan_rate),
+            ("io_tag_rate", metrics.io_tag_rate),
+            ("access_mode_coverage", metrics.access_mode_coverage),
         ]
+        # Only assess dataflow_slice_ratio if a dataflow slice was produced
+        if os.path.exists(os.path.join(repo_out, "slice.dataflow.0.json")):
+            metric_assessments.append(("dataflow_slice_ratio", metrics.dataflow_slice_ratio * 100))
+        # Only assess cross_language_io_pct for polyglot repos (2+ languages)
+        lang_count = {}
+        for n in nodes:
+            lang = n.get("language", "")
+            if lang:
+                lang_count[lang] = lang_count.get(lang, 0) + 1
+        if len(lang_count) >= 2 and metrics.io_boundary_types_found > 0:
+            metric_assessments.append(("cross_language_io_pct", metrics.cross_language_io_pct))
 
         verdict_status = "GOOD"
         for metric_name, value in metric_assessments:
@@ -2148,6 +2617,28 @@ def cmd_status(args):
         except Exception:
             pass
 
+    # --- Unaggregated assessment check ---
+    if cohort_dirs and os.path.isdir(reflect_dir):
+        unagg_count = 0
+        for cd in cohort_dirs:
+            cohort_name = os.path.basename(cd)
+            iter_dirs = sorted(glob.glob(os.path.join(cd, "iter-*")))
+            if not iter_dirs:
+                continue
+            iter_name = os.path.basename(iter_dirs[-1])
+            reflect_iter = os.path.join(reflect_dir, cohort_name, iter_name)
+            if os.path.isdir(reflect_iter):
+                has_assessments = glob.glob(
+                    os.path.join(reflect_iter, "*.assessment.yaml"))
+                summary_file = os.path.join(reflect_iter, "summary.yaml")
+                if has_assessments and not os.path.exists(summary_file):
+                    unagg_count += 1
+        if unagg_count > 0:
+            print()
+            print(f"  {unagg_count} cohort(s) have assessments but no"
+                  f" summary.yaml.")
+            print("  Run: ./scripts/bakeoff-features-reflect aggregate")
+
     print()
     print(f"Current cohort: #{state.cohort_number}, iteration: {state.iteration}")
     print(f"  Repos: {', '.join(state.current_cohort)}")
@@ -2421,11 +2912,37 @@ def cmd_compare(args):
 
 
 def cmd_cycle(args):
-    """Run full cycle: run + diagnose."""
+    """Run full cycle: run + diagnose + reflect.
+
+    Runs feature analysis, generates diagnostic report, then generates
+    LLM assessment prompts via bakeoff-features-reflect.  Use
+    --skip-reflect to run only run + diagnose (for fast iteration when
+    you plan to reflect manually later).
+    """
     rc = cmd_run(args)
     if rc != 0:
         return rc
-    return cmd_diagnose(args)
+    rc = cmd_diagnose(args)
+    if rc != 0:
+        return rc
+    if getattr(args, "skip_reflect", False):
+        return 0
+    # Run reflect as subprocess (separate script).
+    # Pass --all/--some through so batch cycles reflect on all cohorts,
+    # not just the latest.
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "bakeoff-features-reflect")
+    cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    if getattr(args, "all", False):
+        cmd.append("--all")
+    elif getattr(args, "some", None):
+        cmd.extend(["--some", str(args.some)])
+    print(f"\n=== Running bakeoff-features-reflect ===\n")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Warning: bakeoff-features-reflect failed (non-fatal)", file=sys.stderr)
+    return 0
 
 
 def cmd_recommend(args):
@@ -2477,6 +2994,8 @@ def main():
     p_cohort.add_argument("--min-size", type=int, help=f"Min repo size in MB (default: {DEFAULT_MIN_SIZE_MB})")
     p_cohort.add_argument("--max-size", type=int, help=f"Max repo size in MB (default: {DEFAULT_MAX_SIZE_MB})")
     p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection)")
+    p_cohort.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Show what would be selected without saving (safe for scripting loops)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run
@@ -2521,8 +3040,11 @@ def main():
     p_compare.add_argument("session_b", help="Second session (path or dir name under bakeoff_artifacts)")
 
     # cycle
-    p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
+    p_cycle = subparsers.add_parser("cycle",
+                                    help="Run full cycle (run + diagnose + reflect)")
     p_cycle.add_argument("--workdir", help="Override workdir")
+    p_cycle.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip the reflect step (run + diagnose only)")
 
     # compress
     p_compress = subparsers.add_parser("compress", help="Gzip hg.json files with old derived artifacts")

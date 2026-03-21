@@ -1,0 +1,41 @@
+- op: create  # c7ae
+  at: '2026-03-20T23:37:47Z'  # c7ae
+  by: agent  # c7ae
+  actor: jgstern_agent  # c7ae
+  clock: 1  # c7ae
+  nonce: c7ae  # c7ae
+  data:  # c7ae
+    kind: work_item  # c7ae
+    title: "Tier classification: third-party vendored dirs should be tier 3, not tier 1"  # c7ae
+    status: todo_soft  # c7ae
+    priority: 3  # c7ae
+    parent:  # c7ae
+    tags: []  # c7ae
+    before: []  # c7ae
+    duplicate_of: []  # c7ae
+    not_duplicate_of: []  # c7ae
+    pr_ref:  # c7ae
+    description: ""  # c7ae
+    fields: {}  # c7ae
+- op: discuss  # 2bd2
+  at: '2026-03-20T23:38:00Z'  # 2bd2
+  by: agent  # 2bd2
+  actor: jgstern_agent  # 2bd2
+  clock: 2  # 2bd2
+  nonce: 2bd2  # 2bd2
+  message: "Bakeoff finding (deep-20260320-163609, rocksdb): third-party/gtest-1.8.1/ is classified as tier 1 (first_party) instead of tier 3 (external_dep). This inflates tier 1 with 1823 gtest nodes and contaminates symbol rankings. Fix: detect common vendored/third-party directory patterns (third-party/, vendor/, third_party/, external/) and classify as tier 3."  # 2bd2
+- op: update  # 9a52
+  at: '2026-03-20T23:55:37Z'  # 9a52
+  by: agent  # 9a52
+  actor: jgstern_agent  # 9a52
+  clock: 3  # 9a52
+  nonce: 9a52  # 9a52
+  set:  # 9a52
+    status: done  # 9a52
+- op: discuss  # 2311
+  at: '2026-03-20T23:55:37Z'  # 2311
+  by: agent  # 2311
+  actor: jgstern_agent  # 2311
+  clock: 4  # 2311
+  nonce: '2311'  # 2311
+  message: "Fixed in PR #2453. Added third-party/, thirdparty/, external/, deps/ to EXTERNAL_DEP_PATTERNS. Rocksdb's third-party/gtest-1.8.1/ now correctly classified as tier 3."  # 2311

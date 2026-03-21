@@ -1,0 +1,37 @@
+- op: create  # 4237
+  at: '2026-03-18T06:50:25Z'  # 4237
+  by: agent  # 4237
+  actor: jgstern_agent  # 4237
+  clock: 1  # 4237
+  nonce: '4237'  # 4237
+  data:  # 4237
+    kind: work_item  # 4237
+    title: "ADR-0016 Phase 1b: boundary-tagging post-processing pass"  # 4237
+    status: todo_soft  # 4237
+    priority: 3  # 4237
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 4237
+    tags:  # 4237
+    - adr-0016  # 4237
+    - io-boundary  # 4237
+    before:  # 4237
+    - WI-gomol-mojah-kimul-timur-kiviv-safog-sisin-zinum  # 4237
+    duplicate_of: []  # 4237
+    not_duplicate_of: []  # 4237
+    pr_ref:  # 4237
+    description: "Add a post-processing pass that walks all call edges, matches targets against I/O primitive catalog entries, and tags matching edges with io_boundary and io_primitive metadata. Runs after all analyzers and linkers. See ADR-0016 §3 Phase 1."  # 4237
+    fields: {}  # 4237
+- op: update  # 3e8e
+  at: '2026-03-18T07:27:52Z'  # 3e8e
+  by: agent  # 3e8e
+  actor: jgstern_agent  # 3e8e
+  clock: 2  # 3e8e
+  nonce: 3e8e  # 3e8e
+  set:  # 3e8e
+    status: done  # 3e8e
+- op: discuss  # f8c6
+  at: '2026-03-18T07:27:52Z'  # f8c6
+  by: agent  # f8c6
+  actor: jgstern_agent  # f8c6
+  clock: 3  # f8c6
+  nonce: f8c6  # f8c6
+  message: "Merged in PR #2350. tag_io_boundaries() stamps io_boundary/io_primitive metadata on call edges matching I/O primitive catalogs."  # f8c6

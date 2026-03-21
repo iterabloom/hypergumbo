@@ -20,16 +20,17 @@ Key principles:
 - **Distinguish nitpicking from real problems**: Focus on issues that matter
 
 The process:
-1. Select cohort → run → diagnose → find issues
+1. Select cohort → run → diagnose → reflect → find issues
 2. For each issue:
    a. Investigate the root cause
    b. Ask: "What analogous issues might exist elsewhere?"
    c. Check those analogous cases (even if you think they're fine)
    d. Fix both the specific issue and its siblings
-3. Re-run on SAME cohort → diagnose
+3. Re-run on SAME cohort → diagnose → reflect
 4. If new issues emerge, repeat step 2
 5. If no new CRITICAL/HIGH issues for 2+ iterations, cohort is CONVERGED
-6. Move to next cohort
+6. Aggregate findings: bakeoff-reflect aggregate
+7. Move to next cohort
 
 Usage:
     # Initialize a new bakeoff session (creates timestamped dir in canonical default)
@@ -55,9 +56,10 @@ Usage:
     # Check convergence status
     ./scripts/bakeoff status
 
-    # Full cycle: run + diagnose
+    # Full cycle: run + diagnose + reflect
     ./scripts/bakeoff cycle
     ./scripts/bakeoff cycle --all
+    ./scripts/bakeoff cycle --skip-reflect  # Fast iteration
 
     # List detected issues (machine-readable)
     ./scripts/bakeoff issues --format json
@@ -72,6 +74,7 @@ Environment:
 
 import argparse
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -108,6 +111,11 @@ FLAG_SEVERITY = {
     "ENTRYPOINTS_DOMINATED_BY_TESTS": SEVERITY_HIGH,
     "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": SEVERITY_MEDIUM,
     "LOW_CROSS_FILE_CALL_RESOLUTION": SEVERITY_MEDIUM,
+    "NO_IO_BOUNDARY_TAGS": SEVERITY_HIGH,
+    "LOW_IO_TAG_RATE": SEVERITY_MEDIUM,
+    "IO_OVER_TAGGING": SEVERITY_MEDIUM,
+    "NO_ACCESS_MODE_ANNOTATIONS": SEVERITY_MEDIUM,
+    "LOW_ACCESS_MODE_RATE": SEVERITY_MEDIUM,
 }
 
 # Languages where call edges are expected (procedural/OO languages)
@@ -116,6 +124,18 @@ CALL_EDGE_EXPECTED_LANGS = {
     "c", "cpp", "rust", "go", "csharp", "fsharp", "swift", "ruby",
     "php", "elixir", "erlang", "haskell", "ocaml", "clojure",
     "dart", "julia", "r", "lua", "perl",
+}
+
+# Languages with shipped IO primitive catalogs (ADR-0016 Phase 2)
+# cpp→c and typescript→javascript aliases are resolved by load_catalog().
+IO_CATALOG_LANGS = {"python", "javascript", "typescript", "go", "c", "cpp", "java", "rust"}
+
+# Languages with dataflow access_mode YAML (ADR-0015 Tier 1).
+# Must match files in dataflow_patterns/*.yaml.
+DATAFLOW_LANGS = {
+    "python", "javascript", "typescript", "java", "kotlin", "scala",
+    "c", "cpp", "rust", "go", "csharp", "swift", "ruby",
+    "php", "lua", "perl", "elixir", "erlang", "dart",
 }
 
 # Languages where call edges are NOT expected (declarative/config)
@@ -133,6 +153,11 @@ FLAG_CODE_HINTS = {
     "ENTRYPOINTS_DOMINATED_BY_TESTS": "Check entrypoint scoring in entrypoints.py or ranking.py",
     "AUTO_LIKELY_PICKS_NON_DOMINANT_LANGUAGE": "Check entrypoint ranking - add path taxonomy penalties",
     "LOW_CROSS_FILE_CALL_RESOLUTION": "Check {lang} analyzer's symbol_resolution integration",
+    "NO_IO_BOUNDARY_TAGS": "Check IO primitive catalog for {lang} (io_primitives/{lang}.yaml)",
+    "LOW_IO_TAG_RATE": "Check IO primitive catalog completeness for {lang} (io_primitives/{lang}.yaml)",
+    "IO_OVER_TAGGING": "Check IO primitive catalog for false positives — non-IO functions matching catalog entries",
+    "NO_ACCESS_MODE_ANNOTATIONS": "Check dataflow YAML for {lang} (dataflow_patterns/{lang}.yaml)",
+    "LOW_ACCESS_MODE_RATE": "Check dataflow YAML pattern coverage for {lang} (dataflow_patterns/{lang}.yaml)",
 }
 
 
@@ -261,6 +286,96 @@ def save_state(state: BakeoffState):
     data = asdict(state)
     with open(state_path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Memory safety: prevent OOM/swap thrashing from large analyses
+# ---------------------------------------------------------------------------
+
+MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
+
+# Shared memory profile store with bakeoff-features
+_MEMORY_PROFILE_PATH = os.path.join(
+    os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
+)
+
+
+def _load_memory_profiles() -> dict:
+    try:
+        with open(_MEMORY_PROFILE_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _get_estimated_memory_mb(repo_name: str, repo_size_mb: float) -> int:
+    profiles = _load_memory_profiles()
+    entries = profiles.get(repo_name, [])
+    if entries:
+        max_observed = max(e.get("memory_used_mb", 0) for e in entries)
+        return max(512, int(max_observed * 1.2))
+    return max(512, int(repo_size_mb * 20))
+
+
+def get_memory_snapshot() -> dict:
+    """Return a memory snapshot dict from /proc/meminfo.
+
+    Keys: available_mb, total_mb, free_mb, swap_total_mb, swap_free_mb.
+    Falls back to empty dict on non-Linux or read failure.
+    """
+    snap = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                key, val_kb = parts[0].rstrip(":"), int(parts[1])
+                if key == "MemAvailable":
+                    snap["available_mb"] = val_kb // 1024
+                elif key == "MemTotal":
+                    snap["total_mb"] = val_kb // 1024
+                elif key == "MemFree":
+                    snap["free_mb"] = val_kb // 1024
+                elif key == "SwapTotal":
+                    snap["swap_total_mb"] = val_kb // 1024
+                elif key == "SwapFree":
+                    snap["swap_free_mb"] = val_kb // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return snap
+
+
+def check_memory_before_analysis(
+    repo_name: str,
+    repo_size_mb: float,
+    min_mb: int = MIN_AVAILABLE_MEMORY_MB,
+) -> tuple[str | None, dict]:
+    """Check if enough memory is available to analyze a repo.
+
+    The check is *proportional* to repo size — small repos can run with
+    less free memory than large ones.  No flat floor is enforced beyond
+    the estimated need + 1 GB headroom.
+
+    Returns (skip_reason_or_None, memory_snapshot).  Snapshot is always
+    returned for data collection.
+    """
+    snap = get_memory_snapshot()
+    available_mb = snap.get("available_mb", 999999)
+
+    estimated_need_mb = _get_estimated_memory_mb(repo_name, repo_size_mb)
+    required_mb = estimated_need_mb + 1024  # + 1 GB headroom
+
+    snap["required_mb"] = required_mb
+    snap["estimated_need_mb"] = estimated_need_mb
+    snap["repo_size_mb"] = round(repo_size_mb, 1)
+
+    if available_mb < required_mb:
+        reason = (
+            f"Skipping {repo_name}: {available_mb} MB available, "
+            f"need ~{required_mb} MB (repo {repo_size_mb:.0f} MB + 1 GB headroom). "
+            f"Set BAKEOFF_MIN_MEMORY_MB to override."
+        )
+        return reason, snap
+    return None, snap
 
 
 def run_cmd(cmd: list, cwd: str = None, timeout: int = 600) -> tuple:
@@ -555,6 +670,18 @@ def cmd_cohort(args):
             print("No more repos available in pool!")
             return 1
 
+    dry_run = getattr(args, "dry_run", False)
+
+    if dry_run:
+        print(f"\n[DRY RUN] Would select cohort #{state.cohort_number + 1} ({len(cohort)} repos):")
+        print()
+        for r in cohort:
+            langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+        remaining = len(available) - len(cohort) if not explicit_repos else 0
+        print(f"\nRemaining in pool: {remaining}")
+        return 0
+
     # Update state
     state.cohort_number += 1
     state.iteration = 0
@@ -667,12 +794,28 @@ def cmd_run(args):
                 os.makedirs(repo_out, exist_ok=True)
                 print(f"[{repo_name}]")
                 start_time = time.time()
+
+                # Memory safety check
+                repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+                skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+                # Always log memory snapshot for data collection
+                with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                    json.dump({"pre_analysis": mem_snap, "skipped": skip_reason is not None}, f, indent=2)
+                if skip_reason:
+                    print(f"  ⚠️  {skip_reason}")
+                    with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                        f.write("-2")
+                    elapsed = time.time() - start_time
+                    print(f"  done ({elapsed:.1f}s) [SKIPPED — low memory]")
+                    continue
+
                 commands = [
                     ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
                     ("routes", ["hypergumbo", "routes", "--input", os.path.join(repo_out, "hg.json")]),
                     ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
                     ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
                     ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+                    ("io-boundaries", ["hypergumbo", "io-boundaries", "--input", os.path.join(repo_out, "hg.json"), "--json"]),
                 ]
                 hg_path = os.path.join(repo_out, "hg.json")
                 for cmd_name, cmd in commands:
@@ -727,6 +870,19 @@ def cmd_run(args):
         print(f"[{repo_name}]")
         start_time = time.time()
 
+        # Memory safety check
+        repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+        skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+        with open(os.path.join(repo_out, "memory.json"), "w") as f:
+            json.dump({"pre_analysis": mem_snap, "skipped": skip_reason is not None}, f, indent=2)
+        if skip_reason:
+            print(f"  ⚠️  {skip_reason}")
+            with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                f.write("-2")
+            elapsed = time.time() - start_time
+            print(f"  done ({elapsed:.1f}s) [SKIPPED — low memory]")
+            continue
+
         # Run hypergumbo commands
         commands = [
             ("run", ["hypergumbo", "run", repo_path, "--out", os.path.join(repo_out, "hg.json")]),
@@ -734,6 +890,7 @@ def cmd_run(args):
             ("entrypoints", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--list-entries"]),
             ("slice", ["hypergumbo", "slice", "--input", os.path.join(repo_out, "hg.json"), "--entry", "auto", "--inline", "--out", os.path.join(repo_out, "slice.auto.json")]),
             ("symbols", ["hypergumbo", "symbols", "--input", os.path.join(repo_out, "hg.json"), "--limit", "100"]),
+            ("io-boundaries", ["hypergumbo", "io-boundaries", "--input", os.path.join(repo_out, "hg.json"), "--json"]),
         ]
 
         # Check if compact is needed
@@ -744,6 +901,12 @@ def cmd_run(args):
             # Allow long analysis times - large repos (5000+ files) may take 15-30 min
             # Use 1 hour as safety limit only for runaway processes
             rc, stdout, stderr = run_cmd(cmd, timeout=3600)
+
+            # Capture post-run memory snapshot (for model building)
+            if cmd_name == "run":
+                mem_snap["post_analysis"] = get_memory_snapshot()
+                with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                    json.dump({"pre_analysis": mem_snap, "post_analysis": mem_snap.get("post_analysis", {}), "skipped": False}, f, indent=2)
 
             # Save outputs
             if stdout:
@@ -896,6 +1059,72 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
             name_suggests_web or has_route_edges or has_framework_signal
         ):
             flags.append("EXPECTED_ROUTES_BUT_FOUND_0")
+
+        # --- IO boundary and dataflow diagnostics ---
+        # IO tag count comes from the io-boundaries artifact (not hg.json
+        # edge metadata) because tag_io_boundaries() produces a boundary
+        # map at query time — it does not persist tags into the serialized
+        # behavior map.
+        io_boundaries_path = os.path.join(out_dir, repo_name, "io-boundaries.txt")
+        io_tagged = 0
+        has_io_chains = False
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                io_tagged = io_data.get("total_io_edges", 0)
+                has_io_chains = io_tagged > 0
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        access_mode_tagged = sum(
+            1 for e in edges if (e.get("meta") or {}).get("access_mode")
+        )
+
+        metrics["io_tagged_edges"] = io_tagged
+        metrics["access_mode_edges"] = access_mode_tagged
+        metrics["io_tag_rate"] = (io_tagged / calls_total * 100) if calls_total > 0 else 0.0
+        metrics["access_mode_rate"] = (access_mode_tagged / len(edges) * 100) if edges else 0.0
+
+        # NO_IO_BOUNDARY_TAGS: language has IO catalog, repo has call edges,
+        # but zero IO boundary chains detected
+        if (io_tagged == 0
+                and calls_total > 10
+                and dom_lang.lower() in IO_CATALOG_LANGS):
+            flags.append("NO_IO_BOUNDARY_TAGS")
+
+        # LOW_IO_TAG_RATE: some IO tags exist but fewer than 5% of call edges
+        # in repos that look IO-heavy (name heuristic or IO boundary JSON had chains)
+        name_suggests_io = any(
+            x in repo_name.lower()
+            for x in ["server", "client", "proxy", "db", "redis", "http", "grpc"]
+        )
+        if (0 < io_tagged < calls_total * 0.05
+                and calls_total > 10
+                and dom_lang.lower() in IO_CATALOG_LANGS
+                and (name_suggests_io or has_io_chains)):
+            flags.append("LOW_IO_TAG_RATE")
+
+        # IO_OVER_TAGGING: >40% of call edges tagged — catalog likely
+        # matching non-IO functions
+        if (calls_total > 10
+                and io_tagged > calls_total * 0.40
+                and dom_lang.lower() in IO_CATALOG_LANGS):
+            flags.append("IO_OVER_TAGGING")
+
+        # NO_ACCESS_MODE_ANNOTATIONS: language has dataflow YAML, repo has
+        # enough edges, but zero access_mode metadata
+        if (access_mode_tagged == 0
+                and len(edges) > 20
+                and dom_lang.lower() in DATAFLOW_LANGS):
+            flags.append("NO_ACCESS_MODE_ANNOTATIONS")
+
+        # LOW_ACCESS_MODE_RATE: some annotations exist but fewer than 10%
+        # of edges — dataflow YAML covers only a handful of patterns.
+        # Threshold aligns with DEEP mode good_min for access_mode_coverage.
+        if (0 < access_mode_tagged < len(edges) * 0.10
+                and len(edges) > 20
+                and dom_lang.lower() in DATAFLOW_LANGS):
+            flags.append("LOW_ACCESS_MODE_RATE")
 
         for flag in flags:
             severity = FLAG_SEVERITY.get(flag, SEVERITY_MEDIUM)
@@ -1123,6 +1352,34 @@ def cmd_status(args):
     else:
         print("No iterations yet. Run: ./scripts/bakeoff cycle")
 
+    # --- Reflect/aggregate status ---
+    reflect_dir = os.path.join(workdir, "reflect")
+    if os.path.isdir(reflect_dir):
+        assessments = glob.glob(os.path.join(reflect_dir, "**", "*.yaml"),
+                                recursive=True)
+        summaries = [a for a in assessments
+                     if os.path.basename(a) == "summary.yaml"]
+        non_summary = [a for a in assessments
+                       if os.path.basename(a) != "summary.yaml"]
+        if non_summary and not summaries:
+            print()
+            print("  Reflect: assessments exist but no summary.yaml generated.")
+            print("  Run: ./scripts/bakeoff-reflect aggregate")
+        elif non_summary and summaries:
+            # Check if there are assessment dirs without a matching summary
+            assessed_dirs = set()
+            for a in non_summary:
+                assessed_dirs.add(os.path.dirname(a))
+            summarized_dirs = set()
+            for s in summaries:
+                summarized_dirs.add(os.path.dirname(s))
+            unaggregated = assessed_dirs - summarized_dirs
+            if unaggregated:
+                print()
+                print(f"  Reflect: {len(unaggregated)} cohort(s) have assessments"
+                      f" but no summary.yaml.")
+                print("  Run: ./scripts/bakeoff-reflect aggregate")
+
     return 0
 
 
@@ -1150,11 +1407,37 @@ def cmd_issues(args):
 
 
 def cmd_cycle(args):
-    """Run full cycle: run + diagnose."""
+    """Run full cycle: run + diagnose + reflect.
+
+    Runs analysis, generates diagnostic report, then generates LLM
+    assessment prompts via bakeoff-reflect.  Use --skip-reflect to
+    run only run + diagnose (for fast iteration when you plan to
+    reflect manually later).
+    """
     rc = cmd_run(args)
     if rc != 0:
         return rc
-    return cmd_diagnose(args)
+    rc = cmd_diagnose(args)
+    if rc != 0:
+        return rc
+    if getattr(args, "skip_reflect", False):
+        return 0
+    # Run reflect as subprocess (separate script).
+    # Pass --all/--some through so batch cycles reflect on all cohorts,
+    # not just the latest.
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "bakeoff-reflect")
+    cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    if getattr(args, "all", False):
+        cmd.append("--all")
+    elif getattr(args, "some", None):
+        cmd.extend(["--some", str(args.some)])
+    print(f"\n=== Running bakeoff-reflect ===\n")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Warning: bakeoff-reflect failed (non-fatal)", file=sys.stderr)
+    return 0
 
 
 def cmd_questions(args):
@@ -1286,7 +1569,10 @@ def cmd_loop(args):
         if args.dry_run:
             print("[DRY RUN] Would run cycle")
         else:
-            cycle_args = argparse.Namespace(workdir=workdir)
+            cycle_args = argparse.Namespace(
+                workdir=workdir,
+                skip_reflect=getattr(args, "skip_reflect", False),
+            )
             rc = cmd_cycle(cycle_args)
             if rc != 0:
                 print("Error running cycle", file=sys.stderr)
@@ -1450,6 +1736,8 @@ def main():
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
     p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
     p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection and size filter)")
+    p_cohort.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Show what would be selected without saving (safe for scripting loops)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run
@@ -1477,12 +1765,15 @@ def main():
     p_issues.add_argument("--format", choices=["json", "text"], default="text")
 
     # cycle
-    p_cycle = subparsers.add_parser("cycle", help="Run full cycle")
+    p_cycle = subparsers.add_parser("cycle",
+                                    help="Run full cycle (run + diagnose + reflect)")
     p_cycle.add_argument("--workdir", help="Override workdir")
     p_cycle.add_argument("--all", action="store_true",
-                        help="Run + diagnose all unanalyzed cohorts (batch mode)")
+                        help="Run + diagnose + reflect all unanalyzed cohorts (batch mode)")
     p_cycle.add_argument("--some", type=int, metavar="N",
-                        help="Run + diagnose up to N unanalyzed cohorts")
+                        help="Run + diagnose + reflect up to N unanalyzed cohorts")
+    p_cycle.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip the reflect step (run + diagnose only)")
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan repo pool")
@@ -1499,6 +1790,8 @@ def main():
     p_loop.add_argument("--cohort-size", type=int, default=DEFAULT_COHORT_SIZE, help="Repos per cohort")
     p_loop.add_argument("--dry-run", action="store_true", help="Show what would happen without running")
     p_loop.add_argument("--auto-continue", action="store_true", help="Continue even when issues found")
+    p_loop.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip reflect step in each cycle (fast iteration)")
 
     args = parser.parse_args()
 

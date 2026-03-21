@@ -210,7 +210,7 @@ proc printHello() =
         assert any("echo" in e.dst for e in external_calls)
         # External calls have lower confidence
         for e in external_calls:
-            assert e.confidence == 0.70
+            assert e.confidence == 0.50
 
     def test_resolved_call_confidence(self, temp_repo: Path) -> None:
         """Resolved calls have higher confidence than external calls."""

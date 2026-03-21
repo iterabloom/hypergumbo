@@ -83,3 +83,50 @@
   clock: 10  # 8d69
   nonce: 8d69  # 8d69
   message: "Since last message: the plazaflow curriculum bakeoff completed (48 repos, 8 cohorts). Cohort 1 (Tauri apps: spacedrive, yaak, Cap, readest) and Cohort 8 (polyglot Rust+TS: loro, automerge, rolldown, swc) both exercised Rust heavily. Six fixes were merged (PRs #2123-#2129) including Tauri IPC entrypoint detection (PR #2128), but none addressed Rust method resolution on generic trait impl receivers specifically. The LLM assessments across these Rust-heavy repos scored mean ~55/100, with issues concentrated on cross-language linking (Tauri IPC TS→Rust edges) rather than intra-Rust method resolution. So the bakeoff data doesn't strongly push for escalating this item yet — the bigger wins came from cross-language edge improvements. Keeping at P4 pending further evidence."  # 8d69
+- op: update  # 1f9a
+  at: '2026-03-17T20:30:56Z'  # 1f9a
+  by: human  # 1f9a
+  actor: jgstern  # 1f9a
+  clock: 11  # 1f9a
+  nonce: 1f9a  # 1f9a
+  set:  # 1f9a
+    status: todo_soft  # 1f9a
+- op: discuss  # e350
+  at: '2026-03-17T20:32:06Z'  # e350
+  by: human  # e350
+  actor: jgstern  # e350
+  clock: 12  # e350
+  nonce: e350  # e350
+  message: "changing to todo_soft in case it facilitates lazaflow readiness work"  # e350
+- op: discuss  # d350
+  at: '2026-03-17T23:41:21Z'  # d350
+  by: agent  # d350
+  actor: jgstern_agent  # d350
+  clock: 13  # d350
+  nonce: d350  # d350
+  message: "Acknowledged status change to todo_soft for PlazaFlow readiness."  # d350
+- op: update  # 09e5
+  at: '2026-03-18T18:53:53Z'  # 09e5
+  by: agent  # 09e5
+  actor: jgstern_agent  # 09e5
+  clock: 14  # 09e5
+  nonce: '09e5'  # 09e5
+  set:  # 09e5
+    status: needs_human_review  # 09e5
+- op: discuss  # 8803
+  at: '2026-03-18T18:53:53Z'  # 8803
+  by: agent  # 8803
+  actor: jgstern_agent  # 8803
+  clock: 15  # 8803
+  nonce: '8803'  # 8803
+  message: "Same root cause as WI-ronoj. Recommend closing together with WI-ronoj or investigating language server integration."  # 8803
+- op: update  # 68f9
+  at: '2026-03-18T21:45:18Z'  # 68f9
+  by: human  # 68f9
+  actor: jgstern  # 68f9
+  clock: 16  # 68f9
+  nonce: 68f9  # 68f9
+  set:  # 68f9
+    status: done  # 68f9
+  add:  # 68f9
+    tags: [someday]  # 68f9

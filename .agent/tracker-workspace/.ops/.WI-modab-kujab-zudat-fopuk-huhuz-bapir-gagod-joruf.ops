@@ -1,0 +1,72 @@
+- op: create  # 426c
+  at: '2026-03-17T17:21:55Z'  # 426c
+  by: agent  # 426c
+  actor: jgstern_agent  # 426c
+  clock: 1  # 426c
+  nonce: 426c  # 426c
+  data:  # 426c
+    kind: work_item  # 426c
+    title: "Tracker CLI: batch mutation command with deferred auto-sync"  # 426c
+    status: needs_human_review  # 426c
+    priority: 2  # 426c
+    parent:  # 426c
+    tags:  # 426c
+    - tracker  # 426c
+    - cli  # 426c
+    before: []  # 426c
+    duplicate_of: []  # 426c
+    not_duplicate_of: []  # 426c
+    pr_ref:  # 426c
+    description: "## Problem\n\nWhen multiple tracker mutations are chained in a single shell invocation (cmd1 && cmd2 && cmd3),\nauto-sync can fire mid-batch when pending ops exceed the 40-line threshold. Auto-sync is\nsynchronous and blocking (push, poll CI, merge) — typically 5-15 minutes. Remaining commands\nin the chain stall silently.\n\n## Design\n\nA `tracker batch` subcommand that accepts multiple individual operations:\n\n1. Each op is individually atomic — it either fully applies or fully fails\n2. Local validation runs after each op against compiled state that includes prior ops in the batch\n   (so `add X` then `update X --add-before Y` works)\n3. Auto-sync is suppressed between ops — fires once at the end\n4. Exit code 0 ONLY if all ops AND the final auto-sync succeed\n5. If ANYTHING fails (any op or the sync), return non-zero with a per-op result report\n   listing each operation and whether it succeeded or failed\n\n## Input format\n\nTBD — options include:\n- Heredoc/stdin (one command per line)\n- Repeated --op flags\n- A YAML/JSON manifest file\n\n## What this is NOT\n\n- NOT all-or-nothing batch atomicity — if op #3 fails, ops #1 and #2 stand\n- NOT a transaction with rollback — ops are append-only, rollback is architecturally wrong\n- The batch is a sequence of individually-atomic operations with deferred sync\n\n## Root cause\n\n_maybe_auto_sync() in cli.py:1731-1736 fires after EVERY mutation command. No mechanism exists\nto group mutations and defer sync. The CI poll in do_sync() blocks for 5+ minutes."  # 426c
+    fields: {}  # 426c
+- op: discuss  # 55bf
+  at: '2026-03-17T18:34:31Z'  # 55bf
+  by: human  # 55bf
+  actor: jgstern  # 55bf
+  clock: 2  # 55bf
+  nonce: 55bf  # 55bf
+  message: "for the input format I am leaning towards a text file or maybe a text file with a `.htrac` suffix. I'm not sure if that overlaps with the heredoc/stdin option."  # 55bf
+- op: update  # 20b4
+  at: '2026-03-17T18:34:42Z'  # 20b4
+  by: human  # 20b4
+  actor: jgstern  # 20b4
+  clock: 3  # 20b4
+  nonce: 20b4  # 20b4
+  set:  # 20b4
+    status: todo_soft  # 20b4
+- op: discuss  # a5f1
+  at: '2026-03-17T18:56:41Z'  # a5f1
+  by: agent  # a5f1
+  actor: jgstern_agent  # a5f1
+  clock: 4  # a5f1
+  nonce: a5f1  # a5f1
+  message: "Acknowledged. A .htrac file format for batch mutations makes sense — it could be a structured text file with one operation per line (or block). The heredoc/stdin option could accept the same format, so they're complementary rather than overlapping: .htrac files for saved/reusable batches, stdin for ad-hoc piped input. Will design around this when implementing."  # a5f1
+- op: update  # 67a6
+  at: '2026-03-17T21:51:21Z'  # 67a6
+  by: agent  # 67a6
+  actor: jgstern_agent  # 67a6
+  clock: 5  # 67a6
+  nonce: 67a6  # 67a6
+  set:  # 67a6
+    status: done  # 67a6
+- op: discuss  # c4cb
+  at: '2026-03-17T21:51:21Z'  # c4cb
+  by: agent  # c4cb
+  actor: jgstern_agent  # c4cb
+  clock: 6  # c4cb
+  nonce: c4cb  # c4cb
+  message: "Implemented in batch command PR. Supports .htrac files and stdin. 13 tests with 100% coverage."  # c4cb
+- op: discuss  # 3d38
+  at: '2026-03-18T22:02:00Z'  # 3d38
+  by: human  # 3d38
+  actor: jgstern  # 3d38
+  clock: 7  # 3d38
+  nonce: 3d38  # 3d38
+  message: "PR # please?"  # 3d38
+- op: discuss  # eab5
+  at: '2026-03-19T00:20:37Z'  # eab5
+  by: agent  # eab5
+  actor: jgstern_agent  # eab5
+  clock: 8  # eab5
+  nonce: eab5  # eab5
+  message: "Batch command was merged in the v2.3.0 release cycle. It's in the CHANGELOG under [Unreleased]: 'Batch command: tracker batch <file> reads a .htrac file'. The implementation is in cli.py (_cmd_batch)."  # eab5

@@ -17,12 +17,6 @@ assignments:
     write: name
     read: value
 
-calls:
-  - node_type: call_expression
-    read: arguments
-  - node_type: new_expression
-    read: arguments
-
 deletions:
   - node_type: delete_expression
     delete: argument

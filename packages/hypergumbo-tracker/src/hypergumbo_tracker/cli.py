@@ -5,11 +5,11 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~27 subcommands (add, update, list, show, ready,
-  log, discuss, lock, unlock, freeze, unfreeze, repair-drift, promote, demote,
-  stealth, unstealth, validate, count-todos, hash-todos, guidance,
+- main(): Primary CLI with ~29 subcommands (add, update, list, show, ready,
+  log, discuss, deps, lock, unlock, freeze, unfreeze, repair-drift, promote,
+  demote, stealth, unstealth, validate, count-todos, hash-todos, guidance,
   check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
-  fork-setup, migrate, tui).
+  fork-setup, migrate, batch, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -78,6 +78,7 @@ _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "freeze", "unfreeze", "repair-drift",
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup", "tui",
+    "batch",
 })
 
 
@@ -398,6 +399,130 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _short_id(item_id: str) -> str:
+    """Return a short display form of a proquint item ID.
+
+    Keeps prefix + first word: 'WI-mamuh-puduz-...' → 'WI-mamuh'.
+    """
+    parts = item_id.split("-")
+    if len(parts) >= 2:
+        return f"{parts[0]}-{parts[1]}"
+    return item_id
+
+
+def _item_label(ts: TrackerSet, item_id: str) -> str:
+    """Return 'SHORT_ID (title)' for an item, or just the ID if lookup fails."""
+    try:
+        item = ts.get(item_id)
+        return f"{_short_id(item_id)} ({item.title})"
+    except Exception:  # pragma: no cover
+        return _short_id(item_id)
+
+
+def _describe_changes(
+    old: "CompiledItem", new: "CompiledItem", ts: TrackerSet,
+) -> list[str]:
+    """Compare old and new item state, returning human-readable change lines.
+
+    Each line describes one mutation in natural language. For relationship
+    changes, includes item titles to make directionality unambiguous.
+    """
+    changes: list[str] = []
+
+    # Status change
+    if old.status != new.status:
+        changes.append(f"status: {old.status} → {new.status}")
+
+    # Priority change
+    if old.priority != new.priority:
+        changes.append(f"priority: P{old.priority} → P{new.priority}")
+
+    # Title change
+    if old.title != new.title:
+        changes.append(f"title: {old.title!r} → {new.title!r}")
+
+    # Parent change
+    if old.parent != new.parent:
+        if new.parent:
+            changes.append(
+                f"parent: now child of {_item_label(ts, new.parent)}"
+            )
+        else:
+            changes.append("parent: removed")
+
+    # PR ref change
+    if old.pr_ref != new.pr_ref:
+        if new.pr_ref:
+            changes.append(f"pr_ref: {new.pr_ref}")
+        else:
+            changes.append("pr_ref: removed")
+
+    # Tags
+    old_tags = set(old.tags)
+    new_tags = set(new.tags)
+    added_tags = new_tags - old_tags
+    removed_tags = old_tags - new_tags
+    if added_tags:
+        changes.append(f"tags: +{', +'.join(sorted(added_tags))}")
+    if removed_tags:
+        changes.append(f"tags: -{', -'.join(sorted(removed_tags))}")
+
+    # Before links (blocking relationships)
+    old_before = set(old.before)
+    new_before = set(new.before)
+    for bid in new_before - old_before:
+        label = _item_label(ts, bid)
+        changes.append(
+            f"before: {_short_id(new.id)} now blocks {label}"
+        )
+    for bid in old_before - new_before:
+        label = _item_label(ts, bid)
+        changes.append(
+            f"before: {_short_id(new.id)} no longer blocks {label}"
+        )
+
+    # Duplicate-of links
+    old_dup = set(old.duplicate_of)
+    new_dup = set(new.duplicate_of)
+    for did in new_dup - old_dup:
+        changes.append(f"duplicate_of: +{_item_label(ts, did)}")
+    for did in old_dup - new_dup:
+        changes.append(f"duplicate_of: removed {_item_label(ts, did)}")
+
+    # Not-duplicate-of links
+    old_ndup = set(old.not_duplicate_of)
+    new_ndup = set(new.not_duplicate_of)
+    for nid in new_ndup - old_ndup:
+        changes.append(f"not_duplicate_of: +{_item_label(ts, nid)}")
+    for nid in old_ndup - new_ndup:
+        changes.append(f"not_duplicate_of: removed {_item_label(ts, nid)}")
+
+    # Custom fields
+    if old.fields != new.fields:
+        for k in set(list(old.fields) + list(new.fields)):
+            ov = old.fields.get(k)
+            nv = new.fields.get(k)
+            if ov != nv:
+                if nv is not None:
+                    changes.append(f"fields.{k}: {nv}")
+                else:
+                    changes.append(f"fields.{k}: removed")
+
+    return changes
+
+
+def _changes_to_dict(changes: list[str]) -> list[dict[str, str]]:
+    """Convert change lines to structured dicts for JSON output."""
+    result = []
+    for line in changes:
+        if ": " in line:
+            field, detail = line.split(": ", 1)
+            result.append({"field": field, "detail": detail})
+        else:
+            result.append({"field": "unknown", "detail": line})
+    return result
+
+
 def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'update' subcommand."""
     set_fields: dict[str, Any] = {}
@@ -426,21 +551,29 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             _resolve_ref(ts, b, "--add-before") for b in args.add_before
         ]
     if args.remove_before:
-        remove_fields["before"] = args.remove_before
+        remove_fields["before"] = [
+            _resolve_ref(ts, b, "--remove-before") for b in args.remove_before
+        ]
     if args.add_duplicate_of:
         add_fields["duplicate_of"] = [
             _resolve_ref(ts, d, "--add-duplicate-of")
             for d in args.add_duplicate_of
         ]
     if args.remove_duplicate_of:
-        remove_fields["duplicate_of"] = args.remove_duplicate_of
+        remove_fields["duplicate_of"] = [
+            _resolve_ref(ts, d, "--remove-duplicate-of")
+            for d in args.remove_duplicate_of
+        ]
     if args.add_not_duplicate_of:
         add_fields["not_duplicate_of"] = [
             _resolve_ref(ts, d, "--add-not-duplicate-of")
             for d in args.add_not_duplicate_of
         ]
     if args.remove_not_duplicate_of:
-        remove_fields["not_duplicate_of"] = args.remove_not_duplicate_of
+        remove_fields["not_duplicate_of"] = [
+            _resolve_ref(ts, d, "--remove-not-duplicate-of")
+            for d in args.remove_not_duplicate_of
+        ]
 
     if args.field:
         fields_dict: dict[str, Any] = {}
@@ -452,22 +585,68 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             fields_dict[k] = v
         set_fields["fields"] = fields_dict
 
-    ts.update(
-        args.item_id,
-        set_fields=set_fields or None,
-        add_fields=add_fields or None,
-        remove_fields=remove_fields or None,
-    )
+    # Capture old state for verbose confirmation
+    has_direct_mutations = bool(set_fields or add_fields or remove_fields)
+    old_item = ts.get(args.item_id)
+
+    if has_direct_mutations:
+        ts.update(
+            args.item_id,
+            set_fields=set_fields or None,
+            add_fields=add_fields or None,
+            remove_fields=remove_fields or None,
+        )
 
     # --note is shorthand for a follow-up discuss call
     if args.note:
         _warn_unread_human_messages(args.item_id, ts)
         ts.discuss(args.item_id, message=args.note)
 
+    # Compute and display changes for the primary item
+    new_item = ts.get(args.item_id)
+    changes = _describe_changes(old_item, new_item, ts)
+
+    # Handle --add-blocked-by / --remove-blocked-by (inverse before links)
+    # These modify OTHER items, not the primary target.
+    blocked_by_changes: list[str] = []
+    target_full_id, _, _ = ts._resolve_id(args.item_id)
+
+    if getattr(args, "add_blocked_by", None):
+        for ref in args.add_blocked_by:
+            blocker_id = _resolve_ref(ts, ref, "--add-blocked-by")
+            ts.update(
+                blocker_id,
+                add_fields={"before": [target_full_id]},
+            )
+            blocked_by_changes.append(
+                f"blocked-by: {_item_label(ts, blocker_id)} now blocks "
+                f"{_short_id(target_full_id)}"
+            )
+
+    if getattr(args, "remove_blocked_by", None):
+        for ref in args.remove_blocked_by:
+            blocker_id = _resolve_ref(ts, ref, "--remove-blocked-by")
+            ts.update(
+                blocker_id,
+                remove_fields={"before": [target_full_id]},
+            )
+            blocked_by_changes.append(
+                f"blocked-by: {_item_label(ts, blocker_id)} no longer blocks "
+                f"{_short_id(target_full_id)}"
+            )
+
+    all_changes = changes + blocked_by_changes
+
     if args.json:
-        print(json.dumps({"ok": True}))
+        result: dict[str, Any] = {"ok": True}
+        if all_changes:
+            result["changes"] = _changes_to_dict(all_changes)
+        print(json.dumps(result))
     else:
-        print("updated")
+        if all_changes:
+            print(f"updated {_short_id(args.item_id)}: {'; '.join(all_changes)}")
+        else:
+            print("updated")
     return EXIT_SUCCESS
 
 
@@ -531,6 +710,90 @@ def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("discussed")
+    return EXIT_SUCCESS
+
+
+def _cmd_deps(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'deps' subcommand — show dependency graph for an item.
+
+    Shows: parent, children, items this blocks (before), and items that
+    block this (items with this item in their before list).
+    """
+    item = ts.get(args.item_id)
+    full_id = item.id
+
+    # Find children (items whose parent == this item)
+    children = ts.children(full_id)
+
+    # Find items this blocks (this item's before list)
+    blocks: list[CompiledItem] = []
+    for bid in item.before:
+        try:
+            blocks.append(ts.get(bid))
+        except ItemNotFoundError:  # pragma: no cover — dangling reference
+            pass
+
+    # Find items that block this (other items with this item in their before)
+    blocked_by: list[CompiledItem] = []
+    all_items = ts.list_items()
+    for other in all_items:
+        if full_id in other.before and other.id != full_id:
+            blocked_by.append(other)
+
+    if args.json:
+        result: dict[str, Any] = {
+            "id": full_id,
+            "title": item.title,
+            "status": item.status,
+        }
+        if item.parent:
+            try:
+                parent = ts.get(item.parent)
+                result["parent"] = {"id": parent.id, "title": parent.title}
+            except ItemNotFoundError:  # pragma: no cover — dangling parent ref
+                result["parent"] = {"id": item.parent, "title": "?"}
+        if children:
+            result["children"] = [
+                {"id": c.id, "title": c.title, "status": c.status}
+                for c in children
+            ]
+        if blocks:
+            result["blocks"] = [
+                {"id": b.id, "title": b.title, "status": b.status}
+                for b in blocks
+            ]
+        if blocked_by:
+            result["blocked_by"] = [
+                {"id": b.id, "title": b.title, "status": b.status}
+                for b in blocked_by
+            ]
+        print(json.dumps(result))
+    else:
+        # Text output: tree-like display
+        print(f"{_short_id(full_id)}  {item.title}  [{item.status}]")
+
+        if item.parent:
+            try:
+                parent = ts.get(item.parent)
+                print(f"  parent: {_short_id(parent.id)} ({parent.title})")
+            except ItemNotFoundError:  # pragma: no cover — dangling parent ref
+                print(f"  parent: {_short_id(item.parent)} (?)")
+
+        if children:
+            print(f"  children ({len(children)}):")
+            for c in children:
+                print(f"    {_short_id(c.id)}  {c.title}  [{c.status}]")
+
+        if blocks:
+            print(f"  blocks ({len(blocks)}):")
+            for b in blocks:
+                print(f"    → {_short_id(b.id)}  {b.title}  [{b.status}]")
+
+        if blocked_by:
+            print(f"  blocked by ({len(blocked_by)}):")
+            for b in blocked_by:
+                print(f"    ← {_short_id(b.id)}  {b.title}  [{b.status}]")
+
     return EXIT_SUCCESS
 
 
@@ -882,7 +1145,10 @@ def _cmd_setup(args: argparse.Namespace) -> int:
             print(generate_human_shim(root))
             return EXIT_SUCCESS
 
-    results = run_setup(root)
+    results = run_setup(
+        root,
+        with_policy_template=getattr(args, "with_policy_template", False),
+    )
 
     if args.json:
         print(json.dumps(results_to_json(results), indent=2))
@@ -1222,6 +1488,12 @@ def _build_parser() -> argparse.ArgumentParser:
                           help="Add not-duplicate-of link")
     p_update.add_argument("--remove-not-duplicate-of", action="append",
                           help="Remove not-duplicate-of link")
+    p_update.add_argument("--add-blocked-by", action="append",
+                          help="Inverse of --add-before: sets before link on the OTHER item "
+                               "pointing to this item (repeatable)")
+    p_update.add_argument("--remove-blocked-by", action="append",
+                          help="Inverse of --remove-before: removes before link from the "
+                               "OTHER item pointing to this item (repeatable)")
     p_update.add_argument("--field", action="append", help="Field key=value (repeatable)")
     p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
 
@@ -1319,6 +1591,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          help="'configure' for interactive config editor")
     p_setup.add_argument("--root", dest="setup_root",
                          help="Path to .agent/ directory (default: auto-detect or cwd/.agent)")
+    p_setup.add_argument("--with-policy-template", action="store_true",
+                         dest="with_policy_template",
+                         help="Scaffold a project-owned tracker status policy section in AGENTS.md")
 
     # --- cache-rebuild ---
     sub.add_parser("cache-rebuild", help="Rebuild SQLite read cache")
@@ -1359,7 +1634,216 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
 
+    # --- deps ---
+    p_deps = sub.add_parser("deps", help="Show dependency graph for an item")
+    p_deps.add_argument("item_id", help="Item ID or prefix")
+
+    # --- batch ---
+    p_batch = sub.add_parser(
+        "batch",
+        help="Run multiple operations from a .htrac file with deferred auto-sync",
+    )
+    p_batch.add_argument(
+        "file", help="Path to .htrac batch file, or '-' for stdin",
+    )
+
     return parser
+
+
+# ---------------------------------------------------------------------------
+# Batch command
+# ---------------------------------------------------------------------------
+
+
+# Commands allowed inside a batch file. Read-only commands (show, list, etc.)
+# are excluded since they don't produce mutations.
+_BATCH_ALLOWED_COMMANDS: frozenset[str] = frozenset({
+    "add", "update", "discuss", "lock", "unlock",
+    "promote", "demote",
+})
+
+
+def _parse_batch_line(line: str) -> list[str] | None:
+    """Parse one line from a .htrac batch file into argv tokens.
+
+    Returns None for comments and blank lines. Uses shlex to handle
+    quoted arguments (e.g., discuss WI-test "Fixed in PR #100").
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    import shlex
+
+    return shlex.split(stripped)
+
+
+def _cmd_batch(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'batch' subcommand.
+
+    Reads a .htrac file (or stdin) with one tracker command per line.
+    Executes each command sequentially. Auto-sync is NOT triggered between
+    operations — the caller (main()) fires it once after batch completes.
+
+    Each operation is individually atomic: if op #3 fails, ops #1 and #2
+    still stand. This is NOT transactional — there is no rollback.
+    """
+    # Read batch input
+    if args.file == "-":
+        lines = sys.stdin.readlines()
+    else:
+        batch_path = Path(args.file)
+        if not batch_path.exists():
+            print(f"error: batch file not found: {args.file}", file=sys.stderr)
+            return EXIT_USER_ERROR
+        lines = batch_path.read_text().splitlines(keepends=True)
+
+    # Parse into operations
+    operations: list[tuple[int, list[str]]] = []
+    for line_num, line in enumerate(lines, 1):
+        tokens = _parse_batch_line(line)
+        if tokens is not None:
+            operations.append((line_num, tokens))
+
+    if not operations:
+        if args.json:
+            print(json.dumps({"ok": True, "results": []}))
+        else:
+            print("batch: 0 operations (nothing to do)")
+        return EXIT_SUCCESS
+
+    # Build a sub-parser for dispatching individual operations
+    # We reuse the existing parser's subcommand set
+    sub_parser = _build_parser()
+
+    results: list[dict[str, Any]] = []
+    succeeded = 0
+    failed = 0
+
+    for line_num, tokens in operations:
+        cmd_name = tokens[0] if tokens else "?"
+        if cmd_name not in _BATCH_ALLOWED_COMMANDS:
+            msg = f"line {line_num}: '{cmd_name}' not allowed in batch"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Parse the tokens using the full CLI parser, injecting global flags
+        full_argv = [
+            "--tracker-root", str(args.tracker_root_resolved),
+            "--no-auto-sync",
+        ]
+        if args.json:
+            full_argv.append("--json")
+        full_argv.extend(tokens)
+
+        try:
+            sub_args = sub_parser.parse_args(full_argv)
+        except SystemExit:
+            msg = f"line {line_num}: invalid arguments for '{cmd_name}'"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Dispatch — map command to handler
+        handler_map: dict[str, Any] = {
+            "add": _cmd_add,
+            "update": _cmd_update,
+            "discuss": _cmd_discuss,
+            "lock": _cmd_lock,
+            "unlock": _cmd_unlock,
+            "promote": _cmd_promote,
+            "demote": _cmd_demote,
+        }
+        handler = handler_map.get(sub_args.command)
+        if handler is None:  # pragma: no cover
+            msg = f"line {line_num}: no handler for '{cmd_name}'"
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": msg,
+            })
+            failed += 1
+            continue
+
+        # Capture stdout for JSON mode (each sub-command prints its own output)
+        import io
+
+        old_stdout = sys.stdout
+        buf = io.StringIO()
+        if args.json:
+            sys.stdout = buf
+
+        try:
+            exit_code = handler(sub_args, ts)
+            if exit_code == EXIT_SUCCESS:
+                succeeded += 1
+                result_entry: dict[str, Any] = {
+                    "line": line_num, "command": cmd_name, "ok": True,
+                }
+                if args.json:
+                    sub_out = buf.getvalue().strip()
+                    if sub_out:
+                        try:
+                            result_entry["output"] = json.loads(sub_out)
+                        except json.JSONDecodeError:  # pragma: no cover
+                            result_entry["output"] = sub_out
+                results.append(result_entry)
+            else:
+                failed += 1
+                results.append({
+                    "line": line_num, "command": cmd_name,
+                    "ok": False, "error": f"exit code {exit_code}",
+                })
+        except (
+            ItemNotFoundError, AmbiguousPrefixError,
+            HumanAuthorityError, LockedFieldError, FrozenItemError,
+        ) as e:
+            failed += 1
+            msg = f"line {line_num}: {e}"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": str(e),
+            })
+        except Exception as e:  # pragma: no cover — catch-all for unexpected errors
+            failed += 1
+            msg = f"line {line_num}: {e}"
+            print(f"  FAIL {msg}", file=sys.stderr)
+            results.append({
+                "line": line_num, "command": cmd_name,
+                "ok": False, "error": str(e),
+            })
+        finally:
+            sys.stdout = old_stdout
+
+    total = succeeded + failed
+    if args.json:
+        print(json.dumps({
+            "ok": failed == 0,
+            "total": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "results": results,
+        }))
+    else:
+        status = "ok" if failed == 0 else "FAIL"
+        print(f"batch: {succeeded}/{total} succeeded ({status})")
+        if failed > 0:
+            for r in results:
+                if not r["ok"]:
+                    print(
+                        f"  line {r['line']}: {r['command']} — {r.get('error', '?')}",
+                        file=sys.stderr,
+                    )
+
+    return EXIT_SUCCESS if failed == 0 else EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -1656,6 +2140,9 @@ def main(argv: list[str] | None = None) -> None:
     except SystemExit:
         raise
 
+    # Store resolved path for batch command's sub-dispatching
+    args.tracker_root_resolved = str(tracker_root)
+
     # Create TrackerSet with optional cache
     try:
         config = load_config(tracker_root / "tracker")
@@ -1685,6 +2172,7 @@ def main(argv: list[str] | None = None) -> None:
         "add": _cmd_add,
         "update": _cmd_update,
         "discuss": _cmd_discuss,
+        "deps": _cmd_deps,
         "lock": _cmd_lock,
         "unlock": _cmd_unlock,
         "freeze": _cmd_freeze,
@@ -1704,6 +2192,7 @@ def main(argv: list[str] | None = None) -> None:
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
         "tui": _cmd_tui,
+        "batch": _cmd_batch,
     }
 
     handler = handler_map.get(args.command)

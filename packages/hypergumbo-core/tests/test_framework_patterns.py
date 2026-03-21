@@ -18931,3 +18931,110 @@ class TestTauriPatterns:
         results = match_patterns(symbol, [pattern_def])
         ipc_handlers = [r for r in results if r["concept"] == "ipc_handler"]
         assert len(ipc_handlers) == 0
+
+
+# ---------------------------------------------------------------------------
+# Web Audio API patterns
+# ---------------------------------------------------------------------------
+
+
+class TestWebAudioPatterns:
+    """Tests for web-audio.yaml framework patterns."""
+
+    def test_web_audio_yaml_loads(self) -> None:
+        """web-audio.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+        assert pattern_def.id == "web_audio"
+        assert len(pattern_def.patterns) > 0
+
+    def test_audio_context_matches(self) -> None:
+        """AudioContext creation matches audio_context concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="new AudioContext",
+            position="caller",
+            path="src/audio.js",
+            span=Span(10, 10, 0, 30),
+            symbol_ref="javascript:src/audio.js:1-50:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        audio_ctx = [r for r in results if r["concept"] == "audio_context"]
+        assert len(audio_ctx) == 1
+
+    def test_create_gain_matches(self) -> None:
+        """context.createGain() matches audio_node_creation concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="ctx.createGain",
+            position="caller",
+            path="src/audio.js",
+            span=Span(15, 15, 0, 30),
+            symbol_ref="javascript:src/audio.js:10-20:setup:function",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        node_creation = [r for r in results if r["concept"] == "audio_node_creation"]
+        assert len(node_creation) == 1
+
+    def test_connect_matches(self) -> None:
+        """node.connect() matches audio_graph_connection concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="gainNode.connect",
+            position="caller",
+            path="src/audio.js",
+            span=Span(20, 20, 0, 40),
+            symbol_ref="javascript:src/audio.js:10-20:setup:function",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        connections = [r for r in results if r["concept"] == "audio_graph_connection"]
+        assert len(connections) == 1
+
+    def test_tone_synth_matches(self) -> None:
+        """new Tone.Synth() matches audio_node_creation concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="new Tone.Synth",
+            position="caller",
+            path="src/music.ts",
+            span=Span(5, 5, 0, 30),
+            symbol_ref="typescript:src/music.ts:1-10:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        node_creation = [r for r in results if r["concept"] == "audio_node_creation"]
+        assert len(node_creation) == 1
+
+    def test_to_destination_matches(self) -> None:
+        """synth.toDestination() matches audio_graph_connection concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("web_audio")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="synth.toDestination",
+            position="caller",
+            path="src/music.ts",
+            span=Span(8, 8, 0, 30),
+            symbol_ref="typescript:src/music.ts:1-10:module:module",
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        connections = [r for r in results if r["concept"] == "audio_graph_connection"]
+        assert len(connections) == 1

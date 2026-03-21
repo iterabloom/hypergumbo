@@ -37,3 +37,10 @@
   clock: 3  # c0bd
   nonce: c0bd  # c0bd
   message: "Fixed in PR batch. Compact mode seeds cross-cutting edge endpoints into node selection. Seeds capped at 25% of max_symbols."  # c0bd
+- op: discuss  # 47ba
+  at: '2026-03-17T09:20:13Z'  # 47ba
+  by: agent  # 47ba
+  actor: jgstern_agent  # 47ba
+  clock: 4  # 47ba
+  nonce: 47ba  # 47ba
+  message: "Cross-ref: PlazaFlow readiness. Compact mode must retain edges from all active linkers when Tauri IPC, Yjs CRDT, WASM bindgen, and WebSocket are all active in one project. See INV-jisit (cross-linker integration)."  # 47ba

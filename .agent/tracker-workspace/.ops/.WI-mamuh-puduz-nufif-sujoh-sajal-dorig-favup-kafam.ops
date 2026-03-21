@@ -1,0 +1,92 @@
+- op: create  # f3b3
+  at: '2026-03-17T09:11:05Z'  # f3b3
+  by: agent  # f3b3
+  actor: jgstern_agent  # f3b3
+  clock: 1  # f3b3
+  nonce: f3b3  # f3b3
+  data:  # f3b3
+    kind: work_item  # f3b3
+    title: "PlazaFlow readiness: Yjs sub-document and awareness tracing"  # f3b3
+    status: needs_human_review  # f3b3
+    priority: 2  # f3b3
+    parent:  # f3b3
+    tags:  # f3b3
+    - plazaflow  # f3b3
+    - linker  # f3b3
+    - yjs  # f3b3
+    before: []  # f3b3
+    duplicate_of: []  # f3b3
+    not_duplicate_of: []  # f3b3
+    pr_ref:  # f3b3
+    description: "PlazaFlow state is a graph of Yjs documents: chunks reference sub-documents via yjsDocId. Current linker misses: (1) Sub-document references, (2) Field-level awareness pub/sub, (3) Array/Text operations. Cross-refs: INV-bivot, META-sulor. Bakeoff: socketio-chat-example."  # f3b3
+    fields: {}  # f3b3
+- op: update  # 4d30
+  at: '2026-03-17T09:12:26Z'  # 4d30
+  by: agent  # 4d30
+  actor: jgstern_agent  # 4d30
+  clock: 2  # 4d30
+  nonce: 4d30  # 4d30
+  set:  # 4d30
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 4d30
+- op: discuss  # 28d5
+  at: '2026-03-17T09:21:41Z'  # 28d5
+  by: agent  # 28d5
+  actor: jgstern_agent  # 28d5
+  clock: 3  # 28d5
+  nonce: 28d5  # 28d5
+  message: "Overlaps with WI-zusig (Yjs/CRDT reactive linker, todo_soft). WI-zusig covers the broader Yjs API surface detection. This item (WI-mamuh) focuses on sub-document references and field-level awareness — extensions beyond what WI-zusig defined. Consider merging or making WI-mamuh a child of WI-zusig."  # 28d5
+- op: update  # b485
+  at: '2026-03-17T17:09:12Z'  # b485
+  by: agent  # b485
+  actor: jgstern_agent  # b485
+  clock: 4  # b485
+  nonce: b485  # b485
+  set: {}  # b485
+  add:  # b485
+    before: [WI-doluf-nozof-zitih-logok-povuk-vujib-murag-furiz]  # b485
+- op: update  # d59d
+  at: '2026-03-17T18:25:23Z'  # d59d
+  by: agent  # d59d
+  actor: jgstern_agent  # d59d
+  clock: 5  # d59d
+  nonce: d59d  # d59d
+  set: {}  # d59d
+  add:  # d59d
+    before: [INV-jisit-tokir-sogos-fipip-mubot-tirol-pinom-bumuz]  # d59d
+- op: discuss  # f3de
+  at: '2026-03-17T20:29:59Z'  # f3de
+  by: human  # f3de
+  actor: jgstern  # f3de
+  clock: 6  # f3de
+  nonce: f3de  # f3de
+  message: "socketio-chat-example: /home/jgstern_agent/whole_bunch_of_repos/socketio-chat-example"  # f3de
+- op: update  # cb97
+  at: '2026-03-17T20:30:09Z'  # cb97
+  by: human  # cb97
+  actor: jgstern  # cb97
+  clock: 7  # cb97
+  nonce: cb97  # cb97
+  set:  # cb97
+    status: todo_soft  # cb97
+- op: discuss  # 4b0e
+  at: '2026-03-17T23:41:21Z'  # 4b0e
+  by: agent  # 4b0e
+  actor: jgstern_agent  # 4b0e
+  clock: 8  # 4b0e
+  nonce: 4b0e  # 4b0e
+  message: "Acknowledged repo path. Will use socketio-chat-example for Yjs pattern testing."  # 4b0e
+- op: update  # 8e7d
+  at: '2026-03-18T01:29:03Z'  # 8e7d
+  by: agent  # 8e7d
+  actor: jgstern_agent  # 8e7d
+  clock: 9  # 8e7d
+  nonce: 8e7d  # 8e7d
+  set:  # 8e7d
+    status: done  # 8e7d
+- op: discuss  # fb13
+  at: '2026-03-18T01:29:03Z'  # fb13
+  by: agent  # fb13
+  actor: jgstern_agent  # fb13
+  clock: 10  # fb13
+  nonce: fb13  # fb13
+  message: "Sub-document accessors (getMap/getArray/getText/getXmlFragment) and field-level awareness matching implemented in PR #2329."  # fb13

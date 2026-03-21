@@ -1,0 +1,50 @@
+- op: create  # af78
+  at: '2026-03-19T00:21:54Z'  # af78
+  by: agent  # af78
+  actor: jgstern_agent  # af78
+  clock: 1  # af78
+  nonce: af78  # af78
+  data:  # af78
+    kind: work_item  # af78
+    title: "Erlang analyzer: resolve OTP message-passing and cross-app calls to reduce orphan rate"  # af78
+    status: todo_soft  # af78
+    priority: 4  # af78
+    parent:  # af78
+    tags:  # af78
+    - analysis_quality  # af78
+    - erlang  # af78
+    before: []  # af78
+    duplicate_of: []  # af78
+    not_duplicate_of: []  # af78
+    pr_ref:  # af78
+    description: "rabbitmq bakeoff: 18K orphan Erlang functions (45% orphan rate). Root cause: Erlang analyzer extracts symbols but doesn't resolve OTP message-passing patterns (gen_server:call, gen_server:cast, gen_event:notify) or cross-app function calls in umbrella projects. The analyzer handles local and remote calls (module:function) but OTP callback dispatch and application-level imports are not traced. Fixing this requires: (1) detecting OTP behaviour callbacks (init, handle_call, handle_cast, handle_info) as entry points, (2) tracing gen_server:call/cast to the target module's handle_call/handle_cast, (3) resolving cross-app dependencies in umbrella project structure. Cross-ref: WI-fukik (investigation)."  # af78
+    fields: {}  # af78
+- op: discuss  # abac
+  at: '2026-03-19T01:43:11Z'  # abac
+  by: agent  # abac
+  actor: jgstern_agent  # abac
+  clock: 2  # abac
+  nonce: abac  # abac
+  message: "Deeper investigation: the existing callback edge mechanism works for OTP behaviours (gen_server, gen_statem, gen_event). The 18K orphan functions in rabbitmq are NOT primarily missing callbacks — they're exported functions in one application that are called from other applications via module:function() remote calls.\n\nThe root cause: in rabbitmq's umbrella structure (~30+ applications), functions in app_a are called from app_b via rabbit_a_module:function(). The Erlang analyzer resolves remote calls via the global symbol registry, but only if both modules are analyzed in the same run. For very large umbrella projects, some modules may not have their symbols registered by the time other modules try to resolve calls to them.\n\nThis is a symbol resolution ordering issue, not a missing pattern issue. The fix would be: (1) analyze all modules in the umbrella first (Pass 1), registering all symbols, then (2) resolve all remote calls in Pass 2. The current architecture already does two passes per file, but cross-application resolution depends on all apps being included in the analysis scope."  # abac
+- op: discuss  # d7cd
+  at: '2026-03-19T01:45:34Z'  # d7cd
+  by: agent  # d7cd
+  actor: jgstern_agent  # d7cd
+  clock: 3  # d7cd
+  nonce: d7cd  # d7cd
+  message: "Further analysis: 13,421 Erlang orphan functions in rabbitmq, 78% in non-test files. These are production functions that should have callers resolved. The analyzer creates 53,895 call edges but misses ~10K production functions. The gap is likely in remote call resolution: module:function() patterns where the module name matches but the function name with arity doesn't resolve correctly. Investigation needed: compare the symbol names in the registry with the names used in remote calls to identify the matching failure pattern."  # d7cd
+- op: update  # 4e48
+  at: '2026-03-19T02:06:20Z'  # 4e48
+  by: agent  # 4e48
+  actor: jgstern_agent  # 4e48
+  clock: 4  # 4e48
+  nonce: '4e48'  # 4e48
+  set:  # 4e48
+    status: done  # 4e48
+- op: discuss  # e3eb
+  at: '2026-03-19T02:06:20Z'  # e3eb
+  by: agent  # e3eb
+  actor: jgstern_agent  # e3eb
+  clock: 5  # e3eb
+  nonce: e3eb  # e3eb
+  message: "Fixed in PR #2389. Local function calls now resolve via base_name lookup before falling back to global resolver. Root cause: functions registered as 'a/1' (with arity) but calls use bare 'a'. Tested on rabbitmq: a/1 in rabbit_priority_queue gets 6 edges (was 0). Should significantly reduce the 45% Erlang orphan rate."  # e3eb

@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     make_symbol_id,
+    make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -275,22 +276,24 @@ def _extract_edges_recursive(
             if callee_name:
                 # Try to resolve the callee
                 callee_id = symbol_registry.get(callee_name)
-                confidence = 1.0 if callee_id else 0.6
-                if callee_id is None:
-                    callee_id = f"odin:unresolved:{callee_name}"
-
-                line = node.start_point[0] + 1
-                edge = Edge.create(
-                    src=caller_id,
-                    dst=callee_id,
-                    edge_type="calls",
-                    line=line,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
-                    evidence_type="ast_call_direct",
-                    confidence=confidence,
-                    evidence_lang="odin",
-                )
+                if callee_id is not None:
+                    edge = Edge.create(
+                        src=caller_id,
+                        dst=callee_id,
+                        edge_type="calls",
+                        line=node.start_point[0] + 1,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        evidence_type="ast_call_direct",
+                        confidence=1.0,
+                        evidence_lang="odin",
+                    )
+                else:
+                    edge = make_unresolved_edge(
+                        "odin", caller_id, callee_name,
+                        node.start_point[0] + 1,
+                        PASS_ID, run_id,
+                    )
                 edges.append(edge)
 
     elif node.type == "member_expression":
@@ -324,21 +327,11 @@ def _extract_edges_recursive(
 
                     if module_name and func_name:
                         qualified_name = f"{module_name}.{func_name}"
-                        callee_id = f"odin:external:{qualified_name}"
-
-                        line = node.start_point[0] + 1
-                        edge = Edge.create(
-                            src=caller_id,
-                            dst=callee_id,
-                            edge_type="calls",
-                            line=line,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            evidence_type="ast_call_method",
-                            confidence=0.8,
-                            evidence_lang="odin",
-                        )
-                        edges.append(edge)
+                        edges.append(make_unresolved_edge(
+                            "odin", caller_id, qualified_name,
+                            node.start_point[0] + 1,
+                            PASS_ID, run_id,
+                        ))
 
     # Recursively process children
     for child in node.children:

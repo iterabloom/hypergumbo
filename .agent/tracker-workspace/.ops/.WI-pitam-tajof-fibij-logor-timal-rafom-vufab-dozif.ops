@@ -1,0 +1,132 @@
+- op: create  # de03
+  at: '2026-03-17T09:16:46Z'  # de03
+  by: agent  # de03
+  actor: jgstern_agent  # de03
+  clock: 1  # de03
+  nonce: de03  # de03
+  data:  # de03
+    kind: work_item  # de03
+    title: "PlazaFlow readiness: multi-WASM module boundary quality"  # de03
+    status: needs_human_review  # de03
+    priority: 3  # de03
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # de03
+    tags:  # de03
+    - plazaflow  # de03
+    - linker  # de03
+    - wasm  # de03
+    before:  # de03
+    - WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam  # de03
+    duplicate_of: []  # de03
+    not_duplicate_of: []  # de03
+    pr_ref:  # de03
+    description: "PlazaFlow has multiple WASM modules in one project: Polis-lite (Rust/WASM), UDHR classifier (WASM), Whisper.cpp (C++ WASM), Piper TTS (C++ WASM), Silero VAD (ONNX/WASM). Existing wasm_bindgen linker handles one Rust/WASM module well. Need to verify: (1) multiple wasm_bindgen modules in same project don't collide, (2) non-Rust WASM (C++ via Emscripten) has any coverage, (3) ONNX runtime WASM (onnxruntime-web) model loading is detectable. Bakeoff repos: wasmtime (multi-module WASM, already available). Cross-refs: INV-nilob (codegen wrapper tracing, violated — wasm_bindgen facades listed as remaining gap)."  # de03
+    fields: {}  # de03
+- op: update  # afac
+  at: '2026-03-17T17:01:26Z'  # afac
+  by: agent  # afac
+  actor: jgstern_agent  # afac
+  clock: 2  # afac
+  nonce: afac  # afac
+  set: {}  # afac
+  remove:  # afac
+    before: [WI-mamuh]  # afac
+- op: update  # 118d
+  at: '2026-03-17T17:09:12Z'  # 118d
+  by: agent  # 118d
+  actor: jgstern_agent  # 118d
+  clock: 3  # 118d
+  nonce: 118d  # 118d
+  set: {}  # 118d
+  add:  # 118d
+    before: [INV-jisit-tokir-sogos-fipip-mubot-tirol-pinom-bumuz]  # 118d
+- op: update  # 9ece
+  at: '2026-03-17T18:23:50Z'  # 9ece
+  by: agent  # 9ece
+  actor: jgstern_agent  # 9ece
+  clock: 4  # 9ece
+  nonce: 9ece  # 9ece
+  set: {}  # 9ece
+  remove:  # 9ece
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # 9ece
+- op: update  # 4ed9
+  at: '2026-03-17T20:37:32Z'  # 4ed9
+  by: human  # 4ed9
+  actor: jgstern  # 4ed9
+  clock: 5  # 4ed9
+  nonce: 4ed9  # 4ed9
+  set:  # 4ed9
+    status: todo_soft  # 4ed9
+- op: update  # 5418
+  at: '2026-03-18T05:10:18Z'  # 5418
+  by: agent  # 5418
+  actor: jgstern_agent  # 5418
+  clock: 6  # 5418
+  nonce: '5418'  # 5418
+  set:  # 5418
+    priority: 4  # 5418
+- op: discuss  # 856c
+  at: '2026-03-18T05:10:18Z'  # 856c
+  by: agent  # 856c
+  actor: jgstern_agent  # 856c
+  clock: 7  # 856c
+  nonce: 856c  # 856c
+  message: "No repos with multi-WASM module boundaries available for testing. Tauri repos (Cap, readest, yaak, spacedrive) use IPC, not WASM imports. This is a real gap but untestable without appropriate repos."  # 856c
+- op: discuss  # e291
+  at: '2026-03-18T16:39:53Z'  # e291
+  by: human  # e291
+  actor: jgstern  # e291
+  clock: 8  # e291
+  nonce: e291  # e291
+  message: "Please run bakeoffs using the repos referenced in the below table (\"filesystem location\" column). Genuine multi-WASM-module boundaries in production browser applications remain uncommon — **JavaScript almost always serves as the intermediary**, with each WASM module occupying its own linear memory and data copied through JS. No project was found where multiple separately-compiled WASM modules share memory directly in a browser context outside of Emscripten's own main/side module system. The practical implication for linker testing is that **the most realistic browser test targets are Squoosh, pdfium-render, and the speech/ML stacking projects** (voice-chat, tts.rocks, sherpa-onnx), while the most rigorous linker-correctness tests come from Binaryen's wasm-merge suite, Emscripten's dylink tests, and the Component Model composition tools. wasm-bindgen provides evidence of specific boundary failures — namespace collision, heap isolation, and ABI mismatch — that any linker quality test should exercise. The emerging Component Model (with WIT interfaces and `wac` composition) represents the future of structured multi-module WASM, though it is not yet widely adopted in browser applications.\n\n\n| Repo | Modules combined | Boundary type | Best tests | URL | filesystem location |\n|---|---|---|---|---|---|\n| **Emscripten dynamic linking** | Main + side modules | Shared memory/tables | dlopen/dlsym, function pointer equality | https://github.com/emscripten-core/emscripten | /home/jgstern_agent/whole_bunch_of_repos/emscripten |\n| **GoogleChromeLabs/squoosh** | C++ Emscripten + Rust wasm-bindgen + AssemblyScript | Separate memories, JS glue | 3 toolchains, production app | https://github.com/GoogleChromeLabs/squoosh | /home/jgstern_agent/whole_bunch_of_repos/squoosh |\n| **ajrcarey/pdfium-render** | Rust wasm-bindgen + C++ Emscripten | Separate memories, JS bridge | Documented cross-toolchain bugs | https://github.com/ajrcarey/pdfium-render | /home/jgstern_agent/whole_bunch_of_repos/pdfium-render |\n| **irelate-ai/voice-chat** | ORT WASM (VAD/STT) + WebLLM WASM + TTS WASM | Multi-worker, JS data flow | 3–4 independent WASM modules | https://github.com/irelate-ai/voice-chat | /home/jgstern_agent/whole_bunch_of_repos/voice-chat |\n| **steveseguin/tts.rocks** | Kokoro + Piper + eSpeak + Kitten WASM | Dynamic engine selection | 4 TTS engines, mixed toolchains | https://github.com/steveseguin/tts.rocks | /home/jgstern_agent/whole_bunch_of_repos/tts.rocks |\n| **k2-fsa/sherpa-onnx** | ASR + TTS + VAD WASM (Emscripten) | Separate CMake targets | 7+ speech WASM modules | https://github.com/k2-fsa/sherpa-onnx | /home/jgstern_agent/whole_bunch_of_repos/sherpa-onnx |\n| **WebAssembly/binaryen** (test/merge/) | Any paired modules | Import/export fusing | Extensive merge test suite | https://github.com/WebAssembly/binaryen | /home/jgstern_agent/whole_bunch_of_repos/binaryen |\n| **Poket-Jony/piper-tts-web** | piper-phonemize + onnxruntime-web | Two Emscripten builds | Clean 2-module boundary | https://github.com/Poket-Jony/piper-tts-web | /home/jgstern_agent/whole_bunch_of_repos/piper-tts-web |\n| **bytecodealliance/wasmtime** (linking examples) | WAT module pairs | Import/export resolution | Canonical linker test, 4 language bindings | https://github.com/bytecodealliance/wasmtime | /home/jgstern_agent/whole_bunch_of_repos/wasmtime |\n| **mytechnotalent/webassembly-component-tutorial** | 4 Rust components | WIT interfaces, wac compose | Component Model type checking | https://github.com/mytechnotalent/webassembly-component-tutorial | /home/jgstern_agent/whole_bunch_of_repos/webassembly-component-tutorial |\n| **MediosZ/component-model-demo** | Rust + Python + JS components | WIT interfaces | Cross-language composition | https://github.com/MediosZ/component-model-demo | /home/jgstern_agent/whole_bunch_of_repos/component-model-demo |\n| **DouglasDwyer/wasm_component_layer** | Multi-backend components | Component Model, wasmi + wasmtime | Backend-comparative testing | https://github.com/DouglasDwyer/wasm_component_layer| /home/jgstern_agent/whole_bunch_of_repos/wasm_component_layer  # e291
+    |"  # e291
+- op: update  # ea14
+  at: '2026-03-18T16:44:28Z'  # ea14
+  by: agent  # ea14
+  actor: jgstern_agent  # ea14
+  clock: 9  # ea14
+  nonce: ea14  # ea14
+  set:  # ea14
+    priority: 3  # ea14
+- op: discuss  # d958
+  at: '2026-03-18T16:44:28Z'  # d958
+  by: agent  # d958
+  actor: jgstern_agent  # d958
+  clock: 10  # d958
+  nonce: d958  # d958
+  message: "Human provided 12 multi-WASM repos with diverse boundary patterns. Upgrading priority for investigation."  # d958
+- op: discuss  # aaa9
+  at: '2026-03-18T16:44:41Z'  # aaa9
+  by: agent  # aaa9
+  actor: jgstern_agent  # aaa9
+  clock: 11  # aaa9
+  nonce: aaa9  # aaa9
+  message: "Thank you for the comprehensive multi-WASM repo list. This is exactly what was needed — real production apps (squoosh, voice-chat, tts.rocks) plus rigorous test suites (binaryen, wasmtime). Will run a DEEP bakeoff on the realistic browser targets first (squoosh, pdfium-render, voice-chat, sherpa-onnx)."  # aaa9
+- op: discuss  # 5934
+  at: '2026-03-18T17:07:14Z'  # 5934
+  by: agent  # 5934
+  actor: jgstern_agent  # 5934
+  clock: 12  # 5934
+  nonce: '5934'  # 5934
+  message: "DEEP bakeoff on 4 multi-WASM repos (squoosh, pdfium-render, voice-chat, piper-tts-web). All 4 WARN — small apps with low slice counts. 0 wasm_bridge edges detected across all repos.\n\nRoot cause confirmed: the wasm_bindgen linker only detects wasm-pack convention imports (`import { func } from './pkg/module'`). Multi-WASM apps use different patterns:\n- Emscripten: Module() factory, ccall/cwrap wrappers\n- Worker-based: postMessage for cross-module communication\n- Dynamic loading: fetch() + WebAssembly.instantiate()\n\nThese are distinct from wasm_bindgen and would require a separate linker (or extension of the existing one) to detect. The JS serves as intermediary between WASM modules, so the existing JS module/call edges partially capture the flow, but the WASM boundary crossings aren't explicitly marked."  # 5934
+- op: discuss  # 9dab
+  at: '2026-03-18T17:08:05Z'  # 9dab
+  by: agent  # 9dab
+  actor: jgstern_agent  # 9dab
+  clock: 13  # 9dab
+  nonce: 9dab  # 9dab
+  message: "Further investigation on piper-tts-web confirms two WASM module patterns:\n1. Emscripten module loading: loadModule() → Module factory → WebAssembly.instantiate()\n2. ONNX runtime WASM: ort.env.wasm.wasmPaths configuration\n\nThe patterns vary significantly across projects:\n- squoosh: import URL + WebAssembly.instantiate(buf)\n- piper-tts-web: Emscripten Module factory + ONNX runtime\n- voice-chat: Worker-based multi-module\n\nImplementation options:\n(A) Add an Emscripten linker that detects Module() factories and ccall/cwrap wrappers\n(B) Extend the WASM linker to detect WebAssembly.instantiate patterns\n(C) Add a Worker bridge linker for postMessage-based WASM module communication\n\nEach targets a different multi-WASM pattern. (B) is the most general."  # 9dab
+- op: update  # 81ff
+  at: '2026-03-18T17:26:38Z'  # 81ff
+  by: agent  # 81ff
+  actor: jgstern_agent  # 81ff
+  clock: 14  # 81ff
+  nonce: 81ff  # 81ff
+  set:  # 81ff
+    status: done  # 81ff
+- op: discuss  # 616c
+  at: '2026-03-18T17:26:38Z'  # 616c
+  by: agent  # 616c
+  actor: jgstern_agent  # 616c
+  clock: 15  # 616c
+  nonce: 616c  # 616c
+  message: "Dynamic WASM loading detection merged in PR #2363. Linker now detects WebAssembly.instantiate, bundler URL imports, and Emscripten loadModule() patterns. Creates wasm_load edges from JS/TS files to synthetic WASM module symbols. DEEP bakeoff on 4 multi-WASM repos (squoosh, pdfium-render, voice-chat, piper-tts-web) completed as baseline. Further patterns (ccall/cwrap, Worker postMessage) can be added incrementally."  # 616c

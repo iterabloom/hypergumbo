@@ -12,7 +12,15 @@ assignments:
   - node_type: var_declaration
     write: name
     read: value
+  # Range loop variable assignment
+  - node_type: range_clause
+    write: left
+    read: right
+  # Channel send/receive
+  - node_type: send_statement
+    write: channel
+    read: value
 
-calls:
-  - node_type: call_expression
-    read: arguments
+returns:
+  - node_type: return_statement
+    read: expression_list

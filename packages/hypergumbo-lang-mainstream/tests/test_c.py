@@ -1821,3 +1821,174 @@ class TestCallbackArgDetection:
         ]
         assert len(self_cb) == 0
 
+
+class TestStructDesignatedInitFptr:
+    """Tests for struct designated initializer function pointer tracking."""
+
+    def test_creates_edge(self, tmp_path: Path) -> None:
+        """Designated initializer .field = func creates dispatches_to edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "ops.c").write_text(
+            "struct ops { int (*connect)(int); };\n"
+            "int tcp_connect(int fd) { return 0; }\n"
+            "static struct ops tcp_ops = { .connect = tcp_connect };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) >= 1
+        assert any("tcp_connect" in e.dst for e in ptr_edges)
+
+    def test_non_function_value_skipped(self, tmp_path: Path) -> None:
+        """Integer values in designated initializers are skipped."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "config.c").write_text(
+            "struct config { int timeout; };\n"
+            "static struct config defaults = { .timeout = 30 };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 0
+
+    def test_unknown_function_skipped(self, tmp_path: Path) -> None:
+        """Unknown function name creates no edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "ops.c").write_text(
+            "struct ops { int (*connect)(int); };\n"
+            "static struct ops tcp_ops = { .connect = unknown_func };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 0
+
+    def test_multiple_fields(self, tmp_path: Path) -> None:
+        """Multiple fields create multiple edges with field metadata."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+        (tmp_path / "multi.c").write_text(
+            "struct ops { int (*open)(void); int (*close)(void); };\n"
+            "int my_open(void) { return 0; }\n"
+            "int my_close(void) { return 0; }\n"
+            "static struct ops my_ops = { .open = my_open, .close = my_close };\n"
+        )
+        result = analyze_c(tmp_path)
+        ptr_edges = [e for e in result.edges if e.evidence_type == "designated_init_fptr"]
+        assert len(ptr_edges) == 2
+        names = sorted(e.meta.get("field", "") for e in ptr_edges)
+        assert names == ["close", "open"]
+
+
+class TestCStableId:
+    """Tests for stable_id computation in C (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "example.c").write_text("int add(int a, int b) { return a + b; }\n")
+        result = analyze_c(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+    def test_struct_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("struct Point { int x; int y; };\n")
+        result = analyze_c(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Point")
+        assert struct.stable_id is not None
+        assert struct.stable_id.startswith("sha256:")
+
+
+class TestCUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges (stdlib calls like fopen, fread)."""
+
+    def test_stdlib_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to stdlib functions (fopen, fread) emit unresolved edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "io.c"
+        c_file.write_text("""
+#include <stdio.h>
+
+void read_file(const char *path) {
+    FILE *f = fopen(path, "r");
+    char buf[256];
+    fread(buf, 1, 256, f);
+    fclose(f);
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "fopen" in callee_names
+        assert "fread" in callee_names
+        assert "fclose" in callee_names
+        # All should have confidence 0.50
+        for e in unresolved:
+            assert e.confidence == 0.50
+            assert ":unresolved" in e.dst
+
+    def test_resolved_call_still_uses_resolved_edge(self, tmp_path: Path) -> None:
+        """When callee IS in project, use resolved edge (not unresolved)."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "calls.c"
+        c_file.write_text("""
+int helper() { return 42; }
+int main() { return helper(); }
+""")
+
+        result = analyze_c(tmp_path)
+
+        # helper() call should be resolved, not unresolved
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any(e.evidence_type == "ast_call_direct" for e in call_edges)
+        assert not any(e.evidence_type == "unresolved_external_call" for e in call_edges)
+
+    def test_unresolved_edge_has_correct_id_format(self, tmp_path: Path) -> None:
+        """Unresolved edge dst follows c:external:0-0:name:unresolved format."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "simple.c"
+        c_file.write_text("""
+void do_stuff() {
+    printf("hello");
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        assert len(unresolved) >= 1
+        printf_edge = next(e for e in unresolved if "printf" in e.dst)
+        assert printf_edge.dst == "c:external:0-0:printf:unresolved"
+
+
+class TestCShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "example.c").write_text("int add(int a, int b) { return a + b; }\n")
+        result = analyze_c(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_struct_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("struct Point { int x; int y; };\n")
+        result = analyze_c(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Point")
+        assert struct.shape_id is not None
+        assert struct.shape_id.startswith("sha256:")
+

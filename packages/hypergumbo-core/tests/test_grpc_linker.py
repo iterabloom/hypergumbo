@@ -393,6 +393,146 @@ class TestTtrpcPatterns:
         assert "cacheServer.Config" in impl_edges[0].src
 
 
+    def test_csi_server_interface_implements_rpc(self, tmp_path: Path) -> None:
+        """CSI-style XxxServer interface (no Unimplemented embedding) creates edges.
+
+        CSI (Container Storage Interface) implementations use external library
+        interfaces like csi.IdentityServer, csi.ControllerServer, csi.NodeServer.
+        These end in 'Server' rather than 'Service', and don't embed an
+        UnimplementedXxxServer struct.
+        """
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "csi.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package csi;\n"
+            "service Identity {\n"
+            "    rpc GetPluginInfo(GetPluginInfoRequest) returns (GetPluginInfoResponse);\n"
+            "    rpc Probe(ProbeRequest) returns (ProbeResponse);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "import csi \"github.com/container-storage-interface/spec/lib/go/csi\"\n\n"
+            "func (s *nonBlockingGRPCServer) serve(ids csi.IdentityServer) {\n"
+            "    csi.RegisterIdentityServer(server, ids)\n"
+            "}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{tmp_path}/driver.go:10-15:directVolume.GetPluginInfo:method",
+                name="directVolume.GetPluginInfo",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "driver.go"),
+                span=Span(10, 15, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/driver.go:17-22:directVolume.Probe:method",
+                name="directVolume.Probe",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "driver.go"),
+                span=Span(17, 22, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/driver.go:5-8:directVolume:struct",
+                name="directVolume",
+                kind="struct",
+                language="go",
+                path=str(tmp_path / "driver.go"),
+                span=Span(5, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+                meta={"base_classes": ["IdentityServer"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert len(impl_edges) == 2
+        src_methods = sorted(e.src.split(":")[-2] for e in impl_edges)
+        assert src_methods == [
+            "directVolume.GetPluginInfo",
+            "directVolume.Probe",
+        ]
+
+    def test_csi_server_skips_unimplemented_base_class(self, tmp_path: Path) -> None:
+        """base_classes containing UnimplementedXxx are filtered from Server matching."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "svc.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package pkg;\n"
+            "service Node {\n"
+            "    rpc NodePublish(Req) returns (Resp);\n"
+            "}\n"
+        )
+
+        go_syms = [
+            Symbol(
+                id=f"go:{tmp_path}/impl.go:10-12:nodeImpl.NodePublish:method",
+                name="nodeImpl.NodePublish",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "impl.go"),
+                span=Span(10, 12, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/impl.go:5-8:nodeImpl:struct",
+                name="nodeImpl",
+                kind="struct",
+                language="go",
+                path=str(tmp_path / "impl.go"),
+                span=Span(5, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+                # Has both Unimplemented and a real interface
+                meta={"base_classes": ["UnimplementedNodeServer", "NodeServer"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_syms)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        # Should still create 1 edge via the NodeServer interface
+        assert len(impl_edges) == 1
+        assert "nodeImpl.NodePublish" in impl_edges[0].src
+
+    def test_csi_controller_server_registration(self, tmp_path: Path) -> None:
+        """CSI RegisterControllerServer creates grpc_server symbol."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        go_file = tmp_path / "server.go"
+        go_file.write_text(
+            "package main\n\n"
+            "func (s *server) serve(cs csi.ControllerServer) {\n"
+            "    csi.RegisterControllerServer(grpcServer, cs)\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        assert any("Controller" in s.name for s in server_symbols), (
+            f"Expected Controller server symbol, got: {[s.name for s in server_symbols]}"
+        )
+
+
 class TestGrpcEdgeCreation:
     """Tests for edge creation linking clients to servers."""
 

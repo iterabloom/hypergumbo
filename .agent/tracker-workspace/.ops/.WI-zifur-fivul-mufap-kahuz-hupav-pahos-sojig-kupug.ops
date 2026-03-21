@@ -1,0 +1,60 @@
+- op: create  # 645e
+  at: '2026-03-17T09:12:26Z'  # 645e
+  by: agent  # 645e
+  actor: jgstern_agent  # 645e
+  clock: 1  # 645e
+  nonce: 645e  # 645e
+  data:  # 645e
+    kind: work_item  # 645e
+    title: "PlazaFlow readiness: crypto-flow pattern detection (HKDF/AES boundary tracing)"  # 645e
+    status: needs_human_review  # 645e
+    priority: 2  # 645e
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 645e
+    tags:  # 645e
+    - plazaflow  # 645e
+    - linker  # 645e
+    - crypto  # 645e
+    - dataflow  # 645e
+    before: []  # 645e
+    duplicate_of: []  # 645e
+    not_duplicate_of: []  # 645e
+    pr_ref:  # 645e
+    description: "PlazaFlow three-layer encryption (content/navigation/attribution DEKs from fragment key via HKDF-SHA-256, AES-256-GCM) is architecturally central. Agents debugging 'why can't a visitor read navigation data?' need to trace key derivation chains. Gap: no pattern set for WebCrypto API (crypto.subtle.deriveKey/encrypt/decrypt) or Rust equivalents (hkdf::Hkdf, aes_gcm::Aes256Gcm). Needs YAML-driven dataflow patterns producing derives_from/encrypts_with edges. Builds on ADR-0015 dataflow infrastructure. Bakeoff repos: arti (Tor client, heavy crypto), signal-related repos if available. Cross-refs: ADR-0015 dataflow YAMLs (WI-zobid done), existing dataflow_patterns/ directory."  # 645e
+    fields: {}  # 645e
+- op: discuss  # 2fa1
+  at: '2026-03-17T20:34:55Z'  # 2fa1
+  by: human  # 2fa1
+  actor: jgstern  # 2fa1
+  clock: 2  # 2fa1
+  nonce: 2fa1  # 2fa1
+  message: "arti: /home/jgstern_agent/plazaflow_deep_repos/cohort6_crypto/arti/\nlibsignal: /home/jgstern_agent/plazaflow_deep_repos/cohort6_crypto/libsignal/"  # 2fa1
+- op: update  # 932c
+  at: '2026-03-17T20:35:08Z'  # 932c
+  by: human  # 932c
+  actor: jgstern  # 932c
+  clock: 3  # 932c
+  nonce: 932c  # 932c
+  set:  # 932c
+    status: todo_soft  # 932c
+- op: discuss  # cbb4
+  at: '2026-03-17T23:41:21Z'  # cbb4
+  by: agent  # cbb4
+  actor: jgstern_agent  # cbb4
+  clock: 4  # cbb4
+  nonce: cbb4  # cbb4
+  message: "Acknowledged. Will test crypto-flow patterns against arti and libsignal."  # cbb4
+- op: update  # c7b2
+  at: '2026-03-18T01:51:56Z'  # c7b2
+  by: agent  # c7b2
+  actor: jgstern_agent  # c7b2
+  clock: 5  # c7b2
+  nonce: c7b2  # c7b2
+  set:  # c7b2
+    status: done  # c7b2
+- op: discuss  # 7abf
+  at: '2026-03-18T01:51:56Z'  # 7abf
+  by: agent  # 7abf
+  actor: jgstern_agent  # 7abf
+  clock: 6  # 7abf
+  nonce: 7abf  # 7abf
+  message: "Crypto-flow linker implemented in PR #2331. Covers WebCrypto API (encrypt/decrypt/deriveKey etc.) and Rust crypto crates (hkdf, aes-gcm, aes-gcm-siv, ChaCha20Poly1305). Also fixed missing cli.py imports for yjs-crdt and annotation-convention linkers."  # 7abf

@@ -72,11 +72,15 @@ from hypergumbo_core.analyze.base import (
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("javascript")
+
+# ADR-0015: Dataflow config for JS/TS — loaded once at module level
+_df_config = get_dataflow_config("javascript")
 
 
 def find_js_ts_files(
@@ -745,6 +749,102 @@ def _extract_param_types(
                 param_types[param_name] = param_type
 
     return param_types
+
+
+def _build_jsx_route_meta(
+    route_path: str,
+    component_name: str | None,
+    lazy_import_map: dict[str, str],
+) -> dict[str, object]:
+    """Build metadata dict for a JSX Route symbol.
+
+    If the component is a React.lazy() wrapper, adds lazy_import metadata
+    so the route can be traced through to the actual module.
+    """
+    meta: dict[str, object] = {
+        "route_path": route_path,
+        "http_method": "GET",
+        "handler_ref": component_name,
+    }
+    if component_name and component_name in lazy_import_map:
+        meta["lazy_import"] = lazy_import_map[component_name]
+    return meta
+
+
+def _collect_react_lazy_declaration(
+    node: "tree_sitter.Node",
+    source: bytes,
+    lazy_map: dict[str, str],
+) -> None:
+    """Collect React.lazy(() => import('./path')) variable declarations.
+
+    Detects both ``React.lazy(...)`` and ``lazy(...)`` forms (the latter when
+    lazy is imported directly: ``import { lazy } from 'react'``).
+
+    Populates lazy_map with variable_name → import_path mappings so that
+    JSX route detection can annotate routes with lazy_import metadata.
+
+    Handles:
+    - ``const Foo = React.lazy(() => import('./Foo'))``
+    - ``const Foo = lazy(() => import('./Foo'))``
+    - Both ``variable_declarator`` nodes and ``lexical_declaration`` parents
+    """
+    # We want variable_declarator nodes: const Foo = React.lazy(...)
+    declarators: list["tree_sitter.Node"] = []
+    if node.type == "variable_declarator":
+        declarators.append(node)
+    elif node.type == "lexical_declaration":
+        for child in node.children:
+            if child.type == "variable_declarator":
+                declarators.append(child)
+
+    for decl in declarators:
+        var_name = None
+        call_node = None
+        for child in decl.children:
+            if child.type == "identifier":
+                var_name = _node_text(child, source)
+            elif child.type == "call_expression":
+                call_node = child
+
+        if var_name is None or call_node is None:
+            continue
+
+        # Check if the call is React.lazy(...) or lazy(...)
+        fn_node = call_node.children[0] if call_node.children else None
+        if fn_node is None:  # pragma: no cover - call_expression always has function node
+            continue
+
+        is_lazy = False
+        if fn_node.type == "member_expression":
+            text = _node_text(fn_node, source)
+            if text == "React.lazy":
+                is_lazy = True
+        elif fn_node.type == "identifier":
+            if _node_text(fn_node, source) == "lazy":
+                is_lazy = True
+
+        if not is_lazy:
+            continue
+
+        # Extract the dynamic import path from the arrow function argument:
+        # React.lazy(() => import('./path'))
+        args_node = None
+        for child in call_node.children:
+            if child.type == "arguments":
+                args_node = child
+                break
+
+        if args_node is None:  # pragma: no cover - call_expression always has arguments
+            continue
+
+        # The argument should be an arrow function containing import()
+        for arg in args_node.children:
+            if arg.type == "arrow_function":
+                import_path = _extract_lazy_import_path(arg, source)
+                if import_path:
+                    lazy_map[var_name] = import_path
+                break
 
 
 def _detect_jsx_route(
@@ -2693,6 +2793,13 @@ def _extract_symbols(
     # Track nodes we've already processed as route handlers (to avoid duplicates)
     processed_handlers: set[int] = set()
 
+    # Pre-pass: collect React.lazy(() => import('./path')) declarations.
+    # Maps variable name → dynamic import path for lazy_import metadata on routes.
+    lazy_import_map: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type in ("variable_declarator", "lexical_declaration"):
+            _collect_react_lazy_declaration(node, source, lazy_import_map)
+
     for node in iter_tree(tree.root_node):
         # Skip nodes we've already processed as route handlers
         if id(node) in processed_handlers:
@@ -2781,11 +2888,9 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", route_path),
-                    meta={
-                        "route_path": route_path,
-                        "http_method": "GET",
-                        "handler_ref": component_name,
-                    },
+                    meta=_build_jsx_route_meta(
+                        route_path, component_name, lazy_import_map,
+                    ),
                 )
                 symbols.append(symbol)
                 # Don't continue — let tree walk also process child nodes
@@ -2852,7 +2957,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -2904,6 +3009,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            shape_id=_jsts_analyzer.compute_shape_id(value_node),
                         )
                         symbols.append(symbol)
 
@@ -2939,7 +3045,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -2962,7 +3068,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -2985,7 +3091,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3012,7 +3118,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3075,7 +3181,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
-
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -3110,6 +3216,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            shape_id=_jsts_analyzer.compute_shape_id(child),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
@@ -4286,6 +4393,9 @@ def _analyze_javascript_impl(
             symbols_by_name,
             module_symbol=file_mod_sym,
         )
+        # ADR-0015 Tier 1: automatic dataflow annotation from AST context
+        if _df_config is not None:
+            annotate_dataflow(edges, pf.tree, pf.source, _df_config)
         all_edges.extend(edges)
 
     # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)

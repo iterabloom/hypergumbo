@@ -34,6 +34,7 @@ from hypergumbo_core.ranking import (
     compute_harmonic_shares,
     _compute_centrality_with_python,
     _has_logging_concept,
+    _extract_path_from_id,
 )
 
 
@@ -155,6 +156,66 @@ class TestComputeCentrality:
         result = compute_centrality([foo], [edge])
 
         assert result[foo.id] == 0.0
+
+    def test_edge_type_weights(self):
+        """Edge type weighting reduces import edge influence."""
+        target = make_symbol("core")
+        caller1 = make_symbol("caller1")
+        caller2 = make_symbol("caller2")
+
+        # One call edge + one import edge to target
+        call_edge = make_edge(caller1.id, target.id, edge_type="calls")
+        import_edge = make_edge(caller2.id, target.id, edge_type="imports")
+
+        # Without weights: both count equally
+        result_equal = compute_centrality(
+            [target, caller1, caller2],
+            [call_edge, import_edge],
+        )
+
+        # With weights: imports count less
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+        result_weighted = compute_centrality(
+            [target, caller1, caller2],
+            [call_edge, import_edge],
+            edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+
+        # Both give target the highest score, but weighted score is lower
+        # because import edge contributes less
+        assert result_equal[target.id] == 1.0
+        assert result_weighted[target.id] == 1.0  # Still normalized to 1.0
+        # The absolute score before normalization is lower with weighting
+
+    def test_edge_type_weights_changes_ranking(self):
+        """Edge type weighting can change relative rankings."""
+        api = make_symbol("api_handler")
+        util = make_symbol("utility")
+        c1 = make_symbol("c1")
+        c2 = make_symbol("c2")
+        c3 = make_symbol("c3")
+
+        # api_handler: called 1 time (calls edge)
+        # utility: imported 3 times (import edges)
+        edges = [
+            make_edge(c1.id, api.id, edge_type="calls"),
+            make_edge(c1.id, util.id, edge_type="imports"),
+            make_edge(c2.id, util.id, edge_type="imports"),
+            make_edge(c3.id, util.id, edge_type="imports"),
+        ]
+
+        # Without weights: utility ranks higher (3 > 1)
+        result_equal = compute_centrality(
+            [api, util, c1, c2, c3], edges,
+        )
+        assert result_equal[util.id] > result_equal[api.id]
+
+        # With weights: imports at 0.3 → utility gets 0.9, api gets 1.0
+        result_weighted = compute_centrality(
+            [api, util, c1, c2, c3], edges,
+            edge_type_weights={"calls": 1.0, "imports": 0.3},
+        )
+        assert result_weighted[api.id] > result_weighted[util.id]
 
 
 class TestBidirectionalCentrality:
@@ -1096,8 +1157,8 @@ class TestFilterEdgesForRanking:
         result = filter_edges_for_ranking([edge], [base, test_sym])
         assert len(result) == 1
 
-    def test_excludes_import_edges(self):
-        """Import edges are excluded by default."""
+    def test_includes_import_edges_by_default(self):
+        """Import edges are included by default (weighted in centrality)."""
         a = make_symbol("a", path="src/a.py")
         b = make_symbol("b", path="src/b.py")
         import_edge = make_edge(a.id, b.id, edge_type="imports")
@@ -1105,6 +1166,19 @@ class TestFilterEdgesForRanking:
 
         result = filter_edges_for_ranking(
             [import_edge, call_edge], [a, b]
+        )
+        assert len(result) == 2
+
+    def test_excludes_import_edges_when_requested(self):
+        """Import edges are excluded when exclude_import_edges=True."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+        call_edge = make_edge(a.id, b.id, edge_type="calls")
+
+        result = filter_edges_for_ranking(
+            [import_edge, call_edge], [a, b],
+            exclude_import_edges=True,
         )
         assert len(result) == 1
         assert result[0].edge_type == "calls"
@@ -1142,7 +1216,7 @@ class TestFilterEdgesForRanking:
         test_sym = make_symbol("test", path="tests/test.py")
         # Test edge (should be filtered by test filter)
         e1 = make_edge(test_sym.id, prod.id, edge_type="calls")
-        # Import edge from prod (should be filtered by import filter)
+        # Import edge from prod (kept by default — imports included with weighting)
         e2 = make_edge(prod.id, test_sym.id, edge_type="imports")
         # Low-confidence prod edge (should be filtered by confidence)
         e3 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.1)
@@ -1153,8 +1227,99 @@ class TestFilterEdgesForRanking:
             [e1, e2, e3, e4], [prod, test_sym],
             min_edge_confidence=0.5,
         )
+        # e1 filtered (test), e2 kept (import, above confidence), e3 filtered (low conf), e4 kept
+        assert len(result) == 2
+        assert e2 in result
+        assert e4 in result
+
+    def test_combined_filters_with_import_exclusion(self):
+        """Multiple filters combine correctly with explicit import exclusion."""
+        prod = make_symbol("prod", path="src/main.py")
+        test_sym = make_symbol("test", path="tests/test.py")
+        e1 = make_edge(test_sym.id, prod.id, edge_type="calls")
+        e2 = make_edge(prod.id, test_sym.id, edge_type="imports")
+        e3 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.1)
+        e4 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.9)
+
+        result = filter_edges_for_ranking(
+            [e1, e2, e3, e4], [prod, test_sym],
+            exclude_import_edges=True,
+            min_edge_confidence=0.5,
+        )
         assert len(result) == 1
         assert result[0] is e4
+
+
+    def test_excludes_import_edges_from_phantom_test_sources(self):
+        """Import edges from file-level pseudo-symbols in test files are filtered.
+
+        File-level symbols (kind=file) may not be in the behavior map nodes.
+        When exclude_test_edges=True, the filter must still detect test-file
+        origins by parsing the source symbol ID, not just by looking up the
+        symbol in the nodes list.  Without this fallback, import edges from
+        test files leak through and inflate centrality of imported symbols.
+        """
+        prod = make_symbol("MyClass", path="src/models.py", kind="class")
+        # Phantom test source: file-level symbol not in the symbol list
+        phantom_test_id = "python:test/e2e/test_sklearn.py:1-1:file:file"
+        import_edge = make_edge(phantom_test_id, prod.id, edge_type="imports")
+
+        # With imports included (exclude_import_edges=False), the test-edge
+        # filter should still catch this edge via ID-based path extraction.
+        result = filter_edges_for_ranking(
+            [import_edge], [prod],  # phantom source NOT in symbol list
+            exclude_test_edges=True,
+            exclude_import_edges=False,
+        )
+        assert len(result) == 0, (
+            "Import edge from phantom test source should be filtered out"
+        )
+
+    def test_keeps_import_edges_from_phantom_prod_sources(self):
+        """Import edges from phantom non-test sources are kept."""
+        prod = make_symbol("MyClass", path="src/models.py", kind="class")
+        phantom_prod_id = "python:src/api/__init__.py:1-1:file:file"
+        import_edge = make_edge(phantom_prod_id, prod.id, edge_type="imports")
+
+        result = filter_edges_for_ranking(
+            [import_edge], [prod],
+            exclude_test_edges=True,
+            exclude_import_edges=False,
+        )
+        assert len(result) == 1, (
+            "Import edge from phantom prod source should be kept"
+        )
+
+
+class TestExtractPathFromId:
+    """Tests for _extract_path_from_id helper."""
+
+    def test_standard_symbol_id(self):
+        """Extracts path from standard symbol ID format."""
+        sid = "python:src/main.py:1-10:function:foo"
+        assert _extract_path_from_id(sid) == "src/main.py"
+
+    def test_file_level_symbol(self):
+        """Extracts path from file-level pseudo-symbol."""
+        sid = "python:test/e2e/test_sklearn.py:1-1:file:file"
+        assert _extract_path_from_id(sid) == "test/e2e/test_sklearn.py"
+
+    def test_absolute_path(self):
+        """Extracts absolute path from symbol ID."""
+        sid = "python:/home/user/project/src/main.py:1-10:function:foo"
+        assert _extract_path_from_id(sid) == "/home/user/project/src/main.py"
+
+    def test_empty_string(self):
+        """Empty input returns empty string."""
+        assert _extract_path_from_id("") == ""
+
+    def test_no_colon(self):
+        """Input without colon returns empty string."""
+        assert _extract_path_from_id("nocolon") == ""
+
+    def test_malformed_id(self):
+        """Malformed ID (no line range) returns empty string."""
+        assert _extract_path_from_id("python:src/main.py") == ""
 
 
 class TestRankFiles:
@@ -1245,16 +1410,32 @@ class TestRankFiles:
         main_file = next(r for r in result if r.path == "src/main.py")
         assert main_file.density_score == 0.0
 
-    def test_filters_import_edges(self):
-        """Import edges are filtered from file ranking by default."""
+    def test_import_edges_weighted_low_in_file_ranking(self):
+        """Import edges contribute low-weight centrality to file ranking."""
         a = make_symbol("a", path="src/a.py")
         b = make_symbol("b", path="src/b.py")
-        # Import edge only
+        c = make_symbol("c", path="src/c.py")
+        # Import edge only to b
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+        # Call edge to c
+        call_edge = make_edge(a.id, c.id, edge_type="calls")
+
+        result = rank_files([a, b, c], [import_edge, call_edge])
+
+        b_file = next(r for r in result if r.path == "src/b.py")
+        c_file = next(r for r in result if r.path == "src/c.py")
+
+        # c (call edge, weight 1.0) should rank above b (import edge, weight 0.3)
+        assert c_file.rank < b_file.rank
+
+    def test_import_edges_excluded_when_requested(self):
+        """Import edges excluded from file ranking when explicitly requested."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
         edges = [make_edge(a.id, b.id, edge_type="imports")]
 
-        result = rank_files([a, b], edges)
+        result = rank_files([a, b], edges, exclude_import_edges=True)
 
-        # With import edges filtered, b has 0 in-degree
         b_file = next(r for r in result if r.path == "src/b.py")
         assert b_file.density_score == 0.0
 
@@ -2021,20 +2202,22 @@ class TestCentralityResultDeduplication:
 
 
 class TestExcludeImportEdgesCentrality:
-    """Tests for import edge exclusion from centrality computation.
+    """Tests for import edge weighting in centrality computation.
 
-    Import edges (imports, imports_module) represent file-level visibility,
-    not actual call relationships. Including them inflates in-degree for
-    widely-imported symbols (string utilities, type aliases) without
-    reflecting architectural significance. These tests verify that
-    rank_symbols filters import edges by default.
+    Import edges (imports, imports_module) are included by default but
+    weighted lower than call edges via DEFAULT_EDGE_TYPE_WEIGHTS (imports
+    get 0.3x, imports_module gets 0.2x). This prevents widely-imported
+    symbols from dominating while still giving them a small signal.
+    Call edges (weight 1.0) dominate rankings. Callers can still pass
+    exclude_import_edges=True for binary exclusion.
     """
 
-    def test_import_edges_excluded_by_default(self):
-        """rank_symbols excludes import edges from centrality by default.
+    def test_call_edges_outrank_import_edges_by_default(self):
+        """With weighted inclusion (default), call edges dominate imports.
 
-        A symbol with 3 import edges and 0 call edges should have lower
-        centrality than a symbol with 2 call edges and 0 import edges.
+        A symbol with 2 call edges (weight 1.0 each) should rank above a
+        symbol with 3 import edges (weight 0.3 each = 0.9 effective).
+        The call-based symbol has more effective in-degree.
         """
         imported_sym = make_symbol("StringUtils", path="src/utils.py")
         called_sym = make_symbol("Router", path="src/router.py")
@@ -2045,11 +2228,11 @@ class TestExcludeImportEdgesCentrality:
         importer3 = make_symbol("mod3", path="src/mod3.py")
 
         edges = [
-            # 3 import edges to StringUtils
+            # 3 import edges to StringUtils (0.3 weight each = 0.9 effective)
             make_edge(importer1.id, imported_sym.id, edge_type="imports"),
             make_edge(importer2.id, imported_sym.id, edge_type="imports"),
             make_edge(importer3.id, imported_sym.id, edge_type="imports"),
-            # 2 call edges to Router
+            # 2 call edges to Router (1.0 weight each = 2.0 effective)
             make_edge(caller1.id, called_sym.id, edge_type="calls"),
             make_edge(caller2.id, called_sym.id, edge_type="calls"),
         ]
@@ -2063,15 +2246,19 @@ class TestExcludeImportEdgesCentrality:
         router_ranked = next(r for r in result if r.symbol.name == "Router")
         utils_ranked = next(r for r in result if r.symbol.name == "StringUtils")
 
-        # Router (2 call edges) should rank above StringUtils (0 call edges,
-        # 3 import edges excluded)
+        # Router (2 call edges, 2.0 effective) should rank above StringUtils
+        # (3 import edges, 0.9 effective) even with weighted inclusion
         assert router_ranked.rank < utils_ranked.rank, (
             f"Router (rank {router_ranked.rank}) should rank above "
-            f"StringUtils (rank {utils_ranked.rank}) when import edges excluded"
+            f"StringUtils (rank {utils_ranked.rank}) with weighted import inclusion"
+        )
+        # StringUtils should still have non-zero centrality from import edges
+        assert utils_ranked.raw_centrality > 0, (
+            "StringUtils should have non-zero centrality from weighted import edges"
         )
 
-    def test_imports_module_edges_also_excluded(self):
-        """imports_module edges (JS/TS) are also excluded from centrality."""
+    def test_imports_module_edges_weighted_low(self):
+        """imports_module edges (JS/TS) are weighted at 0.2 in centrality."""
         js_module = make_symbol("helpers", path="src/helpers.ts", language="typescript")
         js_caller = make_symbol("app", path="src/app.ts", language="typescript")
         importer1 = make_symbol("comp1", path="src/comp1.ts", language="typescript")
@@ -2087,9 +2274,9 @@ class TestExcludeImportEdgesCentrality:
         result = rank_symbols(all_symbols, edges)
 
         module_ranked = next(r for r in result if r.symbol.name == "helpers")
-        # With import exclusion, helpers has 1 call edge (not 3 total)
-        # Its raw centrality should reflect only the call edge
-        assert module_ranked.raw_centrality > 0  # Still has 1 call edge
+        # With weighted inclusion, helpers has 1 call edge (1.0) + 2 imports_module (0.2 each)
+        # Total effective in-degree = 1.4
+        assert module_ranked.raw_centrality > 0
 
     def test_exclude_import_edges_false(self):
         """When exclude_import_edges=False, import edges count toward centrality."""
@@ -2134,12 +2321,12 @@ class TestExcludeImportEdgesCentrality:
         assert core_with.raw_centrality == core_without.raw_centrality
 
     def test_mixed_call_and_import_edges(self):
-        """Symbol with both call and import edges: only call edges counted.
+        """Symbol with both call and import edges: inclusion adds import signal.
 
-        A symbol that is both imported and called should have centrality
-        based only on call edges when import exclusion is active.
-        We use a reference symbol with 2 call edges to make normalization
-        reveal the difference.
+        A symbol that is both imported and called should have higher
+        centrality with import inclusion (default) than with explicit
+        import exclusion. We use a reference symbol with 2 call edges
+        to make normalization reveal the difference.
         """
         target = make_symbol("Database", path="src/db.py")
         reference = make_symbol("Router", path="src/router.py")

@@ -666,3 +666,42 @@ class TestErlangDocstrings:
         )
         assert func is not None
         assert func.docstring is None
+
+    def test_find_erlang_files(self, tmp_path: Path) -> None:
+        """find_erlang_files yields .erl and .hrl files."""
+        from hypergumbo_lang_common.erlang import find_erlang_files
+
+        (tmp_path / "mod.erl").write_text("-module(mod).\n")
+        (tmp_path / "hdr.hrl").write_text("-define(X, 1).\n")
+        (tmp_path / "other.txt").write_text("not erlang\n")
+        files = list(find_erlang_files(tmp_path))
+        names = {f.name for f in files}
+        assert "mod.erl" in names
+        assert "hdr.hrl" in names
+        assert "other.txt" not in names
+
+    def test_local_call_resolves_by_base_name(self, tmp_path: Path) -> None:
+        """Local calls resolve to same-file functions by base_name (without arity)."""
+        (tmp_path / "my_module.erl").write_text(
+            "-module(my_module).\n"
+            "-export([run/0, helper/1]).\n"
+            "run() -> helper(42).\n"
+            "helper(X) -> X + 1.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # run/0 should call helper/1 via local resolution
+        run_calls = [e for e in call_edges if "run" in e.src and "helper" in e.dst]
+        assert len(run_calls) == 1
+
+    def test_unresolved_local_call_no_crash(self, tmp_path: Path) -> None:
+        """Calling a function that doesn't exist locally or globally doesn't crash."""
+        (tmp_path / "caller.erl").write_text(
+            "-module(caller).\n"
+            "run() -> nonexistent_function(42).\n",
+        )
+        result = analyze_erlang(tmp_path)
+        # Should not crash; nonexistent call just produces no edge
+        call_edges = [e for e in result.edges if e.edge_type == "calls"
+                      and "nonexistent" in e.dst]
+        assert len(call_edges) == 0

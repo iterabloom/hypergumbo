@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Lua (tree-sitter grammar)
+language: lua
+
+assignments:
+  - node_type: assignment_statement
+    write: variables
+    read: values
+  - node_type: variable_declaration
+    write: name
+    read: value

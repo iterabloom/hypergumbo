@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -301,6 +302,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=_analyzer.compute_stable_id(node, kind="class"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[class_name] = symbol
@@ -328,6 +331,8 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="protocol"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[protocol_name] = symbol
@@ -360,6 +365,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    stable_id=_analyzer.compute_stable_id(node, kind="method"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.methods_by_name[method_name] = symbol
@@ -386,6 +393,8 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="property"),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
 
@@ -537,6 +546,11 @@ def _extract_edges_from_file(
                             confidence=0.75 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                        ))
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "objc", current_method.id, selector,
+                            line, PASS_ID, run.execution_id,
                         ))
 
     return edges

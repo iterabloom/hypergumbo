@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -409,6 +410,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[class_name] = symbol
 
             # Interface declaration
@@ -437,6 +439,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[iface_name] = symbol
 
             # Trait declaration (Groovy-specific)
@@ -467,6 +470,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[trait_name] = symbol
 
             # Enum declaration
@@ -495,6 +499,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[enum_name] = symbol
 
             # Method declaration (inside class/trait)
@@ -544,6 +549,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         meta=method_meta,
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[method_name] = symbol
                     analysis.symbol_by_name[full_name] = symbol
 
@@ -584,6 +590,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         modifiers=modifiers,
                     )
                     analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[func_name] = symbol
 
         return analysis
@@ -782,6 +789,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                    ))
+                                else:
+                                    edges.append(make_unresolved_edge(
+                                        "groovy", current_function.id, callee_name,
+                                        node.start_point[0] + 1, PASS_ID, run.execution_id,
                                     ))
 
         return edges

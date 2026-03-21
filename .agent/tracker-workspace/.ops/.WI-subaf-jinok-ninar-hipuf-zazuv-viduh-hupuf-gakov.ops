@@ -1,0 +1,68 @@
+- op: create  # 0262
+  at: '2026-03-17T09:14:23Z'  # 0262
+  by: agent  # 0262
+  actor: jgstern_agent  # 0262
+  clock: 1  # 0262
+  nonce: '0262'  # 0262
+  data:  # 0262
+    kind: work_item  # 0262
+    title: "PlazaFlow readiness: multi-crate Rust workspace cross-crate resolution"  # 0262
+    status: needs_human_review  # 0262
+    priority: 2  # 0262
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 0262
+    tags:  # 0262
+    - plazaflow  # 0262
+    - analyzer  # 0262
+    - rust  # 0262
+    before: []  # 0262
+    duplicate_of: []  # 0262
+    not_duplicate_of: []  # 0262
+    pr_ref:  # 0262
+    description: "PlazaFlow will be a Cargo workspace: relay crate, Tauri app crate, FUSE guest daemon crate, Polis-lite WASM crate, shared types crate. Need to verify Rust analyzer traces cross-crate dependencies (use plazaflow_types::ChunkPointer across workspace crates). If analysis is scoped per-crate, it misses the most important edges. Existing work: WI-gahuk (Rust cross-file call resolution, done) fixed intra-crate cross-file calls. Gap may be inter-crate. Bakeoff repos: wasmtime (large Cargo workspace), firecracker (multi-crate VMM — directly analogous to PlazaFlow's libkrun usage), ripgrep (smaller workspace). Cross-refs: WI-gahuk (done, Rust cross-file calls), INV-kobad (Feature Parity Across Language Families)."  # 0262
+    fields: {}  # 0262
+- op: update  # a0f5
+  at: '2026-03-17T17:09:12Z'  # a0f5
+  by: agent  # a0f5
+  actor: jgstern_agent  # a0f5
+  clock: 2  # a0f5
+  nonce: a0f5  # a0f5
+  set: {}  # a0f5
+  add:  # a0f5
+    before: [INV-jisit-tokir-sogos-fipip-mubot-tirol-pinom-bumuz]  # a0f5
+- op: discuss  # 8c77
+  at: '2026-03-17T20:26:50Z'  # 8c77
+  by: human  # 8c77
+  actor: jgstern  # 8c77
+  clock: 3  # 8c77
+  nonce: 8c77  # 8c77
+  message: "wasmtime: /home/jgstern_agent/whole_bunch_of_repos/wasmtime\nfirecracker: /home/jgstern_agent/plazaflow_deep_repos/cohort7_compute/firecracker/\nripgrep: /home/jgstern_agent/whole_bunch_of_repos/ripgrep"  # 8c77
+- op: update  # d8b7
+  at: '2026-03-17T20:27:02Z'  # d8b7
+  by: human  # d8b7
+  actor: jgstern  # d8b7
+  clock: 4  # d8b7
+  nonce: d8b7  # d8b7
+  set:  # d8b7
+    status: todo_soft  # d8b7
+- op: discuss  # 0fab
+  at: '2026-03-17T23:41:21Z'  # 0fab
+  by: agent  # 0fab
+  actor: jgstern_agent  # 0fab
+  clock: 5  # 0fab
+  nonce: 0fab  # 0fab
+  message: "Acknowledged. Will test multi-crate resolution against wasmtime, firecracker, ripgrep."  # 0fab
+- op: update  # b41a
+  at: '2026-03-18T02:22:08Z'  # b41a
+  by: agent  # b41a
+  actor: jgstern_agent  # b41a
+  clock: 6  # b41a
+  nonce: b41a  # b41a
+  set:  # b41a
+    status: done  # b41a
+- op: discuss  # ccd9
+  at: '2026-03-18T02:22:08Z'  # ccd9
+  by: agent  # ccd9
+  actor: jgstern_agent  # ccd9
+  clock: 7  # ccd9
+  nonce: ccd9  # ccd9
+  message: "Verified multi-crate Rust workspace resolution on ripgrep (913 cross-crate edges across 6 workspace crates) and firecracker (664 cross-crate edges). The Rust analyzer correctly resolves calls across crate boundaries (e.g., cli→globset, cli→core, vmm→utils). No code changes needed."  # ccd9

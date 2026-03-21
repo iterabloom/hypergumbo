@@ -165,7 +165,7 @@ class TestAnalyzeCOBOL:
         # External calls have lower confidence (0.70)
         for edge in call_edges:
             if "external" in edge.dst:
-                assert edge.confidence == 0.70
+                assert edge.confidence == 0.50
 
     def test_handles_cpy_copybooks(self, tmp_path: Path) -> None:
         """Should analyze COBOL copybook files when they have full program structure."""

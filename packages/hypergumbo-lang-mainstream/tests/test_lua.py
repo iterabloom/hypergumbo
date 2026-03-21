@@ -749,7 +749,7 @@ end
         assert edge is not None, (
             f"Unresolved method call edge not found. Edges: {call_edges}"
         )
-        assert "?" in edge.dst  # Unresolved target
+        assert "unresolved" in edge.dst  # Unresolved target
         assert edge.confidence == 0.50
 
     def test_non_require_dot_call_unaffected(self, tmp_path: Path) -> None:
@@ -777,3 +777,20 @@ end
         assert helper_edge is not None
         # Non-require dot calls should not have require_alias_call evidence
         assert helper_edge.evidence_type != "require_alias_call"
+
+
+class TestLuaStableShapeId:
+    """Tests for stable_id and shape_id in Lua (ADR-0014 §1-2)."""
+
+    def test_function_has_stable_and_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        (tmp_path / "example.lua").write_text(
+            "function greet(name)\n  print('Hello ' .. name)\nend\n"
+        )
+        result = analyze_lua(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function" and s.name == "greet")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")

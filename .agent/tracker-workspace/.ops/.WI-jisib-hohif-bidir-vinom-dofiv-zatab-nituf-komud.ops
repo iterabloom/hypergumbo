@@ -1,0 +1,71 @@
+- op: create  # 176b
+  at: '2026-03-17T09:13:45Z'  # 176b
+  by: agent  # 176b
+  actor: jgstern_agent  # 176b
+  clock: 1  # 176b
+  nonce: 176b  # 176b
+  data:  # 176b
+    kind: work_item  # 176b
+    title: "PlazaFlow readiness: protocol message dispatch mapping (typed wire protocol)"  # 176b
+    status: needs_human_review  # 176b
+    priority: 2  # 176b
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 176b
+    tags:  # 176b
+    - plazaflow  # 176b
+    - linker  # 176b
+    - protocol  # 176b
+    before:  # 176b
+    - WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam  # 176b
+    duplicate_of: []  # 176b
+    not_duplicate_of: []  # 176b
+    pr_ref:  # 176b
+    description: "PlazaFlow binary relay wire protocol defines typed messages (JOIN, LEAVE, SDP/ICE, YJS_SYNC, etc.) with send sites in TS and receive handlers in Rust. Structurally identical to gRPC/message-queue linking: match message type names across send/receive. Gap: no generalized message dispatch pattern for custom wire protocols. Existing gRPC and message_queue linkers do topic matching but are framework-specific. Need a YAML-driven message type registry pattern (detect enum variants or string constants in send/receive contexts). Bakeoff repos: microservices-demo (gRPC, validates generalization), dash.js (custom protocol messages), any WebSocket-based protocol repo. Cross-refs: linkers/grpc.py (done), linkers/message_queue.py (done), INV-jamad (Linker DSL Name Resolution — name matching across boundaries)."  # 176b
+    fields: {}  # 176b
+- op: discuss  # f6b1
+  at: '2026-03-17T09:21:42Z'  # f6b1
+  by: agent  # f6b1
+  actor: jgstern_agent  # f6b1
+  clock: 2  # f6b1
+  nonce: f6b1  # f6b1
+  message: "Overlaps with WI-logok (annotation convention, todo_soft). WI-logok proposes @hg:publishes/@hg:subscribes comment annotations as a fallback for custom wire protocols. This item (WI-jisib) proposes automatic detection of typed message dispatch (enum variants, string constants). Both approaches are complementary — auto-detect where possible, annotate where not."  # f6b1
+- op: update  # cb9a
+  at: '2026-03-17T17:01:26Z'  # cb9a
+  by: agent  # cb9a
+  actor: jgstern_agent  # cb9a
+  clock: 3  # cb9a
+  nonce: cb9a  # cb9a
+  set: {}  # cb9a
+  remove:  # cb9a
+    before: [WI-mamuh]  # cb9a
+- op: update  # ee39
+  at: '2026-03-17T18:23:50Z'  # ee39
+  by: agent  # ee39
+  actor: jgstern_agent  # ee39
+  clock: 4  # ee39
+  nonce: ee39  # ee39
+  set: {}  # ee39
+  remove:  # ee39
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # ee39
+- op: update  # edc6
+  at: '2026-03-17T19:07:22Z'  # edc6
+  by: human  # edc6
+  actor: jgstern  # edc6
+  clock: 5  # edc6
+  nonce: edc6  # edc6
+  set:  # edc6
+    status: todo_soft  # edc6
+- op: update  # 8d56
+  at: '2026-03-18T02:11:54Z'  # 8d56
+  by: agent  # 8d56
+  actor: jgstern_agent  # 8d56
+  clock: 6  # 8d56
+  nonce: 8d56  # 8d56
+  set:  # 8d56
+    status: done  # 8d56
+- op: discuss  # 5ef9
+  at: '2026-03-18T02:11:54Z'  # 5ef9
+  by: agent  # 5ef9
+  actor: jgstern_agent  # 5ef9
+  clock: 7  # 5ef9
+  nonce: 5ef9  # 5ef9
+  message: "Message dispatch linker implemented in PR #2333. Covers JS/TS type/action discriminator patterns and Rust serde-tagged enum match arms. Validates against Galene, Hocuspocus, mediasoup protocol patterns."  # 5ef9

@@ -47,15 +47,20 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("php")
+
+# ADR-0015: Dataflow config for PHP
+_df_config = get_dataflow_config("php")
 
 # Laravel HTTP route methods - used by _extract_laravel_routes
 LARAVEL_HTTP_METHODS = {
@@ -642,6 +647,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -671,6 +677,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -707,6 +714,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 symbols.append(symbol)
 
@@ -768,6 +776,12 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+                    else:
+                        edges.append(make_unresolved_edge(
+                            "php", current_function.id, callee_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=path_hint or "external",
+                        ))
 
         # Method calls: $this->method() or $obj->method()
         elif node.type == "member_call_expression":
@@ -816,6 +830,11 @@ def _extract_edges(
                                 evidence_type="ast_method_inferred",
                             )
                             edges.append(edge)
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "php", current_function.id, method_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            ))
 
         # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":
@@ -1018,6 +1037,9 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 use_aliases=pf.use_aliases,
                 module_symbol=file_mod_sym,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation
+            if _df_config is not None:
+                annotate_dataflow(edges, pf.tree, pf.source, _df_config)
             all_edges.extend(edges)
 
         # Pass 3: Extract UsageContexts and route symbols for framework pattern matching

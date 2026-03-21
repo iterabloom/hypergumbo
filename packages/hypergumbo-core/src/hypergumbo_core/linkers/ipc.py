@@ -220,6 +220,70 @@ def detect_context_bridge_wrappers(
     return results
 
 
+# contextBridge.exposeInMainWorld('funcName', async (...) => { ... ipcRenderer.invoke('channel') ... })
+# Also matches custom wrappers like ipcInvoke('channel') which internally call ipcRenderer.invoke.
+# Captures: (1) function name, (2) function body containing the IPC call, (3) channel name.
+_CONTEXT_BRIDGE_FUNC_PATTERN = re.compile(
+    r"""contextBridge\s*\.\s*exposeInMainWorld\s*\(\s*"""
+    r"""['"](\w+)['"]\s*,\s*"""
+    # Match function expression (arrow or regular), NOT an object literal
+    r"""(?:async\s+)?(?:\([^)]*\)(?:\s*:\s*[^=]*?)?\s*=>|function\s*\([^)]*\)\s*)\s*"""
+    r"""\{([^}]*(?:\{[^}]*\}[^}]*)*)\}""",
+    re.DOTALL,
+)
+
+# Inside a function body, match ipcRenderer.invoke/send/sendSync('channel') or
+# ipcInvoke('channel') / ipcSend('channel') custom wrappers.
+_FUNC_BODY_IPC_PATTERN = re.compile(
+    r"""(?:ipcRenderer\s*\.\s*(send|invoke|sendSync)|"""
+    r"""ipc(Invoke|Send|SendSync))\s*\(\s*['"]([^'"]+)['"]""",
+)
+
+
+def detect_context_bridge_functions(
+    source: bytes,
+) -> list[tuple[str, str, str]]:
+    """Detect individual function exposures via contextBridge.exposeInMainWorld.
+
+    Some Electron apps expose individual functions rather than method objects::
+
+        contextBridge.exposeInMainWorld('listContainers', async () => {
+            return ipcInvoke('container-provider-registry:listContainers');
+        });
+
+    The renderer then calls ``window.listContainers()``.
+
+    Also detects custom wrappers like ``ipcInvoke('channel')`` which are
+    common in codebases that wrap ``ipcRenderer.invoke`` with error handling.
+
+    Args:
+        source: Source code bytes.
+
+    Returns:
+        List of (func_name, channel, ipc_method) tuples.
+    """
+    text = source.decode("utf-8", errors="replace")
+    results: list[tuple[str, str, str]] = []
+
+    for match in _CONTEXT_BRIDGE_FUNC_PATTERN.finditer(text):
+        func_name = match.group(1)
+        body = match.group(2)
+
+        ipc_match = _FUNC_BODY_IPC_PATTERN.search(body)
+        if ipc_match:
+            # ipcRenderer.method or ipcXxx wrapper
+            if ipc_match.group(1):
+                ipc_method = ipc_match.group(1)
+            else:
+                # Custom wrapper: ipcInvoke → invoke, ipcSend → send, etc.
+                wrapper_name = ipc_match.group(2)
+                ipc_method = wrapper_name[0].lower() + wrapper_name[1:]
+            channel = ipc_match.group(3)
+            results.append((func_name, channel, ipc_method))
+
+    return results
+
+
 def _extract_channel_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
     """Extract channel and channel_type from a regex match.
 
@@ -522,6 +586,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     bridge_maps: dict[str, dict[str, tuple[str, str, str]]] = {}
     # namespace -> { method_name: (channel, ipc_method, preload_file_path) }
 
+    # Individual function exposures: func_name -> (channel, ipc_method, preload_file)
+    bridge_func_map: dict[str, tuple[str, str, str]] = {}
+
     file_contents: dict[str, str] = {}  # file_path -> content (cached for Phase 3)
 
     for file_path in _find_js_files(repo_root):
@@ -540,6 +607,11 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 bridge_maps[namespace] = {}
             for method_name, (channel, ipc_method) in methods.items():
                 bridge_maps[namespace][method_name] = (channel, ipc_method, file_str)
+
+        # Individual function exposures: contextBridge.exposeInMainWorld('funcName', ...)
+        func_exposures = detect_context_bridge_functions(source)
+        for func_name, channel, _ipc_method in func_exposures:
+            bridge_func_map[func_name] = (channel, _ipc_method, file_str)
 
     # Scan all files for window.<namespace>.<method>() calls
     seen_bridge_edges: set[tuple[str, str, str]] = set()  # (file, namespace, method)
@@ -638,6 +710,95 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     "channel": channel,
                     "method": method_name,
                     "namespace": namespace,
+                }
+                edges.append(edge)
+
+    # Phase 3b: Scan for window.<funcName>() calls from individual function exposures
+    seen_func_edges: set[tuple[str, str]] = set()  # (file, func_name)
+
+    for file_str, content in file_contents.items():
+        for func_name, (channel, _ipc_method, preload_file) in bridge_func_map.items():
+            # Match window.funcName( but NOT window.funcName.something(
+            func_call_pattern = re.compile(
+                rf"window\s*\.\s*{re.escape(func_name)}\s*\(",
+            )
+            for call_match in func_call_pattern.finditer(content):
+                dedup_key = (file_str, func_name)
+                if dedup_key in seen_func_edges:
+                    continue
+                seen_func_edges.add(dedup_key)
+
+                call_line = content[:call_match.start()].count("\n") + 1
+
+                rel_path = file_str
+                try:
+                    rel_path = str(Path(file_str).relative_to(repo_root))
+                except ValueError:  # pragma: no cover
+                    pass
+
+                caller_id = (
+                    f"ipc:bridge_caller:{rel_path}:{call_line}:{func_name}"
+                )
+                if caller_id not in created_symbol_ids:
+                    symbols.append(Symbol(
+                        id=caller_id,
+                        name=f"window.{func_name}",
+                        kind="ipc_bridge_caller",
+                        language=_get_language(Path(file_str)),
+                        path=rel_path,
+                        span=Span(
+                            start_line=call_line,
+                            end_line=call_line,
+                            start_col=0,
+                            end_col=0,
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        meta={
+                            "bridge_function": func_name,
+                            "channel": channel,
+                        },
+                    ))
+                    created_symbol_ids.add(caller_id)
+
+                preload_send_id = _make_symbol_id(
+                    IpcPattern(
+                        type="send",
+                        channel=channel,
+                        line=0,
+                        file_path=preload_file,
+                        pattern_type="electron",
+                        channel_type="literal",
+                    ),
+                    channel,
+                )
+                _ensure_symbol(
+                    IpcPattern(
+                        type="send",
+                        channel=channel,
+                        line=0,
+                        file_path=preload_file,
+                        pattern_type="electron",
+                        channel_type="literal",
+                    ),
+                    channel,
+                )
+
+                edge = Edge.create(
+                    src=caller_id,
+                    dst=preload_send_id,
+                    edge_type="bridge_invokes",
+                    line=call_line,
+                    confidence=0.80,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="context_bridge_wrapper",
+                    access_mode="write",
+                    channel=channel,
+                )
+                edge.meta = {
+                    "channel": channel,
+                    "function": func_name,
                 }
                 edges.append(edge)
 

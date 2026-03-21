@@ -3,12 +3,77 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.3.0
-- Released **schema** is at: v0.2.1
+- Released **tool** is at: v2.4.0
+- Released **schema** is at: v0.2.2
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [2.4.0] - 2026-03-21
+
+### Added
+
+#### I/O boundary analysis (ADR-0016)
+
+- **`hypergumbo io-boundaries`**: Identifies call edges reaching I/O primitives (filesystem, network, subprocess, environment) and groups by boundary type. YAML-based catalogs for 10 languages (Python, Rust, JS/TS, Go, C/C++, Java + Kotlin/Scala/Groovy via alias). 60+ framework entries across Netty, Tokio, Express, Flask, and others. Module-qualified matching prevents false positives (e.g., `crypto/rand.Read` no longer matches `net.Conn.Read`).
+- **Entry-point reverse tracing**: IO boundary map traces backward from each IO edge through the call graph to find which entrypoints reach each IO call. Follows FFI bridge edges (JNI, NAPI, PyFFI, WASM, gRPC) across language boundaries.
+- **`hypergumbo verify-claims`**: Verifies security claims (`must_not_exist`, `max_chains`) against the IO boundary map. YAML input, `--json` output; exit code 1 on violations.
+
+#### Cross-language linkers
+
+- **React Router v6.4+ loader/action linking**, **Electron contextBridge exposure**, **React.lazy() route detection**
+- **Yjs sub-document accessors**, **BlockSuite document model linker** (CRDT edges)
+- **Crypto-flow linker**: Traces encryption/decryption boundaries across WebCrypto and Rust crypto
+- **Message dispatch linker**: Typed wire protocol matching (JS/TS discriminated unions, Rust serde variants)
+- **gRPC CSI-style linking**, **Dynamic WASM loading**, **Annotation convention** (`@hg:route`, `@hg:dispatches`)
+
+#### Dataflow (ADR-0015)
+
+- **Expanded dataflow patterns**: Go, Python, Rust, Java, C++ now have 8-12 patterns each (range loops, returns, yields, context managers, match arms). Python ast-module analyzer also expanded.
+
+#### Language analyzers
+
+- **Unresolved-external call edges**: All 30+ analyzers with call resolution now emit `unresolved_external_call` edges for stdlib/third-party calls via shared `make_unresolved_edge()` utility. Previously most analyzers silently discarded these, breaking IO boundary detection for C/Java repos.
+- **Go interface dispatch**: Ambiguous method calls resolve to interface method candidates instead of remaining unresolved.
+- **C designated initializer function pointers**: `.callback = my_handler` patterns create call edges.
+- **Web Audio API framework patterns**
+
+#### Symbol identity (ADR-0014)
+
+- **stable_id**: Hash-based content-addressable identity for C, C++, Ruby, Bash, Perl, PowerShell, Lua, Objective-C, SQL. **shape_id**: Structural fingerprint for Java, Go, JS/TS, Kotlin, PHP and 8 additional analyzers.
+
+#### Analysis core
+
+- **Edge-type-weighted centrality**: Per-type weights for 19 edge types (calls=1.0, imports=0.3, structural=0.1)
+- **Runtime memory pressure guard**: Monitors RSS, skips analyzers before OOM
+- **Dataflow annotation line index**: ~47% faster Java analysis
+
+#### Tracker
+
+- **Batch command** (`tracker batch`), **inverse blocking flags** (`--add-blocked-by`), **dependency graph view** (`tracker deps`)
+- **Verbose update confirmations**, **setup wizard improvements**, **auto-create config template**
+
+### Changed
+
+- **Weighted import inclusion in ranking**: Import edges now included at reduced weight (0.3) instead of excluded entirely. Widely-imported core types rise in rankings while call edges still dominate.
+- **Tier classification**: Vendored directories (`third-party/`, `thirdparty/`, `external/`, `deps/`) → tier 3. Workspace package non-test files → tier 1 (was tier 2; fixes deno 3.5% → 89% tier 1).
+- **Entrypoint ranking**: Library exports with high in-degree receive confidence boost (+0.35 cap). `microbench/` directories demoted as utility code. C/C++ symbols in `include/` detected as library exports.
+
+### Fixed
+
+- **IO boundary false positives**: Module-qualified matching checks edge module context against catalog entries
+- **PyO3 linker**: Matches `#[pyo3(...)]` crate-name annotations; strips `Py` prefix for Python-style name matching (`PyTokenizer::encode` → `Tokenizer.encode`)
+- **Dataflow call-edge annotations**: Removed incorrect `calls` section from all 19 dataflow pattern files (was causing forward slices to skip call chains)
+- **Test-edge filter**: Phantom source symbol import edges no longer leak through to inflate centrality
+- **`rank_files()` consistency**: Now uses same centrality parameters as `rank_symbols()`
+- **Erlang local call resolution**: Intra-module calls without explicit module qualification now resolved
+- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, `--remove-not-duplicate-of` now resolve short ID prefixes
+
+### Performance
+
+- **Java symbol import resolution**: O(n*m) → indexed O(1) lookup, ~10x faster on large repos
+- **Python global symbol resolution**: O(n) → (path, name) index for O(1) lookup
 
 ## [2.3.0] - 2026-03-16
 

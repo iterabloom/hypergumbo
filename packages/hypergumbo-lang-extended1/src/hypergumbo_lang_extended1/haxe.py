@@ -33,6 +33,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     make_symbol_id,
+    make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -356,22 +357,24 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                             callee_sym = global_symbols.get(call_name)
                             callee_id = callee_sym.id if callee_sym else None
 
-                        confidence = 1.0 if callee_id else 0.6
-                        if callee_id is None:
-                            callee_id = f"haxe:unresolved:{call_name}"
-
-                        line = node.start_point[0] + 1
-                        edge = Edge.create(
-                            src=caller_id,
-                            dst=callee_id,
-                            edge_type="calls",
-                            line=line,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_call_direct",
-                            confidence=confidence,
-                            evidence_lang="haxe",
-                        )
+                        if callee_id is not None:
+                            edge = Edge.create(
+                                src=caller_id,
+                                dst=callee_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_direct",
+                                confidence=1.0,
+                                evidence_lang="haxe",
+                            )
+                        else:
+                            edge = make_unresolved_edge(
+                                "haxe", caller_id, call_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            )
                         edges.append(edge)
 
         # Recursively process children

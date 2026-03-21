@@ -1251,3 +1251,29 @@ class TestGroovyParamTypeInference:
         assert len(call_edges) == 1
         # Should resolve to UserRepository.findAll, not OrderRepository.findAll
         assert "UserRepository" in call_edges[0].dst
+
+
+class TestGroovyShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_method_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Example.groovy").write_text(
+            "class Foo {\n  def bar() { return 42 }\n}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next(s for s in result.symbols if s.kind == "method")
+        assert method.shape_id is not None
+        assert method.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Example.groovy").write_text(
+            "class Foo {\n  def bar() { return 42 }\n}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")

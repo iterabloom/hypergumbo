@@ -36,3 +36,49 @@
   clock: 3  # 6981
   nonce: '6981'  # 6981
   message: "Merged PR #2256. New Yjs/CRDT linker covering raw Yjs API (set/delete → observe/observeDeep) and Awareness API (setLocalState/setLocalStateField → on change/update). Creates crdt_publishes edges. BlockSuite block schema layer not yet covered — can be added as follow-up or via @hg: annotations. 23 tests, 100% coverage."  # 6981
+- op: update  # 128c
+  at: '2026-03-17T05:16:04Z'  # 128c
+  by: human  # 128c
+  actor: jgstern  # 128c
+  clock: 4  # 128c
+  nonce: 128c  # 128c
+  set:  # 128c
+    status: todo_soft  # 128c
+    priority: 3  # 128c
+- op: discuss  # d470
+  at: '2026-03-17T05:17:44Z'  # d470
+  by: human  # d470
+  actor: jgstern  # d470
+  clock: 5  # d470
+  nonce: d470  # d470
+  message: "yes please add BlockSuite block schema layer in whatever manner best leverages hypergumbo's extensibility"  # d470
+- op: update  # 5088
+  at: '2026-03-17T09:20:54Z'  # 5088
+  by: agent  # 5088
+  actor: jgstern_agent  # 5088
+  clock: 6  # 5088
+  nonce: '5088'  # 5088
+  set:  # 5088
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 5088
+- op: discuss  # e7a8
+  at: '2026-03-17T09:21:41Z'  # e7a8
+  by: agent  # e7a8
+  actor: jgstern_agent  # e7a8
+  clock: 7  # e7a8
+  nonce: e7a8  # e7a8
+  message: "Cross-ref: WI-mamuh (PlazaFlow Yjs sub-document and awareness tracing) covers additional patterns beyond this item: sub-document references via getSubdocs()/Y.Doc guid, field-level awareness matching. Both under META-migil umbrella."  # e7a8
+- op: update  # fd07
+  at: '2026-03-18T01:30:24Z'  # fd07
+  by: agent  # fd07
+  actor: jgstern_agent  # fd07
+  clock: 8  # fd07
+  nonce: fd07  # fd07
+  set:  # fd07
+    status: done  # fd07
+- op: discuss  # 8728
+  at: '2026-03-18T01:30:24Z'  # 8728
+  by: agent  # 8728
+  actor: jgstern_agent  # 8728
+  clock: 9  # 8728
+  nonce: '8728'  # 8728
+  message: "All three Yjs API surfaces covered: raw Yjs (PR #2256), Awareness (PR #2256), BlockSuite (PR #2329). Sub-doc accessors also added in PR #2329."  # 8728

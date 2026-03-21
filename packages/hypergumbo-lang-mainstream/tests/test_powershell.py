@@ -264,7 +264,7 @@ function Show-Message {
         assert any("Write-Host" in e.dst for e in external_calls)
         # External calls have lower confidence
         for e in external_calls:
-            assert e.confidence == 0.70
+            assert e.confidence == 0.50
 
     def test_resolved_call_confidence(self, temp_repo: Path) -> None:
         """Resolved calls have higher confidence than external calls."""
@@ -285,3 +285,33 @@ function Caller {
         assert resolved_call is not None
         # Resolved calls have confidence 0.85 * lookup confidence
         assert resolved_call.confidence > 0.70
+
+
+class TestPowerShellStableId:
+    """Tests for stable_id in PowerShell (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.powershell import analyze_powershell
+
+        (tmp_path / "example.ps1").write_text(
+            "function Get-Greeting {\n    Write-Host 'Hello'\n}\n"
+        )
+        result = analyze_powershell(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function" and s.name == "Get-Greeting")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+
+class TestPowerShellShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.powershell import analyze_powershell
+
+        (tmp_path / "example.ps1").write_text(
+            "function Get-Greeting {\n    Write-Host 'Hello'\n}\n"
+        )
+        result = analyze_powershell(tmp_path)
+        func = next(s for s in result.symbols if s.kind == "function" and s.name == "Get-Greeting")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")

@@ -70,14 +70,19 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("lua")
+
+# ADR-0015: Dataflow config for Lua
+_df_config = get_dataflow_config("lua")
 
 
 def find_lua_files(repo_root: Path) -> Iterator[Path]:
@@ -212,6 +217,8 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_lua_signature(node, source),
+                    stable_id=_analyzer.compute_stable_id(node, kind=kind),
+                    shape_id=_analyzer.compute_shape_id(node),
                 ))
 
     return symbols
@@ -617,18 +624,10 @@ def _extract_edges_from_file(
                                 edges.append(edge)
                             else:
                                 # Unresolved call
-                                unresolved_id = f"lua:?:0-0:{callee_name}:function"
-                                edge = Edge.create(
-                                    src=caller.id,
-                                    dst=unresolved_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    origin=PASS_ID,
-                                    origin_run_id=run_id,
-                                    evidence_type="function_call",
-                                    confidence=0.50,
-                                )
-                                edges.append(edge)
+                                edges.append(make_unresolved_edge(
+                                    "lua", caller.id, callee_name,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                ))
                     elif is_dot_call:
                         # Dot call without require alias — try qualified name
                         if receiver_name:
@@ -648,18 +647,10 @@ def _extract_edges_from_file(
                                 )
                                 edges.append(edge)
                             else:
-                                unresolved_id = f"lua:?:0-0:{qualified}:function"
-                                edge = Edge.create(
-                                    src=caller.id,
-                                    dst=unresolved_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    origin=PASS_ID,
-                                    origin_run_id=run_id,
-                                    evidence_type="function_call",
-                                    confidence=0.50,
-                                )
-                                edges.append(edge)
+                                edges.append(make_unresolved_edge(
+                                    "lua", caller.id, qualified,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                ))
                     else:
                         # Direct call: func(args)
                         lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
@@ -678,18 +669,10 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
                         else:
-                            unresolved_id = f"lua:?:0-0:{callee_name}:function"
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=unresolved_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="function_call",
-                                confidence=0.50,
-                            )
-                            edges.append(edge)
+                            edges.append(make_unresolved_edge(
+                                "lua", caller.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                            ))
 
     return edges
 
@@ -828,6 +811,9 @@ class LuaAnalyzer(TreeSitterAnalyzer):
                 run_id,
                 module_symbols=module_symbols,
             )
+            # ADR-0015 Tier 1: automatic dataflow annotation
+            if _df_config is not None:
+                annotate_dataflow(edges, fa.tree, fa.source, _df_config)
             all_edges.extend(edges)
 
         run.files_analyzed = files_analyzed

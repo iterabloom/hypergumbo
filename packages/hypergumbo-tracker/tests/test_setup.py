@@ -21,7 +21,12 @@ import yaml
 
 from hypergumbo_tracker.cli import EXIT_SUCCESS, EXIT_USER_ERROR, main
 from hypergumbo_tracker.setup import (
+    MANAGED_BLOCK_BEGIN,
+    MANAGED_BLOCK_CONTENT,
+    MANAGED_BLOCK_END,
     TRACKER_CONCEPTS,
+    _POLICY_TEMPLATE,
+    _inject_managed_block,
     CheckResult,
     _check_actor_resolution,
     _check_agents_md,
@@ -396,6 +401,42 @@ class TestCheckGitignore:
         assert "other-stuff" in content
         assert "config.yaml" in content
 
+    def test_root_gitignore_created(self, tmp_path: Path) -> None:
+        """Root .gitignore entries for tracker ephemeral files are added."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        content = (tmp_path / ".gitignore").read_text()
+        assert ".agent/.cache-*.db" in content
+        assert ".agent/.sync-logs/" in content
+        assert ".ci/pytest-output.log" in content
+
+    def test_root_gitignore_already_present(self, tmp_path: Path) -> None:
+        """Root .gitignore with all entries returns ok."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        root_gi = tmp_path / ".gitignore"
+        root_gi.write_text(
+            ".agent/.cache-*.db\n.agent/.sync-logs/\n.ci/pytest-output.log\n"
+        )
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "ok"
+
+    def test_root_gitignore_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Root .gitignore without trailing newline gets one before append."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / ".gitignore").write_text("config.yaml\n")
+        (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")
+        root_gi = tmp_path / ".gitignore"
+        root_gi.write_text("existing-entry")
+        result = _check_gitignore(root, repo_root=tmp_path)
+        assert result.status == "fixed"
+        content = root_gi.read_text()
+        assert "existing-entry\n" in content
+
 
 # ---------------------------------------------------------------------------
 # Check #5: config.yaml.template
@@ -411,11 +452,23 @@ class TestCheckConfigTemplate:
         result = _check_config_template(root)
         assert result.status == "ok"
 
-    def test_missing(self, tmp_path: Path) -> None:
+    def test_missing_creates_from_defaults(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
         result = _check_config_template(root)
-        assert result.status == "warn"
-        assert "not found" in result.message
+        assert result.status == "fixed"
+        assert "created" in result.message
+        template = root / "tracker" / "config.yaml.template"
+        assert template.exists()
+        content = template.read_text()
+        assert "kinds" in content
+        assert "statuses" in content
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        result1 = _check_config_template(root)
+        assert result1.status == "fixed"
+        result2 = _check_config_template(root)
+        assert result2.status == "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -2151,7 +2204,7 @@ class TestCheckTextconv:
 
     def test_already_configured(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
-        # Create .gitattributes with both lines
+        # Create .gitattributes with both lines in .ops dirs
         for ops_dir in [
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
@@ -2159,6 +2212,12 @@ class TestCheckTextconv:
             (ops_dir / ".gitattributes").write_text(
                 "*.ops merge=union\n*.ops diff=tracker-ops\n"
             )
+        # Root .gitattributes also needs the entries
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+            ".agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker\n"
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
@@ -2286,6 +2345,12 @@ class TestCheckTextconv:
             root / "tracker-workspace" / ".ops",
         ]:
             (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        # Provide root gitattributes so only safe.directory is the fix
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+            ".agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker\n"
+        )
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -2335,6 +2400,81 @@ class TestCheckTextconv:
         ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "fixed"
+
+
+class TestRootGitattributes:
+    """Tests for root .gitattributes management in _check_textconv."""
+
+    def test_root_gitattributes_created(self, tmp_path: Path) -> None:
+        """Missing root .gitattributes entries are auto-added."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        root_ga = tmp_path / ".gitattributes"
+        assert root_ga.exists()
+        content = root_ga.read_text()
+        assert "linguist-generated" in content
+        assert "diff=tracker" in content
+
+    def test_root_gitattributes_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Root .gitattributes without trailing newline gets one before append."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text("some-other-rule")  # No trailing newline
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        content = root_ga.read_text()
+        # Ensure entries start on a new line
+        assert "\nsome-other-rule" not in content or "some-other-rule\n" in content
+
+    def test_root_gitattributes_partial(self, tmp_path: Path) -> None:
+        """Only missing lines are appended to existing root .gitattributes."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+        # Only one of the two lines exists
+        root_ga = tmp_path / ".gitattributes"
+        root_ga.write_text(
+            ".agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker\n"
+        )
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+        content = root_ga.read_text()
+        assert "tracker-workspace" in content
 
 
 class TestEnsureSafeDirectory:
@@ -2494,38 +2634,67 @@ class TestCheckExistingData:
 
 
 class TestCheckTrackerWrapper:
-    """Tests for _check_tracker_wrapper (check #13)."""
+    """Tests for _check_tracker_wrapper (check #13): auto-install shims."""
 
     def test_no_repo(self) -> None:
         result = _check_tracker_wrapper(None)
         assert result.status == "ok"
         assert "skipped" in result.message
 
-    def test_wrapper_exists_and_executable(self, tmp_path: Path) -> None:
+    def test_both_wrappers_exist_and_executable(self, tmp_path: Path) -> None:
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        wrapper = scripts / "tracker"
-        wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
-        wrapper.chmod(0o755)
+        for name in ("tracker", "tracker-textconv"):
+            wrapper = scripts / name
+            wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
+            wrapper.chmod(0o755)
         result = _check_tracker_wrapper(tmp_path)
         assert result.status == "ok"
         assert "found" in result.message
 
     def test_wrapper_exists_not_executable(self, tmp_path: Path) -> None:
+        """Existing non-executable wrapper gets permissions fixed."""
         scripts = tmp_path / "scripts"
         scripts.mkdir()
-        wrapper = scripts / "tracker"
-        wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
-        wrapper.chmod(0o644)
+        for name in ("tracker", "tracker-textconv"):
+            wrapper = scripts / name
+            wrapper.write_text("#!/bin/bash\nexec htrac \"$@\"")
+            wrapper.chmod(0o644)
         result = _check_tracker_wrapper(tmp_path)
-        assert result.status == "warn"
-        assert "not executable" in result.message
+        assert result.status == "fixed"
+        assert "fixed permissions" in str(result.details)
+        # Both should now be executable
+        assert os.access(scripts / "tracker", os.X_OK)
+        assert os.access(scripts / "tracker-textconv", os.X_OK)
 
-    def test_wrapper_missing(self, tmp_path: Path) -> None:
+    def test_wrapper_missing_auto_installed(self, tmp_path: Path) -> None:
+        """Missing wrappers are auto-created with correct content."""
         result = _check_tracker_wrapper(tmp_path)
-        assert result.status == "warn"
-        assert "not found" in result.message
-        assert any("scripts/tracker" in d for d in result.details)
+        assert result.status == "fixed"
+        assert "installed" in str(result.details)
+        # Both shims should exist and be executable
+        tracker = tmp_path / "scripts" / "tracker"
+        textconv = tmp_path / "scripts" / "tracker-textconv"
+        assert tracker.exists()
+        assert textconv.exists()
+        assert os.access(tracker, os.X_OK)
+        assert os.access(textconv, os.X_OK)
+        # Content should include key markers
+        assert "hypergumbo-tracker" in tracker.read_text()
+        assert "textconv_main" in textconv.read_text()
+
+    def test_only_tracker_missing(self, tmp_path: Path) -> None:
+        """Only the missing shim is installed; existing one is left alone."""
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        textconv = scripts / "tracker-textconv"
+        textconv.write_text("#!/bin/bash\nexec htrac-tc \"$@\"")
+        textconv.chmod(0o755)
+        result = _check_tracker_wrapper(tmp_path)
+        assert result.status == "fixed"
+        assert "scripts/tracker: installed" in str(result.details)
+        # textconv should not be in actions
+        assert "scripts/tracker-textconv" not in str(result.details)
 
 
 # ---------------------------------------------------------------------------
@@ -2533,78 +2702,217 @@ class TestCheckTrackerWrapper:
 # ---------------------------------------------------------------------------
 
 
+class TestInjectManagedBlock:
+    """Tests for _inject_managed_block() helper."""
+
+    def test_empty_content_appends(self) -> None:
+        content, action = _inject_managed_block("")
+        assert action == "injected"
+        assert MANAGED_BLOCK_BEGIN in content
+        assert MANAGED_BLOCK_END in content
+        assert MANAGED_BLOCK_CONTENT in content
+
+    def test_no_delimiters_appends_at_end(self) -> None:
+        original = "# My Project\nSome text.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        assert content.startswith(original.rstrip("\n"))
+        assert MANAGED_BLOCK_BEGIN in content
+
+    def test_inserts_after_tracker_heading(self) -> None:
+        original = "# Agent Instructions\n\n## Tracker\n\nOld content.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        # Block should appear after the ## Tracker heading
+        tracker_idx = content.index("## Tracker")
+        block_idx = content.index(MANAGED_BLOCK_BEGIN)
+        assert block_idx > tracker_idx
+        # Old content should still be there
+        assert "Old content." in content
+
+    def test_inserts_after_h3_tracker_heading(self) -> None:
+        original = "# Instructions\n\n### Tracker\n\nOld content.\n"
+        content, action = _inject_managed_block(original)
+        assert action == "injected"
+        tracker_idx = content.index("### Tracker")
+        block_idx = content.index(MANAGED_BLOCK_BEGIN)
+        assert block_idx > tracker_idx
+
+    def test_replaces_existing_block(self) -> None:
+        original = (
+            f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold stuff\n{MANAGED_BLOCK_END}\n\n# End\n"
+        )
+        content, action = _inject_managed_block(original)
+        assert action == "updated"
+        assert "old stuff" not in content
+        assert MANAGED_BLOCK_CONTENT in content
+        assert "# End" in content
+
+    def test_idempotent_when_current(self) -> None:
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        original = f"# Doc\n\n{block}\n"
+        content, action = _inject_managed_block(original)
+        assert action == ""
+        assert content == original
+
+    def test_with_policy_template(self) -> None:
+        content, action = _inject_managed_block("# Doc\n", with_policy_template=True)
+        assert action == "injected"
+        assert _POLICY_TEMPLATE in content
+        assert MANAGED_BLOCK_BEGIN in content
+
+    def test_policy_template_not_added_on_update(self) -> None:
+        """Policy template is only added on fresh injection, not on update."""
+        original = (
+            f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold\n{MANAGED_BLOCK_END}\n"
+        )
+        content, action = _inject_managed_block(
+            original, with_policy_template=True,
+        )
+        assert action == "updated"
+        # Policy template is NOT injected on update (only on fresh inject)
+        assert _POLICY_TEMPLATE not in content
+
+    def test_no_trailing_newline_handled(self) -> None:
+        content, action = _inject_managed_block("no newline")
+        assert action == "injected"
+        assert MANAGED_BLOCK_BEGIN in content
+
+
 class TestCheckAgentsMd:
-    """Tests for _check_agents_md (check #14)."""
+    """Tests for _check_agents_md (check #16)."""
 
     def test_no_repo(self) -> None:
         result = _check_agents_md(None)
         assert result.status == "ok"
         assert "skipped" in result.message
 
-    def test_no_agents_md(self, tmp_path: Path) -> None:
+    def test_no_agents_md_creates_file(self, tmp_path: Path) -> None:
         result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        assert "found" in result.message.lower()
+        assert result.status == "fixed"
+        assert "created" in result.message
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
+        assert MANAGED_BLOCK_CONTENT in content
+        assert MANAGED_BLOCK_END in content
 
-    def test_all_concepts_present(self, tmp_path: Path) -> None:
-        content = textwrap.dedent("""\
-        # Agent Instructions
-        Use `scripts/tracker show <ID>` to read state.
-        Don't read .ops files — they pollute context.
-        Use `tracker ready` to pick tasks.
-        tracker: commit prefix for tracker-only changes.
+    def test_no_agents_md_with_policy_template(self, tmp_path: Path) -> None:
+        result = _check_agents_md(tmp_path, with_policy_template=True)
+        assert result.status == "fixed"
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert _POLICY_TEMPLATE in content
+
+    def test_existing_file_gets_block_injected(self, tmp_path: Path) -> None:
+        (tmp_path / "AGENTS.md").write_text("# Agent Instructions\n\nCustom policy.\n")
+        result = _check_agents_md(tmp_path)
+        assert result.status == "fixed"
+        assert "injected" in result.message.lower()
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
+        assert "Custom policy." in content
+
+    def test_existing_block_updated_when_stale(self, tmp_path: Path) -> None:
+        stale = f"# Doc\n\n{MANAGED_BLOCK_BEGIN}\nold content\n{MANAGED_BLOCK_END}\n"
+        (tmp_path / "AGENTS.md").write_text(stale)
+        result = _check_agents_md(tmp_path)
+        assert result.status == "fixed"
+        assert "updated" in result.message.lower()
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert "old content" not in content
+        assert MANAGED_BLOCK_CONTENT in content
+
+    def test_idempotent_when_block_current(self, tmp_path: Path) -> None:
+        """Second run returns warn (not fixed) — block is up to date."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        full = f"# Doc\n\n{block}\n"
+        (tmp_path / "AGENTS.md").write_text(full)
+        result = _check_agents_md(tmp_path)
+        # Block is current (no "fixed"), but governance concepts still missing
+        assert result.status == "warn"
+        assert "missing" in result.message.lower()
+        # Run again — still warn, no file modifications
+        content_before = (tmp_path / "AGENTS.md").read_text()
+        result2 = _check_agents_md(tmp_path)
+        content_after = (tmp_path / "AGENTS.md").read_text()
+        assert content_before == content_after
+        assert result2.status == "warn"
+
+    def test_all_concepts_satisfied(self, tmp_path: Path) -> None:
+        """When both managed block and governance concepts present → ok."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        governance = textwrap.dedent("""\
         Assume structural until proven otherwise.
         Name the invariant before fixing.
         Follow TDD: Red, Green, Refactor.
         Write a failing test first.
         Must maintain 100% coverage with cov-fail-under.
-        Batch tracker operations into fewer commits.
-        Use needs_human_review for governance proposals.
         """)
-        (tmp_path / "AGENTS.md").write_text(content)
+        (tmp_path / "AGENTS.md").write_text(f"# Doc\n\n{block}\n\n{governance}\n")
         result = _check_agents_md(tmp_path)
         assert result.status == "ok"
-
-    def test_missing_concepts(self, tmp_path: Path) -> None:
-        content = "# Agent Instructions\nNothing relevant here.\n"
-        (tmp_path / "AGENTS.md").write_text(content)
-        result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        assert str(len(TRACKER_CONCEPTS)) in result.message
-
-    def test_partial_concepts(self, tmp_path: Path) -> None:
-        content = "# Agent Instructions\nUse tracker ready for tasks.\n"
-        (tmp_path / "AGENTS.md").write_text(content)
-        result = _check_agents_md(tmp_path)
-        assert result.status == "warn"
-        expected_missing = len(TRACKER_CONCEPTS) - 1
-        assert str(expected_missing) in result.message
 
     def test_claude_md_fallback(self, tmp_path: Path) -> None:
-        content = textwrap.dedent("""\
-        tracker show <ID> for state.
-        .ops files pollute context.
-        tracker ready for tasks.
-        tracker: prefix for commits.
-        Assume structural until proven otherwise.
-        Red, Green, Refactor cycle.
-        100% coverage requirement.
-        Batch tracker operations.
-        Use needs_human_review for human-judgment items.
-        """)
-        (tmp_path / "CLAUDE.md").write_text(content)
+        (tmp_path / "CLAUDE.md").write_text("# Instructions\n")
         result = _check_agents_md(tmp_path)
-        assert result.status == "ok"
+        assert result.status == "fixed"
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in content
 
     def test_agents_md_preferred_over_claude_md(self, tmp_path: Path) -> None:
-        # AGENTS.md has nothing, CLAUDE.md has everything
-        (tmp_path / "AGENTS.md").write_text("nothing here\n")
-        (tmp_path / "CLAUDE.md").write_text(
-            "tracker show <ID>\ntracker ready\ntracker: prefix\n"
-        )
+        (tmp_path / "AGENTS.md").write_text("# AGENTS\n")
+        (tmp_path / "CLAUDE.md").write_text("# CLAUDE\n")
         result = _check_agents_md(tmp_path)
-        # Should use AGENTS.md (first match), so concepts missing
+        assert result.status == "fixed"
+        # Should modify AGENTS.md, not CLAUDE.md
+        agents_content = (tmp_path / "AGENTS.md").read_text()
+        claude_content = (tmp_path / "CLAUDE.md").read_text()
+        assert MANAGED_BLOCK_BEGIN in agents_content
+        assert MANAGED_BLOCK_BEGIN not in claude_content
+
+    def test_managed_block_covers_tool_concepts(self, tmp_path: Path) -> None:
+        """The managed block covers tool-usage concepts.
+
+        Project-governance concepts (structural_fix_protocol, tdd_protocol,
+        coverage_requirement) are intentionally NOT in the managed block —
+        they belong in project-specific policy.
+        """
+        import re
+
+        from hypergumbo_tracker.setup import TRACKER_CONCEPTS
+
+        tool_concepts = {
+            "context_protection", "task_selection", "commit_convention",
+            "batching", "human_review_status",
+        }
+        for name in tool_concepts:
+            concept = TRACKER_CONCEPTS[name]
+            found = any(
+                re.search(p, MANAGED_BLOCK_CONTENT, re.IGNORECASE)
+                for p in concept["patterns"]
+            )
+            assert found, f"Managed block should cover tool concept '{name}'"
+
+    def test_managed_block_warns_about_governance_concepts(self, tmp_path: Path) -> None:
+        """After injection, governance concepts still show as missing warnings."""
+        block = f"{MANAGED_BLOCK_BEGIN}\n{MANAGED_BLOCK_CONTENT}\n{MANAGED_BLOCK_END}"
+        (tmp_path / "AGENTS.md").write_text(f"# Doc\n\n{block}\n")
+        result = _check_agents_md(tmp_path)
+        # 3 governance concepts are missing: structural_fix, tdd, coverage
         assert result.status == "warn"
+        assert "3" in result.message
+
+    def test_preserves_surrounding_content(self, tmp_path: Path) -> None:
+        original = (
+            f"# Header\n\nBefore.\n\n"
+            f"{MANAGED_BLOCK_BEGIN}\nold\n{MANAGED_BLOCK_END}\n\n"
+            f"After.\n"
+        )
+        (tmp_path / "AGENTS.md").write_text(original)
+        _check_agents_md(tmp_path)
+        content = (tmp_path / "AGENTS.md").read_text()
+        assert "# Header" in content
+        assert "Before." in content
+        assert "After." in content
 
 
 # ---------------------------------------------------------------------------

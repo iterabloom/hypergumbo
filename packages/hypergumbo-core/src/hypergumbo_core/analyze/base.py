@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import re as _re
 import time
 import warnings
@@ -38,6 +39,52 @@ from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext, make_pass_id
 from ..symbol_resolution import NameResolver
+
+# ---------------------------------------------------------------------------
+# Memory safety: abort analysis before OOM crashes the machine
+# ---------------------------------------------------------------------------
+
+# Minimum available system memory (MB) before aborting an in-progress analysis.
+# When available memory drops below this threshold between files, the analysis
+# raises MemoryPressureError instead of continuing and risking OOM/swap thrash.
+# The threshold is low (512 MB) because it's a last-resort safety net — the
+# bakeoff scripts and smart-test have their own higher thresholds.
+_MIN_AVAILABLE_MB = int(os.environ.get("HYPERGUMBO_MIN_MEMORY_MB", "512"))
+
+
+class MemoryPressureError(MemoryError):
+    """Raised when available system memory is critically low during analysis.
+
+    This is a graceful abort — the analysis stops between files (not mid-parse)
+    and returns partial results or raises to the caller.  Prevents the OS from
+    thrashing swap or killing the process via OOM killer.
+    """
+
+
+def _check_memory_pressure() -> None:
+    """Raise MemoryPressureError if available memory is critically low.
+
+    Reads MemAvailable from /proc/meminfo (Linux).  No-op on non-Linux.
+    Called between files during analysis to catch memory exhaustion early.
+    """
+    if _MIN_AVAILABLE_MB <= 0:
+        return  # Disabled via env var
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    available_mb = int(line.split()[1]) // 1024
+                    if available_mb < _MIN_AVAILABLE_MB:
+                        raise MemoryPressureError(
+                            f"Available memory ({available_mb} MB) below "
+                            f"threshold ({_MIN_AVAILABLE_MB} MB). Aborting "
+                            f"analysis to prevent OOM. Set "
+                            f"HYPERGUMBO_MIN_MEMORY_MB=0 to disable."
+                        )
+                    return
+    except (OSError, ValueError):
+        pass  # Non-Linux or /proc not available — skip check
+
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -225,6 +272,44 @@ def make_file_id(lang: str, path: str) -> str:
         A file-level symbol ID.
     """
     return f"{lang}:{path}:1-1:file:file"
+
+
+def make_unresolved_edge(
+    lang: str,
+    src_id: str,
+    callee_name: str,
+    line: int,
+    pass_id: str,
+    run_id: str,
+    *,
+    module_hint: str = "external",
+) -> Edge:
+    """Create an unresolved-external call edge for a callee not in the project.
+
+    All language analyzers use this when a function/method call cannot be
+    resolved to a project symbol.  The resulting edge has confidence 0.50
+    and a standardized dst ID format:  {lang}:{module_hint}:0-0:{name}:unresolved
+
+    Args:
+        lang: Language identifier (e.g., "c", "java", "rust")
+        src_id: Symbol ID of the caller
+        callee_name: Name of the called function/method
+        line: Source line number of the call
+        pass_id: Analyzer pass ID
+        run_id: Execution run ID
+        module_hint: Module/package context when known (default "external")
+    """
+    dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
+    return Edge.create(
+        src=src_id,
+        dst=dst_id,
+        edge_type="calls",
+        line=line,
+        confidence=0.50,
+        origin=pass_id,
+        origin_run_id=run_id,
+        evidence_type="unresolved_external_call",
+    )
 
 
 def make_route_stable_id(method: str, path: str) -> str:
@@ -1682,6 +1767,9 @@ class TreeSitterAnalyzer:
             if max_files is not None and files_analyzed >= max_files:
                 break
 
+            # Memory safety: check between files to catch pressure early
+            _check_memory_pressure()
+
             try:
                 source = source_file.read_bytes()
             except OSError:
@@ -1756,6 +1844,7 @@ class TreeSitterAnalyzer:
         resolver = self.resolver_class(global_symbols)
 
         for source_file, (analysis, import_aliases, source) in file_analyses.items():
+            _check_memory_pressure()  # Between-file memory safety check
             all_symbols.extend(analysis.symbols)
 
             tree = parser.parse(source)

@@ -185,6 +185,8 @@ JS_FRAMEWORKS = {
     "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
     # MCP (Model Context Protocol)
     "mcp": ["@modelcontextprotocol/sdk"],
+    # Audio
+    "web_audio": ["tone", "howler", "pizzicato", "tuna", "resonance-audio", "omnitone", "standardized-audio-context"],
 }
 
 # Rust crate detection patterns (from Cargo.toml)

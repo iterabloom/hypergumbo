@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Elixir (tree-sitter grammar)
+language: elixir
+
+assignments:
+  - node_type: binary_operator
+    write: left
+    read: right

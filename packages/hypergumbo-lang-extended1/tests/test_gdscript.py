@@ -230,7 +230,7 @@ func _ready():
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         external_call = next(e for e in call_edges if "external" in e.dst)
-        assert external_call.confidence == 0.70
+        assert external_call.confidence == 0.50
 
     def test_analyzes_preload(self, temp_repo: Path) -> None:
         """Detects preload() and creates import edges."""

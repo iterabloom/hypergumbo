@@ -2,7 +2,8 @@
 # ADR-0015: Dataflow Access Modes on Edges
 
 Date: 2026-03-15
-Status: Proposed
+Updated: 2026-03-19
+Status: Accepted
 
 ## Context
 

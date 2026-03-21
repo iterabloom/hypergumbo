@@ -1,0 +1,34 @@
+- op: create  # d6f0
+  at: '2026-03-21T00:39:55Z'  # d6f0
+  by: agent  # d6f0
+  actor: jgstern_agent  # d6f0
+  clock: 1  # d6f0
+  nonce: d6f0  # d6f0
+  data:  # d6f0
+    kind: work_item  # d6f0
+    title: "C++ library_export entrypoint detection for include/ public headers"  # d6f0
+    status: todo_soft  # d6f0
+    priority: 3  # d6f0
+    parent:  # d6f0
+    tags: []  # d6f0
+    before: []  # d6f0
+    duplicate_of: []  # d6f0
+    not_duplicate_of: []  # d6f0
+    pr_ref:  # d6f0
+    description: ""  # d6f0
+    fields: {}  # d6f0
+- op: update  # d996
+  at: '2026-03-21T06:06:45Z'  # d996
+  by: agent  # d996
+  actor: jgstern_agent  # d996
+  clock: 2  # d996
+  nonce: d996  # d996
+  set:  # d996
+    status: done  # d996
+- op: discuss  # 5260
+  at: '2026-03-21T06:06:45Z'  # 5260
+  by: agent  # 5260
+  actor: jgstern_agent  # 5260
+  clock: 3  # 5260
+  nonce: '5260'  # 5260
+  message: "Duplicate of earlier WI-zidiz, already fixed in PR #2461."  # 5260

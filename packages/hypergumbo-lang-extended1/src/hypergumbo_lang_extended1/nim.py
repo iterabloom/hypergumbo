@@ -44,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -364,21 +365,21 @@ class NimAnalyzer(TreeSitterAnalyzer):
 
                         lookup_result = resolver.lookup(target_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            edges.append(Edge.create(
+                                src=caller.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
                         else:
-                            dst_id = f"nim:external:{target_name}:function"
-                            confidence = 0.70
-
-                        edges.append(Edge.create(
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                            edges.append(make_unresolved_edge(
+                                "nim", caller.id, target_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            ))
 
         return edges
 

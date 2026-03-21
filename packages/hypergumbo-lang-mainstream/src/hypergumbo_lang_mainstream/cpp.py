@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id as _base_make_file_id,
     make_symbol_id as _base_make_symbol_id,
+    make_unresolved_edge,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -379,8 +380,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=_analyzer.compute_stable_id(node, kind="class"),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
                 # Extract field types for chained member resolution
@@ -417,8 +420,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=_analyzer.compute_stable_id(node, kind="struct"),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
                 # Extract field types for chained member resolution
@@ -450,8 +455,10 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=_analyzer.compute_stable_id(node, kind="enum"),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Function definition
@@ -485,8 +492,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    stable_id=_analyzer.compute_stable_id(node, kind=kind),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 # Store by both full name and short name
                 analysis.symbol_by_name[name] = symbol
                 short_name = name.split("::")[-1] if "::" in name else name
@@ -891,6 +900,11 @@ def _extract_edges_from_tree(
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                            ))
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "cpp", current_function.id, short_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
                             ))
 
                     # Callback argument detection: bare identifiers in the

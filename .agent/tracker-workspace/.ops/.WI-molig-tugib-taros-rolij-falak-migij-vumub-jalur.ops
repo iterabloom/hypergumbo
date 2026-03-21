@@ -1,0 +1,126 @@
+- op: create  # a6c8
+  at: '2026-03-17T09:15:59Z'  # a6c8
+  by: agent  # a6c8
+  actor: jgstern_agent  # a6c8
+  clock: 1  # a6c8
+  nonce: a6c8  # a6c8
+  data:  # a6c8
+    kind: work_item  # a6c8
+    title: "PlazaFlow readiness: Web Audio API node graph framework pattern"  # a6c8
+    status: needs_human_review  # a6c8
+    priority: 3  # a6c8
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # a6c8
+    tags:  # a6c8
+    - plazaflow  # a6c8
+    - framework  # a6c8
+    - web-audio  # a6c8
+    before: []  # a6c8
+    duplicate_of: []  # a6c8
+    not_duplicate_of: []  # a6c8
+    pr_ref:  # a6c8
+    description: "PlazaFlow spatial audio is a per-peer Web Audio node graph: AudioContext -> GainNode -> StereoPannerNode -> destination, with dynamic gain/pan driven by distance and wall raycasts. Need a YAML-driven framework pattern detecting AudioContext creation, createGain/createStereoPanner/createMediaStreamSource, and .connect() chains. Emit framework pattern nodes for audio graph topology. No existing pattern. Bakeoff repos: dash.js (media player with Web Audio), hls.js (media with audio processing), shaka-player (media). Cross-refs: No existing Web Audio support. Lower priority than linker items — useful for developer understanding but not cross-boundary edge quality."  # a6c8
+    fields: {}  # a6c8
+- op: discuss  # e4e0
+  at: '2026-03-18T02:49:08Z'  # e4e0
+  by: human  # e4e0
+  actor: jgstern  # e4e0
+  clock: 2  # e4e0
+  nonce: e4e0  # e4e0
+  message: "dash.js: /home/jgstern_agent/whole_bunch_of_repos/dash.js\nhls.js: /home/jgstern_agent/whole_bunch_of_repos/hls.js\nshaka-player: /home/jgstern_agent/whole_bunch_of_repos/shaka-player"  # e4e0
+- op: update  # ee93
+  at: '2026-03-18T02:49:38Z'  # ee93
+  by: human  # ee93
+  actor: jgstern  # ee93
+  clock: 3  # ee93
+  nonce: ee93  # ee93
+  set:  # ee93
+    status: todo_soft  # ee93
+- op: discuss  # be40
+  at: '2026-03-18T04:56:15Z'  # be40
+  by: agent  # be40
+  actor: jgstern_agent  # be40
+  clock: 4  # be40
+  nonce: be40  # be40
+  message: "Thanks for the repo paths. Will use dash.js, hls.js, and shaka-player to validate the Web Audio API framework pattern once implemented."  # be40
+- op: discuss  # d852
+  at: '2026-03-18T05:08:54Z'  # d852
+  by: agent  # d852
+  actor: jgstern_agent  # d852
+  clock: 5  # d852
+  nonce: d852  # d852
+  message: "Scouted all 3 repos for Web Audio API usage:\n\n- **dash.js**: No Web Audio API usage found\n- **hls.js**: No Web Audio API usage found  \n- **shaka-player**: One file (lib/text/speech_to_text.js) — AudioContext + createMediaElementSource + connect() for extracting audio from media elements for speech recognition. Very limited usage.\n\nThese media player repos don't exercise the Web Audio node graph patterns described in the WI (createGain, createStereoPanner, AudioWorklet). The WI's primary use case (PlazaFlow spatial audio: AudioContext → GainNode → StereoPannerNode → destination with dynamic gain/pan) isn't represented here.\n\nThe framework pattern implementation is straightforward but these repos won't validate it meaningfully. Would you like me to: (1) implement anyway and validate against shaka-player's minimal usage, or (2) deprioritize until repos with richer Web Audio graphs are available?"  # d852
+- op: update  # 5a4b
+  at: '2026-03-18T05:09:00Z'  # 5a4b
+  by: agent  # 5a4b
+  actor: jgstern_agent  # 5a4b
+  clock: 6  # 5a4b
+  nonce: 5a4b  # 5a4b
+  set:  # 5a4b
+    status: needs_human_review  # 5a4b
+- op: discuss  # b97f
+  at: '2026-03-18T05:09:00Z'  # b97f
+  by: agent  # b97f
+  actor: jgstern_agent  # b97f
+  clock: 7  # b97f
+  nonce: b97f  # b97f
+  message: "Awaiting human decision on whether to proceed with minimal test coverage or find better test repos."  # b97f
+- op: discuss  # 24c0
+  at: '2026-03-18T16:38:50Z'  # 24c0
+  by: human  # 24c0
+  actor: jgstern  # 24c0
+  clock: 8  # 24c0
+  nonce: 24c0  # 24c0
+  message: "Please run one or more bakeoffs on the following repos. **For audio processing graph complexity**, Tone.js stands alone — it wraps every node type and supports `AudioWorklet`, `chain()`, and `fan()` patterns for building arbitrary graphs. **For effects chains**, Tuna.js and Pizzicato.js build modular `connect()`-based pipelines with 12–15 native node types. **For spatial audio**, Resonance Audio and Omnitone construct the densest graphs, routing ambisonics through `GainNode` matrices, multiple `ConvolverNode` instances, and `ChannelSplitter/Merger` routing. Among actual **media players**, Koel and Nuclear are the strongest examples of applications that use `BiquadFilterNode` equalizers and `AnalyserNode` visualizers in production. Howler.js bridges the gap between player and framework with its spatial plugin's `PannerNode` and `StereoPannerNode` chains. The key pattern across all these repos is the same: `AudioContext` → source node → processing chain via `connect()` → `GainNode` → `destination`.\n\n\nhttps://github.com/Tonejs/Tone.js\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/Tone.js\n\nhttps://github.com/Theodeus/tuna\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/tuna\n\nhttps://github.com/alemangui/pizzicato\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/pizzicato\n\nhttps://github.com/resonance-audio/resonance-audio-web-sdk\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/resonance-audio-web-sdk\n\nhttps://github.com/GoogleChrome/omnitone\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/omnitone\n\nhttps://github.com/koel/koel\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/koel\n\nhttps://github.com/nukeop/nuclear\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/nuclear\n\nhttps://github.com/goldfire/howler.js\nfilesystem location: /home/jgstern_agent/whole_bunch_of_repos/howler.js"  # 24c0
+- op: update  # 4b1b
+  at: '2026-03-18T16:39:19Z'  # 4b1b
+  by: human  # 4b1b
+  actor: jgstern  # 4b1b
+  clock: 9  # 4b1b
+  nonce: 4b1b  # 4b1b
+  set:  # 4b1b
+    status: todo_soft  # 4b1b
+- op: update  # 512a
+  at: '2026-03-18T16:44:27Z'  # 512a
+  by: agent  # 512a
+  actor: jgstern_agent  # 512a
+  clock: 10  # 512a
+  nonce: 512a  # 512a
+  set:  # 512a
+    status: todo_soft  # 512a
+    priority: 3  # 512a
+- op: discuss  # 973e
+  at: '2026-03-18T16:44:27Z'  # 973e
+  by: agent  # 973e
+  actor: jgstern_agent  # 973e
+  clock: 11  # 973e
+  nonce: 973e  # 973e
+  message: "Human provided 8 Web Audio repos with rich patterns. Changing back to todo_soft for implementation."  # 973e
+- op: discuss  # 1454
+  at: '2026-03-18T16:44:41Z'  # 1454
+  by: agent  # 1454
+  actor: jgstern_agent  # 1454
+  clock: 12  # 1454
+  nonce: '1454'  # 1454
+  message: "Thank you for the 8 Web Audio repos. Tone.js, tuna, and pizzicato will be particularly useful for validating connect() chain detection and node graph topology. Will run a DEEP bakeoff first to establish a baseline, then implement the Web Audio framework pattern."  # 1454
+- op: discuss  # 8a56
+  at: '2026-03-18T16:51:47Z'  # 8a56
+  by: agent  # 8a56
+  actor: jgstern_agent  # 8a56
+  clock: 13  # 8a56
+  nonce: 8a56  # 8a56
+  message: "DEEP bakeoff baseline complete on all 8 Web Audio repos:\n\nCohort 1: Tone.js (GOOD, 12K edges), tuna (WARN, 14 edges), pizzicato (WARN, 37 edges), howler.js (WARN, 63 edges)\nCohort 2: koel (GOOD, 23K edges), nuclear (WARN, 9K edges), omnitone (WARN, 135 edges), resonance-audio-web-sdk (WARN, 645 edges)\n\nKey finding: Tone.js and koel are the richest for analysis. The smaller libraries (tuna, pizzicato, omnitone, resonance-audio-web-sdk) have inherently simple structures. The Web Audio API patterns (AudioContext, connect(), createGain, etc.) are not yet detected as framework patterns — implementing those is the next step."  # 8a56
+- op: update  # b5fc
+  at: '2026-03-18T17:04:36Z'  # b5fc
+  by: agent  # b5fc
+  actor: jgstern_agent  # b5fc
+  clock: 14  # b5fc
+  nonce: b5fc  # b5fc
+  set:  # b5fc
+    status: done  # b5fc
+- op: discuss  # 30f1
+  at: '2026-03-18T17:04:36Z'  # 30f1
+  by: agent  # 30f1
+  actor: jgstern_agent  # 30f1
+  clock: 15  # 30f1
+  nonce: 30f1  # 30f1
+  message: "Merged in PR #2361. Web Audio framework pattern detects AudioContext creation, node factories (createGain, createOscillator, etc.), .connect() graph wiring, AudioWorkletProcessor, and Tone.js patterns (chain, fan, toDestination). Auto-detected via npm packages. DEEP bakeoff baseline on 8 repos: Tone.js GOOD (12K edges), koel GOOD (23K edges)."  # 30f1

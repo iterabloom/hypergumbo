@@ -241,6 +241,111 @@ class TestLinkAnnotations:
         assert len(result.edges) == 0
 
 
+class TestLinkRouteAnnotations:
+    """Tests for @hg:route matching."""
+
+    def test_route_creates_route_symbol(self, tmp_path: Path) -> None:
+        """@hg:route POST /api/join should create a route symbol."""
+        f = tmp_path / "src" / "handler.rs"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("// @hg:route POST join\nfn handle_join() {}\n")
+
+        syms = [_make_sym("src/handler.rs", language="rust")]
+        result = link_annotations(tmp_path, syms)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "POST join"
+        assert routes[0].meta["hg_annotation"] == "route"
+
+    def test_multiple_routes_in_one_file(self, tmp_path: Path) -> None:
+        """Multiple @hg:route directives create multiple route symbols."""
+        f = tmp_path / "src" / "api.rs"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(
+            "// @hg:route POST join\n"
+            "fn handle_join() {}\n"
+            "// @hg:route POST leave\n"
+            "fn handle_leave() {}\n"
+        )
+
+        syms = [_make_sym("src/api.rs", language="rust")]
+        result = link_annotations(tmp_path, syms)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 2
+        names = {r.name for r in routes}
+        assert "POST join" in names
+        assert "POST leave" in names
+
+
+class TestLinkDispatchAnnotations:
+    """Tests for @hg:dispatches matching."""
+
+    def test_dispatches_creates_edge_to_named_symbol(self, tmp_path: Path) -> None:
+        """@hg:dispatches target should create a dispatches_to edge."""
+        src = tmp_path / "src" / "router.ts"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// @hg:dispatches handle_join\nroute(msg);\n")
+
+        dst = tmp_path / "src" / "handler.ts"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("function handle_join(msg) {}\n")
+
+        syms = [
+            _make_sym("src/router.ts"),
+            Symbol(
+                id="typescript:src/handler.ts:1-1:handle_join:function",
+                name="handle_join", kind="function", language="typescript",
+                path="src/handler.ts",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test-v1", origin_run_id="uuid:test",
+            ),
+        ]
+        result = link_annotations(tmp_path, syms)
+
+        dispatch_edges = [e for e in result.edges if e.edge_type == "annotated_dispatches"]
+        assert len(dispatch_edges) >= 1
+        assert dispatch_edges[0].meta["channel"] == "handle_join"
+
+    def test_dispatches_no_target_no_edge(self, tmp_path: Path) -> None:
+        """@hg:dispatches with no matching symbol creates no edge."""
+        f = tmp_path / "src" / "router.ts"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("// @hg:dispatches nonexistent_handler\n")
+
+        syms = [_make_sym("src/router.ts")]
+        result = link_annotations(tmp_path, syms)
+
+        dispatch_edges = [e for e in result.edges if e.edge_type == "annotated_dispatches"]
+        assert len(dispatch_edges) == 0
+
+    def test_dispatches_creates_synthetic_symbol(self, tmp_path: Path) -> None:
+        """@hg:dispatches should create a synthetic dispatcher symbol."""
+        src = tmp_path / "src" / "dispatch.ts"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// @hg:dispatches process_msg\n")
+
+        dst = tmp_path / "src" / "proc.ts"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("function process_msg() {}\n")
+
+        syms = [
+            _make_sym("src/dispatch.ts"),
+            Symbol(
+                id="typescript:src/proc.ts:1-1:process_msg:function",
+                name="process_msg", kind="function", language="typescript",
+                path="src/proc.ts",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test-v1", origin_run_id="uuid:test",
+            ),
+        ]
+        result = link_annotations(tmp_path, syms)
+
+        dispatchers = [s for s in result.symbols if s.kind == "dispatcher"]
+        assert len(dispatchers) >= 1
+
+
 class TestAnnotationSite:
     """Tests for the AnnotationSite dataclass."""
 

@@ -51,6 +51,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
@@ -604,6 +605,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     meta=func_meta,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -654,6 +656,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     modifiers=_extract_modifiers(node),
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -691,6 +694,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     modifiers=_extract_modifiers(node),
                     meta=obj_meta,
+                    shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
@@ -1011,6 +1015,12 @@ def _extract_edges_from_file(
                                 origin_run_id=run.execution_id,
                             ))
                             resolved_simple_sym = lookup_result.symbol
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "kotlin", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                module_hint=import_hint or "external",
+                            ))
 
                     # Return type tracking for simple function calls
                     if (

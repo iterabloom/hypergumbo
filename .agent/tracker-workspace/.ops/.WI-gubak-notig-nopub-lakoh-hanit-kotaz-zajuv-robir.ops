@@ -1,0 +1,53 @@
+- op: create  # d1bd
+  at: '2026-03-17T17:34:54Z'  # d1bd
+  by: agent  # d1bd
+  actor: jgstern_agent  # d1bd
+  clock: 1  # d1bd
+  nonce: d1bd  # d1bd
+  data:  # d1bd
+    kind: work_item  # d1bd
+    title: "Tracker CLI: verbose mutation confirmations (show what changed, not just 'updated')"  # d1bd
+    status: needs_human_review  # d1bd
+    priority: 3  # d1bd
+    parent:  # d1bd
+    tags:  # d1bd
+    - tracker  # d1bd
+    - cli  # d1bd
+    - ux  # d1bd
+    before: []  # d1bd
+    duplicate_of: []  # d1bd
+    not_duplicate_of: []  # d1bd
+    pr_ref:  # d1bd
+    description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit', 'discussed WI-mamuh: 1 new message'. This is the general case of the relationship-specific confirmation (#4). Lower priority since #4 covers the highest-value case (relationship directionality). The 'discuss' command could also print a truncated preview of the message added."  # d1bd
+    fields: {}  # d1bd
+- op: update  # 0e84
+  at: '2026-03-17T18:40:08Z'  # 0e84
+  by: agent  # 0e84
+  actor: jgstern_agent  # 0e84
+  clock: 2  # 0e84
+  nonce: '0e84'  # 0e84
+  set:  # 0e84
+    description: "Every mutation prints just 'updated' or 'discussed'. Should print what actually changed: 'updated WI-mamuh: status todo_soft -> done', 'updated WI-mamuh: added before -> INV-jisit (cross-linker integration)', 'discussed WI-mamuh: 1 new message'. This generalizes relationship-specific confirmations (WI-povuh) to all mutation types: status changes, priority changes, tag additions, field updates, discussion messages. Lower priority than WI-povuh because relationship directionality errors (before links pointing the wrong way) are the costliest mistake — WI-povuh addresses that specific case. This item covers the rest: knowing at a glance whether your status/priority/tag change took effect without running a separate 'tracker show' to verify."  # 0e84
+- op: update  # 3899
+  at: '2026-03-17T18:42:09Z'  # 3899
+  by: human  # 3899
+  actor: jgstern  # 3899
+  clock: 3  # 3899
+  nonce: '3899'  # 3899
+  set:  # 3899
+    status: todo_soft  # 3899
+- op: update  # 4f46
+  at: '2026-03-17T21:10:39Z'  # 4f46
+  by: agent  # 4f46
+  actor: jgstern_agent  # 4f46
+  clock: 4  # 4f46
+  nonce: 4f46  # 4f46
+  set:  # 4f46
+    status: done  # 4f46
+- op: discuss  # f6b4
+  at: '2026-03-17T21:10:39Z'  # f6b4
+  by: agent  # f6b4
+  actor: jgstern_agent  # f6b4
+  clock: 5  # f6b4
+  nonce: f6b4  # f6b4
+  message: "Implemented in same PR as WI-povuh. All mutation types now print what changed: status transitions, priority changes, tag additions/removals, parent changes, pr_ref changes, and custom field updates."  # f6b4

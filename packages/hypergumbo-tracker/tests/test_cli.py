@@ -32,6 +32,9 @@ from hypergumbo_tracker.cli import (
     _maybe_auto_sync,
     _print_sync_reminder,
     _print_screen_warning,
+    _changes_to_dict,
+    _describe_changes,
+    _short_id,
     _warn_unread_human_messages,
     main,
     textconv_main,
@@ -785,7 +788,9 @@ class TestWriteCommands:
     def test_update_with_tags(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                               mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-old", title="Old item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -1070,6 +1075,939 @@ class TestWriteCommands:
         ts = TrackerSet(tracker_root)
         # Should not raise — the caller handles the error
         _warn_unread_human_messages("WI-nonexistent", ts)
+
+
+# ---------------------------------------------------------------------------
+# Verbose confirmation messages
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseConfirmations:
+    """Mutation commands print human-readable confirmation details."""
+
+    def test_update_status_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Status change prints old → new status."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--status", "done",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "status" in out
+        assert "todo_hard" in out
+        assert "done" in out
+
+    def test_update_priority_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Priority change prints old → new priority."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--priority", "1",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "priority" in out
+        assert "P2" in out
+        assert "P1" in out
+
+    def test_update_add_before_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-before prints the relationship with item titles."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-alpha", title="Alpha task")
+        _add_item(ops_dir, "WI-beta", title="Beta task")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--add-before", "WI-beta",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "blocks" in out.lower() or "before" in out.lower()
+
+    def test_update_remove_before_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before prints the unlinked relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-alpha", title="Alpha task")
+        _add_item(ops_dir, "WI-beta", title="Beta task")
+        # First add the before link
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--add-before", "WI-beta",
+            ])
+        capsys.readouterr()  # clear
+        # Now remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--remove-before", "WI-beta",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "no longer" in out.lower() or "removed" in out.lower()
+
+    def test_update_parent_shows_relationship(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--parent prints the parent relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-child", title="Child item")
+        _add_item(ops_dir, "META-parent", kind="meta_invariant",
+                  title="Parent meta")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--parent", "META-parent",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "parent" in out.lower()
+
+    def test_update_tags_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Tag mutations print which tags were added/removed."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-tag", "important",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "updated" in out
+        assert "important" in out
+
+    def test_update_json_includes_changes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes structured change details."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "update", "WI-test", "--status", "done",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+        assert "changes" in data
+
+    def test_discuss_shows_confirmation(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Discuss command prints confirmation with message count."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  title="Test item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "My discussion message",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "discussed" in out
+
+    def test_update_multiple_changes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Multiple mutations in one update all appear in output."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test",
+                  status="todo_hard")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--status", "done",
+                "--priority", "1",
+                "--add-tag", "resolved",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "status" in out
+        assert "priority" in out
+        assert "resolved" in out
+
+    def test_update_remove_tag_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Tag removal prints which tag was removed."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        # Add tag first
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-tag", "obsolete",
+            ])
+        capsys.readouterr()
+        # Remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--remove-tag", "obsolete",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "obsolete" in out
+
+    def test_update_pr_ref_shows_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Setting pr_ref shows the new value."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--pr-ref", "#1234",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "pr_ref" in out
+        assert "#1234" in out
+
+    def test_update_field_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Custom field changes show the field name and value."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--field", "root_cause=race condition",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "root_cause" in out
+        assert "race condition" in out
+
+
+class TestDescribeChangesUnit:
+    """Unit tests for _describe_changes and helpers."""
+
+    def test_short_id_single_part(self) -> None:
+        """IDs with fewer than 2 parts return unchanged."""
+        assert _short_id("NOID") == "NOID"
+
+    def test_short_id_normal(self) -> None:
+        """Normal proquint IDs are shortened to prefix + first word."""
+        assert _short_id("WI-mamuh-puduz-extra") == "WI-mamuh"
+
+    def test_changes_to_dict_no_colon(self) -> None:
+        """Lines without ': ' get field='unknown'."""
+        result = _changes_to_dict(["something happened"])
+        assert result[0]["field"] == "unknown"
+        assert result[0]["detail"] == "something happened"
+
+    def test_describe_parent_removed(self) -> None:
+        """Parent removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            parent="META-parent",
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            parent=None,
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="meta_invariant",
+                    title="Parent", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("removed" in c for c in changes)
+
+    def test_describe_pr_ref_removed(self) -> None:
+        """PR ref removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            pr_ref="#100",
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            pr_ref=None,
+        )
+
+        class FakeTS:
+            pass
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("pr_ref" in c and "removed" in c for c in changes)
+
+    def test_describe_duplicate_of_removed(self) -> None:
+        """Duplicate-of removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            duplicate_of=["WI-other"],
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            duplicate_of=[],
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="work_item",
+                    title="Other", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("duplicate_of" in c and "removed" in c for c in changes)
+
+    def test_describe_not_duplicate_of_added_and_removed(self) -> None:
+        """Not-duplicate-of add and removal are reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            not_duplicate_of=["WI-old"],
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            not_duplicate_of=["WI-new"],
+        )
+
+        class FakeTS:
+            def get(self, item_id: str) -> CompiledItem:
+                return CompiledItem(
+                    id=item_id, kind="work_item",
+                    title="Item", status="todo_hard",
+                )
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("not_duplicate_of" in c and "removed" in c for c in changes)
+        assert any("not_duplicate_of" in c and "+" in c for c in changes)
+
+    def test_describe_field_removed(self) -> None:
+        """Custom field removal is reported."""
+        old = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            fields={"root_cause": "bug"},
+        )
+        new = CompiledItem(
+            id="WI-a", kind="work_item", title="A", status="todo_hard",
+            fields={},
+        )
+
+        class FakeTS:
+            pass
+
+        changes = _describe_changes(old, new, FakeTS())  # type: ignore[arg-type]
+        assert any("root_cause" in c and "removed" in c for c in changes)
+
+
+# ---------------------------------------------------------------------------
+# Batch command
+# ---------------------------------------------------------------------------
+
+
+class TestDepsCommand:
+    """Tests for the deps subcommand (dependency graph view)."""
+
+    def test_deps_shows_item(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows the target item."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-target",
+                  title="Target item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Target item" in out
+
+    def test_deps_shows_children(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows children of the target."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-parent", kind="meta_invariant",
+                  title="Parent meta")
+        _add_item(ops_dir, "WI-child1", title="Child 1")
+        _add_item(ops_dir, "WI-child2", title="Child 2")
+        # Set parents
+        for child in ("WI-child1", "WI-child2"):
+            with pytest.raises(SystemExit):
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "update", child, "--parent", "META-parent",
+                ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "META-parent",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Child 1" in out
+        assert "Child 2" in out
+
+    def test_deps_shows_blocking(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows before/blocked-by relationships."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-blocker", title="Blocker task")
+        _add_item(ops_dir, "WI-blocked", title="Blocked task")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker", "--add-before", "WI-blocked",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Blocked task" in out
+
+    def test_deps_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps in JSON mode returns structured output."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-target",
+                  title="Target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "WI-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["id"] == "WI-target"
+
+    def test_deps_no_relationships(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps with no relationships shows the item alone."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-lonely",
+                  title="Lonely item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-lonely",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Lonely item" in out
+
+    def test_deps_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """deps shows items that block the target (inverse before)."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker", title="Blocker task")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker", "--add-before", "INV-target",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "INV-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "blocked by" in out
+        assert "Blocker task" in out
+
+    def test_deps_json_full(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes parent, children, blocks, and blocked_by."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-top", kind="meta_invariant", title="Top")
+        _add_item(ops_dir, "WI-child", title="Child")
+        _add_item(ops_dir, "WI-target2", title="Target 2")
+        _add_item(ops_dir, "WI-blocker2", title="Blocker 2")
+        # child's parent = META-top
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--parent", "META-top",
+            ])
+        # child blocks WI-target2
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child", "--add-before", "WI-target2",
+            ])
+        # WI-blocker2 blocks WI-child
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-blocker2", "--add-before", "WI-child",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "WI-child",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["parent"]["title"] == "Top"
+        assert data["blocks"][0]["title"] == "Target 2"
+        assert data["blocked_by"][0]["title"] == "Blocker 2"
+
+    def test_deps_json_children(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode includes children array."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-top2", kind="meta_invariant", title="Top")
+        _add_item(ops_dir, "WI-kid", title="Kid item")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-kid", "--parent", "META-top2",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "deps", "META-top2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert "children" in data
+        assert data["children"][0]["title"] == "Kid item"
+
+    def test_deps_text_with_parent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Text mode shows parent relationship."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "META-parent2", kind="meta_invariant", title="Parent")
+        _add_item(ops_dir, "WI-child2", title="Child item")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-child2", "--parent", "META-parent2",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "deps", "WI-child2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "parent:" in out
+        assert "Parent" in out
+
+
+class TestBulkRelationships:
+    """Tests for --add-blocked-by and --remove-blocked-by inverse operations."""
+
+    def test_add_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-blocked-by sets before links on the referenced items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker1", title="Blocker 1")
+        _add_item(ops_dir, "WI-blocker2", title="Blocker 2")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker1",
+                "--add-blocked-by", "WI-blocker2",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # Both blockers should now have before: [INV-target]
+        assert "blocks" in out.lower() or "blocked-by" in out.lower()
+
+    def test_add_blocked_by_sets_before_on_other_items(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Verify the before link is actually set on the blocker items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        # Verify by showing the blocker item
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "show", "WI-blocker",
+            ])
+        show_out = capsys.readouterr().out
+        assert "INV-target" in show_out
+
+    def test_remove_blocked_by(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-blocked-by removes before links from the referenced items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        # First add the link
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        capsys.readouterr()
+        # Now remove it
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "INV-target",
+                "--remove-blocked-by", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "no longer" in out.lower() or "removed" in out.lower()
+
+    def test_blocked_by_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--add-blocked-by works in JSON mode."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "INV-target", kind="invariant", title="Target")
+        _add_item(ops_dir, "WI-blocker", title="Blocker")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "update", "INV-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+
+
+class TestBatchCommand:
+    """Tests for the batch subcommand."""
+
+    def test_batch_from_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch reads commands from a .htrac file."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update WI-test --priority 1\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "2/2" in out or "2 succeeded" in out
+
+    def test_batch_from_stdin(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch reads commands from stdin with '-'."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        input_text = "update WI-test --status done\n"
+        with pytest.raises(SystemExit) as exc:
+            with patch("sys.stdin", new=__import__("io").StringIO(input_text)):
+                main([
+                    "--tracker-root", str(tracker_root), "--no-auto-sync",
+                    "batch", "-",
+                ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_skips_comments_and_blanks(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Comments and blank lines are ignored."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "# This is a comment\n"
+            "\n"
+            "update WI-test --status done\n"
+            "  # Indented comment\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "1/1" in out or "1 succeeded" in out
+
+    def test_batch_partial_failure(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """If one operation fails, others still run and exit is non-zero."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update WI-nonexistent --status done\n"
+            "update WI-test --priority 1\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code != EXIT_SUCCESS
+        out = capsys.readouterr().out
+        err = capsys.readouterr().err
+        # Should report which operations failed
+        assert "FAIL" in out or "failed" in out.lower() or "FAIL" in err or "failed" in err.lower()
+
+    def test_batch_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """JSON mode returns structured results."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("update WI-test --status done\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "--json",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert "results" in data
+        assert data["results"][0]["ok"] is True
+
+    def test_batch_empty_file(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Empty batch file succeeds with 0 operations."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "empty.htrac"
+        batch_file.write_text("# Nothing to do\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_discuss_command(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Batch supports discuss commands."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            'update WI-test --status done\n'
+            'discuss WI-test "Fixed in PR #100"\n'
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_batch_file_not_found(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Missing batch file gives user error."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(tmp_path / "nonexistent.htrac"),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_batch_disallowed_command(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Read-only commands are rejected inside batch."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("show WI-test\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "not allowed" in err
+
+    def test_batch_invalid_args(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Invalid arguments in a batch line are reported."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text(
+            "update WI-test --status done\n"
+            "update --invalid-flag\n"
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_batch_empty_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Empty batch in JSON mode returns proper structure."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "empty.htrac"
+        batch_file.write_text("# All comments\n\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "--json",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+        assert data["results"] == []
+
+    def test_batch_item_not_found_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """ItemNotFoundError in batch is caught and reported per-op."""
+        tracker_root = _setup_tracker(tmp_path)
+        batch_file = tmp_path / "ops.htrac"
+        batch_file.write_text("update WI-nonexistent --status done\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "FAIL" in err
+
+    def test_batch_handler_nonzero_exit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Handler returning non-zero exit code is reported as failure."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        batch_file = tmp_path / "ops.htrac"
+        # --field without = gives EXIT_USER_ERROR from _cmd_update
+        batch_file.write_text("update WI-test --field badformat\n")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "batch", str(batch_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -2010,7 +2948,9 @@ class TestDuplicateFlags:
     ) -> None:
         """--remove-duplicate-of removes a duplicate-of link."""
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-dup", title="Dup item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -2025,7 +2965,9 @@ class TestDuplicateFlags:
     ) -> None:
         """--remove-not-duplicate-of removes a not-duplicate-of link."""
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-nodup", title="Not-dup item")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
@@ -2033,6 +2975,109 @@ class TestDuplicateFlags:
                 "--remove-not-duplicate-of", "WI-nodup",
             ])
         assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_duplicate_of_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-duplicate-of with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Dup target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-duplicate-of", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_duplicate_of_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-duplicate-of with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-duplicate-of", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_remove_not_duplicate_of_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-not-duplicate-of with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Not-dup target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-not-duplicate-of", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_not_duplicate_of_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-not-duplicate-of with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-not-duplicate-of", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+
+class TestRemoveBeforePrefixResolution:
+    """--remove-before must resolve short prefixes like --add-before does."""
+
+    def test_remove_before_resolves_prefix(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before with a short prefix resolves to the full ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, full_id, title="Before target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-before", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_before_nonexistent_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-before with a nonexistent prefix fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-before", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -3385,3 +4430,4 @@ class TestSyncReminder:
             _print_sync_reminder()
         captured = capsys.readouterr()
         assert captured.err == ""
+

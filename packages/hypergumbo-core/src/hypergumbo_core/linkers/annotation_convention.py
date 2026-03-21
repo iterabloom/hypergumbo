@@ -11,12 +11,17 @@ Supported Directives
   to the named channel. Creates an ``annotated_publishes`` edge when matched
   with a ``@hg:subscribes`` directive on the same channel.
 - ``@hg:subscribes <channel>`` — marks the enclosing function as a subscriber.
+- ``@hg:route <method> <path>`` — creates a route symbol (kind="route")
+  with the given method and path/identifier.
+- ``@hg:dispatches <target>`` — creates an ``annotated_dispatches`` edge
+  from the annotation site to any symbol whose name matches the target.
 
 Matching
 --------
 Publishers and subscribers are matched by channel name (case-sensitive string
 equality). Each publisher creates an edge to every subscriber on the same
-channel. Confidence is 0.95 (explicit developer annotation = high trust).
+channel. Dispatches directives match against existing symbol names. Route
+directives create standalone symbols. Confidence is 0.95.
 
 Language Agnostic
 -----------------
@@ -141,6 +146,8 @@ def link_annotations(
     # Scan all files for annotations
     publishers: dict[str, list[AnnotationSite]] = {}  # channel → sites
     subscribers: dict[str, list[AnnotationSite]] = {}  # channel → sites
+    routes: list[AnnotationSite] = []
+    dispatches: list[AnnotationSite] = []
 
     for abs_path, rel_path in file_paths:
         if not abs_path.exists():
@@ -151,9 +158,14 @@ def link_annotations(
                 publishers.setdefault(site.argument, []).append(site)
             elif site.directive == "subscribes":
                 subscribers.setdefault(site.argument, []).append(site)
+            elif site.directive == "route":
+                routes.append(site)
+            elif site.directive == "dispatches":
+                dispatches.append(site)
 
-    # Match publishers to subscribers by channel name
     seen_sym_ids: set[str] = set()
+
+    # --- Match publishers to subscribers by channel name ---
     for channel, pub_sites in publishers.items():
         sub_sites = subscribers.get(channel, [])
         if not sub_sites:
@@ -220,6 +232,79 @@ def link_annotations(
                     dest_access_mode="read",
                     channel=channel,
                 ))
+
+    # --- Create route symbols for @hg:route directives ---
+    for route in routes:
+        route_id = f"{route.file_path}:{route.line}:{route.argument}:annotated_route"
+        if route_id not in seen_sym_ids:
+            seen_sym_ids.add(route_id)
+            result_symbols.append(Symbol(
+                id=route_id,
+                stable_id=None,
+                shape_id=None,
+                canonical_name=f"@hg:route {route.argument}",
+                fingerprint=hashlib.sha256(route_id.encode()).hexdigest()[:16],
+                kind="route",
+                name=route.argument,
+                path=route.file_path,
+                language="unknown",
+                span=Span(
+                    start_line=route.line, end_line=route.line,
+                    start_col=0, end_col=0,
+                ),
+                origin=PASS_ID,
+                meta={"hg_annotation": "route", "route_spec": route.argument},
+                supply_chain_tier=1,
+                supply_chain_reason="@hg:route annotation",
+            ))
+
+    # --- Create dispatches_to edges for @hg:dispatches directives ---
+    # Build symbol name index for matching dispatch targets
+    sym_by_name: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        sym_by_name.setdefault(sym.name, []).append(sym)
+
+    for disp in dispatches:
+        target_name = disp.argument
+        target_syms = sym_by_name.get(target_name, [])
+        if not target_syms:
+            continue
+
+        disp_id = f"{disp.file_path}:{disp.line}:{target_name}:annotated_dispatcher"
+        if disp_id not in seen_sym_ids:
+            seen_sym_ids.add(disp_id)
+            result_symbols.append(Symbol(
+                id=disp_id,
+                stable_id=None,
+                shape_id=None,
+                canonical_name=f"@hg:dispatches {target_name}",
+                fingerprint=hashlib.sha256(disp_id.encode()).hexdigest()[:16],
+                kind="dispatcher",
+                name=target_name,
+                path=disp.file_path,
+                language="unknown",
+                span=Span(
+                    start_line=disp.line, end_line=disp.line,
+                    start_col=0, end_col=0,
+                ),
+                origin=PASS_ID,
+                meta={"hg_annotation": "dispatches", "channel": target_name},
+                supply_chain_tier=2,
+                supply_chain_reason="@hg:dispatches annotation",
+            ))
+
+        for target in target_syms:
+            result_edges.append(Edge.create(
+                src=disp_id,
+                dst=target.id,
+                edge_type="annotated_dispatches",
+                line=disp.line,
+                confidence=0.95,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="hg_annotation",
+                channel=target_name,
+            ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 

@@ -250,5 +250,6 @@ class TestUnresolvedCalls:
         assert len(call_edges) == 1
 
         # Should have lower confidence for unresolved target
-        assert call_edges[0].confidence == 0.6
-        assert "unresolved:unknown-function" in call_edges[0].dst
+        assert call_edges[0].confidence == 0.50
+        assert ":unresolved" in call_edges[0].dst
+        assert "unknown-function" in call_edges[0].dst

@@ -1193,3 +1193,155 @@ contextBridge.exposeInMainWorld("myApi", {
         assert len(wrappers) == 1
         assert wrappers[0][0] == "myApi"
         assert wrappers[0][1]["doStuff"] == ("do-stuff", "invoke")
+
+
+class TestContextBridgeFunctionExposure:
+    """Tests for individual function exposure via contextBridge.
+
+    Some Electron apps (e.g., podman-desktop) expose individual functions
+    rather than method objects::
+
+        contextBridge.exposeInMainWorld('listContainers', async () => {
+            return ipcInvoke('container-provider-registry:listContainers');
+        });
+
+    The renderer then calls ``window.listContainers()``. This pattern
+    requires detecting the function-based exposure and matching
+    ``window.<name>()`` calls (no namespace dot).
+    """
+
+    def test_detect_individual_function_exposure(self) -> None:
+        """Detects contextBridge exposing a single function with ipcRenderer."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
+
+        source = b"""
+contextBridge.exposeInMainWorld('clearTasks', async (): Promise<void> => {
+    return ipcRenderer.invoke('tasks:clear-all');
+});
+"""
+        funcs = detect_context_bridge_functions(source)
+
+        assert len(funcs) == 1
+        assert funcs[0] == ("clearTasks", "tasks:clear-all", "invoke")
+
+    def test_detect_ipc_invoke_wrapper(self) -> None:
+        """Detects custom ipcInvoke wrapper (common in podman-desktop)."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
+
+        source = b"""
+contextBridge.exposeInMainWorld('listContainers', async (): Promise<ContainerInfo[]> => {
+    return ipcInvoke('container-provider-registry:listContainers');
+});
+"""
+        funcs = detect_context_bridge_functions(source)
+
+        assert len(funcs) == 1
+        assert funcs[0] == ("listContainers", "container-provider-registry:listContainers", "invoke")
+
+    def test_detect_multiple_individual_functions(self) -> None:
+        """Detects multiple individual function exposures."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
+
+        source = b"""
+contextBridge.exposeInMainWorld('clearTasks', async () => {
+    return ipcInvoke('tasks:clear-all');
+});
+contextBridge.exposeInMainWorld('clearTask', async (taskId) => {
+    return ipcInvoke('tasks:clear', taskId);
+});
+contextBridge.exposeInMainWorld('listContainers', async () => {
+    return ipcRenderer.invoke('container-provider-registry:listContainers');
+});
+"""
+        funcs = detect_context_bridge_functions(source)
+
+        assert len(funcs) == 3
+        names = {f[0] for f in funcs}
+        assert names == {"clearTasks", "clearTask", "listContainers"}
+
+    def test_ignores_object_exposure(self) -> None:
+        """Does not match object-based exposures (handled by existing code)."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
+
+        source = b"""
+contextBridge.exposeInMainWorld('api', {
+    openFile: () => ipcRenderer.invoke('open-file'),
+});
+"""
+        funcs = detect_context_bridge_functions(source)
+
+        assert len(funcs) == 0
+
+    def test_ipc_send_variant(self) -> None:
+        """Detects ipcRenderer.send in function body."""
+        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
+
+        source = b"""
+contextBridge.exposeInMainWorld('sendLog', (msg) => {
+    ipcRenderer.send('log:write', msg);
+});
+"""
+        funcs = detect_context_bridge_functions(source)
+
+        assert len(funcs) == 1
+        assert funcs[0] == ("sendLog", "log:write", "send")
+
+    def test_dedup_multiple_calls_same_function(self, tmp_path: Path) -> None:
+        """Multiple calls to same window.func() in one file produce one edge."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.ts"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('getVersion', async () => {
+    return ipcRenderer.invoke('app:version');
+});
+""")
+
+        renderer = tmp_path / "app.ts"
+        renderer.write_text("""
+const v1 = await window.getVersion();
+const v2 = await window.getVersion();
+""")
+
+        result = link_ipc(tmp_path)
+
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        # Only one bridge edge despite two calls (dedup by file + func_name)
+        assert len(bridge_edges) == 1
+
+    def test_linker_creates_bridge_edges_for_function_exposure(self, tmp_path: Path) -> None:
+        """End-to-end: function exposure + window.funcName() call → bridge edge."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        preload = tmp_path / "preload.ts"
+        preload.write_text("""
+contextBridge.exposeInMainWorld('listContainers', async () => {
+    return ipcRenderer.invoke('container-provider-registry:listContainers');
+});
+""")
+
+        renderer = tmp_path / "app.ts"
+        renderer.write_text("""
+async function loadContainers() {
+    const containers = await window.listContainers();
+    return containers;
+}
+""")
+
+        main = tmp_path / "main.ts"
+        main.write_text("""
+ipcMain.handle('container-provider-registry:listContainers', async () => {
+    return containerProviderRegistry.listContainers();
+});
+""")
+
+        result = link_ipc(tmp_path)
+
+        # Should have edges: bridge_invokes (renderer→preload) + message_send/receive (preload↔main)
+        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        assert len(bridge_edges) >= 1
+        # The bridge edge should reference the channel
+        assert any(
+            e.meta.get("channel") == "container-provider-registry:listContainers"
+            for e in bridge_edges
+        )

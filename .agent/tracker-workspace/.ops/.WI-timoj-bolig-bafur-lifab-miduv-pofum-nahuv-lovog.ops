@@ -1,0 +1,36 @@
+- op: create  # 78e0
+  at: '2026-03-19T07:59:33Z'  # 78e0
+  by: agent  # 78e0
+  actor: jgstern_agent  # 78e0
+  clock: 1  # 78e0
+  nonce: '78e0'  # 78e0
+  data:  # 78e0
+    kind: work_item  # 78e0
+    title: "Memory safety: prevent OOM/swap thrashing from concurrent analyses"  # 78e0
+    status: todo_soft  # 78e0
+    priority: 2  # 78e0
+    parent:  # 78e0
+    tags:  # 78e0
+    - reliability  # 78e0
+    - performance  # 78e0
+    before: []  # 78e0
+    duplicate_of: []  # 78e0
+    not_duplicate_of: []  # 78e0
+    pr_ref:  # 78e0
+    description: "Machine became unresponsive (SSD at 2 Gbps, swap thrashing) after 56 days of uptime. Root cause: background bakeoff analyzing vscode (3.3GB) + pytest -n auto (6 workers × ~1GB each) = ~9GB from hypergumbo alone, exceeding available memory on 22GB/512MB-swap machine.\n\nMechanical prevention needed — 'trying harder' is not a solution. Options:\n1. Memory limit per analysis process (ulimit -v or cgroup)\n2. Bakeoff memory check: read free memory before launching, skip/queue large repos if below threshold (e.g., 4GB free minimum)\n3. Cap pytest parallelism during bakeoffs (smart-test could check for running bakeoff PIDs)\n4. Add max-memory flag to hypergumbo run that aborts if RSS exceeds limit\n\nPriority P2 because this crashed the machine and required hard reboot."  # 78e0
+    fields: {}  # 78e0
+- op: update  # 02c1
+  at: '2026-03-19T17:22:32Z'  # 02c1
+  by: agent  # 02c1
+  actor: jgstern_agent  # 02c1
+  clock: 2  # 02c1
+  nonce: 02c1  # 02c1
+  set:  # 02c1
+    status: done  # 02c1
+- op: discuss  # 640f
+  at: '2026-03-19T17:22:32Z'  # 640f
+  by: agent  # 640f
+  actor: jgstern_agent  # 640f
+  clock: 3  # 640f
+  nonce: 640f  # 640f
+  message: "Fixed in PRs #2404 (memory-aware bakeoff with rolling profile store), #2405 (smart-test memory-aware parallelism), and #2406 (runtime MemoryPressureError guard in analysis pipeline). Three layers: bakeoff pre-check, pytest worker cap, and between-file abort."  # 640f

@@ -1,0 +1,36 @@
+- op: create  # 9918
+  at: '2026-03-18T06:15:31Z'  # 9918
+  by: agent  # 9918
+  actor: jgstern_agent  # 9918
+  clock: 1  # 9918
+  nonce: '9918'  # 9918
+  data:  # 9918
+    kind: work_item  # 9918
+    title: "ADR-0016: review draft IO boundary analysis ADR, finalize, and decompose into tracker items"  # 9918
+    status: todo_soft  # 9918
+    priority: 3  # 9918
+    parent:  # 9918
+    tags:  # 9918
+    - adr  # 9918
+    - governance  # 9918
+    before: []  # 9918
+    duplicate_of: []  # 9918
+    not_duplicate_of: []  # 9918
+    pr_ref:  # 9918
+    description: "## Goal\n\n1. Review the draft ADR at ~/hypergumbo_lab_notebook/draft-adr-io-boundary-analysis.md\n2. Plan improvements to the text (clarity, completeness, consistency with existing ADRs)\n3. Finalize as ADR-0016 in docs/adr/\n4. Merge the ADR via PR\n5. After merge: parse out the implementation work into applicable tracker items, annotated and connected appropriately (with blocking/dependency relationships, tags, etc.)\n\n## Notes\n\nThe draft is a design proposal for IO boundary analysis. The work item covers both the editorial process (review + finalize the ADR) and the decomposition into implementation tasks."  # 9918
+    fields: {}  # 9918
+- op: update  # bb84
+  at: '2026-03-18T06:55:21Z'  # bb84
+  by: agent  # bb84
+  actor: jgstern_agent  # bb84
+  clock: 2  # bb84
+  nonce: bb84  # bb84
+  set:  # bb84
+    status: done  # bb84
+- op: discuss  # 3f3a
+  at: '2026-03-18T06:55:21Z'  # 3f3a
+  by: agent  # 3f3a
+  actor: jgstern_agent  # 3f3a
+  clock: 3  # 3f3a
+  nonce: 3f3a  # 3f3a
+  message: "ADR-0016 merged in PR #2344. Implementation decomposed into 6 tracker items: WI-gomol (Phase 1a: Python catalog), WI-fonak (Phase 1b: tagging pass), WI-dikig (Phase 1c: boundary map), WI-zozok (Phase 1d: dogfood), WI-lojuf (Phase 2: multi-lang + FFI), WI-kuruv (Phase 3: claim verification), WI-rukub (Phase 4: CI). Phases 1a-1d at P3, Phases 2-4 at P4. All connected via before/parent relationships."  # 3f3a

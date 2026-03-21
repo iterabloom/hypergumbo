@@ -1,0 +1,87 @@
+- op: create  # 97df
+  at: '2026-03-17T09:17:07Z'  # 97df
+  by: agent  # 97df
+  actor: jgstern_agent  # 97df
+  clock: 1  # 97df
+  nonce: 97df  # 97df
+  data:  # 97df
+    kind: work_item  # 97df
+    title: "PlazaFlow readiness: BlockSuite document model framework pattern"  # 97df
+    status: needs_human_review  # 97df
+    priority: 3  # 97df
+    parent: META-migil-nahuh-hahus-gosok-dujag-zabig-gafil-vonit  # 97df
+    tags:  # 97df
+    - plazaflow  # 97df
+    - framework  # 97df
+    - blocksuite  # 97df
+    before:  # 97df
+    - WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam  # 97df
+    duplicate_of: []  # 97df
+    not_duplicate_of: []  # 97df
+    pr_ref:  # 97df
+    description: "BlockSuite (MPL-2.0) arrives in PlazaFlow v1.5 as the unified document layer: EdgelessEditor (whiteboard), PageEditor (rich text), database blocks (kanban). Its data model IS Yjs. If hypergumbo can detect BlockSuite Workspace/Doc interfaces and block schema with meta:createdBy fields, it can trace attribution and erasure data paths. Lower priority — PlazaFlow v1.5 is far out. No bakeoff repos currently available (AFFiNE uses BlockSuite but not in repo pool). Cross-refs: WI-mamuh (Yjs sub-document tracing — BlockSuite sub-docs are Yjs docs)."  # 97df
+    fields: {}  # 97df
+- op: update  # 28ad
+  at: '2026-03-17T09:19:19Z'  # 28ad
+  by: agent  # 28ad
+  actor: jgstern_agent  # 28ad
+  clock: 2  # 28ad
+  nonce: 28ad  # 28ad
+  set: {}  # 28ad
+  add:  # 28ad
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # 28ad
+- op: update  # 42f8
+  at: '2026-03-17T17:01:26Z'  # 42f8
+  by: agent  # 42f8
+  actor: jgstern_agent  # 42f8
+  clock: 3  # 42f8
+  nonce: 42f8  # 42f8
+  set: {}  # 42f8
+  remove:  # 42f8
+    before: [WI-mamuh]  # 42f8
+- op: update  # f6ca
+  at: '2026-03-17T18:23:08Z'  # f6ca
+  by: agent  # f6ca
+  actor: jgstern_agent  # f6ca
+  clock: 4  # f6ca
+  nonce: f6ca  # f6ca
+  set: {}  # f6ca
+  remove:  # f6ca
+    before: [WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam]  # f6ca
+- op: discuss  # d584
+  at: '2026-03-17T20:28:32Z'  # d584
+  by: human  # d584
+  actor: jgstern  # d584
+  clock: 5  # d584
+  nonce: d584  # d584
+  message: "correction: AFFiNE is available at `/home/jgstern_agent/plazaflow_deep_repos/cohort2_yjs/AFFiNE/`"  # d584
+- op: update  # ae15
+  at: '2026-03-17T20:28:48Z'  # ae15
+  by: human  # ae15
+  actor: jgstern  # ae15
+  clock: 6  # ae15
+  nonce: ae15  # ae15
+  set:  # ae15
+    status: todo_soft  # ae15
+- op: discuss  # 9bca
+  at: '2026-03-17T23:42:19Z'  # 9bca
+  by: agent  # 9bca
+  actor: jgstern_agent  # 9bca
+  clock: 7  # 9bca
+  nonce: 9bca  # 9bca
+  message: "Acknowledged corrected path for AFFiNE."  # 9bca
+- op: update  # 117c
+  at: '2026-03-18T01:30:23Z'  # 117c
+  by: agent  # 117c
+  actor: jgstern_agent  # 117c
+  clock: 8  # 117c
+  nonce: 117c  # 117c
+  set:  # 117c
+    status: done  # 117c
+- op: discuss  # b9cb
+  at: '2026-03-18T01:30:23Z'  # b9cb
+  by: agent  # b9cb
+  actor: jgstern_agent  # b9cb
+  clock: 9  # b9cb
+  nonce: b9cb  # b9cb
+  message: "BlockSuite document model patterns (addBlock, deleteBlock, transact, defineBlockSchema, slots.blockUpdated, propsUpdated) implemented in PR #2329."  # b9cb

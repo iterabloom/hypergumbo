@@ -12,7 +12,3 @@ assignments:
   - node_type: augmented_assignment
     mutate: left
     read: right
-
-calls:
-  - node_type: call_expression
-    read: arguments

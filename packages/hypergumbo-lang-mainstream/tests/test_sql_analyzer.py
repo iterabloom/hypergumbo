@@ -10,6 +10,8 @@ Tests verify that the analyzer correctly extracts:
 - Foreign key references (as edges)
 """
 
+from pathlib import Path
+
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_core import __version__
@@ -285,3 +287,33 @@ $$ LANGUAGE plpgsql;
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double_it"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(x INT) RETURNS INT"
+
+
+class TestSqlStableId:
+    """Tests for stable_id in SQL (ADR-0014 §2)."""
+
+    def test_table_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.sql import analyze_sql_files
+
+        (tmp_path / "schema.sql").write_text(
+            "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));\n"
+        )
+        result = analyze_sql_files(tmp_path)
+        tbl = next(s for s in result.symbols if s.name == "users")
+        assert tbl.stable_id is not None
+        assert tbl.stable_id.startswith("sha256:")
+
+
+class TestSqlShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_table_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.sql import analyze_sql_files
+
+        (tmp_path / "schema.sql").write_text(
+            "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));\n"
+        )
+        result = analyze_sql_files(tmp_path)
+        tbl = next(s for s in result.symbols if s.name == "users")
+        assert tbl.shape_id is not None
+        assert tbl.shape_id.startswith("sha256:")

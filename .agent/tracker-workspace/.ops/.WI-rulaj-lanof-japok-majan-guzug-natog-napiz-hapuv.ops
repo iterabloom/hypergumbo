@@ -1,0 +1,59 @@
+- op: create  # f07d
+  at: '2026-03-17T17:34:36Z'  # f07d
+  by: agent  # f07d
+  actor: jgstern_agent  # f07d
+  clock: 1  # f07d
+  nonce: f07d  # f07d
+  data:  # f07d
+    kind: work_item  # f07d
+    title: "Tracker CLI: bulk relationship operations (multiple items, inverse --add-blocked-by)"  # f07d
+    status: needs_human_review  # f07d
+    priority: 2  # f07d
+    parent:  # f07d
+    tags:  # f07d
+    - tracker  # f07d
+    - cli  # f07d
+    - ux  # f07d
+    before: []  # f07d
+    duplicate_of: []  # f07d
+    not_duplicate_of: []  # f07d
+    pr_ref:  # f07d
+    description: "Setting the same before target on N items requires N separate invocations. Two improvements: (1) Accept multiple positional item IDs: 'tracker update WI-a WI-b WI-c --add-before INV-x' applies the same mutation to all listed items. (2) Add --add-blocked-by as the inverse of --add-before: 'tracker update INV-x --add-blocked-by WI-a WI-b WI-c' means 'WI-a, WI-b, WI-c all block INV-x' — expresses fan-in dependency in one command instead of N. Discovered during PlazaFlow tracker setup where 4 items needed the same before target, requiring 4 separate commands."  # f07d
+    fields: {}  # f07d
+- op: update  # d758
+  at: '2026-03-17T18:36:01Z'  # d758
+  by: human  # d758
+  actor: jgstern  # d758
+  clock: 2  # d758
+  nonce: d758  # d758
+  set:  # d758
+    status: todo_soft  # d758
+- op: update  # ba2e
+  at: '2026-03-17T22:06:21Z'  # ba2e
+  by: agent  # ba2e
+  actor: jgstern_agent  # ba2e
+  clock: 3  # ba2e
+  nonce: ba2e  # ba2e
+  set:  # ba2e
+    status: done  # ba2e
+- op: discuss  # ee09
+  at: '2026-03-17T22:06:21Z'  # ee09
+  by: agent  # ee09
+  actor: jgstern_agent  # ee09
+  clock: 4  # ee09
+  nonce: ee09  # ee09
+  message: "Implemented --add-blocked-by and --remove-blocked-by in update command. Multiple items accepted via repeated flags. The batch command (WI-modab) also addresses the multiple-invocations workflow."  # ee09
+- op: discuss  # 2b4b
+  at: '2026-03-18T22:04:06Z'  # 2b4b
+  by: human  # 2b4b
+  actor: jgstern  # 2b4b
+  clock: 5  # 2b4b
+  nonce: 2b4b  # 2b4b
+  message: "PR # please"  # 2b4b
+- op: discuss  # 8af7
+  at: '2026-03-19T00:21:24Z'  # 8af7
+  by: agent  # 8af7
+  actor: jgstern_agent  # 8af7
+  clock: 6  # 8af7
+  nonce: 8af7  # 8af7
+  message: "Inverse blocking flags were merged in the v2.3.0 release cycle. CHANGELOG: 'Inverse blocking flags: --add-blocked-by and --remove-blocked-by on tracker update'. Implementation in cli.py."  # 8af7

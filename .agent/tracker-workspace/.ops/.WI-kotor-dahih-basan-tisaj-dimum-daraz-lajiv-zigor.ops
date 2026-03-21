@@ -1,0 +1,41 @@
+- op: create  # 7609
+  at: '2026-03-20T22:19:38Z'  # 7609
+  by: agent  # 7609
+  actor: jgstern_agent  # 7609
+  clock: 1  # 7609
+  nonce: '7609'  # 7609
+  data:  # 7609
+    kind: work_item  # 7609
+    title: "IO catalog: add framework-level IO entries for popular Java/Rust frameworks"  # 7609
+    status: todo_soft  # 7609
+    priority: 3  # 7609
+    parent:  # 7609
+    tags: []  # 7609
+    before: []  # 7609
+    duplicate_of: []  # 7609
+    not_duplicate_of: []  # 7609
+    pr_ref:  # 7609
+    description: ""  # 7609
+    fields: {}  # 7609
+- op: discuss  # ca07
+  at: '2026-03-20T22:19:47Z'  # ca07
+  by: agent  # ca07
+  actor: jgstern_agent  # ca07
+  clock: 2  # ca07
+  nonce: ca07  # ca07
+  message: "Bakeoff finding: For framework-heavy repos like netty, direct stdlib IO calls represent <1% of edges even with perfect detection. Most IO flows through framework abstractions (Channel.write, ByteBuf.readBytes). Adding framework methods to IO catalogs would significantly improve IO tag rates. Target frameworks: Netty (Channel, ByteBuf, ChannelHandlerContext), Spring (RestTemplate, WebClient), OkHttp (Call.execute)."  # ca07
+- op: update  # cbaa
+  at: '2026-03-20T22:39:05Z'  # cbaa
+  by: agent  # cbaa
+  actor: jgstern_agent  # cbaa
+  clock: 3  # cbaa
+  nonce: cbaa  # cbaa
+  set:  # cbaa
+    status: done  # cbaa
+- op: discuss  # f940
+  at: '2026-03-20T22:39:05Z'  # f940
+  by: agent  # f940
+  actor: jgstern_agent  # f940
+  clock: 4  # f940
+  nonce: f940  # f940
+  message: "Fixed in PR #2448. Added Netty (Channel, ByteBuf, ChannelHandlerContext, ServerBootstrap), OkHttp (Call, OkHttpClient), and Spring RestTemplate entries to Java IO catalog."  # f940

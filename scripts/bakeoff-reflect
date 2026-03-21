@@ -142,6 +142,18 @@ STRATA = {
         "What would break if we doubled the number of symbols we extract?",
         "Are we building a microscope when users need a telescope (or vice versa)?",
     ],
+    "io_and_dataflow": [
+        "Which stdlib I/O functions in this repo are missing from the IO primitive catalogs?",
+        "Are io_boundary tags on edges that aren't actually performing I/O?",
+        "Does the access_mode annotation match what the AST context actually shows?",
+        "If you traced a file write backward, would io-boundaries show the full chain?",
+        "Which boundary types (fs/net/ipc/env/subprocess) are present in the source but undetected?",
+        "Are there I/O operations hiding behind abstractions (ORMs, HTTP clients) that catalogs miss?",
+        "Does the io_boundary tagging distinguish read from write for bidirectional operations?",
+        "Would a developer find the io-boundaries output useful for understanding this repo's I/O surface?",
+        "Are access_mode annotations present on the edges that matter most for understanding dataflow?",
+        "What I/O patterns in this repo would require new catalog entries to detect?",
+    ],
 }
 
 STRATUM_NAMES = list(STRATA.keys())
@@ -296,6 +308,7 @@ parse_assessment:
     cross_language: "brief response"
     cohort_variation: "brief response"
     provocative: "brief response"
+    io_and_dataflow: "brief response"
     journal: "brief response"
 
   overall_verdict: CORRECT | MOSTLY_CORRECT | INCORRECT
@@ -322,6 +335,7 @@ ARTIFACT_DESCRIPTIONS = {
     "symbols.txt": "Symbols ranked by connectivity",
     "entrypoints.txt": "Detected entrypoints",
     "routes.txt": "Detected API routes and endpoints",
+    "io-boundaries.txt": "IO boundary map (boundary types, chains, entry points)",
     "run.txt": "Hypergumbo stdout output",
     "run.err": "Hypergumbo stderr output",
     "time.txt": "Analysis timing",

@@ -68,8 +68,10 @@ _CFFI_IMPORT_RE = re.compile(
 # Regex for detecting attribute calls on a variable: var.funcname(
 _ATTR_CALL_RE_TEMPLATE = r'{var}\.(\w+)\s*\('
 
-# PyO3 attribute names that indicate Python-exposed Rust code
-_PYO3_ANNOTATIONS = frozenset({"pyfunction", "pymethods", "pyclass"})
+# PyO3 attribute names that indicate Python-exposed Rust code.
+# The Rust analyzer stores the outer attribute crate name ("pyo3") rather
+# than the specific attribute ("pyfunction", "pymethods"), so we match both.
+_PYO3_ANNOTATIONS = frozenset({"pyfunction", "pymethods", "pyclass", "pyo3"})
 
 
 @dataclass
@@ -153,9 +155,28 @@ def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, Symbol]:
             isinstance(a, dict) and a.get("name") in _PYO3_ANNOTATIONS
             for a in annotations
         ):
-            # Use the short name (last component after dots)
-            short_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            # Register by multiple name variants for flexible matching:
+            # "PyTokenizer::encode" → keys: full name, short name (after ::),
+            # and Python-style name (strip Py prefix, replace :: with .)
+            full_name = sym.name
+            # Short name: last component after :: or .
+            if "::" in full_name:
+                short_name = full_name.rsplit("::", 1)[-1]
+            elif "." in full_name:
+                short_name = full_name.rsplit(".", 1)[-1]
+            else:
+                short_name = full_name
+            pyo3_lookup[full_name] = sym
             pyo3_lookup[short_name] = sym
+            # Python-style: strip Py prefix from class, use .method
+            # PyTokenizer::encode → Tokenizer.encode
+            if "::" in full_name:
+                parts = full_name.split("::")
+                cls = parts[0]
+                if cls.startswith("Py"):
+                    cls = cls[2:]
+                py_style = f"{cls}.{parts[-1]}" if len(parts) > 1 else cls
+                pyo3_lookup[py_style] = sym
 
     return pyo3_lookup
 

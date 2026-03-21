@@ -1,0 +1,57 @@
+- op: create  # 0861
+  at: '2026-03-18T12:53:31Z'  # 0861
+  by: agent  # 0861
+  actor: jgstern_agent  # 0861
+  clock: 1  # 0861
+  nonce: '0861'  # 0861
+  data:  # 0861
+    kind: work_item  # 0861
+    title: "Investigate HIGH_ORPHAN_RATE in C/C++/Erlang repos (6/60 DEEP bakeoff WARNs)"  # 0861
+    status: todo_soft  # 0861
+    priority: 4  # 0861
+    parent:  # 0861
+    tags:  # 0861
+    - analysis_quality  # 0861
+    - bakeoff  # 0861
+    before: []  # 0861
+    duplicate_of: []  # 0861
+    not_duplicate_of: []  # 0861
+    pr_ref:  # 0861
+    description: "DEEP bakeoff (60 repos) shows HIGH_ORPHAN_RATE in 6 repos: ffmpeg (31%), postgresql (22%), kbuild (27%), qemu-ipxe (43%), rabbitmq (47%), dmd (46%). These repos have many symbols not connected to any call edges. Possible causes: (1) C/C++ function pointer calls not resolved, (2) Erlang message-passing not creating call edges, (3) D language method calls not resolved, (4) genuinely isolated utility functions. Investigate whether orphan reduction is possible via improved call resolution."  # 0861
+    fields: {}  # 0861
+- op: discuss  # 6f05
+  at: '2026-03-18T12:55:27Z'  # 6f05
+  by: agent  # 6f05
+  actor: jgstern_agent  # 6f05
+  clock: 2  # 6f05
+  nonce: 6f05  # 6f05
+  message: "Initial investigation: rabbitmq has 18K orphan Erlang functions (out of 46K total) — the Erlang analyzer extracts symbols but doesn't resolve function calls well. haproxy has 2.4K orphan C/C++ symbols — function pointers and macro-expanded calls aren't resolved. Both are analyzer-level gaps requiring improved call resolution in the Erlang and C/C++ analyzers. This is substantial work — keeping at P4."  # 6f05
+- op: update  # 20e9
+  at: '2026-03-18T18:00:43Z'  # 20e9
+  by: agent  # 20e9
+  actor: jgstern_agent  # 20e9
+  clock: 3  # 20e9
+  nonce: '20e9'  # 20e9
+  set:  # 20e9
+    status: done  # 20e9
+- op: discuss  # 1170
+  at: '2026-03-18T18:00:43Z'  # 1170
+  by: agent  # 1170
+  actor: jgstern_agent  # 1170
+  clock: 4  # 1170
+  nonce: '1170'  # 1170
+  message: "Investigation complete. Root causes identified: (1) Erlang: 18K orphan functions in rabbitmq — analyzer extracts symbols but OTP message-passing and cross-app calls in umbrella projects are not resolved. (2) C/C++: 2.4K orphans in haproxy — function pointers and macro-expanded calls not resolved. Both require significant analyzer improvements (Erlang message-passing resolution, C function pointer tracking). Not actionable without dedicated analyzer work. Documented in lab notebook."  # 1170
+- op: discuss  # e713
+  at: '2026-03-18T22:09:25Z'  # e713
+  by: human  # e713
+  actor: jgstern  # e713
+  clock: 5  # e713
+  nonce: e713  # e713
+  message: "please review that lab notebook documentation and use it to create the tracker items needed to address the issues. connect and cross-reference the tracker items as appropriate."  # e713
+- op: discuss  # 6eb4
+  at: '2026-03-19T00:21:34Z'  # 6eb4
+  by: agent  # 6eb4
+  actor: jgstern_agent  # 6eb4
+  clock: 6  # 6eb4
+  nonce: 6eb4  # 6eb4
+  message: "Will create tracker items for the two root causes identified:\n1. Erlang: OTP message-passing and cross-app calls not resolved (18K orphans in rabbitmq)\n2. C/C++: Function pointer calls and macro-expanded code not resolved (2.4K orphans in haproxy)"  # 6eb4

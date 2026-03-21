@@ -111,6 +111,35 @@ logger = logging.getLogger(__name__)
 # Backwards compatibility alias - external code imports _is_test_path from here
 _is_test_path = is_test_path
 
+# Regex for extracting file path from a symbol ID.
+# Symbol ID format: {lang}:{path}:{start}-{end}:{kind}:{name}
+_SYMBOL_ID_LINE_RANGE_RE = re.compile(r":(\d+-\d+):[^:]+:[^:]+$")
+
+
+def _extract_path_from_id(symbol_id: str) -> str:
+    """Extract the file path from a symbol ID string.
+
+    File-level pseudo-symbols (kind=file, name=file) often aren't included
+    in the behavior map nodes list. When the test-edge filter can't look up
+    a source symbol, this function extracts the path from the raw ID so
+    ``is_test_node`` can still detect test-file origins.
+
+    Symbol ID format: ``{lang}:{path}:{start}-{end}:{kind}:{name}``
+    Example: ``python:test/e2e/test_sklearn.py:1-1:file:file``
+
+    Returns empty string if parsing fails.
+    """
+    if not symbol_id:
+        return ""
+    parts = symbol_id.split(":", 1)
+    if len(parts) < 2:
+        return ""
+    rest = parts[1]
+    match = _SYMBOL_ID_LINE_RANGE_RE.search(rest)
+    if match:
+        return rest[:match.start()]
+    return ""
+
 
 # Tier weights for supply chain ranking (first-party prioritized)
 # Tier 4 (derived) gets 0 weight since those files shouldn't be analyzed
@@ -153,12 +182,36 @@ class RankedFile:
     rank: int
 
 
+DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
+    "calls": 1.0,
+    "implements_rpc": 1.0,
+    "ipc_calls": 1.0,
+    "ipc_event": 0.9,
+    "wasm_bridge": 0.9,
+    "grpc_calls": 0.9,
+    "routes_to": 0.8,
+    "crdt_publishes": 0.8,
+    "message_dispatch": 0.8,
+    "crypto_flow": 0.8,
+    "renders_component": 0.7,
+    "imports": 0.3,
+    "imports_module": 0.2,
+    "module_exports": 0.1,
+    "contains": 0.1,
+    "extends": 0.5,
+    "implements": 0.5,
+    "depends_on": 0.2,
+    "depends_on_manifest": 0.1,
+}
+
+
 def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
     hub_threshold: int | None = None,
     within_file_weight: float = 1.0,
     max_per_file_in: int | None = None,
+    edge_type_weights: Dict[str, float] | None = None,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -216,6 +269,11 @@ def compute_centrality(
             passes 0.3 to dampen local-variable inflation.
         max_per_file_in: Maximum in-degree contribution from any single
             source file. None disables capping. ``rank_symbols`` passes 5.
+        edge_type_weights: Optional mapping of edge type to weight (0.0-1.0).
+            ``calls`` edges get full weight, ``imports`` edges get reduced
+            weight. Unlisted edge types default to 0.5. Use
+            ``DEFAULT_EDGE_TYPE_WEIGHTS`` for the recommended defaults.
+            None disables edge-type weighting (all types equal).
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
@@ -236,10 +294,16 @@ def compute_centrality(
     for edge in edges:
         target = edge.dst
         if target and target in in_degree:
+            # Base weight from edge type (if edge_type_weights provided)
+            type_weight = 1.0
+            if edge_type_weights is not None:
+                type_weight = edge_type_weights.get(edge.edge_type, 0.5)
+
             if use_file_weighting:
                 src_path = symbol_path.get(edge.src, "")
                 dst_path = symbol_path.get(target, "")
                 weight = within_file_weight if (src_path and src_path == dst_path) else 1.0
+                weight *= type_weight
 
                 # Per-file in-degree capping
                 if max_per_file_in is not None and src_path:
@@ -252,7 +316,7 @@ def compute_centrality(
 
                 in_degree[target] += weight
             else:
-                in_degree[target] += 1
+                in_degree[target] += type_weight
         source = edge.src
         if source and source in out_degree:
             out_degree[source] += 1
@@ -847,10 +911,10 @@ def filter_edges_for_ranking(
     edges: List[Edge],
     symbols: List[Symbol],
     exclude_test_edges: bool = True,
-    exclude_import_edges: bool = True,
+    exclude_import_edges: bool = False,
     min_edge_confidence: float = 0.0,
 ) -> List[Edge]:
-    """Filter edges for ranking, removing test, import, and low-confidence edges.
+    """Filter edges for ranking, removing test and low-confidence edges.
 
     Structural edges (extends, implements) are always preserved because they
     reflect architectural importance of the target (base class / interface),
@@ -861,9 +925,10 @@ def filter_edges_for_ranking(
         symbols: List of symbols (used to look up source paths for test filtering).
         exclude_test_edges: If True, ignore edges originating from test
             files. Default True.
-        exclude_import_edges: If True, ignore import/imports_module edges.
-            Import edges represent file-level visibility, not actual call
-            relationships. Default True.
+        exclude_import_edges: If True, ignore import/imports_module edges
+            entirely. If False (default), import edges are kept and
+            weighted by edge_type_weights in compute_centrality (imports
+            get 0.3x weight, imports_module gets 0.2x). Default False.
         min_edge_confidence: Minimum edge confidence to include. Edges below
             this threshold are excluded. Default 0.0 (include all).
 
@@ -875,11 +940,25 @@ def filter_edges_for_ranking(
 
     if exclude_test_edges:
         symbol_by_id = {s.id: s for s in symbols}
+
+        def _src_path(edge_src: str) -> str:
+            """Get source path from symbol lookup, falling back to ID parsing.
+
+            File-level pseudo-symbols (kind=file) may not be in the behavior
+            map nodes.  Without this fallback, import edges from test files
+            slip through the test-edge filter because is_test_node gets an
+            empty path and returns False.
+            """
+            sym = symbol_by_id.get(edge_src)
+            if sym is not None:
+                return sym.path
+            return _extract_path_from_id(edge_src)
+
         filtered = [
             e for e in edges
             if e.edge_type in _STRUCTURAL_EDGE_TYPES
             or not is_test_node(
-                (symbol_by_id[e.src].path if e.src in symbol_by_id else ''),
+                _src_path(e.src),
                 (symbol_by_id[e.src].meta if e.src in symbol_by_id else None),
             )
         ]
@@ -906,7 +985,7 @@ def rank_symbols(
     edges: List[Edge],
     first_party_priority: bool = True,
     exclude_test_edges: bool = True,
-    exclude_import_edges: bool = True,
+    exclude_import_edges: bool = False,
     min_edge_confidence: float = 0.0,
 ) -> List[RankedSymbol]:
     """Rank symbols by importance using centrality and tier weighting.
@@ -922,8 +1001,11 @@ def rank_symbols(
         exclude_test_edges: If True, ignore edges originating from test
             files when computing centrality. Default True.
         exclude_import_edges: If True, ignore import/imports_module edges
-            when computing centrality. Import edges represent file-level
-            visibility, not actual call relationships. Default True.
+            when computing centrality. If False (default), import edges
+            are included but weighted via edge_type_weights (imports=0.3,
+            imports_module=0.2) rather than excluded entirely. This gives
+            imported-but-not-called symbols a small centrality signal
+            without overwhelming call-based rankings. Default False.
         min_edge_confidence: Minimum edge confidence to include in
             centrality computation. Edges below this threshold are
             excluded. Default 0.0 (include all). Set to 0.5 to exclude
@@ -956,6 +1038,7 @@ def rank_symbols(
     raw_centrality = compute_centrality(
         symbols, filtered_edges, hub_threshold=100,
         within_file_weight=0.3, max_per_file_in=5,
+        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
     )
 
     # Apply tier weighting if enabled
@@ -1010,7 +1093,7 @@ def rank_files(
     first_party_priority: bool = True,
     top_k: int = 3,
     exclude_test_edges: bool = True,
-    exclude_import_edges: bool = True,
+    exclude_import_edges: bool = False,
     min_edge_confidence: float = 0.0,
 ) -> List[RankedFile]:
     """Rank files by importance using symbol density scoring.
@@ -1025,7 +1108,8 @@ def rank_files(
         first_party_priority: If True, apply tier weighting. Default True.
         top_k: Number of top symbols to sum for file score. Default 3.
         exclude_test_edges: If True, ignore edges from test files. Default True.
-        exclude_import_edges: If True, ignore import edges. Default True.
+        exclude_import_edges: If True, ignore import edges. Default False
+            (weighted inclusion via edge_type_weights).
         min_edge_confidence: Minimum edge confidence to include. Default 0.0.
 
     Returns:
@@ -1044,7 +1128,9 @@ def rank_files(
 
     # Compute centrality with hub saturation (same as rank_symbols)
     raw_centrality = compute_centrality(
-        symbols, filtered_edges, hub_threshold=100
+        symbols, filtered_edges, hub_threshold=100,
+        within_file_weight=0.3, max_per_file_in=5,
+        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
     )
 
     if first_party_priority:

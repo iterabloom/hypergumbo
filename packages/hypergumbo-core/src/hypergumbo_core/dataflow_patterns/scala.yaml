@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Scala (tree-sitter grammar)
+language: scala
+
+assignments:
+  - node_type: val_definition
+    write: pattern
+    read: value
+  - node_type: var_definition
+    write: pattern
+    read: value
+  - node_type: assignment_expression
+    write: left
+    read: right

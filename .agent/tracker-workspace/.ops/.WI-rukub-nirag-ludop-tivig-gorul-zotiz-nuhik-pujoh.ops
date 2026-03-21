@@ -1,0 +1,46 @@
+- op: create  # 67f6
+  at: '2026-03-18T06:55:13Z'  # 67f6
+  by: agent  # 67f6
+  actor: jgstern_agent  # 67f6
+  clock: 1  # 67f6
+  nonce: 67f6  # 67f6
+  data:  # 67f6
+    kind: work_item  # 67f6
+    title: "ADR-0016 Phase 4: CI integration, claim templates, community catalogs"  # 67f6
+    status: todo_soft  # 67f6
+    priority: 4  # 67f6
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 67f6
+    tags:  # 67f6
+    - adr-0016  # 67f6
+    - io-boundary  # 67f6
+    before:  # 67f6
+    - WI-kuruv-diloz-hobul-mufoh-gahim-notoj-duzav-fomig  # 67f6
+    duplicate_of: []  # 67f6
+    not_duplicate_of: []  # 67f6
+    pr_ref:  # 67f6
+    description: "GitHub Action / CI step for claim verification on every PR. Standard claim templates for common security properties. Community-maintained I/O primitive catalogs for additional languages. See ADR-0016 §Implementation Phase 4."  # 67f6
+    fields: {}  # 67f6
+- op: update  # 4cea
+  at: '2026-03-18T18:50:34Z'  # 4cea
+  by: agent  # 4cea
+  actor: jgstern_agent  # 4cea
+  clock: 2  # 4cea
+  nonce: 4cea  # 4cea
+  set:  # 4cea
+    status: done  # 4cea
+- op: discuss  # d41a
+  at: '2026-03-18T18:50:34Z'  # d41a
+  by: agent  # d41a
+  actor: jgstern_agent  # d41a
+  clock: 3  # d41a
+  nonce: d41a  # d41a
+  message: "Merged in PR #2371. verify-claims CLI command with --json output and exit code 1 on violations. Combined with Phase 3 (PR #2368), the full claim verification pipeline is operational: YAML claims → boundary map → verdicts. CI integration is possible via 'hypergumbo verify-claims --claims file.yaml && echo pass || echo fail'. Community catalogs and claim templates are future work."  # d41a
+- op: update  # 4775
+  at: '2026-03-19T00:36:26Z'  # 4775
+  by: human  # 4775
+  actor: jgstern  # 4775
+  clock: 4  # 4775
+  nonce: '4775'  # 4775
+  set: {}  # 4775
+  add:  # 4775
+    tags: [done-ish, someday]  # 4775

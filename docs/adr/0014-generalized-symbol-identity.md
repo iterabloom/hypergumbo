@@ -2,7 +2,8 @@
 # ADR-0014: Generalized Symbol Identity (stable_id / shape_id)
 
 Date: 2026-02-20
-Status: Proposed
+Updated: 2026-03-19
+Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired + 19 extended1 + Python + 2 common (HLSL, Dart) = ~42 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 9 common without). Phase 2 untyped stable_id: all 20 mainstream + 19 extended1 + 7 common = ~46+ of ~70; remaining gaps are niche languages. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
 
 ## Context
 

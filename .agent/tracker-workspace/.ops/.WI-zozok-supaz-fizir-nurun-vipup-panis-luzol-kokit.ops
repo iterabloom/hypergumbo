@@ -1,0 +1,37 @@
+- op: create  # 49f8
+  at: '2026-03-18T06:52:21Z'  # 49f8
+  by: agent  # 49f8
+  actor: jgstern_agent  # 49f8
+  clock: 1  # 49f8
+  nonce: 49f8  # 49f8
+  data:  # 49f8
+    kind: work_item  # 49f8
+    title: "ADR-0016 Phase 1d: dogfood on hypergumbo's own codebase"  # 49f8
+    status: todo_soft  # 49f8
+    priority: 3  # 49f8
+    parent: WI-gaguv-golar-tidif-filan-sutab-kumof-jojag-sakid  # 49f8
+    tags:  # 49f8
+    - adr-0016  # 49f8
+    - io-boundary  # 49f8
+    before:  # 49f8
+    - WI-dikig-gihub-durus-bifat-dorog-paviz-dirut-bugot  # 49f8
+    duplicate_of: []  # 49f8
+    not_duplicate_of: []  # 49f8
+    pr_ref:  # 49f8
+    description: "Run the I/O boundary analysis on hypergumbo itself. Verify results manually. Publish boundary map as documentation. This validates the end-to-end pipeline before expanding to other languages. See ADR-0016 §Implementation Phase 1."  # 49f8
+    fields: {}  # 49f8
+- op: update  # 32fe
+  at: '2026-03-18T07:58:06Z'  # 32fe
+  by: agent  # 32fe
+  actor: jgstern_agent  # 32fe
+  clock: 2  # 32fe
+  nonce: 32fe  # 32fe
+  set:  # 32fe
+    status: done  # 32fe
+- op: discuss  # 41b8
+  at: '2026-03-18T07:58:06Z'  # 41b8
+  by: agent  # 41b8
+  actor: jgstern_agent  # 41b8
+  clock: 3  # 41b8
+  nonce: 41b8  # 41b8
+  message: "Dogfood validated in PR #2353. Running 'hypergumbo io-boundaries --path .' on hypergumbo's own codebase produces: 199 boundary calls (55 fs_read, 94 fs_write, 6 net_send, 41 subprocess, 3 env_read). Results match expectations: heavy file I/O (source analysis), minimal network (dependency checking), subprocess use (git/tree-sitter). Fix for CLI dispatch also merged."  # 41b8

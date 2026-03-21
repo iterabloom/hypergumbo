@@ -2054,3 +2054,98 @@ public:
             f"Expected Parser::Initialize, got {init_edges[0].dst}"
         )
 
+
+class TestCppStableId:
+    """Tests for stable_id computation in C++ (ADR-0014 §2)."""
+
+    def test_function_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+
+    def test_class_has_stable_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "class Foo { public: void bar() {} };\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.stable_id is not None
+        assert cls.stable_id.startswith("sha256:")
+
+
+class TestCppShapeId:
+    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+
+    def test_function_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next(s for s in result.symbols if s.name == "add")
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
+
+    def test_class_has_shape_id(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "example.cpp").write_text(
+            "class Foo { public: void bar() {} };\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.shape_id is not None
+        assert cls.shape_id.startswith("sha256:")
+
+
+class TestCppUnresolvedExternalEdges:
+    """Tests for unresolved-external call edges (stdlib calls)."""
+
+    def test_stdlib_call_creates_unresolved_edge(self, tmp_path: Path) -> None:
+        """Calls to stdlib functions emit unresolved edges."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "io.cpp").write_text("""
+#include <iostream>
+void greet() {
+    printf("hello");
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call"
+        ]
+        callee_names = {e.dst.split(":")[-2] for e in unresolved}
+        assert "printf" in callee_names
+        for e in unresolved:
+            assert e.confidence == 0.50
+
+    def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
+        """When callee IS in project, no unresolved edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "calls.cpp").write_text("""
+int helper() { return 42; }
+int main() { return helper(); }
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        unresolved_helper = [
+            e for e in result.edges
+            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+        ]
+        assert len(unresolved_helper) == 0
+

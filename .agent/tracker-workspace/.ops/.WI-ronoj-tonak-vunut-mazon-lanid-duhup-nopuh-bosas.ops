@@ -126,3 +126,50 @@
   clock: 16  # 5e1c
   nonce: 5e1c  # 5e1c
   message: "Partially addressed by PRs #1635/#1636. Full receiver-type inference is a future Rust-specific enhancement. Moving to needs_human_review — human can decide when to prioritize a dedicated Rust session."  # 5e1c
+- op: update  # e303
+  at: '2026-03-17T20:31:22Z'  # e303
+  by: human  # e303
+  actor: jgstern  # e303
+  clock: 17  # e303
+  nonce: e303  # e303
+  set:  # e303
+    status: todo_soft  # e303
+- op: discuss  # 396a
+  at: '2026-03-17T20:31:57Z'  # 396a
+  by: human  # 396a
+  actor: jgstern  # 396a
+  clock: 18  # 396a
+  nonce: 396a  # 396a
+  message: "changing to todo_soft in case it facilitates lazaflow readiness work"  # 396a
+- op: discuss  # 4be1
+  at: '2026-03-17T23:41:21Z'  # 4be1
+  by: agent  # 4be1
+  actor: jgstern_agent  # 4be1
+  clock: 19  # 4be1
+  nonce: 4be1  # 4be1
+  message: "Acknowledged status change to todo_soft for PlazaFlow readiness."  # 4be1
+- op: update  # 84e5
+  at: '2026-03-18T18:53:53Z'  # 84e5
+  by: agent  # 84e5
+  actor: jgstern_agent  # 84e5
+  clock: 20  # 84e5
+  nonce: '84e5'  # 84e5
+  set:  # 84e5
+    status: needs_human_review  # 84e5
+- op: discuss  # d79b
+  at: '2026-03-18T18:53:53Z'  # d79b
+  by: agent  # d79b
+  actor: jgstern_agent  # d79b
+  clock: 21  # d79b
+  nonce: d79b  # d79b
+  message: "Partially addressed by PRs #1635 (derive dampening), #1636 (path hints), #1731 (field type registry). Remaining gap requires function parameter type tracking and generic type resolution through trait bounds — beyond what tree-sitter can provide without external type info. The partial fixes provide significant noise reduction for most Rust code. The remaining gap primarily affects generic-heavy code (ZK crypto libraries). Recommend human decision: (A) close as good-enough, (B) investigate language server integration (rust-analyzer) for type info, (C) keep as backlog."  # d79b
+- op: update  # 4918
+  at: '2026-03-18T21:44:51Z'  # 4918
+  by: human  # 4918
+  actor: jgstern  # 4918
+  clock: 22  # 4918
+  nonce: '4918'  # 4918
+  set:  # 4918
+    status: done  # 4918
+  add:  # 4918
+    tags: [someday]  # 4918

@@ -19,6 +19,7 @@ Go gRPC:
 - pb.RegisterXxxServer(s, &handler{}) - service registration
 - pb.NewXxxClient(conn) - client creation
 - pb.UnimplementedXxxServer - server base embedding
+- XxxServer interface implementation (CSI-style, no Unimplemented embedding)
 
 Java gRPC:
 - extends XxxGrpc.XxxImplBase - service implementation
@@ -494,9 +495,6 @@ def _link_go_methods_to_rpc_routes(
         if pattern.language == "go" and pattern.type == "server":
             go_server_files.add(pattern.file_path)
 
-    if not go_server_files:
-        return edges
-
     # Build struct_type → service_name mapping by re-scanning Go files.
     # Uses brace-depth tracking to handle structs with nested braces
     # (e.g., chan struct{}) and supports package-prefixed embeddings
@@ -511,10 +509,11 @@ def _link_go_methods_to_rpc_routes(
             continue
         struct_to_service.update(_find_struct_unimplemented_embeddings(content))
 
-    # Also check Go struct symbols for ttrpc-style interface implementations.
-    # ttrpc generates interfaces (e.g., AgentServiceService, HealthService) that
-    # Go structs implement without UnimplementedXxxServer embedding. The Go
-    # analyzer records these in base_classes metadata.
+    # Also check Go struct symbols for interface implementations that don't
+    # use UnimplementedXxxServer embedding. Covers:
+    # - ttrpc: interfaces like AgentServiceService, HealthService
+    # - CSI: interfaces like IdentityServer, ControllerServer, NodeServer
+    # The Go analyzer records implemented interfaces in base_classes metadata.
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":
             continue
@@ -522,14 +521,19 @@ def _link_go_methods_to_rpc_routes(
             continue  # already mapped via Unimplemented embedding
         base_classes = (sym.meta or {}).get("base_classes", [])
         for base in base_classes:
+            if base.startswith("Unimplemented"):
+                continue
             # Match ttrpc patterns: XxxService or XxxServiceService
-            if base.endswith("Service") and not base.startswith("Unimplemented"):
-                # Extract service name: "AgentServiceService" → "AgentService",
-                # "HealthService" → "Health"
+            if base.endswith("Service"):
                 if base.endswith("ServiceService"):
                     service_name = base[:-len("Service")]
                 else:
                     service_name = base[:-len("Service")]
+                struct_to_service[sym.name] = service_name
+            # Match CSI / external library patterns: XxxServer
+            # e.g., IdentityServer → Identity, ControllerServer → Controller
+            elif base.endswith("Server"):
+                service_name = base[:-len("Server")]
                 struct_to_service[sym.name] = service_name
 
     if not struct_to_service:

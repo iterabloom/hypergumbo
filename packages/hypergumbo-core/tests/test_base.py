@@ -1057,3 +1057,34 @@ class TestPopulateDocstringsFromTree:
         sym = self._make_sym(start_line=1, start_col=0)
         populate_docstrings_from_tree(root, b"some code", [sym])
         assert sym.docstring is None
+
+
+class TestMakeUnresolvedEdge:
+    """Tests for the shared make_unresolved_edge utility."""
+
+    def test_creates_correct_edge(self) -> None:
+        """Creates an Edge with correct format and confidence."""
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+
+        edge = make_unresolved_edge(
+            "c", "c:main.c:1-5:main:function", "fopen",
+            3, "c-pass", "run-123",
+        )
+        assert edge.dst == "c:external:0-0:fopen:unresolved"
+        assert edge.edge_type == "calls"
+        assert edge.confidence == 0.50
+        assert edge.evidence_type == "unresolved_external_call"
+        assert edge.origin == "c-pass"
+        assert edge.origin_run_id == "run-123"
+        assert edge.line == 3
+
+    def test_custom_module_hint(self) -> None:
+        """Uses module_hint instead of 'external' when provided."""
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+
+        edge = make_unresolved_edge(
+            "java", "java:IO.java:1-5:readFile:method", "read",
+            10, "java-pass", "run-456",
+            module_hint="java.io.InputStream",
+        )
+        assert edge.dst == "java:java.io.InputStream:0-0:read:unresolved"

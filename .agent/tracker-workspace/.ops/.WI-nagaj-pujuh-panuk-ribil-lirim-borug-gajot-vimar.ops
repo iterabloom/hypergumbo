@@ -1,0 +1,59 @@
+- op: create  # 9e4b
+  at: '2026-03-17T17:34:54Z'  # 9e4b
+  by: agent  # 9e4b
+  actor: jgstern_agent  # 9e4b
+  clock: 1  # 9e4b
+  nonce: 9e4b  # 9e4b
+  data:  # 9e4b
+    kind: work_item  # 9e4b
+    title: "Tracker CLI: dependency graph view (tracker deps <item>)"  # 9e4b
+    status: needs_human_review  # 9e4b
+    priority: 3  # 9e4b
+    parent:  # 9e4b
+    tags:  # 9e4b
+    - tracker  # 9e4b
+    - cli  # 9e4b
+    - ux  # 9e4b
+    before: []  # 9e4b
+    duplicate_of: []  # 9e4b
+    not_duplicate_of: []  # 9e4b
+    pr_ref:  # 9e4b
+    description: "No way to visualize the dependency tree for an item and its children/dependents. After setting up 9 PlazaFlow items with parent and before relationships, verification required running 'tracker show' on each item individually (9 commands). A 'tracker deps <item>' command should show the tree: parent/child hierarchy plus before/blocked-by edges. Could also support --format dot for Graphviz output. Example: 'tracker deps META-migil' would show the full PlazaFlow readiness tree with arrows indicating blocking relationships."  # 9e4b
+    fields: {}  # 9e4b
+- op: update  # 659b
+  at: '2026-03-17T18:42:51Z'  # 659b
+  by: human  # 659b
+  actor: jgstern  # 659b
+  clock: 2  # 659b
+  nonce: 659b  # 659b
+  set:  # 659b
+    status: todo_soft  # 659b
+- op: update  # 791a
+  at: '2026-03-17T23:08:01Z'  # 791a
+  by: agent  # 791a
+  actor: jgstern_agent  # 791a
+  clock: 3  # 791a
+  nonce: 791a  # 791a
+  set:  # 791a
+    status: done  # 791a
+- op: discuss  # c4eb
+  at: '2026-03-17T23:08:01Z'  # c4eb
+  by: agent  # c4eb
+  actor: jgstern_agent  # c4eb
+  clock: 4  # c4eb
+  nonce: c4eb  # c4eb
+  message: "Implemented deps command. Shows parent, children, blocks, and blocked-by relationships in text and JSON."  # c4eb
+- op: discuss  # 005c
+  at: '2026-03-18T22:05:50Z'  # 005c
+  by: human  # 005c
+  actor: jgstern  # 005c
+  clock: 5  # 005c
+  nonce: 005c  # 005c
+  message: "PR # please"  # 005c
+- op: discuss  # bb44
+  at: '2026-03-19T00:21:24Z'  # bb44
+  by: agent  # bb44
+  actor: jgstern_agent  # bb44
+  clock: 6  # bb44
+  nonce: bb44  # bb44
+  message: "Dependency graph view was merged in the v2.3.0 release cycle. CHANGELOG: 'Dependency graph view: tracker deps <item>'. Implementation in cli.py (_cmd_deps)."  # bb44

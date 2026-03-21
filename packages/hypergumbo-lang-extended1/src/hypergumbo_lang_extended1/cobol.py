@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -250,22 +251,22 @@ class CobolAnalyzer(TreeSitterAnalyzer):
 
                             result = resolver.lookup(target_name.upper())
                             if result.symbol is not None:
-                                dst_id = result.symbol.id
-                                confidence = 0.85 * result.confidence
+                                edge = Edge.create(
+                                    src=src_id,
+                                    dst=result.symbol.id,
+                                    edge_type="calls",
+                                    line=perform.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_perform",
+                                    confidence=0.85 * result.confidence,
+                                )
                             else:  # pragma: no cover - unresolvable external paragraph
-                                dst_id = f"cobol:external:{target_name}:paragraph"  # pragma: no cover
-                                confidence = 0.70  # pragma: no cover
-
-                            edge = Edge.create(
-                                src=src_id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=perform.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_perform",
-                                confidence=confidence,
-                            )
+                                edge = make_unresolved_edge(  # pragma: no cover
+                                    "cobol", src_id, target_name,
+                                    perform.start_point[0] + 1,
+                                    PASS_ID, run.execution_id,
+                                )
                             edge.meta = {
                                 "file": rel_path,
                                 "call_type": "perform",
@@ -286,22 +287,22 @@ class CobolAnalyzer(TreeSitterAnalyzer):
 
                         result = resolver.lookup(target_name.upper())
                         if result.symbol is not None:
-                            dst_id = result.symbol.id
-                            confidence = 0.85 * result.confidence
+                            edge = Edge.create(
+                                src=src_id,
+                                dst=result.symbol.id,
+                                edge_type="calls",
+                                line=call.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call",
+                                confidence=0.85 * result.confidence,
+                            )
                         else:
-                            dst_id = f"cobol:external:{target_name}:program"
-                            confidence = 0.70
-
-                        edge = Edge.create(
-                            src=src_id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=call.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_call",
-                            confidence=confidence,
-                        )
+                            edge = make_unresolved_edge(
+                                "cobol", src_id, target_name,
+                                call.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            )
                         edge.meta = {
                             "file": rel_path,
                             "call_type": "call",

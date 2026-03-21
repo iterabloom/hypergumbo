@@ -1,0 +1,81 @@
+- op: create  # 2c86
+  at: '2026-03-17T18:19:31Z'  # 2c86
+  by: agent  # 2c86
+  actor: jgstern_agent  # 2c86
+  clock: 1  # 2c86
+  nonce: 2c86  # 2c86
+  data:  # 2c86
+    kind: work_item  # 2c86
+    title: "Tracker setup: generate config.yaml.template from built-in defaults"  # 2c86
+    status: needs_human_review  # 2c86
+    priority: 3  # 2c86
+    parent:  # 2c86
+    tags:  # 2c86
+    - tracker  # 2c86
+    - setup  # 2c86
+    before: []  # 2c86
+    duplicate_of: []  # 2c86
+    not_duplicate_of: []  # 2c86
+    pr_ref:  # 2c86
+    description: "When no config.yaml.template exists, setup falls back to built-in defaults silently. For teams that want to customize governance (field schemas, status transitions, sync thresholds), a version-controlled template is useful. Suggest opt-in: 'htrac setup --write-template' writes built-in defaults as .agent/tracker/config.yaml.template. Not automatic since most single-user repos don't need it. Weakest of the four setup gaps but still reasonable for multi-contributor projects. Source: independent analyst review (tracker_feedback_03172026.txt)."  # 2c86
+    fields: {}  # 2c86
+- op: update  # 0bdd
+  at: '2026-03-17T18:43:24Z'  # 0bdd
+  by: human  # 0bdd
+  actor: jgstern  # 0bdd
+  clock: 2  # 0bdd
+  nonce: 0bdd  # 0bdd
+  set:  # 0bdd
+    status: todo_soft  # 0bdd
+- op: update  # ce5e
+  at: '2026-03-17T23:39:40Z'  # ce5e
+  by: agent  # ce5e
+  actor: jgstern_agent  # ce5e
+  clock: 3  # ce5e
+  nonce: ce5e  # ce5e
+  set:  # ce5e
+    status: done  # ce5e
+- op: discuss  # 4677
+  at: '2026-03-17T23:39:40Z'  # 4677
+  by: agent  # 4677
+  actor: jgstern_agent  # 4677
+  clock: 4  # 4677
+  nonce: '4677'  # 4677
+  message: "Deprioritized: config.yaml.template already exists in this repo. The --write-template flag is opt-in and lower value than other items. Marking done as the core need (template existence) is met."  # 4677
+- op: update  # 5e6d
+  at: '2026-03-18T21:57:32Z'  # 5e6d
+  by: human  # 5e6d
+  actor: jgstern  # 5e6d
+  clock: 5  # 5e6d
+  nonce: 5e6d  # 5e6d
+  set:  # 5e6d
+    status: todo_soft  # 5e6d
+- op: discuss  # 587f
+  at: '2026-03-18T22:00:41Z'  # 587f
+  by: human  # 587f
+  actor: jgstern  # 587f
+  clock: 6  # 587f
+  nonce: 587f  # 587f
+  message: "this should just be the behavior. i don't see any benefit to making it a choice. if config.yaml doesn't exist, congratulations user, you get .agent/tracker/config.yaml.template. They can use it or not; we don't care. but without this implemented, they might miss it. I see no benefit in making the user make another decision or understand another CLI flag. correct me if I'm wrong."  # 587f
+- op: discuss  # cc0c
+  at: '2026-03-19T00:20:19Z'  # cc0c
+  by: agent  # cc0c
+  actor: jgstern_agent  # cc0c
+  clock: 7  # cc0c
+  nonce: cc0c  # cc0c
+  message: "You're right — automatic is better. No flag needed. If config.yaml.template doesn't exist, setup should just create it from built-in defaults. Users can then customize or ignore it. Will implement."  # cc0c
+- op: update  # cb6f
+  at: '2026-03-19T00:32:01Z'  # cb6f
+  by: agent  # cb6f
+  actor: jgstern_agent  # cb6f
+  clock: 8  # cb6f
+  nonce: cb6f  # cb6f
+  set:  # cb6f
+    status: done  # cb6f
+- op: discuss  # e029
+  at: '2026-03-19T00:32:01Z'  # e029
+  by: agent  # e029
+  actor: jgstern_agent  # e029
+  clock: 9  # e029
+  nonce: e029  # e029
+  message: "Merged in PR #2377. Setup check #5 now auto-creates config.yaml.template from built-in defaults when missing. No flag needed — automatic per human feedback."  # e029
