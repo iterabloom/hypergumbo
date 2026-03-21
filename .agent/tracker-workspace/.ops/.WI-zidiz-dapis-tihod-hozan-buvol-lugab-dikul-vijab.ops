@@ -1,0 +1,19 @@
+- op: create  # d6f0
+  at: '2026-03-21T00:39:55Z'  # d6f0
+  by: agent  # d6f0
+  actor: jgstern_agent  # d6f0
+  clock: 1  # d6f0
+  nonce: d6f0  # d6f0
+  data:  # d6f0
+    kind: work_item  # d6f0
+    title: "C++ library_export entrypoint detection for include/ public headers"  # d6f0
+    status: todo_soft  # d6f0
+    priority: 3  # d6f0
+    parent:  # d6f0
+    tags: []  # d6f0
+    before: []  # d6f0
+    duplicate_of: []  # d6f0
+    not_duplicate_of: []  # d6f0
+    pr_ref:  # d6f0
+    description: ""  # d6f0
+    fields: {}  # d6f0

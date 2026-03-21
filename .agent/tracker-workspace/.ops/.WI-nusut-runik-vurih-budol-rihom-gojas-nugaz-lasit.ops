@@ -24,3 +24,25 @@
   clock: 2  # a51e
   nonce: a51e  # a51e
   message: "Bakeoff finding (deep-20260320-163609, tokenizers): Zero Rust<->Python cross-language edges despite PyO3 bindings (#[pyclass], #[pymethods]). The PyFFI linker exists but doesn't create edges for this repo. Need to investigate: (1) Are PyO3 annotations being detected by the Rust analyzer? (2) Does the linker run? (3) What matching criteria fail?"  # a51e
+- op: discuss  # 487c
+  at: '2026-03-21T00:00:05Z'  # 487c
+  by: agent  # 487c
+  actor: jgstern_agent  # 487c
+  clock: 3  # 487c
+  nonce: 487c  # 487c
+  message: "Root cause found: The Rust analyzer stores PyO3 attributes with name='pyo3' (the crate name), not 'pyfunction'/'pymethods'/'pyclass' (the specific attribute). The PyFFI linker checks for the specific names only. 809 of 1823 Rust symbols in tokenizers have pyo3 annotations. Fix: add 'pyo3' to _PYO3_ANNOTATIONS frozenset in pyffi.py."  # 487c
+- op: update  # 45b3
+  at: '2026-03-21T00:27:05Z'  # 45b3
+  by: agent  # 45b3
+  actor: jgstern_agent  # 45b3
+  clock: 4  # 45b3
+  nonce: 45b3  # 45b3
+  set:  # 45b3
+    status: done  # 45b3
+- op: discuss  # 7657
+  at: '2026-03-21T00:27:05Z'  # 7657
+  by: agent  # 7657
+  actor: jgstern_agent  # 7657
+  clock: 5  # 7657
+  nonce: '7657'  # 7657
+  message: "Fixed in PR #2455. Added 'pyo3' to _PYO3_ANNOTATIONS frozenset. The Rust analyzer stores annotations with name='pyo3' (crate name), not 'pyfunction'/'pymethods'. 809 of 1823 Rust symbols in tokenizers have pyo3 annotations that will now be matched."  # 7657
