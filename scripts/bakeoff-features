@@ -1808,12 +1808,36 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
                 f.write(str(rc2))
             print("OK" if rc2 == 0 else f"FAIL({rc2})")
 
-        # 4b. Domain-scored forward slices from reverse-slice seeds.
-        # The top entrypoints are often main()/benchmarks; the reverse-slice
-        # seeds are the architecturally important symbols (ByteBuf, SslHandler).
-        # Forward slicing FROM these symbols shows "what does this important
-        # class depend on?" — directly useful for refactoring assessment.
-        for i, seed in enumerate(rslice_seeds[:3]):
+        # 4b. Domain-scored forward slices from high-out-degree methods.
+        # Reverse-slice seeds are high IN-degree (many callers) — great for
+        # reverse slicing but often empty in forward direction (getters,
+        # abstract interfaces). For forward slicing, we want high OUT-degree
+        # non-test methods: functions that CALL many other functions (e.g.,
+        # resolveConfig, SslHandler.channelRead, main processing pipelines).
+        # Build out-degree index from edges (O(E) once)
+        _out_deg: dict[str, int] = {}
+        for e in raw_edges:
+            if e.get("type") == "calls":
+                src = e.get("src", "")
+                _out_deg[src] = _out_deg.get(src, 0) + 1
+        # Find high-out-degree non-test methods
+        from hypergumbo_core.paths import is_test_file, is_utility_file
+        fwd_candidates: list[tuple[str, int]] = []
+        for n in nodes:
+            if n.get("kind") not in ("function", "method"):
+                continue
+            sym_id = n.get("id", "")
+            path = n.get("path", "")
+            if path and (is_test_file(path) or is_utility_file(path)):
+                continue
+            out_deg = _out_deg.get(sym_id, 0)
+            if out_deg > 5:
+                fwd_candidates.append((sym_id, out_deg))
+        fwd_candidates.sort(key=lambda x: -x[1])
+        fwd_seeds = [sym_id for sym_id, _ in fwd_candidates[:3]]
+        if not fwd_seeds:
+            fwd_seeds = [s for s in rslice_seeds[:3] if ":method" in s or ":function" in s]
+        for i, seed in enumerate(fwd_seeds[:3]):
             print(f"  domain-slice[{seed[:30]}]...", end=" ", flush=True)
             rc, stdout, stderr = run_cmd([
                 "hypergumbo", "slice",
