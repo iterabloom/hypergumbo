@@ -96,7 +96,7 @@ jobs:
           else
             pip install -e .[dev]
           fi
-          pip install pip-audit bandit safety pip-licenses
+          pip install pip-audit bandit pip-licenses
 
       - name: Vulnerability scan (pip-audit)
         run: pip-audit --skip-editable
@@ -110,7 +110,7 @@ jobs:
           fi
 
       - name: Dependency safety check
-        run: safety check || true  # Advisory, don't fail
+        run: pipx run safety check || true  # Advisory; isolated to avoid polluting pip-audit's environment
 
       - name: License audit
         run: |
