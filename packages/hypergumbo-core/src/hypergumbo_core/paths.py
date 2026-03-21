@@ -175,6 +175,7 @@ def is_utility_file(path: str) -> bool:
         "vcbuild", "cmake",
         # Benchmarks
         "benchmarks", "benchmark", "benches", "bench", "perf",
+        "microbench", "microbenchmarks",
         # Dev environment (e.g., Grafana devenv/)
         "devenv",
     }
