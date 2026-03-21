@@ -14,94 +14,64 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### I/O boundary analysis (ADR-0016)
 
-- **Phase 1 — Python I/O tracing pipeline**: YAML catalog of Python stdlib I/O primitives (fs, net, subprocess, env) with O(1) lookup. `tag_io_boundaries()` stamps `io_boundary`/`io_primitive` metadata on matching call edges. `compute_boundary_map()` aggregates by boundary type. `hypergumbo io-boundaries` CLI command with `--json` output.
-- **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). C++ and TypeScript resolve to C and JavaScript catalogs via aliases. Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
-- **Framework IO catalog entries across 5 ecosystems**: Java (Netty Channel/ByteBuf/ChannelHandlerContext, OkHttp, Spring RestTemplate), Rust (Tokio fs/net, Hyper, Reqwest, Axum, Actix), Go (Gin, Echo, Fiber, gRPC + syscall/unix IO), JS/TS (Express, Axios, Fastify, Koa, Deno runtime API), Python (asyncio, requests, aiohttp, httpx, Flask, Django, uvicorn). 60+ framework IO entries total.
-- **JVM language IO catalog aliases**: Kotlin, Scala, and Groovy now use the Java IO catalog via alias, enabling IO boundary detection for JVM polyglot repos without catalog duplication.
-- **Phase 1c — Entry-point reverse tracing**: `compute_boundary_map()` accepts optional `entrypoint_ids` parameter. When provided, traces backward from each IO-tagged edge through the call graph (BFS) to find which entrypoints can reach each IO call. Populates `entry_points` on IoChain and BoundaryMapEntry. Traces cross language boundaries via FFI bridge edges (native_bridge, wasm_bridge, ipc_calls, etc.). Both `io-boundaries` and `verify-claims` CLI commands now pass entrypoint IDs from the behavior map.
-- **Phase 3 — Security claim verification**: `verify_claims` checks `must_not_exist` and `max_chains` constraints against boundary maps. `hypergumbo verify-claims --claims security-claims.yaml` with `--json` output; exit code 1 on violations.
-- **ADR-0016 design**: Proposal for exhaustive I/O primitive detection, reverse-trace chains, transparency tiers, and security claim verification.
+- **`hypergumbo io-boundaries`**: Identifies call edges reaching I/O primitives (filesystem, network, subprocess, environment) and groups by boundary type. YAML-based catalogs for 10 languages (Python, Rust, JS/TS, Go, C/C++, Java + Kotlin/Scala/Groovy via alias). 60+ framework entries across Netty, Tokio, Express, Flask, and others. Module-qualified matching prevents false positives (e.g., `crypto/rand.Read` no longer matches `net.Conn.Read`).
+- **Entry-point reverse tracing**: IO boundary map traces backward from each IO edge through the call graph to find which entrypoints reach each IO call. Follows FFI bridge edges (JNI, NAPI, PyFFI, WASM, gRPC) across language boundaries.
+- **`hypergumbo verify-claims`**: Verifies security claims (`must_not_exist`, `max_chains`) against the IO boundary map. YAML input, `--json` output; exit code 1 on violations.
 
 #### Cross-language linkers
 
-- **React Router v6.4+ loader/action linking**: `routes_to` edges (with `role: loader`/`role: action`) from route symbols with `loader_ref`/`action_ref` metadata.
-- **Electron contextBridge exposure**: IPC linker detects `contextBridge.exposeInMainWorld` function exposures and traces `window.funcName()` calls through to IPC channels. Supports custom wrappers like `ipcInvoke('channel')`.
-- **React.lazy() route detection**: `<Route>` elements referencing `React.lazy()` components include `lazy_import` metadata with the dynamic import path.
-- **Yjs sub-document accessors**: `doc.getMap/getArray/getText/getXmlFragment('name')` detected as named channel writes, enabling cross-file shared type linking.
-- **BlockSuite document model linker**: Detects `store.addBlock/deleteBlock/transact`, `defineBlockSchema` (writes) and `store.slots.blockUpdated.subscribe` (reads). Creates `crdt_publishes` edges across BlockSuite's Yjs abstraction layer.
-- **Crypto-flow linker**: `crypto_flow` edges between WebCrypto/Rust crypto encryption and decryption sites. Enables `slice --dataflow` through key derivation chains.
-- **Message dispatch linker**: `message_dispatch` edges between JS/TS object literals with `type`/`action` discriminators and `switch/case` dispatch; Rust `#[serde(rename)]` variants against `match` arms.
-- **gRPC CSI-style linking**: Detects Go structs implementing `XxxServer` interfaces without `UnimplementedXxxServer` embedding. Creates `implements_rpc` edges.
-- **Annotation convention**: `@hg:route METHOD path` creates route symbols; `@hg:dispatches target_name` creates `annotated_dispatches` edges to matching symbols.
-- **Dynamic WASM loading**: `wasm_load` edges from `WebAssembly.instantiate`, bundler URL imports, and Emscripten `loadModule()` to synthetic WASM module symbols.
+- **React Router v6.4+ loader/action linking**, **Electron contextBridge exposure**, **React.lazy() route detection**
+- **Yjs sub-document accessors**, **BlockSuite document model linker** (CRDT edges)
+- **Crypto-flow linker**: Traces encryption/decryption boundaries across WebCrypto and Rust crypto
+- **Message dispatch linker**: Typed wire protocol matching (JS/TS discriminated unions, Rust serde variants)
+- **gRPC CSI-style linking**, **Dynamic WASM loading**, **Annotation convention** (`@hg:route`, `@hg:dispatches`)
 
 #### Dataflow (ADR-0015)
 
-- **Expanded dataflow patterns for 5 key languages**: Go (range, channel, defer, go, return), Python (for/with/return/yield), Rust (for/match/if-let/return/await), Java (enhanced for/try-with-resources/return/throw), C++ (range-for/return/throw). Increased pattern count from ~4 per language to 8-12.
-- **Python ast-based access_mode expansion**: `annotate_dataflow_ast()` now handles `For`/`AsyncFor` (write), `With`/`AsyncWith` (write), `Return` (read), and `Yield`/`YieldFrom` (read) in addition to assignments. Complements the tree-sitter YAML patterns for Python's ast-module-based analyzer.
-- **Removed incorrect call-edge annotations**: The `calls` section in all 19 dataflow pattern files incorrectly annotated call edges as `read`, causing forward slices to skip all call chains (gvisor: 0.8% of regular slice). Call edges now pass through the graceful degradation path (always followed). Assignment, return, and borrow patterns retained.
+- **Expanded dataflow patterns**: Go, Python, Rust, Java, C++ now have 8-12 patterns each (range loops, returns, yields, context managers, match arms). Python ast-module analyzer also expanded.
 
 #### Language analyzers
 
-- **Unresolved-external call edges for all analyzers**: All language analyzers now use the shared `make_unresolved_edge()` utility for consistent unresolved-external call edges (confidence 0.50, `{lang}:external:0-0:{name}:unresolved` format). PR #2439 added the utility and converted 9 mainstream analyzers (C, C++, Java, Rust, Kotlin, Scala, Swift, PHP, ObjC). This PR converts the remaining 21 analyzers: 5 mainstream (Lua, Perl, PowerShell, Groovy, Solidity) and 16 extended1 (Ada, ASM, COBOL, D, Fennel, Fish, GDScript, Gleam, Haxe, Janet, Nim, Odin, Pascal, Pony, Tcl, V). Groovy and Solidity previously discarded unresolved calls entirely.
-- **Go interface dispatch resolution**: When ambiguous method calls include an interface method candidate, resolve to the interface method instead of leaving unresolved. Addresses the #1 priority across 4 BROAD bakeoff curricula (84 repos).
-- **C struct designated initializer function pointers**: Detects function pointers assigned via designated initializers (e.g., `.callback = my_handler`), creating call edges to the referenced functions.
-
-#### Framework patterns
-
-- **Web Audio API**: YAML-driven detection of AudioContext, audio node factories, `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js patterns.
+- **Unresolved-external call edges**: All 30+ analyzers with call resolution now emit `unresolved_external_call` edges for stdlib/third-party calls via shared `make_unresolved_edge()` utility. Previously most analyzers silently discarded these, breaking IO boundary detection for C/Java repos.
+- **Go interface dispatch**: Ambiguous method calls resolve to interface method candidates instead of remaining unresolved.
+- **C designated initializer function pointers**: `.callback = my_handler` patterns create call edges.
+- **Web Audio API framework patterns**
 
 #### Symbol identity (ADR-0014)
 
-- **stable_id wiring for mainstream analyzers**: Hash-based `stable_id` (content-addressable identity) for C, C++, Ruby, Bash, Perl, PowerShell, Lua, Objective-C, and SQL analyzers. Go Gorilla mount points use hash-based stable_id to avoid collisions.
-- **shape_id wiring for Pattern B analyzers**: `shape_id` (structural fingerprint) for Java, Go, JS/TS, Kotlin, PHP, and 8 additional mainstream analyzers via `node_for_symbol` auto-wiring.
+- **stable_id**: Hash-based content-addressable identity for C, C++, Ruby, Bash, Perl, PowerShell, Lua, Objective-C, SQL. **shape_id**: Structural fingerprint for Java, Go, JS/TS, Kotlin, PHP and 8 additional analyzers.
 
 #### Analysis core
 
-- **Edge-type-weighted centrality**: `compute_centrality()` accepts per-type weights for 19 edge types (calls=1.0, imports=0.3, structural=0.1). Prevents widely-imported utilities from outranking architecturally important call targets.
-- **Dataflow annotation line index**: Pre-built line→node index replaces per-edge AST walks in `annotate_dataflow()`. ~47% faster Java analysis on large repos.
-- **Runtime memory pressure guard**: Analysis pipeline monitors RSS and skips analyzers when memory pressure exceeds configurable thresholds, preventing OOM on large repos.
-- **Cross-linker integration tests**: Validates slice BFS traversal across 4+ linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single polyglot graph trace.
+- **Edge-type-weighted centrality**: Per-type weights for 19 edge types (calls=1.0, imports=0.3, structural=0.1)
+- **Runtime memory pressure guard**: Monitors RSS, skips analyzers before OOM
+- **Dataflow annotation line index**: ~47% faster Java analysis
 
 #### Tracker
 
-- **Verbose update confirmations**: `tracker update` prints human-readable change details (e.g., `status: todo_hard → done`) instead of bare `updated`. JSON mode includes structured `changes` array.
-- **Batch command**: `tracker batch <file>` reads `.htrac` files (or stdin with `-`) with one command per line. Auto-sync deferred to end of batch.
-- **Inverse blocking flags**: `--add-blocked-by` and `--remove-blocked-by` express fan-in dependencies in one command.
-- **Dependency graph view**: `tracker deps <item>` shows blocking/blocked-by relationships with directional arrows (text) or structured output (JSON).
-- **Setup improvements**: `tracker setup` auto-creates wrapper scripts, manages `.gitattributes`/`.gitignore` entries for `.ops` files, and injects a fenced governance block in AGENTS.md (with optional `--with-policy-template`).
-- **Auto-create config.yaml.template**: Tracker setup creates template from built-in defaults when missing.
-
-#### Developer tooling
-
-- **Bakeoff `--dry-run`**: `bakeoff cohort --dry-run` and `bakeoff-features cohort --dry-run` preview selection without mutating session state.
-- **Bakeoff IO tag rate threshold scaling**: IO tag rate `good_min` threshold scales logarithmically for large repos (5% for <10K nodes, ~2% at 50K, ~1% at 100K+). Prevents false WARN for large repos where IO edges are naturally a tiny fraction of total edges.
-- **Bakeoff cross-language IO metric fix**: `cross_language_io_pct` now computed from primitives_used (checking if IO primitives span multiple language catalogs) instead of iterating over non-existent chain objects. Previously always reported 0%.
-- **Bakeoff domain-scored forward slices**: New `dslice.*.json` artifacts in bakeoff output — forward slices from high-out-degree non-test methods (architecturally important functions). Complements entrypoint-based slices and reverse-slice seeds.
+- **Batch command** (`tracker batch`), **inverse blocking flags** (`--add-blocked-by`), **dependency graph view** (`tracker deps`)
+- **Verbose update confirmations**, **setup wizard improvements**, **auto-create config template**
 
 ### Changed
 
-- **Weighted import inclusion in ranking**: `rank_symbols()` and `rank_files()` now include import edges with reduced weight (imports=0.3, imports_module=0.2) instead of excluding them entirely. This gives Python-style imports a small centrality signal: core types that are widely imported rise in rankings (e.g., kserve's InferRequest rose from #35 to #6) while call edges (weight 1.0) still dominate. Neutral for Go/Java repos (identical rankings). Binary exclusion is still available via `exclude_import_edges=True`.
-- **Vendored directory tier classification**: `third-party/`, `thirdparty/`, `external/`, and `deps/` directories now classified as tier 3 (external_dep). Previously only `third_party/` (underscore) was recognized, causing vendored code like `third-party/gtest-1.8.1/` in rocksdb to pollute tier 1 with 1823+ false first-party nodes.
+- **Weighted import inclusion in ranking**: Import edges now included at reduced weight (0.3) instead of excluded entirely. Widely-imported core types rise in rankings while call edges still dominate.
+- **Tier classification**: Vendored directories (`third-party/`, `thirdparty/`, `external/`, `deps/`) → tier 3. Workspace package non-test files → tier 1 (was tier 2; fixes deno 3.5% → 89% tier 1).
+- **Entrypoint ranking**: Library exports with high in-degree receive confidence boost (+0.35 cap). `microbench/` directories demoted as utility code. C/C++ symbols in `include/` detected as library exports.
 
 ### Fixed
 
-- **Module-qualified IO boundary matching**: `tag_io_boundaries()` now checks the module context in edge destination IDs against catalog entry modules. Prevents false positives where `crypto/rand.Read()` matched `net.Conn.Read` (tagged as network IO). Affects Go, Rust, C++, and any language where generic method names (Read, Write, Close) overlap across stdlib modules. Falls back to name-only matching when module context is unknown (`external`).
-- **Vendored directory tier classification**: `third-party/`, `thirdparty/`, `external/`, and `deps/` directories now classified as tier 3 (external_dep). Previously only `third_party/` (underscore) was recognized.
-- **Workspace package files default to first-party**: Non-test files in monorepo workspace packages now classified as tier 1 (first_party) instead of tier 2. Fixes deno's tier1 classification from 3.5% to 89%.
-- **PyO3 crate-name annotation matching**: PyFFI linker now matches `#[pyo3(...)]` annotations (crate-level name) in addition to `#[pyfunction]`/`#[pymethods]`. Fixes zero Rust↔Python cross-language edges for tokenizers (809 of 1823 Rust symbols had pyo3 annotations).
-- **PyO3 Py-prefix name stripping**: PyFFI linker registers Rust `PyTokenizer::encode` under Python-style name `Tokenizer.encode` (strip `Py` prefix, replace `::` with `.`). Enables cross-language edge matching when Python calls `Tokenizer.encode` and Rust implements `PyTokenizer::encode`.
-- **Entrypoint ranking: microbench demotion + in-degree boost**: `microbench/` directories now recognized as utility code (benchmark main() demoted). Library exports with high in-degree (many callers) receive confidence boost up to +0.35. Combined effect: netty's AllocationPatternSimulator.main dropped from #1 to #285; SslHandler rose to #2.
-- **C/C++ library_export detection**: Symbols in `include/` directories detected as library exports via new library-exports.yaml patterns.
-- **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
-- **`rank_files()` centrality consistency**: `rank_files()` now uses the same `compute_centrality()` parameters as `rank_symbols()` (within_file_weight=0.3, max_per_file_in=5, edge_type_weights). Previously it used defaults, making file ranking inconsistent with symbol ranking.
-- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, and `--remove-not-duplicate-of` now resolve short ID prefixes through the same prefix resolution as other ID-reference flags. Previously these silently no-oped on short prefixes.
-- **Erlang local call resolution**: Local function calls now resolved via `local_symbols.get()` and `base_name` lookup. Previously, intra-module calls without explicit module qualification were missed.
+- **IO boundary false positives**: Module-qualified matching checks edge module context against catalog entries
+- **PyO3 linker**: Matches `#[pyo3(...)]` crate-name annotations; strips `Py` prefix for Python-style name matching (`PyTokenizer::encode` → `Tokenizer.encode`)
+- **Dataflow call-edge annotations**: Removed incorrect `calls` section from all 19 dataflow pattern files (was causing forward slices to skip call chains)
+- **Test-edge filter**: Phantom source symbol import edges no longer leak through to inflate centrality
+- **`rank_files()` consistency**: Now uses same centrality parameters as `rank_symbols()`
+- **Erlang local call resolution**: Intra-module calls without explicit module qualification now resolved
+- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, `--remove-not-duplicate-of` now resolve short ID prefixes
 
 ### Performance
 
-- **Java symbol import resolution**: Replaced O(n*m) `sym_file_imports` loop with indexed lookup, ~10x faster on large repos (e.g., kafka).
-- **Python global symbol resolution**: Replaced O(n) `global_symbols` linear scans with (path, name) index for O(1) lookup.
+- **Java symbol import resolution**: O(n*m) → indexed O(1) lookup, ~10x faster on large repos
+- **Python global symbol resolution**: O(n) → (path, name) index for O(1) lookup
 
 ## [2.3.0] - 2026-03-16
 
