@@ -861,3 +861,45 @@ class TestAnnotateDataflowAst:
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is None or "access_mode" not in result[0].meta
+
+    def test_for_loop_gets_write(self) -> None:
+        """ast.For node should produce access_mode=write (iteration variable)."""
+        import ast
+        tree = ast.parse("for item in collection:\n    pass")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:collection:variable",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "write"
+
+    def test_with_statement_gets_write(self) -> None:
+        """ast.With node should produce access_mode=write (context variable)."""
+        import ast
+        tree = ast.parse("with open('f') as fp:\n    pass")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:open:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "write"
+
+    def test_yield_gets_read(self) -> None:
+        """ast.Yield node should produce access_mode=read."""
+        import ast
+        tree = ast.parse("def gen():\n    yield f()")
+        edge = Edge.create(
+            src="py:a.py:2:gen:function",
+            dst="py:a.py:2:f:function",
+            edge_type="calls",
+            line=2,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"

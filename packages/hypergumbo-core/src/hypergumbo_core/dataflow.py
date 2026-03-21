@@ -348,6 +348,14 @@ def annotate_dataflow_ast(
             line_modes[node.lineno] = "write"
         elif isinstance(node, ast.Delete):
             line_modes[node.lineno] = "delete"
+        elif isinstance(node, ast.Return):
+            line_modes[node.lineno] = "read"
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            line_modes[node.lineno] = "write"  # iteration variable
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            line_modes[node.lineno] = "write"  # context variable
+        elif isinstance(node, ast.Yield) or isinstance(node, ast.YieldFrom):
+            line_modes[node.lineno] = "read"
 
     if not line_modes:
         return edges
