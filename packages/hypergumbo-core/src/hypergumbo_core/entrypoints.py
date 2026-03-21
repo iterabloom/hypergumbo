@@ -1107,9 +1107,11 @@ def detect_entrypoints(
     # a reduced boost (minimum 50%). This prevents a Python script with
     # many outgoing edges from outranking a C main() in a 95% C codebase.
     outgoing_counts: dict[str, int] = defaultdict(int)
+    incoming_counts: dict[str, int] = defaultdict(int)
     direct_callees: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
         outgoing_counts[edge.src] += 1
+        incoming_counts[edge.dst] += 1
         direct_callees[edge.src].append(edge.dst)
 
     def _effective_out_degree(symbol_id: str) -> float:
@@ -1145,6 +1147,19 @@ def detect_entrypoints(
         if ep.symbol_id in infra_export_ids:
             continue
         effective_edges = _effective_out_degree(ep.symbol_id)
+        in_degree = incoming_counts.get(ep.symbol_id, 0)
+
+        # For library_export entrypoints, in-degree (how many callers
+        # depend on this) is more relevant than out-degree. A class like
+        # ByteBuf (in-degree 787) should rank above a microbenchmark main
+        # (in-degree 0) even though both have high out-degree. Cap at 0.35
+        # (higher than the 0.25 out-degree cap) because in-degree directly
+        # measures architectural importance.
+        if ep.kind == EntrypointKind.LIBRARY_EXPORT and in_degree > 0:
+            in_boost = min(0.35, math.log(1 + in_degree) / 8)
+            lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
+            ep.confidence = min(1.0, ep.confidence + in_boost * lang_scale)
+
         if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
             # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
