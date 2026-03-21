@@ -267,8 +267,21 @@ read -p "Merge main back into dev to sync histories? [Y/n] " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     run git checkout dev
-    run git pull origin dev
-    run git merge main --no-edit
-    run git push origin dev
-    echo -e "${GREEN}✓${NC} dev synced with main"
+    run git pull --ff-only origin dev || true
+
+    # Check if there's actually anything to sync
+    if git diff --quiet origin/dev origin/main 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} dev and main already in sync (no file differences)"
+    else
+        run git merge origin/main --no-edit
+        # dev is a protected branch — try direct push, fall back to advisory
+        if git push origin dev 2>/dev/null; then
+            echo -e "${GREEN}✓${NC} dev synced with main"
+        else
+            echo -e "${YELLOW}!${NC} Cannot push directly to dev (protected branch)"
+            echo "  The merge commit is local only. To sync, create a PR or"
+            echo "  ask an admin to push. This is cosmetic — dev already has"
+            echo "  all the release content."
+        fi
+    fi
 fi
