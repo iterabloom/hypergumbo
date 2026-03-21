@@ -68,8 +68,10 @@ _CFFI_IMPORT_RE = re.compile(
 # Regex for detecting attribute calls on a variable: var.funcname(
 _ATTR_CALL_RE_TEMPLATE = r'{var}\.(\w+)\s*\('
 
-# PyO3 attribute names that indicate Python-exposed Rust code
-_PYO3_ANNOTATIONS = frozenset({"pyfunction", "pymethods", "pyclass"})
+# PyO3 attribute names that indicate Python-exposed Rust code.
+# The Rust analyzer stores the outer attribute crate name ("pyo3") rather
+# than the specific attribute ("pyfunction", "pymethods"), so we match both.
+_PYO3_ANNOTATIONS = frozenset({"pyfunction", "pymethods", "pyclass", "pyo3"})
 
 
 @dataclass

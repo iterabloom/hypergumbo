@@ -1047,3 +1047,47 @@ class TestPyFFILinkerRegistry:
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "ffi_bridge"
+
+
+class TestPyO3CrateNameAnnotation:
+    """Tests for PyO3 matching when the annotation name is 'pyo3' (crate name).
+
+    The Rust analyzer may store the outer crate attribute name ('pyo3') instead
+    of the specific attribute ('pyfunction', 'pymethods'). The linker must
+    recognize both formats.
+    """
+
+    def test_pyo3_crate_name_annotation_matches(self, tmp_path: Path) -> None:
+        """Rust function with annotation name='pyo3' is matched by PyFFI linker."""
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        rs_file = tmp_path / "src" / "lib.rs"
+        rs_file.parent.mkdir(parents=True)
+        rs_file.write_text('#[pyo3(text_signature = "(self)")]\nfn process(x: i32) -> i32 { x }\n')
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text("from mymod import process\nresult = process(42)\n")
+
+        py_func = _make_python_symbol("app", kind="module", path=str(py_file), start_line=1, end_line=2)
+        rust_func = _make_rust_symbol(
+            "process",
+            path=str(rs_file),
+            # Annotation with crate name 'pyo3' (not 'pyfunction')
+            annotations=[{"name": "pyo3", "args": [], "kwargs": {"text_signature": "(self)"}}],
+        )
+
+        call_edge = Edge.create(
+            src=py_func.id,
+            dst=f"python:{py_file}:0-0:process:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="python-v1",
+        )
+
+        result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
+
+        assert len(result.edges) >= 1
+        ffi_edge = next(e for e in result.edges if e.edge_type == "ffi_bridge")
+        assert "process" in ffi_edge.dst
