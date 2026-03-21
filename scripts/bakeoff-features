@@ -1808,6 +1808,29 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
                 f.write(str(rc2))
             print("OK" if rc2 == 0 else f"FAIL({rc2})")
 
+        # 4b. Domain-scored forward slices from reverse-slice seeds.
+        # The top entrypoints are often main()/benchmarks; the reverse-slice
+        # seeds are the architecturally important symbols (ByteBuf, SslHandler).
+        # Forward slicing FROM these symbols shows "what does this important
+        # class depend on?" — directly useful for refactoring assessment.
+        for i, seed in enumerate(rslice_seeds[:3]):
+            print(f"  domain-slice[{seed[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", seed,
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, f"dslice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"dslice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
         # 5. Tier-bounded slices
         # Use --exclude-tests so --entry auto doesn't pick a test main()
         for tier in [1, 2]:
