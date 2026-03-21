@@ -285,4 +285,39 @@ patterns:
     symbol_kind: "^variable$"
     language: "^wolfram$"
 
+  # === C/C++: Header file exports (include/ directories) ===
+  # C/C++ libraries expose their public API through header files in include/
+  # directories. Functions, classes, and structs declared in these headers are
+  # the public API surface (e.g., rocksdb's include/rocksdb/db.h).
+
+  # Classes in public headers
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^cpp$"
+    symbol_path: "(?:^|/)include/"
+
+  # Structs in public headers
+  - concept: library_export
+    symbol_kind: "^struct$"
+    language: "^cpp$"
+    symbol_path: "(?:^|/)include/"
+
+  # Functions in public headers
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^cpp$"
+    symbol_path: "(?:^|/)include/"
+
+  # Methods in public headers (class methods declared in headers)
+  - concept: library_export
+    symbol_kind: "^method$"
+    language: "^cpp$"
+    symbol_path: "(?:^|/)include/"
+
+  # C public header functions
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^c$"
+    symbol_path: "(?:^|/)include/"
+
 linkers: []
