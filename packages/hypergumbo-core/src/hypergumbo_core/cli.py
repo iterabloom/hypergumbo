@@ -2895,23 +2895,190 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Compute boundary map with entrypoint tracing
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=entrypoint_ids or None)
 
+    # Build node lookup for human-readable caller names
+    nodes_by_id: Dict[str, Any] = {n["id"]: n for n in behavior_map.get("nodes", [])}
+
+    # Apply boundary/primitive filters
+    boundary_filter = getattr(args, "boundary", None)
+    primitive_filter = getattr(args, "primitive", None)
+
+    from .io_boundary import BoundaryMapEntry, is_high_risk
+
+    filtered_entries: Dict[str, BoundaryMapEntry] = {}
+    for btype, entry in bmap.entries.items():
+        if boundary_filter and btype != boundary_filter:
+            continue
+        if primitive_filter:
+            filtered_chains = [c for c in entry.chains if c.primitive == primitive_filter]
+            if not filtered_chains:
+                continue
+            filtered_entries[btype] = BoundaryMapEntry(
+                boundary=entry.boundary,
+                chains=filtered_chains,
+                entry_points=sorted({ep for c in filtered_chains for ep in c.entry_points}),
+                primitives_used=sorted({c.primitive for c in filtered_chains}),
+            )
+        else:
+            filtered_entries[btype] = entry
+
     # Output
     if getattr(args, "json_output", False):
-        print(json.dumps(bmap.to_dict(), indent=2, sort_keys=True))
+        if boundary_filter or primitive_filter:
+            filtered_total = sum(len(e.chains) for e in filtered_entries.values())
+            output = {
+                "total_io_edges": filtered_total,
+                "boundaries": {
+                    k: v.to_dict() for k, v in sorted(filtered_entries.items())
+                },
+            }
+        else:
+            output = bmap.to_dict()
+        print(json.dumps(output, indent=2, sort_keys=True))
+    elif getattr(args, "by_file", False):
+        _print_io_boundaries_by_file(filtered_entries, nodes_by_id, repo_root)
     else:
-        if bmap.total_io_edges == 0:
-            print("No I/O boundary calls detected.")
-            return 0
-
-        print(f"I/O Boundary Map ({bmap.total_io_edges} boundary calls)\n")
-        for boundary_type in sorted(bmap.entries.keys()):
-            entry = bmap.entries[boundary_type]
-            print(f"  {boundary_type}: {len(entry.chains)} call(s)")
-            for prim in entry.primitives_used:
-                print(f"    - {prim}")
-        print()
+        _print_io_boundaries_by_type(filtered_entries, nodes_by_id, bmap, repo_root)
 
     return 0
+
+
+def _format_io_caller(
+    symbol_id: str,
+    nodes_by_id: Dict[str, Any],
+    repo_root: Optional[Path] = None,
+) -> str:
+    """Format a symbol ID into a readable 'name (file:line)' string.
+
+    Looks up the symbol in the node index for structured data; falls back
+    to parsing the symbol ID string directly.
+    """
+    node = nodes_by_id.get(symbol_id)
+    if node:
+        name = node.get("name", "?")
+        fpath = node.get("path", "")
+        line = node.get("span", {}).get("start_line", "")
+        display_path = _relativize(fpath, repo_root)
+        if display_path and line:
+            return f"{name} ({display_path}:{line})"
+        if display_path:
+            return f"{name} ({display_path})"
+        return name
+
+    # Fallback: parse from symbol ID
+    parts = symbol_id.split(":")
+    if len(parts) >= 5:
+        name = parts[-2]
+        raw_path = _extract_path_from_symbol_id(symbol_id)
+        display_path = _relativize(raw_path, repo_root) if raw_path else ""
+        span = parts[2] if len(parts) >= 3 else ""
+        line = span.split("-")[0] if "-" in span else span
+        if display_path and line:
+            return f"{name} ({display_path}:{line})"
+        if display_path:  # pragma: no cover — path extraction requires span pattern
+            return f"{name} ({display_path})"
+        return name
+    return symbol_id
+
+
+def _relativize(path: str, repo_root: Optional[Path]) -> str:
+    """Make a path relative to repo_root if possible, for shorter display."""
+    if not path or not repo_root:
+        return path
+    try:
+        return str(Path(path).relative_to(repo_root))
+    except ValueError:
+        return path
+
+
+def _print_io_boundaries_by_type(
+    entries: Dict[str, "BoundaryMapEntry"],
+    nodes_by_id: Dict[str, Any],
+    bmap: "BoundaryMap",
+    repo_root: Path,
+) -> None:
+    """Print I/O boundaries grouped by boundary type with call-site detail."""
+    from .io_boundary import is_high_risk
+
+    if not entries:
+        print("No I/O boundary calls detected.")
+        return
+
+    total = sum(len(e.chains) for e in entries.values())
+    print(f"I/O Boundary Map ({total} boundary calls)\n")
+
+    for boundary_type in sorted(entries.keys()):
+        entry = entries[boundary_type]
+        has_risk = any(is_high_risk(c.primitive) for c in entry.chains)
+        risk_marker = " [HIGH RISK]" if has_risk else ""
+        print(f"  {boundary_type}: {len(entry.chains)} call(s){risk_marker}")
+
+        # Per-primitive counts and call sites
+        prim_counts: Dict[str, int] = {}
+        chains_by_prim: Dict[str, list] = {}
+        for chain in entry.chains:
+            prim_counts[chain.primitive] = prim_counts.get(chain.primitive, 0) + 1
+            chains_by_prim.setdefault(chain.primitive, []).append(chain)
+
+        for prim in sorted(prim_counts.keys()):
+            count = prim_counts[prim]
+            risk_flag = " *** HIGH RISK ***" if is_high_risk(prim) else ""
+            print(f"    {prim} ({count}){risk_flag}")
+            for chain in chains_by_prim[prim]:
+                caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
+                print(f"      <- {caller}")
+                if chain.entry_points:
+                    ep_names = [
+                        _format_io_caller(ep, nodes_by_id, repo_root)
+                        for ep in chain.entry_points
+                    ]
+                    print(f"         reachable from: {', '.join(ep_names)}")
+
+        if entry.entry_points:
+            print(f"    ({len(entry.entry_points)} entry point(s) reach this boundary)")
+        print()
+
+
+def _print_io_boundaries_by_file(
+    entries: Dict[str, "BoundaryMapEntry"],
+    nodes_by_id: Dict[str, Any],
+    repo_root: Path,
+) -> None:
+    """Print I/O boundaries grouped by source file."""
+    from collections import defaultdict
+
+    from .io_boundary import is_high_risk
+
+    if not entries:
+        print("No I/O boundary calls detected.")
+        return
+
+    # Group all chains by source file
+    chains_by_file: Dict[str, list] = defaultdict(list)
+    for entry in entries.values():
+        for chain in entry.chains:
+            raw_path = _extract_path_from_symbol_id(chain.io_edge_src)
+            display_path = _relativize(raw_path, repo_root) if raw_path else "unknown"
+            chains_by_file[display_path].append(chain)
+
+    total = sum(len(v) for v in chains_by_file.values())
+    print(f"I/O Boundary Map by File ({total} boundary calls)\n")
+
+    for filepath in sorted(chains_by_file.keys()):
+        file_chains = chains_by_file[filepath]
+        has_risk = any(is_high_risk(c.primitive) for c in file_chains)
+        risk_marker = " [HIGH RISK]" if has_risk else ""
+        print(f"  {filepath}: {len(file_chains)} call(s){risk_marker}")
+        for chain in file_chains:
+            caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
+            risk_flag = " *** HIGH RISK ***" if is_high_risk(chain.primitive) else ""
+            print(f"    [{chain.boundary}] {chain.primitive} <- {caller}{risk_flag}")
+            if chain.entry_points:
+                ep_names = [
+                    _format_io_caller(ep, nodes_by_id, repo_root)
+                    for ep in chain.entry_points
+                ]
+                print(f"      reachable from: {', '.join(ep_names)}")
+        print()
 
 
 def cmd_verify_claims(args: argparse.Namespace) -> int:
@@ -4252,9 +4419,12 @@ without re-running the full analysis."""
     # hypergumbo io-boundaries
     io_boundaries_epilog = """\
 Examples:
-  hypergumbo io-boundaries .                    # Show I/O boundary map
-  hypergumbo io-boundaries . --json             # JSON output
-  hypergumbo io-boundaries . --input hg.json    # From existing analysis
+  hypergumbo io-boundaries .                          # Show I/O boundary map
+  hypergumbo io-boundaries . --json                   # JSON output
+  hypergumbo io-boundaries . --input hg.json          # From existing analysis
+  hypergumbo io-boundaries . --by-file                # Group by file
+  hypergumbo io-boundaries . --boundary subprocess    # Filter to subprocess calls
+  hypergumbo io-boundaries . --primitive os.execv     # Filter to specific primitive
 
 Identifies call edges that reach I/O primitives (filesystem, network,
 subprocess, environment) and groups them by boundary type. See ADR-0016."""
@@ -4280,6 +4450,24 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
         action="store_true",
         dest="json_output",
         help="Output as JSON",
+    )
+    p_io.add_argument(
+        "--by-file",
+        action="store_true",
+        dest="by_file",
+        help="Group output by source file instead of boundary type",
+    )
+    p_io.add_argument(
+        "--boundary",
+        default=None,
+        metavar="TYPE",
+        help="Filter to a specific boundary type (e.g., fs_write, subprocess)",
+    )
+    p_io.add_argument(
+        "--primitive",
+        default=None,
+        metavar="NAME",
+        help="Filter to a specific primitive (e.g., subprocess.run, os.execv)",
     )
     p_io.set_defaults(func=cmd_io_boundaries)
 

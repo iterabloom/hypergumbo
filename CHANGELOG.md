@@ -10,6 +10,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **`io-boundaries` enriched output**: Text output now shows per-primitive call counts, call-site locations (`<- func_name (file:line)`), entry-point reachability traces, and high-risk primitive highlighting (`[HIGH RISK]` / `*** HIGH RISK ***`) for destructive fs ops, subprocess/exec, and outbound network calls across 6 languages.
+- **`io-boundaries --by-file`**: Alternative view grouping IO boundary calls by source file instead of boundary type. Each line shows `[boundary_type] primitive <- caller`.
+- **`io-boundaries --boundary TYPE`**: Filter output to a single boundary type (e.g., `--boundary subprocess`). Works with both text and JSON output.
+- **`io-boundaries --primitive NAME`**: Filter output to a specific primitive (e.g., `--primitive shutil.rmtree`). Works with both text and JSON output.
+- **Enriched `io-boundaries --json`**: JSON output now includes per-chain detail (`chains`), per-primitive counts (`primitive_counts`), and a `has_high_risk` flag per boundary type. Backward-compatible (existing fields unchanged).
+
 ## [2.4.0] - 2026-03-21
 
 ### Added

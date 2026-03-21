@@ -35,6 +35,52 @@ import yaml
 
 
 # ---------------------------------------------------------------------------
+# High-risk primitives
+# ---------------------------------------------------------------------------
+
+HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
+    # Destructive filesystem
+    "shutil.rmtree", "os.rmdir", "os.remove", "os.unlink",
+    "pathlib.Path.unlink", "pathlib.Path.rmdir",
+    # Subprocess / code execution — Python
+    "subprocess.Popen", "subprocess.run", "subprocess.call",
+    "subprocess.check_call", "subprocess.check_output",
+    "os.system", "os.popen", "os.execv", "os.execve", "os.execvp",
+    "os.execvpe", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+    "os.fork", "os.forkpty",
+    "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
+    "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
+    # Network outbound — Python
+    "urllib.request.urlopen", "urllib.request.Request",
+    "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
+    # Go
+    "os/exec.Command", "os/exec.CommandContext",
+    # Java
+    "java.lang.ProcessBuilder.start", "java.lang.Runtime.exec",
+    # Rust
+    "std::process::Command.spawn", "std::process::Command.output",
+    "std::process::Command.status",
+    # JavaScript / Node
+    "child_process.exec", "child_process.execSync",
+    "child_process.spawn", "child_process.spawnSync",
+    # C
+    "unistd.exec", "unistd.execl", "unistd.fork",
+    "stdlib.system", "stdio.popen",
+})
+
+
+def is_high_risk(primitive_name: str) -> bool:
+    """Check whether a primitive is classified as high-risk.
+
+    High-risk primitives include destructive filesystem operations
+    (rmtree, unlink), subprocess/code execution (Popen, exec*), and
+    outbound network calls (urlopen, socket.send). The classification
+    covers Python, Go, Java, Rust, JavaScript, and C primitives.
+    """
+    return primitive_name in HIGH_RISK_PRIMITIVES
+
+
+# ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
@@ -290,6 +336,17 @@ class IoChain:
     io_edge_dst: str
     entry_points: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        """Serialize to JSON-friendly dict including high-risk flag."""
+        return {
+            "boundary": self.boundary,
+            "primitive": self.primitive,
+            "io_edge_src": self.io_edge_src,
+            "io_edge_dst": self.io_edge_dst,
+            "entry_points": self.entry_points,
+            "high_risk": is_high_risk(self.primitive),
+        }
+
 
 @dataclass
 class BoundaryMapEntry:
@@ -308,12 +365,25 @@ class BoundaryMapEntry:
     primitives_used: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        """Serialize to JSON-friendly dict."""
+        """Serialize to JSON-friendly dict.
+
+        Includes per-primitive counts, per-chain detail, and a
+        high-risk flag indicating whether any chain uses a high-risk
+        primitive (destructive fs, subprocess, outbound network).
+        """
+        prim_counts: dict[str, int] = {}
+        for chain in self.chains:
+            prim_counts[chain.primitive] = prim_counts.get(chain.primitive, 0) + 1
         return {
             "boundary": self.boundary,
             "chain_count": len(self.chains),
             "entry_points": self.entry_points,
             "primitives_used": self.primitives_used,
+            "primitive_counts": prim_counts,
+            "chains": [c.to_dict() for c in self.chains],
+            "has_high_risk": any(
+                is_high_risk(c.primitive) for c in self.chains
+            ),
         }
 
 

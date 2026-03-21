@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.io_boundary import (
+    HIGH_RISK_PRIMITIVES,
     BoundaryMap,
+    BoundaryMapEntry,
     IoBoundaryCatalog,
     IoChain,
     IoPrimitive,
@@ -19,6 +21,7 @@ from hypergumbo_core.io_boundary import (
     _extract_module_hint,
     _module_matches,
     compute_boundary_map,
+    is_high_risk,
     load_catalog,
     match_edge_to_primitive,
     tag_io_boundaries,
@@ -817,3 +820,131 @@ class TestEntryPointTracing:
         fs_entry = bmap.entries["fs_read"]
         assert "main_io" in fs_entry.entry_points
         assert "main_noio" not in fs_entry.entry_points
+
+
+class TestHighRiskPrimitives:
+    """Tests for the high-risk primitive classification."""
+
+    def test_is_high_risk_subprocess(self) -> None:
+        assert is_high_risk("subprocess.Popen") is True
+        assert is_high_risk("subprocess.run") is True
+        assert is_high_risk("os.execv") is True
+
+    def test_is_high_risk_destructive_fs(self) -> None:
+        assert is_high_risk("shutil.rmtree") is True
+        assert is_high_risk("os.remove") is True
+
+    def test_is_high_risk_network(self) -> None:
+        assert is_high_risk("urllib.request.urlopen") is True
+        assert is_high_risk("socket.socket.send") is True
+
+    def test_not_high_risk(self) -> None:
+        assert is_high_risk("os.listdir") is False
+        assert is_high_risk("pathlib.Path.read_text") is False
+        assert is_high_risk("os.walk") is False
+
+    def test_high_risk_go(self) -> None:
+        assert is_high_risk("os/exec.Command") is True
+
+    def test_high_risk_java(self) -> None:
+        assert is_high_risk("java.lang.ProcessBuilder.start") is True
+
+    def test_high_risk_rust(self) -> None:
+        assert is_high_risk("std::process::Command.spawn") is True
+
+    def test_high_risk_javascript(self) -> None:
+        assert is_high_risk("child_process.exec") is True
+        assert is_high_risk("child_process.spawn") is True
+
+    def test_high_risk_c(self) -> None:
+        assert is_high_risk("unistd.fork") is True
+        assert is_high_risk("stdlib.system") is True
+
+    def test_frozenset_immutable(self) -> None:
+        assert isinstance(HIGH_RISK_PRIMITIVES, frozenset)
+
+
+class TestIoChainToDict:
+    """Tests for IoChain.to_dict() serialization."""
+
+    def test_basic_serialization(self) -> None:
+        chain = IoChain(
+            boundary="fs_read",
+            primitive="os.listdir",
+            io_edge_src="python:/a.py:1-5:f:function",
+            io_edge_dst="python:/os.py:100:os.listdir:function",
+            entry_points=["main"],
+        )
+        d = chain.to_dict()
+        assert d["boundary"] == "fs_read"
+        assert d["primitive"] == "os.listdir"
+        assert d["io_edge_src"] == "python:/a.py:1-5:f:function"
+        assert d["io_edge_dst"] == "python:/os.py:100:os.listdir:function"
+        assert d["entry_points"] == ["main"]
+        assert d["high_risk"] is False
+
+    def test_high_risk_chain(self) -> None:
+        chain = IoChain(
+            boundary="subprocess",
+            primitive="subprocess.Popen",
+            io_edge_src="python:/a.py:1:f:function",
+            io_edge_dst="python:/sub.py:1:subprocess.Popen:function",
+        )
+        d = chain.to_dict()
+        assert d["high_risk"] is True
+
+
+class TestBoundaryMapEntryEnriched:
+    """Tests for enriched BoundaryMapEntry.to_dict()."""
+
+    def test_includes_primitive_counts(self) -> None:
+        entry = BoundaryMapEntry(boundary="fs_read")
+        entry.chains = [
+            IoChain("fs_read", "os.listdir", "s1", "d1"),
+            IoChain("fs_read", "os.listdir", "s2", "d2"),
+            IoChain("fs_read", "os.walk", "s3", "d3"),
+        ]
+        entry.primitives_used = ["os.listdir", "os.walk"]
+        d = entry.to_dict()
+        assert d["primitive_counts"] == {"os.listdir": 2, "os.walk": 1}
+
+    def test_includes_chains(self) -> None:
+        entry = BoundaryMapEntry(boundary="subprocess")
+        entry.chains = [
+            IoChain("subprocess", "subprocess.run", "s1", "d1"),
+        ]
+        entry.primitives_used = ["subprocess.run"]
+        d = entry.to_dict()
+        assert len(d["chains"]) == 1
+        assert d["chains"][0]["primitive"] == "subprocess.run"
+
+    def test_has_high_risk_true(self) -> None:
+        entry = BoundaryMapEntry(boundary="subprocess")
+        entry.chains = [
+            IoChain("subprocess", "subprocess.Popen", "s1", "d1"),
+            IoChain("subprocess", "os.system", "s2", "d2"),
+        ]
+        d = entry.to_dict()
+        assert d["has_high_risk"] is True
+
+    def test_has_high_risk_false(self) -> None:
+        entry = BoundaryMapEntry(boundary="fs_read")
+        entry.chains = [
+            IoChain("fs_read", "os.listdir", "s1", "d1"),
+        ]
+        d = entry.to_dict()
+        assert d["has_high_risk"] is False
+
+    def test_backward_compatible_fields(self) -> None:
+        """Existing fields (boundary, chain_count, entry_points, primitives_used) preserved."""
+        entry = BoundaryMapEntry(
+            boundary="fs_read",
+            chains=[IoChain("fs_read", "os.listdir", "s1", "d1")],
+            entry_points=["main"],
+            primitives_used=["os.listdir"],
+        )
+        d = entry.to_dict()
+        assert d["boundary"] == "fs_read"
+        assert d["chain_count"] == 1
+        assert d["entry_points"] == ["main"]
+        assert d["primitives_used"] == ["os.listdir"]
