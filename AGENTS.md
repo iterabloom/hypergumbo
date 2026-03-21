@@ -654,4 +654,4 @@ Key design decisions:
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-03-16.0 -->
+<!-- CANARY: agents-policy-v2026-03-20.0 -->
