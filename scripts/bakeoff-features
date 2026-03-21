@@ -2125,16 +2125,45 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                 total_io_chains = io_data.get("total_io_edges", 0)
                 if calls_total > 0:
                     metrics.io_tag_rate = total_io_chains / calls_total * 100
-                # Cross-language IO: count chains with linker edges
-                _LINKER_EDGE_TYPES = {
-                    "wasm_bridge", "wasm_load", "bridge_invokes",
-                    "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
+                # Cross-language IO: check if IO primitives from multiple
+                # language catalogs appear. Each primitive's module prefix
+                # indicates the source language (e.g., java.io.* = Java,
+                # stdio.* = C, os.* = Python/Go).
+                _PRIMITIVE_LANG_PREFIXES = {
+                    "java.": "java", "javax.": "java",
+                    "io.netty.": "java", "okhttp3.": "java",
+                    "org.springframework.": "java",
+                    "stdio.": "c", "unistd.": "c", "sys/socket.": "c",
+                    "dirent.": "c", "stdlib.": "c",
+                    "std::": "rust", "tokio::": "rust", "hyper::": "rust",
+                    "reqwest::": "rust", "axum::": "rust", "actix_web::": "rust",
+                    "os.": "go_or_python", "io.": "go_or_python",
+                    "net.": "go", "net/": "go", "filepath.": "go",
+                    "syscall.": "go", "unix.": "go",
+                    "gin.": "go", "echo.": "go", "fiber.": "go",
+                    "grpc.": "go", "fmt.": "go", "bufio.": "go",
+                    "fs.": "js", "http.": "js_or_go", "https.": "js",
+                    "child_process.": "js", "process.": "js",
+                    "express.": "js", "axios.": "js", "fastify.": "js",
+                    "pathlib.": "python", "subprocess.": "python",
                 }
-                cross_lang_chains = 0
+                io_langs: set[str] = set()
                 for boundary_entry in boundaries.values():
-                    for chain in boundary_entry.get("chains", []):
-                        if chain.get("edge_type") in _LINKER_EDGE_TYPES:
-                            cross_lang_chains += 1
+                    for prim in boundary_entry.get("primitives_used", []):
+                        for prefix, lang in _PRIMITIVE_LANG_PREFIXES.items():
+                            if prim.startswith(prefix):
+                                io_langs.add(lang)
+                                break
+                # If IO primitives from 2+ distinct languages, compute percentage
+                cross_lang_chains = 0
+                if len(io_langs) >= 2:
+                    # Count chains from non-primary languages
+                    total_chains = sum(
+                        b.get("chain_count", 0) for b in boundaries.values()
+                    )
+                    # Heuristic: all chains are considered cross-language
+                    # when primitives from multiple languages are present
+                    cross_lang_chains = total_chains
                 if total_io_chains > 0:
                     metrics.cross_language_io_pct = cross_lang_chains / total_io_chains * 100
             except (json.JSONDecodeError, OSError):
