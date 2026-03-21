@@ -141,6 +141,19 @@ if [[ "$CURRENT_BRANCH" != "dev" ]]; then
 fi
 echo -e "${GREEN}✓${NC} On dev branch"
 
+# Flush pending tracker ops so they don't dirty the tree
+if [[ -x "$SCRIPT_DIR/tracker" ]] && [[ -d ".agent/tracker-workspace/.ops" ]]; then
+    PENDING=$(find .agent/tracker-workspace/.ops -name '*.ops' -newer .agent/tracker-workspace/.ops 2>/dev/null | head -1)
+    if [[ -n "$PENDING" ]] || [[ -n "$(git status --porcelain -- '.agent/tracker-workspace/.ops/')" ]]; then
+        echo "  Flushing pending tracker ops..."
+        if ! $DRY_RUN; then
+            "$SCRIPT_DIR/tracker" sync --timeout 120 || echo -e "${YELLOW}!${NC} Tracker sync failed (non-fatal) — continuing"
+        else
+            echo -e "${BLUE}[dry-run]${NC} scripts/tracker sync"
+        fi
+    fi
+fi
+
 # Check for uncommitted changes
 if [[ -n "$(git status --porcelain)" ]]; then
     echo -e "${RED}Error: Uncommitted changes detected${NC}"
