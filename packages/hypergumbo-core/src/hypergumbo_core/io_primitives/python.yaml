@@ -63,6 +63,26 @@ net_send:
     notes: "Any method call on ServerProxy triggers an XML-RPC network request"
   - module: ftplib.FTP
     methods: [storbinary, storlines, sendcmd]
+  # asyncio networking
+  - module: asyncio
+    functions: [open_connection, create_connection]
+    notes: "asyncio TCP client"
+  - module: asyncio.StreamWriter
+    methods: [write, writelines, close]
+  # Popular HTTP clients
+  - module: requests
+    functions: [get, post, put, delete, head, patch, request]
+    notes: "requests library (most popular Python HTTP client)"
+  - module: requests.Session
+    methods: [get, post, put, delete, head, patch, request, send]
+  - module: aiohttp.ClientSession
+    methods: [get, post, put, delete, head, patch, request, ws_connect]
+    notes: "aiohttp async HTTP client"
+  - module: httpx.Client
+    methods: [get, post, put, delete, head, patch, request, send]
+    notes: "httpx sync/async HTTP client"
+  - module: httpx.AsyncClient
+    methods: [get, post, put, delete, head, patch, request, send]
 
 net_recv:
   - module: socket.socket
@@ -75,6 +95,25 @@ net_recv:
     methods: [retrbinary, retrlines]
   - module: xmlrpc.server.SimpleXMLRPCServer
     methods: [serve_forever, handle_request]
+  # asyncio networking
+  - module: asyncio
+    functions: [start_server, start_unix_server]
+    notes: "asyncio TCP server"
+  - module: asyncio.StreamReader
+    methods: [read, readline, readexactly, readuntil]
+  # Popular web frameworks
+  - module: flask.Flask
+    methods: [run]
+    notes: "Flask development server"
+  - module: django.core.management
+    functions: [execute_from_command_line]
+    notes: "Django management command (includes runserver)"
+  - module: uvicorn
+    functions: [run]
+    notes: "ASGI server (used by FastAPI, Starlette)"
+  - module: aiohttp.web
+    functions: [run_app]
+    notes: "aiohttp web server"
 
 ipc_send:
   - module: sys
