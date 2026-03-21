@@ -201,6 +201,22 @@ class TestLoadCatalog:
         assert match is not None
         assert match.boundary == "net_send"
 
+    def test_kotlin_alias_loads_java_catalog(self) -> None:
+        """Kotlin uses the Java IO catalog via alias."""
+        catalog = load_catalog("kotlin")
+        assert len(catalog.primitives) > 0
+        assert catalog.lookup("java.io.FileInputStream.read") is not None
+
+    def test_scala_alias_loads_java_catalog(self) -> None:
+        """Scala uses the Java IO catalog via alias."""
+        catalog = load_catalog("scala")
+        assert len(catalog.primitives) > 0
+
+    def test_groovy_alias_loads_java_catalog(self) -> None:
+        """Groovy uses the Java IO catalog via alias."""
+        catalog = load_catalog("groovy")
+        assert len(catalog.primitives) > 0
+
     def test_load_nonexistent_language_returns_empty(self) -> None:
         catalog = load_catalog("brainfuck")
         assert catalog.language == "brainfuck"

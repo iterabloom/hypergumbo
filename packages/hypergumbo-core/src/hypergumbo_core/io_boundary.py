@@ -226,6 +226,10 @@ _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 _CATALOG_ALIASES: dict[str, str] = {
     "cpp": "c",
     "typescript": "javascript",
+    # JVM languages share the Java IO catalog
+    "kotlin": "java",
+    "scala": "java",
+    "groovy": "java",
 }
 
 
