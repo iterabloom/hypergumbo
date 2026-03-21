@@ -285,18 +285,23 @@ def classify_file(
         for pkg_root in package_roots:
             try:
                 if path.is_relative_to(pkg_root):
-                    # Check if file is in src/lib/app within the workspace
-                    # If so, treat as first-party (the workspace IS the library)
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
-                    for pattern in WORKSPACE_FIRST_PARTY_PATTERNS:
-                        if re.match(pattern, rel_to_pkg):
+                    # Test files within workspace packages are tier 2
+                    for test_pat in TEST_DIR_PATTERNS:
+                        if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
-                                Tier.FIRST_PARTY,
-                                f"in workspace {pkg_root.name} (source)",
+                                Tier.INTERNAL_DEP, f"in workspace {pkg_root.name} (test)"
                             )
-                    # Other workspace files (tests, configs, etc.) are tier 2
+                    for test_pat in TEST_FILE_PATTERNS:
+                        if re.search(test_pat, rel_to_pkg):
+                            return FileClassification(
+                                Tier.INTERNAL_DEP, f"in workspace {pkg_root.name} (test)"
+                            )
+                    # All other workspace files are first-party.
+                    # Workspace members are by definition part of the project.
                     return FileClassification(
-                        Tier.INTERNAL_DEP, f"in workspace {pkg_root.name}"
+                        Tier.FIRST_PARTY,
+                        f"in workspace {pkg_root.name}",
                     )
             except (ValueError, TypeError):
                 continue

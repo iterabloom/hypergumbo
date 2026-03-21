@@ -238,9 +238,9 @@ class TestInternalDepDetection:
         roots = detect_package_roots(tmp_path)
         assert pkg_dir in roots
 
-        # File in workspace should be tier 2
+        # File in workspace should be tier 1 (workspace IS the project)
         result = classify_file(pkg_dir / "index.js", tmp_path, roots)
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
 
     def test_npm_workspaces_object_format(self, tmp_path):
         """Handle workspaces as object with packages array."""
@@ -308,7 +308,7 @@ members = ["crates/*"]
         # Files in workspace src/ are tier 1 (the workspace IS the library)
         result = classify_file(crate_dir / "src" / "lib.rs", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
-        assert "source" in result.reason
+        # Workspace files are first-party (reason no longer requires "source")
 
     def test_maven_workspaces(self, tmp_path):
         """Detect internal modules from Maven parent pom.xml."""
@@ -341,7 +341,7 @@ members = ["crates/*"]
             tmp_path, roots,
         )
         assert result.tier == Tier.FIRST_PARTY
-        assert "source" in result.reason
+        # Workspace files are first-party (reason no longer requires "source")
 
     def test_maven_workspaces_nonexistent_module(self, tmp_path):
         """Maven modules that don't exist on disk are ignored."""
@@ -412,10 +412,10 @@ members = ["crates/*"]
         result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
         assert "socket.io" in result.reason
-        assert "source" in result.reason
+        # Workspace files are first-party (reason no longer requires "source")
 
-    def test_workspace_non_source_is_internal_dep(self, tmp_path):
-        """Files in workspace outside src/lib/app are tier 2."""
+    def test_workspace_non_source_is_first_party(self, tmp_path):
+        """Non-test files in workspace are first-party (workspace IS the project)."""
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
 
@@ -426,9 +426,41 @@ members = ["crates/*"]
 
         roots = detect_package_roots(tmp_path)
 
-        # Root-level files in workspace are tier 2
+        # Root-level files in workspace are first-party
         result = classify_file(pkg_dir / "index.js", tmp_path, roots)
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_workspace_test_dir_is_internal_dep(self, tmp_path):
+        """Test directories within workspace packages are tier 2."""
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        pkg_dir = tmp_path / "packages" / "core"
+        test_dir = pkg_dir / "tests"
+        test_dir.mkdir(parents=True)
+        (pkg_dir / "package.json").write_text("{}")
+        (test_dir / "test_core.py").write_text("# test")
+
+        roots = detect_package_roots(tmp_path)
+
+        result = classify_file(test_dir / "test_core.py", tmp_path, roots)
         assert result.tier == Tier.INTERNAL_DEP
+
+    def test_workspace_test_file_pattern_is_internal_dep(self, tmp_path):
+        """Test files matching naming conventions are tier 2 in workspaces."""
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text('[workspace]\nmembers = ["crates/core"]')
+
+        pkg_dir = tmp_path / "crates" / "core"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "Cargo.toml").write_text("[package]\nname = 'core'")
+        (pkg_dir / "handler_test.go").write_text("// test")
+
+        roots = detect_package_roots(tmp_path)
+
+        result = classify_file(pkg_dir / "handler_test.go", tmp_path, roots)
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "test" in result.reason
 
     def test_examples_dir_is_internal_dep(self, tmp_path):
         """Examples directory is tier 2 (lower priority than workspace source)."""
