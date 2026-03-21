@@ -18,7 +18,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Phase 2 — 6-language catalogs + FFI tracing**: I/O primitive catalogs for Python, Rust, JS/TS, Go, C, and Java (6+ boundary types each). C++ and TypeScript resolve to C and JavaScript catalogs via aliases. Traces through FFI edges (JNI, NAPI, PyFFI, Ruby FFI, Lua FFI, CGo, Swift/ObjC bridge) for cross-language I/O chains.
 - **Framework IO catalog entries across 5 ecosystems**: Java (Netty Channel/ByteBuf/ChannelHandlerContext, OkHttp, Spring RestTemplate), Rust (Tokio fs/net, Hyper, Reqwest, Axum, Actix), Go (Gin, Echo, Fiber, gRPC + syscall/unix IO), JS/TS (Express, Axios, Fastify, Koa, Deno runtime API), Python (asyncio, requests, aiohttp, httpx, Flask, Django, uvicorn). 60+ framework IO entries total.
 - **JVM language IO catalog aliases**: Kotlin, Scala, and Groovy now use the Java IO catalog via alias, enabling IO boundary detection for JVM polyglot repos without catalog duplication.
-- **Phase 1c — Entry-point reverse tracing**: `compute_boundary_map()` accepts optional `entrypoint_ids` parameter. When provided, traces backward from each IO-tagged edge through the call graph (BFS) to find which entrypoints can reach each IO call. Populates `entry_points` on IoChain and BoundaryMapEntry. Both `io-boundaries` and `verify-claims` CLI commands now pass entrypoint IDs from the behavior map.
+- **Phase 1c — Entry-point reverse tracing**: `compute_boundary_map()` accepts optional `entrypoint_ids` parameter. When provided, traces backward from each IO-tagged edge through the call graph (BFS) to find which entrypoints can reach each IO call. Populates `entry_points` on IoChain and BoundaryMapEntry. Traces cross language boundaries via FFI bridge edges (native_bridge, wasm_bridge, ipc_calls, etc.). Both `io-boundaries` and `verify-claims` CLI commands now pass entrypoint IDs from the behavior map.
 - **Phase 3 — Security claim verification**: `verify_claims` checks `must_not_exist` and `max_chains` constraints against boundary maps. `hypergumbo verify-claims --claims security-claims.yaml` with `--json` output; exit code 1 on violations.
 - **ADR-0016 design**: Proposal for exhaustive I/O primitive detection, reverse-trace chains, transparency tiers, and security claim verification.
 
@@ -37,17 +37,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Dataflow (ADR-0015)
 
-- **Expanded dataflow patterns for 5 key languages**: Go (range, channel, defer, go, return), Python (for/with/return/yield + ast-based annotations), Rust (for/match/if-let/return/await), Java (enhanced for/try-with-resources/return/throw), C++ (range-for/return/throw). Increased pattern count from ~4 per language to 8-12.
+- **Expanded dataflow patterns for 5 key languages**: Go (range, channel, defer, go, return), Python (for/with/return/yield), Rust (for/match/if-let/return/await), Java (enhanced for/try-with-resources/return/throw), C++ (range-for/return/throw). Increased pattern count from ~4 per language to 8-12.
+- **Python ast-based access_mode expansion**: `annotate_dataflow_ast()` now handles `For`/`AsyncFor` (write), `With`/`AsyncWith` (write), `Return` (read), and `Yield`/`YieldFrom` (read) in addition to assignments. Complements the tree-sitter YAML patterns for Python's ast-module-based analyzer.
 - **Removed incorrect call-edge annotations**: The `calls` section in all 19 dataflow pattern files incorrectly annotated call edges as `read`, causing forward slices to skip all call chains (gvisor: 0.8% of regular slice). Call edges now pass through the graceful degradation path (always followed). Assignment, return, and borrow patterns retained.
 
 #### Language analyzers
 
 - **Unresolved-external call edges for all analyzers**: All language analyzers now use the shared `make_unresolved_edge()` utility for consistent unresolved-external call edges (confidence 0.50, `{lang}:external:0-0:{name}:unresolved` format). PR #2439 added the utility and converted 9 mainstream analyzers (C, C++, Java, Rust, Kotlin, Scala, Swift, PHP, ObjC). This PR converts the remaining 21 analyzers: 5 mainstream (Lua, Perl, PowerShell, Groovy, Solidity) and 16 extended1 (Ada, ASM, COBOL, D, Fennel, Fish, GDScript, Gleam, Haxe, Janet, Nim, Odin, Pascal, Pony, Tcl, V). Groovy and Solidity previously discarded unresolved calls entirely.
+- **Go interface dispatch resolution**: When ambiguous method calls include an interface method candidate, resolve to the interface method instead of leaving unresolved. Addresses the #1 priority across 4 BROAD bakeoff curricula (84 repos).
 - **C struct designated initializer function pointers**: Detects function pointers assigned via designated initializers (e.g., `.callback = my_handler`), creating call edges to the referenced functions.
 
 #### Framework patterns
 
 - **Web Audio API**: YAML-driven detection of AudioContext, audio node factories, `.connect()` graph wiring, `AudioWorkletProcessor` subclasses, and Tone.js patterns.
+
+#### Symbol identity (ADR-0014)
+
+- **stable_id wiring for mainstream analyzers**: Hash-based `stable_id` (content-addressable identity) for C, C++, Ruby, Bash, Perl, PowerShell, Lua, Objective-C, and SQL analyzers. Go Gorilla mount points use hash-based stable_id to avoid collisions.
+- **shape_id wiring for Pattern B analyzers**: `shape_id` (structural fingerprint) for Java, Go, JS/TS, Kotlin, PHP, and 8 additional mainstream analyzers via `node_for_symbol` auto-wiring.
 
 #### Analysis core
 
@@ -68,6 +75,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Developer tooling
 
 - **Bakeoff `--dry-run`**: `bakeoff cohort --dry-run` and `bakeoff-features cohort --dry-run` preview selection without mutating session state.
+- **Bakeoff IO tag rate threshold scaling**: IO tag rate `good_min` threshold scales logarithmically for large repos (5% for <10K nodes, ~2% at 50K, ~1% at 100K+). Prevents false WARN for large repos where IO edges are naturally a tiny fraction of total edges.
+- **Bakeoff cross-language IO metric fix**: `cross_language_io_pct` now computed from primitives_used (checking if IO primitives span multiple language catalogs) instead of iterating over non-existent chain objects. Previously always reported 0%.
+- **Bakeoff domain-scored forward slices**: New `dslice.*.json` artifacts in bakeoff output — forward slices from high-out-degree non-test methods (architecturally important functions). Complements entrypoint-based slices and reverse-slice seeds.
 
 ### Changed
 
@@ -80,6 +90,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Vendored directory tier classification**: `third-party/`, `thirdparty/`, `external/`, and `deps/` directories now classified as tier 3 (external_dep). Previously only `third_party/` (underscore) was recognized.
 - **Workspace package files default to first-party**: Non-test files in monorepo workspace packages now classified as tier 1 (first_party) instead of tier 2. Fixes deno's tier1 classification from 3.5% to 89%.
 - **PyO3 crate-name annotation matching**: PyFFI linker now matches `#[pyo3(...)]` annotations (crate-level name) in addition to `#[pyfunction]`/`#[pymethods]`. Fixes zero Rust↔Python cross-language edges for tokenizers (809 of 1823 Rust symbols had pyo3 annotations).
+- **PyO3 Py-prefix name stripping**: PyFFI linker registers Rust `PyTokenizer::encode` under Python-style name `Tokenizer.encode` (strip `Py` prefix, replace `::` with `.`). Enables cross-language edge matching when Python calls `Tokenizer.encode` and Rust implements `PyTokenizer::encode`.
 - **Entrypoint ranking: microbench demotion + in-degree boost**: `microbench/` directories now recognized as utility code (benchmark main() demoted). Library exports with high in-degree (many callers) receive confidence boost up to +0.35. Combined effect: netty's AllocationPatternSimulator.main dropped from #1 to #285; SslHandler rose to #2.
 - **C/C++ library_export detection**: Symbols in `include/` directories detected as library exports via new library-exports.yaml patterns.
 - **Test-edge filter for phantom source symbols**: Import edges from file-level pseudo-symbols (kind=file) in test files now correctly filtered by extracting the file path from the symbol ID when the source symbol isn't in the behavior map nodes. Previously these edges leaked through and inflated centrality.
