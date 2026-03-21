@@ -14,6 +14,12 @@ fs_read:
     notes: "Deprecated in Go 1.16 but still widely used"
   - module: filepath
     functions: [Walk, WalkDir, Glob]
+  # Low-level syscall IO (important for kernel/runtime projects like gvisor)
+  - module: syscall
+    functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents]
+  - module: unix
+    functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Fstatat]
+    notes: "golang.org/x/sys/unix"
 
 fs_write:
   - module: os
@@ -22,6 +28,11 @@ fs_write:
     functions: [WriteFile, TempFile, TempDir]
   - module: io
     functions: [WriteString]
+  - module: syscall
+    functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
+  - module: unix
+    functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Unlinkat, Renameat, Mkdirat]
+    notes: "golang.org/x/sys/unix"
 
 net_send:
   - module: net
@@ -43,6 +54,10 @@ net_send:
   - module: grpc
     functions: [Dial, DialContext, NewClient]
     notes: "gRPC client connection"
+  - module: syscall
+    functions: [Connect, Sendto, Sendmsg]
+  - module: unix
+    functions: [Connect, Sendto, Sendmsg]
 
 net_recv:
   - module: net
@@ -67,6 +82,10 @@ net_recv:
   - module: grpc.Server
     methods: [Serve]
     notes: "gRPC server"
+  - module: syscall
+    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
+  - module: unix
+    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
 
 subprocess:
   - module: os/exec
