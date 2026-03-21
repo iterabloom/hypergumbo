@@ -1,0 +1,26 @@
+- op: create  # 8bb8
+  at: '2026-03-21T06:04:44Z'  # 8bb8
+  by: agent  # 8bb8
+  actor: jgstern_agent  # 8bb8
+  clock: 1  # 8bb8
+  nonce: 8bb8  # 8bb8
+  data:  # 8bb8
+    kind: work_item  # 8bb8
+    title: "Dataflow: directional call-site annotations (write return value, read parameters)"  # 8bb8
+    status: todo_soft  # 8bb8
+    priority: 3  # 8bb8
+    parent:  # 8bb8
+    tags: []  # 8bb8
+    before: []  # 8bb8
+    duplicate_of: []  # 8bb8
+    not_duplicate_of: []  # 8bb8
+    pr_ref:  # 8bb8
+    description: ""  # 8bb8
+    fields: {}  # 8bb8
+- op: discuss  # c7bd
+  at: '2026-03-21T06:04:53Z'  # c7bd
+  by: agent  # c7bd
+  actor: jgstern_agent  # c7bd
+  clock: 2  # c7bd
+  nonce: c7bd  # c7bd
+  message: "Design task: call edges need directional access_mode annotations. Currently, the calls section was removed from all dataflow patterns because it incorrectly annotated call edges as 'read' (breaking forward slices). The correct approach: annotate the CALLER side as 'write' (writing the return value) and the CALLEE side as 'read' (reading parameters). This requires the annotation engine to understand call direction from the AST context. Medium effort."  # c7bd
