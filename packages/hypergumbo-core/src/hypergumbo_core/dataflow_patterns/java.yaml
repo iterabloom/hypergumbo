@@ -9,9 +9,26 @@ assignments:
   - node_type: local_variable_declaration
     write: name
     read: value
+  # Enhanced for loop: for (Type item : collection)
+  - node_type: enhanced_for_statement
+    write: name
+    read: value
+  # Resource in try-with-resources
+  - node_type: resource
+    write: name
+    read: value
+
+returns:
+  - node_type: return_statement
+    read: expression
+  - node_type: throw_statement
+    read: expression
 
 calls:
   - node_type: method_invocation
     read: arguments
   - node_type: object_creation_expression
     read: arguments
+  # Field access on object (receiver is read)
+  - node_type: field_access
+    read: object
