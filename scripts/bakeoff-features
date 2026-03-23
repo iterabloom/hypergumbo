@@ -201,9 +201,12 @@ QUALITY_THRESHOLDS = {
     # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
     # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
     "orphan_rate": {"good_max": 20, "warn_max": 35},
-    # IO boundary: 5-60% of call edges tagged is healthy; <1% means the catalog
-    # is missing entries, >80% suggests over-matching non-IO functions.
-    "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 1, "warn_max": 80},
+    # IO boundary: 5-60% of call edges tagged is healthy. good_min scales down
+    # for larger repos (see assess_metric). warn_min is a hard floor for FAIL:
+    # <0.1% means essentially zero IO detection, suggesting a catalog gap or
+    # analyzer bug. Previously 1%, but large Java/Go repos (50K+ nodes) with
+    # 100K+ call edges legitimately have 0.5-1% IO rates.
+    "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 0.1, "warn_max": 80},
     # Dataflow slice should be meaningfully tighter than regular slice (ratio <90%)
     # but not degenerate (ratio >10%). Ratio of 100% means --dataflow adds no value.
     # Stored as 0-1 ratio but assessed as percentage (multiplied by 100 in metric_assessments).
@@ -824,12 +827,29 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
 _COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
 
 
-def assess_metric(name: str, value: float, *, total_nodes: int | None = None) -> tuple:
+def assess_metric(
+    name: str,
+    value: float,
+    *,
+    total_nodes: int | None = None,
+    access_mode_coverage: float | None = None,
+) -> tuple:
     """Assess a metric against thresholds. Returns (status, message).
 
     For ``avg_slice_nodes``, the ``good_min`` threshold scales down for small
     repos (< 200 nodes) using ``max(warn_min, total_nodes * 0.1)``.  A repo
     with 72 nodes cannot realistically average 20 nodes per slice.
+
+    For ``io_tag_rate``, the ``good_min`` threshold scales down continuously
+    from 5% (at 1K nodes) to ~0.3% (at 100K+ nodes) using log-linear scaling.
+    All repos get scaling — the prior 10K threshold left mid-sized repos
+    (3K-10K nodes like mitmproxy and tokenizers) with an unrealistically high
+    5% requirement.
+
+    For ``dataflow_slice_ratio``, assessment is skipped (returns GOOD) when
+    ``access_mode_coverage`` is below 30%.  Low annotation coverage means most
+    edges lack access_mode metadata, so --dataflow mode follows them
+    unconditionally — producing a ratio near 100% is expected, not a defect.
     """
     thresholds = QUALITY_THRESHOLDS.get(name, {})
     unit = "" if name in _COUNT_METRICS else "%"
@@ -844,16 +864,24 @@ def assess_metric(name: str, value: float, *, total_nodes: int | None = None) ->
         scaled = max(floor, total_nodes * 0.1)
         good_min = min(good_min, scaled)
 
-    # Scale io_tag_rate threshold for large repos.
-    # Large repos (>50K nodes) have IO edges as a tiny fraction of total edges
-    # even with perfect catalog coverage, because most edges are internal plumbing.
-    # Scale: 5% for <10K nodes, down to 0.5% for >100K nodes (log-linear).
+    # Scale io_tag_rate threshold continuously for all repo sizes.
+    # IO edges are a small fraction of total edges in any non-trivial repo,
+    # and the fraction shrinks as repos grow (more internal plumbing edges).
+    # Log-linear from 5% at 500 nodes down to ~0.3% at 100K+ nodes.
+    # Prior scaling only kicked in above 10K nodes, leaving mid-sized repos
+    # (3K-10K like mitmproxy) with an unrealistically high 5% threshold.
     if name == "io_tag_rate" and good_min is not None and total_nodes is not None:
-        if total_nodes > 10000:
+        if total_nodes > 500:
             import math
-            # Log-scale: 5% at 10K nodes, ~2% at 50K, ~0.5% at 100K
-            scale_factor = max(0.1, 1.0 - math.log10(total_nodes / 10000) * 0.9)
-            good_min = max(thresholds.get("warn_min", 1), good_min * scale_factor)
+            # Log-scale: 5% at 500, ~2.5% at 5K, ~1.8% at 10K, ~0.3% at 100K
+            scale_factor = max(0.05, 1.0 - math.log10(total_nodes / 500) * 0.45)
+            good_min = max(0.3, good_min * scale_factor)
+
+    # Skip dataflow_slice_ratio assessment when access_mode coverage is low.
+    # With <30% annotation coverage, the 100% ratio is expected behavior.
+    if name == "dataflow_slice_ratio" and access_mode_coverage is not None:
+        if access_mode_coverage < 30.0:
+            return ("GOOD", None)
 
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
@@ -2276,7 +2304,11 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
 
         verdict_status = "GOOD"
         for metric_name, value in metric_assessments:
-            status, msg = assess_metric(metric_name, value, total_nodes=metrics.total_nodes)
+            status, msg = assess_metric(
+                metric_name, value,
+                total_nodes=metrics.total_nodes,
+                access_mode_coverage=metrics.access_mode_coverage,
+            )
             if status == "FAIL":
                 verdict_status = "FAIL"
                 if msg:
