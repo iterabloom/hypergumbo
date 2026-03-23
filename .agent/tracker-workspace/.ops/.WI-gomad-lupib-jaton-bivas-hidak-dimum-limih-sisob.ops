@@ -1,0 +1,21 @@
+- op: create  # 47c2
+  at: '2026-03-23T14:14:10Z'  # 47c2
+  by: agent  # 47c2
+  actor: jgstern_agent  # 47c2
+  clock: 1  # 47c2
+  nonce: 47c2  # 47c2
+  data:  # 47c2
+    kind: work_item  # 47c2
+    title: "ADR-0017 Phase 3: TypeScript def/use extractor"  # 47c2
+    status: todo_soft  # 47c2
+    priority: 3  # 47c2
+    parent:  # 47c2
+    tags:  # 47c2
+    - adr-0017  # 47c2
+    - phase-3  # 47c2
+    before: []  # 47c2
+    duplicate_of: []  # 47c2
+    not_duplicate_of: []  # 47c2
+    pr_ref:  # 47c2
+    description: "DefUseExtractor for TypeScript (~600-1000 lines, most complex due to destructuring, optional chaining, spread, computed properties, hoisting, class fields, decorators, JSX). Enables DDG precision on source side of PlazaFlow TS↔Rust bridges. See ADR-0017 §1c, §1e."  # 47c2
+    fields: {}  # 47c2

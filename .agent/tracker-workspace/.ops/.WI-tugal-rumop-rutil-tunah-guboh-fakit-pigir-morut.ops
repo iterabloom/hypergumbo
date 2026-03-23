@@ -1,0 +1,21 @@
+- op: create  # cca3
+  at: '2026-03-23T14:14:07Z'  # cca3
+  by: agent  # cca3
+  actor: jgstern_agent  # cca3
+  clock: 1  # cca3
+  nonce: cca3  # cca3
+  data:  # cca3
+    kind: work_item  # cca3
+    title: "ADR-0017 Phase 2: Reaching-def solver (worklist fixpoint)"  # cca3
+    status: todo_soft  # cca3
+    priority: 3  # cca3
+    parent:  # cca3
+    tags:  # cca3
+    - adr-0017  # cca3
+    - phase-2  # cca3
+    before: []  # cca3
+    duplicate_of: []  # cca3
+    not_duplicate_of: []  # cca3
+    pr_ref:  # cca3
+    description: "Port of Joern DataFlowSolver (~100-150 lines Python). Definition numbering with Python int bitsets. Gen/kill per block. Worklist iteration in reverse postorder to fixpoint. DDG edge generation from reaching defs to use sites. Per-function bail-out at 4000 definitions. Streaming strategy: one function at a time to bound memory. See ADR-0017 §1b."  # cca3
+    fields: {}  # cca3

@@ -1,0 +1,21 @@
+- op: create  # d885
+  at: '2026-03-23T14:14:07Z'  # d885
+  by: agent  # d885
+  actor: jgstern_agent  # d885
+  clock: 1  # d885
+  nonce: d885  # d885
+  data:  # d885
+    kind: work_item  # d885
+    title: "ADR-0017 Phase 2: CFG data structures and fringe-based builder"  # d885
+    status: todo_soft  # d885
+    priority: 3  # d885
+    parent:  # d885
+    tags:  # d885
+    - adr-0017  # d885
+    - phase-2  # d885
+    before: []  # d885
+    duplicate_of: []  # d885
+    not_duplicate_of: []  # d885
+    pr_ref:  # d885
+    description: "Language-parameterized CFG builder (~700-1000 lines Python). BasicBlock, CfgStatement, CfgEdge, FunctionCfg data structures. Fringe-based recursive algorithm (same as Joern CfgCreator). Handles: sequential, if/else, loops, break/continue, return, try/catch, switch/match. Semantic hooks: early_return_on_error (Rust ?), context_manager (Python with), deferred_execution (Go defer). See ADR-0017 §1a."  # d885
+    fields: {}  # d885

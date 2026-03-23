@@ -1,0 +1,21 @@
+- op: create  # 0f69
+  at: '2026-03-23T14:14:09Z'  # 0f69
+  by: agent  # 0f69
+  actor: jgstern_agent  # 0f69
+  clock: 1  # 0f69
+  nonce: 0f69  # 0f69
+  data:  # 0f69
+    kind: work_item  # 0f69
+    title: "ADR-0017 Phase 3: YAML-declared function summaries (stdlib/frameworks)"  # 0f69
+    status: todo_soft  # 0f69
+    priority: 3  # 0f69
+    parent:  # 0f69
+    tags:  # 0f69
+    - adr-0017  # 0f69
+    - phase-3  # 0f69
+    before: []  # 0f69
+    duplicate_of: []  # 0f69
+    not_duplicate_of: []  # 0f69
+    pr_ref:  # 0f69
+    description: "YAML declarations for stdlib/framework function taint flow. Fields: param_to_return, param_to_self, mutates_self, side_effect, sanitizes, callback (structured callback flow with caller_to_callback_args and callback_return_to_outer_return). TypeScript stdlib and Rust stdlib summaries. Default-conservative for undeclared functions. See ADR-0017 §4b."  # 0f69
+    fields: {}  # 0f69

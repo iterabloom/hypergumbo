@@ -1,0 +1,21 @@
+- op: create  # 11c6
+  at: '2026-03-23T14:14:09Z'  # 11c6
+  by: agent  # 11c6
+  actor: jgstern_agent  # 11c6
+  clock: 1  # 11c6
+  nonce: 11c6  # 11c6
+  data:  # 11c6
+    kind: work_item  # 11c6
+    title: "ADR-0017 Phase 3: Function summary inference from DDG"  # 11c6
+    status: todo_soft  # 11c6
+    priority: 3  # 11c6
+    parent:  # 11c6
+    tags:  # 11c6
+    - adr-0017  # 11c6
+    - phase-3  # 11c6
+    before: []  # 11c6
+    duplicate_of: []  # 11c6
+    not_duplicate_of: []  # 11c6
+    pr_ref:  # 11c6
+    description: "Infer FunctionSummary from DDG: param_to_return (does param N flow to return?), param_to_param (mutation across params), param_to_calls (param N flows to call arg K of callee F), return_sources. Walk forward through DDG edges from each parameter. Conservative defaults for functions without DDG. See ADR-0017 §4a."  # 11c6
+    fields: {}  # 11c6

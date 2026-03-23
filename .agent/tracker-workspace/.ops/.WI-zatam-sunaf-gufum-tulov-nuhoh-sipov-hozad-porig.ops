@@ -1,0 +1,21 @@
+- op: create  # 1408
+  at: '2026-03-23T14:14:08Z'  # 1408
+  by: agent  # 1408
+  actor: jgstern_agent  # 1408
+  clock: 1  # 1408
+  nonce: '1408'  # 1408
+  data:  # 1408
+    kind: work_item  # 1408
+    title: "ADR-0017 Phase 2: Rust def/use extractor (core patterns)"  # 1408
+    status: todo_soft  # 1408
+    priority: 3  # 1408
+    parent:  # 1408
+    tags:  # 1408
+    - adr-0017  # 1408
+    - phase-2  # 1408
+    before: []  # 1408
+    duplicate_of: []  # 1408
+    not_duplicate_of: []  # 1408
+    pr_ref:  # 1408
+    description: "Pluggable DefUseExtractor for Rust (~500-800 lines). Handles Simple+Moderate patterns: let bindings, tuple/struct destructuring, if-let/match, reassignment, field writes, for loops, closures (conservative capture), return. ? operator handled structurally (CFG creates dual edges, extractor treats Ok binding as simple let). Builds on existing rust.py scope analysis. See ADR-0017 §1c."  # 1408
+    fields: {}  # 1408

@@ -1,0 +1,21 @@
+- op: create  # 34c9
+  at: '2026-03-23T14:14:10Z'  # 34c9
+  by: agent  # 34c9
+  actor: jgstern_agent  # 34c9
+  clock: 1  # 34c9
+  nonce: 34c9  # 34c9
+  data:  # 34c9
+    kind: work_item  # 34c9
+    title: "ADR-0017: New modules — cfg.py and taint.py in hypergumbo-core"  # 34c9
+    status: todo_soft  # 34c9
+    priority: 3  # 34c9
+    parent:  # 34c9
+    tags:  # 34c9
+    - adr-0017  # 34c9
+    - infrastructure  # 34c9
+    before: []  # 34c9
+    duplicate_of: []  # 34c9
+    not_duplicate_of: []  # 34c9
+    pr_ref:  # 34c9
+    description: "cfg.py: CFG builder + reaching-def solver (language-parameterized shared infrastructure). taint.py: taint catalogs, propagation engine, solver. Def/use extractors alongside their language analyzers (e.g. rust_def_use.py in hypergumbo-lang-mainstream). All modules reference Symbol/Edge by ID string for loose coupling. See ADR-0017 §1f."  # 34c9
+    fields: {}  # 34c9

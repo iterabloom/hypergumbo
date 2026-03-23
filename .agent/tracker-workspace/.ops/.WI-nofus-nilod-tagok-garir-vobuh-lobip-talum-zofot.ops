@@ -1,0 +1,21 @@
+- op: create  # a434
+  at: '2026-03-23T14:14:08Z'  # a434
+  by: agent  # a434
+  actor: jgstern_agent  # a434
+  clock: 1  # a434
+  nonce: a434  # a434
+  data:  # a434
+    kind: work_item  # a434
+    title: "ADR-0017 Phase 2: Targeted analysis selection"  # a434
+    status: todo_soft  # a434
+    priority: 3  # a434
+    parent:  # a434
+    tags:  # a434
+    - adr-0017  # a434
+    - phase-2  # a434
+    before: []  # a434
+    duplicate_of: []  # a434
+    not_duplicate_of: []  # a434
+    pr_ref:  # a434
+    description: "DDG analysis invoked on targeted functions only (2-10% of codebase): IO-critical functions (on paths between entrypoints and IO primitives), taint-relevant functions (handling catalog sources/sinks), claim-relevant functions. Budget cap: 500 functions (configurable via --max-ddg-targets), prioritized by centrality rank. See ADR-0017 §1c."  # a434
+    fields: {}  # a434

@@ -24,3 +24,25 @@
   clock: 2  # c7bd
   nonce: c7bd  # c7bd
   message: "Design task: call edges need directional access_mode annotations. Currently, the calls section was removed from all dataflow patterns because it incorrectly annotated call edges as 'read' (breaking forward slices). The correct approach: annotate the CALLER side as 'write' (writing the return value) and the CALLEE side as 'read' (reading parameters). This requires the annotation engine to understand call direction from the AST context. Medium effort."  # c7bd
+- op: update  # 1fee
+  at: '2026-03-21T06:28:17Z'  # 1fee
+  by: agent  # 1fee
+  actor: jgstern_agent  # 1fee
+  clock: 3  # 1fee
+  nonce: 1fee  # 1fee
+  set:  # 1fee
+    status: needs_human_review  # 1fee
+- op: discuss  # 8a7e
+  at: '2026-03-21T06:28:17Z'  # 8a7e
+  by: agent  # 8a7e
+  actor: jgstern_agent  # 8a7e
+  clock: 4  # 8a7e
+  nonce: 8a7e  # 8a7e
+  message: "Current implementation (PR #2470) is correct: call edges left unannotated for graceful degradation, assignment/return/borrow edges annotated with directional access_mode. The directional call-site annotation idea would be a future enhancement but isn't needed for correct slicing. Flagging for human review to decide if this is worth pursuing or can be closed as wont_do."  # 8a7e
+- op: discuss  # 2fa9
+  at: '2026-03-23T08:53:19Z'  # 2fa9
+  by: human  # 2fa9
+  actor: jgstern  # 2fa9
+  clock: 5  # 2fa9
+  nonce: 2fa9  # 2fa9
+  message: "please reassess this in light of ADR-0017"  # 2fa9

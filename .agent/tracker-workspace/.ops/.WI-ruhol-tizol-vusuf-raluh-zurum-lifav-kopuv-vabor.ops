@@ -1,0 +1,21 @@
+- op: create  # 8eb9
+  at: '2026-03-23T14:14:07Z'  # 8eb9
+  by: agent  # 8eb9
+  actor: jgstern_agent  # 8eb9
+  clock: 1  # 8eb9
+  nonce: 8eb9  # 8eb9
+  data:  # 8eb9
+    kind: work_item  # 8eb9
+    title: "ADR-0017 Phase 1b: Precision measurement of structural taint flow"  # 8eb9
+    status: todo_soft  # 8eb9
+    priority: 2  # 8eb9
+    parent:  # 8eb9
+    tags:  # 8eb9
+    - adr-0017  # 8eb9
+    - phase-1b  # 8eb9
+    before: []  # 8eb9
+    duplicate_of: []  # 8eb9
+    not_duplicate_of: []  # 8eb9
+    pr_ref:  # 8eb9
+    description: "Measure false positive rate of structural taint flow. If PlazaFlow code available: run TF-001 through TF-004, manually classify findings. If not: build ~500-1000 line reference impl or use open-source Rust+TS projects. Decision gate: >80% precision = Phase 2 lower priority; <50% = Phase 2 high priority. See ADR-0017 §9."  # 8eb9
+    fields: {}  # 8eb9

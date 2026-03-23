@@ -1,0 +1,21 @@
+- op: create  # 1930
+  at: '2026-03-23T14:14:08Z'  # 1930
+  by: agent  # 1930
+  actor: jgstern_agent  # 1930
+  clock: 1  # 1930
+  nonce: '1930'  # 1930
+  data:  # 1930
+    kind: work_item  # 1930
+    title: "ADR-0017 Phase 2: Field-sensitivity lite for taint propagation"  # 1930
+    status: todo_soft  # 1930
+    priority: 3  # 1930
+    parent:  # 1930
+    tags:  # 1930
+    - adr-0017  # 1930
+    - phase-2  # 1930
+    before: []  # 1930
+    duplicate_of: []  # 1930
+    not_duplicate_of: []  # 1930
+    pr_ref:  # 1930
+    description: "Limited field sensitivity: x tainted → x.field, x.method(), x[key] inherit taint. obj.field = tainted → obj.field tainted but obj.other_field not. Aliased refs via assignment chain covered by reaching defs. No indirect aliasing (container.get). Covers CRDT method-chain pattern. See ADR-0017 §7a."  # 1930
+    fields: {}  # 1930

@@ -1,0 +1,21 @@
+- op: create  # b855
+  at: '2026-03-23T14:14:09Z'  # b855
+  by: agent  # b855
+  actor: jgstern_agent  # b855
+  clock: 1  # b855
+  nonce: b855  # b855
+  data:  # b855
+    kind: work_item  # b855
+    title: "ADR-0017 Phase 2b: Rust extractor hard patterns (borrow aliases, ref/ref mut, macros)"  # b855
+    status: todo_soft  # b855
+    priority: 3  # b855
+    parent:  # b855
+    tags:  # b855
+    - adr-0017  # b855
+    - phase-2b  # b855
+    before: []  # b855
+    duplicate_of: []  # b855
+    not_duplicate_of: []  # b855
+    pr_ref:  # b855
+    description: "Extensions to Rust def/use extractor (~300-500 additional lines). Borrow alias tracking (let y = &mut x; *y = val → mutates x). ref/ref mut bindings in match arms. Macro invocation analysis beyond conservative overapproximation. Prioritized by Phase 2 precision measurement. See ADR-0017 §1c."  # b855
+    fields: {}  # b855

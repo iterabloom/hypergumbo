@@ -1,0 +1,21 @@
+- op: create  # 18b6
+  at: '2026-03-23T14:14:06Z'  # 18b6
+  by: agent  # 18b6
+  actor: jgstern_agent  # 18b6
+  clock: 1  # 18b6
+  nonce: 18b6  # 18b6
+  data:  # 18b6
+    kind: work_item  # 18b6
+    title: "ADR-0017 Phase 1: Structural taint-flow propagation (call-graph BFS)"  # 18b6
+    status: todo_soft  # 18b6
+    priority: 2  # 18b6
+    parent:  # 18b6
+    tags:  # 18b6
+    - adr-0017  # 18b6
+    - phase-1  # 18b6
+    before: []  # 18b6
+    duplicate_of: []  # 18b6
+    not_duplicate_of: []  # 18b6
+    pr_ref:  # 18b6
+    description: "Taint propagation via call-graph BFS with dominance-based sanitizer checking. Two-phase BFS: (1) compute reachable nodes from taint source without passing through sanitizers, (2) check if any sink is in that set. Fallback path for languages without def/use extractors. See ADR-0017 §3b."  # 18b6
+    fields: {}  # 18b6

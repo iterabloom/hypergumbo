@@ -1,0 +1,21 @@
+- op: create  # 32d4
+  at: '2026-03-23T14:14:08Z'  # 32d4
+  by: agent  # 32d4
+  actor: jgstern_agent  # 32d4
+  clock: 1  # 32d4
+  nonce: 32d4  # 32d4
+  data:  # 32d4
+    kind: work_item  # 32d4
+    title: "ADR-0017 Phase 2: DDG-backed taint propagation"  # 32d4
+    status: todo_soft  # 32d4
+    priority: 3  # 32d4
+    parent:  # 32d4
+    tags:  # 32d4
+    - adr-0017  # 32d4
+    - phase-2  # 32d4
+    before: []  # 32d4
+    duplicate_of: []  # 32d4
+    not_duplicate_of: []  # 32d4
+    pr_ref:  # 32d4
+    description: "Forward graph walk on computed DDG edges for taint propagation. Match call sites against taint source catalogs, propagate through DDG edges, apply sanitizer transforms. Mixed-coverage analysis: DDG segments provide variable-level precision, non-DDG segments bridged with structural reachability. Critical path segments determine verdict confidence. See ADR-0017 §3a, §3c-3d."  # 32d4
+    fields: {}  # 32d4

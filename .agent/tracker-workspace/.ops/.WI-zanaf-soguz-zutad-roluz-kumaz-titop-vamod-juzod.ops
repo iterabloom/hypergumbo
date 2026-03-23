@@ -1,0 +1,21 @@
+- op: create  # e3bb
+  at: '2026-03-23T14:14:06Z'  # e3bb
+  by: agent  # e3bb
+  actor: jgstern_agent  # e3bb
+  clock: 1  # e3bb
+  nonce: e3bb  # e3bb
+  data:  # e3bb
+    kind: work_item  # e3bb
+    title: "ADR-0017 Phase 1: Extend verify-claims for taint-flow claims"  # e3bb
+    status: todo_soft  # e3bb
+    priority: 2  # e3bb
+    parent:  # e3bb
+    tags:  # e3bb
+    - adr-0017  # e3bb
+    - phase-1  # e3bb
+    before: []  # e3bb
+    duplicate_of: []  # e3bb
+    not_duplicate_of: []  # e3bb
+    pr_ref:  # e3bb
+    description: "Extend verify-claims to support taint_flow claim type alongside existing must_not_exist/max_chains. Fields: source_taint, prohibited_sink_zone, allowed_sanitizers. Five verdict levels: Confirmed, Confirmed (sanitized), Violated, Inconclusive (no DDG), Inconclusive (opaque). See ADR-0017 §6."  # e3bb
+    fields: {}  # e3bb

@@ -1,0 +1,21 @@
+- op: create  # b8e7
+  at: '2026-03-23T14:14:10Z'  # b8e7
+  by: agent  # b8e7
+  actor: jgstern_agent  # b8e7
+  clock: 1  # b8e7
+  nonce: b8e7  # b8e7
+  data:  # b8e7
+    kind: work_item  # b8e7
+    title: "ADR-0017 Phase 4: Cross-language taint propagation via linker edges"  # b8e7
+    status: todo_soft  # b8e7
+    priority: 3  # b8e7
+    parent:  # b8e7
+    tags:  # b8e7
+    - adr-0017  # b8e7
+    - phase-4  # b8e7
+    before: []  # b8e7
+    duplicate_of: []  # b8e7
+    not_duplicate_of: []  # b8e7
+    pr_ref:  # b8e7
+    description: "Taint propagation through existing linker edges (wasm_bindgen, tauri_ipc, napi, grpc, pyffi). Callee function summaries consulted at bridge calls. IPC boundaries taint-transparent by default (serialization does not sanitize). Survey serialization libs at IPC boundaries and ensure summaries exist. See ADR-0017 §5."  # b8e7
+    fields: {}  # b8e7

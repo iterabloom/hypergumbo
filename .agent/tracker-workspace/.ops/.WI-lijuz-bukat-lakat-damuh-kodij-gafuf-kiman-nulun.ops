@@ -1,0 +1,21 @@
+- op: create  # ee36
+  at: '2026-03-23T14:14:07Z'  # ee36
+  by: agent  # ee36
+  actor: jgstern_agent  # ee36
+  clock: 1  # ee36
+  nonce: ee36  # ee36
+  data:  # ee36
+    kind: work_item  # ee36
+    title: "ADR-0017 Phase 2: YAML CFG node mappings (per-language)"  # ee36
+    status: todo_soft  # ee36
+    priority: 3  # ee36
+    parent:  # ee36
+    tags:  # ee36
+    - adr-0017  # ee36
+    - phase-2  # ee36
+    before: []  # ee36
+    duplicate_of: []  # ee36
+    not_duplicate_of: []  # ee36
+    pr_ref:  # ee36
+    description: "YAML files mapping tree-sitter node types to generic control-flow categories (conditional, loop, break, continue, return, early_return, try_catch). ~30-60 lines per language. Rust mapping first. Unmapped nodes treated as sequential statements (safe overapproximation) with DEBUG warning. See ADR-0017 §1d."  # ee36
+    fields: {}  # ee36

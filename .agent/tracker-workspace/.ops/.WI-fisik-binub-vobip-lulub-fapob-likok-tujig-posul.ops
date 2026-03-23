@@ -1,0 +1,21 @@
+- op: create  # f914
+  at: '2026-03-23T14:14:06Z'  # f914
+  by: agent  # f914
+  actor: jgstern_agent  # f914
+  clock: 1  # f914
+  nonce: f914  # f914
+  data:  # f914
+    kind: work_item  # f914
+    title: "ADR-0017 Phase 1: Taint catalogs (YAML source/sink/sanitizer)"  # f914
+    status: todo_soft  # f914
+    priority: 2  # f914
+    parent:  # f914
+    tags:  # f914
+    - adr-0017  # f914
+    - phase-1  # f914
+    before: []  # f914
+    duplicate_of: []  # f914
+    not_duplicate_of: []  # f914
+    pr_ref:  # f914
+    description: "YAML-driven taint source/sink/sanitizer catalog system extending IO primitive catalog pattern (ADR-0016). Built-in catalogs for crypto, filesystem, network. Project-local catalogs for custom domains. Taint labels: plaintext, crdt_content, key_material, ephemeral. Sanitizer transforms (e.g. plaintext→ciphertext). See ADR-0017 §2a-2c."  # f914
+    fields: {}  # f914
