@@ -1842,6 +1842,15 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
         # abstract interfaces). For forward slicing, we want high OUT-degree
         # non-test methods: functions that CALL many other functions (e.g.,
         # resolveConfig, SslHandler.channelRead, main processing pipelines).
+        # Load graph data for out-degree computation
+        try:
+            with open(hg_json) as _f:
+                _hg_data = json.load(_f)
+            nodes = _hg_data.get("nodes", [])
+            raw_edges = _hg_data.get("edges", [])
+        except (json.JSONDecodeError, OSError):
+            nodes = []
+            raw_edges = []
         # Build out-degree index from edges (O(E) once)
         _out_deg: dict[str, int] = {}
         for e in raw_edges:
