@@ -7,7 +7,7 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
 - Type class definitions
 - Instance declarations
 - Import statements
-- Function call relationships
+- Function call relationships (including external edges for I/O boundary matching)
 
 If tree-sitter with Haskell support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -18,9 +18,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, data types, type classes, instances with signatures
 2. Pass 2: Extract call edges and import edges using NameResolver
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Haskell-specific extraction
-logic.
+Unresolved calls (especially to Prelude and stdlib functions like readFile,
+writeFile, putStrLn) produce external edges in the format
+``haskell:{module}:0-0:{name}:function`` so the I/O boundary tagging pass
+(ADR-0016) can match them against ``io_primitives/haskell.yaml``. Qualified
+calls resolved through import aliases carry the full module name as the
+module hint for precise matching.
 
 Why This Design
 ---------------
@@ -29,6 +32,7 @@ Why This Design
 - Uses tree-sitter-haskell package for grammar (grammar_module)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
+- External edges bridge Haskell's stdlib to the I/O boundary catalog
 
 Haskell-Specific Considerations
 -------------------------------
@@ -37,6 +41,8 @@ Haskell-Specific Considerations
 - Type classes define interfaces, instances implement them
 - import statements bring modules into scope (qualified or unqualified)
 - Function application uses whitespace (no parens needed)
+- Only ``return`` is excluded from call edges (monadic lift, not a real call);
+  I/O primitives like putStrLn, print, readFile are kept as edges
 """
 from __future__ import annotations
 
@@ -362,7 +368,10 @@ def _extract_edges_from_file(
                     if innermost.children and innermost.children[0].type == "variable":  # pragma: no cover
                         callee_name = node_text(innermost.children[0], source)  # pragma: no cover
 
-                if callee_name and callee_name not in ("print", "putStrLn", "return"):
+                # Skip 'return' (monadic lift, not a real call) but keep
+                # I/O primitives like putStrLn, print, readFile, writeFile
+                # so they produce edges matchable by the I/O boundary catalog.
+                if callee_name and callee_name != "return":
                     # Find the caller (enclosing function)
                     caller = _find_enclosing_function_haskell(
                         node, source, local_symbols
@@ -385,16 +394,21 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
                         else:
-                            # Unresolved call - create edge to unknown target
-                            unresolved_id = f"haskell:?:0-0:{callee_name}:function"
+                            # Unresolved call — create edge to synthetic
+                            # external node so I/O boundary tagging can match
+                            # stdlib calls (readFile, putStrLn, etc.).
+                            # Use module hint from qualified import when
+                            # available, otherwise use "?" as fallback.
+                            module_hint = path_hint if path_hint else "?"
+                            ext_id = f"haskell:{module_hint}:0-0:{callee_name}:function"
                             edge = Edge.create(
                                 src=caller.id,
-                                dst=unresolved_id,
+                                dst=ext_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="function_application",
+                                evidence_type="function_application_external",
                                 confidence=0.50,
                             )
                             edges.append(edge)

@@ -385,6 +385,88 @@ helper x = x + 1
         assert funcs[0].signature is None
 
 
+class TestHaskellExternalEdges:
+    """Tests for external edge creation for I/O boundary matching."""
+
+    def test_io_primitives_not_excluded_from_edges(self, tmp_path: Path) -> None:
+        """putStrLn and print should produce call edges, not be silently dropped."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+greet :: String -> IO ()
+greet name = putStrLn name
+
+main :: IO ()
+main = do
+    print "hello"
+    greet "world"
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # main should have a call edge to print
+        assert any("print" in e.dst for e in call_edges), (
+            f"Expected call edge to 'print', got: {[e.dst for e in call_edges]}"
+        )
+        # greet should have a call edge to putStrLn
+        assert any("putStrLn" in e.dst for e in call_edges), (
+            f"Expected call edge to 'putStrLn', got: {[e.dst for e in call_edges]}"
+        )
+
+    def test_qualified_unresolved_call_uses_module_hint(self, tmp_path: Path) -> None:
+        """Qualified unresolved calls should carry module name, not '?'."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import qualified System.IO as SIO
+
+doRead :: IO ()
+doRead = SIO.hGetContents SIO.stdin
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should have an external edge with System.IO as module hint
+        hget_edges = [e for e in call_edges if "hGetContents" in e.dst]
+        assert len(hget_edges) >= 1, (
+            f"Expected edge to hGetContents, got: {[e.dst for e in call_edges]}"
+        )
+        # The module hint should be System.IO, not ?
+        edge = hget_edges[0]
+        assert "System.IO" in edge.dst, (
+            f"Expected 'System.IO' in edge dst, got: {edge.dst}"
+        )
+
+    def test_readFile_creates_external_edge(self, tmp_path: Path) -> None:
+        """Unresolved call to readFile creates an external edge matchable by I/O catalog."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    content <- readFile "input.txt"
+    writeFile "output.txt" content
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should have edges to readFile and writeFile
+        assert any("readFile" in e.dst for e in call_edges), (
+            f"Expected edge to readFile, got: {[e.dst for e in call_edges]}"
+        )
+        assert any("writeFile" in e.dst for e in call_edges), (
+            f"Expected edge to writeFile, got: {[e.dst for e in call_edges]}"
+        )
+
+
 class TestHaskellImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
 

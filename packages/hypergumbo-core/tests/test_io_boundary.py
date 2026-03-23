@@ -296,6 +296,49 @@ net_send:
         assert catalog.lookup("io.Path.read_text").boundary == "fs_read"
         assert catalog.lookup("net.send").boundary == "net_send"
 
+    def test_haskell_catalog_loads(self) -> None:
+        """Haskell I/O catalog covers file I/O, network, process, env, and logging."""
+        catalog = load_catalog("haskell")
+        assert catalog.language == "haskell"
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "fs_write" in boundaries
+        assert "net_send" in boundaries
+        assert "net_recv" in boundaries
+        assert "subprocess" in boundaries
+        assert "env_read" in boundaries
+        assert "logging" in boundaries
+
+    def test_haskell_catalog_lookups(self) -> None:
+        """Key Haskell I/O primitives are findable by short name and module hint."""
+        catalog = load_catalog("haskell")
+        # Prelude I/O
+        assert catalog.lookup("readFile") is not None
+        assert catalog.lookup("readFile").boundary == "fs_read"
+        assert catalog.lookup("writeFile") is not None
+        assert catalog.lookup("writeFile").boundary == "fs_write"
+        # Module-hinted lookup
+        sock_send = catalog.lookup_with_module("send", "Network.Socket")
+        assert sock_send is not None
+        assert sock_send.boundary == "net_send"
+        # Process
+        assert catalog.lookup("callProcess") is not None
+        assert catalog.lookup("callProcess").boundary == "subprocess"
+        # Environment
+        assert catalog.lookup("getArgs") is not None
+        assert catalog.lookup("getArgs").boundary == "env_read"
+        # Logging (putStrLn is in Prelude)
+        putstrln = catalog.lookup_with_module("putStrLn", "Prelude")
+        assert putstrln is not None
+        assert putstrln.boundary == "logging"
+
+    def test_haskell_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("haskell")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
 
 class TestMatchEdgeToPrimitive:
     """Tests for matching call edges to I/O primitives."""

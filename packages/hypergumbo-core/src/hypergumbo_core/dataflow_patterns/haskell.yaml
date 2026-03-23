@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0015: Dataflow patterns for Haskell (tree-sitter grammar)
+#
+# Haskell uses pattern matching and do-notation for binding; mutation is
+# rare (IORef/MVar are handled at the library level via I/O catalog).
+# These patterns cover the syntactic binding sites visible in the AST.
+language: haskell
+
+assignments:
+  # Do-notation monadic bind: content <- readFile "input.txt"
+  # AST: bind → variable (write), <- , apply (read)
+  - node_type: bind
+    write: left
+    read: right
+  # Let binding in do-notation or let-in expressions:
+  # let result = process content
+  # AST: let → let, local_binds → bind → variable (write), match → = , expr (read)
+  - node_type: let_in
+    write: left
+    read: right
+  # Pattern match in match/function: f (Just x) = x + 1
+  # The match node contains the = and the RHS
+  - node_type: match
+    write: left
+    read: right
