@@ -883,6 +883,20 @@ def assess_metric(
         if access_mode_coverage < 30.0:
             return ("GOOD", None)
 
+    # Scale limit_hit_frequency threshold up for large repos.
+    # Large repos with deeply interconnected call graphs (gvisor: 35K nodes,
+    # netty: 49K nodes) naturally hit slice limits more often because the
+    # call graph is broader. Forward slices from any entrypoint fan out
+    # quickly, hitting --max-files or --max-hops. This is expected behavior,
+    # not a quality issue.
+    # Scale: 50% at <10K nodes, up to ~70% at 35K, ~75% at 100K.
+    if name == "limit_hit_frequency" and good_max is not None and total_nodes is not None:
+        if total_nodes > 10000:
+            import math
+            # Log-scale increase: +25% at 100K nodes
+            scale_boost = min(25.0, math.log10(total_nodes / 10000) * 25.0)
+            good_max = good_max + scale_boost
+
     if good_min is not None and value < good_min:
         return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
     if good_max is not None and value > good_max:

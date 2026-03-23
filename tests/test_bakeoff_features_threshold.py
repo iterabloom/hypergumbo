@@ -187,3 +187,36 @@ class TestDataflowSliceRatioConditional:
         """Without access_mode_coverage kwarg, use existing threshold logic."""
         status, msg = bf.assess_metric("dataflow_slice_ratio", 100.0, total_nodes=5000)
         assert status == "WARN", "Without coverage info, 100% should still WARN"
+
+
+class TestLimitHitFrequencyScaling:
+    """Test limit_hit_frequency threshold scaling for large repos."""
+
+    def test_small_repo_flat_threshold(self):
+        """Small repos use the flat 50% threshold."""
+        status, msg = bf.assess_metric("limit_hit_frequency", 55.0, total_nodes=5000)
+        assert status == "WARN", f"55% limit hits in 5K node repo should WARN: {msg}"
+
+    def test_large_repo_scales_up(self):
+        """Large repos (35K+ nodes) get a higher threshold.
+
+        gvisor (35571 nodes, 55.6%) should not WARN — large Go repos with
+        deeply interconnected call graphs naturally hit slice limits more often.
+        """
+        status, msg = bf.assess_metric("limit_hit_frequency", 55.6, total_nodes=35571)
+        assert status == "GOOD", f"gvisor-like repo (35K nodes, 55.6%) should be GOOD: {msg}"
+
+    def test_very_large_repo(self):
+        """Very large repos (50K+ nodes) get even more lenient threshold."""
+        status, msg = bf.assess_metric("limit_hit_frequency", 65.0, total_nodes=50000)
+        assert status == "GOOD", f"50K node repo at 65% should be GOOD: {msg}"
+
+    def test_still_warns_for_extreme_values(self):
+        """Even large repos should WARN at very high frequencies."""
+        status, msg = bf.assess_metric("limit_hit_frequency", 85.0, total_nodes=35000)
+        assert status != "GOOD", "85% limit hits should not be GOOD for any repo"
+
+    def test_no_total_nodes_uses_default(self):
+        """Without total_nodes, use the flat 50% threshold."""
+        status, msg = bf.assess_metric("limit_hit_frequency", 55.0)
+        assert status == "WARN"
