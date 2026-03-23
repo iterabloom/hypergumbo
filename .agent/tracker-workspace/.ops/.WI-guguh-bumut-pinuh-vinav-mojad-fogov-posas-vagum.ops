@@ -64,3 +64,18 @@
   set: {}  # d104
   add:  # d104
     before: [WI-gomad-lupib-jaton-bivas-hidak-dimum-limih-sisob]  # d104
+- op: update  # 622c
+  at: '2026-03-23T14:17:40Z'  # 622c
+  by: agent  # 622c
+  actor: jgstern_agent  # 622c
+  clock: 7  # 622c
+  nonce: 622c  # 622c
+  set:  # 622c
+    status: needs_human_review  # 622c
+- op: discuss  # 4115
+  at: '2026-03-23T14:17:40Z'  # 4115
+  by: agent  # 4115
+  actor: jgstern_agent  # 4115
+  clock: 8  # 4115
+  nonce: '4115'  # 4115
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 4115

@@ -37,3 +37,18 @@
   set: {}  # 675e
   add:  # 675e
     before: [WI-bifog-hisaz-pofaj-zasub-pifoh-gavan-pajos-juvog]  # 675e
+- op: update  # 74a9
+  at: '2026-03-23T14:17:40Z'  # 74a9
+  by: agent  # 74a9
+  actor: jgstern_agent  # 74a9
+  clock: 4  # 74a9
+  nonce: 74a9  # 74a9
+  set:  # 74a9
+    status: needs_human_review  # 74a9
+- op: discuss  # 89ec
+  at: '2026-03-23T14:17:40Z'  # 89ec
+  by: agent  # 89ec
+  actor: jgstern_agent  # 89ec
+  clock: 5  # 89ec
+  nonce: 89ec  # 89ec
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 89ec

@@ -28,3 +28,18 @@
   set: {}  # 3f62
   add:  # 3f62
     before: [WI-bivaf-nujas-fugir-lugug-safud-vukor-zupog-tubug]  # 3f62
+- op: update  # 841b
+  at: '2026-03-23T14:17:41Z'  # 841b
+  by: agent  # 841b
+  actor: jgstern_agent  # 841b
+  clock: 3  # 841b
+  nonce: 841b  # 841b
+  set:  # 841b
+    status: needs_human_review  # 841b
+- op: discuss  # 322e
+  at: '2026-03-23T14:17:41Z'  # 322e
+  by: agent  # 322e
+  actor: jgstern_agent  # 322e
+  clock: 4  # 322e
+  nonce: 322e  # 322e
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 322e

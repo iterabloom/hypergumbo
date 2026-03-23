@@ -19,3 +19,18 @@
     pr_ref:  # 1930
     description: "Limited field sensitivity: x tainted → x.field, x.method(), x[key] inherit taint. obj.field = tainted → obj.field tainted but obj.other_field not. Aliased refs via assignment chain covered by reaching defs. No indirect aliasing (container.get). Covers CRDT method-chain pattern. See ADR-0017 §7a."  # 1930
     fields: {}  # 1930
+- op: update  # 3823
+  at: '2026-03-23T14:17:40Z'  # 3823
+  by: agent  # 3823
+  actor: jgstern_agent  # 3823
+  clock: 2  # 3823
+  nonce: '3823'  # 3823
+  set:  # 3823
+    status: needs_human_review  # 3823
+- op: discuss  # de93
+  at: '2026-03-23T14:17:40Z'  # de93
+  by: agent  # de93
+  actor: jgstern_agent  # de93
+  clock: 3  # de93
+  nonce: de93  # de93
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # de93

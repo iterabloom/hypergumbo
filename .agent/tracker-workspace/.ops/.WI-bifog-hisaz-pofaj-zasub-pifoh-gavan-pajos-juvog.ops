@@ -19,3 +19,18 @@
     pr_ref:  # b855
     description: "Extensions to Rust def/use extractor (~300-500 additional lines). Borrow alias tracking (let y = &mut x; *y = val → mutates x). ref/ref mut bindings in match arms. Macro invocation analysis beyond conservative overapproximation. Prioritized by Phase 2 precision measurement. See ADR-0017 §1c."  # b855
     fields: {}  # b855
+- op: update  # 0c71
+  at: '2026-03-23T14:17:41Z'  # 0c71
+  by: agent  # 0c71
+  actor: jgstern_agent  # 0c71
+  clock: 2  # 0c71
+  nonce: 0c71  # 0c71
+  set:  # 0c71
+    status: needs_human_review  # 0c71
+- op: discuss  # 4682
+  at: '2026-03-23T14:17:41Z'  # 4682
+  by: agent  # 4682
+  actor: jgstern_agent  # 4682
+  clock: 3  # 4682
+  nonce: '4682'  # 4682
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 4682

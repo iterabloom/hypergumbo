@@ -28,3 +28,18 @@
   set: {}  # bab7
   add:  # bab7
     before: [WI-zavit-gojuk-nakat-lilag-silat-pakaz-niniz-jipid]  # bab7
+- op: update  # 9023
+  at: '2026-03-23T14:17:40Z'  # 9023
+  by: agent  # 9023
+  actor: jgstern_agent  # 9023
+  clock: 3  # 9023
+  nonce: '9023'  # 9023
+  set:  # 9023
+    status: needs_human_review  # 9023
+- op: discuss  # bb8e
+  at: '2026-03-23T14:17:40Z'  # bb8e
+  by: agent  # bb8e
+  actor: jgstern_agent  # bb8e
+  clock: 4  # bb8e
+  nonce: bb8e  # bb8e
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # bb8e

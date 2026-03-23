@@ -46,3 +46,18 @@
   set: {}  # 8966
   add:  # 8966
     before: [WI-bizom-bunof-zazoh-vipam-kalom-gonih-jotip-zalis]  # 8966
+- op: update  # 0262
+  at: '2026-03-23T14:17:40Z'  # 0262
+  by: agent  # 0262
+  actor: jgstern_agent  # 0262
+  clock: 5  # 0262
+  nonce: '0262'  # 0262
+  set:  # 0262
+    status: needs_human_review  # 0262
+- op: discuss  # 499c
+  at: '2026-03-23T14:17:40Z'  # 499c
+  by: agent  # 499c
+  actor: jgstern_agent  # 499c
+  clock: 6  # 499c
+  nonce: 499c  # 499c
+  message: "ADR-0017 is Proposed, not yet accepted. Awaiting human approval before implementation."  # 499c

@@ -19,3 +19,18 @@
     pr_ref:  # 0f69
     description: "YAML declarations for stdlib/framework function taint flow. Fields: param_to_return, param_to_self, mutates_self, side_effect, sanitizes, callback (structured callback flow with caller_to_callback_args and callback_return_to_outer_return). TypeScript stdlib and Rust stdlib summaries. Default-conservative for undeclared functions. See ADR-0017 §4b."  # 0f69
     fields: {}  # 0f69
+- op: update  # 0c86
+  at: '2026-03-23T14:17:41Z'  # 0c86
+  by: agent  # 0c86
+  actor: jgstern_agent  # 0c86
+  clock: 2  # 0c86
+  nonce: 0c86  # 0c86
+  set:  # 0c86
+    status: needs_human_review  # 0c86
+- op: discuss  # 7e9d
+  at: '2026-03-23T14:17:41Z'  # 7e9d
+  by: agent  # 7e9d
+  actor: jgstern_agent  # 7e9d
+  clock: 3  # 7e9d
+  nonce: 7e9d  # 7e9d
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 7e9d

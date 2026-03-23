@@ -46,3 +46,18 @@
   set: {}  # 72b2
   add:  # 72b2
     before: [WI-gafum-havur-dizuk-dosar-nodim-doduh-vidot-jabak]  # 72b2
+- op: update  # ab82
+  at: '2026-03-23T14:17:40Z'  # ab82
+  by: agent  # ab82
+  actor: jgstern_agent  # ab82
+  clock: 5  # ab82
+  nonce: ab82  # ab82
+  set:  # ab82
+    status: needs_human_review  # ab82
+- op: discuss  # df80
+  at: '2026-03-23T14:17:40Z'  # df80
+  by: agent  # df80
+  actor: jgstern_agent  # df80
+  clock: 6  # df80
+  nonce: df80  # df80
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # df80

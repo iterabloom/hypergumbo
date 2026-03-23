@@ -19,3 +19,18 @@
     pr_ref:  # b8e7
     description: "Taint propagation through existing linker edges (wasm_bindgen, tauri_ipc, napi, grpc, pyffi). Callee function summaries consulted at bridge calls. IPC boundaries taint-transparent by default (serialization does not sanitize). Survey serialization libs at IPC boundaries and ensure summaries exist. See ADR-0017 §5."  # b8e7
     fields: {}  # b8e7
+- op: update  # 4cfb
+  at: '2026-03-23T14:17:41Z'  # 4cfb
+  by: agent  # 4cfb
+  actor: jgstern_agent  # 4cfb
+  clock: 2  # 4cfb
+  nonce: 4cfb  # 4cfb
+  set:  # 4cfb
+    status: needs_human_review  # 4cfb
+- op: discuss  # 14e0
+  at: '2026-03-23T14:17:41Z'  # 14e0
+  by: agent  # 14e0
+  actor: jgstern_agent  # 14e0
+  clock: 3  # 14e0
+  nonce: '14e0'  # 14e0
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 14e0

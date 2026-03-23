@@ -19,3 +19,18 @@
     pr_ref:  # 34c9
     description: "cfg.py: CFG builder + reaching-def solver (language-parameterized shared infrastructure). taint.py: taint catalogs, propagation engine, solver. Def/use extractors alongside their language analyzers (e.g. rust_def_use.py in hypergumbo-lang-mainstream). All modules reference Symbol/Edge by ID string for loose coupling. See ADR-0017 §1f."  # 34c9
     fields: {}  # 34c9
+- op: update  # 5d18
+  at: '2026-03-23T14:17:41Z'  # 5d18
+  by: agent  # 5d18
+  actor: jgstern_agent  # 5d18
+  clock: 2  # 5d18
+  nonce: 5d18  # 5d18
+  set:  # 5d18
+    status: needs_human_review  # 5d18
+- op: discuss  # 0e6a
+  at: '2026-03-23T14:17:41Z'  # 0e6a
+  by: agent  # 0e6a
+  actor: jgstern_agent  # 0e6a
+  clock: 3  # 0e6a
+  nonce: 0e6a  # 0e6a
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 0e6a

@@ -19,3 +19,18 @@
     pr_ref:  # 6509
     description: "When ADR-0017 is accepted, update docs/hypergumbo-spec.md §2 non-goal from 'we never do this' to 'we don't attempt this for all languages; extractors add it where demand justifies it.' See ADR-0017 Context §1."  # 6509
     fields: {}  # 6509
+- op: update  # 983d
+  at: '2026-03-23T14:17:41Z'  # 983d
+  by: agent  # 983d
+  actor: jgstern_agent  # 983d
+  clock: 2  # 983d
+  nonce: 983d  # 983d
+  set:  # 983d
+    status: needs_human_review  # 983d
+- op: discuss  # 29b9
+  at: '2026-03-23T14:17:41Z'  # 29b9
+  by: agent  # 29b9
+  actor: jgstern_agent  # 29b9
+  clock: 3  # 29b9
+  nonce: 29b9  # 29b9
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 29b9

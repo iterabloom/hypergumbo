@@ -19,3 +19,18 @@
     pr_ref:  # ee36
     description: "YAML files mapping tree-sitter node types to generic control-flow categories (conditional, loop, break, continue, return, early_return, try_catch). ~30-60 lines per language. Rust mapping first. Unmapped nodes treated as sequential statements (safe overapproximation) with DEBUG warning. See ADR-0017 §1d."  # ee36
     fields: {}  # ee36
+- op: update  # a25b
+  at: '2026-03-23T14:17:40Z'  # a25b
+  by: agent  # a25b
+  actor: jgstern_agent  # a25b
+  clock: 2  # a25b
+  nonce: a25b  # a25b
+  set:  # a25b
+    status: needs_human_review  # a25b
+- op: discuss  # 67a9
+  at: '2026-03-23T14:17:40Z'  # 67a9
+  by: agent  # 67a9
+  actor: jgstern_agent  # 67a9
+  clock: 3  # 67a9
+  nonce: 67a9  # 67a9
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 67a9

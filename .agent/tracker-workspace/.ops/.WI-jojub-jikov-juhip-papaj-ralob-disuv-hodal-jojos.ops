@@ -37,3 +37,18 @@
   set: {}  # d94e
   add:  # d94e
     before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # d94e
+- op: update  # f9fa
+  at: '2026-03-23T14:17:40Z'  # f9fa
+  by: agent  # f9fa
+  actor: jgstern_agent  # f9fa
+  clock: 4  # f9fa
+  nonce: f9fa  # f9fa
+  set:  # f9fa
+    status: needs_human_review  # f9fa
+- op: discuss  # 07f2
+  at: '2026-03-23T14:17:40Z'  # 07f2
+  by: agent  # 07f2
+  actor: jgstern_agent  # 07f2
+  clock: 5  # 07f2
+  nonce: 07f2  # 07f2
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 07f2

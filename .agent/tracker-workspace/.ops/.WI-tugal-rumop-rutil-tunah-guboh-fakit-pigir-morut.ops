@@ -55,3 +55,18 @@
   set: {}  # 404c
   add:  # 404c
     before: [WI-gomad-lupib-jaton-bivas-hidak-dimum-limih-sisob]  # 404c
+- op: update  # cdb4
+  at: '2026-03-23T14:17:40Z'  # cdb4
+  by: agent  # cdb4
+  actor: jgstern_agent  # cdb4
+  clock: 6  # cdb4
+  nonce: cdb4  # cdb4
+  set:  # cdb4
+    status: needs_human_review  # cdb4
+- op: discuss  # e7e5
+  at: '2026-03-23T14:17:40Z'  # e7e5
+  by: agent  # e7e5
+  actor: jgstern_agent  # e7e5
+  clock: 7  # e7e5
+  nonce: e7e5  # e7e5
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # e7e5

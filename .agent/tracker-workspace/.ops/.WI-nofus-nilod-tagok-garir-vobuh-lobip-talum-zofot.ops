@@ -19,3 +19,18 @@
     pr_ref:  # a434
     description: "DDG analysis invoked on targeted functions only (2-10% of codebase): IO-critical functions (on paths between entrypoints and IO primitives), taint-relevant functions (handling catalog sources/sinks), claim-relevant functions. Budget cap: 500 functions (configurable via --max-ddg-targets), prioritized by centrality rank. See ADR-0017 §1c."  # a434
     fields: {}  # a434
+- op: update  # 7f8b
+  at: '2026-03-23T14:17:40Z'  # 7f8b
+  by: agent  # 7f8b
+  actor: jgstern_agent  # 7f8b
+  clock: 2  # 7f8b
+  nonce: 7f8b  # 7f8b
+  set:  # 7f8b
+    status: needs_human_review  # 7f8b
+- op: discuss  # 69b1
+  at: '2026-03-23T14:17:40Z'  # 69b1
+  by: agent  # 69b1
+  actor: jgstern_agent  # 69b1
+  clock: 3  # 69b1
+  nonce: 69b1  # 69b1
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 69b1

@@ -37,3 +37,18 @@
   set: {}  # 19cb
   add:  # 19cb
     before: [WI-dojup-jagir-zohuf-sozul-tahak-holul-padat-larit]  # 19cb
+- op: update  # 2459
+  at: '2026-03-23T14:17:40Z'  # 2459
+  by: agent  # 2459
+  actor: jgstern_agent  # 2459
+  clock: 4  # 2459
+  nonce: '2459'  # 2459
+  set:  # 2459
+    status: needs_human_review  # 2459
+- op: discuss  # 9b9a
+  at: '2026-03-23T14:17:40Z'  # 9b9a
+  by: agent  # 9b9a
+  actor: jgstern_agent  # 9b9a
+  clock: 5  # 9b9a
+  nonce: 9b9a  # 9b9a
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 9b9a
