@@ -218,7 +218,9 @@ class IoBoundaryCatalog:
 
         boundary_types = [
             "fs_read", "fs_write", "net_send", "net_recv",
-            "ipc_recv", "ipc_send", "env_read", "subprocess",
+            "ipc_recv", "ipc_send", "env_read", "env_write",
+            "subprocess", "db_read", "db_write",
+            "process_send", "logging",
         ]
 
         for boundary in boundary_types:

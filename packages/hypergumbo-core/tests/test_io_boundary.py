@@ -241,6 +241,38 @@ class TestLoadCatalog:
         assert "fs_read" in boundaries
         assert "net_send" in boundaries
 
+    def test_erlang_catalog_loads(self) -> None:
+        """Erlang I/O catalog covers OTP stdlib, networking, ETS/Mnesia, and process primitives."""
+        catalog = load_catalog("erlang")
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "fs_write" in boundaries
+        assert "net_send" in boundaries
+        assert "net_recv" in boundaries
+        assert "db_read" in boundaries
+        assert "db_write" in boundaries
+        assert "process_send" in boundaries
+
+    def test_erlang_catalog_lookups(self) -> None:
+        """Key Erlang I/O primitives are findable by short name and module hint."""
+        catalog = load_catalog("erlang")
+        # Short name lookup
+        assert catalog.lookup("read_file") is not None
+        assert catalog.lookup("read_file").boundary == "fs_read"
+        # Module-hinted lookup for disambiguation
+        tcp_send = catalog.lookup_with_module("send", "gen_tcp")
+        assert tcp_send is not None
+        assert tcp_send.boundary == "net_send"
+        # ETS lookup
+        ets_insert = catalog.lookup_with_module("insert", "ets")
+        assert ets_insert is not None
+        assert ets_insert.boundary == "db_write"
+        # gen_server:call is process send
+        gs_call = catalog.lookup_with_module("call", "gen_server")
+        assert gs_call is not None
+        assert gs_call.boundary == "process_send"
+
     def test_catalog_from_yaml(self, tmp_path: Path) -> None:
         yaml_content = """\
 language: testlang

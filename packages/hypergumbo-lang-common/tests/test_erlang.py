@@ -300,7 +300,12 @@ quadruple(X) ->
         assert "config" in names
 
     def test_multiple_function_clauses(self, tmp_path: Path) -> None:
-        """Handle functions with multiple clauses (pattern matching)."""
+        """Multiple clauses of same function/arity produce exactly one symbol.
+
+        Tree-sitter Erlang grammar emits separate fun_decl nodes per clause.
+        The analyzer must coalesce them into a single symbol whose span covers
+        all clauses (first clause start_line to last clause end_line).
+        """
         make_erl_file(
             tmp_path,
             "fib.erl",
@@ -316,10 +321,51 @@ fib(N) -> fib(N-1) + fib(N-2).
         result = analyze_erlang(tmp_path)
         assert not result.skipped
 
-        # Should detect fib as a single function
+        # Exactly one symbol for fib/1 (not 3 separate clause nodes)
         funcs = [s for s in result.symbols if s.kind == "function"]
-        fib_funcs = [f for f in funcs if f.name.startswith("fib")]
-        assert len(fib_funcs) >= 1
+        fib_funcs = [f for f in funcs if f.name == "fib/1"]
+        assert len(fib_funcs) == 1, (
+            f"Expected 1 fib/1 symbol, got {len(fib_funcs)}: "
+            f"{[f.id for f in fib_funcs]}"
+        )
+
+        # Span covers all 3 clauses
+        fib = fib_funcs[0]
+        assert fib.span is not None
+        # First clause starts at "fib(0)" line, last clause ends at "fib(N)" line
+        assert fib.span.end_line > fib.span.start_line
+
+    def test_multi_clause_coalesce_with_calls(self, tmp_path: Path) -> None:
+        """Calls from any clause of a multi-clause function create valid edges."""
+        make_erl_file(
+            tmp_path,
+            "dispatch.erl",
+            """
+-module(dispatch).
+-export([handle/1, process_a/0, process_b/0]).
+
+handle(a) -> process_a();
+handle(b) -> process_b();
+handle(_) -> error.
+
+process_a() -> ok.
+process_b() -> ok.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        assert not result.skipped
+
+        # handle/1 should be exactly one symbol
+        handle_syms = [s for s in result.symbols
+                       if s.kind == "function" and s.name == "handle/1"]
+        assert len(handle_syms) == 1
+
+        # Calls from handle to process_a and process_b should exist
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handle_calls = [e for e in call_edges if "handle" in e.src]
+        dst_names = {e.dst.split(":")[-2] for e in handle_calls}
+        assert "process_a/0" in dst_names, f"Expected process_a call, got {dst_names}"
+        assert "process_b/0" in dst_names, f"Expected process_b call, got {dst_names}"
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Analysis skips gracefully when tree-sitter unavailable."""
@@ -705,3 +751,40 @@ class TestErlangDocstrings:
         call_edges = [e for e in result.edges if e.edge_type == "calls"
                       and "nonexistent" in e.dst]
         assert len(call_edges) == 0
+
+    def test_unresolved_remote_call_creates_external_edge(self, tmp_path: Path) -> None:
+        """Remote calls to external OTP modules create edges to synthetic nodes.
+
+        This is critical for I/O boundary tagging: file:read_file, gen_tcp:send,
+        ets:insert etc. are external to the analyzed repo but must produce edges
+        so the I/O boundary tagger can match them.
+        """
+        (tmp_path / "my_io.erl").write_text(
+            "-module(my_io).\n"
+            "-export([read_config/1, send_data/2]).\n"
+            "read_config(Path) -> file:read_file(Path).\n"
+            "send_data(Socket, Data) -> gen_tcp:send(Socket, Data).\n",
+        )
+        result = analyze_erlang(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # External edges should have synthetic dst IDs
+        ext_edges = [e for e in call_edges
+                     if e.evidence_type == "remote_call_external"]
+        assert len(ext_edges) >= 2, (
+            f"Expected >= 2 external edges, got {len(ext_edges)}: "
+            f"{[(e.src, e.dst) for e in ext_edges]}"
+        )
+
+        # file:read_file edge
+        file_edges = [e for e in ext_edges if "file" in e.dst and "read_file" in e.dst]
+        assert len(file_edges) == 1
+        assert file_edges[0].dst == "erlang:file:0-0:read_file:function"
+
+        # gen_tcp:send edge
+        tcp_edges = [e for e in ext_edges if "gen_tcp" in e.dst and "send" in e.dst]
+        assert len(tcp_edges) == 1
+        assert tcp_edges[0].dst == "erlang:gen_tcp:0-0:send:function"
+
+        # Confidence should be lower than resolved calls
+        assert all(e.confidence == 0.70 for e in ext_edges)

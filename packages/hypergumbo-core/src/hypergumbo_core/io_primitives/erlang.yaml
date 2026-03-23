@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Erlang
+#
+# Maps Erlang/OTP stdlib modules and functions to I/O boundary types.
+# Erlang uses module:function/arity syntax; we list by module and function.
+# Third-party libraries (cowboy, ranch, etc.) call these primitives
+# transitively, so covering stdlib + OTP is sufficient.
+language: erlang
+
+fs_read:
+  - module: file
+    functions: [read_file, read, read_line, pread, open, consult, path_consult, eval, script, list_dir, list_dir_all, read_file_info, read_link_info, read_link]
+  - module: filelib
+    functions: [find_file, find_source, is_dir, is_file, is_regular, file_size, last_modified, fold_files, wildcard, ensure_dir]
+  - module: prim_file
+    functions: [read_file, read, list_dir, read_file_info]
+    notes: "Low-level file operations; usually called via file module"
+
+fs_write:
+  - module: file
+    functions: [write_file, write, pwrite, truncate, delete, rename, make_dir, del_dir, make_link, make_symlink, change_mode, change_owner, change_group, change_time]
+  - module: filelib
+    functions: [ensure_dir, ensure_path]
+
+net_send:
+  - module: gen_tcp
+    functions: [send, connect]
+  - module: gen_udp
+    functions: [send, open]
+  - module: gen_sctp
+    functions: [send, connect]
+  - module: ssl
+    functions: [send, connect]
+  - module: httpc
+    functions: [request]
+    notes: "inets HTTP client"
+  - module: http_client
+    functions: [request]
+
+net_recv:
+  - module: gen_tcp
+    functions: [recv, listen, accept]
+  - module: gen_udp
+    functions: [recv, open]
+  - module: gen_sctp
+    functions: [recv, listen]
+  - module: ssl
+    functions: [recv, listen, transport_accept, handshake]
+  - module: httpd
+    functions: [start, start_service]
+    notes: "inets HTTP server"
+
+db_read:
+  - module: ets
+    functions: [lookup, lookup_element, match, match_object, select, select_reverse, first, next, last, prev, foldl, foldr, tab2list, info, member]
+  - module: dets
+    functions: [lookup, match, match_object, select, first, next, foldl, foldr, traverse, open_file]
+  - module: mnesia
+    functions: [read, match_object, select, first, next, last, prev, all_keys, table_info, dirty_read, dirty_match_object, dirty_select, dirty_first, dirty_next, dirty_last, dirty_prev, dirty_all_keys]
+
+db_write:
+  - module: ets
+    functions: [insert, insert_new, delete, delete_object, delete_all_objects, update_counter, update_element, new]
+  - module: dets
+    functions: [insert, insert_new, delete, delete_object, delete_all_objects]
+  - module: mnesia
+    functions: [write, delete, delete_object, dirty_write, dirty_delete, dirty_delete_object, dirty_update_counter, create_table, delete_table, add_table_index, add_table_copy, transaction, async_dirty, sync_dirty]
+
+process_send:
+  - module: erlang
+    functions: [send, "!", send_after, send_nosuspend, spawn, spawn_link, spawn_monitor, spawn_opt, exit, register, unregister, monitor, demonitor, link, unlink, process_flag]
+    notes: "Core process primitives. ! is the send operator but resolved as erlang:send/2"
+  - module: gen_server
+    functions: [call, cast, multi_call, abcast, reply, start, start_link, start_monitor, stop]
+  - module: gen_statem
+    functions: [call, cast, start, start_link, start_monitor, stop, reply]
+  - module: gen_event
+    functions: [notify, sync_notify, call, start, start_link, start_monitor, stop, add_handler, add_sup_handler, delete_handler]
+  - module: supervisor
+    functions: [start_link, start_child, restart_child, delete_child, terminate_child, which_children, count_children]
+  - module: proc_lib
+    functions: [spawn, spawn_link, spawn_opt, start, start_link, init_ack, hibernate]
+  - module: rpc
+    functions: [call, block_call, cast, multicall, parallel_eval, async_call, yield, nb_yield]
+    notes: "Distributed Erlang RPC"
+  - module: global
+    functions: [send, register_name, re_register_name, unregister_name, whereis_name]
+
+env_read:
+  - module: os
+    functions: [getenv, type, version, system_time, perf_counter, cmd]
+  - module: application
+    functions: [get_env, get_all_env, get_key, get_all_key, get_application, loaded_applications, which_applications, info]
+  - module: init
+    functions: [get_argument, get_arguments, get_plain_arguments, get_status, script_id]
+
+env_write:
+  - module: os
+    functions: [putenv, unsetenv, cmd]
+  - module: application
+    functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
+
+logging:
+  - module: io
+    functions: [format, fwrite, put_chars, nl, write, read, get_line, get_chars]
+    notes: "io:format is Erlang's printf equivalent"
+  - module: io_lib
+    functions: [format, fwrite]
+    notes: "Returns iolist, not direct I/O, but typically written immediately"
+  - module: error_logger
+    functions: [info_msg, info_report, warning_msg, warning_report, error_msg, error_report]
+    notes: "Legacy logging; replaced by logger in OTP 21+"
+  - module: logger
+    functions: [emergency, alert, critical, error, warning, notice, info, debug, log]
+    notes: "OTP 21+ logging framework"

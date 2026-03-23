@@ -182,9 +182,48 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     module_name = ""
 
+    # Track pending function for clause coalescing.  Tree-sitter Erlang
+    # emits a separate fun_decl per clause (e.g. fib(0)->0; fib(1)->1;
+    # fib(N)->… produces 3 fun_decl nodes).  We coalesce consecutive
+    # fun_decl nodes with the same name/arity into a single symbol whose
+    # span covers all clauses.
+    pending_func: dict | None = None  # {name, arity, start_line, end_line, ...}
+
+    def _flush_pending_func() -> None:
+        """Emit the coalesced function symbol from pending_func."""
+        nonlocal pending_func
+        if pending_func is None:
+            return
+        pf = pending_func
+        pending_func = None
+        span = Span(
+            start_line=pf["start_line"],
+            end_line=pf["end_line"],
+            start_col=pf["start_col"],
+            end_col=pf["end_col"],
+        )
+        full_name = f"{pf['func_name']}/{pf['arity']}"
+        sym_id = make_symbol_id(
+            "erlang", file_path, pf["start_line"], pf["end_line"],
+            full_name, "function",
+        )
+        symbols.append(Symbol(
+            id=sym_id,
+            name=full_name,
+            kind="function",
+            language="erlang",
+            path=file_path,
+            span=span,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            meta={"arity": pf["arity"], "base_name": pf["func_name"]},
+            signature=pf["signature"],
+        ))
+
     for node in tree.root_node.children:
         # Module definition
         if node.type == "module_attribute":
+            _flush_pending_func()
             atom = find_child_by_type(node, "atom")
             if atom:
                 module_name = node_text(atom, source)
@@ -208,49 +247,50 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                 ))
 
-        # Function definition
+        # Function definition — coalesce consecutive clauses
         elif node.type == "fun_decl":
-            # Get function name from first function_clause
             clause = find_child_by_type(node, "function_clause")
             if clause:
                 atom = find_child_by_type(clause, "atom")
                 if atom:
                     func_name = node_text(atom, source)
-                    # Count arguments for arity
                     args = find_child_by_type(clause, "expr_args")
                     arity = 0
                     if args:
-                        # Count children that are not punctuation
                         for child in args.children:
                             if child.type not in ("(", ")", ","):
                                 arity += 1
 
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    span = Span(
-                        start_line=start_line,
-                        end_line=end_line,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    )
-                    # Include arity in name (Erlang convention)
-                    full_name = f"{func_name}/{arity}"
-                    sym_id = make_symbol_id("erlang", file_path, start_line, end_line, full_name, "function")
-                    symbols.append(Symbol(
-                        id=sym_id,
-                        name=full_name,
-                        kind="function",
-                        language="erlang",
-                        path=file_path,
-                        span=span,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                        meta={"arity": arity, "base_name": func_name},
-                        signature=_extract_erlang_signature(clause, source),
-                    ))
+                    clause_start = node.start_point[0] + 1
+                    clause_end = node.end_point[0] + 1
+
+                    # Same function as pending? Extend span.
+                    if (
+                        pending_func is not None
+                        and pending_func["func_name"] == func_name
+                        and pending_func["arity"] == arity
+                    ):
+                        pending_func["end_line"] = clause_end
+                        pending_func["end_col"] = node.end_point[1]
+                    else:
+                        # Different function — flush previous, start new
+                        _flush_pending_func()
+                        pending_func = {
+                            "func_name": func_name,
+                            "arity": arity,
+                            "start_line": clause_start,
+                            "end_line": clause_end,
+                            "start_col": node.start_point[1],
+                            "end_col": node.end_point[1],
+                            "signature": _extract_erlang_signature(
+                                clause, source,
+                            ),
+                        }
+            continue
 
         # Record definition
         elif node.type == "record_decl":
+            _flush_pending_func()
             # Record name is an atom after 'record'
             atom = find_child_by_type(node, "atom")
             if atom:
@@ -277,6 +317,7 @@ def _extract_symbols_from_file(
 
         # Macro definition
         elif node.type == "pp_define":
+            _flush_pending_func()
             # Macro name from macro_lhs
             macro_lhs = find_child_by_type(node, "macro_lhs")
             if macro_lhs:
@@ -305,6 +346,7 @@ def _extract_symbols_from_file(
 
         # Type alias
         elif node.type == "type_alias":
+            _flush_pending_func()
             # Type name is inside type_name node: type_name -> atom
             type_name_node = find_child_by_type(node, "type_name")
             atom = None
@@ -331,6 +373,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
+
+    # Flush any remaining pending function at end of file
+    _flush_pending_func()
 
     return symbols, module_name
 
@@ -457,6 +502,23 @@ def _extract_edges_from_file(
                                     origin_run_id=run_id,
                                     evidence_type="remote_call",
                                     confidence=confidence,
+                                )
+                                edges.append(edge)
+                            else:
+                                # Unresolved remote call — create edge to
+                                # synthetic external node so I/O boundary
+                                # tagging can match stdlib calls (file:read_file,
+                                # gen_tcp:send, ets:insert, etc.).
+                                ext_id = f"erlang:{mod_name}:0-0:{func_name}:function"
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=ext_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="remote_call_external",
+                                    confidence=0.70,
                                 )
                                 edges.append(edge)
                 else:
