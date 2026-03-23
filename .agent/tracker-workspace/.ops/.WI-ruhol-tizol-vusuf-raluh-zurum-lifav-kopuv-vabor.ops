@@ -19,3 +19,21 @@
     pr_ref:  # 8eb9
     description: "Measure false positive rate of structural taint flow. If PlazaFlow code available: run TF-001 through TF-004, manually classify findings. If not: build ~500-1000 line reference impl or use open-source Rust+TS projects. Decision gate: >80% precision = Phase 2 lower priority; <50% = Phase 2 high priority. See ADR-0017 §9."  # 8eb9
     fields: {}  # 8eb9
+- op: update  # 00f0
+  at: '2026-03-23T14:15:23Z'  # 00f0
+  by: agent  # 00f0
+  actor: jgstern_agent  # 00f0
+  clock: 2  # 00f0
+  nonce: 00f0  # 00f0
+  set: {}  # 00f0
+  add:  # 00f0
+    before: [WI-guguh-bumut-pinuh-vinav-mojad-fogov-posas-vagum]  # 00f0
+- op: update  # 19cb
+  at: '2026-03-23T14:15:23Z'  # 19cb
+  by: agent  # 19cb
+  actor: jgstern_agent  # 19cb
+  clock: 3  # 19cb
+  nonce: 19cb  # 19cb
+  set: {}  # 19cb
+  add:  # 19cb
+    before: [WI-dojup-jagir-zohuf-sozul-tahak-holul-padat-larit]  # 19cb

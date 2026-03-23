@@ -19,3 +19,12 @@
     pr_ref:  # 47c2
     description: "DefUseExtractor for TypeScript (~600-1000 lines, most complex due to destructuring, optional chaining, spread, computed properties, hoisting, class fields, decorators, JSX). Enables DDG precision on source side of PlazaFlow TS↔Rust bridges. See ADR-0017 §1c, §1e."  # 47c2
     fields: {}  # 47c2
+- op: update  # 02ed
+  at: '2026-03-23T14:15:24Z'  # 02ed
+  by: agent  # 02ed
+  actor: jgstern_agent  # 02ed
+  clock: 2  # 02ed
+  nonce: 02ed  # 02ed
+  set: {}  # 02ed
+  add:  # 02ed
+    before: [WI-bivaf-nujas-fugir-lugug-safud-vukor-zupog-tubug]  # 02ed

@@ -19,3 +19,21 @@
     pr_ref:  # 18b6
     description: "Taint propagation via call-graph BFS with dominance-based sanitizer checking. Two-phase BFS: (1) compute reachable nodes from taint source without passing through sanitizers, (2) check if any sink is in that set. Fallback path for languages without def/use extractors. See ADR-0017 §3b."  # 18b6
     fields: {}  # 18b6
+- op: update  # 131b
+  at: '2026-03-23T14:15:23Z'  # 131b
+  by: agent  # 131b
+  actor: jgstern_agent  # 131b
+  clock: 2  # 131b
+  nonce: 131b  # 131b
+  set: {}  # 131b
+  add:  # 131b
+    before: [WI-fisik-binub-vobip-lulub-fapob-likok-tujig-posul]  # 131b
+- op: update  # d94e
+  at: '2026-03-23T14:15:23Z'  # d94e
+  by: agent  # d94e
+  actor: jgstern_agent  # d94e
+  clock: 3  # d94e
+  nonce: d94e  # d94e
+  set: {}  # d94e
+  add:  # d94e
+    before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # d94e

@@ -19,3 +19,30 @@
     pr_ref:  # e3bb
     description: "Extend verify-claims to support taint_flow claim type alongside existing must_not_exist/max_chains. Fields: source_taint, prohibited_sink_zone, allowed_sanitizers. Five verdict levels: Confirmed, Confirmed (sanitized), Violated, Inconclusive (no DDG), Inconclusive (opaque). See ADR-0017 §6."  # e3bb
     fields: {}  # e3bb
+- op: update  # 1c3c
+  at: '2026-03-23T14:15:23Z'  # 1c3c
+  by: agent  # 1c3c
+  actor: jgstern_agent  # 1c3c
+  clock: 2  # 1c3c
+  nonce: 1c3c  # 1c3c
+  set: {}  # 1c3c
+  add:  # 1c3c
+    before: [WI-fisik-binub-vobip-lulub-fapob-likok-tujig-posul]  # 1c3c
+- op: update  # ea0a
+  at: '2026-03-23T14:15:23Z'  # ea0a
+  by: agent  # ea0a
+  actor: jgstern_agent  # ea0a
+  clock: 3  # ea0a
+  nonce: ea0a  # ea0a
+  set: {}  # ea0a
+  add:  # ea0a
+    before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # ea0a
+- op: update  # 72b2
+  at: '2026-03-23T14:15:24Z'  # 72b2
+  by: agent  # 72b2
+  actor: jgstern_agent  # 72b2
+  clock: 4  # 72b2
+  nonce: 72b2  # 72b2
+  set: {}  # 72b2
+  add:  # 72b2
+    before: [WI-gafum-havur-dizuk-dosar-nodim-doduh-vidot-jabak]  # 72b2

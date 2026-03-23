@@ -19,3 +19,12 @@
     pr_ref:  # 32d4
     description: "Forward graph walk on computed DDG edges for taint propagation. Match call sites against taint source catalogs, propagate through DDG edges, apply sanitizer transforms. Mixed-coverage analysis: DDG segments provide variable-level precision, non-DDG segments bridged with structural reachability. Critical path segments determine verdict confidence. See ADR-0017 §3a, §3c-3d."  # 32d4
     fields: {}  # 32d4
+- op: update  # bab7
+  at: '2026-03-23T14:15:24Z'  # bab7
+  by: agent  # bab7
+  actor: jgstern_agent  # bab7
+  clock: 2  # bab7
+  nonce: bab7  # bab7
+  set: {}  # bab7
+  add:  # bab7
+    before: [WI-zavit-gojuk-nakat-lilag-silat-pakaz-niniz-jipid]  # bab7

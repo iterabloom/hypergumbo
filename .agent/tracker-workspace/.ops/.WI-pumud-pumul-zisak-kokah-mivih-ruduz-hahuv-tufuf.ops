@@ -19,3 +19,12 @@
     pr_ref:  # 11c6
     description: "Infer FunctionSummary from DDG: param_to_return (does param N flow to return?), param_to_param (mutation across params), param_to_calls (param N flows to call arg K of callee F), return_sources. Walk forward through DDG edges from each parameter. Conservative defaults for functions without DDG. See ADR-0017 §4a."  # 11c6
     fields: {}  # 11c6
+- op: update  # 3f62
+  at: '2026-03-23T14:15:24Z'  # 3f62
+  by: agent  # 3f62
+  actor: jgstern_agent  # 3f62
+  clock: 2  # 3f62
+  nonce: 3f62  # 3f62
+  set: {}  # 3f62
+  add:  # 3f62
+    before: [WI-bivaf-nujas-fugir-lugug-safud-vukor-zupog-tubug]  # 3f62

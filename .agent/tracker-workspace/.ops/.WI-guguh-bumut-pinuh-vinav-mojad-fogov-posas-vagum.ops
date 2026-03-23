@@ -19,3 +19,48 @@
     pr_ref:  # d885
     description: "Language-parameterized CFG builder (~700-1000 lines Python). BasicBlock, CfgStatement, CfgEdge, FunctionCfg data structures. Fringe-based recursive algorithm (same as Joern CfgCreator). Handles: sequential, if/else, loops, break/continue, return, try/catch, switch/match. Semantic hooks: early_return_on_error (Rust ?), context_manager (Python with), deferred_execution (Go defer). See ADR-0017 §1a."  # d885
     fields: {}  # d885
+- op: update  # 869a
+  at: '2026-03-23T14:15:23Z'  # 869a
+  by: agent  # 869a
+  actor: jgstern_agent  # 869a
+  clock: 2  # 869a
+  nonce: 869a  # 869a
+  set: {}  # 869a
+  add:  # 869a
+    before: [WI-lijuz-bukat-lakat-damuh-kodij-gafuf-kiman-nulun]  # 869a
+- op: update  # c1a6
+  at: '2026-03-23T14:15:23Z'  # c1a6
+  by: agent  # c1a6
+  actor: jgstern_agent  # c1a6
+  clock: 3  # c1a6
+  nonce: c1a6  # c1a6
+  set: {}  # c1a6
+  add:  # c1a6
+    before: [WI-tugal-rumop-rutil-tunah-guboh-fakit-pigir-morut]  # c1a6
+- op: update  # a48a
+  at: '2026-03-23T14:15:24Z'  # a48a
+  by: agent  # a48a
+  actor: jgstern_agent  # a48a
+  clock: 4  # a48a
+  nonce: a48a  # a48a
+  set: {}  # a48a
+  add:  # a48a
+    before: [WI-zatam-sunaf-gufum-tulov-nuhoh-sipov-hozad-porig]  # a48a
+- op: update  # 9553
+  at: '2026-03-23T14:15:24Z'  # 9553
+  by: agent  # 9553
+  actor: jgstern_agent  # 9553
+  clock: 5  # 9553
+  nonce: '9553'  # 9553
+  set: {}  # 9553
+  add:  # 9553
+    before: [WI-nofus-nilod-tagok-garir-vobuh-lobip-talum-zofot]  # 9553
+- op: update  # d104
+  at: '2026-03-23T14:15:24Z'  # d104
+  by: agent  # d104
+  actor: jgstern_agent  # d104
+  clock: 6  # d104
+  nonce: d104  # d104
+  set: {}  # d104
+  add:  # d104
+    before: [WI-gomad-lupib-jaton-bivas-hidak-dimum-limih-sisob]  # d104

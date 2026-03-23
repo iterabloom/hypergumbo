@@ -19,3 +19,30 @@
     pr_ref:  # f914
     description: "YAML-driven taint source/sink/sanitizer catalog system extending IO primitive catalog pattern (ADR-0016). Built-in catalogs for crypto, filesystem, network. Project-local catalogs for custom domains. Taint labels: plaintext, crdt_content, key_material, ephemeral. Sanitizer transforms (e.g. plaintext→ciphertext). See ADR-0017 §2a-2c."  # f914
     fields: {}  # f914
+- op: update  # 0568
+  at: '2026-03-23T14:15:23Z'  # 0568
+  by: agent  # 0568
+  actor: jgstern_agent  # 0568
+  clock: 2  # 0568
+  nonce: '0568'  # 0568
+  set: {}  # 0568
+  add:  # 0568
+    before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # 0568
+- op: update  # a020
+  at: '2026-03-23T14:15:24Z'  # a020
+  by: agent  # a020
+  actor: jgstern_agent  # a020
+  clock: 3  # a020
+  nonce: a020  # a020
+  set: {}  # a020
+  add:  # a020
+    before: [WI-todip-kudar-bibuz-gubak-ropat-zinuz-doliv-vizum]  # a020
+- op: update  # 8966
+  at: '2026-03-23T14:15:24Z'  # 8966
+  by: agent  # 8966
+  actor: jgstern_agent  # 8966
+  clock: 4  # 8966
+  nonce: '8966'  # 8966
+  set: {}  # 8966
+  add:  # 8966
+    before: [WI-bizom-bunof-zazoh-vipam-kalom-gonih-jotip-zalis]  # 8966

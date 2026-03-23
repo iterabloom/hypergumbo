@@ -19,3 +19,39 @@
     pr_ref:  # cca3
     description: "Port of Joern DataFlowSolver (~100-150 lines Python). Definition numbering with Python int bitsets. Gen/kill per block. Worklist iteration in reverse postorder to fixpoint. DDG edge generation from reaching defs to use sites. Per-function bail-out at 4000 definitions. Streaming strategy: one function at a time to bound memory. See ADR-0017 §1b."  # cca3
     fields: {}  # cca3
+- op: update  # 989f
+  at: '2026-03-23T14:15:24Z'  # 989f
+  by: agent  # 989f
+  actor: jgstern_agent  # 989f
+  clock: 2  # 989f
+  nonce: 989f  # 989f
+  set: {}  # 989f
+  add:  # 989f
+    before: [WI-zatam-sunaf-gufum-tulov-nuhoh-sipov-hozad-porig]  # 989f
+- op: update  # 1b0f
+  at: '2026-03-23T14:15:24Z'  # 1b0f
+  by: agent  # 1b0f
+  actor: jgstern_agent  # 1b0f
+  clock: 3  # 1b0f
+  nonce: 1b0f  # 1b0f
+  set: {}  # 1b0f
+  add:  # 1b0f
+    before: [WI-todip-kudar-bibuz-gubak-ropat-zinuz-doliv-vizum]  # 1b0f
+- op: update  # f2ab
+  at: '2026-03-23T14:15:24Z'  # f2ab
+  by: agent  # f2ab
+  actor: jgstern_agent  # f2ab
+  clock: 4  # f2ab
+  nonce: f2ab  # f2ab
+  set: {}  # f2ab
+  add:  # f2ab
+    before: [WI-pumud-pumul-zisak-kokah-mivih-ruduz-hahuv-tufuf]  # f2ab
+- op: update  # 404c
+  at: '2026-03-23T14:15:24Z'  # 404c
+  by: agent  # 404c
+  actor: jgstern_agent  # 404c
+  clock: 5  # 404c
+  nonce: 404c  # 404c
+  set: {}  # 404c
+  add:  # 404c
+    before: [WI-gomad-lupib-jaton-bivas-hidak-dimum-limih-sisob]  # 404c

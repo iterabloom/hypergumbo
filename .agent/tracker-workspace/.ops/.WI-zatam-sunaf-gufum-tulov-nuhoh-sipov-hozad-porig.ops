@@ -19,3 +19,21 @@
     pr_ref:  # 1408
     description: "Pluggable DefUseExtractor for Rust (~500-800 lines). Handles Simple+Moderate patterns: let bindings, tuple/struct destructuring, if-let/match, reassignment, field writes, for loops, closures (conservative capture), return. ? operator handled structurally (CFG creates dual edges, extractor treats Ok binding as simple let). Builds on existing rust.py scope analysis. See ADR-0017 §1c."  # 1408
     fields: {}  # 1408
+- op: update  # c1bc
+  at: '2026-03-23T14:15:24Z'  # c1bc
+  by: agent  # c1bc
+  actor: jgstern_agent  # c1bc
+  clock: 2  # c1bc
+  nonce: c1bc  # c1bc
+  set: {}  # c1bc
+  add:  # c1bc
+    before: [WI-todip-kudar-bibuz-gubak-ropat-zinuz-doliv-vizum]  # c1bc
+- op: update  # 675e
+  at: '2026-03-23T14:15:24Z'  # 675e
+  by: agent  # 675e
+  actor: jgstern_agent  # 675e
+  clock: 3  # 675e
+  nonce: 675e  # 675e
+  set: {}  # 675e
+  add:  # 675e
+    before: [WI-bifog-hisaz-pofaj-zasub-pifoh-gavan-pajos-juvog]  # 675e
