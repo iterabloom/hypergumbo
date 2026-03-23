@@ -2386,7 +2386,7 @@ def cmd_diagnose(args):
         return 1
 
     # --all / --some N: diagnose multiple cohorts; default: latest only
-    if args.all:
+    if getattr(args, "all", False):
         cohort_dirs = all_cohort_dirs
         print(f"Diagnosing all {len(cohort_dirs)} cohort(s)")
     elif getattr(args, "some", None):
