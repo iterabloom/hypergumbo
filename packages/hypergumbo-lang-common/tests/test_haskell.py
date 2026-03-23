@@ -467,6 +467,33 @@ main = do
         )
 
 
+    def test_unresolved_edges_matchable_by_io_catalog(self, tmp_path: Path) -> None:
+        """External edges for unqualified calls should be matchable by I/O catalog.
+
+        The module_hint in the symbol ID must be 'external' (not '?') so
+        lookup_with_module falls back to unfiltered short-name matching.
+        """
+        from hypergumbo_lang_common.haskell import analyze_haskell
+        from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    content <- readFile "input.txt"
+    writeFile "output.txt" content
+    putStrLn "done"
+""")
+
+        result = analyze_haskell(tmp_path)
+        catalog = load_catalog("haskell")
+        tagged = tag_io_boundaries(result.edges, {"haskell": catalog})
+        assert tagged >= 2, (
+            f"Expected at least 2 I/O tagged edges (readFile, writeFile), "
+            f"got {tagged}. External edge dsts: "
+            f"{[e.dst for e in result.edges if 'external' in e.dst or '?' in e.dst]}"
+        )
+
+
 class TestHaskellImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
 

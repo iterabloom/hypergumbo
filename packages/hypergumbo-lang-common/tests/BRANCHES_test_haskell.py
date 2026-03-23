@@ -45,8 +45,8 @@ outer x = unknownFunc x + 1
         assert not result.skipped
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # Should have edge to unresolved function
-        unresolved = [e for e in call_edges if "?" in e.dst]
+        # Should have edge to unresolved function (uses "external" as module sentinel)
+        unresolved = [e for e in call_edges if "external" in e.dst]
         assert len(unresolved) >= 1
         assert any("unknownFunc" in e.dst for e in unresolved)
 
@@ -63,8 +63,8 @@ caller x = helper x + unknownFn x
         assert not result.skipped
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        resolved = [e for e in call_edges if "?" not in e.dst]
-        unresolved = [e for e in call_edges if "?" in e.dst]
+        resolved = [e for e in call_edges if ":external:" not in e.dst]
+        unresolved = [e for e in call_edges if ":external:" in e.dst]
 
         # Unresolved should have lower confidence (0.50)
         for e in unresolved:

@@ -398,8 +398,11 @@ def _extract_edges_from_file(
                             # external node so I/O boundary tagging can match
                             # stdlib calls (readFile, putStrLn, etc.).
                             # Use module hint from qualified import when
-                            # available, otherwise use "?" as fallback.
-                            module_hint = path_hint if path_hint else "?"
+                            # available, otherwise "external" so the I/O
+                            # boundary tagger uses unfiltered short-name
+                            # matching (not "?" which would fail module
+                            # filtering and return None).
+                            module_hint = path_hint if path_hint else "external"
                             ext_id = f"haskell:{module_hint}:0-0:{callee_name}:function"
                             edge = Edge.create(
                                 src=caller.id,
