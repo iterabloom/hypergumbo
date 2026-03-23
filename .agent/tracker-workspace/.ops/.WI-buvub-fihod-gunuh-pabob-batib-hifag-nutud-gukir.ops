@@ -40,3 +40,25 @@
   nonce: f3bb  # f3bb
   set:  # f3bb
     status: todo_soft  # f3bb
+- op: discuss  # 3126
+  at: '2026-03-23T14:23:17Z'  # 3126
+  by: agent  # 3126
+  actor: jgstern_agent  # 3126
+  clock: 5  # 3126
+  nonce: '3126'  # 3126
+  message: "Done. Reformatted all 5 curriculum files (erlang-20260323.md, haskell-20260323.md, objc-20260323.md, scala-20260323.md, swift-20260323.md) to match existing conventions: H1 title with date, Rationale, Pool, Cohorts (with bash commands), Per-Cohort Notes (bullet-point format). Created clone URL list at ~/hypergumbo_lab_notebook/clone-urls-underserved-20260323.txt — 45 bare GitHub URLs grouped by language with a shell one-liner for shallow cloning."  # 3126
+- op: update  # e676
+  at: '2026-03-23T14:23:52Z'  # e676
+  by: agent  # e676
+  actor: jgstern_agent  # e676
+  clock: 6  # e676
+  nonce: e676  # e676
+  set:  # e676
+    status: needs_human_review  # e676
+- op: discuss  # 8c13
+  at: '2026-03-23T14:23:52Z'  # 8c13
+  by: agent  # 8c13
+  actor: jgstern_agent  # 8c13
+  clock: 7  # 8c13
+  nonce: 8c13  # 8c13
+  message: "Curricula reformatted and clone URL list produced. Waiting on human to clone the 45 repos before bakeoffs can run."  # 8c13

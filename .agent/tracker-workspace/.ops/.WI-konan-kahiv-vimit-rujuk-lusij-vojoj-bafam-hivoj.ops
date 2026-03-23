@@ -1,0 +1,19 @@
+- op: create  # 4def
+  at: '2026-03-23T22:41:09Z'  # 4def
+  by: agent  # 4def
+  actor: jgstern_agent  # 4def
+  clock: 1  # 4def
+  nonce: 4def  # 4def
+  data:  # 4def
+    kind: work_item  # 4def
+    title: "Erlang: OTP entrypoint detection (-behaviour(application) start/2)"  # 4def
+    status: todo_soft  # 4def
+    priority: 3  # 4def
+    parent:  # 4def
+    tags: []  # 4def
+    before: []  # 4def
+    duplicate_of: []  # 4def
+    not_duplicate_of: []  # 4def
+    pr_ref:  # 4def
+    description: "LLM assessments across all 3 cohorts flagged 0 Erlang entrypoints detected. ejabberd_app:start/2, cowboy start_clear/3, etc. not tagged. Connectivity-based heuristic picks internal state machine loops over public API."  # 4def
+    fields: {}  # 4def
