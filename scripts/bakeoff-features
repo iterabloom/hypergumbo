@@ -898,18 +898,18 @@ def assess_metric(
             good_max = good_max + scale_boost
 
     if good_min is not None and value < good_min:
-        return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
+        return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min:.1f}{unit}")
     if good_max is not None and value > good_max:
-        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}{unit} > {good_max}{unit}")
+        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}{unit} > {good_max:.1f}{unit}")
 
     # Check warning thresholds
     warn_min = thresholds.get("warn_min")
     warn_max = thresholds.get("warn_max")
 
     if warn_min is not None and value < warn_min:
-        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}{unit} < {warn_min}{unit}")
+        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}{unit} < {warn_min:.1f}{unit}")
     if warn_max is not None and value > warn_max:
-        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}{unit} > {warn_max}{unit}")
+        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}{unit} > {warn_max:.1f}{unit}")
 
     return ("GOOD", None)
 
