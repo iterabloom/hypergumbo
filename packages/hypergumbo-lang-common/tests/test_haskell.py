@@ -309,7 +309,7 @@ main = do
 
         assert "main" in names
         assert "result" not in names, (
-            f"Do-notation let binding 'result' should not be a top-level symbol"
+            "Do-notation let binding 'result' should not be a top-level symbol"
         )
 
 
