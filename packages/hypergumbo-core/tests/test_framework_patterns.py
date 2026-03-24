@@ -13554,6 +13554,76 @@ class TestHttp4sPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "application"
 
+    def test_http4s_ioapp_simple_base_class(self) -> None:
+        """http4s IOApp.Simple trait matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        symbol = Symbol(
+            id="test:Main.scala:1:Main:object",
+            name="Main",
+            kind="class",
+            language="scala",
+            path="Main.scala",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["IOApp.Simple"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+
+class TestZioPatterns:
+    """Tests for ZIO framework pattern matching."""
+
+    def test_zio_app_default_base_class(self) -> None:
+        """ZIO ZIOAppDefault matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("zio")
+
+        symbol = Symbol(
+            id="test:Main.scala:1:Main:object",
+            name="Main",
+            kind="class",
+            language="scala",
+            path="Main.scala",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ZIOAppDefault"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_zio_app_base_class(self) -> None:
+        """ZIO ZIOApp matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("zio")
+
+        symbol = Symbol(
+            id="test:App.scala:1:MyApp:object",
+            name="MyApp",
+            kind="class",
+            language="scala",
+            path="App.scala",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ZIOApp"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
 
 class TestVertxPatterns:
     """Tests for Vert.x framework pattern matching."""

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ZIO framework patterns (ADR-0003 v1.1.x)
+#
+# ZIO is a functional effect system for Scala. ZIO 2.x uses Scala 3 features
+# (givens, extension methods) and provides structured concurrency, resource
+# management, and built-in dependency injection via ZLayer.
+#
+# Application entry: extends ZIOAppDefault (ZIO 2.x) or ZIOApp (generic).
+# Both define a `def run` method as the application entry point.
+
+id: zio
+language: scala
+
+detect:
+  - import_prefix: "zio."
+  - import_prefix: "zio.stream."
+  - base_class: "^ZIOApp"
+
+patterns:
+  # ZIO application entry points
+  - concept: application
+    base_class: "^ZIOAppDefault$"
+  - concept: application
+    base_class: "^ZIOApp$"
+
+  # ZIO HTTP (zio-http) route patterns
+  - concept: route
+    usage_call: "^Routes\\.apply$"
+  - concept: route
+    usage_call: "^Method\\.(GET|POST|PUT|DELETE|PATCH)"
+
+linkers:
+  - http

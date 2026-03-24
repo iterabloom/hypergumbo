@@ -753,6 +753,43 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
 
+            # Application concept -> MAIN_FUNCTION
+            # Used by http4s.yaml (extends IOApp, extends IOApp.Simple),
+            # zio.yaml (extends ZIOAppDefault), and similar patterns where
+            # a class/object IS the application entry point.
+            elif concept_type == "application":
+                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} application"
+                else:
+                    label = "Application entrypoint"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MAIN_FUNCTION,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
+            # Servlet concept -> CONTROLLER
+            # Used by scalatra.yaml (extends ScalatraServlet/ScalatraFilter),
+            # servlet.yaml (extends HttpServlet).
+            elif concept_type == "servlet":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} servlet"
+                else:
+                    label = "Servlet"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
     # --- Pass 2: Direct route symbol detection ---
     # Go (and potentially other analyzers) create symbols with kind="route"
     # that carry route metadata (route_path, http_method) directly in sym.meta

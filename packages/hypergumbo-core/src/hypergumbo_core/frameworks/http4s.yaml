@@ -139,9 +139,11 @@ patterns:
   - concept: dsl
     base_class: "^Http4sDsl$"
 
-  # IOApp for application entry point
+  # IOApp for application entry point (cats-effect)
   - concept: application
     base_class: "^IOApp$"
+  - concept: application
+    base_class: "^IOApp\\.Simple$"
 
   # Server trait implementation
   - concept: server

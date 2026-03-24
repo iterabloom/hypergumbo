@@ -3930,3 +3930,130 @@ class TestDiversityCap:
         eps = [self._make_ep(EntrypointKind.HTTP_ROUTE, i) for i in range(5)]
         result = _diversity_cap(eps, 50)
         assert len(result) == 5
+
+
+class TestApplicationConceptDetection:
+    """Tests for 'application' concept -> MAIN_FUNCTION mapping.
+
+    Covers cats-effect IOApp, ZIO ZIOAppDefault, and generic application
+    patterns for Scala functional apps.
+    """
+
+    def test_application_concept_ioapp(self) -> None:
+        """application concept with http4s framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "Main",
+            path="src/Main.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "http4s"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "http4s" in ep[0].label.lower()
+
+    def test_application_concept_zio(self) -> None:
+        """application concept with zio framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "MyApp",
+            path="src/MyApp.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "zio"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert "zio" in ep[0].label.lower()
+
+    def test_application_concept_generic(self) -> None:
+        """application concept without framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "App",
+            path="src/App.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert "application" in ep[0].label.lower()
+
+
+    def test_application_concept_dedup(self) -> None:
+        """Only one MAIN_FUNCTION entrypoint per symbol even with multiple application concepts."""
+        sym = make_symbol(
+            "Main",
+            path="src/Main.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "http4s"},
+                {"concept": "application", "framework": "cats-effect"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1  # dedup
+
+
+class TestServletConceptDetection:
+    """Tests for 'servlet' concept -> CONTROLLER mapping."""
+
+    def test_servlet_concept_scalatra(self) -> None:
+        """servlet concept with scalatra framework -> CONTROLLER."""
+        sym = make_symbol(
+            "ApiServlet",
+            path="src/ApiServlet.scala",
+            kind="class",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "servlet", "framework": "scalatra"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "scalatra" in ep[0].label.lower()
+
+    def test_servlet_concept_generic(self) -> None:
+        """servlet concept without framework -> CONTROLLER with generic label."""
+        sym = make_symbol(
+            "MyServlet",
+            path="src/MyServlet.java",
+            kind="class",
+            language="java",
+            meta={"concepts": [
+                {"concept": "servlet"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+        assert "servlet" in ep[0].label.lower()
+
+    def test_servlet_concept_dedup(self) -> None:
+        """Only one CONTROLLER entrypoint per symbol even with multiple servlet concepts."""
+        sym = make_symbol(
+            "ApiServlet",
+            path="src/ApiServlet.scala",
+            kind="class",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "servlet", "framework": "scalatra"},
+                {"concept": "servlet", "framework": "jakarta"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1  # dedup
