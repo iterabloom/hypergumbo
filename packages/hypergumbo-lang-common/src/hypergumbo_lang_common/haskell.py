@@ -311,7 +311,7 @@ def _extract_edges_from_file(
     run_id: str,
     import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a parsed Haskell file.
+    """Extract call, import, and implements edges from a parsed Haskell file.
 
     Args:
         import_aliases: Optional dict mapping module aliases to full paths.
@@ -319,6 +319,7 @@ def _extract_edges_from_file(
     Detects:
     - import: Import statements
     - apply: Function application (calls)
+    - instance: Typeclass instance → typeclass 'implements' edges
     """
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
@@ -345,6 +346,41 @@ def _extract_edges_from_file(
                     confidence=0.95,
                 )
                 edges.append(edge)
+
+        elif node.type == "instance":
+            # Typeclass instance → typeclass 'implements' edge
+            name_node = find_child_by_type(node, "name")
+            if name_node:
+                class_name = node_text(name_node, source)
+                # Build instance symbol name to find the src symbol
+                type_patterns = find_child_by_type(node, "type_patterns")
+                type_name = ""
+                if type_patterns:
+                    inner_name = find_child_by_type(type_patterns, "name")
+                    if inner_name:
+                        type_name = node_text(inner_name, source)
+                instance_name = f"{class_name} {type_name}".strip()
+                instance_sym = local_symbols.get(instance_name)
+                if instance_sym:
+                    # Try to resolve the typeclass
+                    class_lookup = resolver.lookup(class_name)
+                    if class_lookup.found and class_lookup.symbol:
+                        class_sym = class_lookup.symbol
+                    else:
+                        # Look in local symbols (same-file typeclass)
+                        class_sym = local_symbols.get(class_name)  # pragma: no cover
+                    if class_sym:
+                        edge = Edge.create(
+                            src=instance_sym.id,
+                            dst=class_sym.id,
+                            edge_type="implements",
+                            line=node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            evidence_type="typeclass_instance",
+                            confidence=0.90,
+                        )
+                        edges.append(edge)
 
         elif node.type == "apply":
             # Function application

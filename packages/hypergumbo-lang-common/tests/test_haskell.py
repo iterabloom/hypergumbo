@@ -170,6 +170,62 @@ instance Printable Person where
         assert instance.kind == "instance"
 
 
+class TestHaskellTypeclassImplementsEdges:
+    """Tests for typeclass instance → typeclass 'implements' edges."""
+
+    def test_instance_creates_implements_edge(self, tmp_path: Path) -> None:
+        """Instance declaration should create an 'implements' edge to its typeclass."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Types.hs", """
+data Color = Red | Green | Blue
+
+class Renderable a where
+    render :: a -> String
+
+instance Renderable Color where
+    render Red = "red"
+    render Green = "green"
+    render Blue = "blue"
+""")
+        result = analyze_haskell(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) >= 1, (
+            f"Expected 'implements' edge from instance to typeclass, "
+            f"got edge types: {[e.edge_type for e in result.edges]}"
+        )
+        # The edge should go from the instance to the class
+        edge = impl_edges[0]
+        assert "Renderable" in edge.dst, (
+            f"Expected 'Renderable' in implements edge dst, got: {edge.dst}"
+        )
+
+    def test_multiple_instances_create_implements_edges(self, tmp_path: Path) -> None:
+        """Multiple instances of the same typeclass create separate edges."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Types.hs", """
+data Dog = Dog String
+data Cat = Cat String
+
+class Animal a where
+    speak :: a -> String
+
+instance Animal Dog where
+    speak (Dog name) = name ++ " barks"
+
+instance Animal Cat where
+    speak (Cat name) = name ++ " meows"
+""")
+        result = analyze_haskell(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 2, (
+            f"Expected 2 'implements' edges, got {len(impl_edges)}"
+        )
+
+
 class TestHaskellImportEdges:
     """Tests for Haskell import edge extraction."""
 
