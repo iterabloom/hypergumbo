@@ -1,0 +1,19 @@
+- op: create  # 4182
+  at: '2026-03-23T22:42:00Z'  # 4182
+  by: agent  # 4182
+  actor: jgstern_agent  # 4182
+  clock: 1  # 4182
+  nonce: '4182'  # 4182
+  data:  # 4182
+    kind: work_item  # 4182
+    title: "Erlang: dataflow access_mode annotations (name-based heuristics)"  # 4182
+    status: todo_soft  # 4182
+    priority: 4  # 4182
+    parent:  # 4182
+    tags: []  # 4182
+    before: []  # 4182
+    duplicate_of: []  # 4182
+    not_duplicate_of: []  # 4182
+    pr_ref:  # 4182
+    description: "0% access_mode coverage across all 8 Erlang repos. LLM assessments suggest simple heuristics: function names containing get_/fetch_/read_ → read, set_/put_/write_/store_ → write. Would improve dataflow slice quality."  # 4182
+    fields: {}  # 4182

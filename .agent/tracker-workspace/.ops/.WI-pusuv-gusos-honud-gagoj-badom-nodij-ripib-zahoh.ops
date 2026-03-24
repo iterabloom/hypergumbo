@@ -1,0 +1,19 @@
+- op: create  # 757d
+  at: '2026-03-23T22:41:53Z'  # 757d
+  by: agent  # 757d
+  actor: jgstern_agent  # 757d
+  clock: 1  # 757d
+  nonce: 757d  # 757d
+  data:  # 757d
+    kind: work_item  # 757d
+    title: "Erlang: gen_server:call dispatch linking to handle_call"  # 757d
+    status: todo_soft  # 757d
+    priority: 3  # 757d
+    parent:  # 757d
+    tags: []  # 757d
+    before: []  # 757d
+    duplicate_of: []  # 757d
+    not_duplicate_of: []  # 757d
+    pr_ref:  # 757d
+    description: "When module M calls gen_server:call(ServerRef, Msg), no edge is created to handle_call/3. The gen_server dispatch pattern is the most important OTP architectural relationship and is invisible. Analogous to gen_statem:call → handle_event."  # 757d
+    fields: {}  # 757d
