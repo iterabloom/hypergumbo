@@ -4057,3 +4057,68 @@ class TestServletConceptDetection:
         entrypoints = detect_entrypoints([sym], [])
         ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
         assert len(ep) == 1  # dedup
+
+
+class TestSwiftApplicationConcept:
+    """Tests for Swift app entrypoint detection via swiftui.yaml patterns."""
+
+    def test_swiftui_app_concept(self) -> None:
+        """SwiftUI App conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "MyApp",
+            path="Sources/App/MyApp.swift",
+            kind="struct",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_uikit_app_delegate_concept(self) -> None:
+        """UIApplicationDelegate conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "AppDelegate",
+            path="Sources/App/AppDelegate.swift",
+            kind="class",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+
+    def test_swift_view_controller_concept(self) -> None:
+        """UIViewController subclass -> CONTROLLER entrypoint."""
+        sym = make_symbol(
+            "DetailViewController",
+            path="Sources/App/DetailViewController.swift",
+            kind="class",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "controller", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+
+    def test_parsable_command_concept(self) -> None:
+        """ParsableCommand conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "MyCLI",
+            path="Sources/CLI/MyCLI.swift",
+            kind="struct",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1

@@ -19219,3 +19219,95 @@ class TestWebAudioPatterns:
         results = match_usage_patterns(ctx, [pattern_def])
         connections = [r for r in results if r["concept"] == "audio_graph_connection"]
         assert len(connections) == 1
+
+
+class TestSwiftUIPatterns:
+    """Tests for swiftui.yaml framework patterns."""
+
+    def test_swiftui_yaml_loads(self) -> None:
+        """swiftui.yaml loads correctly."""
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        assert pattern_def.id == "swiftui"
+        assert pattern_def.language == "swift"
+        assert len(pattern_def.patterns) >= 5
+
+    def test_swiftui_app_protocol_pattern(self) -> None:
+        """App protocol conformance enriches symbol with application concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/MyApp.swift:1-10:MyApp:struct",
+            name="MyApp",
+            kind="struct",
+            language="swift",
+            path="Sources/App/MyApp.swift",
+            span=Span(1, 10, 0, 100),
+            meta={"base_classes": ["App"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        app_concepts = [r for r in results if r["concept"] == "application"]
+        assert len(app_concepts) >= 1
+
+    def test_uiviewcontroller_pattern(self) -> None:
+        """UIViewController subclass enriches symbol with controller concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/DetailVC.swift:1-30:DetailVC:class",
+            name="DetailVC",
+            kind="class",
+            language="swift",
+            path="Sources/App/DetailVC.swift",
+            span=Span(1, 30, 0, 500),
+            meta={"base_classes": ["UIViewController"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        ctrl_concepts = [r for r in results if r["concept"] == "controller"]
+        assert len(ctrl_concepts) >= 1
+
+    def test_parsable_command_pattern(self) -> None:
+        """ParsableCommand conformance enriches with application concept."""
+        symbol = Symbol(
+            id="swift:Sources/CLI/MyCLI.swift:1-15:MyCLI:struct",
+            name="MyCLI",
+            kind="struct",
+            language="swift",
+            path="Sources/CLI/MyCLI.swift",
+            span=Span(1, 15, 0, 200),
+            meta={"base_classes": ["ParsableCommand"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        app_concepts = [r for r in results if r["concept"] == "application"]
+        assert len(app_concepts) >= 1
+
+
+class TestHummingbirdPatterns:
+    """Tests for hummingbird.yaml framework patterns."""
+
+    def test_hummingbird_yaml_loads(self) -> None:
+        """hummingbird.yaml loads correctly."""
+        pattern_def = load_framework_patterns("hummingbird")
+        assert pattern_def is not None
+        assert pattern_def.id == "hummingbird"
+        assert pattern_def.language == "swift"
+        assert len(pattern_def.patterns) >= 3
+
+    def test_hummingbird_middleware_pattern(self) -> None:
+        """RouterMiddleware conformance enriches with middleware concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/Auth.swift:1-20:AuthMiddleware:struct",
+            name="AuthMiddleware",
+            kind="struct",
+            language="swift",
+            path="Sources/App/Auth.swift",
+            span=Span(1, 20, 0, 300),
+            meta={"base_classes": ["RouterMiddleware"]},
+        )
+        pattern_def = load_framework_patterns("hummingbird")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        mw_concepts = [r for r in results if r["concept"] == "middleware"]
+        assert len(mw_concepts) >= 1
