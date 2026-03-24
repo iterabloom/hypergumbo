@@ -339,6 +339,50 @@ net_send:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_load_objc_catalog(self) -> None:
+        catalog = load_catalog("objc")
+        assert catalog.language == "objc"
+        assert len(catalog.primitives) > 0
+
+    def test_objc_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("objc")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {
+            "fs_read", "fs_write", "net_send", "net_recv",
+            "db_read", "db_write", "subprocess", "env_read",
+            "logging", "ipc_send", "ipc_recv",
+        }
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_objc_catalog_lookups(self) -> None:
+        """ObjC catalog matches Foundation I/O selectors."""
+        catalog = load_catalog("objc")
+        # NSFileManager fs_write
+        hit = catalog.lookup("removeItemAtPath:error:")
+        assert hit is not None
+        assert hit.boundary == "fs_write"
+        # NSURLSession net_send
+        hit2 = catalog.lookup("dataTaskWithRequest:completionHandler:")
+        assert hit2 is not None
+        assert hit2.boundary == "net_send"
+        # NSManagedObjectContext db_read
+        hit3 = catalog.lookup("executeFetchRequest:error:")
+        assert hit3 is not None
+        assert hit3.boundary == "db_read"
+        # NSLog logging
+        hit4 = catalog.lookup("NSLog")
+        assert hit4 is not None
+        assert hit4.boundary == "logging"
+
+    def test_objective_c_alias_loads_objc_catalog(self) -> None:
+        """The 'objective-c' alias resolves to the 'objc' catalog."""
+        catalog = load_catalog("objective-c")
+        assert len(catalog.primitives) > 0
+        hit = catalog.lookup("removeItemAtPath:error:")
+        assert hit is not None
+
 
 class TestMatchEdgeToPrimitive:
     """Tests for matching call edges to I/O primitives."""
@@ -457,6 +501,21 @@ class TestExtractCalleeName:
     def test_bare_name(self) -> None:
         sid = "nodelimiters"
         assert _extract_callee_name(sid) == "nodelimiters"
+
+    def test_objc_colon_selector_unresolved(self) -> None:
+        """ObjC selectors with colons are extracted correctly from unresolved edges."""
+        sid = "objc:external:0-0:removeItemAtPath:error::unresolved"
+        assert _extract_callee_name(sid) == "removeItemAtPath:error:"
+
+    def test_objc_colon_selector_resolved(self) -> None:
+        """ObjC selectors with colons are extracted correctly from resolved edges."""
+        sid = "objc:/path/file.m:10-20:Manager.removeItemAtPath:error::method"
+        assert _extract_callee_name(sid) == "Manager.removeItemAtPath:error:"
+
+    def test_objc_simple_selector(self) -> None:
+        """Simple ObjC selectors (no colons) still work."""
+        sid = "objc:external:0-0:defaultManager:unresolved"
+        assert _extract_callee_name(sid) == "defaultManager"
 
 
 class TestTagIoBoundaries:

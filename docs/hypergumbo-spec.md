@@ -108,7 +108,7 @@ Shows available language analyzers and which ones are suggested for the current 
 Estimates test coverage via static analysis (no code execution). Reports hot spots (functions called by many tests, ranked by tests/LOC) and cold spots (untested functions). Filter with `--min-tests`, `--max-tests`, `--top`.
 
 🟩 **`hypergumbo io-boundaries [path] [--json]`** (ADR-0016)
-Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 10 languages (6 dedicated catalogs + 4 via aliases) with 60+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation.
+Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 12 languages (7 dedicated catalogs + 5 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation.
 
 🟩 **`hypergumbo verify-claims --claims <file> [--json]`** (ADR-0016)
 Verifies security claims (e.g., "no network I/O", "max 3 filesystem chains") against the IO boundary map. Claims are specified in YAML format. Exit code 1 on violations. Useful for CI enforcement of IO security policies.

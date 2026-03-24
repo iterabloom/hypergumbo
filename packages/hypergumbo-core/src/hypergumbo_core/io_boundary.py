@@ -278,6 +278,8 @@ _CATALOG_ALIASES: dict[str, str] = {
     "kotlin": "java",
     "scala": "java",
     "groovy": "java",
+    # Objective-C nodes have language="objective-c" but edge prefixes use "objc"
+    "objective-c": "objc",
 }
 
 
@@ -577,19 +579,26 @@ def _extract_module_hint(edge_dst: str) -> str | None:
 def _extract_callee_name(edge_dst: str) -> str:
     """Extract a callable name from an edge destination symbol ID.
 
-    Symbol IDs have the format:
-        ``language:path:span:name:kind``
+    Symbol IDs have the format ``language:path:span:name:kind``.  The *name*
+    field may itself contain colons (e.g., Objective-C selectors like
+    ``removeItemAtPath:error:``).
 
-    We extract the ``name`` part (4th colon-separated field from the end).
-    For method calls the name may be ``ClassName.method_name``.
+    Strategy: split off the *kind* (last field) from the right, then take
+    everything after the first three fields (lang, path, span) as the name.
     """
-    parts = edge_dst.split(":")
-    if len(parts) >= 2:
-        # The name is the second-to-last field before the kind
-        # Example: "python:/path/to/file.py:10-12:os.listdir:function"
-        # → name = "os.listdir"
-        return parts[-2] if len(parts) >= 2 else edge_dst
-    return edge_dst
+    # Split off kind from the right
+    last_colon = edge_dst.rfind(":")
+    if last_colon < 0:
+        return edge_dst
+    rest = edge_dst[:last_colon]
+
+    # rest = "lang:path:span:name_possibly_with_colons"
+    # Split into at most 4 parts: lang, path, span, name(remainder)
+    parts = rest.split(":", 3)
+    if len(parts) >= 4:
+        return parts[3]
+    # Fewer fields — return the last segment (handles minimal IDs like "a:b")
+    return parts[-1] if parts else edge_dst
 
 
 def tag_io_boundaries(

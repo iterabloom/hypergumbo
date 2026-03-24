@@ -468,7 +468,7 @@ class TestObjCSignatureExtraction:
 @end
 """)
         result = analyze_objc(tmp_path)
-        methods = [s for s in result.symbols if s.kind == "method" and "addXy" in s.name]
+        methods = [s for s in result.symbols if s.kind == "method" and "addX:y:" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "(int x, int y): int"
 
@@ -594,6 +594,129 @@ class TestObjCInheritanceExtraction:
         # Either no meta or no base_classes key
         if root.meta:
             assert "base_classes" not in root.meta or root.meta["base_classes"] == []
+
+
+class TestObjCSelectorExtraction:
+    """Tests for correct Objective-C selector extraction with colons.
+
+    ObjC selectors include colons as part of the name: ``setX:Y:`` not ``setXY``.
+    This is critical for cross-file method resolution and I/O catalog matching.
+    """
+
+    def test_keyword_method_name_includes_colons(self, tmp_path: Path) -> None:
+        """Method names for keyword selectors include colons: addX:y:."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Calc.m").write_text("""
+@implementation Calc
+- (int)addX:(int)x y:(int)y {
+    return x + y;
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "Calc.addX:y:" in method_names
+
+    def test_single_keyword_method_name_includes_colon(self, tmp_path: Path) -> None:
+        """Single-keyword selectors include trailing colon: logMessage:."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Logger.m").write_text("""
+@implementation Logger
+- (void)logMessage:(NSString *)msg {
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "Logger.logMessage:" in method_names
+
+    def test_simple_selector_has_no_colon(self, tmp_path: Path) -> None:
+        """Simple selectors (no params) have no colon: doStuff."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Worker.m").write_text("""
+@implementation Worker
+- (void)doStuff {
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "Worker.doStuff" in method_names
+
+    def test_message_send_selector_excludes_arguments(self, tmp_path: Path) -> None:
+        """Message send selectors exclude argument names from the call site."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "FileOps.m").write_text("""
+@implementation FileOps
+
+- (void)delete:(NSString *)path {
+}
+
+- (void)doWork {
+    [self delete:@"/tmp/foo"];
+}
+
+@end
+""")
+        result = analyze_objc(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # The call should resolve to "delete:" method, not include arg text
+        assert any("delete:" in e.dst for e in call_edges)
+
+    def test_keyword_message_send_correct_selector(self, tmp_path: Path) -> None:
+        """Multi-keyword message sends produce correct selectors with colons."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Manager.m").write_text("""
+@implementation Manager
+
+- (void)removeItemAtPath:(NSString *)path error:(NSError **)err {
+}
+
+- (void)cleanup {
+    NSError *error = nil;
+    [self removeItemAtPath:@"/tmp/foo" error:&error];
+}
+
+@end
+""")
+        result = analyze_objc(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should resolve to the method with correct colon selector
+        resolved = [e for e in call_edges if "removeItemAtPath:error:" in e.dst]
+        assert len(resolved) == 1, (
+            f"Expected 1 edge to removeItemAtPath:error:, got {len(resolved)}. "
+            f"All call dsts: {[e.dst for e in call_edges]}"
+        )
+
+    def test_unresolved_keyword_message_has_correct_selector(self, tmp_path: Path) -> None:
+        """Unresolved keyword messages produce correct selectors with colons."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Ops.m").write_text("""
+@implementation Ops
+
+- (void)doWork {
+    [[NSFileManager defaultManager] removeItemAtPath:path error:&err];
+}
+
+@end
+""")
+        result = analyze_objc(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        unresolved_dsts = [e.dst for e in call_edges if "unresolved" in e.dst]
+        # Should have "removeItemAtPath:error:" not "removeItemAtPathpatherror"
+        matching = [d for d in unresolved_dsts if "removeItemAtPath:error:" in d]
+        assert len(matching) >= 1, (
+            f"Expected unresolved edge with 'removeItemAtPath:error:', got: {unresolved_dsts}"
+        )
 
 
 class TestObjCStableShapeId:

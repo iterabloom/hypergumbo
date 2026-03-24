@@ -10,8 +10,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Objective-C selector extraction**: Keyword selectors now include colons (`removeItemAtPath:error:` instead of `removeItemAtPatherror`). This fixes cross-file method resolution and enables I/O boundary matching for ObjC code.
+- **Symbol ID callee extraction**: `_extract_callee_name` now correctly handles names containing colons (ObjC selectors) by parsing from both ends of the ID.
+
 ### Added
 
+- **Objective-C I/O boundary catalog** (`objc.yaml`): 90+ Foundation/Cocoa I/O primitives covering filesystem (NSFileManager, NSFileHandle, NSData, NSString), networking (NSURLSession, NSURLConnection), database (Core Data), subprocess (NSTask), environment (NSProcessInfo, NSBundle), logging (NSLog, os_log), and IPC (NSNotificationCenter).
 - **`io-boundaries` enriched output**: Text output now shows per-primitive call counts, call-site locations (`<- func_name (file:line)`), entry-point reachability traces, and high-risk primitive highlighting (`[HIGH RISK]` / `*** HIGH RISK ***`) for destructive fs ops, subprocess/exec, and outbound network calls across 6 languages.
 - **`io-boundaries --by-file`**: Alternative view grouping IO boundary calls by source file instead of boundary type. Each line shows `[boundary_type] primitive <- caller`.
 - **`io-boundaries --boundary TYPE`**: Filter output to a single boundary type (e.g., `--boundary subprocess`). Works with both text and JSON output.
