@@ -1,0 +1,19 @@
+- op: create  # 503c
+  at: '2026-03-24T04:48:36Z'  # 503c
+  by: agent  # 503c
+  actor: jgstern_agent  # 503c
+  clock: 1  # 503c
+  nonce: 503c  # 503c
+  data:  # 503c
+    kind: work_item  # 503c
+    title: "Scala: single-letter and common name collision producing false call edges"  # 503c
+    status: todo_soft  # 503c
+    priority: 3  # 503c
+    parent:  # 503c
+    tags: []  # 503c
+    before: []  # 503c
+    duplicate_of: []  # 503c
+    not_duplicate_of: []  # 503c
+    pr_ref:  # 503c
+    description: "In Scala FP codebases (cats, http4s), single-letter parameter names (f, g) and common Scala names (Some, Open) create massive false positive call edges. cats Reducible.g has 94 false incoming edges. FlatMapped.f has 737 false incoming edges. Need scope-aware resolution: local defs/lambdas should not be globally resolvable. Bakeoff: scala-20260323 baseline."  # 503c
+    fields: {}  # 503c

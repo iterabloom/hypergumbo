@@ -1,0 +1,34 @@
+- op: create  # 4d11
+  at: '2026-03-24T03:07:42Z'  # 4d11
+  by: agent  # 4d11
+  actor: jgstern_agent  # 4d11
+  clock: 1  # 4d11
+  nonce: 4d11  # 4d11
+  data:  # 4d11
+    kind: work_item  # 4d11
+    title: "tree-sitter-objc parser fails on complex files (AFURLSessionManager.m)"  # 4d11
+    status: todo_soft  # 4d11
+    priority: 3  # 4d11
+    parent:  # 4d11
+    tags: []  # 4d11
+    before: []  # 4d11
+    duplicate_of: []  # 4d11
+    not_duplicate_of: []  # 4d11
+    pr_ref:  # 4d11
+    description: "AFURLSessionManager.m (AFNetworking) has 115 ERROR nodes at top level, 0 class_implementation, 0 method_definition. Complex ObjC patterns (blocks, GCD, delegate methods, conditional compilation) exceed tree-sitter-objc grammar capabilities. Impact: 74 methods extracted with garbled names, 0 class nodes for the core class."  # 4d11
+    fields: {}  # 4d11
+- op: update  # 6ab4
+  at: '2026-03-24T03:39:29Z'  # 6ab4
+  by: agent  # 6ab4
+  actor: jgstern_agent  # 6ab4
+  clock: 2  # 6ab4
+  nonce: 6ab4  # 6ab4
+  set:  # 6ab4
+    priority: 4  # 6ab4
+- op: discuss  # a102
+  at: '2026-03-24T03:39:30Z'  # a102
+  by: agent  # a102
+  actor: jgstern_agent  # a102
+  clock: 3  # a102
+  nonce: a102  # a102
+  message: "Deprioritized to P4: this is a tree-sitter-objc upstream grammar limitation. Complex ObjC files (blocks, GCD, NS_ASSUME_NONNULL, multi-@implementation) exceed the grammar's capabilities. ~90% of files parse correctly. Workaround: could contribute grammar fixes to tree-sitter-objc upstream, but that's outside hypergumbo scope."  # a102
