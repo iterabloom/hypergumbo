@@ -2885,6 +2885,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         catalog = load_catalog(lang)
         if catalog.primitives:
             catalogs[lang] = catalog
+            # Also key by the catalog's base language so edge-prefix lookups
+            # work (e.g., nodes say "objective-c" but edges use "objc:" prefix)
+            if catalog.language != lang:
+                catalogs[catalog.language] = catalog
 
     # Extract entrypoint IDs for reverse-trace
     entrypoint_ids = {
@@ -3150,6 +3154,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         catalog = load_catalog(lang)
         if catalog.primitives:
             catalogs[lang] = catalog
+            if catalog.language != lang:
+                catalogs[catalog.language] = catalog
 
     # Extract entrypoint IDs for reverse-trace
     vc_entrypoint_ids = {

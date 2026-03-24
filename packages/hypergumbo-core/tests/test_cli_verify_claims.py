@@ -155,3 +155,52 @@ def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
 
     rc = cmd_verify_claims(args)
     assert rc == 0
+
+
+def test_verify_claims_objc_catalog_bridging(tmp_path: Path, capsys) -> None:
+    """Verify-claims detects ObjC I/O despite 'objective-c' / 'objc' mismatch.
+
+    Nodes use language='objective-c' but symbol IDs prefix with 'objc:'.
+    The catalog loading must bridge this so verify-claims can detect violations.
+    """
+    bmap = _make_behavior_map(
+        nodes=[{
+            "id": "objc:src/Cleanup.m:1-5:Cleanup.run:method",
+            "name": "Cleanup.run",
+            "kind": "method",
+            "language": "objective-c",
+            "path": "src/Cleanup.m",
+            "span": {"start_line": 1, "end_line": 5},
+        }],
+        edges=[{
+            "src": "objc:src/Cleanup.m:1-5:Cleanup.run:method",
+            "dst": "objc:external:0-0:removeItemAtPath:error::unresolved",
+            "type": "calls",
+            "confidence": 0.5,
+        }],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [{
+            "id": "SC-001",
+            "text": "No filesystem writes",
+            "constraint": {"boundary": "fs_write", "must_not_exist": True},
+        }],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = True
+
+    rc = cmd_verify_claims(args)
+    # Should FAIL because ObjC fs_write was detected
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    violated = [r for r in data if r["verdict"] == "violated"]
+    assert len(violated) == 1

@@ -717,3 +717,42 @@ def test_by_file_entry_points(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "reachable from" in out
     assert "main" in out
+
+
+def test_objc_io_boundaries_detected(tmp_path: Path, capsys) -> None:
+    """ObjC I/O boundaries are detected despite 'objective-c' vs 'objc' mismatch.
+
+    Nodes report language='objective-c' but symbol IDs use 'objc:' prefix.
+    The catalog loading must bridge this mismatch so tag_io_boundaries can
+    match ObjC I/O primitives.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "objc:src/Manager.m:1-5:Manager.cleanup:method",
+                "name": "Manager.cleanup",
+                "kind": "method",
+                "language": "objective-c",
+                "path": "src/Manager.m",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[
+            {
+                "src": "objc:src/Manager.m:1-5:Manager.cleanup:method",
+                "dst": "objc:external:0-0:removeItemAtPath:error::unresolved",
+                "type": "calls",
+                "confidence": 0.5,
+            },
+        ],
+    )
+    args = _make_args(tmp_path, bmap, json_output=True)
+
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_io_edges"] >= 1, (
+        f"Expected >=1 ObjC IO edges, got {data['total_io_edges']}. "
+        f"Boundaries: {list(data.get('boundaries', {}).keys())}"
+    )
+    assert "fs_write" in data["boundaries"]
