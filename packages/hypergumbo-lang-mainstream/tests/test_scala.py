@@ -1221,3 +1221,149 @@ class TestScalaShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestScalaShortNameConfidencePenalty:
+    """Tests for confidence penalty on single/two-letter callee names.
+
+    Scala FP code idiomatically uses single-letter names (f, g, x, n) for
+    lambda parameters and local defs. When these names match global symbols
+    via suffix matching, the resulting edges are almost always false positives.
+    The analyzer applies a confidence penalty to make these easily filterable.
+    """
+
+    def test_penalty_function_single_letter(self) -> None:
+        """Single-letter names get heavy penalty (0.15x)."""
+        from hypergumbo_lang_mainstream.scala import _short_name_penalty
+
+        assert _short_name_penalty("f") == 0.15
+        assert _short_name_penalty("g") == 0.15
+        assert _short_name_penalty("x") == 0.15
+        assert _short_name_penalty("n") == 0.15
+
+    def test_penalty_function_two_letter(self) -> None:
+        """Two-letter names get moderate penalty (0.50x)."""
+        from hypergumbo_lang_mainstream.scala import _short_name_penalty
+
+        assert _short_name_penalty("fn") == 0.50
+        assert _short_name_penalty("xs") == 0.50
+
+    def test_penalty_function_normal_names(self) -> None:
+        """Names with 3+ characters get no penalty (1.0x)."""
+        from hypergumbo_lang_mainstream.scala import _short_name_penalty
+
+        assert _short_name_penalty("map") == 1.0
+        assert _short_name_penalty("helper") == 1.0
+        assert _short_name_penalty("processItems") == 1.0
+
+    def test_penalty_function_empty_string(self) -> None:
+        """Empty string gets heavy penalty."""
+        from hypergumbo_lang_mainstream.scala import _short_name_penalty
+
+        assert _short_name_penalty("") == 0.15
+
+    def test_single_letter_call_gets_low_confidence(self, tmp_path: Path) -> None:
+        """A call to `f()` where `f` resolves to a global symbol gets low confidence."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        # File A defines a method named `f`
+        (tmp_path / "Target.scala").write_text("""
+object Target {
+  def f(): Int = 42
+}
+""")
+        # File B calls `f` (likely a lambda param, not Target.f)
+        (tmp_path / "Caller.scala").write_text("""
+object Caller {
+  def process(items: List[Int]): List[Int] = {
+    items.map(f)
+  }
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        # Find call edges to Target.f
+        target_f = next(
+            (s for s in result.symbols if "Target" in s.id and s.name == "f"), None,
+        )
+        if target_f:
+            f_edges = [
+                e for e in result.edges
+                if e.edge_type == "calls" and e.dst == target_f.id
+            ]
+            for edge in f_edges:
+                assert edge.confidence < 0.20, (
+                    f"Single-letter name 'f' should have confidence < 0.20, "
+                    f"got {edge.confidence}"
+                )
+
+    def test_two_letter_call_gets_moderate_penalty(self, tmp_path: Path) -> None:
+        """A call to `fn()` where `fn` resolves to a global symbol gets moderate penalty."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Target.scala").write_text("""
+object Target {
+  def fn(): Int = 42
+}
+""")
+        (tmp_path / "Caller.scala").write_text("""
+object Caller {
+  def process(items: List[Int]): List[Int] = {
+    items.map(fn)
+  }
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        target_fn = next(
+            (s for s in result.symbols if "Target" in s.id and s.name == "fn"), None,
+        )
+        if target_fn:
+            fn_edges = [
+                e for e in result.edges
+                if e.edge_type == "calls" and e.dst == target_fn.id
+            ]
+            for edge in fn_edges:
+                assert edge.confidence < 0.50, (
+                    f"Two-letter name 'fn' should have confidence < 0.50, "
+                    f"got {edge.confidence}"
+                )
+                assert edge.confidence > 0.10, (
+                    f"Two-letter name 'fn' should have confidence > 0.10, "
+                    f"got {edge.confidence}"
+                )
+
+    def test_normal_name_call_gets_standard_confidence(self, tmp_path: Path) -> None:
+        """A call to `helper()` gets standard confidence (no penalty)."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Utils.scala").write_text("""
+def caller(): Unit = {
+    helper()
+}
+
+def helper(): Unit = {
+    println("helping")
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        helper_sym = next(
+            (s for s in result.symbols if s.name == "helper"), None,
+        )
+        assert helper_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == helper_sym.id
+        ]
+        assert len(call_edges) >= 1
+        # Normal names should get standard confidence (>= 0.5)
+        for edge in call_edges:
+            assert edge.confidence >= 0.50, (
+                f"Normal name 'helper' should have confidence >= 0.50, "
+                f"got {edge.confidence}"
+            )
