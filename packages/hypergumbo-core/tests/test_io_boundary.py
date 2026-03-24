@@ -210,10 +210,11 @@ class TestLoadCatalog:
         assert len(catalog.primitives) > 0
         assert catalog.lookup("java.io.FileInputStream.read") is not None
 
-    def test_scala_alias_loads_java_catalog(self) -> None:
-        """Scala uses the Java IO catalog via alias."""
+    def test_scala_loads_own_catalog_with_java_parent(self) -> None:
+        """Scala has its own catalog merged with Java parent."""
         catalog = load_catalog("scala")
         assert len(catalog.primitives) > 0
+        assert catalog.language == "scala"
 
     def test_groovy_alias_loads_java_catalog(self) -> None:
         """Groovy uses the Java IO catalog via alias."""
@@ -1082,3 +1083,225 @@ class TestBoundaryMapEntryEnriched:
         assert d["chain_count"] == 1
         assert d["entry_points"] == ["main"]
         assert d["primitives_used"] == ["os.listdir"]
+
+
+class TestScalaCatalog:
+    """Tests for the standalone Scala I/O catalog with Java parent merging."""
+
+    def test_scala_loads_own_catalog(self) -> None:
+        """Scala has its own catalog (not just an alias to Java)."""
+        catalog = load_catalog("scala")
+        assert catalog.language == "scala"
+        # Scala-specific entries should exist
+        scala_modules = {p.module for p in catalog.primitives}
+        assert any("scala.io" in m for m in scala_modules), (
+            "Scala catalog should include scala.io entries"
+        )
+
+    def test_scala_inherits_java_entries(self) -> None:
+        """Scala catalog merges Java entries via parent inheritance."""
+        catalog = load_catalog("scala")
+        # Java stdlib entries should be available through inheritance
+        assert catalog.lookup("java.io.FileInputStream.read") is not None
+
+    def test_scala_has_effect_system_entries(self) -> None:
+        """Scala catalog covers cats-effect and ZIO I/O primitives."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        # At least one effect system should be present
+        has_cats_effect = any("cats.effect" in m for m in scala_modules)
+        has_zio = any("zio" in m for m in scala_modules)
+        assert has_cats_effect or has_zio, (
+            f"Expected cats-effect or ZIO entries, got modules: "
+            f"{sorted(m for m in scala_modules if 'scala' in m.lower() or 'cats' in m.lower() or 'zio' in m.lower())}"
+        )
+
+    def test_scala_has_http_client_entries(self) -> None:
+        """Scala catalog covers Scala HTTP client libraries."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        has_sttp = any("sttp" in m for m in scala_modules)
+        has_http4s = any("http4s" in m for m in scala_modules)
+        has_akka_http = any("akka.http" in m or "pekko.http" in m for m in scala_modules)
+        assert has_sttp or has_http4s or has_akka_http, (
+            "Scala catalog should include at least one Scala HTTP client library"
+        )
+
+    def test_scala_has_streaming_entries(self) -> None:
+        """Scala catalog covers streaming I/O libraries (fs2, akka/pekko streams)."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        has_fs2 = any("fs2" in m for m in scala_modules)
+        has_akka_stream = any("akka.stream" in m or "pekko.stream" in m for m in scala_modules)
+        assert has_fs2 or has_akka_stream, (
+            "Scala catalog should include streaming I/O entries"
+        )
+
+    def test_scala_has_db_entries(self) -> None:
+        """Scala catalog covers database access libraries."""
+        catalog = load_catalog("scala")
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "db_read" in boundaries or "db_write" in boundaries, (
+            "Scala catalog should include database boundary entries"
+        )
+
+    def test_scala_catalog_all_boundary_types(self) -> None:
+        """Scala catalog covers all major boundary types."""
+        catalog = load_catalog("scala")
+        boundaries = {p.boundary for p in catalog.primitives}
+        # Scala should have at least these from its own + Java parent
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_scala_own_entries_override_java(self) -> None:
+        """When Scala has the same qualified name as Java, Scala's entry wins."""
+        catalog = load_catalog("scala")
+        # Scala.io.Source.fromFile should come from scala.yaml, not java.yaml
+        hit = catalog.lookup("scala.io.Source.fromFile")
+        assert hit is not None
+        assert hit.boundary == "fs_read"
+
+
+class TestAmbiguousNameFiltering:
+    """Tests for ambiguous short-name filtering on unresolved externals.
+
+    Generic method names like 'bind', 'start', 'exec' produce false positives
+    when matched against unresolved external calls (module_hint='external').
+    Catalogs with an ambiguous_names list should reject these matches.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_scala_bind_not_matched_as_socket(self) -> None:
+        """Scala's monadic 'bind' should NOT match java.net.ServerSocket.bind."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/cats/Monad.scala:10:flatMap:method",
+            dst="scala:external:0-0:bind:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'bind' should not match ServerSocket.bind for unresolved externals"
+
+    def test_scala_start_not_matched_as_process(self) -> None:
+        """Scala's 'start' should NOT match java.lang.ProcessBuilder.start."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/cats/Eval.scala:10:loop:method",
+            dst="scala:external:0-0:start:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'start' should not match ProcessBuilder.start for unresolved externals"
+
+    def test_scala_exec_not_matched_as_runtime(self) -> None:
+        """Scala's 'exec' (e.g., ExecutionContext.exec) should NOT match Runtime.exec."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/Effect.scala:10:run:method",
+            dst="scala:external:0-0:exec:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'exec' should not match Runtime.exec for unresolved externals"
+
+    def test_scala_specific_names_still_match(self) -> None:
+        """Distinctive I/O names should still match even for unresolved externals."""
+        catalog = load_catalog("scala")
+        # readAllBytes is specific enough to not be ambiguous
+        edge = self._make_edge(
+            src="scala:IO.scala:10:readFile:method",
+            dst="scala:external:0-0:readAllBytes:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 1, "Specific name 'readAllBytes' should still match for unresolved externals"
+
+    def test_scala_resolved_call_with_module_still_matches(self) -> None:
+        """Resolved calls with proper module context should still match even for ambiguous names."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Main.scala:10:main:method",
+            dst="scala:java.net.ServerSocket:0-0:bind:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 1, "Ambiguous name 'bind' should match when module context confirms ServerSocket"
+
+    def test_go_external_still_works(self) -> None:
+        """Go catalog without ambiguous_names list keeps current fallback behavior."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/a.go:1:main:function",
+            dst="go:external:0-0:Open:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1, "Go external matching should still work (backward compatible)"
+
+
+class TestCatalogMerge:
+    """Tests for catalog parent merging."""
+
+    def test_merge_adds_parent_entries(self) -> None:
+        """Merging a parent catalog adds its entries."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[
+                IoPrimitive("fs_read", "scala.io.Source", "fromFile", "method"),
+            ],
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[
+                IoPrimitive("fs_read", "java.io.File", "exists", "method"),
+            ],
+        )
+        merged = child.merge(parent)
+        assert merged.language == "scala"
+        assert len(merged.primitives) == 2
+        assert merged.lookup("scala.io.Source.fromFile") is not None
+        assert merged.lookup("java.io.File.exists") is not None
+
+    def test_merge_child_wins_on_conflict(self) -> None:
+        """When both catalogs have the same qualified name, child's entry wins."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[
+                IoPrimitive("net_send", "some.module", "send", "method", "scala version"),
+            ],
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[
+                IoPrimitive("net_recv", "some.module", "send", "method", "java version"),
+            ],
+        )
+        merged = child.merge(parent)
+        hit = merged.lookup("some.module.send")
+        assert hit is not None
+        assert hit.boundary == "net_send"  # child's version
+        assert hit.notes == "scala version"
+
+    def test_merge_preserves_ambiguous_names(self) -> None:
+        """Merging inherits ambiguous_names from both catalogs."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[],
+            ambiguous_names=frozenset({"bind"}),
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[],
+            ambiguous_names=frozenset({"exec"}),
+        )
+        merged = child.merge(parent)
+        assert "bind" in merged.ambiguous_names
+        assert "exec" in merged.ambiguous_names

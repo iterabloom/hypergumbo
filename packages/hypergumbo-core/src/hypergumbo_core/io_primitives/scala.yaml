@@ -1,0 +1,237 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Scala
+#
+# Scala-specific I/O primitives spanning the Scala ecosystem. This catalog
+# is MERGED with java.yaml (via _CATALOG_PARENTS) so all java.io.*, java.nio.*,
+# java.net.* entries are also available. Entries here cover Scala stdlib I/O,
+# functional effect systems, HTTP clients, streaming, and database libraries.
+#
+# Ambiguous names: short method names that collide with Scala FP vocabulary
+# (bind, start, run, exec, etc.) must not match unresolved external calls
+# where no module context is available, since they produce false positives
+# (e.g. monadic 'bind' matching java.net.ServerSocket.bind).
+language: scala
+
+# Short names that are ambiguous between I/O and non-I/O Scala operations.
+# When module_hint is "external" (unresolved), these names are skipped for
+# short-name matching. Qualified-name and module-filtered matching still work.
+ambiguous_names:
+  - bind          # monadic bind vs ServerSocket.bind
+  - start         # Eval.start, Future vs ProcessBuilder.start
+  - run           # IO.run, ZIO.run vs Runtime.run
+  - exec          # ExecutionContext.exec vs Runtime.exec
+  - read          # collection read, Codec.read vs FileInputStream.read
+  - write         # collection write vs FileOutputStream.write
+  - send          # Actor.send, message passing vs Socket.send
+  - connect       # db connect, stream connect vs Socket.connect
+  - close         # Resource.close vs Stream.close
+  - open          # generic open vs File.open
+  - flush         # buffer flush vs Channel.flush
+  - enqueue       # Queue.enqueue vs OkHttp.enqueue
+  - accept        # type accept vs ServerSocket.accept
+  - execute       # Executor.execute vs Statement.execute
+  - get           # Map.get, Option.get vs HTTP GET
+  - set           # Map.set vs HTTP SET
+  - find          # collection find vs Files.find
+  - delete        # collection delete vs File.delete
+  - list          # Scala List vs File.list
+  - next          # Iterator.next vs Scanner.next
+  - nextInt       # Random.nextInt vs Scanner.nextInt
+  - nextLine      # vs Scanner.nextLine
+  - exists        # collection exists vs File.exists
+  - command       # DSL command vs ProcessBuilder.command
+  - apply         # Scala apply method
+  - call          # function call
+  - walk          # vs Files.walk
+  - append        # collection append vs FileWriter.append
+  - newLine       # vs BufferedWriter.newLine
+  - read          # vs various read methods
+  - receive       # Actor receive pattern vs DatagramSocket.receive
+  - fireChannelRead  # Netty context but ambiguous in Scala actor code
+
+# ---------------------------------------------------------------------------
+# Scala stdlib I/O
+# ---------------------------------------------------------------------------
+fs_read:
+  - module: scala.io.Source
+    methods: [fromFile, fromURL, fromInputStream, fromResource, getLines, mkString]
+    notes: "Scala stdlib file/URL reading"
+  - module: scala.io.StdIn
+    functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
+    notes: "Scala stdlib stdin reading"
+  - module: scala.io.Codec
+    methods: [fromFile]
+
+fs_write:
+  - module: scala.sys.process.Process
+    methods: [apply, run]
+    notes: "Scala process execution (can write to filesystem via shell commands)"
+
+subprocess:
+  - module: scala.sys.process.Process
+    methods: [apply, run]
+    notes: "Scala process execution — wraps java.lang.ProcessBuilder"
+  - module: scala.sys.process.ProcessBuilder
+    methods: [run, lineStream, lazyLines]
+    notes: "Scala process builder DSL"
+
+env_read:
+  - module: scala.sys
+    functions: [env, props]
+    notes: "Scala stdlib environment/properties access"
+  - module: scala.sys.SystemProperties
+    methods: [apply, get, getOrElse]
+  - module: scala.util.Properties
+    methods: [envOrElse, envOrNone, propOrElse, propOrNone, propIsSet, javaHome, tmpDir, userDir, userHome, userName, scalaHome]
+
+# ---------------------------------------------------------------------------
+# cats-effect (functional I/O effect system)
+# ---------------------------------------------------------------------------
+net_send:
+  - module: cats.effect.IO
+    methods: [blocking, interruptible, interruptibleMany]
+    notes: "cats-effect IO.blocking runs arbitrary blocking I/O on the blocking threadpool"
+  - module: cats.effect.kernel.Resource
+    methods: [make, eval, allocated, use, useForever]
+    notes: "cats-effect Resource — manages I/O resource lifecycle"
+
+  # sttp (Scala HTTP client)
+  - module: sttp.client3
+    functions: [basicRequest, emptyRequest]
+    notes: "sttp HTTP client entry points"
+  - module: sttp.client3.SttpBackend
+    methods: [send, close]
+    notes: "sttp backend send (executes HTTP request)"
+  - module: sttp.client3.Request
+    methods: [send, response]
+  - module: sttp.client4.SttpBackend
+    methods: [send, close]
+  - module: sttp.client4
+    functions: [basicRequest, emptyRequest]
+  # http4s client
+  - module: org.http4s.client.Client
+    methods: [expect, expectOr, run, fetch, fetchAs, status, successful, stream, toKleisli]
+    notes: "http4s client — purely functional HTTP"
+  - module: org.http4s.ember.client.EmberClientBuilder
+    methods: [build, default]
+  - module: org.http4s.blaze.client.BlazeClientBuilder
+    methods: [resource, stream]
+  # akka-http client
+  - module: akka.http.scaladsl.Http
+    methods: [singleRequest, outgoingConnection, superPool, cachedHostConnectionPool]
+    notes: "Akka HTTP client"
+  - module: org.apache.pekko.http.scaladsl.Http
+    methods: [singleRequest, outgoingConnection, superPool, cachedHostConnectionPool]
+    notes: "Pekko HTTP client (Apache Akka fork)"
+  # Play WS client
+  - module: play.api.libs.ws.WSClient
+    methods: [url]
+    notes: "Play WS client entry point"
+  - module: play.api.libs.ws.WSRequest
+    methods: [get, post, put, patch, delete, head, options, execute, stream, withRequestTimeout]
+    notes: "Play WS request methods"
+
+net_recv:
+  # HTTP servers
+  - module: akka.http.scaladsl.Http
+    methods: [newServerAt, bindAndHandle]
+    notes: "Akka HTTP server binding"
+  - module: org.apache.pekko.http.scaladsl.Http
+    methods: [newServerAt, bindAndHandle]
+    notes: "Pekko HTTP server binding"
+  - module: org.http4s.ember.server.EmberServerBuilder
+    methods: [build, default]
+  - module: org.http4s.blaze.server.BlazeServerBuilder
+    methods: [resource, bindHttp, serve]
+  - module: org.http4s.server.Server
+    methods: [serve]
+
+# ---------------------------------------------------------------------------
+# Streaming I/O
+# ---------------------------------------------------------------------------
+  # fs2 (functional streams for Scala)
+  - module: fs2.io.file.Files
+    methods: [readAll, readRange, readUtf8, readUtf8Lines, writeAll, writeUtf8, writeUtf8Lines, list, walk, createDirectory, createDirectories, delete, deleteIfExists, deleteRecursively, exists, move, copy, size, isDirectory, isRegularFile, tempFile, tempDirectory]
+    notes: "fs2 file I/O"
+  - module: fs2.io
+    functions: [readInputStream, readOutputStream, writeOutputStream, stdin, stdout, stdinUtf8, stdoutUtf8, stderrUtf8]
+    notes: "fs2 stream-based I/O"
+  - module: fs2.io.net.Network
+    methods: [client, server, serverResource, tlsContext]
+    notes: "fs2 network I/O"
+  # Akka/Pekko Streams file I/O
+  - module: akka.stream.scaladsl.FileIO
+    methods: [fromPath, toPath, fromFile, toFile]
+    notes: "Akka Streams file I/O"
+  - module: org.apache.pekko.stream.scaladsl.FileIO
+    methods: [fromPath, toPath, fromFile, toFile]
+    notes: "Pekko Streams file I/O"
+
+# ---------------------------------------------------------------------------
+# Database access
+# ---------------------------------------------------------------------------
+db_read:
+  - module: slick.jdbc.JdbcBackend.DatabaseDef
+    methods: [run]
+    notes: "Slick database query execution"
+  - module: slick.dbio.DBIO
+    methods: [from, successful, failed, sequence, fold]
+  - module: doobie.Transactor
+    methods: [trans, rawTrans]
+    notes: "Doobie database transactor"
+  - module: doobie.util.query.Query
+    methods: [to, unique, option, nel, stream, accumulate]
+  - module: doobie.util.query.Query0
+    methods: [to, unique, option, nel, stream, accumulate]
+  - module: io.getquill.context.Context
+    methods: [run, executeQuery, translate]
+    notes: "Quill compile-time query execution"
+  - module: scalikejdbc.DB
+    methods: [readOnly, autoCommit, localTx, withinTx]
+    notes: "ScalikeJDBC database access"
+  - module: scalikejdbc.SQL
+    methods: [map, list, single, first, foreach, toList, headOption]
+  - module: anorm.SQL
+    methods: [apply, on, executeQuery, as]
+    notes: "Anorm (Play's DB library)"
+  - module: reactivemongo.api.MongoConnection
+    methods: [database, fromURI]
+    notes: "ReactiveMongo client"
+  - module: reactivemongo.api.collections.GenericCollection
+    methods: [find, aggregateWith]
+
+db_write:
+  - module: doobie.util.update.Update
+    methods: [run, updateMany, withUniqueGeneratedKeys]
+  - module: doobie.util.update.Update0
+    methods: [run, withUniqueGeneratedKeys]
+  - module: io.getquill.context.Context
+    methods: [executeAction, executeBatchAction]
+    notes: "Quill write operations"
+  - module: scalikejdbc.SQL
+    methods: [update, execute, executeUpdate, batch, batchByName]
+  - module: anorm.SQL
+    methods: [execute, executeUpdate, executeInsert]
+  - module: reactivemongo.api.collections.GenericCollection
+    methods: [insert, update, delete, findAndModify, findAndUpdate, findAndRemove]
+
+# ---------------------------------------------------------------------------
+# ZIO I/O
+# ---------------------------------------------------------------------------
+  # Note: ZIO.attempt / ZIO.blocking are general "might do I/O" wrappers,
+  # similar to cats-effect IO.blocking. They're net_send since they wrap
+  # arbitrary effectful code.
+  - module: zio.ZIO
+    methods: [attemptBlocking, attemptBlockingInterrupt, attemptBlockingCancelable, attemptBlockingIO, blocking]
+    notes: "ZIO blocking I/O wrappers"
+
+logging:
+  - module: com.typesafe.scalalogging.Logger
+    methods: [trace, debug, info, warn, error]
+    notes: "scala-logging (Logback wrapper)"
+  - module: org.slf4j.Logger
+    methods: [trace, debug, info, warn, error]
+    notes: "SLF4J direct usage"
+  - module: play.api.Logger
+    methods: [trace, debug, info, warn, error]
+    notes: "Play Framework logger"

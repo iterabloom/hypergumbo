@@ -119,6 +119,7 @@ class IoBoundaryCatalog:
 
     language: str
     primitives: list[IoPrimitive] = field(default_factory=list)
+    ambiguous_names: frozenset[str] = field(default_factory=frozenset)
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
@@ -200,8 +201,29 @@ class IoBoundaryCatalog:
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
 
-        # No module context — fall back to first match
+        # No module context — fall back to first match unless ambiguous
+        if self.ambiguous_names and name in self.ambiguous_names:
+            return None
         return hits[0]
+
+    def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
+        """Merge a parent catalog into this one. Self's entries take precedence.
+
+        Used for language inheritance (e.g. Scala inherits from Java):
+        Scala-specific entries override Java entries with the same qualified
+        name, while Java entries not present in Scala are added.
+        """
+        existing_qnames = {p.qualified_name for p in self.primitives}
+        merged_primitives = list(self.primitives) + [
+            p for p in parent.primitives
+            if p.qualified_name not in existing_qnames
+        ]
+        merged_ambiguous = self.ambiguous_names | parent.ambiguous_names
+        return IoBoundaryCatalog(
+            language=self.language,
+            primitives=merged_primitives,
+            ambiguous_names=merged_ambiguous,
+        )
 
     @classmethod
     def from_yaml(cls, path: Path) -> IoBoundaryCatalog:
@@ -258,7 +280,12 @@ class IoBoundaryCatalog:
                         notes=notes,
                     ))
 
-        catalog = cls(language=language, primitives=primitives)
+        ambiguous = frozenset(data.get("ambiguous_names", []))
+        catalog = cls(
+            language=language,
+            primitives=primitives,
+            ambiguous_names=ambiguous,
+        )
         return catalog
 
 
@@ -274,12 +301,17 @@ _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 _CATALOG_ALIASES: dict[str, str] = {
     "cpp": "c",
     "typescript": "javascript",
-    # JVM languages share the Java IO catalog
+    # JVM languages that lack their own catalog share the Java IO catalog
     "kotlin": "java",
-    "scala": "java",
     "groovy": "java",
     # Objective-C nodes have language="objective-c" but edge prefixes use "objc"
     "objective-c": "objc",
+}
+
+# Languages with their own catalog that also inherit from a parent.
+# The child catalog takes precedence; parent entries fill in the gaps.
+_CATALOG_PARENTS: dict[str, str] = {
+    "scala": "java",
 }
 
 
@@ -288,6 +320,9 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
 
     Looks for ``io_primitives/<language>.yaml`` relative to this module.
     Falls back to language aliases (e.g. cpp → c) if no exact match.
+    When a language has a parent catalog (e.g. scala → java), the child
+    catalog is loaded first and then merged with the parent so that
+    child entries take precedence while parent entries fill in gaps.
     Returns an empty catalog if no catalog is found.
     """
     path = _CATALOG_DIR / f"{language}.yaml"
@@ -297,7 +332,17 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
             path = _CATALOG_DIR / f"{alias}.yaml"
     if not path.exists():
         return IoBoundaryCatalog(language=language)
-    return IoBoundaryCatalog.from_yaml(path)
+    catalog = IoBoundaryCatalog.from_yaml(path)
+
+    # Merge parent catalog if defined (e.g. scala inherits java entries)
+    parent_lang = _CATALOG_PARENTS.get(language)
+    if parent_lang:
+        parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
+        if parent_path.exists():
+            parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
+            catalog = catalog.merge(parent_catalog)
+
+    return catalog
 
 
 # ---------------------------------------------------------------------------
