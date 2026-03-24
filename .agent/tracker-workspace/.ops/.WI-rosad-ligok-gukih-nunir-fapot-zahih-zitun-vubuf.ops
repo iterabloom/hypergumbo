@@ -17,3 +17,18 @@
     pr_ref:  # 1e71
     description: ""  # 1e71
     fields: {}  # 1e71
+- op: update  # c7ab
+  at: '2026-03-24T00:33:22Z'  # c7ab
+  by: agent  # c7ab
+  actor: jgstern_agent  # c7ab
+  clock: 2  # c7ab
+  nonce: c7ab  # c7ab
+  set:  # c7ab
+    status: wont_do  # c7ab
+- op: discuss  # be2e
+  at: '2026-03-24T00:33:22Z'  # be2e
+  by: agent  # be2e
+  actor: jgstern_agent  # be2e
+  clock: 3  # be2e
+  nonce: be2e  # be2e
+  message: "Duplicate of WI-nupuj."  # be2e
