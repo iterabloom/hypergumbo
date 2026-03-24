@@ -32,3 +32,18 @@
   clock: 3  # 6f15
   nonce: 6f15  # 6f15
   message: "Deprioritized: name-based heuristics are a nice-to-have, not blocking any bakeoff findings."  # 6f15
+- op: update  # 2bb7
+  at: '2026-03-24T06:54:05Z'  # 2bb7
+  by: agent  # 2bb7
+  actor: jgstern_agent  # 2bb7
+  clock: 4  # 2bb7
+  nonce: 2bb7  # 2bb7
+  set:  # 2bb7
+    priority: 4  # 2bb7
+- op: discuss  # afe8
+  at: '2026-03-24T06:54:05Z'  # afe8
+  by: agent  # afe8
+  actor: jgstern_agent  # afe8
+  clock: 5  # afe8
+  nonce: afe8  # afe8
+  message: "Deprioritized: not Scala-related, from prior bakeoffs."  # afe8
