@@ -17,3 +17,18 @@
     pr_ref:  # ceea
     description: ""  # ceea
     fields: {}  # ceea
+- op: update  # 3c89
+  at: '2026-03-24T01:21:49Z'  # 3c89
+  by: agent  # 3c89
+  actor: jgstern_agent  # 3c89
+  clock: 2  # 3c89
+  nonce: 3c89  # 3c89
+  set:  # 3c89
+    status: done  # 3c89
+- op: discuss  # 3596
+  at: '2026-03-24T01:21:49Z'  # 3596
+  by: agent  # 3596
+  actor: jgstern_agent  # 3596
+  clock: 3  # 3596
+  nonce: '3596'  # 3596
+  message: "Fixed in PR #2509. Instance declarations now create 'implements' edges to their typeclasses."  # 3596

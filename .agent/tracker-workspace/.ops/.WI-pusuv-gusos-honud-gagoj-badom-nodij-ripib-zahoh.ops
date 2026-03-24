@@ -17,3 +17,18 @@
     pr_ref:  # 757d
     description: "When module M calls gen_server:call(ServerRef, Msg), no edge is created to handle_call/3. The gen_server dispatch pattern is the most important OTP architectural relationship and is invisible. Analogous to gen_statem:call → handle_event."  # 757d
     fields: {}  # 757d
+- op: update  # 1f43
+  at: '2026-03-24T01:22:14Z'  # 1f43
+  by: agent  # 1f43
+  actor: jgstern_agent  # 1f43
+  clock: 2  # 1f43
+  nonce: 1f43  # 1f43
+  set:  # 1f43
+    priority: 4  # 1f43
+- op: discuss  # 2540
+  at: '2026-03-24T01:22:14Z'  # 2540
+  by: agent  # 2540
+  actor: jgstern_agent  # 2540
+  clock: 3  # 2540
+  nonce: '2540'  # 2540
+  message: "Erlang-specific enhancement. Not blocking Haskell bakeoff work. Can be addressed when revisiting Erlang support."  # 2540
