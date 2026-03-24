@@ -834,3 +834,80 @@ class TestSwiftFunctionReferences:
         result = analyze_swift(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestSwiftNavigationCalls:
+    """Tests for method calls via dot navigation (receiver.method() pattern).
+
+    Swift code commonly calls methods on receivers (e.g. session.request(),
+    FileManager.default.fileExists()). The analyzer must extract the METHOD
+    name, not the receiver name, from navigation_expression call targets.
+    """
+
+    def test_method_call_resolves_to_method_name(self, tmp_path: Path) -> None:
+        """session.request() should produce a call edge to 'request', not 'session'."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Service.swift").write_text(
+            "class Service {\n"
+            "    func request(_ url: String) -> String { return url }\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func fetch() {\n"
+            "    let svc = Service()\n"
+            "    svc.request(\"http://example.com\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should find a call edge from fetch -> request
+        request_edges = [
+            e for e in call_edges
+            if "request" in e.dst and "fetch" in e.src
+        ]
+        assert len(request_edges) >= 1, (
+            f"Expected call edge to 'request' method, got call edges: "
+            f"{[(e.src.split(':')[-2], e.dst.split(':')[-2]) for e in call_edges]}"
+        )
+
+    def test_chained_navigation_call(self, tmp_path: Path) -> None:
+        """URLSession.shared.dataTask() should extract 'dataTask' as callee."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Net.swift").write_text(
+            "func fetchData() {\n"
+            "    URLSession.shared.dataTask(with: URL(string: \"x\")!)\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have an unresolved edge to 'dataTask'
+        dt_edges = [e for e in call_edges if "dataTask" in e.dst]
+        assert len(dt_edges) >= 1, (
+            f"Expected call to 'dataTask', got: "
+            f"{[e.dst.split(':')[-2] for e in call_edges]}"
+        )
+
+    def test_same_file_method_via_navigation(self, tmp_path: Path) -> None:
+        """self.helper() or obj.helper() should resolve to helper in same file."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Util.swift").write_text(
+            "class Util {\n"
+            "    func helper() -> Int { return 42 }\n"
+            "    func run() {\n"
+            "        self.helper()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_calls = [
+            e for e in call_edges
+            if "helper" in e.dst and "run" in e.src
+        ]
+        assert len(helper_calls) >= 1, (
+            f"Expected call from run -> helper, got: "
+            f"{[(e.src.split(':')[-2], e.dst.split(':')[-2]) for e in call_edges]}"
+        )

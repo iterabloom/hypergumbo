@@ -397,6 +397,66 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_call_target(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str, str | None]:
+    """Extract the method name and receiver hint from a call_expression.
+
+    For bare function calls like ``print("x")``, returns ``("print", None)``.
+    For navigation calls like ``session.request(url)``, returns
+    ``("request", "session")``.  For chained calls like
+    ``URLSession.shared.dataTask(with: url)``, returns
+    ``("dataTask", "URLSession")``.
+
+    Returns:
+        (callee_name, receiver_hint) — callee_name is empty string if
+        no identifier could be extracted.
+    """
+    # Case 1: Direct call — call_expression has a simple_identifier child
+    id_node = find_child_by_type(call_node, "simple_identifier")
+    if id_node:
+        return (node_text(id_node, source), None)
+
+    # Case 2: Navigation call — call_expression has a navigation_expression child
+    nav_node = find_child_by_type(call_node, "navigation_expression")
+    if not nav_node:  # pragma: no cover - well-formed Swift always has one of the above
+        return ("", None)
+
+    # Walk the navigation chain to find the last navigation_suffix's identifier
+    # (that's the method being called) and the first identifier (the receiver).
+    method_name = ""
+    receiver_parts: list[str] = []
+
+    def _walk_nav(n: "tree_sitter.Node") -> None:
+        nonlocal method_name
+        for child in n.children:
+            if child.type == "simple_identifier":
+                # Collect as receiver part; the last one seen at the
+                # top-level navigation_suffix is the method name.
+                receiver_parts.append(node_text(child, source))
+            elif child.type == "navigation_suffix":
+                suffix_id = find_child_by_type(child, "simple_identifier")
+                if suffix_id:
+                    method_name = node_text(suffix_id, source)
+            elif child.type == "navigation_expression":
+                _walk_nav(child)
+
+    _walk_nav(nav_node)
+
+    if method_name:
+        # receiver_hint is the first identifier in the chain
+        # (e.g. "URLSession" from URLSession.shared.dataTask)
+        receiver_hint = receiver_parts[0] if receiver_parts else None
+        return (method_name, receiver_hint)
+
+    # Fallback: if no navigation_suffix found, use the first simple_identifier
+    if receiver_parts:  # pragma: no cover - navigation_expression always has suffix
+        return (receiver_parts[0], None)
+
+    return ("", None)  # pragma: no cover
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -431,15 +491,10 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
-                callee_node = find_child_by_type(node, "simple_identifier")
-                if not callee_node:
-                    nav_node = find_child_by_type(node, "navigation_expression")  # pragma: no cover - grammar fallback
-                    if nav_node:  # pragma: no cover - grammar fallback
-                        callee_node = find_child_by_type(nav_node, "simple_identifier")
-
-                if callee_node:
-                    callee_name = node_text(callee_node, source)
-
+                callee_name, receiver_hint = _extract_call_target(
+                    node, source,
+                )
+                if callee_name:
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
@@ -453,7 +508,10 @@ def _extract_edges_from_file(
                             origin_run_id=run_id,
                         ))
                     else:
-                        path_hint = import_aliases.get(callee_name)
+                        path_hint = (
+                            import_aliases.get(callee_name)
+                            or receiver_hint
+                        )
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
