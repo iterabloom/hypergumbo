@@ -1,0 +1,19 @@
+- op: create  # a1c4
+  at: '2026-03-24T04:50:42Z'  # a1c4
+  by: agent  # a1c4
+  actor: jgstern_agent  # a1c4
+  clock: 1  # a1c4
+  nonce: a1c4  # a1c4
+  data:  # a1c4
+    kind: work_item  # a1c4
+    title: "Scala: detect IOApp.run, Play controllers as entrypoints"  # a1c4
+    status: todo_soft  # a1c4
+    priority: 3  # a1c4
+    parent:  # a1c4
+    tags: []  # a1c4
+    before: []  # a1c4
+    duplicate_of: []  # a1c4
+    not_duplicate_of: []  # a1c4
+    pr_ref:  # a1c4
+    description: "Scala entrypoint detection misses IOApp.run (cats-effect apps), IOApp.Simple.run, EmberServerBuilder.build/.serve patterns, and Play controller classes. Currently only main() is detected, which is insufficient for FP apps (cats, http4s) and Play Framework apps (lila). Bakeoff: scala-20260323 baseline."  # a1c4
+    fields: {}  # a1c4
