@@ -56,9 +56,10 @@ def _build_symbol_maps(
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []
             class_by_name[sym.name].append(sym)
-        elif sym.kind in ("interface", "trait"):
-            # Traits (Scala, Groovy, Rust) are semantically like interfaces
-            # with default implementations — index alongside interfaces.
+        elif sym.kind in ("interface", "trait", "protocol"):
+            # Traits (Scala, Groovy, Rust) and protocols (Objective-C) are
+            # semantically like interfaces — index alongside interfaces so
+            # the linker produces `implements` edges for conformance.
             if sym.name not in interface_by_name:
                 interface_by_name[sym.name] = []
             interface_by_name[sym.name].append(sym)

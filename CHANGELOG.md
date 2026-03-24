@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Objective-C selector extraction**: Keyword selectors now include colons (`removeItemAtPath:error:` instead of `removeItemAtPatherror`). This fixes cross-file method resolution and enables I/O boundary matching for ObjC code.
 - **Symbol ID callee extraction**: `_extract_callee_name` now correctly handles names containing colons (ObjC selectors) by parsing from both ends of the ID.
+- **Inheritance linker protocol support**: ObjC `protocol` symbols are now indexed alongside `interface` and `trait` symbols, enabling `implements` edges for protocol conformances.
 
 ### Added
 
