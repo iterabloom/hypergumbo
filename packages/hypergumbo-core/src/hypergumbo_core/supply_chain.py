@@ -108,6 +108,7 @@ DERIVED_PATH_PATTERNS = [
     r"^\.nuxt/",
     r"^\.output/",
     r"^\.svelte-kit/",
+    r"^\.build/",         # Swift Package Manager build artifacts
     r"^__pycache__/",
     r"/__pycache__/",
 ]

@@ -86,6 +86,9 @@ class TestDerivedArtifactDetection:
         # Python protobuf generated code
         "src/proto/service_pb2.py",
         "proto/message_pb2_grpc.py",
+        # Swift Package Manager build artifacts
+        ".build/release/MyApp",
+        ".build/debug/MyApp.build/module.o",
     ])
     def test_derived_path_patterns(self, path, tmp_path):
         """Files matching derived patterns are tier 4."""

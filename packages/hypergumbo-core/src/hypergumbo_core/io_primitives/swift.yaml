@@ -1,0 +1,206 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Swift
+#
+# Maps Foundation, UIKit, SwiftNIO, and common framework APIs to I/O boundary
+# types.  Uses Swift method names (not ObjC selectors).
+#
+# Note: Swift's tree-sitter analyzer extracts bare identifiers from call
+# expressions, so module context is often "external".  Only include methods
+# distinctive enough to avoid false positives without module disambiguation.
+# Overly generic names (write, read, run, data) go in ambiguous_names.
+language: swift
+
+fs_read:
+  - module: FileManager
+    methods:
+      - fileExists
+      - contentsOfDirectory
+      - subpathsOfDirectory
+      - attributesOfItem
+      - attributesOfFileSystem
+      - contentsAtPath
+      - isReadableFile
+      - isWritableFile
+      - isExecutableFile
+      - isDeletableFile
+      - contentsEqual
+      - destinationOfSymbolicLink
+      - enumerator
+    notes: "FileManager methods — callee names are distinctive enough for unqualified matching"
+  - module: FileHandle
+    methods:
+      - fileHandleForReading
+      - readDataToEndOfFile
+      - readData
+      - availableData
+  - module: InputStream
+    methods:
+      - inputStreamWithFileAtPath
+  - module: Bundle
+    methods:
+      - pathForResource
+      - urlForResource
+
+fs_write:
+  - module: FileManager
+    methods:
+      - createFile
+      - createDirectory
+      - removeItem
+      - moveItem
+      - copyItem
+      - createSymbolicLink
+      - setAttributes
+      - replaceItem
+    notes: "FileManager write/mutate methods"
+  - module: FileHandle
+    methods:
+      - fileHandleForWriting
+      - fileHandleForUpdating
+      - writeData
+      - truncateFile
+      - synchronizeFile
+      - seekToEnd
+
+net_send:
+  - module: URLSession
+    methods:
+      - dataTask
+      - uploadTask
+    notes: "URLSession request methods — dual-classified with net_recv"
+  - module: URLRequest
+    methods:
+      - URLRequest
+    notes: "URLRequest constructor implies HTTP request setup"
+  - module: NWConnection
+    methods:
+      - NWConnection
+    notes: "Network.framework connection"
+
+net_recv:
+  - module: URLSession
+    methods:
+      - downloadTask
+    notes: "URLSession download is primarily receive"
+  - module: NWListener
+    methods:
+      - NWListener
+    notes: "Network.framework listener"
+  - module: ServerBootstrap
+    methods:
+      - ServerBootstrap
+    notes: "SwiftNIO server bootstrap"
+  - module: ClientBootstrap
+    methods:
+      - ClientBootstrap
+    notes: "SwiftNIO client bootstrap"
+
+db_read:
+  - module: NSManagedObjectContext
+    methods:
+      - executeFetchRequest
+      - countForFetchRequest
+      - existingObject
+    notes: "Core Data fetch operations"
+  - module: NSFetchRequest
+    methods:
+      - NSFetchRequest
+    notes: "Core Data fetch request constructor"
+  - module: ModelContext
+    methods:
+      - ModelContext
+    notes: "SwiftData model context (iOS 17+)"
+
+db_write:
+  - module: NSManagedObjectContext
+    methods:
+      - deleteObject
+      - insertNewObject
+    notes: "Core Data write operations (save is ambiguous)"
+
+subprocess:
+  - module: Process
+    methods:
+      - launchPath
+      - waitUntilExit
+      - terminate
+      - interrupt
+    notes: "Foundation.Process (macOS-only subprocess execution)"
+
+env_read:
+  - module: ProcessInfo
+    methods:
+      - processInfo
+    notes: "ProcessInfo.processInfo access (environment, processName, etc.)"
+  - module: CommandLine
+    methods:
+      - CommandLine
+    notes: "CommandLine.arguments access"
+  - module: Bundle
+    methods:
+      - bundleIdentifier
+      - infoDictionary
+    notes: "App bundle metadata"
+
+logging:
+  - module: Swift
+    functions:
+      - print
+      - debugPrint
+      - dump
+    notes: "Swift standard output functions"
+  - module: os
+    functions:
+      - NSLog
+    notes: "Foundation logging function"
+  - module: Logger
+    methods:
+      - Logger
+    notes: "os.Logger constructor (Apple unified logging)"
+
+ipc_send:
+  - module: NotificationCenter
+    methods:
+      - post
+    notes: "In-process pub/sub notification posting"
+  - module: DistributedNotificationCenter
+    methods:
+      - postNotificationName
+    notes: "Cross-process notification (macOS only)"
+
+ipc_recv:
+  - module: NotificationCenter
+    methods:
+      - addObserver
+      - removeObserver
+    notes: "Notification observation"
+
+process_send:
+  - module: Swift
+    functions:
+      - fatalError
+      - preconditionFailure
+      - assertionFailure
+    notes: "Swift process termination/assertion functions"
+
+# Names too generic to match without module context — these appear in many
+# non-IO contexts (e.g., Data() for empty data, String interpolation,
+# save() on custom types, write() on custom protocols).
+ambiguous_names:
+  - write
+  - read
+  - run
+  - data
+  - save
+  - send
+  - receive
+  - open
+  - close
+  - start
+  - stop
+  - connect
+  - listen
+  - accept
+  - Data
+  - String
+  - URL

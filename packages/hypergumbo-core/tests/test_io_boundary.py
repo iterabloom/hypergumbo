@@ -1354,3 +1354,146 @@ class TestCatalogMerge:
         merged = child.merge(parent)
         assert "bind" in merged.ambiguous_names
         assert "exec" in merged.ambiguous_names
+
+
+class TestSwiftCatalog:
+    """Tests for the Swift I/O primitive catalog."""
+
+    def test_swift_catalog_loads(self) -> None:
+        """Swift catalog should load without errors."""
+        catalog = load_catalog("swift")
+        assert catalog.language == "swift"
+        assert len(catalog.primitives) > 0
+
+    def test_swift_has_fs_read(self) -> None:
+        """Swift catalog covers FileManager read operations."""
+        catalog = load_catalog("swift")
+        fs_reads = [p for p in catalog.primitives if p.boundary == "fs_read"]
+        names = {p.name for p in fs_reads}
+        assert "fileExists" in names
+        assert "contentsOfDirectory" in names
+
+    def test_swift_has_fs_write(self) -> None:
+        """Swift catalog covers FileManager write operations."""
+        catalog = load_catalog("swift")
+        fs_writes = [p for p in catalog.primitives if p.boundary == "fs_write"]
+        names = {p.name for p in fs_writes}
+        assert "createFile" in names
+        assert "removeItem" in names
+        assert "moveItem" in names
+
+    def test_swift_has_net_send(self) -> None:
+        """Swift catalog covers URLSession network send."""
+        catalog = load_catalog("swift")
+        net_sends = [p for p in catalog.primitives if p.boundary == "net_send"]
+        names = {p.name for p in net_sends}
+        assert "dataTask" in names
+        assert "uploadTask" in names
+
+    def test_swift_has_net_recv(self) -> None:
+        """Swift catalog covers network receive operations."""
+        catalog = load_catalog("swift")
+        net_recvs = [p for p in catalog.primitives if p.boundary == "net_recv"]
+        names = {p.name for p in net_recvs}
+        assert "downloadTask" in names
+
+    def test_swift_has_subprocess(self) -> None:
+        """Swift catalog covers Process operations."""
+        catalog = load_catalog("swift")
+        subprocs = [p for p in catalog.primitives if p.boundary == "subprocess"]
+        names = {p.name for p in subprocs}
+        assert "waitUntilExit" in names
+
+    def test_swift_has_logging(self) -> None:
+        """Swift catalog covers print and NSLog."""
+        catalog = load_catalog("swift")
+        logs = [p for p in catalog.primitives if p.boundary == "logging"]
+        names = {p.name for p in logs}
+        assert "print" in names
+        assert "NSLog" in names
+
+    def test_swift_has_env_read(self) -> None:
+        """Swift catalog covers ProcessInfo."""
+        catalog = load_catalog("swift")
+        env_reads = [p for p in catalog.primitives if p.boundary == "env_read"]
+        names = {p.name for p in env_reads}
+        assert "processInfo" in names
+
+    def test_swift_all_boundary_types(self) -> None:
+        """Swift catalog covers the major boundary types."""
+        catalog = load_catalog("swift")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv",
+                    "subprocess", "env_read", "logging"}
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_swift_ambiguous_names_block_unqualified_match(self) -> None:
+        """Generic names like 'write' should not match without module context."""
+        catalog = load_catalog("swift")
+        # 'write' is in ambiguous_names — should not match for unresolved externals
+        hit = catalog.lookup_with_module("write", module_hint="external")
+        assert hit is None, "Generic 'write' should not match for external module hint"
+
+    def test_swift_ambiguous_names_include_common_generics(self) -> None:
+        """Verify that very common generic names are marked as ambiguous."""
+        catalog = load_catalog("swift")
+        for name in ["write", "read", "run", "Data", "String", "URL", "send"]:
+            assert name in catalog.ambiguous_names, (
+                f"'{name}' should be in ambiguous_names to prevent false positives"
+            )
+
+    def test_swift_distinctive_names_match_unresolved(self) -> None:
+        """Distinctive I/O names should match even for unresolved externals."""
+        catalog = load_catalog("swift")
+        # fileExists is specific to FileManager — should match
+        hit = catalog.lookup_with_module("fileExists", module_hint="external")
+        assert hit is not None
+        assert hit.boundary == "fs_read"
+
+    def test_swift_print_matches_as_logging(self) -> None:
+        """Swift print() should be tagged as logging."""
+        catalog = load_catalog("swift")
+        hit = catalog.lookup_with_module("print", module_hint="external")
+        assert hit is not None
+        assert hit.boundary == "logging"
+
+    def test_swift_io_tagging_on_edges(self) -> None:
+        """End-to-end: tag_io_boundaries tags Swift unresolved call edges."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            MockEdge(
+                src="swift:Sources/App/Network.swift:10:fetch:method",
+                dst="swift:external:0-0:dataTask:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Util.swift:5:log:method",
+                dst="swift:external:0-0:print:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/IO.swift:20:check:method",
+                dst="swift:external:0-0:fileExists:unresolved",
+            ),
+            # Generic 'write' should NOT be tagged (ambiguous)
+            MockEdge(
+                src="swift:Sources/App/Writer.swift:15:save:method",
+                dst="swift:external:0-0:write:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 3, f"Expected 3 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_send"
+        assert edges[1].meta["io_boundary"] == "logging"
+        assert edges[2].meta["io_boundary"] == "fs_read"
+        assert edges[3].meta is None  # 'write' should not be tagged
