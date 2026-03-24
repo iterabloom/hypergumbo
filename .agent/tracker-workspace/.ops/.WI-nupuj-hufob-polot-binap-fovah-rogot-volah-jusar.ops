@@ -1,0 +1,26 @@
+- op: create  # acb1
+  at: '2026-03-24T00:31:12Z'  # acb1
+  by: agent  # acb1
+  actor: jgstern_agent  # acb1
+  clock: 1  # acb1
+  nonce: acb1  # acb1
+  data:  # acb1
+    kind: work_item  # acb1
+    title: "Haskell: detect main :: IO () as entrypoint"  # acb1
+    status: todo_soft  # acb1
+    priority: 2  # acb1
+    parent:  # acb1
+    tags: []  # acb1
+    before: []  # acb1
+    duplicate_of: []  # acb1
+    not_duplicate_of: []  # acb1
+    pr_ref:  # acb1
+    description: ""  # acb1
+    fields: {}  # acb1
+- op: discuss  # c63b
+  at: '2026-03-24T00:31:17Z'  # c63b
+  by: agent  # c63b
+  actor: jgstern_agent  # c63b
+  clock: 2  # c63b
+  nonce: c63b  # c63b
+  message: "Bakeoff finding from Haskell DEEP (deep-20260323-195835). All 10 repos selected Python scripts or test functions as entrypoints instead of actual Haskell 'main :: IO ()' in Main.hs. Need Haskell-specific entrypoint pattern."  # c63b

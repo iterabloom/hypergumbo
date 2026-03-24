@@ -1,0 +1,19 @@
+- op: create  # ceea
+  at: '2026-03-24T00:31:24Z'  # ceea
+  by: agent  # ceea
+  actor: jgstern_agent  # ceea
+  clock: 1  # ceea
+  nonce: ceea  # ceea
+  data:  # ceea
+    kind: work_item  # ceea
+    title: "Haskell: add typeclass instance 'implements' edges"  # ceea
+    status: todo_soft  # ceea
+    priority: 2  # ceea
+    parent:  # ceea
+    tags: []  # ceea
+    before: []  # ceea
+    duplicate_of: []  # ceea
+    not_duplicate_of: []  # ceea
+    pr_ref:  # ceea
+    description: ""  # ceea
+    fields: {}  # ceea
