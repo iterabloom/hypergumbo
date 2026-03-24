@@ -193,9 +193,14 @@ def _extract_symbols_from_file(
         ))
 
     # Second pass: extract symbols
+    # Only extract module-level definitions — where-clause local bindings
+    # (parent chain includes local_binds) produce orphan symbols since
+    # they have no external callers.
     for node in iter_tree(tree.root_node):
         if node.type == "function":
-            # Function with pattern matching
+            # Function with pattern matching — only module-level
+            if node.parent and node.parent.type != "declarations":
+                continue
             name = _get_function_name(node, source)
             if name:
                 # Look up type signature
@@ -203,7 +208,9 @@ def _extract_symbols_from_file(
                 add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "bind":
-            # Simple binding (like main = ...)
+            # Simple binding (like main = ...) — only module-level
+            if node.parent and node.parent.type != "declarations":
+                continue
             name = _get_function_name(node, source)
             if name:
                 sig = type_signatures.get(name)

@@ -258,6 +258,61 @@ main = print (helper 5)
         assert len(helper_calls) >= 1
 
 
+class TestHaskellWhereClauseScoping:
+    """Tests that where-clause bindings are NOT extracted as top-level symbols."""
+
+    def test_where_clause_bindings_excluded(self, tmp_path: Path) -> None:
+        """Local bindings in where clauses should not become top-level symbols."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+topLevel :: Int -> Int
+topLevel x = helper x + 1
+  where
+    helper y = y * 2
+    localBind = 42
+
+main :: IO ()
+main = print (topLevel 5)
+""")
+        result = analyze_haskell(tmp_path)
+        non_file_symbols = [s for s in result.symbols if s.kind != "file"]
+        names = {s.name for s in non_file_symbols}
+
+        # Module-level functions should be extracted
+        assert "topLevel" in names
+        assert "main" in names
+
+        # Where-clause local bindings should NOT be extracted
+        assert "helper" not in names, (
+            f"Where-clause binding 'helper' should not be a top-level symbol, "
+            f"but found: {names}"
+        )
+        assert "localBind" not in names, (
+            f"Where-clause binding 'localBind' should not be a top-level symbol, "
+            f"but found: {names}"
+        )
+
+    def test_let_in_do_bindings_excluded(self, tmp_path: Path) -> None:
+        """Local let bindings in do-notation should not become top-level symbols."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    let result = 42
+    print result
+""")
+        result = analyze_haskell(tmp_path)
+        non_file_symbols = [s for s in result.symbols if s.kind != "file"]
+        names = {s.name for s in non_file_symbols}
+
+        assert "main" in names
+        assert "result" not in names, (
+            f"Do-notation let binding 'result' should not be a top-level symbol"
+        )
+
+
 class TestHaskellEdgeCases:
     """Edge case tests for Haskell analyzer."""
 
