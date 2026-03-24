@@ -1236,6 +1236,36 @@ class TestAmbiguousNameFiltering:
         count = tag_io_boundaries([edge], {"scala": catalog})
         assert count == 1, "Ambiguous name 'bind' should match when module context confirms ServerSocket"
 
+    def test_scala_mkstring_not_matched_as_source(self) -> None:
+        """Scala's collection mkString should NOT match scala.io.Source.mkString."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Main.scala:10:show:method",
+            dst="scala:external:0-0:mkString:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'mkString' should not match Source.mkString for unresolved externals"
+
+    def test_scala_getOrElse_not_matched_as_sysprops(self) -> None:
+        """Scala's Option.getOrElse should NOT match SystemProperties.getOrElse."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Config.scala:10:get:method",
+            dst="scala:external:0-0:getOrElse:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'getOrElse' should not match SystemProperties for unresolved externals"
+
+    def test_scala_foreach_not_matched_as_sql(self) -> None:
+        """Scala's collection foreach should NOT match scalikejdbc.SQL.foreach."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Handler.scala:10:process:method",
+            dst="scala:external:0-0:foreach:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'foreach' should not match SQL.foreach for unresolved externals"
+
     def test_go_external_still_works(self) -> None:
         """Go catalog without ambiguous_names list keeps current fallback behavior."""
         catalog = load_catalog("go")

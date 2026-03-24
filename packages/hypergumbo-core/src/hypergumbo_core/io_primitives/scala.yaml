@@ -16,6 +16,7 @@ language: scala
 # When module_hint is "external" (unresolved), these names are skipped for
 # short-name matching. Qualified-name and module-filtered matching still work.
 ambiguous_names:
+  # --- Java I/O primitives with generic Scala names ---
   - bind          # monadic bind vs ServerSocket.bind
   - start         # Eval.start, Future vs ProcessBuilder.start
   - run           # IO.run, ZIO.run vs Runtime.run
@@ -30,8 +31,8 @@ ambiguous_names:
   - enqueue       # Queue.enqueue vs OkHttp.enqueue
   - accept        # type accept vs ServerSocket.accept
   - execute       # Executor.execute vs Statement.execute
-  - get           # Map.get, Option.get vs HTTP GET
-  - set           # Map.set vs HTTP SET
+  - get           # Map.get, Option.get (most common Scala method)
+  - set           # Map.set
   - find          # collection find vs Files.find
   - delete        # collection delete vs File.delete
   - list          # Scala List vs File.list
@@ -40,14 +41,56 @@ ambiguous_names:
   - nextLine      # vs Scanner.nextLine
   - exists        # collection exists vs File.exists
   - command       # DSL command vs ProcessBuilder.command
-  - apply         # Scala apply method
+  - apply         # Scala apply method (universal)
   - call          # function call
   - walk          # vs Files.walk
   - append        # collection append vs FileWriter.append
   - newLine       # vs BufferedWriter.newLine
-  - read          # vs various read methods
   - receive       # Actor receive pattern vs DatagramSocket.receive
   - fireChannelRead  # Netty context but ambiguous in Scala actor code
+  - size          # collection size vs Files.size
+  # --- Scala collection/FP methods that collide with Scala catalog ---
+  - mkString      # every Scala collection has mkString
+  - getOrElse     # Option.getOrElse, Map.getOrElse (ubiquitous)
+  - orElse        # Option.orElse, Try.orElse
+  - foreach       # collection foreach (ubiquitous)
+  - map           # Functor.map, collection map (ubiquitous)
+  - flatMap       # Monad.flatMap (ubiquitous)
+  - filter        # collection filter
+  - fold          # Foldable.fold, collection fold
+  - to            # collection conversion (toList, toSeq, etc.)
+  - from          # factory method
+  - copy          # case class copy, collection copy
+  - update        # Map.update, Array.update
+  - single        # collection.single
+  - first         # collection.first
+  - head          # collection.head
+  - option        # as[Option], common in parsers
+  - some          # Option.some
+  - successful    # Future.successful, IO.pure
+  - failed        # Future.failed, IO.failed, Try.failed
+  - make          # generic factory method
+  - use           # Resource.use but also generic
+  - eval          # Eval class, REPL eval, generic evaluation
+  - trans         # natural transformation in FP
+  - sequence      # Applicative.sequence, collection
+  - stream        # Stream type, collection streaming
+  - props         # actor Props, config props
+  - debug         # debugging method, log level
+  - info          # log level but also generic info
+  - warn          # log level but also generic warn
+  - error         # log level but also generic error
+  - trace         # log level but also generic trace
+  - build         # Builder.build (ubiquitous)
+  - default       # default value/method
+  - resource      # Resource type, generic resource
+  - status        # HTTP status, generic status
+  - url           # URL string, generic url variable
+  - on            # event handler, query DSL
+  - as            # type cast (asInstanceOf, etc.)
+  - toList        # collection conversion
+  - toSeq         # collection conversion
+  - headOption    # collection method
 
 # ---------------------------------------------------------------------------
 # Scala stdlib I/O
