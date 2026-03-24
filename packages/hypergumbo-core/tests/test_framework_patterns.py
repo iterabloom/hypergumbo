@@ -8782,6 +8782,67 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
         assert concepts[0]["framework"] == "main-functions"
 
+    def test_enrich_symbols_with_haskell_main_function(self) -> None:
+        """enrich_symbols enriches Haskell main function with main_function concept."""
+        symbol = Symbol(
+            id="haskell:app/Main.hs:5-8:main:function",
+            name="main",
+            kind="function",
+            language="haskell",
+            path="app/Main.hs",
+            span=Span(5, 8, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_erlang_main_function(self) -> None:
+        """enrich_symbols enriches Erlang main/start function with main_function concept."""
+        symbol = Symbol(
+            id="erlang:src/my_app.erl:10-15:main:function",
+            name="main",
+            kind="function",
+            language="erlang",
+            path="src/my_app.erl",
+            span=Span(10, 15, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+
+    def test_enrich_symbols_with_erlang_start_function(self) -> None:
+        """enrich_symbols enriches Erlang start function with main_function concept."""
+        symbol = Symbol(
+            id="erlang:src/my_app.erl:1-5:start:function",
+            name="start",
+            kind="function",
+            language="erlang",
+            path="src/my_app.erl",
+            span=Span(1, 5, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
         pattern = Pattern(
