@@ -46,6 +46,9 @@ ANALYZER_MODULES = [
     # Database and query
     "hypergumbo_lang_mainstream.sql",
 
+    # Framework-specific config
+    "hypergumbo_lang_mainstream.play_routes",
+
     # Config files
     "hypergumbo_lang_mainstream.json_config",
     "hypergumbo_lang_mainstream.yaml_ansible",
