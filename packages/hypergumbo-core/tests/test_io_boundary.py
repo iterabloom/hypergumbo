@@ -1137,6 +1137,25 @@ class TestScalaCatalog:
             "Scala catalog should include streaming I/O entries"
         )
 
+    def test_fs2_file_ops_are_fs_not_net(self) -> None:
+        """fs2.io.file.Files operations should be fs_read/fs_write, NOT net_recv."""
+        catalog = load_catalog("scala")
+        readAll = catalog.lookup("fs2.io.file.Files.readAll")
+        assert readAll is not None
+        assert readAll.boundary == "fs_read", (
+            f"fs2.io.file.Files.readAll should be fs_read, got {readAll.boundary}"
+        )
+        writeAll = catalog.lookup("fs2.io.file.Files.writeAll")
+        assert writeAll is not None
+        assert writeAll.boundary == "fs_write", (
+            f"fs2.io.file.Files.writeAll should be fs_write, got {writeAll.boundary}"
+        )
+        createDir = catalog.lookup("fs2.io.file.Files.createDirectory")
+        assert createDir is not None
+        assert createDir.boundary == "fs_write", (
+            f"fs2.io.file.Files.createDirectory should be fs_write, got {createDir.boundary}"
+        )
+
     def test_scala_has_db_entries(self) -> None:
         """Scala catalog covers database access libraries."""
         catalog = load_catalog("scala")
