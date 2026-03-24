@@ -39,3 +39,18 @@
   clock: 4  # 4fc0
   nonce: 4fc0  # 4fc0
   message: "Mitigated by PR #2503 (where-clause exclusion). Remaining risk: top-level single-letter functions. Lower priority."  # 4fc0
+- op: update  # f189
+  at: '2026-03-24T06:55:22Z'  # f189
+  by: agent  # f189
+  actor: jgstern_agent  # f189
+  clock: 5  # f189
+  nonce: f189  # f189
+  set:  # f189
+    priority: 4  # f189
+- op: discuss  # 28f2
+  at: '2026-03-24T06:55:22Z'  # 28f2
+  by: agent  # 28f2
+  actor: jgstern_agent  # 28f2
+  clock: 6  # 28f2
+  nonce: 28f2  # 28f2
+  message: "Deprioritized: not Scala-related, from prior bakeoffs."  # 28f2

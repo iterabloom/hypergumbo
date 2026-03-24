@@ -32,3 +32,18 @@
   clock: 3  # a102
   nonce: a102  # a102
   message: "Deprioritized to P4: this is a tree-sitter-objc upstream grammar limitation. Complex ObjC files (blocks, GCD, NS_ASSUME_NONNULL, multi-@implementation) exceed the grammar's capabilities. ~90% of files parse correctly. Workaround: could contribute grammar fixes to tree-sitter-objc upstream, but that's outside hypergumbo scope."  # a102
+- op: update  # b302
+  at: '2026-03-24T06:55:22Z'  # b302
+  by: agent  # b302
+  actor: jgstern_agent  # b302
+  clock: 4  # b302
+  nonce: b302  # b302
+  set:  # b302
+    priority: 4  # b302
+- op: discuss  # f30d
+  at: '2026-03-24T06:55:22Z'  # f30d
+  by: agent  # f30d
+  actor: jgstern_agent  # f30d
+  clock: 5  # f30d
+  nonce: f30d  # f30d
+  message: "Deprioritized: not Scala-related, from prior bakeoffs."  # f30d
