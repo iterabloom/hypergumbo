@@ -640,6 +640,56 @@ class TestPattern:
         assert result["concept"] == "init_method"
         assert result["matched_method_name"] == "__init__"
 
+    def test_cocoa_uiview_lifecycle_hook(self) -> None:
+        """Cocoa pattern matches UIView lifecycle methods."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^(UIView|UIControl|UIButton|UILabel|UIImageView)$",
+            method_name=r"^layoutSubviews$",
+        )
+
+        symbol = Symbol(
+            id="objc:MBProgressHUD.m:50-60:MBProgressHUD.layoutSubviews:method",
+            name="MBProgressHUD.layoutSubviews",
+            kind="method",
+            language="objective-c",
+            path="MBProgressHUD.m",
+            span=Span(50, 60, 0, 0),
+            meta={
+                "parent_base_classes": ["UIView"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "lifecycle_hook"
+        assert result["matched_parent_base_class"] == "UIView"
+        assert result["matched_method_name"] == "layoutSubviews"
+
+    def test_cocoa_uiviewcontroller_viewDidLoad(self) -> None:
+        """Cocoa pattern matches UIViewController viewDidLoad."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^(UIViewController|UITableViewController)$",
+            method_name=r"^viewDidLoad$",
+        )
+
+        symbol = Symbol(
+            id="objc:MyVC.m:10-20:MyVC.viewDidLoad:method",
+            name="MyVC.viewDidLoad",
+            kind="method",
+            language="objective-c",
+            path="MyVC.m",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "parent_base_classes": ["UIViewController"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "lifecycle_hook"
+
     def test_pattern_parent_base_class_only(self) -> None:
         """Pattern matches by parent_base_class without method_name constraint."""
         pattern = Pattern(

@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Cocoa/UIKit framework patterns (ADR-0003 v1.1.x)
+#
+# Matches UIKit and AppKit lifecycle methods as entrypoints.
+# Uses parent_base_class + method_name pattern matching to identify
+# lifecycle hooks in UIViewController, UIView, UIApplicationDelegate, etc.
+#
+# Note: ObjC selectors may include colons for keyword methods, but the
+# lifecycle hooks here are mostly parameterless (no colons in name).
+
+id: cocoa
+language: [objective-c]
+
+patterns:
+  # UIViewController lifecycle hooks
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIViewController|UITableViewController|UICollectionViewController|UINavigationController|UITabBarController|UIPageViewController|UISplitViewController)$"
+    method_name: "^viewDidLoad$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIViewController|UITableViewController|UICollectionViewController|UINavigationController|UITabBarController|UIPageViewController|UISplitViewController)$"
+    method_name: "^viewWillAppear:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIViewController|UITableViewController|UICollectionViewController|UINavigationController|UITabBarController|UIPageViewController|UISplitViewController)$"
+    method_name: "^viewDidAppear:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIViewController|UITableViewController|UICollectionViewController|UINavigationController|UITabBarController|UIPageViewController|UISplitViewController)$"
+    method_name: "^viewWillDisappear:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIViewController|UITableViewController|UICollectionViewController|UINavigationController|UITabBarController|UIPageViewController|UISplitViewController)$"
+    method_name: "^viewDidDisappear:$"
+
+  # UIView lifecycle hooks
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIView|UIControl|UIButton|UILabel|UIImageView|UIScrollView|UITableView|UICollectionView|UITextField|UITextView|UIWindow)$"
+    method_name: "^layoutSubviews$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIView|UIControl|UIButton|UILabel|UIImageView|UIScrollView|UITableView|UICollectionView|UITextField|UITextView|UIWindow)$"
+    method_name: "^drawRect:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIView|UIControl|UIButton|UILabel|UIImageView|UIScrollView|UITableView|UICollectionView|UITextField|UITextView|UIWindow)$"
+    method_name: "^didMoveToSuperview$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIView|UIControl|UIButton|UILabel|UIImageView|UIScrollView|UITableView|UICollectionView|UITextField|UITextView|UIWindow)$"
+    method_name: "^didMoveToWindow$"
+
+  # UITableViewDataSource/Delegate
+  - concept: lifecycle_hook
+    parent_base_class: "^(UITableViewController|UIViewController|NSObject)$"
+    method_name: "^tableView:numberOfRowsInSection:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UITableViewController|UIViewController|NSObject)$"
+    method_name: "^tableView:cellForRowAtIndexPath:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UITableViewController|UIViewController|NSObject)$"
+    method_name: "^tableView:didSelectRowAtIndexPath:$"
+
+  # UICollectionViewDataSource/Delegate
+  - concept: lifecycle_hook
+    parent_base_class: "^(UICollectionViewController|UIViewController|NSObject)$"
+    method_name: "^collectionView:numberOfItemsInSection:$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(UICollectionViewController|UIViewController|NSObject)$"
+    method_name: "^collectionView:cellForItemAtIndexPath:$"
+
+  # NSCoding init (state restoration)
+  - concept: lifecycle_hook
+    parent_base_class: "^(UIView|UIViewController|NSObject)$"
+    method_name: "^initWithCoder:$"
+
+  # AppKit equivalents (macOS)
+  - concept: lifecycle_hook
+    parent_base_class: "^(NSViewController|NSWindowController)$"
+    method_name: "^viewDidLoad$"
+
+  - concept: lifecycle_hook
+    parent_base_class: "^(NSView|NSControl|NSButton|NSTextField|NSTextView|NSScrollView|NSTableView)$"
+    method_name: "^(layout|drawRect:|viewDidMoveToSuperview|viewDidMoveToWindow)$"
+
+linkers: []

@@ -18,6 +18,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **Objective-C I/O boundary catalog** (`objc.yaml`): 90+ Foundation/Cocoa I/O primitives covering filesystem (NSFileManager, NSFileHandle, NSData, NSString), networking (NSURLSession, NSURLConnection), database (Core Data), subprocess (NSTask), environment (NSProcessInfo, NSBundle), logging (NSLog, os_log), and IPC (NSNotificationCenter).
+- **Cocoa/UIKit framework patterns** (`cocoa.yaml`): Lifecycle hook detection for UIViewController (viewDidLoad, viewWillAppear), UIView (layoutSubviews, drawRect), UITableViewDataSource/Delegate, NSCoding, and AppKit equivalents.
+- **ObjC parent_base_classes propagation**: Methods inside ObjC classes now inherit `parent_base_classes` from their class's `@interface` declaration, enabling framework pattern matching for UIKit lifecycle hooks.
 - **`io-boundaries` enriched output**: Text output now shows per-primitive call counts, call-site locations (`<- func_name (file:line)`), entry-point reachability traces, and high-risk primitive highlighting (`[HIGH RISK]` / `*** HIGH RISK ***`) for destructive fs ops, subprocess/exec, and outbound network calls across 6 languages.
 - **`io-boundaries --by-file`**: Alternative view grouping IO boundary calls by source file instead of boundary type. Each line shows `[boundary_type] primitive <- caller`.
 - **`io-boundaries --boundary TYPE`**: Filter output to a single boundary type (e.g., `--boundary subprocess`). Works with both text and JSON output.

@@ -719,6 +719,59 @@ class TestObjCSelectorExtraction:
         )
 
 
+class TestObjCParentBaseClasses:
+    """Tests for parent_base_classes propagation to ObjC methods.
+
+    Methods inside a class that extends UIView should have
+    parent_base_classes=['UIView'] so UIKit framework patterns can match.
+    """
+
+    def test_method_gets_parent_base_classes_from_interface(self, tmp_path: Path) -> None:
+        """Methods inherit parent_base_classes from @interface base_classes."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "MyView.h").write_text("""
+@interface MyView : UIView
+- (void)layoutSubviews;
+@end
+""")
+        (tmp_path / "MyView.m").write_text("""
+@implementation MyView
+- (void)layoutSubviews {
+    [super layoutSubviews];
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "layoutSubviews" in s.name]
+        assert len(methods) >= 1
+        # At least one method should have parent_base_classes from the @interface
+        methods_with_bases = [m for m in methods if (m.meta or {}).get("parent_base_classes")]
+        assert len(methods_with_bases) >= 1, (
+            f"Expected at least 1 method with parent_base_classes, got 0. "
+            f"Method metas: {[(m.name, m.meta) for m in methods]}"
+        )
+        assert "UIView" in methods_with_bases[0].meta["parent_base_classes"]
+
+    def test_method_no_parent_base_classes_for_root_class(self, tmp_path: Path) -> None:
+        """Methods in classes without explicit superclass have no parent_base_classes."""
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "Root.m").write_text("""
+@implementation Root
+- (void)doStuff {
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method" and "doStuff" in s.name]
+        assert len(methods) >= 1
+        # No parent_base_classes since Root has no declared superclass
+        for m in methods:
+            parent_bases = (m.meta or {}).get("parent_base_classes", [])
+            assert parent_bases == [], f"Expected empty parent_base_classes, got {parent_bases}"
+
+
 class TestObjCStableShapeId:
     """Tests for stable_id and shape_id in Objective-C (ADR-0014 §1-2)."""
 

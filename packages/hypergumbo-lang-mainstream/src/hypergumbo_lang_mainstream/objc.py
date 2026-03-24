@@ -625,6 +625,24 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
             for selector, sym in analysis.methods_by_name.items():
                 global_methods[selector] = sym
 
+        # Pass 1.5: Propagate parent_base_classes to methods
+        # Class @interface (in .h) declares base_classes; methods in
+        # @implementation (in .m) need those as parent_base_classes for
+        # framework pattern matching (e.g., UIKit lifecycle hooks).
+        class_bases: dict[str, list[str]] = {}
+        for sym in all_symbols:
+            if sym.kind == "class" and sym.meta and sym.meta.get("base_classes"):
+                class_bases[sym.name] = sym.meta["base_classes"]
+
+        for sym in all_symbols:
+            if sym.kind == "method" and "." in sym.name:
+                class_name = sym.name.rsplit(".", 1)[0]
+                bases = class_bases.get(class_name)
+                if bases:
+                    if sym.meta is None:
+                        sym.meta = {}
+                    sym.meta["parent_base_classes"] = bases
+
         # Pass 2: Extract edges using global symbol knowledge
         method_resolver = NameResolver(global_methods)
         all_edges: list[Edge] = []
