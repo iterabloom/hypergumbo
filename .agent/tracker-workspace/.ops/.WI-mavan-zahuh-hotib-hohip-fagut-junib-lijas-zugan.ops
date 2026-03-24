@@ -1,0 +1,19 @@
+- op: create  # 62ec
+  at: '2026-03-24T19:35:59Z'  # 62ec
+  by: agent  # 62ec
+  actor: jgstern_agent  # 62ec
+  clock: 1  # 62ec
+  nonce: 62ec  # 62ec
+  data:  # 62ec
+    kind: work_item  # 62ec
+    title: "Swift: short-name collision in method resolution (append, filter, get)"  # 62ec
+    status: todo_soft  # 62ec
+    priority: 3  # 62ec
+    parent:  # 62ec
+    tags: []  # 62ec
+    before: []  # 62ec
+    duplicate_of: []  # 62ec
+    not_duplicate_of: []  # 62ec
+    pr_ref:  # 62ec
+    description: "All 8 Swift bakeoff repos show false-positive call edges from name-only matching. append→Array.append mismatches to MDocMacro.append, filter→Collection.filter mismatches to Baseline.filter. Need confidence penalty or disambiguation for very common Swift method names."  # 62ec
+    fields: {}  # 62ec
