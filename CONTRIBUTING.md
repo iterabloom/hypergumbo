@@ -487,7 +487,7 @@ See [ADR-0008](docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md)
 │   └── codex-cli/notify.sh      # Codex CLI notification (limited)
 ├── stop_reflect.md              # Reflection prompt (shared)
 ├── LOOP                         # Sentinel file (exists = continue)
-└── invariant-ledger.md          # Tracks discovered invariants
+└── tracker/                     # Structured tracker (ADR-0013)
 ```
 
 ### Setup by Tool
@@ -556,7 +556,7 @@ notify = [".agent/hooks/codex-cli/notify.sh"]
 
 1. **Activation:** Hooks only engage when `AUTONOMOUS_MODE.txt` contains "TRUE" and `.agent/LOOP` exists
 2. **Reflection:** When the agent tries to stop, the hook injects `stop_reflect.md` as guidance
-3. **Invariant tracking:** Discovered invariants are documented in `.agent/invariant-ledger.md`
+3. **Invariant tracking:** Discovered invariants are managed via `scripts/tracker` (ADR-0013)
 4. **Structural fixes:** The reflection protocol encourages fixing root causes, not workarounds
 
 ### Disabling Hooks

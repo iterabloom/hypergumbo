@@ -375,9 +375,6 @@ if [[ -f "$STOP_HOOK" ]]; then
   echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   touch "$STOP_TEST_DIR/.agent/LOOP"
 
-  # Empty invariant ledger (no TODOs — skip Path 1)
-  echo "" > "$STOP_TEST_DIR/.agent/invariant-ledger.md"
-
   # Provide stop_reflect.md and cooldown_prompt.md
   echo "Reflect here" > "$STOP_TEST_DIR/.agent/stop_reflect.md"
   echo "Cooldown here" > "$STOP_TEST_DIR/.agent/cooldown_prompt.md"

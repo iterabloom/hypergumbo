@@ -1470,7 +1470,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 | Component | Path | Purpose |
 |-----------|------|---------|
 | Stop reflection prompt | `.agent/stop_reflect.md` | Checklist agents must complete before stopping |
-| Invariant ledger | `.agent/invariant-ledger.md` | Tracks discovered invariants and their fix status |
+| Structured tracker | `.agent/tracker/` | Tracks invariants, work items, and meta-invariants (ADR-0013) |
 | Loop sentinel | `.agent/LOOP` | Sentinel file; use `./scripts/loop-toggle` to control |
 | Hook adapters | `.agent/hooks/*/` | Per-tool adapter scripts (Claude Code, Gemini CLI, Cursor, Codex CLI) |
 
@@ -1479,7 +1479,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 1. **Autonomous mode gate:** Hooks only engage when `AUTONOMOUS_MODE.txt` contains "TRUE"
 2. **Loop sentinel:** Agents check for `.agent/LOOP`; if present, reflection is required before stopping
 3. **Reflection protocol:** Agents complete a structured checklist (invariant identification, structural vs. workaround analysis, scope expansion)
-4. **Invariant ledger:** Discovered invariants are documented with status, root cause, and regression tests
+4. **Structured tracker:** Discovered invariants and work items are managed via `scripts/tracker` with status, priority, discussion threads, and regression tests
 
 ### Hook Adapters
 
@@ -1489,10 +1489,6 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 - **Gemini CLI:** `.agent/hooks/gemini-cli/after-agent.sh` (AfterAgent hook)
 - **Cursor:** `.agent/hooks/cursor/stop.sh` (stop hook with ASK output)
 - **Codex CLI:** `.agent/hooks/codex-cli/notify.sh` (notification only; limited enforcement)
-
-### Invariant Status
-
-The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
 ### Structured Tracker (ADR-0013)
 
