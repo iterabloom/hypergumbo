@@ -62,3 +62,10 @@
   nonce: c037  # c037
   set:  # c037
     parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # c037
+- op: discuss  # f0bf
+  at: '2026-03-25T18:18:13Z'  # f0bf
+  by: agent  # f0bf
+  actor: jgstern_agent  # f0bf
+  clock: 8  # f0bf
+  nonce: f0bf  # f0bf
+  message: "Partial fix in PR #2557: added _short_name_penalty() to Haskell analyzer (same pattern as Scala PR #2525). Single-letter names get 0.15x confidence, two-letter get 0.50x. False edges from f/g/x/n are now easily filterable. Item remains open — top-level single-letter function extraction still happens, this just reduces confidence on the call edges."  # f0bf

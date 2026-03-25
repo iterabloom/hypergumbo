@@ -47,3 +47,18 @@
   clock: 5  # d2d2
   nonce: d2d2  # d2d2
   message: "Deprioritized: not Scala-related, from prior bakeoffs."  # d2d2
+- op: update  # 81c3
+  at: '2026-03-25T19:15:11Z'  # 81c3
+  by: agent  # 81c3
+  actor: jgstern_agent  # 81c3
+  clock: 6  # 81c3
+  nonce: 81c3  # 81c3
+  set:  # 81c3
+    status: done  # 81c3
+- op: discuss  # 5c6d
+  at: '2026-03-25T19:15:12Z'  # 5c6d
+  by: agent  # 5c6d
+  actor: jgstern_agent  # 5c6d
+  clock: 7  # 5c6d
+  nonce: 5c6d  # 5c6d
+  message: "Implemented in PR #2559. OTP linker now handles Erlang gen_server:call/cast with same-module (?MODULE, variable), cross-module (atom target), and dedup support."  # 5c6d

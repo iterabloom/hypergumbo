@@ -32,3 +32,10 @@
   clock: 3  # ad86
   nonce: ad86  # ad86
   message: "Investigation: framework detection IS working (101 concept-enriched nodes in Vapor: middleware, auth, dto). The gap is specifically route detection which requires usage-based patterns (UsageContext extraction not implemented for Swift). The definition-based patterns (base_class matching) work correctly. Downgrading to P4 since it's a substantial feature (Swift usage context extraction)."  # ad86
+- op: discuss  # d4af
+  at: '2026-03-25T18:51:20Z'  # d4af
+  by: agent  # d4af
+  actor: jgstern_agent  # d4af
+  clock: 4  # d4af
+  nonce: d4af  # d4af
+  message: "PR #2558 merged: expanded Swift IO catalog with 14 new server-side primitives (AsyncHTTPClient, NIOSSL, NIO channel pipeline, WebSocket, tracing, graceful shutdown). IO tag rate improved: Hummingbird 2.2%→3.3% (near 3.8% GOOD), Vapor 0.7%→1.0%. TCA stays 0.2% (state management lib, no real IO). Remaining gap is structural: framework repos have low IO density by design."  # d4af
