@@ -190,6 +190,7 @@ class EntrypointKind(Enum):
     CONTROLLER = "controller"  # Generic controller from concept metadata
     BACKGROUND_TASK = "background_task"  # Async/background task
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
+    MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
@@ -299,6 +300,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "scheduled_task" -> SCHEDULED_TASK (cron/periodic job)
     - "websocket_handler" -> WEBSOCKET_HANDLER (WebSocket event handler)
     - "websocket_gateway" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)
+    - "middleware" -> MIDDLEWARE_HANDLER (HTTP middleware handler)
     - "event_handler" -> EVENT_HANDLER (event/message handler)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
@@ -433,6 +435,25 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
+
+            # Middleware concept -> MIDDLEWARE_HANDLER
+            # Middleware intercepts HTTP requests/responses and is a
+            # primary entry point in web frameworks (Express, Koa, Vapor,
+            # Hummingbird, Django, etc.)
+            elif concept_type == "middleware":
+                if EntrypointKind.MIDDLEWARE_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} middleware"
+                else:
+                    label = "HTTP middleware"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MIDDLEWARE_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.MIDDLEWARE_HANDLER)
 
             # Event handler concept -> EVENT_HANDLER
             elif concept_type == "event_handler":

@@ -519,6 +519,88 @@ class TestSemanticEntryDetection:
         assert len(ws_eps) == 1
         assert ws_eps[0].confidence >= 0.95
 
+    def test_detect_middleware_concept(self) -> None:
+        """Symbol with middleware concept is detected as middleware entrypoint."""
+        sym = make_symbol(
+            "TracingMiddleware.handle",
+            path="Sources/Hummingbird/Middleware/TracingMiddleware.swift",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "hummingbird"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert mw_eps[0].symbol_id == sym.id
+        assert mw_eps[0].confidence >= 0.95
+        assert "middleware" in mw_eps[0].label.lower()
+
+    def test_detect_middleware_concept_with_framework(self) -> None:
+        """Middleware entrypoint label includes framework name."""
+        sym = make_symbol(
+            "authMiddleware",
+            path="src/middleware/auth.ts",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "express"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert "Express" in mw_eps[0].label
+
+    def test_detect_middleware_no_framework(self) -> None:
+        """Middleware without framework uses generic label."""
+        sym = make_symbol(
+            "logMiddleware",
+            path="src/middleware/log.py",
+            meta={
+                "concepts": [
+                    {"concept": "middleware"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert mw_eps[0].label == "HTTP middleware"
+
+    def test_middleware_dedup(self) -> None:
+        """Multiple middleware concepts produce only one entrypoint per symbol."""
+        sym = make_symbol(
+            "corsMiddleware",
+            path="src/middleware/cors.ts",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "express"},
+                    {"concept": "middleware", "framework": "koa"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+
     def test_detect_event_handler_concept(self) -> None:
         """Symbol with event_handler concept is detected as event handler entrypoint."""
         sym = make_symbol(
