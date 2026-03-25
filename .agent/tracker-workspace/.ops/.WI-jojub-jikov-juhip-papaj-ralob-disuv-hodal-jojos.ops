@@ -75,3 +75,18 @@
   clock: 8  # 8c2f
   nonce: 8c2f  # 8c2f
   message: "ADR-0017 accepted. Phase 1."  # 8c2f
+- op: update  # 2ee9
+  at: '2026-03-25T08:58:36Z'  # 2ee9
+  by: agent  # 2ee9
+  actor: jgstern_agent  # 2ee9
+  clock: 9  # 2ee9
+  nonce: 2ee9  # 2ee9
+  set:  # 2ee9
+    status: done  # 2ee9
+- op: discuss  # 2961
+  at: '2026-03-25T08:58:36Z'  # 2961
+  by: agent  # 2961
+  actor: jgstern_agent  # 2961
+  clock: 10  # 2961
+  nonce: '2961'  # 2961
+  message: "Implemented in feat/taint-flow-phase1. Two-phase BFS: reachable set from source without sanitizers, check sink presence. Dominance-based sanitizer checking. 41 tests, 100% coverage."  # 2961

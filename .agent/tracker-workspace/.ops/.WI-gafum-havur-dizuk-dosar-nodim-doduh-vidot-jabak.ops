@@ -42,3 +42,18 @@
   nonce: b8e4  # b8e4
   set:  # b8e4
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # b8e4
+- op: update  # 7def
+  at: '2026-03-25T07:53:27Z'  # 7def
+  by: agent  # 7def
+  actor: jgstern_agent  # 7def
+  clock: 5  # 7def
+  nonce: 7def  # 7def
+  set:  # 7def
+    status: todo_soft  # 7def
+- op: discuss  # 4223
+  at: '2026-03-25T07:53:27Z'  # 4223
+  by: agent  # 4223
+  actor: jgstern_agent  # 4223
+  clock: 6  # 4223
+  nonce: '4223'  # 4223
+  message: "ADR-0017 accepted. Update spec non-goal."  # 4223

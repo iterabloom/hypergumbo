@@ -84,3 +84,18 @@
   clock: 9  # ac62
   nonce: ac62  # ac62
   message: "ADR-0017 accepted. Phase 1."  # ac62
+- op: update  # e250
+  at: '2026-03-25T09:00:48Z'  # e250
+  by: agent  # e250
+  actor: jgstern_agent  # e250
+  clock: 10  # e250
+  nonce: e250  # e250
+  set:  # e250
+    status: done  # e250
+- op: discuss  # 8c79
+  at: '2026-03-25T09:00:48Z'  # 8c79
+  by: agent  # 8c79
+  actor: jgstern_agent  # 8c79
+  clock: 11  # 8c79
+  nonce: 8c79  # 8c79
+  message: "Implemented in feat/taint-flow-phase1. New taint_flow constraint type in verify-claims YAML. TaintFlowConstraint dataclass with source_taint, prohibited_sink_zone, allowed_sanitizers. 13 new tests."  # 8c79

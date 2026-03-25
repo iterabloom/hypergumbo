@@ -51,3 +51,18 @@
   nonce: 87fa  # 87fa
   set:  # 87fa
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 87fa
+- op: update  # ad2d
+  at: '2026-03-25T07:53:27Z'  # ad2d
+  by: agent  # ad2d
+  actor: jgstern_agent  # ad2d
+  clock: 6  # ad2d
+  nonce: ad2d  # ad2d
+  set:  # ad2d
+    status: todo_soft  # ad2d
+- op: discuss  # 6338
+  at: '2026-03-25T07:53:27Z'  # 6338
+  by: agent  # 6338
+  actor: jgstern_agent  # 6338
+  clock: 7  # 6338
+  nonce: '6338'  # 6338
+  message: "ADR-0017 accepted. Phase 3."  # 6338

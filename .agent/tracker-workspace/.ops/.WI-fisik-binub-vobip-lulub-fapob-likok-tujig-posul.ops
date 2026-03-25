@@ -84,3 +84,18 @@
   clock: 9  # 1e97
   nonce: '1e97'  # 1e97
   message: "ADR-0017 accepted (Python-first). Phase 1."  # 1e97
+- op: update  # d7ea
+  at: '2026-03-25T08:56:29Z'  # d7ea
+  by: agent  # d7ea
+  actor: jgstern_agent  # d7ea
+  clock: 10  # d7ea
+  nonce: d7ea  # d7ea
+  set:  # d7ea
+    status: done  # d7ea
+- op: discuss  # 2c46
+  at: '2026-03-25T08:56:29Z'  # 2c46
+  by: agent  # 2c46
+  actor: jgstern_agent  # 2c46
+  clock: 11  # 2c46
+  nonce: 2c46  # 2c46
+  message: "Implemented in feat/taint-flow-phase1. Taint catalogs: taint_sources/ (crypto.yaml, key_material.yaml), taint_sinks/ (host_filesystem.yaml, network_send.yaml), taint_sanitizers/ (encryption.yaml). Python, Rust, TS, Go, Java coverage."  # 2c46
