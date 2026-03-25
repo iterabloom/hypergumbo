@@ -28,3 +28,18 @@
   clock: 2  # 117b
   nonce: 117b  # 117b
   message: "Created from tracker taxonomy analysis (Mar 24 lab notebook). Covers 17 items in the ADR-0017 Taint & CFG cluster, all currently needs_human_review. Falsifiable: against OWASP benchmark, check real vulns produce paths, sanitized paths don't produce false alerts, structural results labeled."  # 117b
+- op: update  # aa3f
+  at: '2026-03-25T07:43:15Z'  # aa3f
+  by: agent  # aa3f
+  actor: jgstern_agent  # aa3f
+  clock: 3  # aa3f
+  nonce: aa3f  # aa3f
+  set:  # aa3f
+    status: violated  # aa3f
+- op: discuss  # a9a5
+  at: '2026-03-25T07:43:15Z'  # a9a5
+  by: agent  # a9a5
+  actor: jgstern_agent  # a9a5
+  clock: 4  # a9a5
+  nonce: a9a5  # a9a5
+  message: "ADR-0017 accepted. Master invariant for taint analysis. Currently violated: no taint analysis exists yet."  # a9a5

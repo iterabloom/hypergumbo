@@ -69,3 +69,18 @@
   nonce: f223  # f223
   set:  # f223
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # f223
+- op: update  # d320
+  at: '2026-03-25T07:43:15Z'  # d320
+  by: agent  # d320
+  actor: jgstern_agent  # d320
+  clock: 8  # d320
+  nonce: d320  # d320
+  set:  # d320
+    status: todo_soft  # d320
+- op: discuss  # ac62
+  at: '2026-03-25T07:43:15Z'  # ac62
+  by: agent  # ac62
+  actor: jgstern_agent  # ac62
+  clock: 9  # ac62
+  nonce: ac62  # ac62
+  message: "ADR-0017 accepted. Phase 1."  # ac62

@@ -60,3 +60,18 @@
   nonce: '2473'  # 2473
   set:  # 2473
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 2473
+- op: update  # 2259
+  at: '2026-03-25T07:43:15Z'  # 2259
+  by: agent  # 2259
+  actor: jgstern_agent  # 2259
+  clock: 7  # 2259
+  nonce: '2259'  # 2259
+  set:  # 2259
+    status: todo_soft  # 2259
+- op: discuss  # 3eff
+  at: '2026-03-25T07:43:15Z'  # 3eff
+  by: agent  # 3eff
+  actor: jgstern_agent  # 3eff
+  clock: 8  # 3eff
+  nonce: 3eff  # 3eff
+  message: "ADR-0017 accepted. Phase 1b (decision gate)."  # 3eff
