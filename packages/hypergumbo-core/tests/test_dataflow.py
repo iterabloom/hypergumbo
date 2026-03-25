@@ -558,6 +558,100 @@ library_patterns:
         assert sites[0].channel is None
 
 
+# ==================== ERLANG LIBRARY PATTERNS TESTS ====================
+
+
+class TestErlangLibraryPatterns:
+    """Tests for Erlang name-based dataflow heuristics."""
+
+    def test_erlang_config_loads(self) -> None:
+        """Erlang dataflow config loads with library_patterns."""
+        from pathlib import Path
+        erlang_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "erlang.yaml"
+        )
+        config = load_dataflow_config(erlang_yaml)
+        assert config.language == "erlang"
+        assert len(config.library_patterns) > 0
+
+    def test_read_patterns(self) -> None:
+        """Erlang read heuristics match get_/fetch_/read_ functions."""
+        from pathlib import Path
+        erlang_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "erlang.yaml"
+        )
+        config = load_dataflow_config(erlang_yaml)
+
+        content = (
+            "get_user(UserId) ->\n"
+            "    fetch_data(UserId),\n"
+            "    read_config(app).\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        assert len(read_sites) == 3
+
+    def test_write_patterns(self) -> None:
+        """Erlang write heuristics match set_/put_/write_/store_ functions."""
+        from pathlib import Path
+        erlang_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "erlang.yaml"
+        )
+        config = load_dataflow_config(erlang_yaml)
+
+        content = (
+            "set_config(Key, Value) ->\n"
+            "    put_state(Key, Value),\n"
+            "    store_data(Value).\n"
+        )
+        sites = scan_library_patterns(content, config)
+        write_sites = [s for s in sites if s.access_mode == "write"]
+        assert len(write_sites) == 3
+
+    def test_ets_patterns(self) -> None:
+        """ETS-specific patterns match correctly."""
+        from pathlib import Path
+        erlang_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "erlang.yaml"
+        )
+        config = load_dataflow_config(erlang_yaml)
+
+        content = (
+            "handle_call(get, _From, State) ->\n"
+            "    Result = ets:lookup(my_table, key),\n"
+            "    ets:insert(my_table, {key, value}),\n"
+            "    ets:delete(my_table, old_key).\n"
+        )
+        sites = scan_library_patterns(content, config)
+        assert any(s.access_mode == "read" for s in sites)
+        assert any(s.access_mode == "write" for s in sites)
+        assert any(s.access_mode == "delete" for s in sites)
+
+    def test_otp_patterns(self) -> None:
+        """OTP gen_server patterns match correctly."""
+        from pathlib import Path
+        erlang_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "erlang.yaml"
+        )
+        config = load_dataflow_config(erlang_yaml)
+
+        content = (
+            "start() ->\n"
+            "    gen_server:call(Pid, get_state),\n"
+            "    gen_server:cast(Pid, {set_state, Value}).\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        write_sites = [s for s in sites if s.access_mode == "write"]
+        assert len(read_sites) >= 1  # gen_server:call
+        assert len(write_sites) >= 1  # gen_server:cast
+
+
 # ==================== DATAFLOW SITE TESTS ====================
 
 
