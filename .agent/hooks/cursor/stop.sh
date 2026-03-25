@@ -61,7 +61,10 @@ if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
   exit 0
 fi
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
-  # Circuit breaker tripped — allow stop
+  echo "⚡ CIRCUIT BREAKER TRIPPED: No progress on $TOTAL_TODOS TODO(s) across $HASH_THRESHOLD stop events." >&2
+  echo "Deactivating autonomous mode since the circuit breaker is tripped anyhow!" >&2
+  TOGGLE_OUTPUT=$("$REPO_ROOT/scripts/loop-toggle" off 2>&1) || true
+  echo "$TOGGLE_OUTPUT" >&2
   echo '{}'
   exit 0
 fi

@@ -62,7 +62,11 @@ if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
   exit 0
 fi
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
-  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Stopping approved.' "$TOTAL_TODOS" "$HASH_THRESHOLD" | jq -Rs .)
+  echo "⚡ CIRCUIT BREAKER TRIPPED: No progress on $TOTAL_TODOS TODO(s) across $HASH_THRESHOLD stop events." >&2
+  echo "Deactivating autonomous mode since the circuit breaker is tripped anyhow!" >&2
+  TOGGLE_OUTPUT=$("$REPO_ROOT/scripts/loop-toggle" off 2>&1) || true
+  echo "$TOGGLE_OUTPUT" >&2
+  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Autonomous mode deactivated.' "$TOTAL_TODOS" "$HASH_THRESHOLD" | jq -Rs .)
   echo "{\"decision\":\"allow\",\"reason\":$REASON}"
   exit 0
 fi
