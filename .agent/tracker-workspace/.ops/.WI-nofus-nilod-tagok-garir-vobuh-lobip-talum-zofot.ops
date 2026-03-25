@@ -42,3 +42,18 @@
   nonce: '0874'  # 0874
   set:  # 0874
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 0874
+- op: update  # eef0
+  at: '2026-03-25T07:48:10Z'  # eef0
+  by: agent  # eef0
+  actor: jgstern_agent  # eef0
+  clock: 5  # eef0
+  nonce: eef0  # eef0
+  set:  # eef0
+    status: todo_soft  # eef0
+- op: discuss  # e7fb
+  at: '2026-03-25T07:48:10Z'  # e7fb
+  by: agent  # e7fb
+  actor: jgstern_agent  # e7fb
+  clock: 6  # e7fb
+  nonce: e7fb  # e7fb
+  message: "ADR-0017 accepted. Phase 2."  # e7fb

@@ -60,3 +60,18 @@
   nonce: 8d8b  # 8d8b
   set:  # 8d8b
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 8d8b
+- op: update  # e8f4
+  at: '2026-03-25T07:48:10Z'  # e8f4
+  by: agent  # e8f4
+  actor: jgstern_agent  # e8f4
+  clock: 7  # e8f4
+  nonce: e8f4  # e8f4
+  set:  # e8f4
+    status: todo_soft  # e8f4
+- op: discuss  # c6ae
+  at: '2026-03-25T07:48:10Z'  # c6ae
+  by: agent  # c6ae
+  actor: jgstern_agent  # c6ae
+  clock: 8  # c6ae
+  nonce: c6ae  # c6ae
+  message: "ADR-0017 accepted. Phase 2. Repurposed: Python def/use extractor (was Rust)."  # c6ae
