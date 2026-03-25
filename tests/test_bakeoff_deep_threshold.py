@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for bakeoff-features assess_metric threshold scaling for small repos."""
+"""Tests for bakeoff-deep assess_metric threshold scaling for small repos."""
 
 import importlib
 import importlib.machinery
@@ -8,9 +8,9 @@ from pathlib import Path
 
 
 def _load_bakeoff_features():
-    """Import scripts/bakeoff-features as a module despite no .py extension."""
+    """Import scripts/bakeoff-deep as a module despite no .py extension."""
     script_path = str(
-        Path(__file__).resolve().parent.parent / "scripts" / "bakeoff-features"
+        Path(__file__).resolve().parent.parent / "scripts" / "bakeoff-deep"
     )
     loader = importlib.machinery.SourceFileLoader("bakeoff_features", script_path)
     spec = importlib.util.spec_from_loader("bakeoff_features", loader)

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for scripts/bakeoff-reflect.
+"""Tests for scripts/bakeoff-broad-reflect.
 
-These tests verify the mechanical parts of the bakeoff-reflect script:
+These tests verify the mechanical parts of the bakeoff-broad-reflect script:
 workdir resolution, prompt file placement, prompt content structure,
 stratified sampling invariants, and aggregation logic.
 
@@ -21,9 +21,9 @@ import pytest
 
 @pytest.fixture(scope="module")
 def bakeoff_reflect():
-    """Import bakeoff-reflect as a module despite the hyphen in its name."""
+    """Import bakeoff-broad-reflect as a module despite the hyphen in its name."""
     script_path = str(
-        Path(__file__).parent.parent / "scripts" / "bakeoff-reflect"
+        Path(__file__).parent.parent / "scripts" / "bakeoff-broad-reflect"
     )
     loader = importlib.machinery.SourceFileLoader("bakeoff_reflect", script_path)
     spec = importlib.util.spec_from_loader("bakeoff_reflect", loader)

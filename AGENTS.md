@@ -173,7 +173,7 @@ some-long-command > /tmp/cmd-output.log 2>&1
 - `pytest` / `smart-test`
 - `./scripts/auto-pr`
 - `./scripts/release-check`
-- `./scripts/bakeoff` and `./scripts/bakeoff-features` (all subcommands)
+- `./scripts/bakeoff-broad` and `./scripts/bakeoff-deep` (all subcommands)
 - `./scripts/ci-debug`
 - Any command that takes more than a few seconds to run
 
@@ -214,7 +214,7 @@ This file records: current branch (should be `dev` after a clean merge), last PR
 
 If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
 
-If the JSON contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff status --workdir <path>` or `./scripts/bakeoff-features status --workdir <path>`).
+If the JSON contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff-broad status --workdir <path>` or `./scripts/bakeoff-deep status --workdir <path>`).
 
 **Keep notes fresh:** Update `last_stop_check.json` notes after key milestones, not just at reflection time. This ensures context survives compaction:
 - After a PR merge: record what was merged and what's next
@@ -460,8 +460,8 @@ When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefin
 ### Mode Selection
 | Mode | Focus | Bakeoff Script | When to Use |
 |------|-------|----------------|-------------|
-| **BROAD** | Coverage breadth | `scripts/bakeoff` | Default. Ensure comprehensive linker, framework, and call graph detection |
-| **DEEP** | Feature usefulness | `scripts/bakeoff-features` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
+| **BROAD** | Coverage breadth | `scripts/bakeoff-broad` | Default. Ensure comprehensive linker, framework, and call graph detection |
+| **DEEP** | Feature usefulness | `scripts/bakeoff-deep` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
 
 - **BROAD** answers: "Are we detecting all the linker edges, framework patterns, and call relationships?"
 - **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
@@ -487,8 +487,8 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
 
 ### BROAD Mode Priority Queue:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-reflect` then `./scripts/bakeoff-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps — do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-reflect aggregate` to surface cross-session trends. If `./scripts/bakeoff status` shows unaggregated assessments, aggregate before starting new work.
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-broad-reflect` then `./scripts/bakeoff-broad-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps — do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-broad-reflect aggregate` to surface cross-session trends. If `./scripts/bakeoff-broad status` shows unaggregated assessments, aggregate before starting new work.
 3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
@@ -497,63 +497,63 @@ Both modes share the same top priority: actionable tracker items (`scripts/track
 - **Sequential workflow (any agent):** `run → diagnose → reflect → [complete assessments] → aggregate → next cohort`. Simpler, works everywhere.
 - **Overlapped workflow (agents with concurrency):** Launch reflect agents for Cohort N, then immediately `run` Cohort N+1 while assessments complete in background. Only `run` needs exclusive access to the editable install. This is where the throughput multiplier lives — a 5-cohort curriculum can overlap all reflect phases.
 
-**When blocked** (CI pending, pre-commit hook gate, `run` in progress): aggregate prior sessions, update lab notebook, investigate diagnostic findings. Use `./scripts/bakeoff status` to find unaggregated assessments, or check for assessment files directly.
+**When blocked** (CI pending, pre-commit hook gate, `run` in progress): aggregate prior sessions, update lab notebook, investigate diagnostic findings. Use `./scripts/bakeoff-broad status` to find unaggregated assessments, or check for assessment files directly.
 
 BROAD mode scripts:
 ```bash
 # Initialize a new bakeoff session (creates timestamped dir in canonical default)
-./scripts/bakeoff init --pool ~/repos
+./scripts/bakeoff-broad init --pool ~/repos
 
 # Select next cohort (5 smallest unused repos)
-./scripts/bakeoff cohort --count 5
+./scripts/bakeoff-broad cohort --count 5
 
 # Or select cohort — explicit repos (for curriculum-based workflows)
-./scripts/bakeoff cohort --repos repo-a,repo-b,repo-c
+./scripts/bakeoff-broad cohort --repos repo-a,repo-b,repo-c
 
 # Run hypergumbo on current cohort
-./scripts/bakeoff run
-./scripts/bakeoff run --all          # All unanalyzed cohorts (batch)
-./scripts/bakeoff run --some 3       # Up to 3 unanalyzed cohorts
+./scripts/bakeoff-broad run
+./scripts/bakeoff-broad run --all          # All unanalyzed cohorts (batch)
+./scripts/bakeoff-broad run --some 3       # Up to 3 unanalyzed cohorts
 
 # Diagnose and generate issue report
-./scripts/bakeoff diagnose
-./scripts/bakeoff diagnose --all     # All cohorts in session
-./scripts/bakeoff diagnose --some 3  # Latest 3 cohorts
+./scripts/bakeoff-broad diagnose
+./scripts/bakeoff-broad diagnose --all     # All cohorts in session
+./scripts/bakeoff-broad diagnose --some 3  # Latest 3 cohorts
 
 # Full cycle: run + diagnose + reflect
-./scripts/bakeoff cycle
-./scripts/bakeoff cycle --all        # Batch: run + diagnose + reflect all
-./scripts/bakeoff cycle --skip-reflect  # Fast iteration: run + diagnose only
+./scripts/bakeoff-broad cycle
+./scripts/bakeoff-broad cycle --all        # Batch: run + diagnose + reflect all
+./scripts/bakeoff-broad cycle --skip-reflect  # Fast iteration: run + diagnose only
 
 # Session introspection
-./scripts/bakeoff status            # Convergence status and cohort breakdown
-./scripts/bakeoff issues --format json  # Machine-readable issue list
-./scripts/bakeoff questions         # Diagnostic questions for analysis
+./scripts/bakeoff-broad status            # Convergence status and cohort breakdown
+./scripts/bakeoff-broad issues --format json  # Machine-readable issue list
+./scripts/bakeoff-broad questions         # Diagnostic questions for analysis
 
 # LLM-driven qualitative assessment
-./scripts/bakeoff-reflect              # Generate assessment prompts (latest cohort)
-./scripts/bakeoff-reflect reflect --all  # Generate prompts for all cohorts
-./scripts/bakeoff-reflect aggregate    # Synthesize findings across repos
+./scripts/bakeoff-broad-reflect              # Generate assessment prompts (latest cohort)
+./scripts/bakeoff-broad-reflect reflect --all  # Generate prompts for all cohorts
+./scripts/bakeoff-broad-reflect aggregate    # Synthesize findings across repos
 ```
 
 **Batch workflow (multi-cohort curriculum):**
 ```bash
 # Option A: cycle --all (sequential, simpler)
-./scripts/bakeoff cycle --all        # run + diagnose + reflect for each cohort
-./scripts/bakeoff-reflect aggregate  # synthesize after all assessments complete
+./scripts/bakeoff-broad cycle --all        # run + diagnose + reflect for each cohort
+./scripts/bakeoff-broad-reflect aggregate  # synthesize after all assessments complete
 
 # Option B: manual pipeline (allows overlap between cohorts)
-./scripts/bakeoff run --all          # run all cohorts
-./scripts/bakeoff diagnose --all     # diagnose all cohorts
-./scripts/bakeoff-reflect reflect --all  # generate all prompts
+./scripts/bakeoff-broad run --all          # run all cohorts
+./scripts/bakeoff-broad diagnose --all     # diagnose all cohorts
+./scripts/bakeoff-broad-reflect reflect --all  # generate all prompts
 # [complete assessments — sequential or parallel]
-./scripts/bakeoff-reflect aggregate  # synthesize findings
+./scripts/bakeoff-broad-reflect aggregate  # synthesize findings
 ```
 
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than coverage breadth:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-features-reflect` then `./scripts/bakeoff-features-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** Run `./scripts/bakeoff-features-reflect aggregate --all` and `./scripts/bakeoff-features compare <A> <B>` to track improvement trajectories. If `./scripts/bakeoff-features status` shows unaggregated assessments, aggregate before starting new work.
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** Run `./scripts/bakeoff-deep-reflect aggregate --all` and `./scripts/bakeoff-deep compare <A> <B>` to track improvement trajectories. If `./scripts/bakeoff-deep status` shows unaggregated assessments, aggregate before starting new work.
 3. **Slice quality:** Does forward slice capture actual dependencies?
 4. **Reverse slice:** Does it correctly identify callers?
 5. **Supply chain tiers:** Is tier classification accurate for monorepos?
@@ -562,55 +562,55 @@ When in DEEP mode, focus on feature quality rather than coverage breadth:
 
 **Pipeline overlap guidance:** Same as BROAD mode — reflect agents only read artifacts, so you can overlap reflect with the next cohort's `run`. See BROAD mode guidance above for sequential vs overlapped workflows.
 
-**When blocked:** Aggregate prior sessions (`./scripts/bakeoff-features-reflect aggregate`), compare sessions (`./scripts/bakeoff-features compare <A> <B>`), or update lab notebook.
+**When blocked:** Aggregate prior sessions (`./scripts/bakeoff-deep-reflect aggregate`), compare sessions (`./scripts/bakeoff-deep compare <A> <B>`), or update lab notebook.
 
 DEEP mode scripts:
 ```bash
 # Initialize and run feature bakeoff (no --workdir needed — uses canonical default)
-./scripts/bakeoff-features init --pool ~/repos
+./scripts/bakeoff-deep init --pool ~/repos
 # → Creates ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-YYYYMMDD-HHMMSS/
 
 # Auto-select cohort by size/complexity
-./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+./scripts/bakeoff-deep cohort --count 4 --min-size 20 --max-size 200
 
 # Or use explicit repos (for curriculum-based workflows)
-./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
+./scripts/bakeoff-deep cohort --repos repo-a,repo-b,repo-c
 
-./scripts/bakeoff-features run               # Current cohort only
-./scripts/bakeoff-features run --all         # All unanalyzed cohorts (batch)
-./scripts/bakeoff-features run --some 3      # Up to 3 unanalyzed cohorts
-./scripts/bakeoff-features diagnose          # Latest cohort only
-./scripts/bakeoff-features diagnose --all    # All cohorts in session
-./scripts/bakeoff-features diagnose --some 3 # Latest 3 cohorts
+./scripts/bakeoff-deep run               # Current cohort only
+./scripts/bakeoff-deep run --all         # All unanalyzed cohorts (batch)
+./scripts/bakeoff-deep run --some 3      # Up to 3 unanalyzed cohorts
+./scripts/bakeoff-deep diagnose          # Latest cohort only
+./scripts/bakeoff-deep diagnose --all    # All cohorts in session
+./scripts/bakeoff-deep diagnose --some 3 # Latest 3 cohorts
 
 # Full cycle: run + diagnose + reflect
-./scripts/bakeoff-features cycle                 # Current cohort
-./scripts/bakeoff-features cycle --all           # Batch: run + diagnose + reflect all
-./scripts/bakeoff-features cycle --skip-reflect  # Fast iteration: run + diagnose only
+./scripts/bakeoff-deep cycle                 # Current cohort
+./scripts/bakeoff-deep cycle --all           # Batch: run + diagnose + reflect all
+./scripts/bakeoff-deep cycle --skip-reflect  # Fast iteration: run + diagnose only
 
 # Session introspection
-./scripts/bakeoff-features status           # Per-cohort breakdown: output/diagnose/reflect status
-./scripts/bakeoff-features active           # Machine-friendly key=value (for stop hooks)
-./scripts/bakeoff-features compare A B      # Side-by-side metric/score deltas between sessions
+./scripts/bakeoff-deep status           # Per-cohort breakdown: output/diagnose/reflect status
+./scripts/bakeoff-deep active           # Machine-friendly key=value (for stop hooks)
+./scripts/bakeoff-deep compare A B      # Side-by-side metric/score deltas between sessions
 
 # LLM-driven qualitative assessment
-./scripts/bakeoff-features-reflect              # Generate assessment prompts (latest cohort)
-./scripts/bakeoff-features-reflect reflect --all  # Generate prompts for all cohorts
-./scripts/bakeoff-features-reflect aggregate    # Synthesize findings across repos
+./scripts/bakeoff-deep-reflect              # Generate assessment prompts (latest cohort)
+./scripts/bakeoff-deep-reflect reflect --all  # Generate prompts for all cohorts
+./scripts/bakeoff-deep-reflect aggregate    # Synthesize findings across repos
 ```
 
 **Batch workflow (multi-cohort curriculum):**
 ```bash
 # Option A: cycle --all (sequential, simpler)
-./scripts/bakeoff-features cycle --all
-./scripts/bakeoff-features-reflect aggregate
+./scripts/bakeoff-deep cycle --all
+./scripts/bakeoff-deep-reflect aggregate
 
 # Option B: manual pipeline (allows overlap between cohorts)
-./scripts/bakeoff-features run --all
-./scripts/bakeoff-features diagnose --all
-./scripts/bakeoff-features-reflect reflect --all
+./scripts/bakeoff-deep run --all
+./scripts/bakeoff-deep diagnose --all
+./scripts/bakeoff-deep-reflect reflect --all
 # [complete assessments — sequential or parallel]
-./scripts/bakeoff-features-reflect aggregate
+./scripts/bakeoff-deep-reflect aggregate
 ```
 
 **Introspection subcommands:**
@@ -624,7 +624,7 @@ cohort commands in order. See ADR-0009 §2b for the curriculum concept.
 
 ### Bakeoff Artifacts
 
-Both `scripts/bakeoff` and `scripts/bakeoff-features` store artifacts in a canonical default location:
+Both `scripts/bakeoff-broad` and `scripts/bakeoff-deep` store artifacts in a canonical default location:
 
 ```
 ~/hypergumbo_lab_notebook/bakeoff_artifacts/
@@ -634,7 +634,7 @@ Both `scripts/bakeoff` and `scripts/bakeoff-features` store artifacts in a canon
 │   ├── out/
 │   ├── diag/
 │   └── reflect/            # LLM assessment prompts and results
-├── deep-20260206-190000/    # bakeoff-features session (timestamped)
+├── deep-20260206-190000/    # bakeoff-deep session (timestamped)
 │   ├── state.json
 │   ├── cohorts/
 │   ├── out/

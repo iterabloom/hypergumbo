@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bakeoff-features-reflect - LLM-driven qualitative assessment of hypergumbo outputs
+bakeoff-deep-reflect - LLM-driven qualitative assessment of hypergumbo outputs
 
 This script performs developer-perspective usefulness assessment by invoking
 an LLM agent to examine raw artifacts and raw repo code side-by-side.
@@ -74,13 +74,13 @@ developer_assessment:
 ## Usage
 
     # Run reflection on latest feature bakeoff results (uses canonical default workdir)
-    ./scripts/bakeoff-features-reflect
+    ./scripts/bakeoff-deep-reflect
 
     # Specify a specific iteration
-    ./scripts/bakeoff-features-reflect --iteration 1
+    ./scripts/bakeoff-deep-reflect --iteration 1
 
     # Override workdir
-    ./scripts/bakeoff-features-reflect --workdir /path/to/custom/workdir
+    ./scripts/bakeoff-deep-reflect --workdir /path/to/custom/workdir
 
 Environment:
     BAKEOFF_FEATURES_WORKDIR: Override workdir location
@@ -841,7 +841,7 @@ def cmd_reflect(args):
     print(f"   <reflect_dir>/<repo_name>.assessment.yaml")
     print()
     print("4. Run aggregate to synthesize findings:")
-    print(f"   ./scripts/bakeoff-features-reflect aggregate --workdir {workdir}")
+    print(f"   ./scripts/bakeoff-deep-reflect aggregate --workdir {workdir}")
     print()
 
     return 0
@@ -1175,7 +1175,7 @@ def cmd_check(args):
         print("Run with --auto-aggregate to aggregate them, or run manually:")
         for item in unaggregated:
             print(
-                f"  ./scripts/bakeoff-features-reflect aggregate "
+                f"  ./scripts/bakeoff-deep-reflect aggregate "
                 f"--workdir {workdir} --iteration {item['iteration']}"
             )
         return 1

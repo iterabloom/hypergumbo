@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bakeoff-features - Feature-focused hypergumbo bakeoff runner
+bakeoff-deep - Feature-focused hypergumbo bakeoff runner
 
 This script orchestrates a deep bakeoff cycle focused on testing hypergumbo's
 advanced features (slice, reverse-slice, supply chain, graph operations) on
@@ -8,7 +8,7 @@ diverse, larger repositories.
 
 ## Philosophy: Different From Regular Bakeoff
 
-This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
+This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff-broad`:
 - **Different repo profiles:** Feature testing needs heavier repos (20-200MB)
   where slice limits actually matter
 - **Different cadence:** Regular bakeoff for quick regression; feature bakeoff
@@ -21,25 +21,25 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 ## Usage
 
     # Initialize a new feature bakeoff session (creates timestamped dir in canonical default)
-    ./scripts/bakeoff-features init --pool ~/repos
+    ./scripts/bakeoff-deep init --pool ~/repos
 
     # Select cohort — auto-selection (larger repos than regular bakeoff)
-    ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+    ./scripts/bakeoff-deep cohort --count 4 --min-size 20 --max-size 200
 
     # Or select cohort — explicit repos (for curriculum-based workflows)
-    ./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
+    ./scripts/bakeoff-deep cohort --repos repo-a,repo-b,repo-c
 
     # Run feature battery on cohort
-    ./scripts/bakeoff-features run
+    ./scripts/bakeoff-deep run
 
     # Generate diagnostic report with quality metrics
-    ./scripts/bakeoff-features diagnose
+    ./scripts/bakeoff-deep diagnose
 
     # Check session status
-    ./scripts/bakeoff-features status
+    ./scripts/bakeoff-deep status
 
     # Full cycle: run + diagnose
-    ./scripts/bakeoff-features cycle
+    ./scripts/bakeoff-deep cycle
 
 ## Quality Metrics
 
@@ -1300,10 +1300,10 @@ def cmd_init(args):
                     print("NOTE: This session has completed outputs. Subsequent")
                     print("`run` commands will skip cohorts that already have output.")
                     print("To re-run with code changes, create a NEW session instead:")
-                    print(f"  ./scripts/bakeoff-features init --pool {pool_path}")
-                    print("Then use `bakeoff-features compare <old> <new>` to compare.")
+                    print(f"  ./scripts/bakeoff-deep init --pool {pool_path}")
+                    print("Then use `bakeoff-deep compare <old> <new>` to compare.")
                 print()
-                print("Next: Run `bakeoff-features cohort` to select repos for testing")
+                print("Next: Run `bakeoff-deep cohort` to select repos for testing")
                 return 0
         print("No existing session found. Creating a new one.")
 
@@ -1333,7 +1333,7 @@ def cmd_init(args):
     print(f"  Pool: {pool_path}")
     print(f"  Workdir: {workdir}")
     print()
-    print("Next: Run `bakeoff-features cohort` to select repos for testing")
+    print("Next: Run `bakeoff-deep cohort` to select repos for testing")
     return 0
 
 
@@ -1344,7 +1344,7 @@ def cmd_cohort(args):
     state = load_state(workdir)
 
     if not state:
-        print("Error: No feature bakeoff session found. Run `bakeoff-features init` first.", file=sys.stderr)
+        print("Error: No feature bakeoff session found. Run `bakeoff-deep init` first.", file=sys.stderr)
         return 1
 
     pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
@@ -1513,7 +1513,7 @@ def cmd_cohort(args):
         print()
         print(f"Remaining in pool: {len(available) - len(cohort)}")
     print()
-    print("Next: Run `bakeoff-features run` to test features on these repos")
+    print("Next: Run `bakeoff-deep run` to test features on these repos")
     return 0
 
 
@@ -1535,11 +1535,11 @@ def cmd_run(args):
     state = load_state(workdir)
 
     if not state:
-        print("Error: No feature bakeoff session found. Run `bakeoff-features init` first.", file=sys.stderr)
+        print("Error: No feature bakeoff session found. Run `bakeoff-deep init` first.", file=sys.stderr)
         return 1
 
     if not state.current_cohort:
-        print("Error: No cohort selected. Run `bakeoff-features cohort` first.", file=sys.stderr)
+        print("Error: No cohort selected. Run `bakeoff-deep cohort` first.", file=sys.stderr)
         return 1
 
     pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
@@ -1583,8 +1583,8 @@ def cmd_run(args):
             if os.path.isdir(out_dir) and os.listdir(out_dir):
                 print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
                 print(f"  To re-run with code changes, create a NEW session:")
-                print(f"    ./scripts/bakeoff-features init --pool {pool_path}")
-                print(f"  Then compare: ./scripts/bakeoff-features compare <old-session> <new-session>")
+                print(f"    ./scripts/bakeoff-deep init --pool {pool_path}")
+                print(f"  Then compare: ./scripts/bakeoff-deep compare <old-session> <new-session>")
                 print()
                 print(f"  IMPORTANT NOTE: If you are tempted to DELETE the existing output")
                 print(f"  directory to force a re-run, STOP. You are about to ERASE RESULTS")
@@ -2006,7 +2006,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
 
     print(f"Run complete. Output: {out_dir}")
     print()
-    print("Next: Run `bakeoff-features diagnose` to analyze results")
+    print("Next: Run `bakeoff-deep diagnose` to analyze results")
     return 0
 
 
@@ -2388,7 +2388,7 @@ def cmd_diagnose(args):
     # Discover cohort output directories
     out_base = os.path.join(workdir, "out")
     if not os.path.isdir(out_base):
-        print(f"Error: No output found at {out_base}. Run `bakeoff-features run` first.", file=sys.stderr)
+        print(f"Error: No output found at {out_base}. Run `bakeoff-deep run` first.", file=sys.stderr)
         return 1
 
     all_cohort_dirs = sorted(
@@ -2481,7 +2481,7 @@ def cmd_diagnose(args):
     print(f"  Cohorts: {len(cohort_dirs)}  Repos: {len(all_verdicts)}")
     print(f"  GOOD: {good_count}  WARN: {warn_count}  FAIL: {fail_count}")
     print()
-    print("Next: Run `bakeoff-features-reflect` for developer-perspective assessment")
+    print("Next: Run `bakeoff-deep-reflect` for developer-perspective assessment")
     return 0
 
 
@@ -2693,7 +2693,7 @@ def cmd_status(args):
             print()
             print(f"  {unagg_count} cohort(s) have assessments but no"
                   f" summary.yaml.")
-            print("  Run: ./scripts/bakeoff-features-reflect aggregate")
+            print("  Run: ./scripts/bakeoff-deep-reflect aggregate")
 
     print()
     print(f"Current cohort: #{state.cohort_number}, iteration: {state.iteration}")
@@ -2971,7 +2971,7 @@ def cmd_cycle(args):
     """Run full cycle: run + diagnose + reflect.
 
     Runs feature analysis, generates diagnostic report, then generates
-    LLM assessment prompts via bakeoff-features-reflect.  Use
+    LLM assessment prompts via bakeoff-deep-reflect.  Use
     --skip-reflect to run only run + diagnose (for fast iteration when
     you plan to reflect manually later).
     """
@@ -2988,16 +2988,16 @@ def cmd_cycle(args):
     # not just the latest.
     workdir = resolve_workdir(getattr(args, "workdir", None))
     reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  "bakeoff-features-reflect")
+                                  "bakeoff-deep-reflect")
     cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
     if getattr(args, "all", False):
         cmd.append("--all")
     elif getattr(args, "some", None):
         cmd.extend(["--some", str(args.some)])
-    print(f"\n=== Running bakeoff-features-reflect ===\n")
+    print(f"\n=== Running bakeoff-deep-reflect ===\n")
     result = subprocess.run(cmd)
     if result.returncode != 0:
-        print("Warning: bakeoff-features-reflect failed (non-fatal)", file=sys.stderr)
+        print("Warning: bakeoff-deep-reflect failed (non-fatal)", file=sys.stderr)
     return 0
 
 
@@ -3018,8 +3018,8 @@ def cmd_recommend(args):
         print()
 
     print("Clone these repos into your pool directory, then run:")
-    print("  bakeoff-features init --pool <pool> --workdir <workdir>")
-    print("  bakeoff-features cohort --min-size 20 --max-size 200")
+    print("  bakeoff-deep init --pool <pool> --workdir <workdir>")
+    print("  bakeoff-deep cohort --min-size 20 --max-size 200")
     return 0
 
 

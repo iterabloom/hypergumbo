@@ -24,7 +24,7 @@ The project is transitioning from a manually-driven development workflow to an *
 | System | Status | Notes |
 |--------|--------|-------|
 | **Hypergumbo Core** | ✅ Implemented | 104 language analyzers, YAML patterns, all CLI commands |
-| **Bakeoff Infrastructure** | ✅ Implemented | `scripts/bakeoff` with all subcommands, `bakeoff-reflect`, `hypergumbo_diag.py` |
+| **Bakeoff Infrastructure** | ✅ Implemented | `scripts/bakeoff-broad` with all subcommands, `bakeoff-broad-reflect`, `hypergumbo_diag.py` |
 | **Autonomous Governance** | ✅ Implemented | Hook adapters for Claude Code, Gemini CLI, Cursor, Codex CLI; invariant ledger; `./scripts/loop-toggle` |
 
 > **Reader Note (Jan 28, 2026):** This document was updated to reflect full implementation of the autonomous governance system. All systems are now implemented. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the governance design.
@@ -148,7 +148,7 @@ The primary output is `hypergumbo.results.json` (behavior map):
 
 > **✅ IMPLEMENTATION STATUS: EXISTS**
 >
-> The bakeoff infrastructure described in this section is fully implemented in `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py`. All subcommands (`init`, `cohort`, `run`, `diagnose`, `status`, `issues`, `cycle`, `questions`, `loop`, `scan`) exist and function as described.
+> The bakeoff infrastructure described in this section is fully implemented in `scripts/bakeoff-broad`, `scripts/bakeoff-broad-reflect`, and `scripts/hypergumbo_diag.py`. All subcommands (`init`, `cohort`, `run`, `diagnose`, `status`, `issues`, `cycle`, `questions`, `loop`, `scan`) exist and function as described.
 
 ### 2.1 Purpose
 
@@ -179,7 +179,7 @@ The bakeoff operates on the principle that **a cohort should be tested repeatedl
 
 ### 2.3 Bakeoff Scripts
 
-#### `scripts/bakeoff` — Main Orchestrator
+#### `scripts/bakeoff-broad` — Main Orchestrator
 
 | Subcommand | Purpose |
 |------------|---------|
@@ -200,7 +200,7 @@ The bakeoff operates on the principle that **a cohort should be tested repeatedl
 | MEDIUM | `ROUTES_WEAKLY_LINKED_TO_HANDLERS`, `LOW_CROSS_FILE_CALL_RESOLUTION` |
 | LOW | Various minor quality issues |
 
-#### `scripts/bakeoff-reflect` — Qualitative Analysis
+#### `scripts/bakeoff-broad-reflect` — Qualitative Analysis
 
 Generates a "special vs needs work" reflection by analyzing behavior map artifacts:
 
@@ -519,7 +519,7 @@ The core insight: **A bug is evidence of a violated invariant.** The agent's job
                               ↓ controls
 ┌─────────────────────────────────────────────────────────────────┐
 │  LAYER 2: Bakeoff Infrastructure                                │
-│  scripts/bakeoff, bakeoff-reflect, hypergumbo_diag.py           │
+│  scripts/bakeoff-broad, bakeoff-broad-reflect, hypergumbo_diag.py     │
 │  Generates CRITICAL/HIGH signals, tracks convergence            │
 └─────────────────────────────────────────────────────────────────┘
                               ↓ operates on
@@ -731,25 +731,25 @@ Implementation: Streaming JSON output + aggressive cleanup of intermediate data 
 
 ```bash
 # Initialize session
-./scripts/bakeoff init --pool ~/repos --workdir ~/bakeoff-session
+./scripts/bakeoff-broad init --pool ~/repos --workdir ~/bakeoff-session
 
 # Select cohort (6 repos, language-diverse)
-./scripts/bakeoff cohort --count 6
+./scripts/bakeoff-broad cohort --count 6
 
 # Run analysis
-./scripts/bakeoff run
+./scripts/bakeoff-broad run
 
 # Diagnose issues
-./scripts/bakeoff diagnose
+./scripts/bakeoff-broad diagnose
 
 # Check convergence status
-./scripts/bakeoff status
+./scripts/bakeoff-broad status
 
 # Or run full cycle
-./scripts/bakeoff cycle
+./scripts/bakeoff-broad cycle
 
 # Autonomous loop (with safeguards)
-./scripts/bakeoff loop --max-iterations 10
+./scripts/bakeoff-broad loop --max-iterations 10
 ```
 
 ### 7.2 Investigating a CRITICAL/HIGH Issue
@@ -838,8 +838,8 @@ Implementation: Streaming JSON output + aggressive cleanup of intermediate data 
 | `src/hypergumbo/schema.py` | JSON schema versioning |
 | `src/hypergumbo/entrypoints.py` | Entrypoint detection |
 | `src/hypergumbo/slice.py` | Graph slicing |
-| `scripts/bakeoff` | Bakeoff orchestrator |
-| `scripts/bakeoff-reflect` | Qualitative analysis |
+| `scripts/bakeoff-broad` | Bakeoff orchestrator |
+| `scripts/bakeoff-broad-reflect` | Qualitative analysis |
 | `scripts/hypergumbo_diag.py` | Deep diagnostics |
 | `docs/SPEC.md` | Full specification |
 | `docs/schema.json` | JSON schema (auto-generated) |

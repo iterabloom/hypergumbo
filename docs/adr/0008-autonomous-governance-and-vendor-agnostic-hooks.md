@@ -43,8 +43,8 @@ Currently, governance relies on Claude Code's conventions. Contributors using Ge
 |-----------|--------|-------------|
 | `AUTONOMOUS_MODE.txt` | ✅ Exists | File-based gate: "TRUE" continues, "FALSE" stops |
 | `AGENTS.md` | ✅ Exists | Methodology documentation (voluntary) |
-| `scripts/bakeoff loop` | ✅ Exists | Automated cycling with convergence detection |
-| `scripts/bakeoff-reflect` | ✅ Exists | Qualitative analysis |
+| `scripts/bakeoff-broad loop` | ✅ Exists | Automated cycling with convergence detection |
+| `scripts/bakeoff-broad-reflect` | ✅ Exists | Qualitative analysis |
 | Hook enforcement | ❌ Missing | Automated reflection injection |
 | Invariant ledger | ❌ Missing | Structured tracking of discovered invariants |
 

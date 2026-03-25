@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bakeoff - Automated hypergumbo bakeoff runner and analyzer
+bakeoff-broad - Automated hypergumbo bakeoff runner and analyzer
 
 This script orchestrates the bakeoff-analyze-fix cycle:
 1. Selects a cohort of repos from a pool
@@ -29,43 +29,43 @@ The process:
 3. Re-run on SAME cohort → diagnose → reflect
 4. If new issues emerge, repeat step 2
 5. If no new CRITICAL/HIGH issues for 2+ iterations, cohort is CONVERGED
-6. Aggregate findings: bakeoff-reflect aggregate
+6. Aggregate findings: bakeoff-broad-reflect aggregate
 7. Move to next cohort
 
 Usage:
     # Initialize a new bakeoff session (creates timestamped dir in canonical default)
-    ./scripts/bakeoff init --pool ~/whole_bunch_of_repos
+    ./scripts/bakeoff-broad init --pool ~/whole_bunch_of_repos
 
     # Select next cohort (5 smallest unused repos)
-    ./scripts/bakeoff cohort --count 5
+    ./scripts/bakeoff-broad cohort --count 5
 
     # Run hypergumbo on current cohort
-    ./scripts/bakeoff run
+    ./scripts/bakeoff-broad run
 
     # Run all unanalyzed cohorts in batch
-    ./scripts/bakeoff run --all
-    ./scripts/bakeoff run --some 3
+    ./scripts/bakeoff-broad run --all
+    ./scripts/bakeoff-broad run --some 3
 
     # Diagnose and generate issue report
-    ./scripts/bakeoff diagnose
+    ./scripts/bakeoff-broad diagnose
 
     # Diagnose all cohorts (default: current only)
-    ./scripts/bakeoff diagnose --all
-    ./scripts/bakeoff diagnose --some 3
+    ./scripts/bakeoff-broad diagnose --all
+    ./scripts/bakeoff-broad diagnose --some 3
 
     # Check convergence status
-    ./scripts/bakeoff status
+    ./scripts/bakeoff-broad status
 
     # Full cycle: run + diagnose + reflect
-    ./scripts/bakeoff cycle
-    ./scripts/bakeoff cycle --all
-    ./scripts/bakeoff cycle --skip-reflect  # Fast iteration
+    ./scripts/bakeoff-broad cycle
+    ./scripts/bakeoff-broad cycle --all
+    ./scripts/bakeoff-broad cycle --skip-reflect  # Fast iteration
 
     # List detected issues (machine-readable)
-    ./scripts/bakeoff issues --format json
+    ./scripts/bakeoff-broad issues --format json
 
     # Show diagnostic questions to ask (for human/agent analysis)
-    ./scripts/bakeoff questions
+    ./scripts/bakeoff-broad questions
 
 Environment:
     BAKEOFF_WORKDIR: Override workdir location
@@ -294,7 +294,7 @@ def save_state(state: BakeoffState):
 
 MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
 
-# Shared memory profile store with bakeoff-features
+# Shared memory profile store with bakeoff-deep
 _MEMORY_PROFILE_PATH = os.path.join(
     os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
 )
@@ -496,9 +496,9 @@ def cmd_init(args):
                     print("NOTE: This session has completed outputs. Subsequent")
                     print("`run` commands will skip cohorts that already have output.")
                     print("To re-run with code changes, create a NEW session instead:")
-                    print(f"  ./scripts/bakeoff init --pool {pool_path}")
+                    print(f"  ./scripts/bakeoff-broad init --pool {pool_path}")
                 print()
-                print("Next: Run `bakeoff cohort` to select repos for testing")
+                print("Next: Run `bakeoff-broad cohort` to select repos for testing")
                 return 0
         print("No existing session found. Creating a new one.")
 
@@ -527,7 +527,7 @@ def cmd_init(args):
     print(f"  Pool: {pool_path}")
     print(f"  Workdir: {workdir}")
     print()
-    print("Next: Run `bakeoff cohort` to select repos for testing")
+    print("Next: Run `bakeoff-broad cohort` to select repos for testing")
     return 0
 
 
@@ -549,7 +549,7 @@ def cmd_cohort(args):
     state = load_state(workdir)
 
     if not state:
-        print("Error: No bakeoff session found. Run `bakeoff init` first.", file=sys.stderr)
+        print("Error: No bakeoff session found. Run `bakeoff-broad init` first.", file=sys.stderr)
         return 1
 
     pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
@@ -710,7 +710,7 @@ def cmd_cohort(args):
         print()
         print(f"Remaining in pool: {len(available) - len(cohort)}")
     print()
-    print("Next: Run `bakeoff run` to analyze these repos")
+    print("Next: Run `bakeoff-broad run` to analyze these repos")
     return 0
 
 
@@ -721,11 +721,11 @@ def cmd_run(args):
     state = load_state(workdir)
 
     if not state:
-        print("Error: No bakeoff session found. Run `bakeoff init` first.", file=sys.stderr)
+        print("Error: No bakeoff session found. Run `bakeoff-broad init` first.", file=sys.stderr)
         return 1
 
     if not state.current_cohort:
-        print("Error: No cohort selected. Run `bakeoff cohort` first.", file=sys.stderr)
+        print("Error: No cohort selected. Run `bakeoff-broad cohort` first.", file=sys.stderr)
         return 1
 
     pool_path = os.environ.get("BAKEOFF_POOL", state.pool_path)
@@ -768,7 +768,7 @@ def cmd_run(args):
             if os.path.isdir(out_dir) and os.listdir(out_dir):
                 print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
                 print(f"  To re-run with code changes, create a NEW session:")
-                print(f"    ./scripts/bakeoff init --pool {pool_path}")
+                print(f"    ./scripts/bakeoff-broad init --pool {pool_path}")
                 print()
                 print(f"  IMPORTANT NOTE: If you are tempted to DELETE the existing output")
                 print(f"  directory to force a re-run, STOP. You are about to ERASE RESULTS")
@@ -941,7 +941,7 @@ def cmd_run(args):
 
     print(f"Run complete. Output: {out_dir}")
     print()
-    print("Next: Run `bakeoff diagnose` to analyze results")
+    print("Next: Run `bakeoff-broad diagnose` to analyze results")
     return 0
 
 
@@ -1170,7 +1170,7 @@ def cmd_diagnose(args):
 
     if batch_mode:
         if not os.path.isdir(out_base):
-            print(f"Error: No output found at {out_base}. Run `bakeoff run` first.", file=sys.stderr)
+            print(f"Error: No output found at {out_base}. Run `bakeoff-broad run` first.", file=sys.stderr)
             return 1
 
         all_cohort_dirs = sorted(
@@ -1234,7 +1234,7 @@ def cmd_diagnose(args):
     diag_dir = os.path.join(workdir, "diag", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
 
     if not os.path.isdir(out_dir):
-        print(f"Error: No output found at {out_dir}. Run `bakeoff run` first.", file=sys.stderr)
+        print(f"Error: No output found at {out_dir}. Run `bakeoff-broad run` first.", file=sys.stderr)
         return 1
 
     issues = _diagnose_cohort(state, workdir, state.cohort_number, state.current_cohort, out_dir, diag_dir)
@@ -1273,7 +1273,7 @@ def cmd_diagnose(args):
                 print(f"  - [{i.repo}] {i.flag}")
 
     print()
-    print("Next: Run `bakeoff-reflect` for parse assessment, or `bakeoff status` for convergence")
+    print("Next: Run `bakeoff-broad-reflect` for parse assessment, or `bakeoff status` for convergence")
     return 0
 
 
@@ -1320,37 +1320,37 @@ def cmd_status(args):
             print("  This cohort is stable. Ready for next cohort.")
             print()
             print("  Next steps:")
-            print("    1. ./scripts/bakeoff cohort  # Select new repos")
-            print("    2. ./scripts/bakeoff cycle   # Run analysis")
+            print("    1. ./scripts/bakeoff-broad cohort  # Select new repos")
+            print("    2. ./scripts/bakeoff-broad cycle   # Run analysis")
         elif curr_critical <= prev_critical and curr_high <= prev_high and curr_new <= prev_new:
             print()
             print("  STATUS: IMPROVING")
             print("  Issues are being resolved. Keep iterating on fixes.")
             print()
             print("  Next steps:")
-            print("    1. Review issues: ./scripts/bakeoff issues --format json")
+            print("    1. Review issues: ./scripts/bakeoff-broad issues --format json")
             print("    2. Investigate root causes and analogous issues")
-            print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+            print("    3. Fix issues, then: ./scripts/bakeoff-broad cycle")
         else:
             print()
             print("  STATUS: NEEDS WORK")
             print("  New or unresolved issues found.")
             print()
             print("  Next steps:")
-            print("    1. Review questions: ./scripts/bakeoff questions")
-            print("    2. Run parse assessment: ./scripts/bakeoff-reflect")
+            print("    1. Review questions: ./scripts/bakeoff-broad questions")
+            print("    2. Run parse assessment: ./scripts/bakeoff-broad-reflect")
             print("    3. Investigate issues deeply, check analogous cases")
-            print("    4. Fix issues, then: ./scripts/bakeoff cycle")
+            print("    4. Fix issues, then: ./scripts/bakeoff-broad cycle")
     elif len(state.convergence_history) == 1:
         last = state.convergence_history[0]
         print(f"First iteration: {last.get('critical', 0)} CRITICAL, {last.get('high', 0)} HIGH")
         print()
         print("  Next steps:")
-        print("    1. Review issues: ./scripts/bakeoff issues --format json")
+        print("    1. Review issues: ./scripts/bakeoff-broad issues --format json")
         print("    2. For each issue, ask: What analogous issues might exist?")
-        print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+        print("    3. Fix issues, then: ./scripts/bakeoff-broad cycle")
     else:
-        print("No iterations yet. Run: ./scripts/bakeoff cycle")
+        print("No iterations yet. Run: ./scripts/bakeoff-broad cycle")
 
     # --- Reflect/aggregate status ---
     reflect_dir = os.path.join(workdir, "reflect")
@@ -1364,7 +1364,7 @@ def cmd_status(args):
         if non_summary and not summaries:
             print()
             print("  Reflect: assessments exist but no summary.yaml generated.")
-            print("  Run: ./scripts/bakeoff-reflect aggregate")
+            print("  Run: ./scripts/bakeoff-broad-reflect aggregate")
         elif non_summary and summaries:
             # Check if there are assessment dirs without a matching summary
             assessed_dirs = set()
@@ -1378,7 +1378,7 @@ def cmd_status(args):
                 print()
                 print(f"  Reflect: {len(unaggregated)} cohort(s) have assessments"
                       f" but no summary.yaml.")
-                print("  Run: ./scripts/bakeoff-reflect aggregate")
+                print("  Run: ./scripts/bakeoff-broad-reflect aggregate")
 
     return 0
 
@@ -1410,7 +1410,7 @@ def cmd_cycle(args):
     """Run full cycle: run + diagnose + reflect.
 
     Runs analysis, generates diagnostic report, then generates LLM
-    assessment prompts via bakeoff-reflect.  Use --skip-reflect to
+    assessment prompts via bakeoff-broad-reflect.  Use --skip-reflect to
     run only run + diagnose (for fast iteration when you plan to
     reflect manually later).
     """
@@ -1427,16 +1427,16 @@ def cmd_cycle(args):
     # not just the latest.
     workdir = resolve_workdir(getattr(args, "workdir", None))
     reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  "bakeoff-reflect")
+                                  "bakeoff-broad-reflect")
     cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
     if getattr(args, "all", False):
         cmd.append("--all")
     elif getattr(args, "some", None):
         cmd.extend(["--some", str(args.some)])
-    print(f"\n=== Running bakeoff-reflect ===\n")
+    print(f"\n=== Running bakeoff-broad-reflect ===\n")
     result = subprocess.run(cmd)
     if result.returncode != 0:
-        print("Warning: bakeoff-reflect failed (non-fatal)", file=sys.stderr)
+        print("Warning: bakeoff-broad-reflect failed (non-fatal)", file=sys.stderr)
     return 0
 
 
@@ -1445,7 +1445,7 @@ def cmd_questions(args):
     questions = """
 # Bakeoff Diagnostic Questions
 
-For structured LLM-driven parse assessment, use `bakeoff-reflect` instead.
+For structured LLM-driven parse assessment, use `bakeoff-broad-reflect` instead.
 These manual questions are for quick human-driven analysis.
 
 Ask these questions repeatedly until you stop getting interesting answers.
@@ -1522,7 +1522,7 @@ def cmd_loop(args):
     state = load_state(workdir)
 
     if not state:
-        print("Error: No bakeoff session found. Run 'bakeoff init' first.", file=sys.stderr)
+        print("Error: No bakeoff session found. Run 'bakeoff-broad init' first.", file=sys.stderr)
         return 1
 
     max_iter = args.max_iterations or 100
@@ -1613,10 +1613,10 @@ def cmd_loop(args):
                 print("\nSTATUS: NEEDS_INVESTIGATION")
                 print("Critical or high severity issues detected.")
                 print("\nNext steps for agent:")
-                print("  1. Review issues: ./scripts/bakeoff issues --format json")
+                print("  1. Review issues: ./scripts/bakeoff-broad issues --format json")
                 print("  2. For each issue, ask: What analogous issues might exist?")
                 print("  3. Fix issues in hypergumbo")
-                print("  4. Run: ./scripts/bakeoff loop --continue")
+                print("  4. Run: ./scripts/bakeoff-broad loop --continue")
                 # Exit loop to let agent investigate
                 if not args.auto_continue:
                     return 0

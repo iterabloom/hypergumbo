@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-bakeoff-reflect - LLM-driven parse correctness assessment for BROAD bakeoff
+bakeoff-broad-reflect - LLM-driven parse correctness assessment for BROAD bakeoff
 
 This script generates structured assessment prompts for LLM agents to evaluate
 whether hypergumbo correctly parses and represents codebases. It mirrors the
-architecture of bakeoff-features-reflect (DEEP) but focuses on parse correctness
+architecture of bakeoff-deep-reflect (DEEP) but focuses on parse correctness
 rather than feature usefulness.
 
 Two-phase pipeline:
@@ -19,11 +19,11 @@ preserving variety across runs. 15 journal questions are organized into 3 strata
 (5 each); 1 is sampled per run from a randomly chosen stratum.
 
 Usage:
-    ./scripts/bakeoff-reflect                    # Generate prompts for latest session
-    ./scripts/bakeoff-reflect reflect            # Same as above
-    ./scripts/bakeoff-reflect aggregate          # Aggregate assessment results
-    ./scripts/bakeoff-reflect --workdir PATH     # Override workdir
-    ./scripts/bakeoff-reflect --iteration N      # Specific iteration
+    ./scripts/bakeoff-broad-reflect                    # Generate prompts for latest session
+    ./scripts/bakeoff-broad-reflect reflect            # Same as above
+    ./scripts/bakeoff-broad-reflect aggregate          # Aggregate assessment results
+    ./scripts/bakeoff-broad-reflect --workdir PATH     # Override workdir
+    ./scripts/bakeoff-broad-reflect --iteration N      # Specific iteration
 
 Environment:
     BAKEOFF_WORKDIR: Override workdir location
@@ -724,7 +724,7 @@ def cmd_reflect(args):
     print(f"   {prompts_dir}/<repo_name>.assessment.yaml")
     print()
     print("4. Run aggregate to synthesize findings:")
-    print(f"   ./scripts/bakeoff-reflect aggregate --workdir {workdir}")
+    print(f"   ./scripts/bakeoff-broad-reflect aggregate --workdir {workdir}")
     print()
 
     return 0

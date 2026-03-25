@@ -372,10 +372,10 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | Script | Description |
 |--------|-------------|
 | `analyze-artifacts` | Analyze hypergumbo bakeoff artifacts to extract insights. |
-| `bakeoff` | bakeoff - Automated hypergumbo bakeoff runner and analyzer |
-| `bakeoff-features` | bakeoff-features - Feature-focused hypergumbo bakeoff runner |
-| `bakeoff-features-reflect` | bakeoff-features-reflect - LLM-driven qualitative assessment of hypergumbo outputs |
-| `bakeoff-reflect` | bakeoff-reflect - LLM-driven parse correctness assessment for BROAD bakeoff |
+| `bakeoff-broad` | bakeoff-broad - Automated hypergumbo bakeoff runner and analyzer |
+| `bakeoff-deep` | bakeoff-deep - Feature-focused hypergumbo bakeoff runner |
+| `bakeoff-deep-reflect` | bakeoff-deep-reflect - LLM-driven qualitative assessment of hypergumbo outputs |
+| `bakeoff-broad-reflect` | bakeoff-broad-reflect - LLM-driven parse correctness assessment for BROAD bakeoff |
 | `changelog-date-bucket` | Rewrite CHANGELOG.md's "## [Unreleased]" into date-grouped subheadings. |
 | `compute_probe_embeddings.py` | Compute probe embeddings for sketch_embeddings.py. |
 | `generate-architecture` | Generate ARCHITECTURE.md using hypergumbo to analyze itself. |

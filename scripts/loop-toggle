@@ -174,13 +174,13 @@ show_status() {
             echo -e "Mode: ${GREEN}BROAD${NC}"
             echo "  AUTONOMOUS_MODE.txt = BROAD (or TRUE)"
             echo "  Focus: Parse correctness, fast iteration"
-            echo "  Bakeoff: scripts/bakeoff"
+            echo "  Bakeoff: scripts/bakeoff-broad"
             ;;
         DEEP)
             echo -e "Mode: ${CYAN}DEEP${NC}"
             echo "  AUTONOMOUS_MODE.txt = DEEP"
             echo "  Focus: Feature usefulness, larger repos"
-            echo "  Bakeoff: scripts/bakeoff-features"
+            echo "  Bakeoff: scripts/bakeoff-deep"
             ;;
     esac
 
@@ -265,7 +265,7 @@ set_mode_broad() {
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Parse correctness, call graph quality, route detection"
-    echo "Use: ./scripts/bakeoff for automated testing"
+    echo "Use: ./scripts/bakeoff-broad for automated testing"
 }
 
 set_mode_deep() {
@@ -288,8 +288,8 @@ set_mode_deep() {
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Feature usefulness, slice quality, developer perspective"
-    echo "Use: ./scripts/bakeoff-features for feature testing"
-    echo "     ./scripts/bakeoff-features-reflect for LLM assessment"
+    echo "Use: ./scripts/bakeoff-deep for feature testing"
+    echo "     ./scripts/bakeoff-deep-reflect for LLM assessment"
 }
 
 toggle_mode() {
@@ -352,8 +352,8 @@ case "${1:-toggle}" in
         echo "When autonomous mode is active:"
         echo "  - AGENTS.md priority queue guides work"
         echo "  - Governance hooks enforce reflection before stopping"
-        echo "  - BROAD uses scripts/bakeoff"
-        echo "  - DEEP uses scripts/bakeoff-features"
+        echo "  - BROAD uses scripts/bakeoff-broad"
+        echo "  - DEEP uses scripts/bakeoff-deep"
         ;;
     *)
         echo "Unknown command: $1" >&2
