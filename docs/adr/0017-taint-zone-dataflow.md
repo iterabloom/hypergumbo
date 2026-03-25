@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -10,7 +10,7 @@ Status: Proposed
 
 The hypergumbo spec (§2) lists as a non-goal: "No deep type-resolution / interprocedural dataflow correctness guarantees." That statement was written when hypergumbo was a broad-coverage structural analysis tool and before the implications of PlazaFlow's trust-boundary verification needs were understood.
 
-This ADR does not invalidate that non-goal — it narrows its scope. Deep dataflow analysis is available for languages with contributed def/use extractors (Rust first, then TypeScript, Python, etc. as demand arises). The other 100+ languages supported by hypergumbo continue to use structural analysis with no dataflow correctness claims. As more users adopt hypergumbo for their own use cases and contribute extractors, the set of languages with deep analysis will grow incrementally. The non-goal is amended from "we never do this" to "we don't attempt this for all languages; extractors add it where demand justifies it."
+This ADR does not invalidate that non-goal — it narrows its scope. Deep dataflow analysis is available for languages with contributed def/use extractors (Python first, then Rust, then TypeScript, etc. as demand arises). The other 100+ languages supported by hypergumbo continue to use structural analysis with no dataflow correctness claims. As more users adopt hypergumbo for their own use cases and contribute extractors, the set of languages with deep analysis will grow incrementally. The non-goal is amended from "we never do this" to "we don't attempt this for all languages; extractors add it where demand justifies it."
 
 When this ADR is accepted, `docs/hypergumbo-spec.md` §2 should be updated to reflect this evolution.
 
@@ -99,9 +99,9 @@ The native approach builds this infrastructure in Python on top of hypergumbo's 
 
 **The accretion model.** Def/use extractors and taint catalogs are contributed over time, the same way hypergumbo already grows: IO primitive catalogs (YAML), dataflow patterns (YAML), framework patterns (YAML), and language analyzers (Python modules) are all contributed artifacts that make the system smarter for specific languages and frameworks. Taint analysis follows the same pattern. LLMs can assist at development time — generating draft extractors by studying a language's tree-sitter grammar, or generating taint catalogs by studying a framework's API — but hypergumbo itself never invokes an LLM. Every contributed artifact is reviewed, tested to 100% coverage, and committed. The system remains fully deterministic and local-first at runtime.
 
-**Rust is the first extractor** because PlazaFlow is the motivating use case. Rust's syntax is more regular than TypeScript's (no destructuring spread, no optional chaining, no computed properties, no hoisting), but has its own complexities: ownership/borrowing semantics (`&mut` aliases), nested `match` patterns with guards and `ref`/`ref mut` bindings, the `?` operator's dual control flow (Ok path defines a variable, Err path invokes `From::from` and early-returns), and macro invocations that tree-sitter sees pre-expansion. The def/use extractor is estimated at 800-1,300 lines (see §1c for phased scope). Additional extractors (TypeScript, Python, Go) follow as demand arises.
+**Python is the first extractor.** Python has pragmatic advantages as the initial target: (1) existing infrastructure — `annotate_dataflow_ast()` in `dataflow.py` already performs Python-specific AST analysis that can be extended to def/use extraction; (2) testable corpus — hypergumbo's own codebase is Python, providing immediate validation without depending on an external project; (3) broader utility — Python is the most common language for security-sensitive web applications (Django, Flask), giving the taint system wider applicability from day one; (4) simpler semantics — no borrow checker, no `?` operator, no ownership, yielding a genuinely ~200-400 line extractor. The Python extractor validates the shared infrastructure (CFG builder, reaching-def solver) against a real codebase we control before investing in more complex extractors.
 
-**Alternative considered: Python first.** Python has pragmatic advantages as a first extractor target: (1) existing infrastructure — `annotate_dataflow_ast()` in `dataflow.py` already performs Python-specific AST analysis that could be extended to def/use extraction; (2) testable corpus — hypergumbo's own codebase is Python, providing immediate validation without depending on an external project; (3) broader utility — Python is the most common language for security-sensitive web applications (Django, Flask), giving the taint system wider applicability from day one; (4) simpler semantics — no borrow checker, no `?` operator, no ownership, yielding a genuinely ~200-400 line extractor. The tradeoff: if PlazaFlow code becomes available during Phase 2, a Python extractor cannot validate the Rust-side taint claims (TF-001, TF-002, TF-004) that motivate the ADR. **Decision: Rust first remains the plan** because the ADR's value proposition is tied to verifying PlazaFlow's trust boundaries — but if PlazaFlow code is delayed significantly (>3 months past Phase 1), the Python extractor should be built first to validate the infrastructure against a real codebase (hypergumbo itself) and demonstrate value to users with Python-heavy projects.
+**Rust is the second extractor,** motivated by PlazaFlow's trust-boundary verification needs. Rust's syntax is more regular than TypeScript's (no destructuring spread, no optional chaining, no computed properties, no hoisting), but has its own complexities: ownership/borrowing semantics (`&mut` aliases), nested `match` patterns with guards and `ref`/`ref mut` bindings, the `?` operator's dual control flow (Ok path defines a variable, Err path invokes `From::from` and early-returns), and macro invocations that tree-sitter sees pre-expansion. The Rust def/use extractor is estimated at 800-1,300 lines (see §1c for phased scope). Additional extractors (TypeScript, Go, Java) follow as demand arises.
 
 ## Decision
 
@@ -322,15 +322,15 @@ The taint analysis system grows by accretion of contributed code and configurati
 
 | Artifact type | Format | How to contribute | Example |
 |--------------|--------|-------------------|---------|
-| Def/use extractor | Python module (~200-1,000 lines) | Implement `DefUseExtractor` protocol, register via decorator | `rust_def_use.py` |
-| CFG node mapping | YAML (~30-60 lines) | Map tree-sitter node types to control-flow categories | `cfg_nodes/rust.yaml` |
+| Def/use extractor | Python module (~200-1,000 lines) | Implement `DefUseExtractor` protocol, register via decorator | `py_def_use.py` |
+| CFG node mapping | YAML (~30-60 lines) | Map tree-sitter node types to control-flow categories | `cfg_nodes/python.yaml` |
 | Taint catalog | YAML (~20-50 lines) | Define sources/sinks/sanitizers for a domain | `taint_sources/crypto.yaml` |
 | Function summary | YAML (~10-30 lines per function) | Declare param-to-return flow for stdlib/framework functions | `function_summaries/rust_stdlib.yaml` |
 | Security claims | YAML (~5-15 lines per claim) | Project-specific taint-flow assertions | `security-claims.yaml` |
 
 **LLM-assisted development.** Contributors can use LLMs to generate draft artifacts — a def/use extractor by studying a language's tree-sitter grammar, taint catalogs by studying a framework's API, function summaries by studying library documentation. The generated artifact is then reviewed by a human, tested to 100% coverage, and committed. Hypergumbo itself never invokes an LLM. Joern's language frontends serve as reference implementations that inform extractor design (e.g., studying Joern's `gosrc2cpg` frontend to understand which Go AST patterns need def/use handling), but Joern is not a runtime dependency.
 
-**Expansion path:** Rust first (PlazaFlow need), then TypeScript (PlazaFlow primary, ~600-1,000 lines due to destructuring/spread/optional chaining), then Python (existing `annotate_dataflow_ast()` in `dataflow.py` to build on), then Go, Java, etc. as demand arises.
+**Expansion path:** Python first (testable against hypergumbo itself, existing `annotate_dataflow_ast()` infrastructure, ~200-400 lines), then Rust (PlazaFlow need, ~800-1,300 lines), then TypeScript (~600-1,000 lines due to destructuring/spread/optional chaining), then Go, Java, etc. as demand arises.
 
 #### 1f. Performance constraints
 
@@ -339,7 +339,7 @@ The taint analysis system grows by accretion of contributed code and configurati
 - **Parse caching.** A dict mapping `(file_path, language)` → tree-sitter `Tree` avoids re-parsing files already parsed in Pass 1. Trees are immutable; no invalidation needed within a single run.
 - **Overall overhead.** Estimated 10-30 seconds for native DDG computation on a typical targeted set (50-200 functions). No JVM startup, no subprocess coordination, no disk I/O for intermediate formats. Computation is pure Python operating on in-memory tree-sitter ASTs.
 
-**Module placement.** CFG builder and reaching-def solver live in a new `cfg.py` module in `hypergumbo-core`. Def/use extractors live alongside their language analyzers (e.g., `rust_def_use.py` in `hypergumbo-lang-mainstream`). Taint catalogs, propagation, and the solver live in a new `taint.py` module in `hypergumbo-core`. All modules reference `Symbol` and `Edge` objects by ID (string) to maintain loose coupling.
+**Module placement.** CFG builder and reaching-def solver live in a new `cfg.py` module in `hypergumbo-core`. Def/use extractors live alongside their language analyzers (e.g., `py_def_use.py` in `hypergumbo-lang-mainstream`). Taint catalogs, propagation, and the solver live in a new `taint.py` module in `hypergumbo-core`. All modules reference `Symbol` and `Edge` objects by ID (string) to maintain loose coupling.
 
 ### 2. Taint catalogs (YAML-driven)
 
@@ -737,7 +737,7 @@ Verdicts become more precise:
 
 - **Dynamic dispatch precision.** If a method call resolves to multiple candidates (virtual dispatch), all candidates' summaries are unioned. This is sound (no missed flows) but imprecise (may report flows that cannot actually happen).
 
-- **Def/use extractors for all 119 languages.** Extractors exist only for languages where someone has contributed one (Rust first, then TypeScript, Python, etc.). Languages without an extractor fall back to structural analysis (ADR-0016 call-graph tracing). The accretion model (§1e) provides a clear path for expanding coverage as demand arises.
+- **Def/use extractors for all 119 languages.** Extractors exist only for languages where someone has contributed one (Python first, then Rust, then TypeScript, etc.). Languages without an extractor fall back to structural analysis (ADR-0016 call-graph tracing). The accretion model (§1e) provides a clear path for expanding coverage as demand arises.
 
 - **Closure capture taint.** If a tainted value is captured by a closure and the closure is passed to a higher-order function like `Array.map()`, the map output should inherit taint. Declared function summaries (§4b) express structured callback flow via the `callback` schema — which outer arguments map to which callback parameters, and whether the callback return flows to the outer return. This handles *argument-mediated* taint flow through higher-order functions (e.g., tainted array elements flowing through `map`'s callback). However, *capture-mediated* taint flow — where the closure captures a tainted variable from the enclosing scope and uses it in the callback body — requires analyzing the closure's capture set: which variables from the enclosing scope does the closure reference? Initial approach: conservative overapproximation. If any captured variable is tainted, treat the closure's return value as tainted. This may produce false positives (e.g., a closure captures both a tainted value and an untainted value, but only returns the untainted one). Precise closure capture analysis is a future refinement.
 
@@ -862,7 +862,7 @@ This measurement plan turns Open Question #1 from a speculation exercise into a 
 
 1. **False positive budget.** How many false positives are acceptable before users stop trusting the tool? This is an empirical question answered by the precision measurement plan (§9). Phase 1b provides the baseline; Phase 2 measurement shows improvement.
 
-2. **Extractor coverage prioritization.** Which languages get def/use extractors after Rust and TypeScript? Candidates: Python (existing `annotate_dataflow_ast()` to build on), Go (popular in target repos, relatively regular syntax), Java (large ecosystem). Prioritization should be informed by demand from taint catalog users — if someone writes SQL injection catalogs for Django, they'll want a Python extractor.
+2. **Extractor coverage prioritization.** Which languages get def/use extractors after Python, Rust, and TypeScript? Candidates: Go (popular in target repos, relatively regular syntax), Java (large ecosystem). Prioritization should be informed by demand from taint catalog users.
 
 ## Acknowledgments
 
