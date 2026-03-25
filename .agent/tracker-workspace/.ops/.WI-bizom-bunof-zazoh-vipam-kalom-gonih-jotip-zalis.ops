@@ -42,3 +42,18 @@
   nonce: 98b0  # 98b0
   set:  # 98b0
     parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 98b0
+- op: update  # c05a
+  at: '2026-03-25T07:50:12Z'  # c05a
+  by: agent  # c05a
+  actor: jgstern_agent  # c05a
+  clock: 5  # c05a
+  nonce: c05a  # c05a
+  set:  # c05a
+    status: todo_soft  # c05a
+- op: discuss  # ae7a
+  at: '2026-03-25T07:50:12Z'  # ae7a
+  by: agent  # ae7a
+  actor: jgstern_agent  # ae7a
+  clock: 6  # ae7a
+  nonce: ae7a  # ae7a
+  message: "ADR-0017 accepted. Phase 3."  # ae7a

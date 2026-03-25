@@ -42,3 +42,18 @@
   nonce: 20ef  # 20ef
   set:  # 20ef
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 20ef
+- op: update  # 021d
+  at: '2026-03-25T07:50:12Z'  # 021d
+  by: agent  # 021d
+  actor: jgstern_agent  # 021d
+  clock: 5  # 021d
+  nonce: 021d  # 021d
+  set:  # 021d
+    status: todo_soft  # 021d
+- op: discuss  # 2634
+  at: '2026-03-25T07:50:12Z'  # 2634
+  by: agent  # 2634
+  actor: jgstern_agent  # 2634
+  clock: 6  # 2634
+  nonce: '2634'  # 2634
+  message: "ADR-0017 accepted. Phase 2b. Retitled: Rust def/use extractor (was 'hard patterns only')."  # 2634
