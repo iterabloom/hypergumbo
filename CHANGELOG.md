@@ -18,6 +18,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Swift computed properties and subscripts**: Computed properties (`var x: T { get { ... } }`) and subscript declarations (`subscript(key:) -> T`) are now extracted as `property` and `subscript` kind symbols. Call edges inside these bodies are attributed to the property/subscript. This captures the primary API pattern for Swift libraries (SwiftyJSON, Kingfisher, TCA).
+- **Tracker embedding ORT fix**: Use `ORT_ENABLE_EXTENDED` instead of `ORT_ENABLE_ALL` to avoid `SimplifiedLayerNormFusion` bug with quantized ModernBERT on onnxruntime >=1.24.
 - **Objective-C I/O boundary catalog** (`objc.yaml`): 90+ Foundation/Cocoa I/O primitives covering filesystem (NSFileManager, NSFileHandle, NSData, NSString), networking (NSURLSession, NSURLConnection), database (Core Data), subprocess (NSTask), environment (NSProcessInfo, NSBundle), logging (NSLog, os_log), and IPC (NSNotificationCenter).
 - **Cocoa/UIKit framework patterns** (`cocoa.yaml`): Lifecycle hook detection for UIViewController (viewDidLoad, viewWillAppear), UIView (layoutSubviews, drawRect), UITableViewDataSource/Delegate, NSCoding, and AppKit equivalents.
 - **ObjC parent_base_classes propagation**: Methods inside ObjC classes now inherit `parent_base_classes` from their class's `@interface` declaration, enabling framework pattern matching for UIKit lifecycle hooks.
