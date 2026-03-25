@@ -70,6 +70,22 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("haskell")
 
 
+def _short_name_penalty(name: str) -> float:
+    """Confidence penalty for short callee names in Haskell call resolution.
+
+    Single-letter names (f, g, x, n) are almost always lambda parameters
+    or local bindings in Haskell FP code, not cross-file calls. Two-letter
+    names (fn, xs) are also often parameters. Applying a penalty makes
+    false positive edges easily filterable by downstream consumers.
+    """
+    n = len(name)
+    if n <= 1:
+        return 0.15
+    if n == 2:
+        return 0.50
+    return 1.0
+
+
 def find_haskell_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Haskell files in the repository."""
     yield from find_files(repo_root, ["*.hs"])
@@ -424,7 +440,7 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
+                            confidence = 0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,

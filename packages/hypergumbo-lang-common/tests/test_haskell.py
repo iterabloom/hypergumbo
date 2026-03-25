@@ -658,3 +658,101 @@ lookup_ key = M.lookup key M.empty
         assert not result.skipped
         symbols = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "lookup_" for s in symbols)
+
+
+class TestHaskellShortNamePenalty:
+    """Short callee names get confidence penalties to reduce false positives.
+
+    Haskell FP code idiomatically uses single-letter names (f, g, x, n) for
+    lambda parameters and local bindings. When these names match global symbols
+    via suffix matching, the resulting edges are almost always false positives.
+    The analyzer applies a confidence penalty to make these easily filterable.
+    """
+
+    def test_penalty_function_single_letter(self) -> None:
+        """Single-letter names get heavy penalty (0.15x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("f") == 0.15
+        assert _short_name_penalty("g") == 0.15
+        assert _short_name_penalty("x") == 0.15
+        assert _short_name_penalty("n") == 0.15
+
+    def test_penalty_function_two_letter(self) -> None:
+        """Two-letter names get moderate penalty (0.50x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("fn") == 0.50
+        assert _short_name_penalty("xs") == 0.50
+
+    def test_penalty_function_normal_names(self) -> None:
+        """Names with 3+ characters get no penalty (1.0x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("map") == 1.0
+        assert _short_name_penalty("helper") == 1.0
+        assert _short_name_penalty("processItems") == 1.0
+
+    def test_penalty_function_empty_string(self) -> None:
+        """Empty string gets heavy penalty."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("") == 0.15
+
+    def test_single_letter_call_gets_low_confidence(self, tmp_path: Path) -> None:
+        """A call to `f` where `f` resolves to a global symbol gets low confidence."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        # File A defines a function named `f`
+        make_haskell_file(tmp_path, "Target.hs", """
+module Target where
+
+f :: Int -> Int
+f x = x + 1
+""")
+
+        # File B calls `f`
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import Target
+
+main :: IO ()
+main = print (f 42)
+""")
+
+        result = analyze_haskell(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        f_edges = [e for e in call_edges if e.dst.endswith(":f:function")]
+        assert len(f_edges) >= 1
+        # Single-letter penalty: 0.85 * resolver_conf * 0.15
+        # Should be well below the normal ~0.68 threshold
+        for edge in f_edges:
+            assert edge.confidence < 0.20
+
+    def test_normal_name_call_gets_full_confidence(self, tmp_path: Path) -> None:
+        """A call to a normal-length name gets no penalty."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Utils.hs", """
+module Utils where
+
+helper :: Int -> Int
+helper x = x + 1
+""")
+
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import Utils
+
+main :: IO ()
+main = print (helper 42)
+""")
+
+        result = analyze_haskell(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [e for e in call_edges if "helper" in e.dst]
+        assert len(helper_edges) >= 1
+        for edge in helper_edges:
+            assert edge.confidence > 0.50
