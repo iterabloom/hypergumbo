@@ -61,3 +61,18 @@
   nonce: 8fad  # 8fad
   set:  # 8fad
     parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 8fad
+- op: update  # f97a
+  at: '2026-03-25T07:37:24Z'  # f97a
+  by: agent  # f97a
+  actor: jgstern_agent  # f97a
+  clock: 8  # f97a
+  nonce: f97a  # f97a
+  set:  # f97a
+    status: wont_do  # f97a
+- op: discuss  # 6ac3
+  at: '2026-03-25T07:37:24Z'  # 6ac3
+  by: agent  # 6ac3
+  actor: jgstern_agent  # 6ac3
+  clock: 9  # 6ac3
+  nonce: 6ac3  # 6ac3
+  message: "Subsumed by ADR-0017 Phase 3 function summaries. Function summaries (param_to_return, param_to_calls) provide strictly more precise information than access_mode annotations on call edges."  # 6ac3
