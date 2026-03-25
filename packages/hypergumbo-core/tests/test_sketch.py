@@ -7146,6 +7146,43 @@ class TestCachedResults:
         assert "Auto-discovered README description" in sketch
 
 
+class TestRequireSections:
+    """Tests for --require-section feature."""
+
+    def test_require_section_overrides_budget(self, tmp_path: Path) -> None:
+        """Required sections appear even at very low budget."""
+        (tmp_path / "README.md").write_text("# Test\nA test project.\n")
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text(
+            "def main():\n"
+            "    '''Entry point.'''\n"
+            "    pass\n"
+        )
+
+        # Very low budget — Key Symbols would normally be squeezed
+        sketch_without = generate_sketch(tmp_path, max_tokens=200)
+        sketch_with = generate_sketch(
+            tmp_path, max_tokens=200,
+            require_sections=["Key Symbols"],
+        )
+        # With require_sections, Key Symbols should appear
+        if "## Key Symbols" not in sketch_without:
+            assert "## Key Symbols" in sketch_with
+
+    def test_require_section_empty_list(self, tmp_path: Path) -> None:
+        """Empty require_sections list is a no-op."""
+        (tmp_path / "main.py").write_text("x = 1\n")
+        sketch = generate_sketch(tmp_path, max_tokens=500, require_sections=[])
+        assert "## Overview" in sketch
+
+    def test_require_section_none(self, tmp_path: Path) -> None:
+        """None require_sections is a no-op."""
+        (tmp_path / "main.py").write_text("x = 1\n")
+        sketch = generate_sketch(tmp_path, max_tokens=500, require_sections=None)
+        assert "## Overview" in sketch
+
+
 class TestSketchWithSource:
     """Tests for sketch --with-source feature (include source file contents)."""
 

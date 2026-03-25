@@ -700,6 +700,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         cached_results=cached_results,
         with_source=with_source,
         stats_out=stats,
+        require_sections=getattr(args, "require_sections", None) or None,
     )
 
     # Secret scanning (opt-out with --no-secret-scan)
@@ -3629,6 +3630,17 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         help="Analyze translated docs for this locale instead of English "
              "(e.g., --locale ja-jp). By default, translated documentation "
              "directories are excluded to avoid processing duplicate content.",
+    )
+    p_sketch.add_argument(
+        "--require-section",
+        action="append",
+        default=[],
+        dest="require_sections",
+        metavar="NAME",
+        help="Require a section even under budget pressure "
+             "(repeatable; e.g., --require-section 'Key Symbols'). "
+             "Valid: Entry Points, Data Models, Source Files, Key Symbols, "
+             "Additional Files, Source Files Content, Additional Files Content",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
