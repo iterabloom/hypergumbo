@@ -144,13 +144,24 @@ except Exception:
     CURRENT_HASH="no-sentinel-dirs-$$"
   fi
 
+  # Check prior history BEFORE appending current hash.  This avoids an
+  # off-by-one (the current stop shouldn't count toward the threshold —
+  # it should only trip after HASH_THRESHOLD *prior* identical stops) and
+  # a TOCTOU race (two separate `tail` reads could see different data if
+  # another hook fires between them).
+  if [[ -f "$HASH_FILE" ]]; then
+    LAST_N=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE")
+    TAIL_COUNT=$(printf '%s\n' "$LAST_N" | wc -l)
+    UNIQUE_HASHES=$(printf '%s\n' "$LAST_N" | sort -u)
+    UNIQUE_COUNT=$(printf '%s\n' "$UNIQUE_HASHES" | wc -l)
+    if [[ "$TAIL_COUNT" -ge "$HASH_THRESHOLD" && "$UNIQUE_COUNT" -eq 1 && "$UNIQUE_HASHES" == "$CURRENT_HASH" ]]; then
+      CIRCUIT_BREAKER_TRIPPED=true
+    fi
+  fi
+
+  # Record current hash AFTER the check
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     echo "$CURRENT_HASH" >> "$HASH_FILE"
-  fi
-  TAIL_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | wc -l)
-  UNIQUE_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | sort -u | wc -l)
-  if [[ "$TAIL_COUNT" -ge "$HASH_THRESHOLD" && "$UNIQUE_COUNT" -eq 1 ]]; then
-    CIRCUIT_BREAKER_TRIPPED=true
   fi
 fi
 
