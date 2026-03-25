@@ -61,3 +61,11 @@
   clock: 6  # df80
   nonce: df80  # df80
   message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # df80
+- op: update  # f223
+  at: '2026-03-25T04:15:55Z'  # f223
+  by: agent  # f223
+  actor: jgstern_agent  # f223
+  clock: 7  # f223
+  nonce: f223  # f223
+  set:  # f223
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # f223

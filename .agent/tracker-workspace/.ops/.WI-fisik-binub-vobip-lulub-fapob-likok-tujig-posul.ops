@@ -61,3 +61,11 @@
   clock: 6  # 499c
   nonce: 499c  # 499c
   message: "ADR-0017 is Proposed, not yet accepted. Awaiting human approval before implementation."  # 499c
+- op: update  # d1e3
+  at: '2026-03-25T04:15:55Z'  # d1e3
+  by: agent  # d1e3
+  actor: jgstern_agent  # d1e3
+  clock: 7  # d1e3
+  nonce: d1e3  # d1e3
+  set:  # d1e3
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # d1e3

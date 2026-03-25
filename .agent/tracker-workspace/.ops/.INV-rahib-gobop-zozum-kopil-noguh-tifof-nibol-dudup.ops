@@ -21,3 +21,10 @@
       statement: "auto-pr must converge to a merged state or an explicit failure within one invocation, regardless of concurrent activity on dev (tracker syncs, other merges, CI re-triggers). Silent failures (HTTP 200 + not merged) and misleading status (failure when CI passed) are violations."  # 1094
       root_cause: "auto-pr assumed sequential execution but operates in concurrent environment with tracker sync, CI re-triggers, and other merges advancing dev."  # 1094
       fix: "Added retry cascade for HTTP 200+merged:false, rebase-on-405, plumbing-based tracker sync to avoid branch interference, and misleading status fix."  # 1094
+- op: discuss  # 5f6e
+  at: '2026-03-25T04:14:49Z'  # 5f6e
+  by: agent  # 5f6e
+  actor: jgstern_agent  # 5f6e
+  clock: 2  # 5f6e
+  nonce: 5f6e  # 5f6e
+  message: "Created from tracker taxonomy analysis (Mar 24 lab notebook). Covers 19 items in the CI Pipeline & Auto-PR cluster. Falsifiable: run auto-pr while tracker sync is in flight, verify it either merges or reports clear actionable error. Case 5 in the oblivious pair analysis showed 4 reactive fixes to do_merge() over 4 days with zero cross-references."  # 5f6e

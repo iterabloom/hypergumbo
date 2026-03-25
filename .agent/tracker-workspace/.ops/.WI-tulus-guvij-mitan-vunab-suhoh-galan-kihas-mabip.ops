@@ -50,3 +50,11 @@
   clock: 6  # 8b73
   nonce: 8b73  # 8b73
   message: "[migrated from justification field] Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 8b73
+- op: update  # c3f5
+  at: '2026-03-25T04:15:56Z'  # c3f5
+  by: agent  # c3f5
+  actor: jgstern_agent  # c3f5
+  clock: 7  # c3f5
+  nonce: c3f5  # c3f5
+  set:  # c3f5
+    parent: INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # c3f5

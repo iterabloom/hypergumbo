@@ -19,3 +19,11 @@
     justification:  # aaec
     description: "Implemented parallel execution via background processes. Each package runs in its own subprocess with isolated coverage files. ~15% faster for 2 packages; expected ~3x faster for full 4-package run (wall-clock = slowest package instead of sum). Added `--serial` flag for debugging. User-requested."  # aaec
     fields: {}  # aaec
+- op: update  # 892c
+  at: '2026-03-25T04:15:55Z'  # 892c
+  by: agent  # 892c
+  actor: jgstern_agent  # 892c
+  clock: 2  # 892c
+  nonce: 892c  # 892c
+  set:  # 892c
+    parent: INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # 892c

@@ -34,3 +34,11 @@
   clock: 3  # 3f3a
   nonce: 3f3a  # 3f3a
   message: "ADR-0016 merged in PR #2344. Implementation decomposed into 6 tracker items: WI-gomol (Phase 1a: Python catalog), WI-fonak (Phase 1b: tagging pass), WI-dikig (Phase 1c: boundary map), WI-zozok (Phase 1d: dogfood), WI-lojuf (Phase 2: multi-lang + FFI), WI-kuruv (Phase 3: claim verification), WI-rukub (Phase 4: CI). Phases 1a-1d at P3, Phases 2-4 at P4. All connected via before/parent relationships."  # 3f3a
+- op: update  # 09a3
+  at: '2026-03-25T04:15:54Z'  # 09a3
+  by: agent  # 09a3
+  actor: jgstern_agent  # 09a3
+  clock: 4  # 09a3
+  nonce: 09a3  # 09a3
+  set:  # 09a3
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 09a3

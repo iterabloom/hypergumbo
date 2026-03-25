@@ -53,3 +53,11 @@
   clock: 6  # 530d
   nonce: 530d  # 530d
   message: "Reassessed in light of ADR-0017. Directional call-site annotations are now subsumed by the taint analysis design: ADR-0017 §3a/§4a introduces function summaries (param_to_return, param_to_calls) that provide strictly more precise information than access_mode annotations on call edges. The DDG-backed taint propagation knows exactly which parameter flows to which return value via reaching-def analysis — access_mode on call edges would be a coarser approximation. ADR-0017 Consequences also notes the precedence rule: DDG edges supersede access_mode annotations for taint propagation. For languages without DDG coverage, the structural fallback (call-graph BFS) doesn't benefit from directional call annotations either — it treats all call edges as potential propagation paths in both directions. Recommendation: close as wontfix — the use case this would have addressed is better served by ADR-0017 Phase 3 function summaries. If ADR-0017 is not accepted, this could be reconsidered, but it would be lower value than the alternatives."  # 530d
+- op: update  # 8fad
+  at: '2026-03-25T04:15:54Z'  # 8fad
+  by: agent  # 8fad
+  actor: jgstern_agent  # 8fad
+  clock: 7  # 8fad
+  nonce: 8fad  # 8fad
+  set:  # 8fad
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 8fad
