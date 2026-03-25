@@ -248,6 +248,8 @@ jobs:
         run: |
           pip install --upgrade pip wheel setuptools
           pip install pip-audit
+          # CVE-2026-25645: requests 2.32.5 — fix in 2.33.0
+          pip install "requests~=2.33.0"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
