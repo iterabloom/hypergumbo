@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0016: I/O primitive catalog for Swift
 #
-# Maps Foundation, UIKit, SwiftNIO, and common framework APIs to I/O boundary
-# types.  Uses Swift method names (not ObjC selectors).
+# Maps Foundation, UIKit, SwiftNIO, AsyncHTTPClient, NIOSSL, distributed
+# tracing, and WebSocket APIs to I/O boundary types.  Uses Swift method names
+# (not ObjC selectors).
 #
 # Note: Swift's tree-sitter analyzer extracts bare identifiers from call
 # expressions, so module context is often "external".  Only include methods
@@ -85,6 +86,10 @@ net_send:
     methods:
       - URLRequest
     notes: "URLRequest constructor implies HTTP request setup"
+  - module: AsyncHTTPClient
+    methods:
+      - HTTPClientRequest
+    notes: "AsyncHTTPClient request constructor (server-side Swift)"
   - module: NWConnection
     methods:
       - NWConnection
@@ -93,7 +98,8 @@ net_send:
     methods:
       - writeAndFlush
       - fireChannelRead
-    notes: "SwiftNIO channel write and inbound data forwarding"
+      - addHandler
+    notes: "SwiftNIO channel write, inbound data forwarding, and pipeline setup"
   - module: ChannelHandlerContext
     methods:
       - writeAndFlush
@@ -101,6 +107,12 @@ net_send:
       - fireChannelInactive
       - fireErrorCaught
     notes: "SwiftNIO handler context I/O forwarding methods"
+  - module: NIOSSL
+    methods:
+      - NIOSSLContext
+      - NIOSSLCertificate
+      - NIOSSLPrivateKey
+    notes: "SwiftNIO TLS/SSL context and credential loading"
 
 net_recv:
   - module: URLSession
@@ -119,6 +131,14 @@ net_recv:
     methods:
       - ClientBootstrap
     notes: "SwiftNIO client bootstrap"
+  - module: EventLoopGroup
+    methods:
+      - MultiThreadedEventLoopGroup
+    notes: "SwiftNIO event loop group for server networking"
+  - module: NIOAsyncChannel
+    methods:
+      - NIOAsyncChannel
+    notes: "SwiftNIO async channel for bidirectional IO (Swift Concurrency)"
   - module: Channel
     methods:
       - channelRead
@@ -127,6 +147,12 @@ net_recv:
     methods:
       - NIOWebSocketServerUpgrader
     notes: "SwiftNIO WebSocket server upgrader"
+  - module: WebSocket
+    methods:
+      - onText
+      - onBinary
+      - onClose
+    notes: "WebSocket event handlers for incoming messages"
 
 db_read:
   - module: NSManagedObjectContext
@@ -190,6 +216,11 @@ logging:
     methods:
       - Logger
     notes: "os.Logger constructor (Apple unified logging)"
+  - module: Tracing
+    methods:
+      - startSpan
+      - endSpan
+    notes: "Distributed tracing span lifecycle (swift-distributed-tracing)"
 
 ipc_send:
   - module: NotificationCenter
@@ -215,6 +246,10 @@ process_send:
       - preconditionFailure
       - assertionFailure
     notes: "Swift process termination/assertion functions"
+  - module: EventLoopGroup
+    methods:
+      - syncShutdownGracefully
+    notes: "SwiftNIO event loop graceful shutdown"
 
 # Names too generic to match without module context — these appear in many
 # non-IO contexts (e.g., Data() for empty data, String interpolation,

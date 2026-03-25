@@ -1497,3 +1497,90 @@ class TestSwiftCatalog:
         assert edges[1].meta["io_boundary"] == "logging"
         assert edges[2].meta["io_boundary"] == "fs_read"
         assert edges[3].meta is None  # 'write' should not be tagged
+
+    def test_swift_has_swiftnio_server_primitives(self) -> None:
+        """Swift catalog covers SwiftNIO server infrastructure."""
+        catalog = load_catalog("swift")
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        process = {p.name for p in catalog.primitives if p.boundary == "process_send"}
+        # Event loop group creation is server infrastructure
+        assert "MultiThreadedEventLoopGroup" in net_recvs
+        # Graceful shutdown is process lifecycle
+        assert "syncShutdownGracefully" in process
+        # HTTP client request construction
+        assert "HTTPClientRequest" in net_sends
+
+    def test_swift_has_websocket_handlers(self) -> None:
+        """Swift catalog covers WebSocket event handlers."""
+        catalog = load_catalog("swift")
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        assert "onText" in net_recvs
+        assert "onBinary" in net_recvs
+
+    def test_swift_has_tls_primitives(self) -> None:
+        """Swift catalog covers NIO TLS/SSL primitives."""
+        catalog = load_catalog("swift")
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        assert "NIOSSLContext" in net_sends
+        assert "NIOSSLCertificate" in net_sends
+
+    def test_swift_has_nio_channel_operations(self) -> None:
+        """Swift catalog covers NIO async channel and pipeline operations."""
+        catalog = load_catalog("swift")
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        # NIOAsyncChannel is a bidirectional IO channel
+        assert "NIOAsyncChannel" in net_recvs
+        # Pipeline handler addition
+        assert "addHandler" in net_sends
+
+    def test_swift_has_tracing_primitives(self) -> None:
+        """Swift catalog covers distributed tracing span operations."""
+        catalog = load_catalog("swift")
+        logging = {p.name for p in catalog.primitives if p.boundary == "logging"}
+        assert "startSpan" in logging
+        assert "endSpan" in logging
+
+    def test_swift_server_io_tagging_on_edges(self) -> None:
+        """End-to-end: tag_io_boundaries tags server-side Swift IO edges."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            MockEdge(
+                src="swift:Sources/App/Server.swift:10:setup:method",
+                dst="swift:external:0-0:MultiThreadedEventLoopGroup:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Server.swift:15:teardown:method",
+                dst="swift:external:0-0:syncShutdownGracefully:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/WS.swift:20:handle:method",
+                dst="swift:external:0-0:onText:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/TLS.swift:5:configure:method",
+                dst="swift:external:0-0:NIOSSLContext:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Client.swift:8:fetch:method",
+                dst="swift:external:0-0:HTTPClientRequest:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 5, f"Expected 5 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_recv"
+        assert edges[1].meta["io_boundary"] == "process_send"
+        assert edges[2].meta["io_boundary"] == "net_recv"
+        assert edges[3].meta["io_boundary"] == "net_send"
+        assert edges[4].meta["io_boundary"] == "net_send"
