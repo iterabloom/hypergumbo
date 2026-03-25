@@ -57,3 +57,10 @@
   clock: 6  # 64e3
   nonce: '64e3'  # 64e3
   message: "ADR-0017 accepted. Infrastructure."  # 64e3
+- op: discuss  # 297a
+  at: '2026-03-25T15:10:01Z'  # 297a
+  by: agent  # 297a
+  actor: jgstern_agent  # 297a
+  clock: 7  # 297a
+  nonce: 297a  # 297a
+  message: "taint.py created in PR #2548 (Phase 1). cfg.py is Phase 2 work (CFG builder + reaching-def solver). Remaining: cfg.py when Phase 2 begins."  # 297a
