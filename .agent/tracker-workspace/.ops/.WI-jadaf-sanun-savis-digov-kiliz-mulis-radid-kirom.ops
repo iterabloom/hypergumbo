@@ -32,3 +32,11 @@
   clock: 3  # cf99
   nonce: cf99  # cf99
   message: "Fixed in PR #1995. Added <module:filename> symbol and enclosing-function fallback in bash, php, perl, and powershell analyzers."  # cf99
+- op: update  # 5b12
+  at: '2026-03-25T04:23:56Z'  # 5b12
+  by: agent  # 5b12
+  actor: jgstern_agent  # 5b12
+  clock: 4  # 5b12
+  nonce: 5b12  # 5b12
+  set:  # 5b12
+    parent: INV-jahom-fusal-lupit-kobaf-zizos-pogon-lubun-hunop  # 5b12

@@ -35,3 +35,11 @@
   clock: 3  # 0f13
   nonce: 0f13  # 0f13
   message: "Fixed: create_boundary_nodes() in ir.py creates lightweight external_symbol nodes for all dangling edge endpoints. Called post-dedup in cli.py. Nodes excluded from output, transparent to tier filtering."  # 0f13
+- op: update  # f9ed
+  at: '2026-03-25T04:24:00Z'  # f9ed
+  by: agent  # f9ed
+  actor: jgstern_agent  # f9ed
+  clock: 4  # f9ed
+  nonce: f9ed  # f9ed
+  set:  # f9ed
+    parent: META-sulor-nulit-birav-sikav-zihuh-povis-kavis-fojut  # f9ed

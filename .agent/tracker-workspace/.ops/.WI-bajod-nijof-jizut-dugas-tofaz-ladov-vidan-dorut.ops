@@ -35,3 +35,11 @@
   clock: 3  # 905e
   nonce: 905e  # 905e
   message: "Fixed via member_expression handling in _extract_object_properties(). The Hapi config-object extractor already accepted 'this' as a receiver; only the handler value extraction was missing. this.route({method:'get', path:'/', handler: this.getAllStrategies}) now produces UsageContext with handler_name='getAllStrategies'."  # 905e
+- op: update  # 7da8
+  at: '2026-03-25T04:23:57Z'  # 7da8
+  by: agent  # 7da8
+  actor: jgstern_agent  # 7da8
+  clock: 4  # 7da8
+  nonce: 7da8  # 7da8
+  set:  # 7da8
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # 7da8

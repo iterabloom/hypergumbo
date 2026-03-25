@@ -35,3 +35,11 @@
   clock: 3  # 5ff5
   nonce: 5ff5  # 5ff5
   message: "Implemented in PR #1693. doXxx→POST /xxx, getXxx→GET /xxx."  # 5ff5
+- op: update  # d45c
+  at: '2026-03-25T04:23:58Z'  # d45c
+  by: agent  # d45c
+  actor: jgstern_agent  # d45c
+  clock: 4  # d45c
+  nonce: d45c  # d45c
+  set:  # d45c
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # d45c

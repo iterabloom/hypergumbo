@@ -32,3 +32,11 @@
   clock: 3  # 7b7e
   nonce: 7b7e  # 7b7e
   message: "Fixed by adding _RUST_GENERIC_TRAIT_METHODS blocklist in rust.py. Generic trait methods (.into(), .clone(), .len(), .push(), etc.) are now blocked from short-name resolution via method_resolver. Fully-scoped calls (StatusRow::into()) still resolve via Strategy 1."  # 7b7e
+- op: update  # e746
+  at: '2026-03-25T04:23:57Z'  # e746
+  by: agent  # e746
+  actor: jgstern_agent  # e746
+  clock: 4  # e746
+  nonce: e746  # e746
+  set:  # e746
+    parent: INV-mosag-jokuj-vavoj-razul-nirip-bonak-jonam-mikig  # e746

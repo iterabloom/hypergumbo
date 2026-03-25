@@ -87,3 +87,11 @@
   clock: 11  # 6199
   nonce: '6199'  # 6199
   message: "[migrated from justification field] Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # 6199
+- op: update  # abf5
+  at: '2026-03-25T04:24:00Z'  # abf5
+  by: agent  # abf5
+  actor: jgstern_agent  # abf5
+  clock: 12  # abf5
+  nonce: abf5  # abf5
+  set:  # abf5
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # abf5

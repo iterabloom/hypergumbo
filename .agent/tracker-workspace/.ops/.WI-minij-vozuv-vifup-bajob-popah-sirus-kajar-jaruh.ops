@@ -32,3 +32,11 @@
   clock: 3  # 9334
   nonce: '9334'  # 9334
   message: "Fixed in PR #2525. Added _short_name_penalty() to Scala analyzer: single-letter names get 0.15x confidence (drops to ~0.10), two-letter names get 0.50x (drops to ~0.34). False edges from f/g/x/n are now easily filterable by downstream consumers."  # 9334
+- op: update  # 7b28
+  at: '2026-03-25T04:23:57Z'  # 7b28
+  by: agent  # 7b28
+  actor: jgstern_agent  # 7b28
+  clock: 4  # 7b28
+  nonce: 7b28  # 7b28
+  set:  # 7b28
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 7b28

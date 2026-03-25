@@ -32,3 +32,11 @@
   clock: 3  # 7282
   nonce: '7282'  # 7282
   message: "Fixed in PR #2029. Root cause: _detect_java_frameworks() only scanned build.gradle/build.gradle.kts. Multi-module Gradle projects (Kafka) declare deps in gradle/dependencies.gradle. Fix scans *.gradle(*.kts) in gradle/ dir."  # 7282
+- op: update  # 0c1a
+  at: '2026-03-25T04:23:58Z'  # 0c1a
+  by: agent  # 0c1a
+  actor: jgstern_agent  # 0c1a
+  clock: 4  # 0c1a
+  nonce: 0c1a  # 0c1a
+  set:  # 0c1a
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # 0c1a

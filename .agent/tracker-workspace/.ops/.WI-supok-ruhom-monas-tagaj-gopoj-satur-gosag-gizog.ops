@@ -35,3 +35,11 @@
   clock: 3  # 6390
   nonce: '6390'  # 6390
   message: "Fixed in PR #1682. Type hierarchy linker applies 0.30 confidence to test-file dispatches_to edges."  # 6390
+- op: update  # 2bf3
+  at: '2026-03-25T04:23:59Z'  # 2bf3
+  by: agent  # 2bf3
+  actor: jgstern_agent  # 2bf3
+  clock: 4  # 2bf3
+  nonce: 2bf3  # 2bf3
+  set:  # 2bf3
+    parent: INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv  # 2bf3

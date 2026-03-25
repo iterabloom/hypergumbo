@@ -17,3 +17,11 @@
     pr_ref:  # 62ec
     description: "All 8 Swift bakeoff repos show false-positive call edges from name-only matching. append→Array.append mismatches to MDocMacro.append, filter→Collection.filter mismatches to Baseline.filter. Need confidence penalty or disambiguation for very common Swift method names."  # 62ec
     fields: {}  # 62ec
+- op: update  # 0d0f
+  at: '2026-03-25T04:23:57Z'  # 0d0f
+  by: agent  # 0d0f
+  actor: jgstern_agent  # 0d0f
+  clock: 2  # 0d0f
+  nonce: 0d0f  # 0d0f
+  set:  # 0d0f
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 0d0f
