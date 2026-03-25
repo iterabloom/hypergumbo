@@ -56,7 +56,7 @@ Slice Quality:
 Supply Chain:
 | Metric     | Good Range | Warning        |
 |------------|------------|----------------|
-| tier1_pct  | 15-98%     | <5% or >99.5%  |
+| tier1_pct  | 15-100%    | <5%            |
 | tier4_pct  | 0-5%       | >10%           |
 
 Graph:
@@ -193,8 +193,9 @@ QUALITY_THRESHOLDS = {
     # packages depending on core) naturally have low tier-1 percentages because
     # sibling packages are classified as tier-2 (internal_dep). A 15% floor
     # accommodates these structures while still flagging repos where almost
-    # everything is third-party.
-    "tier1_pct": {"good_min": 15, "good_max": 98, "warn_min": 5, "warn_max": 99.5},
+    # everything is third-party. Single-language library repos (e.g., Swift
+    # packages like Alamofire, SwiftyJSON) legitimately have 100% tier 1.
+    "tier1_pct": {"good_min": 15, "good_max": 100, "warn_min": 5, "warn_max": 100},
     "tier4_pct": {"good_max": 5, "warn_max": 10},
     "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
     # Polyglot repos have a structural orphan floor from languages without
