@@ -100,6 +100,42 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+_CLASS_KEYWORDS = frozenset({"class", "struct", "enum", "protocol"})
+
+
+def _recover_class_from_error_node(
+    node: "tree_sitter.Node", source: bytes,
+) -> tuple[str, str] | None:
+    """Try to recover a class/struct/enum/protocol name from an ERROR node.
+
+    tree-sitter-swift fails on certain patterns (preprocessor directives like
+    #if/#else/#endif, _$ identifiers, @dynamicMemberLookup) and produces ERROR
+    nodes instead of proper class_declaration nodes. When this happens, the
+    ERROR node still contains the keyword (class/struct/enum/protocol) and
+    a simple_identifier with the type name.
+
+    Returns (name, kind) or None if recovery isn't possible.
+    """
+    # Look for a class/struct/enum/protocol keyword child followed by a name
+    keyword_kind: str | None = None
+    for child in node.children:
+        if child.type in _CLASS_KEYWORDS:
+            keyword_kind = child.type
+            continue
+        if keyword_kind and child.type == "simple_identifier":
+            name = node_text(child, source)
+            if name:
+                return (name, keyword_kind)
+            return None
+        # type_identifier also works (some grammar versions)
+        if keyword_kind and child.type == "type_identifier":
+            name = node_text(child, source)
+            if name:
+                return (name, keyword_kind)
+            return None
+    return None
+
+
 def _extract_base_classes_swift(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract base classes/protocols from Swift type declaration.
 
@@ -477,6 +513,36 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=_extract_modifiers_swift(node),
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                analysis.symbol_by_name[type_name] = symbol
+
+        # ERROR node recovery: tree-sitter-swift fails on certain patterns
+        # (preprocessor directives, _$ identifiers, @dynamicMemberLookup) and
+        # produces ERROR nodes instead of class_declaration. Recover the class
+        # name from the ERROR node's children when possible.
+        elif node.type == "ERROR":
+            recovered = _recover_class_from_error_node(node, source)
+            if recovered:
+                type_name, kind = recovered
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                symbol = Symbol(
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, kind),
+                    name=type_name,
+                    kind=kind,
+                    language="swift",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

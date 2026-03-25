@@ -16,6 +16,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Symbol ID callee extraction**: `_extract_callee_name` now correctly handles names containing colons (ObjC selectors) by parsing from both ends of the ID.
 - **Inheritance linker protocol support**: ObjC `protocol` symbols are now indexed alongside `interface` and `trait` symbols, enabling `implements` edges for protocol conformances.
 - **Swift short-name collision (AMB-METHOD)**: Methods are now registered by qualified name only (`Type.method`), preventing false-positive call edges when multiple types define the same method name (append, filter, get). Bare calls fall through to the NameResolver with ambiguity handling.
+- **Swift ERROR node recovery**: Class, struct, enum, and protocol declarations that tree-sitter-swift fails to parse (due to preprocessor directives, `_$` identifiers, `@dynamicMemberLookup`, etc.) are now recovered from ERROR nodes. Fixes missing `Store<State,Action>` class in swift-composable-architecture (493 misrouted call edges).
 
 ### Added
 

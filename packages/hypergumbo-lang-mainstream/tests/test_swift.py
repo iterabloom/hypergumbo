@@ -1279,3 +1279,117 @@ class TestSwiftShortNameCollision:
                     f"3-way ambiguous 'update()' call should have low confidence, "
                     f"got {e.confidence}"
                 )
+
+
+class TestSwiftErrorNodeRecovery:
+    """Tests for recovering class/struct symbols from ERROR nodes.
+
+    tree-sitter-swift fails to parse certain Swift patterns (preprocessor
+    directives, _$ identifiers), producing ERROR nodes instead of proper
+    class_declaration nodes. The analyzer should recover the class name
+    from ERROR nodes when possible.
+    """
+
+    def test_class_with_preprocessor_directive_recovered(
+        self, tmp_path: Path,
+    ) -> None:
+        """Class with complex preprocessor directives should be extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Store.swift"
+        # Reproduces tree-sitter-swift parse failure: @dynamicMemberLookup,
+        # @preconcurrency @MainActor, _$ identifiers, and #if/#else/#endif
+        # cause ERROR nodes instead of class_declaration.
+        swift_file.write_text("""\
+import Foundation
+
+@dynamicMemberLookup
+@preconcurrency @MainActor
+public final class Store<State, Action>: _Store {
+    var children: [String: AnyObject] = [:]
+
+    @_spi(Internals) public var cancellables: [UUID: Any] { [:] }
+
+    #if !os(visionOS)
+    let _$observationRegistrar = 0
+    #else
+    let _$observationRegistrar = 1
+    #endif
+
+    public func send(_ action: Action) {
+        // dispatch action
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+
+        # The class should be recovered even if the parser produces an ERROR node
+        class_syms = [s for s in result.symbols if s.kind == "class"]
+        class_names = {s.name for s in class_syms}
+        assert "Store" in class_names, (
+            f"Store class should be recovered from ERROR node. "
+            f"Found classes: {class_names}"
+        )
+
+    def test_recover_class_from_error_node_no_name(self) -> None:
+        """Recovery returns None when ERROR node has keyword but no name."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        # ERROR node with 'class' keyword but empty name identifier
+        keyword_child = MagicMock()
+        keyword_child.type = "class"
+        keyword_child.children = []
+
+        empty_name = MagicMock()
+        empty_name.type = "simple_identifier"
+        empty_name.start_byte = 0
+        empty_name.end_byte = 0
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, empty_name]
+
+        result = _recover_class_from_error_node(error_node, b"")
+        assert result is None
+
+    def test_recover_class_from_error_node_type_identifier(self) -> None:
+        """Recovery works with type_identifier instead of simple_identifier."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        keyword_child = MagicMock()
+        keyword_child.type = "struct"
+        keyword_child.children = []
+
+        name_node = MagicMock()
+        name_node.type = "type_identifier"
+        name_node.start_byte = 7
+        name_node.end_byte = 14
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, name_node]
+
+        result = _recover_class_from_error_node(error_node, b"struct MyModel { }")
+        assert result is not None
+        assert result[0] == "MyModel"
+        assert result[1] == "struct"
+
+    def test_recover_class_type_identifier_empty_name(self) -> None:
+        """Recovery returns None when type_identifier has empty name."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        keyword_child = MagicMock()
+        keyword_child.type = "enum"
+        keyword_child.children = []
+
+        name_node = MagicMock()
+        name_node.type = "type_identifier"
+        name_node.start_byte = 0
+        name_node.end_byte = 0
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, name_node]
+
+        result = _recover_class_from_error_node(error_node, b"")
+        assert result is None
