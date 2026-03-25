@@ -25,3 +25,18 @@
   nonce: 0d0f  # 0d0f
   set:  # 0d0f
     parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 0d0f
+- op: update  # 8a21
+  at: '2026-03-25T05:26:09Z'  # 8a21
+  by: agent  # 8a21
+  actor: jgstern_agent  # 8a21
+  clock: 3  # 8a21
+  nonce: 8a21  # 8a21
+  set:  # 8a21
+    status: done  # 8a21
+- op: discuss  # c4ff
+  at: '2026-03-25T05:26:09Z'  # c4ff
+  by: agent  # c4ff
+  actor: jgstern_agent  # c4ff
+  clock: 4  # c4ff
+  nonce: c4ff  # c4ff
+  message: "Fixed by registering methods by qualified name only. Bare calls fall through to NameResolver with ambiguity handling."  # c4ff

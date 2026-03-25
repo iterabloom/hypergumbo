@@ -1,0 +1,19 @@
+- op: create  # 9204
+  at: '2026-03-25T06:53:24Z'  # 9204
+  by: agent  # 9204
+  actor: jgstern_agent  # 9204
+  clock: 1  # 9204
+  nonce: '9204'  # 9204
+  data:  # 9204
+    kind: work_item  # 9204
+    title: "Swift: framework route patterns not matching for Vapor/Hummingbird"  # 9204
+    status: todo_soft  # 9204
+    priority: 3  # 9204
+    parent:  # 9204
+    tags: []  # 9204
+    before: []  # 9204
+    duplicate_of: []  # 9204
+    not_duplicate_of: []  # 9204
+    pr_ref:  # 9204
+    description: "Swift web framework route patterns not matching: Vapor/Hummingbird YAML patterns use name regex like 'app.get' but Swift analyzer extracts qualified names (RoutesBuilder.get or bare 'get'). Routes.txt is empty for all 8 Swift bakeoff repos despite having patterns configured. Identified by DEEP bakeoff reflect assessment."  # 9204
+    fields: {}  # 9204
