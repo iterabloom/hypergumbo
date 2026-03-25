@@ -47,3 +47,18 @@
   clock: 5  # f430
   nonce: f430  # f430
   message: "PlazaFlow bakeoff complete (48 repos). Cobra CLI detection confirmed as valid but low-impact gap. Recommend holding for future Go analyzer work."  # f430
+- op: update  # 61b4
+  at: '2026-03-25T07:39:31Z'  # 61b4
+  by: agent  # 61b4
+  actor: jgstern_agent  # 61b4
+  clock: 6  # 61b4
+  nonce: 61b4  # 61b4
+  set:  # 61b4
+    status: todo_soft  # 61b4
+- op: discuss  # 5aa1
+  at: '2026-03-25T07:39:31Z'  # 5aa1
+  by: agent  # 5aa1
+  actor: jgstern_agent  # 5aa1
+  clock: 7  # 5aa1
+  nonce: 5aa1  # 5aa1
+  message: "Approved. Depends on WI-hikug (Go method resolution)."  # 5aa1
