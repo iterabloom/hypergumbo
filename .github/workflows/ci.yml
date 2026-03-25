@@ -249,7 +249,9 @@ jobs:
           pip install --upgrade pip wheel setuptools
           pip install pip-audit
       - name: Run pip-audit (dependency vulnerabilities)
-        run: pip-audit --skip-editable
+        run: |
+          # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
+          pip-audit --skip-editable --ignore-vuln CVE-2026-4539
 
   verify-generated:
     needs: [changes, stop-the-line]
