@@ -323,6 +323,36 @@ class TestEmbeddingModelFileNotFound:
             model._load()
 
 
+class TestEmbeddingModelLoad:
+    """Tests for the _load() path when model files are present."""
+
+    @pytest.mark.skipif(not _has_dedup_deps(), reason="onnxruntime/tokenizers not installed")
+    def test_load_creates_session_with_extended_optimization(self, tmp_path: Path) -> None:
+        """_load() creates InferenceSession with ORT_ENABLE_EXTENDED optimization."""
+        import onnxruntime
+
+        # Create fake model files so _load() doesn't raise FileNotFoundError
+        (tmp_path / "model_q4f16.onnx").write_bytes(b"fake")
+        (tmp_path / "tokenizer.json").write_text("{}")
+
+        mock_session = MagicMock()
+        mock_tokenizer = MagicMock()
+
+        with patch.object(onnxruntime, "InferenceSession", return_value=mock_session) as mock_ctor, \
+             patch("tokenizers.Tokenizer.from_file", return_value=mock_tokenizer):
+            model = EmbeddingModel(model_dir=tmp_path)
+            model._load()
+
+        # Verify session was created with SessionOptions
+        assert mock_ctor.call_count == 1
+        call_kwargs = mock_ctor.call_args
+        sess_opts = call_kwargs.kwargs.get("sess_options") or call_kwargs[1].get("sess_options")
+        assert sess_opts is not None
+        assert sess_opts.graph_optimization_level == onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        assert model._session is mock_session
+        assert model._tokenizer is mock_tokenizer
+
+
 class TestEmbeddingModelMocked:
     """Tests for EmbeddingModel — some always runnable, some need deps."""
 

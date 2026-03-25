@@ -146,8 +146,17 @@ class EmbeddingModel:
                 "Run download_model() first or install with dedup extras."
             )
 
+        # ORT_ENABLE_ALL triggers a SimplifiedLayerNormFusion bug with the
+        # q4f16 quantized ModernBERT model on onnxruntime >=1.24.  EXTENDED
+        # includes all beneficial optimizations without that pass and has
+        # negligible performance difference (~157ms vs ~160ms per inference).
+        sess_opts = onnxruntime.SessionOptions()
+        sess_opts.graph_optimization_level = (
+            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        )
         self._session = onnxruntime.InferenceSession(
             str(model_path),
+            sess_options=sess_opts,
             providers=["CPUExecutionProvider"],
         )
         self._tokenizer = tokenizers.Tokenizer.from_file(str(tokenizer_path))
