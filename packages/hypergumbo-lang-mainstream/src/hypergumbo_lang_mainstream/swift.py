@@ -124,6 +124,63 @@ def _extract_base_classes_swift(node: "tree_sitter.Node", source: bytes) -> list
     return base_classes
 
 
+def _subscript_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Build a subscript name like ``subscript(key:)`` from a subscript_declaration node.
+
+    Uses parameter label names followed by colons, matching Swift's standard
+    subscript disambiguation convention (similar to function argument labels).
+    """
+    labels: list[str] = []
+    for child in node.children:
+        if child.type == "parameter":
+            id_node = find_child_by_type(child, "simple_identifier")
+            if id_node:
+                labels.append(node_text(id_node, source) + ":")
+    if labels:
+        return f"subscript({''.join(labels)})"
+    return "subscript()"  # pragma: no cover - subscripts always have params
+
+
+def _extract_subscript_signature(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Extract signature from a subscript_declaration node.
+
+    Returns a signature like ``(index: Int) -> JSON``.
+    """
+    params: list[str] = []
+    return_type = None
+    found_closing_paren = False
+
+    for child in node.children:
+        if child.type == "parameter":
+            param_name = None
+            param_type = None
+            for subchild in child.children:
+                if subchild.type == "simple_identifier" and param_name is None:
+                    param_name = node_text(subchild, source)
+                elif subchild.type in (
+                    "user_type", "array_type", "dictionary_type",
+                    "optional_type", "tuple_type", "function_type",
+                ):
+                    param_type = node_text(subchild, source)
+            if param_name and param_type:
+                params.append(f"{param_name}: {param_type}")
+        elif child.type == ")":
+            found_closing_paren = True
+        elif found_closing_paren and child.type in (
+            "user_type", "array_type", "dictionary_type",
+            "optional_type", "tuple_type", "function_type",
+        ):
+            return_type = node_text(child, source)
+
+    params_str = ", ".join(params)
+    sig = f"({params_str})"
+    if return_type:
+        sig += f" -> {return_type}"
+    return sig
+
+
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
     current = node.parent
@@ -141,7 +198,7 @@ def _get_enclosing_function(
     source: bytes,
     local_symbols: dict[str, Symbol],
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method."""
+    """Walk up the tree to find the enclosing function, computed property, or subscript."""
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
@@ -152,6 +209,25 @@ def _get_enclosing_function(
                 func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
+        elif current.type == "property_declaration" and find_child_by_type(current, "computed_property"):
+            # Computed property — look up by qualified name
+            pat = find_child_by_type(current, "pattern")
+            if pat:
+                id_node = find_child_by_type(pat, "simple_identifier")
+                if id_node:
+                    prop_name = node_text(id_node, source)
+                    enclosing = _get_enclosing_type(current, source)
+                    qualified = f"{enclosing}.{prop_name}" if enclosing else prop_name
+                    if qualified in local_symbols:
+                        return local_symbols[qualified]
+        elif current.type == "subscript_declaration":
+            # Subscript — look up by qualified subscript name
+            sub_name = _subscript_name(current, source)
+            if sub_name:
+                enclosing = _get_enclosing_type(current, source)
+                qualified = f"{enclosing}.{sub_name}" if enclosing else sub_name
+                if qualified in local_symbols:
+                    return local_symbols[qualified]
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -393,6 +469,86 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
+
+        # Computed property (var x: T { get { ... } })
+        elif node.type == "property_declaration" and find_child_by_type(node, "computed_property"):
+            pat = find_child_by_type(node, "pattern")
+            if pat:
+                id_node = find_child_by_type(pat, "simple_identifier")
+                if id_node:
+                    prop_name = node_text(id_node, source)
+                    enclosing_type = _get_enclosing_type(node, source)
+                    full_name = f"{enclosing_type}.{prop_name}" if enclosing_type else prop_name
+
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    modifiers = _extract_modifiers_swift(node)
+
+                    # Extract return type from type_annotation
+                    type_ann = find_child_by_type(node, "type_annotation")
+                    ret_type = None
+                    if type_ann:
+                        for tc in type_ann.children:
+                            if tc.type in (
+                                "user_type", "array_type", "dictionary_type",
+                                "optional_type", "tuple_type", "function_type",
+                            ):
+                                ret_type = node_text(tc, source)
+                                break
+                    signature = f"() -> {ret_type}" if ret_type else None
+
+                    symbol = Symbol(
+                        id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "property"),
+                        name=full_name,
+                        kind="property",
+                        language="swift",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        signature=signature,
+                        modifiers=modifiers,
+                    )
+                    analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
+                    analysis.symbol_by_name[full_name] = symbol
+
+        # Subscript declaration
+        elif node.type == "subscript_declaration":
+            sub_label = _subscript_name(node, source)
+            enclosing_type = _get_enclosing_type(node, source)
+            full_name = f"{enclosing_type}.{sub_label}" if enclosing_type else sub_label
+
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            modifiers = _extract_modifiers_swift(node)
+            signature = _extract_subscript_signature(node, source)
+
+            symbol = Symbol(
+                id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "subscript"),
+                name=full_name,
+                kind="subscript",
+                language="swift",
+                path=str(file_path),
+                span=Span(
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                ),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                signature=signature,
+                modifiers=modifiers,
+            )
+            analysis.symbols.append(symbol)
+            analysis.node_for_symbol[symbol.id] = node
+            analysis.symbol_by_name[full_name] = symbol
 
     return analysis
 

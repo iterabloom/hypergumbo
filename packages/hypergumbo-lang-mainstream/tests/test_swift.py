@@ -911,3 +911,223 @@ class TestSwiftNavigationCalls:
             f"Expected call from run -> helper, got: "
             f"{[(e.src.split(':')[-2], e.dst.split(':')[-2]) for e in call_edges]}"
         )
+
+
+class TestSwiftComputedProperties:
+    """Tests for extracting computed properties as callable nodes.
+
+    Computed properties (var x: T { get { ... } }) are the primary API pattern
+    for many Swift libraries (SwiftyJSON, Kingfisher, TCA). They must appear as
+    symbols so they contribute to slice graphs and call resolution.
+    """
+
+    def test_getter_only_computed_property(self, tmp_path: Path) -> None:
+        """Computed property with implicit getter is extracted as property symbol."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "struct JSON {\n"
+            "    var arrayValue: [Any] {\n"
+            "        return []\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
+        assert "JSON.arrayValue" in prop_names
+
+    def test_getter_setter_computed_property(self, tmp_path: Path) -> None:
+        """Computed property with explicit get/set is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Config.swift").write_text(
+            "class Config {\n"
+            "    private var _timeout: Int = 30\n"
+            "    var timeout: Int {\n"
+            "        get { return _timeout }\n"
+            "        set { _timeout = newValue }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
+        assert "Config.timeout" in prop_names
+
+    def test_computed_property_not_stored(self, tmp_path: Path) -> None:
+        """Stored properties (no computed_property child) are NOT extracted as symbols."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Point.swift").write_text(
+            "struct Point {\n"
+            "    var x: Int = 0\n"
+            "    var y: Int = 0\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert len(props) == 0, f"Stored properties should not be extracted: {[s.name for s in props]}"
+
+    def test_computed_property_has_span(self, tmp_path: Path) -> None:
+        """Computed property symbol has correct span."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Span.swift").write_text(
+            "struct S {\n"
+            "    var computed: Int {\n"
+            "        return 42\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "S.computed"), None)
+        assert prop is not None
+        assert prop.span.start_line == 2
+        assert prop.span.end_line == 4
+
+    def test_call_inside_computed_property_attributed(self, tmp_path: Path) -> None:
+        """Calls inside computed property body are attributed to the property."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func helper() -> Int { return 42 }\n"
+            "\n"
+            "struct App {\n"
+            "    var value: Int {\n"
+            "        return helper()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "App.value"), None)
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert prop is not None, "Should find computed property"
+        assert helper is not None, "Should find helper function"
+
+        call_edge = next(
+            (e for e in result.edges if e.src == prop.id and e.dst == helper.id and e.edge_type == "calls"),
+            None,
+        )
+        assert call_edge is not None, "Call inside computed property should create edge from property to callee"
+
+    def test_computed_property_modifiers(self, tmp_path: Path) -> None:
+        """Modifiers (public, static) are extracted for computed properties."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Mod.swift").write_text(
+            "class Mod {\n"
+            "    public static var shared: Mod {\n"
+            "        return Mod()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "Mod.shared"), None)
+        assert prop is not None
+        assert "public" in prop.modifiers
+        assert "static" in prop.modifiers
+
+
+class TestSwiftSubscriptDeclarations:
+    """Tests for extracting subscript declarations as callable nodes.
+
+    Subscripts (subscript(index: Int) -> T { ... }) are a primary API pattern
+    for collection-like types in Swift (SwiftyJSON, Alamofire, etc.).
+    """
+
+    def test_subscript_with_int_param(self, tmp_path: Path) -> None:
+        """Subscript with Int parameter is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "List.swift").write_text(
+            "struct List {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "List.subscript(index:)"
+
+    def test_subscript_with_string_param(self, tmp_path: Path) -> None:
+        """Subscript with String parameter is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Dict.swift").write_text(
+            "struct Dict {\n"
+            "    subscript(key: String) -> Int {\n"
+            "        get { return 0 }\n"
+            "        set { }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "Dict.subscript(key:)"
+
+    def test_subscript_has_signature(self, tmp_path: Path) -> None:
+        """Subscript symbol includes parameter signature."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Arr.swift").write_text(
+            "struct Arr {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        sub = next((s for s in result.symbols if s.kind == "subscript"), None)
+        assert sub is not None
+        assert sub.signature is not None
+        assert "Int" in sub.signature
+
+    def test_call_inside_subscript_attributed(self, tmp_path: Path) -> None:
+        """Calls inside subscript body are attributed to the subscript."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func validate(_ i: Int) -> Int { return i }\n"
+            "\n"
+            "struct App {\n"
+            "    subscript(index: Int) -> Int {\n"
+            "        return validate(index)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        sub = next((s for s in result.symbols if s.kind == "subscript"), None)
+        validate = next((s for s in result.symbols if s.name == "validate"), None)
+        assert sub is not None, "Should find subscript"
+        assert validate is not None, "Should find validate function"
+
+        call_edge = next(
+            (e for e in result.edges if e.src == sub.id and e.dst == validate.id and e.edge_type == "calls"),
+            None,
+        )
+        assert call_edge is not None, "Call inside subscript should create edge from subscript to callee"
+
+    def test_multiple_subscripts(self, tmp_path: Path) -> None:
+        """Multiple subscripts in same type are all extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Multi.swift").write_text(
+            "struct Multi {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "    subscript(key: String) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 2
+        sub_names = {s.name for s in subs}
+        assert "Multi.subscript(index:)" in sub_names
+        assert "Multi.subscript(key:)" in sub_names
