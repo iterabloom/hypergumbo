@@ -55,3 +55,18 @@
   nonce: 223a  # 223a
   set:  # 223a
     parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 223a
+- op: update  # fa3f
+  at: '2026-03-25T15:28:43Z'  # fa3f
+  by: agent  # fa3f
+  actor: jgstern_agent  # fa3f
+  clock: 7  # fa3f
+  nonce: fa3f  # fa3f
+  set:  # fa3f
+    status: done  # fa3f
+- op: discuss  # c8f6
+  at: '2026-03-25T15:28:43Z'  # c8f6
+  by: agent  # c8f6
+  actor: jgstern_agent  # c8f6
+  clock: 8  # c8f6
+  nonce: c8f6  # c8f6
+  message: "Fixed in PR #2551 (merged). Added library_patterns to erlang.yaml: get_/fetch_/read_ → read, set_/put_/write_/store_ → write, ets:lookup/insert/delete, mnesia:read/write/delete, gen_server:call/cast, file:read_file/write_file."  # c8f6

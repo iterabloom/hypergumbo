@@ -75,3 +75,18 @@
   clock: 8  # 3eff
   nonce: 3eff  # 3eff
   message: "ADR-0017 accepted. Phase 1b (decision gate)."  # 3eff
+- op: update  # 3909
+  at: '2026-03-25T14:22:24Z'  # 3909
+  by: agent  # 3909
+  actor: jgstern_agent  # 3909
+  clock: 9  # 3909
+  nonce: '3909'  # 3909
+  set:  # 3909
+    status: done  # 3909
+- op: discuss  # 3a15
+  at: '2026-03-25T14:22:24Z'  # 3a15
+  by: agent  # 3a15
+  actor: jgstern_agent  # 3a15
+  clock: 10  # 3a15
+  nonce: 3a15  # 3a15
+  message: "Measured on reference impl: 50% precision (3/6 true positives). Root causes: same-function source+sanitizer (structural limitation, needs DDG), missing catalog entries for key_material sanitizers. Matches ADR-0017 prediction. Findings in lab notebook 03252026_1430. Decision gate: Phase 2 is borderline — catalog improvements could push precision above 50%."  # 3a15

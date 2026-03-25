@@ -23,3 +23,18 @@
       statement: "For any method call on a local variable (e.g., f.decrypt(), output.write_text()), the analyzer must produce a call or unresolved_external_call edge so IO boundary and taint-flow analyses can detect it."  # bb82
       root_cause: "Python analyzer _process_call() lines 2702-2733 only emit unresolved edges for module_imports and imports receivers. Local variables with unknown type produce no edge at all."  # bb82
       fix: "Expand the unresolved edge fallback to emit edges for any receiver that is a local variable, with confidence ~0.4."  # bb82
+- op: update  # e1da
+  at: '2026-03-25T15:09:19Z'  # e1da
+  by: agent  # e1da
+  actor: jgstern_agent  # e1da
+  clock: 2  # e1da
+  nonce: e1da  # e1da
+  set:  # e1da
+    status: holding  # e1da
+- op: discuss  # a0cd
+  at: '2026-03-25T15:09:19Z'  # a0cd
+  by: agent  # a0cd
+  actor: jgstern_agent  # a0cd
+  clock: 3  # a0cd
+  nonce: a0cd  # a0cd
+  message: "Fixed in PR #2550 (merged). Python analyzer now emits unresolved_variable_method_call edges for method calls on local variables."  # a0cd
