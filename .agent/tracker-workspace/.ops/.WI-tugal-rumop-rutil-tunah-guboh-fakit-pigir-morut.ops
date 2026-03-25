@@ -78,3 +78,18 @@
   nonce: b1a9  # b1a9
   set:  # b1a9
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # b1a9
+- op: update  # cd77
+  at: '2026-03-25T07:46:29Z'  # cd77
+  by: agent  # cd77
+  actor: jgstern_agent  # cd77
+  clock: 9  # cd77
+  nonce: cd77  # cd77
+  set:  # cd77
+    status: todo_soft  # cd77
+- op: discuss  # 8b2d
+  at: '2026-03-25T07:46:29Z'  # 8b2d
+  by: agent  # 8b2d
+  actor: jgstern_agent  # 8b2d
+  clock: 10  # 8b2d
+  nonce: 8b2d  # 8b2d
+  message: "ADR-0017 accepted. Phase 2."  # 8b2d

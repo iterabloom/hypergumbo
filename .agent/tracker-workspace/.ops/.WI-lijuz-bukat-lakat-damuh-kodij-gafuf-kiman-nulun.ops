@@ -42,3 +42,18 @@
   nonce: 9b24  # 9b24
   set:  # 9b24
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 9b24
+- op: update  # d5d8
+  at: '2026-03-25T07:46:28Z'  # d5d8
+  by: agent  # d5d8
+  actor: jgstern_agent  # d5d8
+  clock: 5  # d5d8
+  nonce: d5d8  # d5d8
+  set:  # d5d8
+    status: todo_soft  # d5d8
+- op: discuss  # ee7b
+  at: '2026-03-25T07:46:28Z'  # ee7b
+  by: agent  # ee7b
+  actor: jgstern_agent  # ee7b
+  clock: 6  # ee7b
+  nonce: ee7b  # ee7b
+  message: "ADR-0017 accepted. Phase 2."  # ee7b

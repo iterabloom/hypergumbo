@@ -87,3 +87,18 @@
   nonce: ae6c  # ae6c
   set:  # ae6c
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # ae6c
+- op: update  # 539f
+  at: '2026-03-25T07:46:28Z'  # 539f
+  by: agent  # 539f
+  actor: jgstern_agent  # 539f
+  clock: 10  # 539f
+  nonce: 539f  # 539f
+  set:  # 539f
+    status: todo_soft  # 539f
+- op: discuss  # 4fd9
+  at: '2026-03-25T07:46:28Z'  # 4fd9
+  by: agent  # 4fd9
+  actor: jgstern_agent  # 4fd9
+  clock: 11  # 4fd9
+  nonce: 4fd9  # 4fd9
+  message: "ADR-0017 accepted. Phase 2."  # 4fd9
