@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Built-in taint source catalog — cryptographic key material.
+#
+# Functions whose return values carry the "key_material" taint label.
+# Key material should never be written to persistent storage or sent
+# to untrusted zones.
+description: "Cryptographic key material"
+taint_label: key_material
+
+sources:
+  python:
+    - module: cryptography.fernet
+      functions: [Fernet.generate_key]
+      return_tainted: true
+    - module: cryptography.hazmat.primitives.asymmetric
+      methods: [rsa.generate_private_key, ec.generate_private_key, ed25519.Ed25519PrivateKey.generate]
+      return_tainted: true
+    - module: os
+      functions: [urandom]
+      return_tainted: true
+
+  typescript:
+    - module: crypto
+      functions: [subtle.generateKey, subtle.importKey, subtle.deriveKey, subtle.deriveBits]
+      return_tainted: true
+
+  rust:
+    - module: hkdf
+      methods: [Hkdf::expand, Hkdf::new]
+      return_tainted: true
+    - module: ring::rand
+      methods: [SystemRandom::fill]
+      return_tainted: true
+      argument_tainted: [0]
+
+  go:
+    - module: crypto/rand
+      functions: [Read]
+      return_tainted: true
+
+  java:
+    - module: javax.crypto
+      methods: [KeyGenerator.generateKey, SecretKeyFactory.generateSecret]
+      return_tainted: true

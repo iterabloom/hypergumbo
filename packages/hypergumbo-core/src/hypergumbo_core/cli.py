@@ -3086,10 +3086,12 @@ def _print_io_boundaries_by_file(
 
 
 def cmd_verify_claims(args: argparse.Namespace) -> int:
-    """Verify security claims against I/O boundary map (ADR-0016 Phase 3).
+    """Verify security claims against I/O boundary map and taint flow.
 
-    Loads claims from a YAML file, computes the I/O boundary map, and
-    checks each claim. Returns exit code 1 if any claim is violated.
+    Loads claims from a YAML file, computes the I/O boundary map, runs
+    taint-flow analysis if needed, and checks each claim. Returns exit
+    code 1 if any claim is violated. Supports boundary constraints
+    (ADR-0016) and taint-flow constraints (ADR-0017).
     """
     repo_root = Path(args.path).resolve()
     claims_path = Path(args.claims)
@@ -3164,8 +3166,32 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     }
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=vc_entrypoint_ids or None)
 
+    # Run taint-flow analysis if any claims have taint_flow constraints
+    taint_findings = None
+    has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
+    if has_taint_claims:
+        from .taint import load_builtin_taint_catalog, propagate_taint_structural
+        taint_catalog = load_builtin_taint_catalog()
+
+        # Also load project-local taint catalogs if specified in claims file
+        # (future: --taint-sources, --taint-sinks, --taint-sanitizers args)
+
+        # Collect all sources, sinks, sanitizers across languages
+        all_sources = []
+        all_sinks = []
+        all_sanitizers = []
+        for lang in languages:
+            all_sources.extend(taint_catalog.sources_for_language(lang))
+            all_sinks.extend(taint_catalog.sinks_for_language(lang))
+            all_sanitizers.extend(taint_catalog.sanitizers_for_language(lang))
+
+        if all_sources and all_sinks:
+            taint_findings = propagate_taint_structural(
+                raw_edges, all_sources, all_sinks, all_sanitizers,
+            )
+
     # Verify claims
-    verdicts = _verify(claims, bmap)
+    verdicts = _verify(claims, bmap, taint_findings=taint_findings)
 
     # Output
     if getattr(args, "json_output", False):
@@ -4480,7 +4506,7 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
     # hypergumbo verify-claims
     p_vc = sub.add_parser(
         "verify-claims",
-        help="Verify security claims against I/O boundary map (ADR-0016)",
+        help="Verify security claims against I/O boundary map and taint flow",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_vc.add_argument(

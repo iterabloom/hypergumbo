@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Built-in taint sink catalog — network sends.
+#
+# Functions that send data over the network. Tainted data (plaintext)
+# should not be sent to untrusted network endpoints without encryption.
+description: "Data sent over the network"
+zone: network
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: socket.socket
+      methods: [send, sendall, sendto]
+    - module: requests
+      functions: [post, put, patch]
+    - module: urllib.request
+      functions: [urlopen]
+    - module: http.client.HTTPConnection
+      methods: [request, send]
+
+  typescript:
+    - module: ws
+      methods: [WebSocket.send]
+    - module: net
+      methods: [Socket.write]
+    - module: http
+      methods: [ClientRequest.write, ClientRequest.end]
+
+  rust:
+    - module: std::net
+      methods: [TcpStream::write, TcpStream::write_all]
+    - module: tungstenite
+      methods: [WebSocket::send, WebSocket::write]
+    - module: reqwest
+      methods: [Client::post, Client::put, RequestBuilder::body, RequestBuilder::send]
+
+  go:
+    - module: net
+      methods: [Conn.Write]
+    - module: net/http
+      methods: [Client.Post, Client.Do]
+
+  java:
+    - module: java.net
+      methods: [Socket.getOutputStream, HttpURLConnection.getOutputStream]
+    - module: java.io
+      methods: [OutputStream.write]

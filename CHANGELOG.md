@@ -31,6 +31,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`io-boundaries --primitive NAME`**: Filter output to a specific primitive (e.g., `--primitive shutil.rmtree`). Works with both text and JSON output.
 - **Enriched `io-boundaries --json`**: JSON output now includes per-chain detail (`chains`), per-primitive counts (`primitive_counts`), and a `has_high_risk` flag per boundary type. Backward-compatible (existing fields unchanged).
 
+#### Taint-flow analysis (ADR-0017 Phase 1)
+
+- **Taint catalog system**: YAML-driven taint source/sink/sanitizer catalogs following the IO primitive catalog pattern. Built-in catalogs for crypto decryption (plaintext taint label), key material, host filesystem writes, and network sends. Sanitizer catalog for encryption transforms (plaintext → ciphertext). Covers Python, Rust, TypeScript, Go, and Java.
+- **Structural taint-flow propagation**: Call-graph BFS from taint sources to sinks with dominance-based sanitizer checking. Two-phase algorithm: (1) compute reachable set from source without passing through sanitizers, (2) check if any sink is reachable. Findings explicitly labeled `confidence: approximate` and `analysis_method: structural` per ADR-0017.
+- **`verify-claims` taint-flow constraints**: New `taint_flow` constraint type for security claims. Specify `source_taint` (label), `prohibited_sink_zone` (zone), and optional `allowed_sanitizers`. Claims file can mix boundary constraints (ADR-0016) and taint-flow constraints (ADR-0017) in the same file.
+
 ## [2.4.0] - 2026-03-21
 
 ### Added

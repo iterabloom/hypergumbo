@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Built-in taint source catalog — cryptographic decryption outputs.
+#
+# Functions whose return values carry the "plaintext" taint label.
+# Applies to any project that decrypts data and needs to track where
+# the plaintext goes.
+description: "Cryptographic decryption outputs — data is now plaintext"
+taint_label: plaintext
+
+sources:
+  python:
+    - module: cryptography.fernet
+      functions: [Fernet.decrypt]
+      return_tainted: true
+    - module: cryptography.hazmat.primitives.ciphers.aead
+      methods: [AESGCM.decrypt, AESCCM.decrypt, ChaCha20Poly1305.decrypt]
+      return_tainted: true
+
+  rust:
+    - module: aes_gcm
+      methods: [Aes256Gcm::decrypt, Aes256Gcm::decrypt_in_place]
+      return_tainted: true
+    - module: ring::aead
+      methods: [OpeningKey::open_in_place]
+      return_tainted: true
+      argument_tainted: [0]
+
+  typescript:
+    - module: crypto
+      functions: [subtle.decrypt]
+      return_tainted: true
+    - module: "@noble/ciphers"
+      methods: [decrypt]
+      return_tainted: true
+
+  go:
+    - module: crypto/aes
+      methods: [cipher.Open]
+      return_tainted: true
+    - module: crypto/cipher
+      methods: [AEAD.Open]
+      return_tainted: true
+
+  java:
+    - module: javax.crypto
+      methods: [Cipher.doFinal]
+      return_tainted: true

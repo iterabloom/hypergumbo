@@ -204,3 +204,162 @@ def test_verify_claims_objc_catalog_bridging(tmp_path: Path, capsys) -> None:
     data = json.loads(capsys.readouterr().out)
     violated = [r for r in data if r["verdict"] == "violated"]
     assert len(violated) == 1
+
+
+def test_verify_claims_taint_flow_violated(tmp_path: Path, capsys) -> None:
+    """Taint-flow claim violated when plaintext reaches host_fs zone."""
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            # handler calls Fernet.decrypt (taint source)
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "type": "calls", "confidence": 0.9},
+            # handler calls write_text (taint sink - host_fs)
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-001",
+                "text": "Plaintext must not reach host filesystem",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "plaintext",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = True
+
+    rc = cmd_verify_claims(args)
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data[0]["verdict"] == "violated"
+    assert data[0]["evidence_count"] >= 1
+    assert "approximate" in data[0]["details"]
+
+
+def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
+    """Taint-flow claim confirmed when sanitizer is on the path."""
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+            {"id": "python:app.py:20-30:store:function", "name": "store",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 20, "end_line": 30}},
+        ],
+        edges=[
+            # handler calls Fernet.decrypt (taint source)
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "type": "calls", "confidence": 0.9},
+            # handler calls store
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:app.py:20-30:store:function",
+             "type": "calls", "confidence": 0.9},
+            # store calls Fernet.encrypt (sanitizer)
+            {"src": "python:app.py:20-30:store:function",
+             "dst": "python:external:0-0:Fernet.encrypt:unresolved",
+             "type": "calls", "confidence": 0.9},
+            # store calls write_text (taint sink)
+            {"src": "python:app.py:20-30:store:function",
+             "dst": "python:external:0-0:write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-001",
+                "text": "Plaintext must not reach host filesystem",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "plaintext",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "CONFIRMED" in out
+
+
+def test_verify_claims_taint_no_sources(tmp_path: Path, capsys) -> None:
+    """Taint-flow claim confirmed when no taint sources found for languages."""
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "haskell:Main.hs:1-10:main:function", "name": "main",
+             "kind": "function", "language": "haskell", "path": "Main.hs",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "haskell:Main.hs:1-10:main:function",
+             "dst": "haskell:external:0-0:putStrLn:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-001",
+                "text": "No plaintext to disk",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "plaintext",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
