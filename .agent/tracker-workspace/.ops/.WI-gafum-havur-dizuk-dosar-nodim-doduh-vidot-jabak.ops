@@ -57,3 +57,18 @@
   clock: 6  # 4223
   nonce: '4223'  # 4223
   message: "ADR-0017 accepted. Update spec non-goal."  # 4223
+- op: update  # c1ad
+  at: '2026-03-25T14:06:17Z'  # c1ad
+  by: agent  # c1ad
+  actor: jgstern_agent  # c1ad
+  clock: 7  # c1ad
+  nonce: c1ad  # c1ad
+  set:  # c1ad
+    status: done  # c1ad
+- op: discuss  # ca47
+  at: '2026-03-25T14:06:17Z'  # ca47
+  by: agent  # ca47
+  actor: jgstern_agent  # ca47
+  clock: 8  # ca47
+  nonce: ca47  # ca47
+  message: "Updated in PR #2549 (merged). §2 non-goal changed from blanket dataflow exclusion to per-language approach. §3 verify-claims documents taint_flow constraint type."  # ca47

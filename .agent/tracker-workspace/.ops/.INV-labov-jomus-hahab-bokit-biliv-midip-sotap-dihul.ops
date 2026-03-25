@@ -1,0 +1,25 @@
+- op: create  # bb82
+  at: '2026-03-25T14:19:00Z'  # bb82
+  by: agent  # bb82
+  actor: jgstern_agent  # bb82
+  clock: 1  # bb82
+  nonce: bb82  # bb82
+  data:  # bb82
+    kind: invariant  # bb82
+    title: "Method calls on local variables must produce call edges for IO/taint analysis"  # bb82
+    status: violated  # bb82
+    priority: 2  # bb82
+    parent:  # bb82
+    tags:  # bb82
+    - python  # bb82
+    - structural  # bb82
+    - adr-0017  # bb82
+    before: []  # bb82
+    duplicate_of: []  # bb82
+    not_duplicate_of: []  # bb82
+    pr_ref:  # bb82
+    description: ""  # bb82
+    fields:  # bb82
+      statement: "For any method call on a local variable (e.g., f.decrypt(), output.write_text()), the analyzer must produce a call or unresolved_external_call edge so IO boundary and taint-flow analyses can detect it."  # bb82
+      root_cause: "Python analyzer _process_call() lines 2702-2733 only emit unresolved edges for module_imports and imports receivers. Local variables with unknown type produce no edge at all."  # bb82
+      fix: "Expand the unresolved edge fallback to emit edges for any receiver that is a local variable, with confidence ~0.4."  # bb82
