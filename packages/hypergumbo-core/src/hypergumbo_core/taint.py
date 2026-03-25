@@ -560,15 +560,23 @@ def propagate_taint_structural(
     forward_adj, reverse_adj = _build_adjacency(edges)
 
     # Index: callee name → source/sink/sanitizer
+    # Index by qualified name, catalog name, AND short method name (last
+    # component after dots) to match unresolved edges that only have the
+    # bare method name (e.g., "decrypt" instead of "Fernet.decrypt").
     source_by_callee: dict[str, TaintSource] = {}
     for src in sources:
         source_by_callee[src.name] = src
         source_by_callee[src.qualified_name] = src
+        # Also index by bare method name for unresolved edge matching
+        if "." in src.name:
+            source_by_callee[src.name.rsplit(".", 1)[-1]] = src
 
     sink_by_callee: dict[str, TaintSink] = {}
     for sink in sinks:
         sink_by_callee[sink.name] = sink
         sink_by_callee[sink.qualified_name] = sink
+        if "." in sink.name:
+            sink_by_callee[sink.name.rsplit(".", 1)[-1]] = sink
 
     sanitizer_by_callee: dict[str, TaintSanitizer] = {}
     for san in sanitizers:

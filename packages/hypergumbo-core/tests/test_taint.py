@@ -772,6 +772,27 @@ class TestEdgeCases:
         )
         assert len(findings) == 0
 
+    def test_propagation_matches_sink_by_short_name(self) -> None:
+        """Sink with compound name (e.g., Path.write_text) matches short name."""
+        edges = [
+            _make_edge("py:a.py:1-5:func:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:func:function",
+                       "py:external:0-0:write_text:unresolved"),
+        ]
+        sources = [TaintSource(
+            taint_label="plaintext", module="cryptography.fernet",
+            name="Fernet.decrypt", kind="function", return_tainted=True,
+        )]
+        # Sink with compound name — should match via short name "write_text"
+        sinks = [TaintSink(
+            zone="host_fs", trust_level="untrusted",
+            module="pathlib", name="Path.write_text", kind="method",
+        )]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        assert len(findings) == 1
+        assert findings[0].sink_zone == "host_fs"
+
     def test_finding_verdict_confirmed_safe(self) -> None:
         """Sanitized finding has 'confirmed_safe' verdict."""
         finding = TaintFlowFinding(
