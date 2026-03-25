@@ -173,3 +173,18 @@
   clock: 21  # 2e71
   nonce: '2e71'  # 2e71
   message: "Approved for investigation. Investigate the Keycloak 47% route-handler gap."  # 2e71
+- op: update  # 33cb
+  at: '2026-03-25T21:16:35Z'  # 33cb
+  by: agent  # 33cb
+  actor: jgstern_agent  # 33cb
+  clock: 22  # 33cb
+  nonce: 33cb  # 33cb
+  set:  # 33cb
+    status: holding  # 33cb
+- op: discuss  # bfec
+  at: '2026-03-25T21:16:36Z'  # bfec
+  by: agent  # bfec
+  actor: jgstern_agent  # bfec
+  clock: 23  # bfec
+  nonce: bfec  # bfec
+  message: "Keycloak revalidation (Mar 25): 802 unique (method, path) endpoints materialized, ALL with handler edges (100% resolution). The 47% gap (1302 enriched methods → 802 routes) is correct deduplication: interface/implementation duplicates (JAX-RS admin-client + services = same endpoints), method overloads (12 search() variants → 1 GET /{realm}/users), and 124 empty-path routes (missing subresource locator path chaining). Handler coverage invariant is satisfied for unique endpoints. Remaining gap: 124 methods with empty paths due to incomplete @Path chaining."  # bfec

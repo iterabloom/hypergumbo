@@ -69,3 +69,18 @@
   clock: 8  # f0bf
   nonce: f0bf  # f0bf
   message: "Partial fix in PR #2557: added _short_name_penalty() to Haskell analyzer (same pattern as Scala PR #2525). Single-letter names get 0.15x confidence, two-letter get 0.50x. False edges from f/g/x/n are now easily filterable. Item remains open — top-level single-letter function extraction still happens, this just reduces confidence on the call edges."  # f0bf
+- op: update  # 54ab
+  at: '2026-03-25T19:37:24Z'  # 54ab
+  by: agent  # 54ab
+  actor: jgstern_agent  # 54ab
+  clock: 9  # 54ab
+  nonce: 54ab  # 54ab
+  set:  # 54ab
+    status: done  # 54ab
+- op: discuss  # d4b9
+  at: '2026-03-25T19:37:24Z'  # d4b9
+  by: agent  # d4b9
+  actor: jgstern_agent  # d4b9
+  clock: 10  # d4b9
+  nonce: d4b9  # d4b9
+  message: "Addressed in PR #2557. Confidence penalty: 1-letter=0.15x, 2-letter=0.50x."  # d4b9

@@ -39,3 +39,18 @@
   clock: 4  # d4af
   nonce: d4af  # d4af
   message: "PR #2558 merged: expanded Swift IO catalog with 14 new server-side primitives (AsyncHTTPClient, NIOSSL, NIO channel pipeline, WebSocket, tracing, graceful shutdown). IO tag rate improved: Hummingbird 2.2%→3.3% (near 3.8% GOOD), Vapor 0.7%→1.0%. TCA stays 0.2% (state management lib, no real IO). Remaining gap is structural: framework repos have low IO density by design."  # d4af
+- op: update  # cf81
+  at: '2026-03-25T19:37:29Z'  # cf81
+  by: agent  # cf81
+  actor: jgstern_agent  # cf81
+  clock: 5  # cf81
+  nonce: cf81  # cf81
+  set:  # cf81
+    status: done  # cf81
+- op: discuss  # 408a
+  at: '2026-03-25T19:37:29Z'  # 408a
+  by: agent  # 408a
+  actor: jgstern_agent  # 408a
+  clock: 6  # 408a
+  nonce: 408a  # 408a
+  message: "IO tag rate improved via PR #2558. Hummingbird 2.2%→3.3%, Vapor 0.7%→1.0%."  # 408a
