@@ -1063,3 +1063,580 @@ class TestOTPLinkerRegistered:
         assert hasattr(result, "symbols")
         assert hasattr(result, "edges")
         assert hasattr(result, "run")
+
+
+class TestErlangCallSiteDetection:
+    """Tests for detecting gen_server:call/cast patterns in Erlang source code."""
+
+    def test_detect_erlang_gen_server_call(self) -> None:
+        """Detects gen_server:call(Target, Msg) pattern in Erlang."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(my_client).
+-export([get_data/1]).
+
+get_data(Pid) ->
+    gen_server:call(Pid, get_data).
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        assert len(sites) >= 1
+        assert sites[0]["call_type"] == "call"
+        assert sites[0]["target"] == "Pid"
+        assert sites[0]["is_module"] is False
+
+    def test_detect_erlang_gen_server_cast(self) -> None:
+        """Detects gen_server:cast(Target, Msg) pattern in Erlang."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(my_worker).
+
+update(Pid, Data) ->
+    gen_server:cast(Pid, {update, Data}).
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        assert len(sites) >= 1
+        assert sites[0]["call_type"] == "cast"
+
+    def test_detect_erlang_module_atom_target(self) -> None:
+        """Detects gen_server:call with explicit module atom target."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(client).
+
+fetch(Id) ->
+    gen_server:call(data_server, {fetch, Id}).
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        assert len(sites) >= 1
+        assert sites[0]["target"] == "data_server"
+        assert sites[0]["is_module"] is True
+
+    def test_detect_erlang_question_module_macro(self) -> None:
+        """Detects gen_server:call(?MODULE, ...) pattern."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(cache).
+
+get(Key) ->
+    gen_server:call(?MODULE, {get, Key}).
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        assert len(sites) >= 1
+        assert sites[0]["target"] == "?MODULE"
+
+    def test_no_erlang_gen_server_patterns(self) -> None:
+        """Returns empty for Erlang code without gen_server patterns."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(math).
+
+add(A, B) -> A + B.
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        assert len(sites) == 0
+
+    def test_detect_multiple_erlang_call_sites(self) -> None:
+        """Detects multiple gen_server:call and cast sites."""
+        from hypergumbo_core.linkers.otp import detect_erlang_otp_call_sites
+
+        source = b"""
+-module(multi).
+
+get(S) -> gen_server:call(S, get).
+set(S, V) -> gen_server:cast(S, {set, V}).
+ping(S) -> gen_server:call(S, ping).
+"""
+        sites = detect_erlang_otp_call_sites(source)
+        calls = [s for s in sites if s["call_type"] == "call"]
+        casts = [s for s in sites if s["call_type"] == "cast"]
+        assert len(calls) == 2
+        assert len(casts) == 1
+
+
+class TestErlangOTPLinkerSameModule:
+    """Tests for same-module Erlang gen_server dispatch linking."""
+
+    def test_links_erlang_call_to_handle_call(self, tmp_path: Path) -> None:
+        """Links gen_server:call(Pid, msg) to handle_call/3 in same module."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        server_file = tmp_path / "src" / "my_server.erl"
+        server_file.parent.mkdir(parents=True)
+        server_file.write_text("""
+-module(my_server).
+-behaviour(gen_server).
+-export([get_data/1, handle_call/3]).
+
+get_data(Pid) ->
+    gen_server:call(Pid, get_data).
+
+handle_call(get_data, _From, State) ->
+    {reply, State, State}.
+""")
+
+        module_sym = Symbol(
+            id=f"erlang:{server_file}:2-11:my_server:module",
+            name="my_server",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=11, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{server_file}:6-7:get_data/1:function",
+            name="get_data/1",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=6, end_line=7, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:9-10:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=9, end_line=10, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, caller_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.src == caller_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.edge_type == "otp_call"
+
+    def test_links_erlang_cast_to_handle_cast(self, tmp_path: Path) -> None:
+        """Links gen_server:cast(Pid, msg) to handle_cast/2 in same module."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        server_file = tmp_path / "src" / "worker.erl"
+        server_file.parent.mkdir(parents=True)
+        server_file.write_text("""
+-module(worker).
+-behaviour(gen_server).
+
+update(Pid, Data) ->
+    gen_server:cast(Pid, {update, Data}).
+
+handle_cast({update, Data}, State) ->
+    {noreply, Data}.
+""")
+
+        module_sym = Symbol(
+            id=f"erlang:{server_file}:2-9:worker:module",
+            name="worker",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=9, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{server_file}:5-6:update/2:function",
+            name="update/2",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=5, end_line=6, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:8-9:handle_cast/2:function",
+            name="handle_cast/2",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=8, end_line=9, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, caller_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.src == caller_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.edge_type == "otp_cast"
+
+    def test_links_erlang_question_module(self, tmp_path: Path) -> None:
+        """Links gen_server:call(?MODULE, ...) to same module's handle_call."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        server_file = tmp_path / "src" / "cache.erl"
+        server_file.parent.mkdir(parents=True)
+        server_file.write_text("""
+-module(cache).
+-behaviour(gen_server).
+
+get(Key) ->
+    gen_server:call(?MODULE, {get, Key}).
+
+handle_call({get, _Key}, _From, State) ->
+    {reply, State, State}.
+""")
+
+        module_sym = Symbol(
+            id=f"erlang:{server_file}:2-9:cache:module",
+            name="cache",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=9, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{server_file}:5-6:get/1:function",
+            name="get/1",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=5, end_line=6, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:8-9:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=8, end_line=9, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, caller_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.src == caller_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.confidence == 0.90
+
+    def test_erlang_no_erlang_skips(self, tmp_path: Path) -> None:
+        """OTP linker returns empty when no Erlang or Elixir detected."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[],
+            detected_languages={"python"},
+        )
+        result = otp_linker(ctx)
+        assert len(result.edges) == 0
+
+
+class TestErlangOTPLinkerCrossModule:
+    """Tests for cross-module Erlang gen_server dispatch linking."""
+
+    def test_links_erlang_cross_module_call(self, tmp_path: Path) -> None:
+        """Links gen_server:call(target_module, msg) to handler in target module."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir(parents=True)
+
+        client_file = src_dir / "client.erl"
+        client_file.write_text("""
+-module(client).
+
+fetch(Id) ->
+    gen_server:call(data_server, {fetch, Id}).
+""")
+        server_file = src_dir / "data_server.erl"
+        server_file.write_text("""
+-module(data_server).
+-behaviour(gen_server).
+
+handle_call({fetch, Id}, _From, State) ->
+    {reply, ok, State}.
+""")
+
+        client_module = Symbol(
+            id=f"erlang:{client_file}:2-5:client:module",
+            name="client",
+            kind="module",
+            language="erlang",
+            path=str(client_file),
+            span=Span(start_line=2, end_line=5, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{client_file}:4-5:fetch/1:function",
+            name="fetch/1",
+            kind="function",
+            language="erlang",
+            path=str(client_file),
+            span=Span(start_line=4, end_line=5, start_col=0, end_col=0),
+        )
+        server_module = Symbol(
+            id=f"erlang:{server_file}:2-6:data_server:module",
+            name="data_server",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=6, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:5-6:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=5, end_line=6, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[client_module, caller_sym, server_module, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.src == caller_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.edge_type == "otp_call"
+        assert edge.confidence == 0.80
+
+    def test_erlang_no_matching_module_in_handler_index(
+        self, tmp_path: Path,
+    ) -> None:
+        """No edge when target module has no handlers indexed."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir(parents=True)
+
+        client_file = src_dir / "client.erl"
+        client_file.write_text("""
+-module(client).
+
+fetch(Id) ->
+    gen_server:call(nonexistent_server, {fetch, Id}).
+""")
+
+        client_module = Symbol(
+            id=f"erlang:{client_file}:2-5:client:module",
+            name="client",
+            kind="module",
+            language="erlang",
+            path=str(client_file),
+            span=Span(start_line=2, end_line=5, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{client_file}:4-5:fetch/1:function",
+            name="fetch/1",
+            kind="function",
+            language="erlang",
+            path=str(client_file),
+            span=Span(start_line=4, end_line=5, start_col=0, end_col=0),
+        )
+        # Provide a handler in a different module so the index isn't empty
+        other_file = src_dir / "other_server.erl"
+        other_file.write_text("-module(other_server).\n")
+        other_module = Symbol(
+            id=f"erlang:{other_file}:1-1:other_server:module",
+            name="other_server",
+            kind="module",
+            language="erlang",
+            path=str(other_file),
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+        other_handler = Symbol(
+            id=f"erlang:{other_file}:2-3:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(other_file),
+            span=Span(start_line=2, end_line=3, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[client_module, caller_sym, other_module, other_handler],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+        # No edge because nonexistent_server is not in the handler index
+        assert len(result.edges) == 0
+
+
+class TestErlangOTPLinkerEdgeCases:
+    """Tests for Erlang OTP linker defensive code paths."""
+
+    def test_erlang_handler_without_module_symbol(self) -> None:
+        """Handler function without a corresponding module symbol is skipped."""
+        from hypergumbo_core.linkers.otp import _build_erlang_handler_index
+
+        # Handler in a file with no module symbol
+        handler = Symbol(
+            id="erlang:src/orphan.erl:5-6:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path="src/orphan.erl",
+            span=Span(start_line=5, end_line=6, start_col=0, end_col=0),
+        )
+        index = _build_erlang_handler_index([handler])
+        assert len(index) == 0
+
+    def test_erlang_unreadable_file_skipped(self, tmp_path: Path) -> None:
+        """Unreadable .erl files are counted as skipped."""
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir(parents=True)
+        bad_file = src_dir / "bad.erl"
+        bad_file.write_text("-module(bad).\n")
+
+        module_sym = Symbol(
+            id=f"erlang:{bad_file}:1-1:bad:module",
+            name="bad",
+            kind="module",
+            language="erlang",
+            path=str(bad_file),
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{bad_file}:2-3:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(bad_file),
+            span=Span(start_line=2, end_line=3, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+
+        # Patch read_bytes to raise IOError
+        orig_read = Path.read_bytes
+
+        def patched_read(self: Path) -> bytes:
+            if self.name == "bad.erl":
+                raise IOError("simulated read failure")
+            return orig_read(self)
+
+        with patch.object(Path, "read_bytes", patched_read):
+            result = otp_linker(ctx)
+        # Should not crash, just skip
+        assert len(result.edges) == 0
+
+    def test_erlang_no_enclosing_symbol(self, tmp_path: Path) -> None:
+        """Call site without enclosing symbol produces no edge."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir(parents=True)
+        server_file = src_dir / "server.erl"
+        # gen_server:call on line 7, but only symbols on lines 2 and 10-11
+        server_file.write_text("""
+-module(server).
+
+
+
+% orphan call outside any function
+gen_server:call(server, msg).
+
+
+handle_call(msg, _From, State) ->
+    {reply, ok, State}.
+""")
+
+        module_sym = Symbol(
+            id=f"erlang:{server_file}:2-2:server:module",
+            name="server",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=2, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:10-11:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=10, end_line=11, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+        # Call at line 7 has no enclosing function symbol, so no edge
+        assert len(result.edges) == 0
+
+    def test_erlang_duplicate_edges_deduped(self, tmp_path: Path) -> None:
+        """Duplicate call sites to same handler produce only one edge."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir(parents=True)
+        server_file = src_dir / "dup.erl"
+        server_file.write_text("""
+-module(dup).
+
+retry(Pid) ->
+    gen_server:call(Pid, msg),
+    gen_server:call(Pid, msg).
+
+handle_call(msg, _From, State) ->
+    {reply, ok, State}.
+""")
+
+        module_sym = Symbol(
+            id=f"erlang:{server_file}:2-9:dup:module",
+            name="dup",
+            kind="module",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=2, end_line=9, start_col=0, end_col=0),
+        )
+        caller_sym = Symbol(
+            id=f"erlang:{server_file}:4-6:retry/1:function",
+            name="retry/1",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=4, end_line=6, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"erlang:{server_file}:8-9:handle_call/3:function",
+            name="handle_call/3",
+            kind="function",
+            language="erlang",
+            path=str(server_file),
+            span=Span(start_line=8, end_line=9, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, caller_sym, handler_sym],
+            detected_languages={"erlang"},
+        )
+        result = otp_linker(ctx)
+        # Two call sites to same handler → only 1 edge (deduped)
+        assert len(result.edges) == 1
