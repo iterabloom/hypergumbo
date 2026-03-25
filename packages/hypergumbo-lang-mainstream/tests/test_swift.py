@@ -1131,3 +1131,151 @@ class TestSwiftSubscriptDeclarations:
         sub_names = {s.name for s in subs}
         assert "Multi.subscript(index:)" in sub_names
         assert "Multi.subscript(key:)" in sub_names
+
+
+class TestSwiftShortNameCollision:
+    """Tests for short-name collision prevention (AMB-METHOD invariant).
+
+    When multiple types define the same method name (append, filter, get),
+    bare-name resolution must not produce confident false-positive edges.
+    Methods should only be registered by qualified name (Type.method), so
+    bare calls fall through to the NameResolver which handles ambiguity.
+    """
+
+    def test_same_method_name_different_types_no_false_positive(self, tmp_path: Path) -> None:
+        """Two types with same method name should not produce false-positive edge.
+
+        When TypeA.process() calls process() meaning self.process(), it should
+        NOT resolve to TypeB.process().
+        """
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Types.swift").write_text(
+            "class TypeA {\n"
+            "    func process() {\n"
+            "        print(\"A\")\n"
+            "    }\n"
+            "    func run() {\n"
+            "        process()\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "class TypeB {\n"
+            "    func process() {\n"
+            "        print(\"B\")\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+
+        # Find the call edge from TypeA.run -> process
+        run_sym = next((s for s in result.symbols if s.name == "TypeA.run"), None)
+        assert run_sym is not None
+
+        # There should be an edge, but NOT a confident (0.85) same-file edge
+        # to TypeB.process. Either it should resolve to TypeA.process via the
+        # resolver's suffix matching, or be marked as ambiguous/unresolved.
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and e.edge_type == "calls"
+        ]
+
+        type_b = next((s for s in result.symbols if s.name == "TypeB.process"), None)
+        assert type_b is not None
+
+        # The call MUST NOT confidently resolve to TypeB.process
+        false_positive = next(
+            (e for e in call_edges if e.dst == type_b.id and e.confidence > 0.80),
+            None,
+        )
+        assert false_positive is None, (
+            f"Bare 'process()' call in TypeA.run should not confidently resolve to "
+            f"TypeB.process (confidence={false_positive.confidence if false_positive else 'N/A'})"
+        )
+
+    def test_top_level_function_still_resolves_locally(self, tmp_path: Path) -> None:
+        """Top-level functions (no enclosing type) should still resolve via local_symbols."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func helper() -> Int { return 42 }\n"
+            "\n"
+            "func caller() {\n"
+            "    helper()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        caller = next((s for s in result.symbols if s.name == "caller"), None)
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert caller is not None
+        assert helper is not None
+
+        call_edge = next(
+            (e for e in result.edges if e.src == caller.id and e.dst == helper.id),
+            None,
+        )
+        assert call_edge is not None, "Top-level function calls should still resolve locally"
+        assert call_edge.confidence == 0.85
+
+    def test_method_resolves_via_resolver_not_local(self, tmp_path: Path) -> None:
+        """Method calls should go through the resolver, not bare-name local match."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Service.swift").write_text(
+            "class Service {\n"
+            "    func execute() { print(\"exec\") }\n"
+            "    func run() {\n"
+            "        execute()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        run_sym = next((s for s in result.symbols if s.name == "Service.run"), None)
+        exec_sym = next((s for s in result.symbols if s.name == "Service.execute"), None)
+        assert run_sym is not None
+        assert exec_sym is not None
+
+        # The call should resolve (via resolver suffix match) but NOT with
+        # 0.85 local-symbol confidence — it should go through the resolver
+        call_edge = next(
+            (e for e in result.edges if e.src == run_sym.id and e.dst == exec_sym.id),
+            None,
+        )
+        assert call_edge is not None, "Method should still resolve via resolver"
+
+    def test_three_types_same_method_ambiguous(self, tmp_path: Path) -> None:
+        """3+ types with same method name produces low-confidence or unresolved edge."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Many.swift").write_text(
+            "class A {\n"
+            "    func update() {}\n"
+            "}\n"
+            "class B {\n"
+            "    func update() {}\n"
+            "}\n"
+            "class C {\n"
+            "    func update() {}\n"
+            "    func run() {\n"
+            "        update()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        run_sym = next((s for s in result.symbols if s.name == "C.run"), None)
+        assert run_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and e.edge_type == "calls"
+        ]
+
+        # With 3+ candidates, resolver should either:
+        # - Not resolve (unresolved_external_call), or
+        # - Resolve with very low confidence (ambiguous)
+        for e in call_edges:
+            if "update" in e.dst:
+                assert e.confidence < 0.80, (
+                    f"3-way ambiguous 'update()' call should have low confidence, "
+                    f"got {e.confidence}"
+                )

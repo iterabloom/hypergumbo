@@ -207,7 +207,13 @@ def _get_enclosing_function(
                 name_node = find_child_by_type(current, "simple_identifier")
             if name_node:
                 func_name = node_text(name_node, source)
-                if func_name in local_symbols:
+                # Try qualified name first (methods are only registered qualified)
+                enclosing = _get_enclosing_type(current, source)
+                qualified = f"{enclosing}.{func_name}" if enclosing else func_name
+                if qualified in local_symbols:
+                    return local_symbols[qualified]
+                # Fallback: bare name for top-level functions
+                if func_name in local_symbols:  # pragma: no cover - qualified handles this
                     return local_symbols[func_name]
         elif current.type == "property_declaration" and find_child_by_type(current, "computed_property"):
             # Computed property — look up by qualified name
@@ -388,7 +394,13 @@ def _extract_symbols_from_file(
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
-                analysis.symbol_by_name[func_name] = symbol
+                # Register by qualified name only (AMB-METHOD invariant).
+                # Methods are NOT registered by bare name to prevent
+                # short-name collisions when multiple types define the
+                # same method (append, filter, get). Bare calls fall
+                # through to the NameResolver which handles ambiguity.
+                # Top-level functions: full_name == func_name, so they're
+                # still registered by their bare name.
                 analysis.symbol_by_name[full_name] = symbol
 
         # Class declaration (class, struct, enum, protocol in tree-sitter-swift)
