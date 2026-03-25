@@ -69,3 +69,18 @@
   nonce: d1e3  # d1e3
   set:  # d1e3
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # d1e3
+- op: update  # fc60
+  at: '2026-03-25T07:41:58Z'  # fc60
+  by: agent  # fc60
+  actor: jgstern_agent  # fc60
+  clock: 8  # fc60
+  nonce: fc60  # fc60
+  set:  # fc60
+    status: todo_soft  # fc60
+- op: discuss  # 1e97
+  at: '2026-03-25T07:41:58Z'  # 1e97
+  by: agent  # 1e97
+  actor: jgstern_agent  # 1e97
+  clock: 9  # 1e97
+  nonce: '1e97'  # 1e97
+  message: "ADR-0017 accepted (Python-first). Phase 1."  # 1e97

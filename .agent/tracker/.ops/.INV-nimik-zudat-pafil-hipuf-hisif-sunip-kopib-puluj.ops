@@ -158,3 +158,18 @@
   clock: 19  # f8e2
   nonce: f8e2  # f8e2
   message: "Jenkins 151/151 (100%), Keycloak 609/~1302 (47%). The gap is likely sub-resource locator route expansion or test-code exclusion. Human decision needed: is 47% keycloak coverage acceptable, or should we investigate the gap? Would require cloning keycloak and running a targeted bakeoff."  # f8e2
+- op: update  # f4b2
+  at: '2026-03-25T07:41:41Z'  # f4b2
+  by: agent  # f4b2
+  actor: jgstern_agent  # f4b2
+  clock: 20  # f4b2
+  nonce: f4b2  # f4b2
+  set:  # f4b2
+    status: violated  # f4b2
+- op: discuss  # 2e71
+  at: '2026-03-25T07:41:41Z'  # 2e71
+  by: agent  # 2e71
+  actor: jgstern_agent  # 2e71
+  clock: 21  # 2e71
+  nonce: '2e71'  # 2e71
+  message: "Approved for investigation. Investigate the Keycloak 47% route-handler gap."  # 2e71
