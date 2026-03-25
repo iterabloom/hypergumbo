@@ -60,7 +60,7 @@ A local-first CLI that helps developers and AI agents understand an unfamiliar c
 For goals that were considered and rejected, see [Appendix D](#appendix-d-capsule-system-history).
 
 ## 2) Non-goals
-* No deep type-resolution / interprocedural dataflow correctness guarantees.
+* No deep type-resolution / interprocedural dataflow correctness guarantees for all languages. Per ADR-0017, structural taint-flow analysis (call-graph BFS, labeled `approximate`) is available for all languages; DDG-backed precision extractors are added per-language where demand justifies it.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
 * No attempt to support every language *deeply*—broad coverage via tree-sitter (100+ languages; see [LANGUAGES.md](LANGUAGES.md)), deep call-graph extraction for a smaller set. See [§4 Supported stacks](#4-supported-stacks).
@@ -110,8 +110,8 @@ Estimates test coverage via static analysis (no code execution). Reports hot spo
 🟩 **`hypergumbo io-boundaries [path] [--json]`** (ADR-0016)
 Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 12 languages (7 dedicated catalogs + 5 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation.
 
-🟩 **`hypergumbo verify-claims --claims <file> [--json]`** (ADR-0016)
-Verifies security claims (e.g., "no network I/O", "max 3 filesystem chains") against the IO boundary map. Claims are specified in YAML format. Exit code 1 on violations. Useful for CI enforcement of IO security policies.
+🟩 **`hypergumbo verify-claims --claims <file> [--json]`** (ADR-0016, ADR-0017)
+Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Taint-flow analysis uses structural call-graph BFS with dominance-based sanitizer checking; findings are labeled `confidence: approximate`. Claims are specified in YAML format. Exit code 1 on violations. Useful for CI enforcement of IO and data-flow security policies.
 
 ### Analysis options
 
