@@ -36,6 +36,15 @@ fs_read:
   - module: InputStream
     methods:
       - inputStreamWithFileAtPath
+  - module: NonBlockingFileIO
+    methods:
+      - readChunked
+      - readChunk
+      - readChunks
+      - readToEnd
+      - openFile
+      - withFileHandle
+    notes: "SwiftNIO non-blocking file I/O read operations"
   - module: Bundle
     methods:
       - pathForResource
@@ -61,6 +70,10 @@ fs_write:
       - truncateFile
       - synchronizeFile
       - seekToEnd
+  - module: NonBlockingFileIO
+    methods:
+      - writeBuffer
+    notes: "SwiftNIO non-blocking file write"
 
 net_send:
   - module: URLSession
@@ -76,6 +89,18 @@ net_send:
     methods:
       - NWConnection
     notes: "Network.framework connection"
+  - module: Channel
+    methods:
+      - writeAndFlush
+      - fireChannelRead
+    notes: "SwiftNIO channel write and inbound data forwarding"
+  - module: ChannelHandlerContext
+    methods:
+      - writeAndFlush
+      - fireChannelRead
+      - fireChannelInactive
+      - fireErrorCaught
+    notes: "SwiftNIO handler context I/O forwarding methods"
 
 net_recv:
   - module: URLSession
@@ -94,6 +119,14 @@ net_recv:
     methods:
       - ClientBootstrap
     notes: "SwiftNIO client bootstrap"
+  - module: Channel
+    methods:
+      - channelRead
+    notes: "SwiftNIO channel handler inbound data callback"
+  - module: NIOWebSocketServerUpgrader
+    methods:
+      - NIOWebSocketServerUpgrader
+    notes: "SwiftNIO WebSocket server upgrader"
 
 db_read:
   - module: NSManagedObjectContext
