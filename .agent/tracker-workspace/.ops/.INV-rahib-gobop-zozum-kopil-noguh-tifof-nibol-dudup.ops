@@ -1,0 +1,23 @@
+- op: create  # 1094
+  at: '2026-03-25T04:13:28Z'  # 1094
+  by: agent  # 1094
+  actor: jgstern_agent  # 1094
+  clock: 1  # 1094
+  nonce: '1094'  # 1094
+  data:  # 1094
+    kind: invariant  # 1094
+    title: "auto-pr must converge to merged or explicit failure regardless of concurrent activity"  # 1094
+    status: holding  # 1094
+    priority: 2  # 1094
+    parent:  # 1094
+    tags:  # 1094
+    - ci_infrastructure  # 1094
+    before: []  # 1094
+    duplicate_of: []  # 1094
+    not_duplicate_of: []  # 1094
+    pr_ref:  # 1094
+    description: ""  # 1094
+    fields:  # 1094
+      statement: "auto-pr must converge to a merged state or an explicit failure within one invocation, regardless of concurrent activity on dev (tracker syncs, other merges, CI re-triggers). Silent failures (HTTP 200 + not merged) and misleading status (failure when CI passed) are violations."  # 1094
+      root_cause: "auto-pr assumed sequential execution but operates in concurrent environment with tracker sync, CI re-triggers, and other merges advancing dev."  # 1094
+      fix: "Added retry cascade for HTTP 200+merged:false, rebase-on-405, plumbing-based tracker sync to avoid branch interference, and misleading status fix."  # 1094

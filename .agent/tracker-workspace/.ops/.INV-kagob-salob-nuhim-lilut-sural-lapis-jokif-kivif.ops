@@ -1,0 +1,31 @@
+- op: create  # 25e0
+  at: '2026-03-25T04:13:05Z'  # 25e0
+  by: agent  # 25e0
+  actor: jgstern_agent  # 25e0
+  clock: 1  # 25e0
+  nonce: '25e0'  # 25e0
+  data:  # 25e0
+    kind: invariant  # 25e0
+    title: "IO boundary chains must be traceable through call graph including FFI bridges"  # 25e0
+    status: holding  # 25e0
+    priority: 2  # 25e0
+    parent:  # 25e0
+    tags:  # 25e0
+    - io-boundary  # 25e0
+    - adr-0016  # 25e0
+    before: []  # 25e0
+    duplicate_of: []  # 25e0
+    not_duplicate_of: []  # 25e0
+    pr_ref:  # 25e0
+    description: ""  # 25e0
+    fields:  # 25e0
+      statement: "Every IO boundary chain from entrypoint to IO primitive must be traceable through the call graph, including across FFI bridges, with no false positives from name-only matching on generic method names (Read, Write, Get, Set)."  # 25e0
+      root_cause: "IO boundary tracer matches primitives by function name only, missing FFI bridge edges and producing false positives on generic names like Read/Write."  # 25e0
+      fix: "ADR-0016 phases 1-4 implemented multi-language catalogs, module-qualified matching, FFI propagation, and reverse-trace computation."  # 25e0
+- op: discuss  # 4dbc
+  at: '2026-03-25T04:13:17Z'  # 4dbc
+  by: agent  # 4dbc
+  actor: jgstern_agent  # 4dbc
+  clock: 2  # 4dbc
+  nonce: 4dbc  # 4dbc
+  message: "Created from tracker taxonomy analysis (Mar 24 lab notebook). Covers 21 items in the IO Boundary & Dataflow cluster. Falsifiable: run io-boundaries on a repo with FFI, check no generic-name false positives, FFI bridge calls appear in chains."  # 4dbc
