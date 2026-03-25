@@ -308,7 +308,6 @@ def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
     Returns (taint_label, flat list of TaintSource entries across all languages).
     """
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    taint_label = data.get("description", "unknown")
     label = data.get("taint_label", "unknown")
     sources_by_lang: dict[str, list[TaintSource]] = {}
 
@@ -487,12 +486,9 @@ def _extract_callee_name(symbol_id: str) -> str:
     parts = symbol_id.split(":")
     if len(parts) < 5:
         return symbol_id
-    # Kind is always last, name is second-to-last when kind is simple
-    kind = parts[-1]
     # For names with colons (ObjC selectors), reconstruct from middle parts
     # Format: lang:file:line-range:name:kind
     # Parse from both ends
-    lang = parts[0]
     # Find the line range (contains a dash)
     line_range_idx = -1
     for i in range(1, len(parts) - 1):
@@ -620,7 +616,7 @@ def propagate_taint_structural(
     # without passing through sanitizers.
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source in source_callers:
+    for caller_id, _source_callee_id, taint_source in source_callers:
         taint_label = taint_source.taint_label
 
         # Phase 1: BFS from source caller, skip nodes that are sanitizers
