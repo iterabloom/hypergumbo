@@ -42,3 +42,18 @@
   nonce: a7fa  # a7fa
   set:  # a7fa
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # a7fa
+- op: update  # 729e
+  at: '2026-03-25T07:51:57Z'  # 729e
+  by: agent  # 729e
+  actor: jgstern_agent  # 729e
+  clock: 5  # 729e
+  nonce: 729e  # 729e
+  set:  # 729e
+    status: todo_soft  # 729e
+- op: discuss  # 64e3
+  at: '2026-03-25T07:51:57Z'  # 64e3
+  by: agent  # 64e3
+  actor: jgstern_agent  # 64e3
+  clock: 6  # 64e3
+  nonce: '64e3'  # 64e3
+  message: "ADR-0017 accepted. Infrastructure."  # 64e3

@@ -42,3 +42,18 @@
   nonce: e685  # e685
   set:  # e685
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # e685
+- op: update  # c484
+  at: '2026-03-25T07:51:56Z'  # c484
+  by: agent  # c484
+  actor: jgstern_agent  # c484
+  clock: 5  # c484
+  nonce: c484  # c484
+  set:  # c484
+    status: todo_soft  # c484
+- op: discuss  # fded
+  at: '2026-03-25T07:51:56Z'  # fded
+  by: agent  # fded
+  actor: jgstern_agent  # fded
+  clock: 6  # fded
+  nonce: fded  # fded
+  message: "ADR-0017 accepted. Phase 4."  # fded

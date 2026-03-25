@@ -51,3 +51,18 @@
   nonce: 7fa5  # 7fa5
   set:  # 7fa5
     parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 7fa5
+- op: update  # f4a8
+  at: '2026-03-25T07:51:56Z'  # f4a8
+  by: agent  # f4a8
+  actor: jgstern_agent  # f4a8
+  clock: 6  # f4a8
+  nonce: f4a8  # f4a8
+  set:  # f4a8
+    status: todo_soft  # f4a8
+- op: discuss  # 24ce
+  at: '2026-03-25T07:51:56Z'  # 24ce
+  by: agent  # 24ce
+  actor: jgstern_agent  # 24ce
+  clock: 7  # 24ce
+  nonce: 24ce  # 24ce
+  message: "ADR-0017 accepted. Phase 3."  # 24ce
