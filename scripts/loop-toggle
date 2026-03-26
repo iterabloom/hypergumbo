@@ -220,6 +220,34 @@ show_status() {
     echo "  ./scripts/loop-toggle deep   # Feature usefulness bakeoff"
 }
 
+reset_circuit_breaker() {
+    # Reset the stop-hook circuit breaker so a fresh autonomous session
+    # doesn't immediately trip on stale hashes from the prior session.
+    #
+    # Strategy: read the last hash, remove ALL occurrences of it from the
+    # file, then append it back once. This resets the consecutive-identical
+    # count to 1 (below the threshold of 5) while preserving history of
+    # other hashes.
+    local repo_name="${REPO_ROOT##*/}"
+    local hash_file="/tmp/${repo_name}_stop_hashes"
+    if [[ ! -f "$hash_file" ]]; then
+        return
+    fi
+
+    local last_hash
+    last_hash=$(tail -n 1 "$hash_file" 2>/dev/null)
+    if [[ -z "$last_hash" ]]; then
+        return
+    fi
+
+    # Remove all lines matching the last hash, then append it once
+    local tmp_file
+    tmp_file=$(mktemp)
+    grep -vxF "$last_hash" "$hash_file" > "$tmp_file" 2>/dev/null || true
+    echo "$last_hash" >> "$tmp_file"
+    mv "$tmp_file" "$hash_file"
+}
+
 enable_loop_sentinel() {
     # Enable .agent/LOOP (rename back if disabled, or create)
     if [[ -f "$DISABLED_LOOP" ]]; then
@@ -254,6 +282,7 @@ set_mode_broad() {
         echo "BROAD" > "$MODE_FILE"
     fi
     enable_loop_sentinel
+    reset_circuit_breaker
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${GREEN}BROAD${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to BROAD"
@@ -277,6 +306,7 @@ set_mode_deep() {
         echo "DEEP" > "$MODE_FILE"
     fi
     enable_loop_sentinel
+    reset_circuit_breaker
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${CYAN}DEEP${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to DEEP"
