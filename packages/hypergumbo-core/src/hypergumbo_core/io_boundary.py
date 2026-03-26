@@ -587,17 +587,25 @@ def compute_boundary_map(
 def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
-    Uses substring matching in both directions to handle different
-    naming conventions:
+    Uses case-insensitive substring matching in both directions to handle
+    different naming conventions:
     - Go: catalog has ``net.Conn``, edge has ``net.Conn`` → match
     - Go: catalog has ``os``, edge has ``os`` → match
     - Go: catalog has ``net.Conn``, edge has ``crypto/rand`` → no match
     - Rust: catalog has ``std::fs``, edge has ``std::fs::File`` → match
     - Java: catalog has ``java.io``, edge has ``java.io.FileInputStream`` → match
+    - Swift: catalog has ``Channel``, edge has ``channel`` → match
+    - Swift: catalog has ``ChannelHandlerContext``, edge has ``context`` → match
+    - Swift: catalog has ``NonBlockingFileIO``, edge has ``fileIO`` → match
+
+    Case-insensitive comparison is necessary because Swift's tree-sitter
+    analyzer extracts receiver variable names (camelCase) as module hints,
+    while the catalog uses PascalCase type names.
     """
-    # Normalize: treat :: and / as . for uniform comparison
-    cm = catalog_module.replace("::", ".").replace("/", ".")
-    em = edge_module_hint.replace("::", ".").replace("/", ".")
+    # Normalize: treat :: and / as . for uniform comparison, casefold for
+    # cross-convention matching (Swift camelCase vars vs PascalCase types)
+    cm = catalog_module.replace("::", ".").replace("/", ".").casefold()
+    em = edge_module_hint.replace("::", ".").replace("/", ".").casefold()
     return cm in em or em in cm
 
 

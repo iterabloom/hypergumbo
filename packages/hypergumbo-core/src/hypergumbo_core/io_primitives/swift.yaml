@@ -215,7 +215,14 @@ logging:
   - module: Logger
     methods:
       - Logger
-    notes: "os.Logger constructor (Apple unified logging)"
+      - trace
+      - debug
+      - info
+      - notice
+      - warning
+      - error
+      - critical
+    notes: "swift-log Logger: constructor and level methods (trace/debug/info/notice/warning/error/critical)"
   - module: Tracing
     methods:
       - startSpan
@@ -272,3 +279,13 @@ ambiguous_names:
   - Data
   - String
   - URL
+  # Logger level methods — too generic without module context (e.g., info()
+  # could be a struct property, error() could be Result handling, debug could
+  # be a flag). Only match when module hint resolves to Logger.
+  - trace
+  - debug
+  - info
+  - notice
+  - warning
+  - error
+  - critical

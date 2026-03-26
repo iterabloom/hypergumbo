@@ -467,6 +467,24 @@ class TestModuleMatches:
     def test_go_slash_vs_dot(self) -> None:
         assert _module_matches("os/exec", "os.exec.Cmd") is True
 
+    def test_case_insensitive_swift_variable_receiver(self) -> None:
+        """Swift variable names (camelCase) should match PascalCase catalog modules."""
+        # Variable 'channel' should match catalog module 'Channel'
+        assert _module_matches("Channel", "channel") is True
+
+    def test_case_insensitive_context_matches_handler_context(self) -> None:
+        """Variable 'context' should match 'ChannelHandlerContext'."""
+        assert _module_matches("ChannelHandlerContext", "context") is True
+
+    def test_case_insensitive_fileio_matches_nonblockingfileio(self) -> None:
+        """Variable 'fileIO' should match 'NonBlockingFileIO'."""
+        assert _module_matches("NonBlockingFileIO", "fileIO") is True
+
+    def test_case_insensitive_preserves_rejection(self) -> None:
+        """Unrelated modules should still not match even case-insensitively."""
+        assert _module_matches("Channel", "request") is False
+        assert _module_matches("FileManager", "logger") is False
+
 
 class TestExtractModuleHint:
     """Tests for _extract_module_hint helper."""
@@ -1584,3 +1602,58 @@ class TestSwiftCatalog:
         assert edges[2].meta["io_boundary"] == "net_recv"
         assert edges[3].meta["io_boundary"] == "net_send"
         assert edges[4].meta["io_boundary"] == "net_send"
+
+    def test_swift_has_logger_methods(self) -> None:
+        """Swift catalog covers swift-log Logger level methods."""
+        catalog = load_catalog("swift")
+        logs = {p.name for p in catalog.primitives if p.boundary == "logging"}
+        for method in ["debug", "info", "warning", "error", "critical", "notice", "trace"]:
+            assert method in logs, f"Logger.{method} missing from Swift logging catalog"
+
+    def test_swift_variable_name_module_hint_matches(self) -> None:
+        """Variable-name module hints (camelCase) should match PascalCase catalog modules.
+
+        In Swift, the analyzer extracts the receiver variable name as the module
+        hint (e.g., 'context' from 'context.writeAndFlush()'). The catalog uses
+        PascalCase type names (e.g., 'ChannelHandlerContext'). Case-insensitive
+        substring matching must bridge this gap.
+        """
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            # context.writeAndFlush() → ChannelHandlerContext.writeAndFlush
+            MockEdge(
+                src="swift:Sources/App/Handler.swift:10:handle:method",
+                dst="swift:context:0-0:writeAndFlush:unresolved",
+            ),
+            # channel.addHandler() → Channel.addHandler
+            MockEdge(
+                src="swift:Sources/App/Pipeline.swift:20:setup:method",
+                dst="swift:channel:0-0:addHandler:unresolved",
+            ),
+            # fileIO.openFile() → NonBlockingFileIO.openFile
+            MockEdge(
+                src="swift:Sources/App/IO.swift:30:readFile:method",
+                dst="swift:fileIO:0-0:openFile:unresolved",
+            ),
+            # logger.debug() → Logger.debug (logging)
+            MockEdge(
+                src="swift:Sources/App/Service.swift:40:process:method",
+                dst="swift:logger:0-0:debug:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 4, f"Expected 4 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_send"
+        assert edges[1].meta["io_boundary"] == "net_send"
+        assert edges[2].meta["io_boundary"] == "fs_read"
+        assert edges[3].meta["io_boundary"] == "logging"
