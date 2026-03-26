@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §1d: CFG node mapping for Python (tree-sitter-python grammar)
+#
+# Maps tree-sitter-python node types to generic control-flow categories
+# that the CFG builder understands. This file serves as the normalization
+# layer between Python's AST and the language-parameterized CFG builder.
+#
+# Child references: "field:name" → child_by_field_name("name"),
+#                   "type:name" → first child with .type == "name"
+language: python
+grammar: tree-sitter-python
+
+conditional:
+  - node_type: if_statement
+    condition_child: "field:condition"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+
+loop:
+  - node_type: while_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: for_statement
+    body_child: "field:body"
+    # for loops iterate over 'right'; condition is implicit (iterator exhaustion)
+
+break_statement: [break_statement]
+continue_statement: [continue_statement]
+return_statement: [return_statement]
+
+try_catch:
+  - node_type: try_statement
+    body_child: "field:body"
+    catch_clause_type: except_clause
+    finally_child: "type:finally_clause"
+
+context_manager:
+  - node_type: with_statement
+    value_child: "type:with_clause"
+    body_child: "field:body"
+
+switch:
+  - node_type: match_statement
+    scrutinee_child: "field:subject"
+    arms_child: "field:body"
+    arm_type: case_clause
