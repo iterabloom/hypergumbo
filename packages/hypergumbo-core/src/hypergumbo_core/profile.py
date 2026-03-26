@@ -335,6 +335,7 @@ JAVA_FRAMEWORKS = {
 # Swift Package.swift detection patterns
 SWIFT_FRAMEWORKS = {
     "vapor": ["vapor"],
+    "hummingbird": ["hummingbird"],
     "kitura": ["kitura"],
     "perfect": ["perfectlySoft"],
     "swiftui": ["swiftui"],  # Detected via imports, not SPM
