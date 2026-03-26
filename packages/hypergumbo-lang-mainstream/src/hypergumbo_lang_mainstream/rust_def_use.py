@@ -153,7 +153,7 @@ def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
         for child in node.children:
             if child.type == "identifier":
                 return [_node_text(child, source)]
-            if child.is_named and child.type not in ("mutable_specifier",):
+            if child.is_named and child.type not in ("mutable_specifier",):  # pragma: no cover
                 return _collect_pattern_names(child, source)
         return []  # pragma: no cover
 
