@@ -503,18 +503,32 @@ def _extract_callee_name(symbol_id: str) -> str:
     return ":".join(name_parts)
 
 
+# Edge types that represent call-like relationships for taint propagation.
+# Includes direct calls and cross-language linker bridge edges (ADR-0017 §5).
+TAINT_CALL_EDGE_TYPES = frozenset({
+    "calls", "unresolved_external_call",
+    # Cross-language linker bridge edges
+    "ffi_bridge", "wasm_bridge", "wasm_load", "napi_bridge",
+    "bridge_invokes", "ipc_calls", "ipc_event",
+    "native_bridge", "cgo_bridge",
+    "implements_rpc", "grpc_calls",
+})
+
+
 def _build_adjacency(
     edges: list[dict],
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Build forward and reverse adjacency lists from edge dicts.
 
-    Only includes call-type edges (calls, unresolved_external_call).
+    Includes call-type edges and cross-language linker bridge edges
+    (ADR-0017 §5). Bridge edges are taint-transparent by default —
+    IPC serialization does not sanitize taint.
     Returns (forward_adj, reverse_adj).
     """
     forward: dict[str, set[str]] = defaultdict(set)
     reverse: dict[str, set[str]] = defaultdict(set)
 
-    call_types = {"calls", "unresolved_external_call"}
+    call_types = TAINT_CALL_EDGE_TYPES
 
     for edge in edges:
         etype = edge.get("type", "")
@@ -589,7 +603,7 @@ def propagate_taint_structural(
     # (caller_symbol_id, source_callee_symbol_id, TaintSource)
     for edge in edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = source_by_callee.get(callee_name)
@@ -601,7 +615,7 @@ def propagate_taint_structural(
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
     for edge in edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = sink_by_callee.get(callee_name)
@@ -613,7 +627,7 @@ def propagate_taint_structural(
     # Maps caller_symbol_id → {input_taint → TaintSanitizer}
     for edge in edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = sanitizer_by_callee.get(callee_name)
@@ -814,7 +828,7 @@ def propagate_taint_ddg(
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = source_by_callee.get(callee_name)
@@ -825,7 +839,7 @@ def propagate_taint_ddg(
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     for edge in call_edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = sink_by_callee.get(callee_name)
@@ -837,7 +851,7 @@ def propagate_taint_ddg(
     sanitizer_by_caller: dict[str, TaintSanitizer] = {}
     for edge in call_edges:
         etype = edge.get("type", "")
-        if etype not in ("calls", "unresolved_external_call"):
+        if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
         matched = sanitizer_by_callee.get(callee_name)

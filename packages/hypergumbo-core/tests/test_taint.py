@@ -18,6 +18,7 @@ import pytest
 
 from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.taint import (
+    TAINT_CALL_EDGE_TYPES,
     TaintCatalog,
     TaintFlowFinding,
     TaintSanitizer,
@@ -1082,3 +1083,82 @@ class TestFieldSensitivity:
     def test_no_dots_no_field(self) -> None:
         """Simple variable with no dots — only direct match."""
         assert not is_field_tainted("data", {"x"})
+
+
+# ---------------------------------------------------------------------------
+# Cross-language taint propagation tests (ADR-0017 §5)
+# ---------------------------------------------------------------------------
+
+
+class TestCrossLanguageTaint:
+    """Test taint propagation across language boundaries via linker edges."""
+
+    def test_taint_call_edge_types_includes_bridges(self) -> None:
+        """Verify all linker bridge edge types are in TAINT_CALL_EDGE_TYPES."""
+        assert "ffi_bridge" in TAINT_CALL_EDGE_TYPES
+        assert "wasm_bridge" in TAINT_CALL_EDGE_TYPES
+        assert "napi_bridge" in TAINT_CALL_EDGE_TYPES
+        assert "ipc_calls" in TAINT_CALL_EDGE_TYPES
+        assert "native_bridge" in TAINT_CALL_EDGE_TYPES
+        assert "cgo_bridge" in TAINT_CALL_EDGE_TYPES
+        assert "grpc_calls" in TAINT_CALL_EDGE_TYPES
+        assert "bridge_invokes" in TAINT_CALL_EDGE_TYPES
+
+    def test_structural_taint_via_wasm_bridge(self) -> None:
+        """Taint should propagate through wasm_bridge edges."""
+        sources = [TaintSource(
+            taint_label="plaintext", module="crypto", name="decrypt",
+            kind="function",
+        )]
+        sinks = [TaintSink(
+            zone="relay", trust_level="untrusted",
+            module="net", name="send", kind="function",
+        )]
+        edges = [
+            {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "ts_caller", "dst": "wasm_func", "type": "wasm_bridge"},
+            {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        assert len(findings) == 1
+        assert "wasm_func" in findings[0].path
+
+    def test_structural_taint_via_ipc(self) -> None:
+        """Taint should propagate through ipc_calls edges."""
+        sources = [TaintSource(
+            taint_label="plaintext", module="crypto", name="decrypt",
+            kind="function",
+        )]
+        sinks = [TaintSink(
+            zone="host_fs", trust_level="untrusted",
+            module="fs", name="write", kind="function",
+        )]
+        edges = [
+            {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "frontend", "dst": "backend", "type": "ipc_calls"},
+            {"src": "backend", "dst": "python:external:0-0:write:unresolved", "type": "calls"},
+        ]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        assert len(findings) == 1
+
+    def test_ddg_taint_via_ffi_bridge(self) -> None:
+        """DDG-backed taint should also propagate through ffi_bridge edges."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "native_func", "type": "ffi_bridge"},
+            {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        sources = [TaintSource(
+            taint_label="plaintext", module="crypto", name="decrypt",
+            kind="function",
+        )]
+        sinks = [TaintSink(
+            zone="relay", trust_level="untrusted",
+            module="net", name="send", kind="function",
+        )]
+        findings = propagate_taint_ddg(ddg, call_edges, sources, sinks, [])
+        assert len(findings) == 1
