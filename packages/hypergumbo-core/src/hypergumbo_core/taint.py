@@ -692,6 +692,40 @@ def _reconstruct_path(
 
 
 # ---------------------------------------------------------------------------
+# Field-sensitivity lite (ADR-0017 §7a)
+# ---------------------------------------------------------------------------
+
+
+def is_field_tainted(variable: str, tainted_vars: set[str]) -> bool:
+    """Check if a variable name inherits taint from a tainted base.
+
+    Field-sensitivity lite rules (ADR-0017 §7a):
+    - If ``x`` is tainted, then ``x.field``, ``x.method``, ``x[key]`` are tainted.
+    - If ``obj.field`` is tainted, only ``obj.field`` is tainted (not ``obj``).
+    - Direct match: ``x`` in tainted_vars → True.
+    - Field access: ``x.anything`` where ``x`` is in tainted_vars → True.
+
+    Args:
+        variable: Variable name to check (may contain dots for field access).
+        tainted_vars: Set of currently tainted variable names.
+
+    Returns:
+        True if the variable is tainted (directly or via field access on
+        a tainted base).
+    """
+    if variable in tainted_vars:
+        return True
+
+    # Check if this is a field access on a tainted base: x.field where x is tainted
+    if "." in variable:
+        base = variable.split(".")[0]
+        if base in tainted_vars:
+            return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
 # DDG-backed taint propagation (ADR-0017 §3a, §3c-3d)
 # ---------------------------------------------------------------------------
 

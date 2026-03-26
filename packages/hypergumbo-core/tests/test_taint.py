@@ -23,6 +23,7 @@ from hypergumbo_core.taint import (
     TaintSanitizer,
     TaintSink,
     TaintSource,
+    is_field_tainted,
     load_taint_catalog,
     propagate_taint_ddg,
     propagate_taint_structural,
@@ -1035,3 +1036,49 @@ class TestPropagateTaintDdg:
         )
         # imports edges should not match sources/sinks
         assert len(findings) == 0
+
+
+# ---------------------------------------------------------------------------
+# Field-sensitivity lite tests (ADR-0017 §7a)
+# ---------------------------------------------------------------------------
+
+
+class TestFieldSensitivity:
+    """Test field-sensitivity lite rules."""
+
+    def test_direct_match(self) -> None:
+        assert is_field_tainted("x", {"x"})
+
+    def test_no_match(self) -> None:
+        assert not is_field_tainted("y", {"x"})
+
+    def test_field_access_on_tainted_base(self) -> None:
+        """x tainted → x.field inherits taint."""
+        assert is_field_tainted("x.field", {"x"})
+
+    def test_method_call_on_tainted_base(self) -> None:
+        """x tainted → x.method inherits taint."""
+        assert is_field_tainted("x.method", {"x"})
+
+    def test_nested_field(self) -> None:
+        """x tainted → x.a.b inherits taint (via x as base)."""
+        assert is_field_tainted("x.a.b", {"x"})
+
+    def test_field_tainted_not_base(self) -> None:
+        """x.field tainted does NOT taint x itself."""
+        assert not is_field_tainted("x", {"x.field"})
+
+    def test_different_field_not_tainted(self) -> None:
+        """x.field tainted does NOT taint x.other."""
+        assert not is_field_tainted("x.other", {"x.field"})
+
+    def test_same_field_tainted(self) -> None:
+        """x.field tainted → x.field is tainted (direct match)."""
+        assert is_field_tainted("x.field", {"x.field"})
+
+    def test_empty_tainted_set(self) -> None:
+        assert not is_field_tainted("x", set())
+
+    def test_no_dots_no_field(self) -> None:
+        """Simple variable with no dots — only direct match."""
+        assert not is_field_tainted("data", {"x"})
