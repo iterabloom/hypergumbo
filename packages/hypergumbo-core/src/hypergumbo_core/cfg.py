@@ -1404,8 +1404,8 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
     rpo_index = {bid: i for i, bid in enumerate(rpo)}
 
     # in[b] and out[b] bitsets
-    in_sets: dict[str, int] = {bid: 0 for bid in cfg.blocks}
-    out_sets: dict[str, int] = {bid: 0 for bid in cfg.blocks}
+    in_sets: dict[str, int] = dict.fromkeys(cfg.blocks, 0)
+    out_sets: dict[str, int] = dict.fromkeys(cfg.blocks, 0)
 
     # Initialize worklist with all blocks in RPO
     worklist = list(rpo)
