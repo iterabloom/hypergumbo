@@ -16,6 +16,7 @@ from textwrap import dedent
 
 import pytest
 
+from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.taint import (
     TaintCatalog,
     TaintFlowFinding,
@@ -23,6 +24,7 @@ from hypergumbo_core.taint import (
     TaintSink,
     TaintSource,
     load_taint_catalog,
+    propagate_taint_ddg,
     propagate_taint_structural,
 )
 
@@ -805,3 +807,231 @@ class TestEdgeCases:
         assert finding.verdict == "confirmed_safe"
         d = finding.to_dict()
         assert d["verdict"] == "confirmed_safe"
+
+
+# ---------------------------------------------------------------------------
+# DDG-backed taint propagation tests (ADR-0017 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestPropagateTaintDdg:
+    """Test DDG-backed taint-flow propagation."""
+
+    def _make_sources(self) -> list[TaintSource]:
+        return [TaintSource(
+            taint_label="plaintext", module="crypto", name="decrypt",
+            kind="function",
+        )]
+
+    def _make_sinks(self) -> list[TaintSink]:
+        return [TaintSink(
+            zone="relay", trust_level="untrusted",
+            module="net", name="send", kind="function",
+        )]
+
+    def _make_sanitizers(self) -> list[TaintSanitizer]:
+        return [TaintSanitizer(
+            input_taint="plaintext", output_taint="ciphertext",
+            qualified_name="crypto.encrypt",
+        )]
+
+    def test_empty_inputs(self) -> None:
+        result = propagate_taint_ddg([], [], [], [], [])
+        assert result == []
+
+    def test_no_sources(self) -> None:
+        ddg = [DdgEdge(variable="x", def_block="a", def_line=1, use_block="b", use_line=2)]
+        result = propagate_taint_ddg(ddg, [], [], self._make_sinks(), [])
+        assert result == []
+
+    def test_no_sinks(self) -> None:
+        ddg = [DdgEdge(variable="x", def_block="a", def_line=1, use_block="b", use_line=2)]
+        result = propagate_taint_ddg(ddg, [], self._make_sources(), [], [])
+        assert result == []
+
+    def test_source_to_sink_ddg(self) -> None:
+        """Source → Sink with both having DDG data → precise finding."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        analyzed = {"caller"}
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols=analyzed,
+        )
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.confidence == "precise"
+        assert f.analysis_method == "ddg"
+        assert f.taint_label == "plaintext"
+        assert not f.sanitized
+
+    def test_mixed_coverage(self) -> None:
+        """Source has DDG, sink does not → approximate confidence."""
+        ddg = [DdgEdge(
+            variable="data", def_block="src_func", def_line=1,
+            use_block="src_func", use_line=2,
+        )]
+        call_edges = [
+            {"src": "src_func", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src_func", "dst": "mid_func", "type": "calls"},
+            {"src": "mid_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        # Only source function analyzed
+        analyzed = {"src_func"}
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols=analyzed,
+        )
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.confidence == "approximate"
+        assert f.analysis_method == "ddg_mixed"
+
+    def test_sanitizer_blocks_path(self) -> None:
+        """Sanitizer on path → no finding."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        analyzed = {"caller", "sink_func"}
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(),
+            self._make_sanitizers(), ddg_symbols=analyzed,
+        )
+        # Sanitizer blocks the path from caller to sink_func
+        assert len(findings) == 0
+
+    def test_no_ddg_symbols_specified(self) -> None:
+        """When ddg_symbols is None, everything is approximate."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+        )
+        assert len(findings) == 1
+        assert findings[0].confidence == "approximate"
+
+    def test_unreachable_sink(self) -> None:
+        """Sink not reachable from source → no finding."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            # Sink is in a disconnected component
+            {"src": "other_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+        )
+        assert len(findings) == 0
+
+    def test_path_reconstruction(self) -> None:
+        """Finding should contain the path from source to sink."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "mid", "type": "calls"},
+            {"src": "mid", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        analyzed = {"caller", "mid"}
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+            ddg_symbols=analyzed,
+        )
+        assert len(findings) == 1
+        assert "caller" in findings[0].path
+        assert "mid" in findings[0].path
+
+    def test_dotted_source_and_sink_names(self) -> None:
+        """Source/sink with dotted names should match by bare method name."""
+        sources = [TaintSource(
+            taint_label="plaintext", module="crypto.fernet",
+            name="Fernet.decrypt", kind="method",
+        )]
+        sinks = [TaintSink(
+            zone="relay", trust_level="untrusted",
+            module="net.ws", name="WebSocket.send", kind="method",
+        )]
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        findings = propagate_taint_ddg(ddg, call_edges, sources, sinks, [])
+        assert len(findings) == 1
+
+    def test_diamond_graph_dedup(self) -> None:
+        """Diamond-shaped graph shouldn't produce duplicate findings.
+
+        Also exercises the BFS deduplication (line 838) — when mid1 and
+        mid2 both point to sink_node, the BFS may encounter sink_node
+        twice in the queue.
+        """
+        ddg = [DdgEdge(
+            variable="d", def_block="src", def_line=1,
+            use_block="src", use_line=2,
+        )]
+        # Build adjacency so both mid1 and mid2 can enqueue join_node
+        # before it's dequeued, via _build_adjacency's set-based neighbors
+        call_edges = [
+            {"src": "src", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src", "dst": "mid1", "type": "calls"},
+            {"src": "src", "dst": "mid2", "type": "calls"},
+            {"src": "mid1", "dst": "join", "type": "calls"},
+            {"src": "mid2", "dst": "join", "type": "calls"},
+            {"src": "join", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+        ]
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+        )
+        assert len(findings) == 1
+
+    def test_non_call_edges_ignored(self) -> None:
+        """Only 'calls' and 'unresolved_external_call' edges are used."""
+        ddg = [DdgEdge(
+            variable="data", def_block="caller", def_line=1,
+            use_block="caller", use_line=2,
+        )]
+        call_edges = [
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "imports"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "imports"},
+        ]
+
+        findings = propagate_taint_ddg(
+            ddg, call_edges, self._make_sources(), self._make_sinks(), [],
+        )
+        # imports edges should not match sources/sinks
+        assert len(findings) == 0
