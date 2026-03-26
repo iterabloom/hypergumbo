@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.cfg import BasicBlock, CfgEdge, CfgStatement, DdgEdge, FunctionCfg
 from hypergumbo_core.function_summaries import (
     CallbackFlow,
     FunctionSummary,
@@ -17,6 +18,7 @@ from hypergumbo_core.function_summaries import (
     clear_summary_cache,
     get_default_summary,
     get_summaries_dir,
+    infer_summary,
     load_function_summaries,
 )
 
@@ -212,3 +214,133 @@ class TestLoadFunctionSummaries:
         s = summaries["push"]
         assert s.mutates_self is True
         assert s.param_to_self == {0: True}
+
+
+# ---------------------------------------------------------------------------
+# Summary inference from DDG tests (ADR-0017 §4a)
+# ---------------------------------------------------------------------------
+
+
+def _make_cfg_with_blocks(blocks_spec: list[dict]) -> FunctionCfg:
+    """Build a FunctionCfg from a simplified spec for inference tests."""
+    blocks: dict[str, BasicBlock] = {}
+    sym_id = "test:t.py:1-10:f:function"
+    for spec in blocks_spec:
+        bid = spec["id"]
+        block = BasicBlock(id=bid, symbol_id=sym_id)
+        for line, node_type, defines, uses in spec.get("stmts", []):
+            block.statements.append(CfgStatement(
+                line=line, col=0, node_type=node_type,
+                code_snippet=f"line {line}",
+                defines=list(defines), uses=list(uses),
+            ))
+        for target, etype in spec.get("succs", []):
+            block.successors.append(CfgEdge(target_block=target, edge_type=etype))
+        blocks[bid] = block
+    exit_id = "bb_exit"
+    if exit_id not in blocks:
+        blocks[exit_id] = BasicBlock(id=exit_id, symbol_id=sym_id)
+    entry = blocks_spec[0]["id"] if blocks_spec else exit_id
+    return FunctionCfg(symbol_id=sym_id, entry_block=entry, exit_block=exit_id, blocks=blocks)
+
+
+class TestInferSummary:
+    """Test function summary inference from DDG edges."""
+
+    def test_param_flows_to_return(self) -> None:
+        """param x used in return → param_to_return[0] = True."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["x"], []),
+                (2, "return_statement", [], ["x"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [DdgEdge(variable="x", def_block="bb_0", def_line=1, use_block="bb_0", use_line=2)]
+        summary = infer_summary("test_func", ["x"], ddg, cfg)
+        assert summary.param_to_return == {0: True}
+        assert summary.function == "test_func"
+
+    def test_param_does_not_flow_to_return(self) -> None:
+        """param x not used in return → not in param_to_return."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["x"], []),
+                (2, "assignment", ["y"], []),
+                (3, "return_statement", [], ["y"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [DdgEdge(variable="y", def_block="bb_0", def_line=2, use_block="bb_0", use_line=3)]
+        summary = infer_summary("test_func", ["x"], ddg, cfg)
+        assert summary.param_to_return == {}
+
+    def test_multiple_params(self) -> None:
+        """Two params, only one flows to return."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["a"], []),
+                (2, "assignment", ["b"], []),
+                (3, "return_statement", [], ["a"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [
+            DdgEdge(variable="a", def_block="bb_0", def_line=1, use_block="bb_0", use_line=3),
+        ]
+        summary = infer_summary("test_func", ["a", "b"], ddg, cfg)
+        assert summary.param_to_return == {0: True}
+        assert 1 not in summary.param_to_return
+
+    def test_transitive_flow(self) -> None:
+        """param x → y → return: x reaches return transitively."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["x"], []),
+                (2, "assignment", ["y"], ["x"]),
+            ], "succs": [("bb_1", "always")]},
+            {"id": "bb_1", "stmts": [
+                (3, "return_statement", [], ["y"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [
+            DdgEdge(variable="x", def_block="bb_0", def_line=1, use_block="bb_0", use_line=2),
+            DdgEdge(variable="y", def_block="bb_0", def_line=2, use_block="bb_1", use_line=3),
+        ]
+        summary = infer_summary("test_func", ["x"], ddg, cfg)
+        assert summary.param_to_return == {0: True}
+
+    def test_no_ddg_edges(self) -> None:
+        """No DDG edges → no param flows to return."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "return_statement", [], []),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        summary = infer_summary("test_func", ["x"], [], cfg)
+        assert summary.param_to_return == {}
+
+    def test_no_return_block(self) -> None:
+        """Function with no return statement → no param flows to return."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["x"], []),
+                (2, "call", [], ["x"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [DdgEdge(variable="x", def_block="bb_0", def_line=1, use_block="bb_0", use_line=2)]
+        summary = infer_summary("test_func", ["x"], ddg, cfg)
+        assert summary.param_to_return == {}
+
+    def test_both_params_to_return(self) -> None:
+        """Both params flow to return via return_expression."""
+        cfg = _make_cfg_with_blocks([
+            {"id": "bb_0", "stmts": [
+                (1, "assignment", ["a"], []),
+                (2, "assignment", ["b"], []),
+                (3, "return_expression", [], ["a", "b"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        ddg = [
+            DdgEdge(variable="a", def_block="bb_0", def_line=1, use_block="bb_0", use_line=3),
+            DdgEdge(variable="b", def_block="bb_0", def_line=2, use_block="bb_0", use_line=3),
+        ]
+        summary = infer_summary("test_func", ["a", "b"], ddg, cfg)
+        assert summary.param_to_return == {0: True, 1: True}

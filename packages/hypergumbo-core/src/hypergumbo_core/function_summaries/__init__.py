@@ -186,3 +186,114 @@ def _parse_summary(data: dict[str, Any]) -> FunctionSummary:
         sanitizes=sanitizes,
         callback=callback,
     )
+
+
+# ---------------------------------------------------------------------------
+# Summary inference from DDG (ADR-0017 §4a)
+# ---------------------------------------------------------------------------
+
+
+def infer_summary(
+    function_name: str,
+    param_names: list[str],
+    ddg_edges: list,
+    cfg: Any,
+) -> FunctionSummary:
+    """Infer a FunctionSummary from DDG edges and a FunctionCfg.
+
+    Walks forward through DDG edges from each parameter to determine
+    which params flow to the return value. This is the automated
+    complement to YAML-declared summaries.
+
+    Algorithm (ADR-0017 §4a):
+    1. For each parameter P, find DDG edges where P is defined.
+    2. Walk forward through DDG edges: if ``def_var == P`` at some block/line,
+       find all uses at other blocks/lines. Continue transitively.
+    3. If any use reaches a block containing a return statement,
+       record ``param_to_return[P] = True``.
+    4. ``return_sources`` is the list of param indices that flow to return.
+
+    Args:
+        function_name: The function's qualified name for the summary.
+        param_names: Ordered list of parameter variable names.
+        ddg_edges: DdgEdge objects from ``solve_reaching_defs()``.
+        cfg: A FunctionCfg with populated blocks.
+
+    Returns:
+        An inferred FunctionSummary.
+    """
+    # Find blocks that contain return statements
+    return_blocks: set[str] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            if stmt.node_type in ("return_statement", "return_expression"):
+                return_blocks.add(block.id)
+
+    # Build DDG forward map: (block, variable) → list of (use_block, use_line, variable)
+    ddg_forward: dict[tuple[str, str], list[tuple[str, int, str]]] = {}
+    for edge in ddg_edges:
+        key = (edge.def_block, edge.variable)
+        ddg_forward.setdefault(key, []).append(
+            (edge.use_block, edge.use_line, edge.variable)
+        )
+
+    param_to_return: dict[int, bool] = {}
+    return_sources: list[int] = []
+
+    for idx, param in enumerate(param_names):
+        # Walk forward from this parameter through DDG edges
+        if _param_reaches_return(param, ddg_edges, ddg_forward, return_blocks):
+            param_to_return[idx] = True
+            return_sources.append(idx)
+
+    return FunctionSummary(
+        function=function_name,
+        param_to_return=param_to_return,
+    )
+
+
+def _param_reaches_return(
+    param_name: str,
+    ddg_edges: list,
+    ddg_forward: dict[tuple[str, str], list[tuple[str, int, str]]],
+    return_blocks: set[str],
+) -> bool:
+    """Check if a parameter reaches a return statement via DDG edges.
+
+    BFS through DDG edges starting from all definitions of ``param_name``.
+    Follows transitive data flow: if ``x`` flows to a use site where ``y``
+    is defined (e.g., ``y = x``), continues tracking ``y``.
+    """
+    # Build a map from (use_block, use_line) → variables defined at that location
+    # This enables transitive flow tracking: x used at line 2 → y defined at line 2
+    defs_at_location: dict[tuple[str, int], list[str]] = {}
+    for edge in ddg_edges:
+        defs_at_location.setdefault((edge.def_block, edge.def_line), []).append(edge.variable)
+
+    # Start BFS from all definitions of the parameter
+    visited: set[tuple[str, str]] = set()
+    queue: list[tuple[str, str]] = []
+
+    for edge in ddg_edges:
+        if edge.variable == param_name:
+            key = (edge.def_block, edge.variable)
+            if key not in visited:
+                visited.add(key)
+                queue.append(key)
+
+    while queue:
+        current = queue.pop(0)
+
+        # Check all uses reachable from this definition
+        for use_block, use_line, _use_var in ddg_forward.get(current, []):
+            if use_block in return_blocks:
+                return True
+
+            # Find variables defined at the use site (transitive flow)
+            for defined_var in defs_at_location.get((use_block, use_line), []):
+                next_key = (use_block, defined_var)
+                if next_key not in visited:
+                    visited.add(next_key)
+                    queue.append(next_key)
+
+    return False
