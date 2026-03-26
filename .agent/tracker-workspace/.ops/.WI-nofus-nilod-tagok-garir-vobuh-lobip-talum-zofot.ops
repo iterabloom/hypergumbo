@@ -57,3 +57,18 @@
   clock: 6  # e7fb
   nonce: e7fb  # e7fb
   message: "ADR-0017 accepted. Phase 2."  # e7fb
+- op: update  # a7d1
+  at: '2026-03-26T07:35:01Z'  # a7d1
+  by: agent  # a7d1
+  actor: jgstern_agent  # a7d1
+  clock: 7  # a7d1
+  nonce: a7d1  # a7d1
+  set:  # a7d1
+    status: done  # a7d1
+- op: discuss  # cdf5
+  at: '2026-03-26T07:35:01Z'  # cdf5
+  by: agent  # cdf5
+  actor: jgstern_agent  # cdf5
+  clock: 8  # cdf5
+  nonce: cdf5  # cdf5
+  message: "Implemented in PR #2579. select_ddg_targets() selects IO-critical, taint-relevant, and high-centrality functions. Tier-filtered, budget-capped at 500. 122 tests, 100% coverage."  # cdf5

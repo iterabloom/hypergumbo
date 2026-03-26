@@ -1,0 +1,22 @@
+- op: create  # 9393
+  at: '2026-03-26T07:35:51Z'  # 9393
+  by: agent  # 9393
+  actor: jgstern_agent  # 9393
+  clock: 1  # 9393
+  nonce: '9393'  # 9393
+  data:  # 9393
+    kind: work_item  # 9393
+    title: "ADR-0017 Phase 2: Python def/use extractor"  # 9393
+    status: todo_soft  # 9393
+    priority: 3  # 9393
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 9393
+    tags:  # 9393
+    - adr-0017  # 9393
+    - phase-2  # 9393
+    before:  # 9393
+    - WI-zatam-sunaf-gufum-tulov-nuhoh-sipov-hozad-porig  # 9393
+    duplicate_of: []  # 9393
+    not_duplicate_of: []  # 9393
+    pr_ref:  # 9393
+    description: "First def/use extractor (ADR-0017 §1c). Python is simplest (~200-400 lines), testable against hypergumbo itself, validates shared infrastructure."  # 9393
+    fields: {}  # 9393

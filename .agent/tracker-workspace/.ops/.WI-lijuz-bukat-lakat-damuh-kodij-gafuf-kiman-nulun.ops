@@ -57,3 +57,18 @@
   clock: 6  # ee7b
   nonce: ee7b  # ee7b
   message: "ADR-0017 accepted. Phase 2."  # ee7b
+- op: update  # 5842
+  at: '2026-03-26T07:16:51Z'  # 5842
+  by: agent  # 5842
+  actor: jgstern_agent  # 5842
+  clock: 7  # 5842
+  nonce: '5842'  # 5842
+  set:  # 5842
+    status: done  # 5842
+- op: discuss  # e0c1
+  at: '2026-03-26T07:16:51Z'  # e0c1
+  by: agent  # e0c1
+  actor: jgstern_agent  # e0c1
+  clock: 8  # e0c1
+  nonce: e0c1  # e0c1
+  message: "Implemented in PR #2578. Added Go (with defer hook), TypeScript (with try/catch/finally), Java (with try/catch/finally) YAML CFG node mappings. Python and Rust mappings were created in PR #2575. Total: 5 language mappings."  # e0c1
