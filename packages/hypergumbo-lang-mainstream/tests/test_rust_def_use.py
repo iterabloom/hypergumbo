@@ -415,3 +415,55 @@ class TestCollectIdentifiers:
                     assert ids == []
                     return
         raise AssertionError("No let found")
+
+
+class TestRustBorrowAlias:
+    """Tests for borrow alias tracking (Phase 2b)."""
+
+    def test_let_ref_records_alias(self) -> None:
+        """let y = &mut x records y as alias of x."""
+        tree, src = _parse("fn f() { let mut x = 1; let y = &mut x; }")
+        ext = RustDefUseExtractor()
+        body = tree.root_node.children[0].child_by_field_name("body")
+        stmts = [c for c in body.children if c.is_named]
+        # Second let: let y = &mut x
+        result = ext.extract(stmts[1], src)
+        assert "y" in result.defines
+        assert "x" in result.uses
+
+    def test_deref_assignment_mutates_target(self) -> None:
+        """*y = val generates a define of y (dereference mutation)."""
+        tree, src = _parse("fn f() { let mut x = 1; let y = &mut x; *y = 42; }")
+        ext = RustDefUseExtractor()
+        body = tree.root_node.children[0].child_by_field_name("body")
+        stmts = [c for c in body.children if c.is_named]
+        # Third statement: *y = 42
+        result = ext.extract(stmts[2], src)
+        assert "y" in result.defines
+
+    def test_ref_pattern_in_match_arm(self) -> None:
+        """ref/ref mut patterns in match arms define bindings."""
+        tree, src = _parse(
+            "fn f(x: Option<i32>) { match x { Some(ref val) => {}, None => {} } }"
+        )
+        ext = RustDefUseExtractor()
+        body = tree.root_node.children[0].child_by_field_name("body")
+        match_expr = None
+        for c in body.children:
+            if c.type == "match_expression" or c.type == "expression_statement":
+                match_expr = c
+                break
+        assert match_expr is not None
+        # Find the first match arm
+        for c in _iter_tree(match_expr):
+            if c.type == "match_arm":
+                result = ext.extract(c, src)
+                assert "val" in result.defines
+                break
+
+
+def _iter_tree(node):
+    """Simple tree iterator for test helpers."""
+    yield node
+    for child in node.children:
+        yield from _iter_tree(child)

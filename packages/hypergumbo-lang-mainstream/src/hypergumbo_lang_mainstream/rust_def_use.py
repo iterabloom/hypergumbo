@@ -148,6 +148,15 @@ def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
                 return _collect_pattern_names(child, source)
         return []  # pragma: no cover
 
+    if node.type == "ref_pattern":
+        # ref x or ref mut x — borrow binding in match arms
+        for child in node.children:
+            if child.type == "identifier":
+                return [_node_text(child, source)]
+            if child.is_named and child.type not in ("mutable_specifier",):
+                return _collect_pattern_names(child, source)
+        return []  # pragma: no cover
+
     if node.type == "mut_pattern":
         # mut x
         for child in node.children:
@@ -235,6 +244,12 @@ def _handle_assignment_expression(node: Any, source: bytes) -> DefUseResult:
                     break
             # idx is a use
             uses.extend(_collect_identifiers(left, source))
+        elif left.type == "unary_expression":
+            # *y = expr → dereference mutation (mutates through borrow)
+            for child in left.children:
+                if child.type == "identifier":
+                    defines.append(_node_text(child, source))
+                    break
 
     if right:
         uses.extend(_collect_identifiers(right, source))
