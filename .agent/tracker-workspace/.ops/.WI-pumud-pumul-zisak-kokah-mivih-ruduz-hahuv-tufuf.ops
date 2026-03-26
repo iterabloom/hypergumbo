@@ -66,3 +66,18 @@
   clock: 7  # 24ce
   nonce: 24ce  # 24ce
   message: "ADR-0017 accepted. Phase 3."  # 24ce
+- op: update  # 9742
+  at: '2026-03-26T09:41:04Z'  # 9742
+  by: agent  # 9742
+  actor: jgstern_agent  # 9742
+  clock: 8  # 9742
+  nonce: '9742'  # 9742
+  set:  # 9742
+    status: done  # 9742
+- op: discuss  # faf2
+  at: '2026-03-26T09:41:04Z'  # faf2
+  by: agent  # faf2
+  actor: jgstern_agent  # faf2
+  clock: 9  # faf2
+  nonce: faf2  # faf2
+  message: "Implemented in PR #2589. infer_summary() with transitive DDG forward walk. Tracks param_to_return via BFS with re-definition tracking. 31 tests, 100% coverage."  # faf2

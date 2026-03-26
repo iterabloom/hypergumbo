@@ -66,3 +66,18 @@
   clock: 7  # 6338
   nonce: '6338'  # 6338
   message: "ADR-0017 accepted. Phase 3."  # 6338
+- op: update  # 36b3
+  at: '2026-03-26T09:58:57Z'  # 36b3
+  by: agent  # 36b3
+  actor: jgstern_agent  # 36b3
+  clock: 8  # 36b3
+  nonce: 36b3  # 36b3
+  set:  # 36b3
+    status: done  # 36b3
+- op: discuss  # aab7
+  at: '2026-03-26T09:58:57Z'  # aab7
+  by: agent  # aab7
+  actor: jgstern_agent  # aab7
+  clock: 9  # aab7
+  nonce: aab7  # aab7
+  message: "Implemented in PR #2590. TypeScript def/use extractor (146 lines) handling declarations, destructuring, assignments, member/subscript writes, for..of/in, return. 28 tests, 100% coverage."  # aab7

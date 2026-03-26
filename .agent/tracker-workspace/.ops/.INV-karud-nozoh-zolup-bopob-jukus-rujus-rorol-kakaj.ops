@@ -57,3 +57,10 @@
   clock: 6  # fe73
   nonce: fe73  # fe73
   message: "Phase 2 complete (7 PRs #2575-#2583). DDG-backed taint propagation now available: CFG builder, reaching-def solver, Python+Rust def/use extractors, mixed-coverage verdict (precise/approximate). Labeling: fully satisfied. Realizability: significantly improved for Python and Rust functions with DDG data. Still violated for: (1) languages without extractors (structural fallback), (2) Rust borrow aliases (Phase 2b), (3) cross-function flow without summaries (Phase 3)."  # fe73
+- op: discuss  # 9f3f
+  at: '2026-03-26T10:00:04Z'  # 9f3f
+  by: agent  # 9f3f
+  actor: jgstern_agent  # 9f3f
+  clock: 7  # 9f3f
+  nonce: 9f3f  # 9f3f
+  message: "Phase 3 complete (12 PRs this session). Three def/use extractors (Python, Rust, TypeScript), function summaries (YAML + DDG inference), field-sensitivity lite. The invariant is now substantially addressed: DDG-backed taint propagation provides precise findings for Python, Rust, and TypeScript code. Structural fallback covers all other languages. Remaining gaps: (1) cross-language taint via linker edges (Phase 4), (2) Rust borrow aliases (Phase 2b), (3) no extractor for other languages. These are incremental precision improvements, not architectural gaps."  # 9f3f
