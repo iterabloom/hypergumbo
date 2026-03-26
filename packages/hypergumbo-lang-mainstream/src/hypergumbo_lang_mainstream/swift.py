@@ -691,6 +691,44 @@ def _extract_call_target(
     return ("", None)  # pragma: no cover
 
 
+def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
+    """Extract variable name and type from a property_declaration node.
+
+    Returns (var_name, type_name). Type is inferred from:
+    1. Explicit type annotation: ``let x: Store = ...`` → ("x", "Store")
+    2. Constructor call: ``let x = Store()`` → ("x", "Store")
+    3. No type available: ``let x = compute()`` → ("x", None)
+    """
+    var_name: str | None = None
+    type_name: str | None = None
+
+    for child in node.children:
+        if child.type == "pattern":
+            # The pattern contains the variable name
+            id_node = find_child_by_type(child, "simple_identifier")
+            if id_node:
+                var_name = node_text(id_node, source)
+            elif child.named_child_count == 0:  # pragma: no cover
+                # pattern IS the identifier text
+                var_name = node_text(child, source)  # pragma: no cover
+        elif child.type == "type_annotation":
+            # Explicit type: `: Store`, `: String`, `: Int`
+            type_node = find_child_by_type(child, "user_type")
+            if type_node:
+                type_name = node_text(type_node, source)
+        elif child.type == "call_expression" and type_name is None:
+            # Constructor call: `Store()`, `URLSession()`
+            # Extract the type from the constructor name
+            id_node = find_child_by_type(child, "simple_identifier")
+            if id_node:
+                ctor_name = node_text(id_node, source)
+                # Constructor calls start with uppercase
+                if ctor_name and ctor_name[0].isupper():
+                    type_name = ctor_name
+
+    return (var_name, type_name)
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -705,6 +743,14 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("swift", str(file_path))
+
+    # Build variable → type mapping for receiver type tracking (ADR-0017 §1c)
+    var_types: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type == "property_declaration":
+            vname, vtype = _extract_var_type(node, source)
+            if vname and vtype:
+                var_types[vname] = vtype
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -729,7 +775,40 @@ def _extract_edges_from_file(
                     node, source,
                 )
                 if callee_name:
-                    if callee_name in local_symbols:
+                    resolved = False
+
+                    # Try type-qualified resolution (receiver type tracking)
+                    if receiver_hint and not resolved:
+                        type_name = var_types.get(receiver_hint) or receiver_hint
+                        qualified_name = f"{type_name}.{callee_name}"
+                        if qualified_name in local_symbols:
+                            callee = local_symbols[qualified_name]
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.90,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+                            resolved = True
+                        elif qualified_name in global_symbols:
+                            callee = global_symbols[qualified_name]
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.90,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+                            resolved = True
+
+                    if not resolved and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -741,11 +820,18 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
-                    else:
-                        path_hint = (
-                            import_aliases.get(callee_name)
-                            or receiver_hint
-                        )
+                        resolved = True
+
+                    if not resolved:
+                        # Build path hint: try type name first, then import alias, then receiver
+                        path_hint = None
+                        if receiver_hint and receiver_hint in var_types:
+                            path_hint = var_types[receiver_hint]
+                        if not path_hint:
+                            path_hint = (
+                                import_aliases.get(callee_name)
+                                or receiver_hint
+                            )
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(

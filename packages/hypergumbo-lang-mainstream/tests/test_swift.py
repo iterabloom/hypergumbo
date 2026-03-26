@@ -913,6 +913,185 @@ class TestSwiftNavigationCalls:
         )
 
 
+class TestSwiftReceiverTypeTracking:
+    """Tests for receiver type tracking in method resolution.
+
+    When a variable has a known type (from type annotation or constructor call),
+    method calls on that variable should resolve to the correct type's method.
+    """
+
+    def test_type_annotation_resolves_method(self, tmp_path: Path) -> None:
+        """let store: Store = ...; store.send() → Store.send()."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "class TestStore {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store: Store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        # Should resolve to Store.send, not TestStore.send
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+
+    def test_constructor_infers_type(self, tmp_path: Path) -> None:
+        """let store = Store(); store.send() → Store.send()."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+
+    def test_receiver_is_type_name_directly(self, tmp_path: Path) -> None:
+        """ClassName.method() where receiver IS the type name."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Config.swift").write_text(
+            "class Config {\n"
+            "    static func load() -> String { return \"\" }\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func setup() {\n"
+            "    Config.load()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        load_edges = [e for e in call_edges if "load" in e.dst and "setup" in e.src]
+        assert len(load_edges) >= 1
+
+    def test_type_hint_used_for_resolver(self, tmp_path: Path) -> None:
+        """When qualified name not in symbols, type is used as path_hint for resolver."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.unknownMethod()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        # unknownMethod doesn't exist as a symbol, so it falls through to resolver
+        # The path_hint should be "Store" (from var_types)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        unknown_edges = [e for e in call_edges if "unknownMethod" in e.dst]
+        assert len(unknown_edges) >= 1  # Should produce an unresolved edge
+
+    def test_same_file_type_qualified(self, tmp_path: Path) -> None:
+        """Type-qualified resolution in same file → local_symbols path."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "All.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "class TestStore {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+        # Confidence should be 0.90 (type-qualified)
+        assert store_send[0].confidence == 0.90
+
+    def test_extract_var_type_annotation(self) -> None:
+        """Test _extract_var_type with type annotation."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let x: Store = Store()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let x: Store = Store()")
+                assert name == "x"
+                assert typ == "Store"
+                return
+        raise AssertionError("No property_declaration found")
+
+    def test_extract_var_type_constructor(self) -> None:
+        """Test _extract_var_type with constructor call (no annotation)."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let store = Store()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let store = Store()")
+                assert name == "store"
+                assert typ == "Store"
+                return
+        raise AssertionError("No property_declaration found")
+
+    def test_extract_var_type_no_type(self) -> None:
+        """Test _extract_var_type when no type is available."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let x = compute()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let x = compute()")
+                assert name == "x"
+                assert typ is None  # compute() starts lowercase, not a constructor
+                return
+        raise AssertionError("No property_declaration found")
+
+
 class TestSwiftComputedProperties:
     """Tests for extracting computed properties as callable nodes.
 
