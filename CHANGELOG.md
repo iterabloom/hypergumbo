@@ -10,52 +10,81 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
-### Fixed
-
-- **IO boundary module matching case-sensitivity**: `_module_matches` now uses case-insensitive substring comparison (`casefold()`). Previously, Swift variable-name receiver hints (camelCase like `context`, `channel`, `fileIO`) failed to match PascalCase catalog modules (`ChannelHandlerContext`, `Channel`, `NonBlockingFileIO`), causing most NIO IO primitives to go undetected in server-side Swift repos. Identified by DEEP bakeoff LOW_IO_TAG_RATE on Vapor/Hummingbird.
-- **Objective-C selector extraction**: Keyword selectors now include colons (`removeItemAtPath:error:` instead of `removeItemAtPatherror`). This fixes cross-file method resolution and enables I/O boundary matching for ObjC code.
-- **Symbol ID callee extraction**: `_extract_callee_name` now correctly handles names containing colons (ObjC selectors) by parsing from both ends of the ID.
-- **Inheritance linker protocol support**: ObjC `protocol` symbols are now indexed alongside `interface` and `trait` symbols, enabling `implements` edges for protocol conformances.
-- **Swift short-name collision (AMB-METHOD)**: Methods are now registered by qualified name only (`Type.method`), preventing false-positive call edges when multiple types define the same method name (append, filter, get). Bare calls fall through to the NameResolver with ambiguity handling.
-- **Swift ERROR node recovery**: Class, struct, enum, and protocol declarations that tree-sitter-swift fails to parse (due to preprocessor directives, `_$` identifiers, `@dynamicMemberLookup`, etc.) are now recovered from ERROR nodes. Fixes missing `Store<State,Action>` class in swift-composable-architecture (493 misrouted call edges).
-
 ### Added
 
-- **Swift computed properties and subscripts**: Computed properties (`var x: T { get { ... } }`) and subscript declarations (`subscript(key:) -> T`) are now extracted as `property` and `subscript` kind symbols. Call edges inside these bodies are attributed to the property/subscript. This captures the primary API pattern for Swift libraries (SwiftyJSON, Kingfisher, TCA).
-- **SwiftNIO IO primitives**: Added NonBlockingFileIO (readChunked, readChunks, readToEnd, openFile, writeBuffer), Channel/ChannelHandlerContext (writeAndFlush, fireChannelRead, fireChannelInactive), and NIOWebSocketServerUpgrader to the Swift IO boundary catalog.
-- **Server-side Swift IO primitives**: Expanded Swift IO catalog with 14 new primitives for server-side Swift: AsyncHTTPClient (`HTTPClientRequest`), NIOSSL (`NIOSSLContext`, `NIOSSLCertificate`, `NIOSSLPrivateKey`), NIO channel pipeline (`addHandler`, `NIOAsyncChannel`, `MultiThreadedEventLoopGroup`), WebSocket events (`onText`, `onBinary`, `onClose`), distributed tracing (`startSpan`, `endSpan`), and graceful shutdown (`syncShutdownGracefully`). Identified by DEEP bakeoff LOW_IO_TAG_RATE on Vapor/Hummingbird.
-- **Swift Logger level methods**: Added 7 swift-log level methods (`trace`, `debug`, `info`, `notice`, `warning`, `error`, `critical`) to the Swift IO logging catalog. Methods are marked ambiguous (require module hint match) to prevent false positives on non-Logger types. Combined with the case-insensitive module fix, `logger.debug()` and `request.info()` now correctly match.
-- **DocC tier classification**: Files inside `.docc/` or `Documentation.docc/` directories are now classified as tier 2 (internal_dep) instead of tier 1. Swift DocC bundles contain tutorial code fragments that look like source code but are documentation content (not importable modules). Fixes TCA: 1530 of 4562 nodes (33.5%) were DocC tutorial fragments inflating tier-1 symbol rankings.
-- **Swift Vapor/Hummingbird route extraction**: SwiftAnalyzer now implements `extract_usage_contexts_from_file()` to detect route registrations (`app.get("path")`, `routes.post("users")`, etc.). Creates both UsageContext records (for framework pattern matching) and route Symbol objects (kind="route") so routes appear in `hypergumbo routes`. Supports `app`, `routes`, and `router` receivers with all HTTP methods. Previously Vapor routes were completely invisible to `hypergumbo routes`.
-- **Hummingbird framework detection**: Added Hummingbird to `SWIFT_FRAMEWORKS` detection list. Previously only Vapor, Kitura, Perfect, and SwiftUI were detected. Hummingbird repos now get framework concept enrichment (middleware, route, application patterns from `hummingbird.yaml`).
-- **Cobra AddCommand() detection**: Go analyzer now extracts UsageContext records for `rootCmd.AddCommand(subCmd)` calls, capturing parent-child command relationships. Identified by DEEP bakeoff (beads assessment: 30+ subcommands unlinked).
-- **Erlang gen_server dispatch linking**: OTP linker now handles Erlang `gen_server:call/cast` in addition to Elixir `GenServer.call/cast`. Same-module (variable/`?MODULE` target), cross-module (explicit atom target), and deduplication are supported. Creates `otp_call`/`otp_cast` edges from caller to `handle_call/3`/`handle_cast/2`.
-- **Middleware entrypoint detection**: Symbols with the `middleware` concept (from 59+ framework YAML patterns including Express, Koa, Vapor, Hummingbird, Django) are now detected as `middleware_handler` entrypoints. Previously middleware concepts were enriched but not mapped to entrypoints, causing `entries.txt` to miss middleware handlers.
-- **Tracker embedding ORT fix**: Use `ORT_ENABLE_EXTENDED` instead of `ORT_ENABLE_ALL` to avoid `SimplifiedLayerNormFusion` bug with quantized ModernBERT on onnxruntime >=1.24.
-- **Objective-C I/O boundary catalog** (`objc.yaml`): 90+ Foundation/Cocoa I/O primitives covering filesystem (NSFileManager, NSFileHandle, NSData, NSString), networking (NSURLSession, NSURLConnection), database (Core Data), subprocess (NSTask), environment (NSProcessInfo, NSBundle), logging (NSLog, os_log), and IPC (NSNotificationCenter).
-- **Cocoa/UIKit framework patterns** (`cocoa.yaml`): Lifecycle hook detection for UIViewController (viewDidLoad, viewWillAppear), UIView (layoutSubviews, drawRect), UITableViewDataSource/Delegate, NSCoding, and AppKit equivalents.
-- **ObjC parent_base_classes propagation**: Methods inside ObjC classes now inherit `parent_base_classes` from their class's `@interface` declaration, enabling framework pattern matching for UIKit lifecycle hooks.
-- **`io-boundaries` enriched output**: Text output now shows per-primitive call counts, call-site locations (`<- func_name (file:line)`), entry-point reachability traces, and high-risk primitive highlighting (`[HIGH RISK]` / `*** HIGH RISK ***`) for destructive fs ops, subprocess/exec, and outbound network calls across 6 languages.
-- **`io-boundaries --by-file`**: Alternative view grouping IO boundary calls by source file instead of boundary type. Each line shows `[boundary_type] primitive <- caller`.
-- **`io-boundaries --boundary TYPE`**: Filter output to a single boundary type (e.g., `--boundary subprocess`). Works with both text and JSON output.
-- **`io-boundaries --primitive NAME`**: Filter output to a specific primitive (e.g., `--primitive shutil.rmtree`). Works with both text and JSON output.
-- **`io-boundaries --exclude-tests`** (`-x`): Exclude I/O boundary chains originating from test files. Reduces noise in IO boundary analysis for repos where test code dominates IO calls (e.g., 91% test pollution in logging for Hummingbird). Mirrors the `--exclude-tests` flag on `routes` and `slice` commands.
-- **Enriched `io-boundaries --json`**: JSON output now includes per-chain detail (`chains`), per-primitive counts (`primitive_counts`), and a `has_high_risk` flag per boundary type. Backward-compatible (existing fields unchanged).
+#### Taint-flow analysis (ADR-0017)
 
-#### Taint-flow analysis (ADR-0017 Phase 1)
+- **Structural propagation** (Phase 1): YAML-driven taint catalogs (crypto, key material, fs writes, network sends) for Python, Rust, TS, Go, Java. Call-graph BFS with sanitizer checking. `verify-claims` supports `taint_flow` constraints.
+- **Intraprocedural dataflow** (Phase 2): Language-parameterized CFG builder (Rust `?`, Python `with`, Go `defer`). Reaching-def solver with worklist fixpoint. Def/use extractors for Python, Rust, TypeScript. DDG-backed propagation upgrades taint findings from `approximate` to `precise`. Budget-capped target selection (500 functions).
+- **Interprocedural propagation** (Phases 3-5): Function summary inference and YAML-declared summaries (TS 12, Rust 11 built-in). Cross-language propagation through 12 linker edge types. Field-sensitivity: `x` tainted → `x.field`/`x[key]` tainted.
 
-- **Taint catalog system**: YAML-driven taint source/sink/sanitizer catalogs following the IO primitive catalog pattern. Built-in catalogs for crypto decryption (plaintext taint label), key material, host filesystem writes, and network sends. Sanitizer catalog for encryption transforms (plaintext → ciphertext). Covers Python, Rust, TypeScript, Go, and Java.
-- **Structural taint-flow propagation**: Call-graph BFS from taint sources to sinks with dominance-based sanitizer checking. Two-phase algorithm: (1) compute reachable set from source without passing through sanitizers, (2) check if any sink is reachable. Findings explicitly labeled `confidence: approximate` and `analysis_method: structural` per ADR-0017.
-- **`verify-claims` taint-flow constraints**: New `taint_flow` constraint type for security claims. Specify `source_taint` (label), `prohibited_sink_zone` (zone), and optional `allowed_sanitizers`. Claims file can mix boundary constraints (ADR-0016) and taint-flow constraints (ADR-0017) in the same file.
+#### I/O boundary catalogs
 
-#### Intraprocedural dataflow analysis (ADR-0017 Phase 2)
+- **Objective-C** (`objc.yaml`): 90+ Foundation/Cocoa primitives (filesystem, networking, Core Data, subprocess, IPC).
+- **Scala** (`scala.yaml`): scala.io, cats-effect, ZIO, sttp/http4s/akka-http, fs2, Slick/Doobie/Quill. Inherits Java catalog.
+- **Haskell** (`haskell.yaml`): Prelude, System.IO, Network.Socket, System.Process, Data.IORef, Control.Concurrent.
+- **Swift**: 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing), SwiftNIO channel/file I/O, 7 swift-log level methods.
 
-- **CFG builder**: Language-parameterized control flow graph builder using fringe-based recursive algorithm. Handles sequential, if/else, loops, break/continue, return, try/catch/finally, switch/match. Three semantic hooks: `early_return_on_error` (Rust `?`), `context_manager` (Python `with`), `deferred_execution` (Go `defer`). YAML-driven CFG node mappings for Python, Rust, Go, TypeScript, and Java.
-- **Reaching-def solver**: Worklist fixpoint algorithm computing intraprocedural reaching definitions. Python arbitrary-precision `int` bitsets for gen/kill sets. Reverse postorder traversal. DDG edge generation from reaching defs to use sites. Per-function bail-out at 4,000 definitions.
-- **Python def/use extractor**: First pluggable `DefUseExtractor`. Handles assignments, tuple unpacking, augmented assignments, for loops, returns, deletes, attribute/subscript mutations, and comprehension variables. Validates shared infrastructure against hypergumbo's own codebase.
-- **Rust def/use extractor**: Handles `let` bindings, tuple/struct/tuple-struct destructuring, reassignment, compound assignment, field/index writes, dereference writes (`*ptr = val`), for loops, if-let/match arm bindings, `ref`/`ref mut` patterns in match arms, closures (conservative capture), return expressions, and macro invocations (conservative).
-- **Targeted analysis selection**: `select_ddg_targets()` selects functions for DDG analysis based on IO boundary chains, unsanitized taint findings, and centrality scores. Tier-filtered (first-party + internal only), budget-capped (default 500 functions).
-- **DDG-backed taint propagation**: `propagate_taint_ddg()` upgrades taint findings from `confidence: approximate` to `confidence: precise` when source and sink functions have DDG data. Mixed-coverage analysis: DDG segments use variable-level precision, non-DDG segments bridged with structural BFS.
+#### `io-boundaries` CLI
+
+- Enriched text output: per-primitive counts, call-site locations, entry-point traces, high-risk highlighting.
+- New flags: `--by-file`, `--boundary TYPE`, `--primitive NAME`, `--exclude-tests`.
+- Enriched JSON: `chains`, `primitive_counts`, `has_high_risk` (backward-compatible).
+
+#### Language analyzers
+
+- **Swift**: Computed property/subscript extraction. Vapor/Hummingbird route extraction (kind="route").
+- **Objective-C**: Cocoa/UIKit lifecycle patterns (`cocoa.yaml`). Method `parent_base_classes` propagation.
+- **Scala**: Play Framework routes parser. IOApp/ZIOAppDefault/Scalatra entrypoint detection.
+- **Haskell**: Typeclass instance `implements` edges. Dataflow access_mode patterns.
+- **Erlang**: `gen_server:call/cast` dispatch linking. Dataflow access_mode heuristics (ETS, Mnesia).
+- **Go**: Cobra `AddCommand()` command tree detection.
+
+#### Framework & entrypoint detection
+
+- Hummingbird added to Swift framework list.
+- Middleware concept (59+ YAML patterns) now mapped to `middleware_handler` entrypoints.
+- Haskell `main :: IO ()` and Erlang `main/0`/`start/0` entrypoints.
+
+#### Tier classification
+
+- Swift `.build/` → tier 4. DocC `.docc/` → tier 2 (was tier 1; fixes 33% inflation in TCA).
+
+#### Other
+
+- `sketch --require-section`: force specific sections into output regardless of token budget.
+- Tracker: `ORT_ENABLE_EXTENDED` fixes `SimplifiedLayerNormFusion` bug with quantized ModernBERT.
+
+### Fixed
+
+#### I/O boundary detection
+
+- Case-insensitive module matching (camelCase receiver hints now match PascalCase catalog modules).
+- ObjC catalog key bridging (`objc:` prefix vs `objective-c` language field).
+- Scala fs2/akka ops reclassified from `net_recv` to `fs_read`/`fs_write` (YAML indentation fix).
+- Haskell qualified calls use `external` sentinel instead of `?` for short-name fallback.
+
+#### Symbol resolution
+
+- ObjC selectors include colons (`removeItemAtPath:error:`). Callee extraction handles colon-containing names.
+- ObjC `protocol` symbols indexed for `implements` edges in inheritance linker.
+- Short-name confidence penalties (single-letter 0.15×, two-letter 0.50×) for Scala and Haskell.
+- Scala: 30+ collection/FP names added to `ambiguous_names` blocklist.
+
+#### Swift
+
+- Methods registered by qualified name only (`Type.method`), preventing false call edges from same-name methods.
+- ERROR node recovery for declarations broken by preprocessor directives or `_$` identifiers.
+- Receiver type tracking from property declarations. Navigation call target walks to method, not receiver.
+
+#### Haskell & Erlang
+
+- Where-clause/let bindings no longer extracted as top-level symbols (fixes 24-31% orphan rate).
+- Erlang function clauses with same name/arity coalesced (fixes 47-64% orphan rate).
+
+#### Python
+
+- Unresolved method calls emit `unresolved_variable_method_call` edges (0.40 confidence) instead of being dropped.
 
 ## [2.4.0] - 2026-03-21
 
