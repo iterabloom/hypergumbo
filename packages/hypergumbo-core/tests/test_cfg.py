@@ -25,20 +25,27 @@ from hypergumbo_core.cfg import (
     CfgStatement,
     ConditionalMapping,
     ContextManagerMapping,
+    DdgEdge,
     DeferredMapping,
     EarlyReturnMapping,
     FunctionCfg,
     LoopMapping,
+    MAX_DEFINITIONS,
+    ReachingDefResult,
     SwitchMapping,
     TryCatchMapping,
+    _compute_predecessors,
+    _Definition,
     _FringeEdge,
     _LoopContext,
     _PartialCfg,
+    _reverse_postorder,
     _parse_cfg_mapping,
     build_function_cfg,
     clear_cfg_mapping_cache,
     get_cfg_nodes_dir,
     load_cfg_mapping,
+    solve_reaching_defs,
 )
 
 
@@ -1501,3 +1508,290 @@ class TestEarlyReturn:
                     if edge.edge_type == "false":
                         assert edge.target_block == cfg.exit_block
         assert found_dual
+
+
+# ---------------------------------------------------------------------------
+# Reaching-def solver tests
+# ---------------------------------------------------------------------------
+
+
+def _make_cfg(blocks_spec: list[dict]) -> FunctionCfg:
+    """Build a FunctionCfg from a simplified spec.
+
+    Each entry in blocks_spec is a dict with:
+    - id: block id
+    - stmts: list of (line, defines, uses) tuples
+    - succs: list of (target_id, edge_type) tuples
+    """
+    blocks: dict[str, BasicBlock] = {}
+    sym_id = "test:t.py:1-10:f:function"
+
+    for spec in blocks_spec:
+        bid = spec["id"]
+        block = BasicBlock(id=bid, symbol_id=sym_id)
+        for line, defines, uses in spec.get("stmts", []):
+            block.statements.append(CfgStatement(
+                line=line, col=0, node_type="stmt",
+                code_snippet=f"line {line}",
+                defines=list(defines),
+                uses=list(uses),
+            ))
+        for target, etype in spec.get("succs", []):
+            block.successors.append(CfgEdge(target_block=target, edge_type=etype))
+        blocks[bid] = block
+
+    entry = blocks_spec[0]["id"] if blocks_spec else "bb_exit"
+    exit_id = "bb_exit"
+    if exit_id not in blocks:
+        blocks[exit_id] = BasicBlock(id=exit_id, symbol_id=sym_id)
+
+    return FunctionCfg(
+        symbol_id=sym_id,
+        entry_block=entry,
+        exit_block=exit_id,
+        blocks=blocks,
+    )
+
+
+class TestReachingDefSolver:
+    """Test the worklist-based reaching-def solver."""
+
+    def test_empty_cfg(self) -> None:
+        """No definitions → no DDG edges."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [(1, [], ["x"])], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert result.ddg_edges == []
+        assert result.definition_count == 0
+        assert not result.bailed_out
+
+    def test_single_def_use(self) -> None:
+        """x = 1; use(x) → DDG edge from def to use."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),     # x = 1
+                (2, [], ["x"]),     # use(x)
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert result.definition_count == 1
+        assert len(result.ddg_edges) == 1
+        edge = result.ddg_edges[0]
+        assert edge.variable == "x"
+        assert edge.def_line == 1
+        assert edge.use_line == 2
+
+    def test_two_defs_same_var_kill(self) -> None:
+        """x = 1; x = 2; use(x) → only second def reaches use."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),     # x = 1
+                (2, ["x"], []),     # x = 2 (kills first)
+                (3, [], ["x"]),     # use(x)
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert len(result.ddg_edges) == 1
+        edge = result.ddg_edges[0]
+        assert edge.def_line == 2  # second def, not first
+
+    def test_cross_block_def_use(self) -> None:
+        """def in bb_0, use in bb_1 → DDG edge spans blocks."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),
+            ], "succs": [("bb_1", "always")]},
+            {"id": "bb_1", "stmts": [
+                (2, [], ["x"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert len(result.ddg_edges) == 1
+        edge = result.ddg_edges[0]
+        assert edge.def_block == "bb_0"
+        assert edge.use_block == "bb_1"
+
+    def test_conditional_merge(self) -> None:
+        """Both branches define x → both reach use at merge point."""
+        cfg = _make_cfg([
+            {"id": "bb_cond", "stmts": [], "succs": [
+                ("bb_true", "true"), ("bb_false", "false"),
+            ]},
+            {"id": "bb_true", "stmts": [
+                (2, ["x"], []),
+            ], "succs": [("bb_merge", "always")]},
+            {"id": "bb_false", "stmts": [
+                (3, ["x"], []),
+            ], "succs": [("bb_merge", "always")]},
+            {"id": "bb_merge", "stmts": [
+                (4, [], ["x"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        # Both defs should reach the use (phi-like)
+        x_edges = [e for e in result.ddg_edges if e.variable == "x"]
+        assert len(x_edges) == 2
+        def_lines = sorted(e.def_line for e in x_edges)
+        assert def_lines == [2, 3]
+
+    def test_loop_fixpoint(self) -> None:
+        """Loop: x = 0; while (...) { use(x); x = x + 1 }
+
+        Both the initial def and the loop body def should reach the use.
+        """
+        cfg = _make_cfg([
+            {"id": "bb_init", "stmts": [
+                (1, ["x"], []),     # x = 0
+            ], "succs": [("bb_header", "always")]},
+            {"id": "bb_header", "stmts": [], "succs": [
+                ("bb_body", "true"), ("bb_exit", "false"),
+            ]},
+            {"id": "bb_body", "stmts": [
+                (3, [], ["x"]),     # use(x)
+                (4, ["x"], ["x"]),  # x = x + 1
+            ], "succs": [("bb_header", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        # The use of x at line 3 should be reached by both:
+        # - x = 0 (line 1, initial)
+        # - x = x + 1 (line 4, loop body - from previous iteration)
+        x_use_edges = [e for e in result.ddg_edges if e.variable == "x" and e.use_line == 3]
+        assert len(x_use_edges) == 2
+        def_lines = sorted(e.def_line for e in x_use_edges)
+        assert def_lines == [1, 4]
+
+    def test_multiple_variables(self) -> None:
+        """x = 1; y = 2; use(x, y) → separate DDG edges."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),
+                (2, ["y"], []),
+                (3, [], ["x", "y"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert result.definition_count == 2
+        assert len(result.ddg_edges) == 2
+        vars_in_edges = {e.variable for e in result.ddg_edges}
+        assert vars_in_edges == {"x", "y"}
+
+    def test_def_use_in_same_statement(self) -> None:
+        """x = x + 1 → use of x should reach old def, new def is generated."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),       # x = 0
+                (2, ["x"], ["x"]),    # x = x + 1 (uses old x, defines new x)
+                (3, [], ["x"]),       # use(x)
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        # Line 2 uses x → should have edge from line 1's def
+        use_at_2 = [e for e in result.ddg_edges if e.use_line == 2]
+        assert len(use_at_2) == 1
+        assert use_at_2[0].def_line == 1
+
+        # Line 3 uses x → should have edge from line 2's def (not line 1)
+        use_at_3 = [e for e in result.ddg_edges if e.use_line == 3]
+        assert len(use_at_3) == 1
+        assert use_at_3[0].def_line == 2
+
+    def test_no_use_no_edge(self) -> None:
+        """Definitions without uses produce no DDG edges."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),
+                (2, ["y"], []),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert result.definition_count == 2
+        assert len(result.ddg_edges) == 0
+
+    def test_bail_out(self) -> None:
+        """Functions with > MAX_DEFINITIONS should bail out."""
+        # Create a CFG with MAX_DEFINITIONS + 1 definitions
+        stmts = [(i + 1, [f"v{i}"], []) for i in range(MAX_DEFINITIONS + 1)]
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": stmts, "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        assert result.bailed_out
+        assert result.definition_count == MAX_DEFINITIONS + 1
+        assert result.ddg_edges == []
+
+    def test_unreachable_block(self) -> None:
+        """Unreachable blocks should not generate DDG edges for external uses."""
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [
+                (1, ["x"], []),
+            ], "succs": [("bb_exit", "always")]},
+            # bb_dead is unreachable — no predecessor
+            {"id": "bb_dead", "stmts": [
+                (10, [], ["x"]),
+            ], "succs": [("bb_exit", "always")]},
+        ])
+        result = solve_reaching_defs(cfg)
+        # The use of x in bb_dead should NOT have a reaching def
+        # (no path from bb_0 to bb_dead)
+        dead_edges = [e for e in result.ddg_edges if e.use_block == "bb_dead"]
+        assert len(dead_edges) == 0
+
+    def test_ddg_edge_fields(self) -> None:
+        """Verify all DdgEdge fields are populated correctly."""
+        edge = DdgEdge(
+            variable="x", def_block="bb_0", def_line=1,
+            use_block="bb_1", use_line=5,
+        )
+        assert edge.variable == "x"
+        assert edge.def_block == "bb_0"
+        assert edge.def_line == 1
+        assert edge.use_block == "bb_1"
+        assert edge.use_line == 5
+
+    def test_result_defaults(self) -> None:
+        """Verify ReachingDefResult defaults."""
+        r = ReachingDefResult(symbol_id="test:f")
+        assert r.ddg_edges == []
+        assert not r.bailed_out
+        assert r.definition_count == 0
+
+    def test_definition_dataclass(self) -> None:
+        """Verify _Definition fields."""
+        d = _Definition(index=0, variable="x", block_id="bb_0", line=1)
+        assert d.index == 0
+        assert d.variable == "x"
+
+
+class TestCfgHelpers:
+    """Test helper functions for the reaching-def solver."""
+
+    def test_compute_predecessors(self) -> None:
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [], "succs": [("bb_1", "always")]},
+            {"id": "bb_1", "stmts": [], "succs": [("bb_exit", "always")]},
+        ])
+        preds = _compute_predecessors(cfg)
+        assert preds["bb_0"] == []
+        assert preds["bb_1"] == ["bb_0"]
+        assert "bb_1" in preds["bb_exit"]
+
+    def test_reverse_postorder(self) -> None:
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [], "succs": [("bb_1", "always")]},
+            {"id": "bb_1", "stmts": [], "succs": [("bb_exit", "always")]},
+        ])
+        rpo = _reverse_postorder(cfg)
+        # Entry should come first in RPO
+        assert rpo[0] == "bb_0"
+        # bb_1 before bb_exit
+        assert rpo.index("bb_1") < rpo.index("bb_exit")
+
+    def test_reverse_postorder_with_cycle(self) -> None:
+        cfg = _make_cfg([
+            {"id": "bb_0", "stmts": [], "succs": [("bb_1", "always")]},
+            {"id": "bb_1", "stmts": [], "succs": [("bb_0", "always"), ("bb_exit", "false")]},
+        ])
+        rpo = _reverse_postorder(cfg)
+        # All blocks should be present
+        assert set(rpo) == {"bb_0", "bb_1", "bb_exit"}

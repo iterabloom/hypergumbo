@@ -1224,3 +1224,249 @@ def build_function_cfg(
     """
     builder = CfgBuilder(mapping, symbol_id)
     return builder.build(body_node, source)
+
+
+# ---------------------------------------------------------------------------
+# Reaching-def solver (ADR-0017 §1b)
+# ---------------------------------------------------------------------------
+
+# Per-function bail-out threshold (same as Joern's ReachingDefPass default).
+# Functions exceeding this fall back to structural analysis.
+MAX_DEFINITIONS = 4000
+
+
+@dataclass
+class DdgEdge:
+    """A data dependence edge from a definition to a use site.
+
+    Represents the fact that the value assigned at ``def_line`` (in
+    ``def_block``) can reach the use at ``use_line`` (in ``use_block``)
+    through the variable ``variable``.
+    """
+
+    variable: str
+    def_block: str
+    def_line: int
+    use_block: str
+    use_line: int
+
+
+@dataclass
+class ReachingDefResult:
+    """Result of reaching-def analysis for one function.
+
+    ``ddg_edges`` contains all data-dependence edges. ``bailed_out`` is True
+    if the function exceeded MAX_DEFINITIONS and analysis was skipped.
+    ``definition_count`` records the number of definitions found.
+    """
+
+    symbol_id: str
+    ddg_edges: list[DdgEdge] = field(default_factory=list)
+    bailed_out: bool = False
+    definition_count: int = 0
+
+
+def _compute_predecessors(cfg: FunctionCfg) -> dict[str, list[str]]:
+    """Build a predecessor map from the CFG's successor edges."""
+    preds: dict[str, list[str]] = {bid: [] for bid in cfg.blocks}
+    for block in cfg.blocks.values():
+        for edge in block.successors:
+            if edge.target_block in preds:
+                preds[edge.target_block].append(block.id)
+    return preds
+
+
+def _reverse_postorder(cfg: FunctionCfg) -> list[str]:
+    """Compute reverse postorder traversal of CFG blocks.
+
+    Reverse postorder ensures that a block is visited after all its
+    predecessors (except back-edges), which makes the worklist converge
+    faster for acyclic regions.
+    """
+    visited: set[str] = set()
+    postorder: list[str] = []
+
+    def dfs(block_id: str) -> None:
+        if block_id in visited:
+            return
+        visited.add(block_id)
+        block = cfg.blocks.get(block_id)
+        if block:
+            for edge in block.successors:
+                dfs(edge.target_block)
+        postorder.append(block_id)
+
+    dfs(cfg.entry_block)
+    # Also visit unreachable blocks (e.g., dead code after return)
+    for bid in cfg.blocks:
+        if bid not in visited:
+            dfs(bid)
+
+    postorder.reverse()
+    return postorder
+
+
+@dataclass
+class _Definition:
+    """A single variable definition (assignment) at a specific location."""
+
+    index: int  # Unique index for bitset representation
+    variable: str
+    block_id: str
+    line: int
+
+
+def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
+    """Compute reaching definitions for a function CFG.
+
+    Implements the classic worklist algorithm:
+    1. Number all definitions (variable assignments) across the CFG.
+    2. Compute gen/kill sets per basic block.
+    3. Iterate to fixpoint using reverse postorder worklist.
+    4. Generate DDG edges from reaching defs to use sites.
+
+    Uses Python arbitrary-precision ``int`` as bitsets for efficient set
+    operations. Bails out if definition count exceeds MAX_DEFINITIONS.
+
+    Args:
+        cfg: A FunctionCfg with populated ``CfgStatement.defines`` and
+            ``CfgStatement.uses`` fields.
+
+    Returns:
+        A ReachingDefResult with DDG edges, or bailed_out=True if the
+        function is too large.
+    """
+    result = ReachingDefResult(symbol_id=cfg.symbol_id)
+
+    # Step 1: Number all definitions
+    definitions: list[_Definition] = []
+    # Map variable → list of definition indices (for kill set computation)
+    var_defs: dict[str, list[int]] = {}
+
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            for var in stmt.defines:
+                idx = len(definitions)
+                definitions.append(_Definition(
+                    index=idx, variable=var, block_id=block.id, line=stmt.line,
+                ))
+                var_defs.setdefault(var, []).append(idx)
+
+    result.definition_count = len(definitions)
+
+    if len(definitions) == 0:
+        return result
+
+    if len(definitions) > MAX_DEFINITIONS:
+        result.bailed_out = True
+        logger.debug(
+            "Reaching-def bail-out for %s: %d definitions exceeds threshold %d",
+            cfg.symbol_id, len(definitions), MAX_DEFINITIONS,
+        )
+        return result
+
+    # Step 2: Compute gen/kill sets per block (as int bitsets)
+    # gen[b]: definitions generated in block b (last def of each variable)
+    # kill[b]: definitions killed by block b (other defs of same variables)
+    gen: dict[str, int] = {}
+    kill: dict[str, int] = {}
+
+    for block in cfg.blocks.values():
+        block_gen = 0
+        block_kill = 0
+        # Track which variables are defined in this block (last wins)
+        block_var_def: dict[str, int] = {}
+
+        for stmt in block.statements:
+            for var in stmt.defines:
+                # Find the definition index for this specific def
+                for d in definitions:
+                    if d.variable == var and d.block_id == block.id and d.line == stmt.line:
+                        # Kill all other defs of this variable
+                        for other_idx in var_defs[var]:
+                            if other_idx != d.index:
+                                block_kill |= (1 << other_idx)
+                        # If variable was previously defined in this block,
+                        # remove old gen (last def wins)
+                        if var in block_var_def:
+                            old_idx = block_var_def[var]
+                            block_gen &= ~(1 << old_idx)
+                        block_gen |= (1 << d.index)
+                        block_var_def[var] = d.index
+                        break
+
+        gen[block.id] = block_gen
+        kill[block.id] = block_kill
+
+    # Step 3: Worklist fixpoint iteration
+    predecessors = _compute_predecessors(cfg)
+    rpo = _reverse_postorder(cfg)
+    rpo_index = {bid: i for i, bid in enumerate(rpo)}
+
+    # in[b] and out[b] bitsets
+    in_sets: dict[str, int] = {bid: 0 for bid in cfg.blocks}
+    out_sets: dict[str, int] = {bid: 0 for bid in cfg.blocks}
+
+    # Initialize worklist with all blocks in RPO
+    worklist = list(rpo)
+    in_worklist = set(worklist)
+
+    while worklist:
+        # Sort by RPO index for better convergence
+        worklist.sort(key=lambda b: rpo_index.get(b, 0))
+        bid = worklist.pop(0)
+        in_worklist.discard(bid)
+
+        # in[b] = union of out[predecessors]
+        new_in = 0
+        for pred in predecessors.get(bid, []):
+            new_in |= out_sets[pred]
+        in_sets[bid] = new_in
+
+        # out[b] = gen[b] | (in[b] & ~kill[b])
+        new_out = gen.get(bid, 0) | (new_in & ~kill.get(bid, 0))
+
+        if new_out != out_sets[bid]:
+            out_sets[bid] = new_out
+            # Add successors to worklist
+            block = cfg.blocks.get(bid)
+            if block:
+                for edge in block.successors:
+                    if edge.target_block not in in_worklist and edge.target_block in cfg.blocks:
+                        worklist.append(edge.target_block)
+                        in_worklist.add(edge.target_block)
+
+    # Step 4: Generate DDG edges
+    for block in cfg.blocks.values():
+        # Reaching defs at the start of this block
+        reaching = in_sets[block.id]
+
+        # Walk statements; update reaching set as definitions are encountered
+        for stmt in block.statements:
+            # For each used variable, find reaching definitions
+            for var in stmt.uses:
+                # Check which definitions of this variable reach here
+                for def_idx in var_defs.get(var, []):
+                    if reaching & (1 << def_idx):
+                        d = definitions[def_idx]
+                        result.ddg_edges.append(DdgEdge(
+                            variable=var,
+                            def_block=d.block_id,
+                            def_line=d.line,
+                            use_block=block.id,
+                            use_line=stmt.line,
+                        ))
+
+            # Update reaching set: this statement's definitions kill/gen
+            for var in stmt.defines:
+                for d in definitions:
+                    if d.variable == var and d.block_id == block.id and d.line == stmt.line:
+                        # Kill all other defs of this variable
+                        for other_idx in var_defs[var]:
+                            if other_idx != d.index:
+                                reaching &= ~(1 << other_idx)
+                        # Gen this definition
+                        reaching |= (1 << d.index)
+                        break
+
+    return result
