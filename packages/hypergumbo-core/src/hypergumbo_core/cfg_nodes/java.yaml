@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §1d: CFG node mapping for Java (tree-sitter-java grammar)
+#
+# Also used as a base for Kotlin, Scala, and Groovy with minor overrides.
+#
+# Child references: "field:name" → child_by_field_name("name"),
+#                   "type:name" → first child with .type == "name"
+language: java
+grammar: tree-sitter-java
+
+conditional:
+  - node_type: if_statement
+    condition_child: "field:condition"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+
+loop:
+  - node_type: while_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: do_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: for_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: enhanced_for_statement
+    body_child: "field:body"
+
+break_statement: [break_statement]
+continue_statement: [continue_statement]
+return_statement: [return_statement]
+
+try_catch:
+  - node_type: try_statement
+    body_child: "field:body"
+    catch_clause_type: catch_clause
+    finally_child: "type:finally_clause"
+
+switch:
+  - node_type: switch_expression
+    scrutinee_child: "field:condition"
+    arms_child: "field:body"
+    arm_type: switch_block_statement_group

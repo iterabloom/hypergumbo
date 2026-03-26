@@ -724,6 +724,285 @@ class TestCfgBuilderRust:
 
 
 # ---------------------------------------------------------------------------
+# CFG builder tests — Go, TypeScript, Java
+# ---------------------------------------------------------------------------
+
+
+def _parse_go(source: str) -> tuple[Any, bytes]:
+    """Parse Go source and return (tree, source_bytes)."""
+    lang = get_language("go")
+    parser = tree_sitter.Parser(lang)
+    src = source.encode("utf-8")
+    tree = parser.parse(src)
+    return tree, src
+
+
+def _parse_ts(source: str) -> tuple[Any, bytes]:
+    """Parse TypeScript source and return (tree, source_bytes)."""
+    lang = get_language("typescript")
+    parser = tree_sitter.Parser(lang)
+    src = source.encode("utf-8")
+    tree = parser.parse(src)
+    return tree, src
+
+
+def _parse_java(source: str) -> tuple[Any, bytes]:
+    """Parse Java source and return (tree, source_bytes)."""
+    lang = get_language("java")
+    parser = tree_sitter.Parser(lang)
+    src = source.encode("utf-8")
+    tree = parser.parse(src)
+    return tree, src
+
+
+def _get_go_function_body(tree: Any) -> Any:
+    """Extract function body from Go tree."""
+    for child in tree.root_node.children:
+        if child.type == "function_declaration":
+            return child.child_by_field_name("body")
+    raise ValueError("No function found")
+
+
+def _get_java_method_body(tree: Any) -> Any:
+    """Extract first method body from Java tree."""
+    cls = tree.root_node.children[0]
+    cls_body = cls.child_by_field_name("body")
+    for child in cls_body.children:
+        if child.type == "method_declaration":
+            return child.child_by_field_name("body")
+    raise ValueError("No method found")
+
+
+class TestCfgBuilderGo:
+    """Test CFG construction from Go tree-sitter ASTs."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    def _build(self, source: str) -> FunctionCfg:
+        mapping = load_cfg_mapping("go")
+        assert mapping is not None
+        tree, src = _parse_go(source)
+        body = _get_go_function_body(tree)
+        return build_function_cfg(body, src, mapping, "go:test.go:1-10:foo:function")
+
+    def test_load_mapping(self) -> None:
+        mapping = load_cfg_mapping("go")
+        assert mapping is not None
+        assert mapping.language == "go"
+        assert mapping.classify("if_statement") == "conditional"
+        assert mapping.classify("for_statement") == "loop"
+        assert mapping.classify("defer_statement") == "deferred"
+        assert mapping.classify("return_statement") == "return"
+
+    def test_if_else(self) -> None:
+        cfg = self._build(
+            "package main\n"
+            "func foo(x int) int {\n"
+            "    if x > 0 {\n"
+            "        return x\n"
+            "    } else {\n"
+            "        return -x\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_for_loop(self) -> None:
+        cfg = self._build(
+            "package main\n"
+            "func foo() {\n"
+            "    for i := 0; i < 10; i++ {\n"
+            "        _ = i\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_defer(self) -> None:
+        cfg = self._build(
+            "package main\n"
+            "func foo() {\n"
+            "    defer cleanup()\n"
+            "    doWork()\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+        # Deferred call should be in exit block
+        exit_block = cfg.blocks[cfg.exit_block]
+        deferred_stmts = [s for s in exit_block.statements if s.node_type == "deferred_call"]
+        assert len(deferred_stmts) == 1
+
+    def test_switch(self) -> None:
+        cfg = self._build(
+            "package main\n"
+            "func foo(x int) {\n"
+            "    switch x {\n"
+            "    case 1:\n"
+            "        return\n"
+            "    case 2:\n"
+            "        return\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+        # Should have case edges
+        found_case = False
+        for block in cfg.blocks.values():
+            for edge in block.successors:
+                if edge.edge_type == "case":
+                    found_case = True
+        assert found_case
+
+
+class TestCfgBuilderTypeScript:
+    """Test CFG construction from TypeScript tree-sitter ASTs."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    def _build(self, source: str) -> FunctionCfg:
+        mapping = load_cfg_mapping("typescript")
+        assert mapping is not None
+        tree, src = _parse_ts(source)
+        # TS function_declaration has "body" field
+        body = None
+        for child in tree.root_node.children:
+            if child.type == "function_declaration":
+                body = child.child_by_field_name("body")
+                break
+        assert body is not None, "No function found in TypeScript source"
+        return build_function_cfg(body, src, mapping, "ts:test.ts:1-10:foo:function")
+
+    def test_load_mapping(self) -> None:
+        mapping = load_cfg_mapping("typescript")
+        assert mapping is not None
+        assert mapping.language == "typescript"
+        assert mapping.classify("if_statement") == "conditional"
+        assert mapping.classify("while_statement") == "loop"
+        assert mapping.classify("try_statement") == "try_catch"
+
+    def test_if_else(self) -> None:
+        cfg = self._build(
+            "function foo(x: number): number {\n"
+            "    if (x > 0) {\n"
+            "        return x;\n"
+            "    } else {\n"
+            "        return -x;\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_while_loop(self) -> None:
+        cfg = self._build(
+            "function foo() {\n"
+            "    let x = 10;\n"
+            "    while (x > 0) {\n"
+            "        x--;\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_try_catch_finally(self) -> None:
+        cfg = self._build(
+            "function foo() {\n"
+            "    try {\n"
+            "        risky();\n"
+            "    } catch (e) {\n"
+            "        handle(e);\n"
+            "    } finally {\n"
+            "        cleanup();\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+
+class TestCfgBuilderJava:
+    """Test CFG construction from Java tree-sitter ASTs."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    def _build(self, source: str) -> FunctionCfg:
+        mapping = load_cfg_mapping("java")
+        assert mapping is not None
+        tree, src = _parse_java(source)
+        body = _get_java_method_body(tree)
+        return build_function_cfg(body, src, mapping, "java:Test.java:1-10:foo:function")
+
+    def test_load_mapping(self) -> None:
+        mapping = load_cfg_mapping("java")
+        assert mapping is not None
+        assert mapping.language == "java"
+
+    def test_if_else(self) -> None:
+        cfg = self._build(
+            "class Foo {\n"
+            "    int foo(int x) {\n"
+            "        if (x > 0) {\n"
+            "            return x;\n"
+            "        } else {\n"
+            "            return -x;\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_while_loop(self) -> None:
+        cfg = self._build(
+            "class Foo {\n"
+            "    void foo() {\n"
+            "        int x = 10;\n"
+            "        while (x > 0) {\n"
+            "            x--;\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+
+    def test_try_catch(self) -> None:
+        cfg = self._build(
+            "class Foo {\n"
+            "    void foo() {\n"
+            "        try {\n"
+            "            risky();\n"
+            "        } catch (Exception e) {\n"
+            "            handle(e);\n"
+            "        } finally {\n"
+            "            cleanup();\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+        )
+        reachable = _reachable_blocks(cfg, cfg.entry_block)
+        assert cfg.exit_block in reachable
+        # Should have exception edges
+        found_exception = False
+        for block in cfg.blocks.values():
+            for edge in block.successors:
+                if edge.edge_type == "exception":
+                    found_exception = True
+        assert found_exception
+
+
+# ---------------------------------------------------------------------------
 # CfgBuilder._find_child tests
 # ---------------------------------------------------------------------------
 

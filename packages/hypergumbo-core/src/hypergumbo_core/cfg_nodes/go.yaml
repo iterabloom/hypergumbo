@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §1d: CFG node mapping for Go (tree-sitter-go grammar)
+#
+# Includes the deferred_execution semantic hook for Go's defer statement.
+# Go switch cases (expression_case, default_case) are direct children of
+# the switch statement — arms_child is null so the builder iterates over
+# the switch node's own children.
+#
+# Child references: "field:name" → child_by_field_name("name"),
+#                   "type:name" → first child with .type == "name"
+language: go
+grammar: tree-sitter-go
+
+conditional:
+  - node_type: if_statement
+    condition_child: "field:condition"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+
+loop:
+  - node_type: for_statement
+    body_child: "field:body"
+
+break_statement: [break_statement]
+continue_statement: [continue_statement]
+return_statement: [return_statement]
+
+deferred:
+  - node_type: defer_statement
+    body_child: "type:call_expression"
+
+switch:
+  - node_type: expression_switch_statement
+    scrutinee_child: "field:value"
+    # Cases are direct children of the switch node (no wrapper)
+
+try_catch: []

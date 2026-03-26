@@ -195,11 +195,15 @@ class DeferredMapping:
 
 @dataclass
 class SwitchMapping:
-    """Maps a tree-sitter node type to a switch/match construct."""
+    """Maps a tree-sitter node type to a switch/match construct.
+
+    If ``arms_child`` is None, case/arm nodes are direct children of the
+    switch node itself (e.g., Go ``expression_switch_statement``).
+    """
 
     node_type: str
     scrutinee_child: str
-    arms_child: str
+    arms_child: Optional[str] = None
     arm_type: Optional[str] = None
 
 
@@ -417,7 +421,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         SwitchMapping(
             node_type=s["node_type"],
             scrutinee_child=s["scrutinee_child"],
-            arms_child=s["arms_child"],
+            arms_child=s.get("arms_child"),
             arm_type=s.get("arm_type"),
         )
         for s in data.get("switch", [])
@@ -1160,9 +1164,12 @@ class CfgBuilder:
         fringe: list[_FringeEdge] = []
 
         # Process arms/cases
-        arms_node = self._find_child(node, mapping.arms_child)
-        if arms_node:
-            for child in arms_node.children:
+        # arms_child may be None (e.g., Go switch where cases are direct children)
+        arms_container = (
+            self._find_child(node, mapping.arms_child) if mapping.arms_child else node
+        )
+        if arms_container:
+            for child in arms_container.children:
                 if mapping.arm_type and child.type != mapping.arm_type:
                     continue
                 # Skip non-named children (punctuation)
