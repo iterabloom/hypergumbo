@@ -57,3 +57,18 @@
   clock: 6  # ae7a
   nonce: ae7a  # ae7a
   message: "ADR-0017 accepted. Phase 3."  # ae7a
+- op: update  # f2be
+  at: '2026-03-26T09:22:01Z'  # f2be
+  by: agent  # f2be
+  actor: jgstern_agent  # f2be
+  clock: 7  # f2be
+  nonce: f2be  # f2be
+  set:  # f2be
+    status: done  # f2be
+- op: discuss  # b354
+  at: '2026-03-26T09:22:01Z'  # b354
+  by: agent  # b354
+  actor: jgstern_agent  # b354
+  clock: 8  # b354
+  nonce: b354  # b354
+  message: "Implemented in PR #2587. FunctionSummary dataclass + YAML loader. TypeScript stdlib (12 functions) and Rust stdlib (11 functions) summaries. Default-conservative for undeclared. 24 tests, 100% coverage."  # b354

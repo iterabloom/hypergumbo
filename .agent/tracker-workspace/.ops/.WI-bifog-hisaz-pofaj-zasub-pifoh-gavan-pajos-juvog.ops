@@ -57,3 +57,18 @@
   clock: 6  # 2634
   nonce: '2634'  # 2634
   message: "ADR-0017 accepted. Phase 2b. Retitled: Rust def/use extractor (was 'hard patterns only')."  # 2634
+- op: update  # 5d3e
+  at: '2026-03-26T09:02:01Z'  # 5d3e
+  by: agent  # 5d3e
+  actor: jgstern_agent  # 5d3e
+  clock: 7  # 5d3e
+  nonce: 5d3e  # 5d3e
+  set:  # 5d3e
+    priority: 4  # 5d3e
+- op: discuss  # ed88
+  at: '2026-03-26T09:02:01Z'  # ed88
+  by: agent  # ed88
+  actor: jgstern_agent  # ed88
+  clock: 8  # ed88
+  nonce: ed88  # ed88
+  message: "Deprioritized to P4. Borrow aliases and ref/ref mut are niche Rust precision improvements. Phase 3 function summaries (WI-bizom) have broader interprocedural impact — better ROI for DEEP mode."  # ed88

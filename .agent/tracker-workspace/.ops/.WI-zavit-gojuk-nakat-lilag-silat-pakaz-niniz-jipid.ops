@@ -57,3 +57,18 @@
   clock: 6  # fb7d
   nonce: fb7d  # fb7d
   message: "ADR-0017 accepted. Phase 2."  # fb7d
+- op: update  # 775a
+  at: '2026-03-26T09:01:25Z'  # 775a
+  by: agent  # 775a
+  actor: jgstern_agent  # 775a
+  clock: 7  # 775a
+  nonce: 775a  # 775a
+  set:  # 775a
+    status: done  # 775a
+- op: discuss  # cde7
+  at: '2026-03-26T09:01:25Z'  # cde7
+  by: agent  # cde7
+  actor: jgstern_agent  # cde7
+  clock: 8  # cde7
+  nonce: cde7  # cde7
+  message: "Implemented in PR #2586. is_field_tainted() with field-sensitivity lite rules. x tainted → x.field inherits. obj.field tainted ≠ obj tainted. 64 tests, 100% coverage."  # cde7
