@@ -172,6 +172,15 @@ EXAMPLE_PATTERNS = [
     r"^tutorials?/",  # tutorials/ or tutorial/
 ]
 
+# Patterns for documentation directories (tier 2) — not production code.
+# Checked with re.search to match at any depth (e.g., Sources/Lib/Documentation.docc/).
+# Swift DocC (.docc) bundles contain tutorial fragments, articles, and extension files
+# that look like code but are documentation content (not importable modules).
+DOCUMENTATION_PATTERNS = [
+    r"(?:^|/)\.docc/",              # .docc/ at any level (Swift DocC bundles)
+    r"(?:^|/)Documentation\.docc/",  # Documentation.docc/ (conventional name)
+]
+
 # Patterns for fuzz targets and benchmarks (tier 2) — not production code.
 # Checked with re.search to match at any depth (e.g., crates/core/fuzz/).
 FUZZ_BENCH_PATTERNS = [
@@ -272,6 +281,11 @@ def classify_file(
     for pattern in EXAMPLE_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(Tier.INTERNAL_DEP, f"path matches {pattern}")
+
+    # 4b. Check documentation patterns (DocC bundles, etc.)
+    for pattern in DOCUMENTATION_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"documentation path matches {pattern}")
 
     # 5a. Check custom internal_package_roots from config
     if config and config.internal_package_roots:

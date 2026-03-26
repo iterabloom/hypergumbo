@@ -524,6 +524,47 @@ members = ["crates/*"]
         assert lib_result.tier < example_result.tier
 
 
+class TestDocCClassification:
+    """DocC documentation directories should be tier 2 (not first-party)."""
+
+    def test_docc_tutorial_swift_file_is_tier2(self, tmp_path):
+        """Swift tutorial fragments in Documentation.docc are tier 2."""
+        docc_dir = tmp_path / "Sources" / "MyLib" / "Documentation.docc" / "Tutorials"
+        docc_dir.mkdir(parents=True)
+        (docc_dir / "code-0001.swift").write_text("import MyLib\nlet store = Store()")
+
+        result = classify_file(docc_dir / "code-0001.swift", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP, (
+            f"DocC tutorial should be tier 2, got {result.tier}: {result.reason}"
+        )
+
+    def test_docc_nested_under_sources_not_tier1(self, tmp_path):
+        """DocC under Sources/ should NOT be promoted to tier 1."""
+        src_dir = tmp_path / "Sources" / "ComposableArchitecture"
+        docc_dir = src_dir / "Documentation.docc" / "Tutorials" / "MeetTCA"
+        docc_dir.mkdir(parents=True)
+        (docc_dir / "code-0003.swift").write_text("struct ContactsFeature {}")
+
+        # Even though it's under Sources/, the .docc path should demote it
+        result = classify_file(docc_dir / "code-0003.swift", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP, (
+            f"DocC tutorial under Sources/ should be tier 2, got {result.tier}: {result.reason}"
+        )
+
+    def test_non_docc_source_stays_tier1(self, tmp_path):
+        """Regular Source code next to a .docc dir is still tier 1."""
+        src_dir = tmp_path / "Sources" / "MyLib"
+        src_dir.mkdir(parents=True)
+        (src_dir / "Store.swift").write_text("public class Store {}")
+        # Create .docc sibling
+        docc_dir = src_dir / "Documentation.docc"
+        docc_dir.mkdir()
+
+        result = classify_file(src_dir / "Store.swift", tmp_path, set())
+        # Should remain tier 1 (first-party production code)
+        assert result.tier == Tier.FIRST_PARTY
+
+
 class TestNotebookClassification:
     """Jupyter notebooks are always tier 2 (internal_dep).
 
