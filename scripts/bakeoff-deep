@@ -1036,6 +1036,14 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # with low out-degree.  A 1.5x boost compensates.
     _ROUTE_BOOST = 1.5
 
+    # Architectural concept boost: middleware, controller, and application
+    # symbols are architecturally meaningful in framework repos even with
+    # moderate in-degree.  DEEP bakeoff assessment showed OutputBuffer.append
+    # outranking FileMiddleware.handle for Hummingbird because pure hub
+    # scoring ignores architectural role.
+    _CONCEPT_BOOST = 1.3
+    _BOOSTED_CONCEPTS = {"middleware", "controller", "application", "model"}
+
     # API handler boost: symbols targeted by routes_to edges are API handler
     # implementations (e.g., API.getAlertsHandler, API.postAlertsHandler).
     # These have low in-degree (called only from route registration) but
@@ -1097,19 +1105,22 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         lang = node.get("language", "unknown")
         lang_weight = lang_counts.get(lang, 1) / max_lang_count
 
-        # Route boost for HTTP entrypoints.
-        route_boost = 1.0
+        # Route and architectural concept boost.
+        concept_boost = 1.0
+        meta = node.get("meta") or {}
+        concepts = meta.get("concepts") or []
         if kind == "route":
-            route_boost = _ROUTE_BOOST
+            concept_boost = _ROUTE_BOOST
         else:
-            meta = node.get("meta") or {}
-            concepts = meta.get("concepts") or []
             for c in concepts:
-                if isinstance(c, dict) and c.get("concept") == "route":
-                    route_boost = _ROUTE_BOOST
-                    break
+                if isinstance(c, dict):
+                    cname = c.get("concept", "")
+                    if cname == "route":
+                        concept_boost = max(concept_boost, _ROUTE_BOOST)
+                    elif cname in _BOOSTED_CONCEPTS:
+                        concept_boost = max(concept_boost, _CONCEPT_BOOST)
 
-        score = base_score * lang_weight * route_boost
+        score = base_score * lang_weight * concept_boost
         candidates.append((score, prod_in, entry, name))
 
     # Sort by score descending, then prod in-degree descending, name for stability
