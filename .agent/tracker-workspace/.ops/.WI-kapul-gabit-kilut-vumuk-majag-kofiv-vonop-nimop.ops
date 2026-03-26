@@ -20,3 +20,18 @@
     pr_ref:  # 9393
     description: "First def/use extractor (ADR-0017 §1c). Python is simplest (~200-400 lines), testable against hypergumbo itself, validates shared infrastructure."  # 9393
     fields: {}  # 9393
+- op: update  # 7657
+  at: '2026-03-26T07:56:01Z'  # 7657
+  by: agent  # 7657
+  actor: jgstern_agent  # 7657
+  clock: 2  # 7657
+  nonce: '7657'  # 7657
+  set:  # 7657
+    status: done  # 7657
+- op: discuss  # 4651
+  at: '2026-03-26T07:56:01Z'  # 4651
+  by: agent  # 4651
+  actor: jgstern_agent  # 4651
+  clock: 3  # 4651
+  nonce: '4651'  # 4651
+  message: "Implemented in PR #2581. Python def/use extractor (103 lines) + DefUseExtractor protocol and registry. Handles assignments, unpacking, augmented, for, return, delete, attribute/subscript. 30 tests, 100% coverage."  # 4651

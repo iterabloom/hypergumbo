@@ -66,3 +66,18 @@
   clock: 7  # 7f71
   nonce: 7f71  # 7f71
   message: "ADR-0017 accepted. Phase 2."  # 7f71
+- op: update  # 9d36
+  at: '2026-03-26T08:37:01Z'  # 9d36
+  by: agent  # 9d36
+  actor: jgstern_agent  # 9d36
+  clock: 8  # 9d36
+  nonce: 9d36  # 9d36
+  set:  # 9d36
+    status: done  # 9d36
+- op: discuss  # 4262
+  at: '2026-03-26T08:37:01Z'  # 4262
+  by: agent  # 4262
+  actor: jgstern_agent  # 4262
+  clock: 9  # 4262
+  nonce: '4262'  # 4262
+  message: "Implemented in PR #2583. propagate_taint_ddg() with mixed-coverage verdict (precise when both source+sink have DDG, approximate otherwise). Sanitizer bare-name indexing fix. 54 tests, 100% coverage."  # 4262

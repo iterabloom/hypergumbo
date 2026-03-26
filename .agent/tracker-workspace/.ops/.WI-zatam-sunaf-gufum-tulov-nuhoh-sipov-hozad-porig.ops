@@ -75,3 +75,18 @@
   clock: 8  # c6ae
   nonce: c6ae  # c6ae
   message: "ADR-0017 accepted. Phase 2. Repurposed: Python def/use extractor (was Rust)."  # c6ae
+- op: update  # 8cab
+  at: '2026-03-26T08:16:32Z'  # 8cab
+  by: agent  # 8cab
+  actor: jgstern_agent  # 8cab
+  clock: 9  # 8cab
+  nonce: 8cab  # 8cab
+  set:  # 8cab
+    status: done  # 8cab
+- op: discuss  # d2d9
+  at: '2026-03-26T08:16:32Z'  # d2d9
+  by: agent  # d2d9
+  actor: jgstern_agent  # d2d9
+  clock: 10  # d2d9
+  nonce: d2d9  # d2d9
+  message: "Implemented in PR #2582. Rust def/use extractor (183 lines) for core patterns: let, tuple/struct/tuple-struct destructure, reassignment, compound assign, field/index writes, for, if-let, match arms (incl. mut_pattern via match_pattern), closures, return, macros. 37 tests, 100% coverage."  # d2d9
