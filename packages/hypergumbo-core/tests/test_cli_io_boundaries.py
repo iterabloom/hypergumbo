@@ -860,3 +860,33 @@ class TestIoBoundariesExcludeTests:
         data = json.loads(capsys.readouterr().out)
         assert data["total_io_edges"] == 0
         assert len(data["boundaries"]) == 0
+
+    def test_exclude_tests_keeps_unknown_source_chains(self, tmp_path, capsys):
+        """Chains with source nodes not in the behavior map are kept (not test)."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:os:0-0:remove:unresolved",
+                    "name": "remove",
+                    "kind": "unresolved",
+                    "language": "python",
+                    "path": "",
+                    "span": {"start_line": 0, "end_line": 0},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:unknown/caller.py:1-5:mystery:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+            ],
+        )
+
+        args = _make_args(tmp_path, bmap, json_output=True, exclude_tests=True)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        # Chain kept because source node unknown (can't determine if test)
+        assert data["total_io_edges"] == 1
