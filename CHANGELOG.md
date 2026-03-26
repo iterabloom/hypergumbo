@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`io-boundaries --by-file`**: Alternative view grouping IO boundary calls by source file instead of boundary type. Each line shows `[boundary_type] primitive <- caller`.
 - **`io-boundaries --boundary TYPE`**: Filter output to a single boundary type (e.g., `--boundary subprocess`). Works with both text and JSON output.
 - **`io-boundaries --primitive NAME`**: Filter output to a specific primitive (e.g., `--primitive shutil.rmtree`). Works with both text and JSON output.
+- **`io-boundaries --exclude-tests`** (`-x`): Exclude I/O boundary chains originating from test files. Reduces noise in IO boundary analysis for repos where test code dominates IO calls (e.g., 91% test pollution in logging for Hummingbird). Mirrors the `--exclude-tests` flag on `routes` and `slice` commands.
 - **Enriched `io-boundaries --json`**: JSON output now includes per-chain detail (`chains`), per-primitive counts (`primitive_counts`), and a `has_high_risk` flag per boundary type. Backward-compatible (existing fields unchanged).
 
 #### Taint-flow analysis (ADR-0017 Phase 1)

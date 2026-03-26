@@ -2903,9 +2903,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Build node lookup for human-readable caller names
     nodes_by_id: Dict[str, Any] = {n["id"]: n for n in behavior_map.get("nodes", [])}
 
-    # Apply boundary/primitive filters
+    # Apply boundary/primitive/exclude-tests filters
     boundary_filter = getattr(args, "boundary", None)
     primitive_filter = getattr(args, "primitive", None)
+    exclude_tests = getattr(args, "exclude_tests", False)
 
     from .io_boundary import BoundaryMapEntry
 
@@ -2913,22 +2914,38 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     for btype, entry in bmap.entries.items():
         if boundary_filter and btype != boundary_filter:
             continue
+
+        chains = entry.chains
+
+        # Filter by primitive
         if primitive_filter:
-            filtered_chains = [c for c in entry.chains if c.primitive == primitive_filter]
-            if not filtered_chains:
-                continue
+            chains = [c for c in chains if c.primitive == primitive_filter]
+
+        # Filter out chains where the source symbol is in a test file
+        if exclude_tests:
+            def _is_test_chain(chain: Any) -> bool:
+                src_node = nodes_by_id.get(chain.io_edge_src)
+                if src_node:
+                    return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
+                return False
+            chains = [c for c in chains if not _is_test_chain(c)]
+
+        if not chains and (primitive_filter or exclude_tests):
+            continue
+
+        if primitive_filter or exclude_tests:
             filtered_entries[btype] = BoundaryMapEntry(
                 boundary=entry.boundary,
-                chains=filtered_chains,
-                entry_points=sorted({ep for c in filtered_chains for ep in c.entry_points}),
-                primitives_used=sorted({c.primitive for c in filtered_chains}),
+                chains=chains,
+                entry_points=sorted({ep for c in chains for ep in c.entry_points}),
+                primitives_used=sorted({c.primitive for c in chains}),
             )
         else:
             filtered_entries[btype] = entry
 
     # Output
     if getattr(args, "json_output", False):
-        if boundary_filter or primitive_filter:
+        if boundary_filter or primitive_filter or exclude_tests:
             filtered_total = sum(len(e.chains) for e in filtered_entries.values())
             output = {
                 "total_io_edges": filtered_total,
@@ -4512,6 +4529,14 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
         default=None,
         metavar="NAME",
         help="Filter to a specific primitive (e.g., subprocess.run, os.execv)",
+    )
+    p_io.add_argument(
+        "-x",
+        "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        default=False,
+        help="Exclude I/O boundary chains originating from test files",
     )
     p_io.set_defaults(func=cmd_io_boundaries)
 

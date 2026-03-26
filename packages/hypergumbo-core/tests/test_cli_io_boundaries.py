@@ -756,3 +756,107 @@ def test_objc_io_boundaries_detected(tmp_path: Path, capsys) -> None:
         f"Boundaries: {list(data.get('boundaries', {}).keys())}"
     )
     assert "fs_write" in data["boundaries"]
+
+
+class TestIoBoundariesExcludeTests:
+    """Tests for --exclude-tests flag on io-boundaries command."""
+
+    def test_exclude_tests_filters_test_chains(self, tmp_path, capsys):
+        """Chains from test files are excluded when --exclude-tests is set."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:src/main.py:1-5:main:function",
+                    "name": "main",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/main.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+                {
+                    "id": "python:tests/test_main.py:1-5:test_func:function",
+                    "name": "test_func",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "tests/test_main.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+                {
+                    "id": "python:os:0-0:remove:unresolved",
+                    "name": "remove",
+                    "kind": "unresolved",
+                    "language": "python",
+                    "path": "",
+                    "span": {"start_line": 0, "end_line": 0},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:src/main.py:1-5:main:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+                {
+                    "src": "python:tests/test_main.py:1-5:test_func:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+            ],
+        )
+
+        # Without --exclude-tests: both chains present
+        args = _make_args(tmp_path, bmap, json_output=True, exclude_tests=False)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_io_edges"] == 2
+
+        # With --exclude-tests: only prod chain
+        args = _make_args(tmp_path, bmap, json_output=True, exclude_tests=True)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_io_edges"] == 1
+        chains = data["boundaries"]["fs_write"]["chains"]
+        assert len(chains) == 1
+        assert "test" not in chains[0]["io_edge_src"]
+
+    def test_exclude_tests_removes_empty_boundary_types(self, tmp_path, capsys):
+        """Boundary types with only test chains are removed entirely."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:tests/test_io.py:1-5:test_write:function",
+                    "name": "test_write",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "tests/test_io.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+                {
+                    "id": "python:os:0-0:remove:unresolved",
+                    "name": "remove",
+                    "kind": "unresolved",
+                    "language": "python",
+                    "path": "",
+                    "span": {"start_line": 0, "end_line": 0},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:tests/test_io.py:1-5:test_write:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+            ],
+        )
+
+        args = _make_args(tmp_path, bmap, json_output=True, exclude_tests=True)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_io_edges"] == 0
+        assert len(data["boundaries"]) == 0
