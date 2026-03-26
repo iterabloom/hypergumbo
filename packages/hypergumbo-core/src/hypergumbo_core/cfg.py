@@ -55,11 +55,81 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Protocol, runtime_checkable
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Pluggable def/use extractors (ADR-0017 §1c)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DefUseResult:
+    """Variables defined and used by a single AST statement.
+
+    Produced by a ``DefUseExtractor`` for each tree-sitter AST node
+    within a function body. The CFG builder uses these to populate
+    ``CfgStatement.defines`` and ``CfgStatement.uses``.
+    """
+
+    defines: list[str] = field(default_factory=list)
+    uses: list[str] = field(default_factory=list)
+
+
+@runtime_checkable
+class DefUseExtractor(Protocol):
+    """Protocol for language-specific def/use extractors.
+
+    Extractors analyze tree-sitter AST nodes and report which variables
+    are defined (assigned) and used (read) by each statement. The CFG
+    builder calls ``extract()`` for each statement node to populate the
+    ``defines`` and ``uses`` fields of ``CfgStatement``.
+
+    Implementations are registered via ``register_def_use_extractor()``
+    and retrieved via ``get_def_use_extractor()``.
+    """
+
+    language: str
+
+    def extract(self, node: Any, source: bytes) -> DefUseResult:
+        """Return variables defined and used by this AST node."""
+        ...  # pragma: no cover
+
+
+# Registry of def/use extractors, keyed by language name.
+_DEF_USE_EXTRACTORS: dict[str, DefUseExtractor] = {}
+
+
+def register_def_use_extractor(language: str) -> Any:
+    """Decorator to register a def/use extractor for a language.
+
+    Usage::
+
+        @register_def_use_extractor("python")
+        class PythonDefUseExtractor:
+            language = "python"
+            def extract(self, node, source):
+                ...
+    """
+    def decorator(cls: Any) -> Any:
+        instance = cls()
+        _DEF_USE_EXTRACTORS[language] = instance
+        return cls
+    return decorator
+
+
+def get_def_use_extractor(language: str) -> Optional[DefUseExtractor]:
+    """Return the registered def/use extractor for a language, or None."""
+    return _DEF_USE_EXTRACTORS.get(language)
+
+
+def clear_def_use_extractors() -> None:
+    """Clear all registered extractors (for tests)."""
+    _DEF_USE_EXTRACTORS.clear()
+
 
 # ---------------------------------------------------------------------------
 # Data model (ADR-0017 §1a)

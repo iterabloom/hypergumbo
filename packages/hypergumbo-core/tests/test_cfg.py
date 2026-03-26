@@ -28,6 +28,8 @@ from hypergumbo_core.cfg import (
     DEFAULT_MAX_DDG_TARGETS,
     DdgEdge,
     DdgTargetSet,
+    DefUseExtractor,
+    DefUseResult,
     DeferredMapping,
     EarlyReturnMapping,
     FunctionCfg,
@@ -46,6 +48,9 @@ from hypergumbo_core.cfg import (
     build_function_cfg,
     clear_cfg_mapping_cache,
     get_cfg_nodes_dir,
+    clear_def_use_extractors,
+    get_def_use_extractor,
+    register_def_use_extractor,
     select_ddg_targets,
     load_cfg_mapping,
     solve_reaching_defs,
@@ -2231,3 +2236,66 @@ class TestSelectDdgTargets:
         assert sym in result.high_centrality
         # Count should reflect deduplication
         assert result.count == 2  # sym + g
+
+
+# ---------------------------------------------------------------------------
+# Def/use extractor protocol and registry tests
+# ---------------------------------------------------------------------------
+
+
+class TestDefUseExtractorRegistry:
+    """Test the def/use extractor protocol and registry."""
+
+    def test_def_use_result_defaults(self) -> None:
+        r = DefUseResult()
+        assert r.defines == []
+        assert r.uses == []
+
+    def test_def_use_result_with_values(self) -> None:
+        r = DefUseResult(defines=["x"], uses=["y", "z"])
+        assert r.defines == ["x"]
+        assert r.uses == ["y", "z"]
+
+    def test_register_and_get(self) -> None:
+        clear_def_use_extractors()
+
+        @register_def_use_extractor("test_lang")
+        class TestExtractor:
+            language = "test_lang"
+
+            def extract(self, node: Any, source: bytes) -> DefUseResult:
+                return DefUseResult(defines=["x"])
+
+        ext = get_def_use_extractor("test_lang")
+        assert ext is not None
+        assert ext.language == "test_lang"
+
+        # Clean up
+        clear_def_use_extractors()
+
+    def test_get_nonexistent(self) -> None:
+        clear_def_use_extractors()
+        assert get_def_use_extractor("nonexistent") is None
+
+    def test_clear_extractors(self) -> None:
+        clear_def_use_extractors()
+
+        @register_def_use_extractor("temp")
+        class TempExtractor:
+            language = "temp"
+
+            def extract(self, node: Any, source: bytes) -> DefUseResult:
+                return DefUseResult()
+
+        assert get_def_use_extractor("temp") is not None
+        clear_def_use_extractors()
+        assert get_def_use_extractor("temp") is None
+
+    def test_protocol_isinstance(self) -> None:
+        class Good:
+            language = "good"
+
+            def extract(self, node: Any, source: bytes) -> DefUseResult:
+                return DefUseResult()
+
+        assert isinstance(Good(), DefUseExtractor)
