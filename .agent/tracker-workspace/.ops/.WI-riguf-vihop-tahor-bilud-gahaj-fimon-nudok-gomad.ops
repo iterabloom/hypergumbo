@@ -1,0 +1,20 @@
+- op: create  # eae5
+  at: '2026-03-26T02:39:42Z'  # eae5
+  by: agent  # eae5
+  actor: jgstern_agent  # eae5
+  clock: 1  # eae5
+  nonce: eae5  # eae5
+  data:  # eae5
+    kind: work_item  # eae5
+    title: "Swift method resolution: receiver type tracking for send()/common method names"  # eae5
+    status: todo_soft  # eae5
+    priority: 3  # eae5
+    parent:  # eae5
+    tags:  # eae5
+    - bakeoff,assessment,swift  # eae5
+    before: []  # eae5
+    duplicate_of: []  # eae5
+    not_duplicate_of: []  # eae5
+    pr_ref:  # eae5
+    description: "DEEP bakeoff: TCA has 492 send() calls misresolved to TestStore.send instead of Store.send (4 overloads at Store.swift:168-290). All send symbols are functions (not methods), so qualified name registration (AMB-METHOD fix) doesn't help. Root cause: NameResolver picks first match when multiple symbols share a name. Fix requires receiver type tracking through variable declarations. Analogous to Go method resolution (WI-hikug). Impact: 493 misrouted call edges pollute forward slices with test infrastructure."  # eae5
+    fields: {}  # eae5
