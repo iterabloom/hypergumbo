@@ -93,3 +93,18 @@
   clock: 10  # 8b2d
   nonce: 8b2d  # 8b2d
   message: "ADR-0017 accepted. Phase 2."  # 8b2d
+- op: update  # fe22
+  at: '2026-03-26T06:57:35Z'  # fe22
+  by: agent  # fe22
+  actor: jgstern_agent  # fe22
+  clock: 11  # fe22
+  nonce: fe22  # fe22
+  set:  # fe22
+    status: done  # fe22
+- op: discuss  # 5f51
+  at: '2026-03-26T06:57:35Z'  # 5f51
+  by: agent  # 5f51
+  actor: jgstern_agent  # 5f51
+  clock: 12  # 5f51
+  nonce: 5f51  # 5f51
+  message: "Implemented in PR #2576. Worklist fixpoint with int bitsets, gen/kill, reverse postorder, DDG edge generation. 4000-def bail-out. 97 tests, 100% coverage."  # 5f51

@@ -102,3 +102,18 @@
   clock: 11  # 4fd9
   nonce: 4fd9  # 4fd9
   message: "ADR-0017 accepted. Phase 2."  # 4fd9
+- op: update  # 8620
+  at: '2026-03-26T06:32:19Z'  # 8620
+  by: agent  # 8620
+  actor: jgstern_agent  # 8620
+  clock: 12  # 8620
+  nonce: '8620'  # 8620
+  set:  # 8620
+    status: done  # 8620
+- op: discuss  # 5d91
+  at: '2026-03-26T06:32:19Z'  # 5d91
+  by: agent  # 5d91
+  actor: jgstern_agent  # 5d91
+  clock: 13  # 5d91
+  nonce: 5d91  # 5d91
+  message: "Implemented in PR #2575. CFG builder (1226 lines), Python+Rust YAML mappings, 80 tests at 100% coverage. Handles all ADR-0017 §1a control-flow categories plus 3 semantic hooks."  # 5d91

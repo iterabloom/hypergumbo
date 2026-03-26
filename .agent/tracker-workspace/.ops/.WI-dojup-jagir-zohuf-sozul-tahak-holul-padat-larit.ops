@@ -64,3 +64,18 @@
   clock: 7  # 297a
   nonce: 297a  # 297a
   message: "taint.py created in PR #2548 (Phase 1). cfg.py is Phase 2 work (CFG builder + reaching-def solver). Remaining: cfg.py when Phase 2 begins."  # 297a
+- op: update  # 1d7a
+  at: '2026-03-26T06:37:25Z'  # 1d7a
+  by: agent  # 1d7a
+  actor: jgstern_agent  # 1d7a
+  clock: 8  # 1d7a
+  nonce: 1d7a  # 1d7a
+  set:  # 1d7a
+    status: done  # 1d7a
+- op: discuss  # 3521
+  at: '2026-03-26T06:37:25Z'  # 3521
+  by: agent  # 3521
+  actor: jgstern_agent  # 3521
+  clock: 9  # 3521
+  nonce: '3521'  # 3521
+  message: "cfg.py created in PR #2575. taint.py already existed from Phase 1 (PR #2548). Both modules are in hypergumbo-core."  # 3521
