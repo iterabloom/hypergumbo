@@ -25,7 +25,9 @@ from hypergumbo_core.cfg import (
     CfgStatement,
     ConditionalMapping,
     ContextManagerMapping,
+    DEFAULT_MAX_DDG_TARGETS,
     DdgEdge,
+    DdgTargetSet,
     DeferredMapping,
     EarlyReturnMapping,
     FunctionCfg,
@@ -44,6 +46,7 @@ from hypergumbo_core.cfg import (
     build_function_cfg,
     clear_cfg_mapping_cache,
     get_cfg_nodes_dir,
+    select_ddg_targets,
     load_cfg_mapping,
     solve_reaching_defs,
 )
@@ -2074,3 +2077,157 @@ class TestCfgHelpers:
         rpo = _reverse_postorder(cfg)
         # All blocks should be present
         assert set(rpo) == {"bb_0", "bb_1", "bb_exit"}
+
+
+# ---------------------------------------------------------------------------
+# Targeted analysis selection tests
+# ---------------------------------------------------------------------------
+
+
+class _MockIoChain:
+    """Minimal IoChain mock for testing."""
+
+    def __init__(self, src: str, entry_points: list[str]) -> None:
+        self.io_edge_src = src
+        self.io_edge_dst = f"{src}_dst"
+        self.entry_points = entry_points
+        self.boundary = "fs_write"
+        self.primitive = "open"
+
+
+class _MockTaintFinding:
+    """Minimal TaintFlowFinding mock for testing."""
+
+    def __init__(
+        self, source: str, sink: str, sanitized: bool = False, path: list[str] | None = None,
+    ) -> None:
+        self.source_symbol = source
+        self.sink_symbol = sink
+        self.sanitized = sanitized
+        self.path = path or []
+        self.taint_label = "plaintext"
+        self.source_primitive = "decrypt"
+        self.sink_primitive = "send"
+        self.sink_zone = "relay"
+        self.confidence = "approximate"
+        self.analysis_method = "structural"
+
+
+class TestSelectDdgTargets:
+    """Test targeted analysis selection."""
+
+    def test_empty_inputs(self) -> None:
+        result = select_ddg_targets(edges=[])
+        assert result.count == 0
+        assert result.all_targets == set()
+        assert result.budget == DEFAULT_MAX_DDG_TARGETS
+
+    def test_io_chains_selection(self) -> None:
+        chains = [
+            _MockIoChain("py:app.py:1-5:handle:function", ["py:app.py:10-20:main:function"]),
+            _MockIoChain("py:db.py:1-5:query:function", []),
+        ]
+        result = select_ddg_targets(edges=[], io_chains=chains)
+        assert "py:app.py:1-5:handle:function" in result.io_critical
+        assert "py:app.py:10-20:main:function" in result.io_critical
+        assert "py:db.py:1-5:query:function" in result.io_critical
+        assert result.count == 3
+
+    def test_taint_findings_unsanitized(self) -> None:
+        findings = [
+            _MockTaintFinding("py:a.py:1-5:decrypt:function", "py:b.py:1-5:send:function"),
+        ]
+        result = select_ddg_targets(edges=[], taint_findings=findings)
+        assert "py:a.py:1-5:decrypt:function" in result.taint_relevant
+        assert "py:b.py:1-5:send:function" in result.taint_relevant
+
+    def test_taint_findings_sanitized_excluded(self) -> None:
+        findings = [
+            _MockTaintFinding("py:a.py:1-5:f:function", "py:b.py:1-5:g:function", sanitized=True),
+        ]
+        result = select_ddg_targets(edges=[], taint_findings=findings)
+        assert result.count == 0
+
+    def test_taint_path_nodes_included(self) -> None:
+        findings = [
+            _MockTaintFinding(
+                "py:a.py:1-5:src:function",
+                "py:c.py:1-5:sink:function",
+                path=["py:a.py:1-5:src:function", "py:b.py:1-5:mid:function", "py:c.py:1-5:sink:function"],
+            ),
+        ]
+        result = select_ddg_targets(edges=[], taint_findings=findings)
+        assert "py:b.py:1-5:mid:function" in result.taint_relevant
+
+    def test_centrality_selection(self) -> None:
+        centrality = {
+            "py:a.py:1-5:hot:function": 0.8,
+            "py:b.py:1-5:cold:function": 0.1,
+            "py:c.py:1-5:warm:function": 0.3,
+        }
+        result = select_ddg_targets(edges=[], centrality=centrality, centrality_threshold=0.3)
+        assert "py:a.py:1-5:hot:function" in result.high_centrality
+        assert "py:c.py:1-5:warm:function" in result.high_centrality
+        assert "py:b.py:1-5:cold:function" not in result.high_centrality
+
+    def test_tier_filter(self) -> None:
+        chains = [
+            _MockIoChain("py:vendor.py:1-5:f:function", []),
+        ]
+        tiers = {"py:vendor.py:1-5:f:function": 3}  # tier 3 = external
+        result = select_ddg_targets(edges=[], io_chains=chains, symbol_tiers=tiers, max_tier=2)
+        assert result.count == 0  # excluded by tier filter
+
+    def test_tier_unknown_included(self) -> None:
+        chains = [_MockIoChain("py:unknown.py:1-5:f:function", [])]
+        result = select_ddg_targets(edges=[], io_chains=chains, symbol_tiers={}, max_tier=2)
+        assert "py:unknown.py:1-5:f:function" in result.io_critical
+
+    def test_budget_cap(self) -> None:
+        # Create more targets than budget
+        centrality = {f"py:f{i}.py:1-5:f{i}:function": (100 - i) / 100.0 for i in range(10)}
+        result = select_ddg_targets(
+            edges=[], centrality=centrality, centrality_threshold=0.0, max_targets=5,
+        )
+        assert result.count == 5
+        # Top 5 by centrality should be kept
+        assert "py:f0.py:1-5:f0:function" in result.high_centrality  # score 1.0
+        assert "py:f9.py:1-5:f9:function" not in result.high_centrality  # score 0.91, dropped
+
+    def test_combined_selection(self) -> None:
+        chains = [_MockIoChain("py:io.py:1-5:write:function", [])]
+        findings = [_MockTaintFinding("py:crypto.py:1-5:decrypt:function", "py:net.py:1-5:send:function")]
+        centrality = {"py:hub.py:1-5:route:function": 0.9}
+
+        result = select_ddg_targets(
+            edges=[], io_chains=chains, taint_findings=findings, centrality=centrality,
+        )
+        assert "py:io.py:1-5:write:function" in result.io_critical
+        assert "py:crypto.py:1-5:decrypt:function" in result.taint_relevant
+        assert "py:hub.py:1-5:route:function" in result.high_centrality
+        assert result.count == 4  # write, decrypt, send, route
+
+    def test_ddg_target_set_defaults(self) -> None:
+        t = DdgTargetSet()
+        assert t.io_critical == set()
+        assert t.taint_relevant == set()
+        assert t.high_centrality == set()
+        assert t.budget == DEFAULT_MAX_DDG_TARGETS
+        assert t.count == 0
+        assert t.all_targets == set()
+
+    def test_deduplication_across_categories(self) -> None:
+        """A symbol in multiple categories should only count once."""
+        sym = "py:a.py:1-5:f:function"
+        chains = [_MockIoChain(sym, [])]
+        findings = [_MockTaintFinding(sym, "py:b.py:1-5:g:function")]
+        centrality = {sym: 0.9}
+
+        result = select_ddg_targets(
+            edges=[], io_chains=chains, taint_findings=findings, centrality=centrality,
+        )
+        assert sym in result.io_critical
+        assert sym in result.taint_relevant
+        assert sym in result.high_centrality
+        # Count should reflect deduplication
+        assert result.count == 2  # sym + g

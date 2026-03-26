@@ -1477,3 +1477,133 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                         break
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Targeted analysis selection (ADR-0017 §1c)
+# ---------------------------------------------------------------------------
+
+# Default budget cap for DDG-targeted functions.
+DEFAULT_MAX_DDG_TARGETS = 500
+
+
+@dataclass
+class DdgTargetSet:
+    """Result of targeted analysis selection.
+
+    Contains the symbol IDs selected for DDG analysis, grouped by
+    selection reason, plus summary statistics.
+    """
+
+    io_critical: set[str] = field(default_factory=set)
+    taint_relevant: set[str] = field(default_factory=set)
+    high_centrality: set[str] = field(default_factory=set)
+    budget: int = DEFAULT_MAX_DDG_TARGETS
+
+    @property
+    def all_targets(self) -> set[str]:
+        """Union of all selected targets (may exceed budget before capping)."""
+        return self.io_critical | self.taint_relevant | self.high_centrality
+
+    @property
+    def count(self) -> int:
+        """Number of unique targets."""
+        return len(self.all_targets)
+
+
+def select_ddg_targets(
+    edges: list[Any],
+    io_chains: list[Any] | None = None,
+    taint_findings: list[Any] | None = None,
+    centrality: dict[str, float] | None = None,
+    symbol_tiers: dict[str, int] | None = None,
+    max_targets: int = DEFAULT_MAX_DDG_TARGETS,
+    centrality_threshold: float = 0.3,
+    max_tier: int = 2,
+) -> DdgTargetSet:
+    """Select functions for DDG analysis based on IO, taint, and centrality.
+
+    Implements ADR-0017 §1c targeted analysis selection. DDG analysis is
+    expensive, so only 2-10% of functions are analyzed — those most likely
+    to benefit from intraprocedural precision.
+
+    Selection criteria (in priority order):
+    1. **IO-critical**: Functions on IO boundary chains (callers of IO
+       primitives and entry points that reach them).
+    2. **Taint-relevant**: Functions identified as taint sources or sinks
+       in unsanitized structural findings.
+    3. **High-centrality**: High-scoring connector functions (centrality
+       above threshold) that are non-trivial (not pure sinks).
+
+    All targets are filtered to first-party or internal-dep tiers (tier
+    <= ``max_tier``). The result is capped at ``max_targets`` by dropping
+    lowest-centrality targets.
+
+    Args:
+        edges: List of Edge objects (used to build call graph adjacency
+            if needed for future extensions).
+        io_chains: IoChain objects from ``compute_boundary_map()``.
+        taint_findings: TaintFlowFinding objects from
+            ``propagate_taint_structural()``.
+        centrality: Dict mapping symbol_id → centrality score (0-1).
+        symbol_tiers: Dict mapping symbol_id → supply_chain_tier (1-4).
+        max_targets: Budget cap for DDG targets.
+        centrality_threshold: Minimum centrality score for high-centrality
+            selection (default 0.3).
+        max_tier: Maximum supply_chain_tier to include (default 2 =
+            first-party + internal deps).
+
+    Returns:
+        A DdgTargetSet with categorized targets.
+    """
+    result = DdgTargetSet(budget=max_targets)
+    tiers = symbol_tiers or {}
+
+    def _tier_ok(sym_id: str) -> bool:
+        """Check if symbol passes tier filter."""
+        tier = tiers.get(sym_id)
+        # If tier is unknown, include it (be conservative)
+        return tier is None or tier <= max_tier
+
+    # 1. IO-critical functions
+    if io_chains:
+        for chain in io_chains:
+            src = chain.io_edge_src
+            if _tier_ok(src):
+                result.io_critical.add(src)
+            for ep in chain.entry_points:
+                if _tier_ok(ep):
+                    result.io_critical.add(ep)
+
+    # 2. Taint-relevant functions (unsanitized findings only)
+    if taint_findings:
+        for finding in taint_findings:
+            if finding.sanitized:
+                continue
+            if _tier_ok(finding.source_symbol):
+                result.taint_relevant.add(finding.source_symbol)
+            if _tier_ok(finding.sink_symbol):
+                result.taint_relevant.add(finding.sink_symbol)
+            # Also include intermediate path nodes
+            for sym_id in finding.path:
+                if _tier_ok(sym_id):
+                    result.taint_relevant.add(sym_id)
+
+    # 3. High-centrality connectors
+    if centrality:
+        for sym_id, score in centrality.items():
+            if score >= centrality_threshold and _tier_ok(sym_id):
+                result.high_centrality.add(sym_id)
+
+    # Apply budget cap: drop lowest-centrality targets if over budget
+    if result.count > max_targets:
+        all_targets = result.all_targets
+        scores = centrality or {}
+        ranked = sorted(all_targets, key=lambda s: scores.get(s, 0.0), reverse=True)
+        keep = set(ranked[:max_targets])
+
+        result.io_critical &= keep
+        result.taint_relevant &= keep
+        result.high_centrality &= keep
+
+    return result
