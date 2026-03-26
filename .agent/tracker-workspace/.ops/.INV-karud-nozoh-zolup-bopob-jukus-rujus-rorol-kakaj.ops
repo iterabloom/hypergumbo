@@ -64,3 +64,18 @@
   clock: 7  # 9f3f
   nonce: 9f3f  # 9f3f
   message: "Phase 3 complete (12 PRs this session). Three def/use extractors (Python, Rust, TypeScript), function summaries (YAML + DDG inference), field-sensitivity lite. The invariant is now substantially addressed: DDG-backed taint propagation provides precise findings for Python, Rust, and TypeScript code. Structural fallback covers all other languages. Remaining gaps: (1) cross-language taint via linker edges (Phase 4), (2) Rust borrow aliases (Phase 2b), (3) no extractor for other languages. These are incremental precision improvements, not architectural gaps."  # 9f3f
+- op: update  # 5851
+  at: '2026-03-26T20:10:14Z'  # 5851
+  by: agent  # 5851
+  actor: jgstern_agent  # 5851
+  clock: 8  # 5851
+  nonce: '5851'  # 5851
+  set:  # 5851
+    status: holding  # 5851
+- op: discuss  # 8a6c
+  at: '2026-03-26T20:10:14Z'  # 8a6c
+  by: agent  # 8a6c
+  actor: jgstern_agent  # 8a6c
+  clock: 9  # 8a6c
+  nonce: 8a6c  # 8a6c
+  message: "Phase 4 (cross-language taint via linker edges) merged in PR #2591. All 4 phases complete. Remaining precision gaps are incremental: Rust borrow aliases (Phase 2b, WI-bifog), additional language extractors. The core invariant — structural results labeled approximate, DDG results labeled precise — is fully enforced. Moving to holding: no architectural gaps remain, only incremental extractor coverage."  # 8a6c

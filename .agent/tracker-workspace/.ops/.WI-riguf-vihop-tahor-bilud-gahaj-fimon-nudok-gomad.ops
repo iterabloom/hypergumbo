@@ -18,3 +18,18 @@
     pr_ref:  # eae5
     description: "DEEP bakeoff: TCA has 492 send() calls misresolved to TestStore.send instead of Store.send (4 overloads at Store.swift:168-290). All send symbols are functions (not methods), so qualified name registration (AMB-METHOD fix) doesn't help. Root cause: NameResolver picks first match when multiple symbols share a name. Fix requires receiver type tracking through variable declarations. Analogous to Go method resolution (WI-hikug). Impact: 493 misrouted call edges pollute forward slices with test infrastructure."  # eae5
     fields: {}  # eae5
+- op: update  # 0989
+  at: '2026-03-26T19:31:41Z'  # 0989
+  by: agent  # 0989
+  actor: jgstern_agent  # 0989
+  clock: 2  # 0989
+  nonce: '0989'  # 0989
+  set:  # 0989
+    status: done  # 0989
+- op: discuss  # db39
+  at: '2026-03-26T19:31:41Z'  # db39
+  by: agent  # db39
+  actor: jgstern_agent  # db39
+  clock: 3  # db39
+  nonce: db39  # db39
+  message: "Fixed in PR #2595. Receiver type tracking via var_types dict built from property_declaration nodes. Type-qualified lookup (TypeName.method) in local_symbols and global_symbols before resolver fallback. Fixes 493 misrouted send() edges in TCA repos. Confidence: 0.72 → 0.90."  # db39
