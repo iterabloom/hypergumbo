@@ -1572,3 +1572,125 @@ public final class Store<State, Action>: _Store {
 
         result = _recover_class_from_error_node(error_node, b"")
         assert result is None
+
+
+class TestSwiftVaporUsageContext:
+    """Tests for Vapor route UsageContext extraction."""
+
+    def test_vapor_simple_route(self, tmp_path: Path) -> None:
+        """Detects simple Vapor route registrations like app.get("path")."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func routes(_ app: Application) throws {
+    app.get("hello") { req in
+        return "Hello, world!"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.kind == "call"
+        assert ctx.context_name == "app.get"
+        assert ctx.position == "args[last]"
+        assert ctx.metadata["route_path"] == "hello"
+        assert ctx.metadata["http_method"] == "GET"
+
+    def test_vapor_multiple_routes(self, tmp_path: Path) -> None:
+        """Detects multiple Vapor route methods."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func routes(_ app: Application) throws {
+    app.get("users") { req in
+        return "list"
+    }
+    app.post("users") { req in
+        return "create"
+    }
+    app.delete("users", ":id") { req in
+        return "delete"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 3
+        methods = {ctx.metadata["http_method"] for ctx in result.usage_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+        assert "DELETE" in methods
+
+    def test_vapor_routes_receiver(self, tmp_path: Path) -> None:
+        """Detects routes registered on 'routes' and 'router' receivers."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func boot(routes: RoutesBuilder) throws {
+    routes.get("api", "status") { req in
+        return "ok"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.context_name == "routes.get"
+        assert ctx.metadata["http_method"] == "GET"
+
+    def test_vapor_use_handler(self, tmp_path: Path) -> None:
+        """Detects Vapor routes with use: handler parameter."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+struct UserController {
+    func index(req: Request) throws -> String {
+        return "users"
+    }
+}
+
+func routes(_ app: Application) throws {
+    let controller = UserController()
+    app.get("users", use: controller.index)
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.kind == "call"
+        assert ctx.metadata["http_method"] == "GET"
+
+    def test_vapor_no_routes_in_non_route_code(self, tmp_path: Path) -> None:
+        """Does not extract usage contexts from non-route code."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Model.swift"
+        swift_file.write_text('''
+import Foundation
+
+struct User {
+    let name: String
+
+    func getName() -> String {
+        return name
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+        assert len(result.usage_contexts) == 0

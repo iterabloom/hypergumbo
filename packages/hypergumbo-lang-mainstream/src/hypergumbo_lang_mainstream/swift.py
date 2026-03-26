@@ -8,8 +8,10 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Protocol declarations (protocol)
 - Enum declarations (enum)
 - Method declarations (inside classes/structs)
+- Computed properties and subscripts
 - Function call relationships
 - Import statements
+- Usage contexts for Vapor/Hummingbird route registrations
 
 If tree-sitter with Swift support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -38,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -916,6 +918,109 @@ def _extract_edges_from_file(
     return edges
 
 
+# ---------------------------------------------------------------------------
+# Usage context extraction (Vapor / Hummingbird route detection)
+# ---------------------------------------------------------------------------
+
+_VAPOR_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch"})
+_VAPOR_RECEIVERS = frozenset({"app", "routes", "router"})
+
+
+def _extract_vapor_usage_contexts(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    file_path: Path,
+    symbol_by_name: dict[str, Symbol],
+) -> list[UsageContext]:
+    """Extract UsageContext records for Vapor/Hummingbird route registrations.
+
+    Detects patterns like:
+    - ``app.get("hello") { req in ... }``
+    - ``routes.post("users") { req in ... }``
+    - ``app.get("users", use: controller.index)``
+
+    The returned contexts match vapor.yaml usage-based patterns (v1.1.x):
+    ``kind=call, name=app.get, position=args[last]``.
+    """
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(root_node):
+        if node.type != "call_expression":
+            continue
+
+        # Look for navigation_expression (receiver.method pattern)
+        nav_node = find_child_by_type(node, "navigation_expression")
+        if nav_node is None:
+            continue
+
+        # Extract receiver and method from navigation chain
+        receiver_name: str | None = None
+        method_name: str | None = None
+
+        id_node = find_child_by_type(nav_node, "simple_identifier")
+        if id_node:
+            receiver_name = node_text(id_node, source)
+
+        nav_suffix = find_child_by_type(nav_node, "navigation_suffix")
+        if nav_suffix:
+            suffix_id = find_child_by_type(nav_suffix, "simple_identifier")
+            if suffix_id:
+                method_name = node_text(suffix_id, source)
+
+        if (
+            receiver_name is None
+            or method_name is None
+            or receiver_name not in _VAPOR_RECEIVERS
+            or method_name not in _VAPOR_HTTP_METHODS
+        ):
+            continue
+
+        # Extract route path segments from string literal arguments
+        call_suffix = find_child_by_type(node, "call_suffix")
+        if call_suffix is None:  # pragma: no cover - well-formed Swift
+            continue
+
+        value_args = find_child_by_type(call_suffix, "value_arguments")
+        if value_args is None:  # pragma: no cover - well-formed Swift
+            continue
+
+        path_segments: list[str] = []
+        for arg in value_args.children:
+            if arg.type != "value_argument":
+                continue
+            # Skip labeled arguments (like use: handler)
+            if find_child_by_type(arg, "value_argument_label") is not None:
+                continue
+            str_lit = find_child_by_type(arg, "line_string_literal")
+            if str_lit:
+                text_node = find_child_by_type(str_lit, "line_str_text")
+                if text_node:
+                    path_segments.append(node_text(text_node, source))
+
+        route_path = "/".join(path_segments) if path_segments else ""
+        context_name = f"{receiver_name}.{method_name}"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=context_name,
+            position="args[last]",
+            path=str(file_path),
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                start_col=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_col=node.end_point[1],
+            ),
+            metadata={
+                "route_path": route_path,
+                "http_method": method_name.upper(),
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 class SwiftAnalyzer(TreeSitterAnalyzer):
     """Swift language analyzer using tree-sitter-swift."""
 
@@ -957,6 +1062,15 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
+        )
+
+    def extract_usage_contexts_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Extract Vapor/Hummingbird route usage contexts."""
+        return _extract_vapor_usage_contexts(
+            tree.root_node, source, file_path, symbol_by_name,
         )
 
 
