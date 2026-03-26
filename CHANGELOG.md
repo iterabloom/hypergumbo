@@ -45,6 +45,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Structural taint-flow propagation**: Call-graph BFS from taint sources to sinks with dominance-based sanitizer checking. Two-phase algorithm: (1) compute reachable set from source without passing through sanitizers, (2) check if any sink is reachable. Findings explicitly labeled `confidence: approximate` and `analysis_method: structural` per ADR-0017.
 - **`verify-claims` taint-flow constraints**: New `taint_flow` constraint type for security claims. Specify `source_taint` (label), `prohibited_sink_zone` (zone), and optional `allowed_sanitizers`. Claims file can mix boundary constraints (ADR-0016) and taint-flow constraints (ADR-0017) in the same file.
 
+#### Intraprocedural dataflow analysis (ADR-0017 Phase 2)
+
+- **CFG builder**: Language-parameterized control flow graph builder using fringe-based recursive algorithm. Handles sequential, if/else, loops, break/continue, return, try/catch/finally, switch/match. Three semantic hooks: `early_return_on_error` (Rust `?`), `context_manager` (Python `with`), `deferred_execution` (Go `defer`). YAML-driven CFG node mappings for Python, Rust, Go, TypeScript, and Java.
+- **Reaching-def solver**: Worklist fixpoint algorithm computing intraprocedural reaching definitions. Python arbitrary-precision `int` bitsets for gen/kill sets. Reverse postorder traversal. DDG edge generation from reaching defs to use sites. Per-function bail-out at 4,000 definitions.
+- **Python def/use extractor**: First pluggable `DefUseExtractor`. Handles assignments, tuple unpacking, augmented assignments, for loops, returns, deletes, attribute/subscript mutations, and comprehension variables. Validates shared infrastructure against hypergumbo's own codebase.
+- **Rust def/use extractor**: Handles `let` bindings, tuple/struct/tuple-struct destructuring, reassignment, compound assignment, field/index writes, for loops, if-let/match arm bindings, closures (conservative capture), return expressions, and macro invocations (conservative).
+- **Targeted analysis selection**: `select_ddg_targets()` selects functions for DDG analysis based on IO boundary chains, unsanitized taint findings, and centrality scores. Tier-filtered (first-party + internal only), budget-capped (default 500 functions).
+- **DDG-backed taint propagation**: `propagate_taint_ddg()` upgrades taint findings from `confidence: approximate` to `confidence: precise` when source and sink functions have DDG data. Mixed-coverage analysis: DDG segments use variable-level precision, non-DDG segments bridged with structural BFS.
+
 ## [2.4.0] - 2026-03-21
 
 ### Added
