@@ -2999,6 +2999,35 @@ def _extract_go_usage_contexts(
             continue
 
         method_name = node_text(field_node, source)
+
+        # Cobra AddCommand() detection
+        if method_name == "AddCommand":
+            operand_node = find_child_by_field(func_node, "operand")
+            parent_name = node_text(operand_node, source) if operand_node else None
+            args_node = find_child_by_field(n, "arguments")
+            if args_node and parent_name:
+                for arg in args_node.children:
+                    if arg.type == "identifier":
+                        child_name = node_text(arg, source)
+                        ctx = UsageContext.create(
+                            kind="call",
+                            context_name=f"{parent_name}.AddCommand",
+                            position="args[0]",
+                            path=str(file_path),
+                            span=Span(
+                                start_line=n.start_point[0] + 1,
+                                end_line=n.end_point[0] + 1,
+                                start_col=n.start_point[1],
+                                end_col=n.end_point[1],
+                            ),
+                            metadata={
+                                "parent_command": parent_name,
+                                "child_command": child_name,
+                            },
+                        )
+                        contexts.append(ctx)
+            continue
+
         if method_name not in GO_HTTP_METHODS:
             continue
 

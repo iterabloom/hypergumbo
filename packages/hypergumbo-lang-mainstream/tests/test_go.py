@@ -6111,3 +6111,43 @@ class TestGoShapeId:
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.shape_id is not None
         assert struct.shape_id.startswith("sha256:")
+
+
+class TestCobraAddCommandUsageContext:
+    """Tests for Cobra AddCommand() usage context extraction."""
+
+    def test_addcommand_creates_usage_context(self, tmp_path: Path) -> None:
+        """Detects rootCmd.AddCommand(subCmd) calls."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text('''package main
+
+import "github.com/spf13/cobra"
+
+var rootCmd = &cobra.Command{
+    Use: "myapp",
+}
+
+var serveCmd = &cobra.Command{
+    Use: "serve",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        return nil
+    },
+}
+
+func init() {
+    rootCmd.AddCommand(serveCmd)
+}
+''')
+        result = analyze_go(tmp_path)
+
+        # Should have a usage context for AddCommand
+        add_cmd_ctxs = [
+            c for c in result.usage_contexts
+            if c.context_name == "rootCmd.AddCommand"
+        ]
+        assert len(add_cmd_ctxs) >= 1
+        ctx = add_cmd_ctxs[0]
+        assert ctx.kind == "call"
+        assert ctx.metadata.get("child_command") == "serveCmd"
