@@ -978,9 +978,6 @@ class TestCfgBuilderEdgeCases:
         # Should have a block with true fringe edge (empty body fallthrough)
         found_true = False
         for block in cfg.blocks.values():
-            for edge in block.successors:
-                # The true fringe edge should exist
-                pass
             etypes = {e.edge_type for e in block.successors}
             if "true" in etypes:
                 found_true = True
