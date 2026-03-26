@@ -827,6 +827,25 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
 
 _COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
 
+# Minimum fraction of nodes for a secondary language to count as polyglot.
+# Repos where the second-most-common language has < 5% of nodes are not
+# meaningfully polyglot (e.g., Swift repo with 22 C header nodes out of 2334).
+_POLYGLOT_MIN_SECONDARY_FRACTION = 0.05
+
+
+def is_meaningfully_polyglot(lang_count: dict, total_nodes: int) -> bool:
+    """Check whether a repo is genuinely polyglot for cross-language IO assessment.
+
+    Returns True only if the second-most-common language has at least 5% of all
+    nodes. This prevents false positives on repos that are 99% one language with
+    incidental build/config files in another (e.g., Vapor: 99% Swift + 1% C headers).
+    """
+    if len(lang_count) < 2 or total_nodes <= 0:
+        return False
+    sorted_counts = sorted(lang_count.values(), reverse=True)
+    second_lang_fraction = sorted_counts[1] / total_nodes
+    return second_lang_fraction >= _POLYGLOT_MIN_SECONDARY_FRACTION
+
 
 def assess_metric(
     name: str,
@@ -2317,13 +2336,17 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         # Only assess dataflow_slice_ratio if a dataflow slice was produced
         if os.path.exists(os.path.join(repo_out, "slice.dataflow.0.json")):
             metric_assessments.append(("dataflow_slice_ratio", metrics.dataflow_slice_ratio * 100))
-        # Only assess cross_language_io_pct for polyglot repos (2+ languages)
+        # Only assess cross_language_io_pct for genuinely polyglot repos.
+        # Requires the second-most-common language to have >= 5% of nodes.
+        # This prevents false WARNs on repos that are 99% one language with
+        # incidental build/config files in another (e.g., Swift + 1% C headers).
         lang_count = {}
         for n in nodes:
             lang = n.get("language", "")
             if lang:
                 lang_count[lang] = lang_count.get(lang, 0) + 1
-        if len(lang_count) >= 2 and metrics.io_boundary_types_found > 0:
+        if (is_meaningfully_polyglot(lang_count, len(nodes))
+                and metrics.io_boundary_types_found > 0):
             metric_assessments.append(("cross_language_io_pct", metrics.cross_language_io_pct))
 
         verdict_status = "GOOD"

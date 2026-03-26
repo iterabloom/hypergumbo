@@ -145,6 +145,54 @@ class TestIoTagRateScaling:
         assert status == "GOOD", f"gvisor-like repo (35K nodes, 2.6%) should be GOOD: {msg}"
 
 
+class TestCrossLanguageIoPolyglotFilter:
+    """Test that cross_language_io_pct is only assessed for genuinely polyglot repos.
+
+    Repos where the second-most-common language has < 5% of nodes are not
+    meaningfully polyglot (e.g., a Swift repo with 22 C header nodes out of 2334).
+    Assessing cross-language IO on these produces false-positive WARNs.
+    """
+
+    def test_dominant_language_skips_assessment(self):
+        """A repo that is 99% Swift + 1% C should not assess cross_language_io_pct.
+
+        This matches Vapor: 2308 Swift nodes, 22 C nodes (0.9%).
+        """
+        lang_count = {"swift": 2308, "c": 22, "html": 3, "ansible": 1}
+        total = sum(lang_count.values())
+        assert not bf.is_meaningfully_polyglot(lang_count, total)
+
+    def test_balanced_bilingual_assesses(self):
+        """A repo with 60% Python + 40% JS should assess cross_language_io_pct."""
+        lang_count = {"python": 600, "javascript": 400}
+        total = sum(lang_count.values())
+        assert bf.is_meaningfully_polyglot(lang_count, total)
+
+    def test_three_lang_with_significant_secondary(self):
+        """A repo with 70% Java + 20% Kotlin + 10% Groovy is polyglot."""
+        lang_count = {"java": 700, "kotlin": 200, "groovy": 100}
+        total = sum(lang_count.values())
+        assert bf.is_meaningfully_polyglot(lang_count, total)
+
+    def test_single_language_skips(self):
+        """A repo with only one language should not assess."""
+        lang_count = {"python": 1000}
+        total = 1000
+        assert not bf.is_meaningfully_polyglot(lang_count, total)
+
+    def test_threshold_boundary(self):
+        """Secondary language at exactly 5% is polyglot."""
+        lang_count = {"swift": 950, "c": 50}
+        total = 1000
+        assert bf.is_meaningfully_polyglot(lang_count, total)
+
+    def test_just_below_threshold(self):
+        """Secondary language at 4.9% is not polyglot."""
+        lang_count = {"swift": 951, "c": 49}
+        total = 1000
+        assert not bf.is_meaningfully_polyglot(lang_count, total)
+
+
 class TestDataflowSliceRatioConditional:
     """Test that dataflow_slice_ratio is assessed conditionally on access_mode_coverage."""
 
