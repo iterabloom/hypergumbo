@@ -100,7 +100,7 @@ def get_default_summary(function_name: str) -> FunctionSummary:
     """
     return FunctionSummary(
         function=function_name,
-        param_to_return={i: True for i in range(10)},
+        param_to_return=dict.fromkeys(range(10), True),
     )
 
 
