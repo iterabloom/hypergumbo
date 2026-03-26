@@ -47,3 +47,18 @@
   clock: 5  # f30d
   nonce: f30d  # f30d
   message: "Deprioritized: not Scala-related, from prior bakeoffs."  # f30d
+- op: update  # 841b
+  at: '2026-03-26T21:43:58Z'  # 841b
+  by: agent  # 841b
+  actor: jgstern_agent  # 841b
+  clock: 6  # 841b
+  nonce: 841b  # 841b
+  set:  # 841b
+    status: wont_do  # 841b
+- op: discuss  # d3ed
+  at: '2026-03-26T21:43:58Z'  # d3ed
+  by: agent  # d3ed
+  actor: jgstern_agent  # d3ed
+  clock: 7  # d3ed
+  nonce: d3ed  # d3ed
+  message: "Upstream tree-sitter-objc grammar limitation. Complex ObjC patterns (blocks, GCD, macros) produce ERROR nodes. ~90% of files parse correctly. Swift ERROR recovery pattern does not apply. Contributing grammar fixes upstream is out of scope."  # d3ed
