@@ -931,18 +931,23 @@ def _extract_vapor_usage_contexts(
     source: bytes,
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
-) -> list[UsageContext]:
-    """Extract UsageContext records for Vapor/Hummingbird route registrations.
+    run_id: str = "",
+) -> tuple[list[UsageContext], list[Symbol]]:
+    """Extract UsageContext records and route symbols for Vapor/Hummingbird routes.
 
     Detects patterns like:
     - ``app.get("hello") { req in ... }``
     - ``routes.post("users") { req in ... }``
     - ``app.get("users", use: controller.index)``
 
-    The returned contexts match vapor.yaml usage-based patterns (v1.1.x):
-    ``kind=call, name=app.get, position=args[last]``.
+    Creates both UsageContext records (for framework pattern matching) and
+    route Symbol objects (kind="route") so routes appear in ``hypergumbo routes``.
+
+    Returns:
+        Tuple of (UsageContext list, Symbol list).
     """
     contexts: list[UsageContext] = []
+    route_symbols: list[Symbol] = []
 
     for node in iter_tree(root_node):
         if node.type != "call_expression":
@@ -1000,25 +1005,53 @@ def _extract_vapor_usage_contexts(
         route_path = "/".join(path_segments) if path_segments else ""
         context_name = f"{receiver_name}.{method_name}"
 
+        span = Span(
+            start_line=node.start_point[0] + 1,
+            start_col=node.start_point[1],
+            end_line=node.end_point[0] + 1,
+            end_col=node.end_point[1],
+        )
+        http_method = method_name.upper()
+
         ctx = UsageContext.create(
             kind="call",
             context_name=context_name,
             position="args[last]",
             path=str(file_path),
-            span=Span(
-                start_line=node.start_point[0] + 1,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            ),
+            span=span,
             metadata={
                 "route_path": route_path,
-                "http_method": method_name.upper(),
+                "http_method": http_method,
             },
         )
         contexts.append(ctx)
 
-    return contexts
+        # Create route symbol so routes appear in `hypergumbo routes`
+        route_name = f"{http_method} /{route_path}" if route_path else f"{http_method} /"
+        route_id = make_symbol_id(
+            "swift",
+            path=str(file_path),
+            start_line=span.start_line,
+            end_line=span.end_line,
+            name=route_name,
+            kind="route",
+        )
+        route_symbols.append(Symbol(
+            id=route_id,
+            name=route_name,
+            kind="route",
+            language="swift",
+            path=str(file_path),
+            span=span,
+            meta={
+                "http_method": http_method,
+                "route_path": f"/{route_path}" if route_path else "/",
+            },
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        ))
+
+    return contexts, route_symbols
 
 
 class SwiftAnalyzer(TreeSitterAnalyzer):
@@ -1027,6 +1060,10 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
     lang = "swift"
     file_patterns: ClassVar[list[str]] = ["*.swift"]
     grammar_module = "tree_sitter_swift"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._pending_route_symbols: list[Symbol] = []
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -1068,10 +1105,22 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, symbol_by_name: dict[str, Symbol],
     ) -> list[UsageContext]:
-        """Extract Vapor/Hummingbird route usage contexts."""
-        return _extract_vapor_usage_contexts(
-            tree.root_node, source, file_path, symbol_by_name,
+        """Extract Vapor/Hummingbird route usage contexts and stash route symbols."""
+        run_id = getattr(self, "_current_run_id", "")
+        contexts, route_symbols = _extract_vapor_usage_contexts(
+            tree.root_node, source, file_path, symbol_by_name, run_id,
         )
+        self._pending_route_symbols.extend(route_symbols)
+        return contexts
+
+    def post_process(
+        self, symbols: list[Symbol], edges: list[Edge],
+        usage_contexts: list[UsageContext], run: "AnalysisRun",
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Add stashed route symbols to the final result."""
+        symbols.extend(self._pending_route_symbols)
+        self._pending_route_symbols = []
+        return symbols, edges, usage_contexts
 
 
 _analyzer = SwiftAnalyzer()

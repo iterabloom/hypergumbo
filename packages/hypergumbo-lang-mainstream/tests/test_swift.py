@@ -1601,6 +1601,14 @@ func routes(_ app: Application) throws {
         assert ctx.metadata["route_path"] == "hello"
         assert ctx.metadata["http_method"] == "GET"
 
+        # Route symbols should also be created
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        route = routes[0]
+        assert route.name == "GET /hello"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta["route_path"] == "/hello"
+
     def test_vapor_multiple_routes(self, tmp_path: Path) -> None:
         """Detects multiple Vapor route methods."""
         from hypergumbo_lang_mainstream.swift import analyze_swift
