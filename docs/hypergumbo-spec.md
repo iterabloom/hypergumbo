@@ -111,7 +111,11 @@ Estimates test coverage via static analysis (no code execution). Reports hot spo
 Identifies call edges that reach I/O primitives (filesystem, network, subprocess, environment) and groups them by boundary type. Loads a cached behavior map or auto-runs analysis if needed. Supports 12 languages (7 dedicated catalogs + 5 via aliases) with 150+ framework IO entries. When entrypoints are available, traces backward from IO edges to show which entrypoints can reach each IO operation.
 
 🟩 **`hypergumbo verify-claims --claims <file> [--json]`** (ADR-0016, ADR-0017)
-Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Taint-flow analysis uses structural call-graph BFS with dominance-based sanitizer checking; findings are labeled `confidence: approximate`. Claims are specified in YAML format. Exit code 1 on violations. Useful for CI enforcement of IO and data-flow security policies.
+Verifies security claims against the IO boundary map and taint-flow analysis. Supports boundary constraints (e.g., "no network I/O", "max 3 filesystem chains") and taint-flow constraints (e.g., "plaintext data must not reach host_fs zone"). Claims are specified in YAML format. Exit code 1 on violations. Useful for CI enforcement of IO and data-flow security policies.
+
+Taint-flow analysis operates at two precision levels depending on language support:
+* **Structural** (all languages): Call-graph BFS with dominance-based sanitizer checking. Catches missing sanitizers on entire call paths. Findings labeled `confidence: approximate`.
+* **DDG-backed** (languages with def/use extractors — currently Python, Rust, TypeScript): Variable-level taint tracking within functions via intraprocedural reaching definitions. Eliminates false positives where two variables in the same function take different paths. Findings labeled `confidence: precise` when both the source and sink functions have DDG coverage; `approximate` otherwise (see ADR-0017 §3c–3d for mixed-coverage rules).
 
 ### Analysis options
 
@@ -307,7 +311,7 @@ class AnalysisIR:
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
-  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzerBase.compute_shape_id()`. Any analyzer that populates `node_for_symbol` gets automatic shape_id computation. Currently 27 analyzers use this (Rust, Ruby, C#, Swift, Nim, Ada, Pascal, etc.).
+  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzer.compute_shape_id()`. Two wiring paths: (1) analyzers that populate `node_for_symbol` get automatic shape_id computation in the base class `analyze()` method, (2) analyzers that call `compute_shape_id(node)` directly at symbol construction time. Currently 39 tree-sitter analyzers compute shape_id (19 mainstream, 19 extended1, 1 common).
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -936,7 +940,7 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 
 ### Dataflow slicing (ADR-0015)
 
-🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 65 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (6 cross-language linkers). YAML patterns shipped for Python, JavaScript, TypeScript, Rust, and Go.
+🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 104 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (10 cross-language linkers). YAML patterns shipped for 20 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Kotlin, C, C++, C#, Dart, Elixir, Erlang, Haskell, Lua, Perl, PHP, Ruby, Scala, Swift).
 
 ### Slice identity and reproducibility
 
@@ -967,6 +971,25 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 ### Reverse slice class expansion
 
 🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
+
+### Taint-flow analysis (ADR-0017)
+
+🟩 Taint-flow analysis tracks labeled data (e.g., `plaintext`, `key_material`) from sources through the call graph to sinks, checking whether prohibited flows exist and whether sanitizers (e.g., encryption) intervene. It is the engine behind `verify-claims` taint-flow constraints.
+
+**Taint catalogs.** Sources, sinks, and sanitizers are defined in YAML files following the same extension pattern as IO primitive catalogs and framework patterns. Hypergumbo ships built-in catalogs for common patterns:
+* **Sources:** `taint_sources/crypto.yaml` (decryption → `plaintext`), `taint_sources/key_material.yaml` (key generation → `key_material`). Coverage: Python, Rust, TypeScript, Go, Java.
+* **Sinks:** `taint_sinks/host_filesystem.yaml` (zone: `host_fs`), `taint_sinks/network_send.yaml` (zone: `network`). Coverage: Python, Rust, TypeScript, Go, Java.
+* **Sanitizers:** `taint_sanitizers/encryption.yaml` (transforms `plaintext` → `ciphertext`, `key_material` → `derived_key`). Coverage: Python, Rust, TypeScript, Go, Java.
+
+Projects can supply additional catalogs for domain-specific taint labels (e.g., CRDT content, relay communication, vsock channels) alongside their `security-claims.yaml`.
+
+**Def/use extractors.** Intraprocedural dataflow precision requires a per-language def/use extractor — a pluggable Python module that identifies which variables each AST node defines and uses. Extractors are registered via `@register_def_use_extractor` and feed the language-parameterized CFG builder and reaching-def solver (ADR-0017 §1a–1c). Languages with extractors get variable-level (`precise`) taint tracking; languages without fall back to call-graph BFS (`approximate`). Current extractors: Python (235 lines), Rust (352 lines, including borrow alias tracking and `ref`/`ref mut` patterns), TypeScript (247 lines). CFG node mappings (YAML) exist for Rust, Python, TypeScript, Go, and Java; Go and Java extractors are not yet implemented.
+
+**Function summaries.** When taint crosses a function call boundary, the solver consults a function summary to determine how arguments map to return values. Summaries are either inferred automatically from DDG analysis or declared in YAML for stdlib/framework functions whose source is not analyzed. Declared summaries live in `function_summaries/` (currently `rust_stdlib.yaml` and `typescript_stdlib.yaml`) and support `param_to_return`, `param_to_self`, `mutates_self`, `side_effect`, `sanitizes`, and structured `callback` flow for higher-order functions. Functions without an explicit summary receive the conservative default: all parameters flow to the return value.
+
+**Cross-language propagation.** Taint propagates through 13 edge types including direct calls and cross-language bridges (`ffi_bridge`, `wasm_bridge`, `napi_bridge`, `ipc_calls`, `cgo_bridge`, `grpc_calls`, etc.). IPC boundaries are taint-transparent by default — serialization does not sanitize.
+
+**Field-sensitivity lite.** If `x` is tainted, `x.field` and `x.method()` inherit the taint. If `obj.field = tainted_value`, then `obj.field` is tainted but `obj.other_field` is not. Indirect aliasing (same object via different references) is not tracked.
 
 ## 12) Confidence scoring
 
