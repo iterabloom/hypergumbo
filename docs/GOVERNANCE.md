@@ -155,6 +155,33 @@ Future automation could track:
 - Honest mistakes with honest acknowledgment don't reduce trust
 - Covering up mistakes does
 
+## Autonomous Mode Management
+
+The project supports autonomous agent sessions in two modes, managed by `scripts/loop-toggle`:
+
+| Command | Effect |
+|---------|--------|
+| `./scripts/loop-toggle off` | Disable autonomous mode |
+| `./scripts/loop-toggle broad` | Enable BROAD mode (coverage breadth, fast iteration) |
+| `./scripts/loop-toggle deep` | Enable DEEP mode (feature usefulness, larger repos) |
+| `./scripts/loop-toggle status` | Show current mode and PID |
+| `./scripts/loop-toggle toggle` | Cycle: off -> broad -> deep -> off |
+
+When autonomous mode is active, the governance hooks in `.agent/hooks/` enforce reflection before stopping (see ADR-0008), and the AGENTS.md priority queues guide work item selection. BROAD mode uses `scripts/bakeoff-broad`; DEEP mode uses `scripts/bakeoff-deep`. See ADR-0009 for the bakeoff design.
+
+Mode state is stored in `AUTONOMOUS_MODE.txt` at the repo root (format: `MODE pid=<PID>`). The PID tracks which agent session owns the autonomous lock, allowing interactive sessions to coexist without triggering stop-hook blocks.
+
+### Circuit breaker
+
+The stop hook includes a circuit breaker that prevents death spirals when the agent is stuck. It works by hashing file modification times in sentinel directories before and after each stop event:
+
+- **Sentinel directories** are configured in `.agent/tracker/config.yaml` under `stop_hook.progress_sentinel_dirs` (default: `packages/`, `docs/`, `scripts/`, `~/hypergumbo_lab_notebook/`). Dotfiles are excluded so that tracker bookkeeping and git metadata don't count as progress.
+- **Progress detection:** If the hash of sentinel file modification times differs between stop events, the agent made real progress (edited source, wrote docs, merged a PR, updated lab notebook). The breaker resets.
+- **Trip condition:** After 5 consecutive identical hashes (configurable via `HASH_THRESHOLD` in `stop_logic.sh`), the circuit breaker trips.
+- **On trip:** Autonomous mode is deactivated via `loop-toggle off`. The stop hook approves the stop and instructs the agent to persist stalled items to `last_stop_check.json` so they survive context compaction.
+
+The circuit breaker measures actual file changes rather than tracker status updates, ensuring that cosmetic tracker edits alone cannot keep a stuck agent running indefinitely.
+
 ## Release Process
 
 Releases merge `dev` → `main` and require:
