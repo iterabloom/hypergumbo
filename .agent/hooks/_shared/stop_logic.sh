@@ -290,14 +290,6 @@ fi
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
 STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
-# Backward compat: fall back to old locations if new one doesn't exist
-if [[ ! -f "$STATE_FILE" ]]; then
-  if [[ -f "$REPO_ROOT/.agent/last_stop_check.json" ]]; then
-    STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-  elif [[ -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-    STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
-  fi
-fi
 
 ELAPSED_MIN=9999  # Default: stale (will trigger Path 3)
 if [[ -f "$STATE_FILE" ]]; then

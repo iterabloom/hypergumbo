@@ -34,12 +34,15 @@ if [[ "$CURRENT_SIZE" -le "$LAST_SIZE" ]]; then
     exit 1
 fi
 
-# Record new size before calling hook (so concurrent calls don't double-fire)
-echo "$CURRENT_SIZE" > "$POLL_STATE"
-
-# Call the hook if it exists and is executable
+# Call the hook if it exists and is executable.
+# Record the new size AFTER the hook succeeds — if the hook fails or the
+# process is killed, the next poll will re-process this chunk rather than
+# silently skipping it. The hook is idempotent (on_transcript_change.py
+# has its own dedup), so double-firing is harmless.
 if [[ -x "$HOOK_SCRIPT" ]]; then
-    exec "$HOOK_SCRIPT" "$TRANSCRIPT"
+    "$HOOK_SCRIPT" "$TRANSCRIPT"
+    echo "$CURRENT_SIZE" > "$POLL_STATE"
+    exit 0
 fi
 
 exit 1

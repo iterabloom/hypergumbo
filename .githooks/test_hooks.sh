@@ -420,14 +420,11 @@ TRACKER_STUB
   FAKE_HOME="$(mktemp -d -t hypergumbo-fakehome.XXXXXX)"
   mkdir -p "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log"
 
-  # SCENARIO 8a: New filename (last_stop_check.json) with recent timestamp → cooldown
+  # SCENARIO 8a: last_stop_check.json with recent timestamp → cooldown
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
   RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  # Remove old sandbox fallback files
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
@@ -439,29 +436,10 @@ TRACKER_STUB
     ((FAIL_COUNT++))
   fi
 
-  # SCENARIO 8b: Backward compat — only stop_hook_state.json exists → cooldown
-  echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8b: Stop hook falls back to stop_hook_state.json (backward compat)"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
-
-  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
-    echo "  ✅ PASS (cooldown triggered from stop_hook_state.json fallback)"
-    ((PASS_COUNT++))
-  else
-    echo "  ❌ FAIL (expected cooldown block from stop_hook_state.json fallback)"
-    echo "  Output: $OUTPUT"
-    ((FAIL_COUNT++))
-  fi
-
   # SCENARIO 8c: Neither file exists → full reflection (Path 3)
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
   rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Stale reflection"; then
@@ -479,8 +457,6 @@ TRACKER_STUB
   # Use a PID that definitely doesn't exist (max pid + 1 style)
   echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"'; then
@@ -518,24 +494,6 @@ TRACKER_STUB
 
   # Reset for remaining tests
   echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
-
-  # SCENARIO 8d: New file takes priority over old file
-  echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8d: last_stop_check.json takes priority over stop_hook_state.json"
-  # New file: recent timestamp → cooldown (in $HOME location, which is checked first)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  # Old file: epoch timestamp → would be stale (Path 3) if read
-  printf '{"last_completed_utc": "1970-01-01T00:00:00Z"}\n' > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
-
-  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
-    echo "  ✅ PASS (new file takes priority — cooldown from last_stop_check.json)"
-    ((PASS_COUNT++))
-  else
-    echo "  ❌ FAIL (expected cooldown from last_stop_check.json, not stale fallback)"
-    echo "  Output: $OUTPUT"
-    ((FAIL_COUNT++))
-  fi
 
   rm -rf "$STOP_TEST_DIR" "$FAKE_HOME"
 else
