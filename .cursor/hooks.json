@@ -1,6 +1,20 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": ".agent/hooks/cursor/session-start.sh",
+        "type": "command",
+        "timeout": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": ".agent/hooks/cursor/session-end.sh",
+        "type": "command",
+        "timeout": 5
+      }
+    ],
     "stop": [
       {
         "command": ".agent/hooks/cursor/stop.sh",

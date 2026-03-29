@@ -150,11 +150,11 @@ def parse_ratings(ratings_text: str) -> dict[str, int]:
     results: dict[str, int] = {}
     for pb_id, _, _ in PLAYBOOKS:
         # Preferred: "experiment-design-playbook: 8" (prompt asks for this)
-        # Fallback: "8/10 experiment-design-playbook" or "8 - experiment-design-playbook"
+        # Fallback: "8/10 experiment-design-playbook"
+        # No further fallback — greedy digit grab risks matching stray numbers.
         patterns = [
             rf"{re.escape(pb_id)}\s*[:]\s*(\d+)",
             rf"(\d+)\s*/\s*10\s*.*?{re.escape(pb_id)}",
-            rf"{re.escape(pb_id)}.*?(\d+)",
         ]
         for pattern in patterns:
             m = re.search(pattern, ratings_text, re.IGNORECASE)

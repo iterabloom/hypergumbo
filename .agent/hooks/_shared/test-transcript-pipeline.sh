@@ -168,7 +168,7 @@ print(prompt[:500])
 print(f'... ({len(prompt):,} chars total)')
 "
     echo ""
-    echo "--- Step 2 prompt would include 21 playbook summaries ---"
+    echo "--- Step 2 prompt would include COUNT_GOES_HERE playbook summaries ---"
     echo "(Set OPENROUTER_API_KEY to run the full pipeline)"
 else
     echo "OPENROUTER_API_KEY is set — running full pipeline."
