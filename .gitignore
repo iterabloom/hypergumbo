@@ -36,6 +36,7 @@ AUTONOMOUS_MODE.txt
 .agent/.transcript-sync.pid
 .agent/.transcript-sync-state.json
 .agent/.transcript-poll-state
+.agent/.transcript-injection-state.json
 
 # Coverage
 .coverage

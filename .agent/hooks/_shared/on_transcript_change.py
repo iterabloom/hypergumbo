@@ -18,6 +18,7 @@ Configuration (environment variables):
   TRANSCRIPT_MODEL       — model to use (default: mistralai/mistral-nemo)
   TRANSCRIPT_MAX_TOKENS  — token budget for transcript window (default: 16000)
   TRANSCRIPT_THRESHOLD   — minimum confidence to include a playbook (default: 7)
+  TRANSCRIPT_DEDUP_TOKENS — suppress re-injection within this many tokens (default: 50000)
 """
 
 import json
@@ -35,72 +36,53 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = os.environ.get("TRANSCRIPT_MODEL", "mistralai/mistral-nemo")
 MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "16000"))
 THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "7"))
+DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
 CHARS_PER_TOKEN = 4.4
 
 # Playbook registry: (id, path relative to repo root, one-line summary)
+# These match the files in .agent/agent_playbooks_protocols_sops_skills/.
 PLAYBOOKS = [
-    ("autonomous-mode-guide",
-     ".agent/agent_playbooks_protocols_sops_skills/autonomous-mode-guide",
-     "BROAD vs DEEP bakeoff mode selection and when to switch between them."),
-    ("lab-notebook-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/lab-notebook-playbook",
-     "Recording observations in lab notebook during real-repo experiments."),
     ("experiment-design-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md",
      "Mini trial runs before full experiments, 8-hour rule for long commands."),
     ("bakeoff-broad-priorities",
-     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities",
+     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md",
      "BROAD mode priority queue: reflect, aggregate, linkers, frameworks."),
     ("bakeoff-deep-priorities",
-     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities",
+     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md",
      "DEEP mode priority queue: reflect, aggregate, slice, tiers, centrality."),
     ("bakeoff-artifacts-guide",
-     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide",
+     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md",
      "Where bakeoff artifacts are stored and how sessions are organized."),
     ("coverage-and-test-placement",
-     ".agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement",
+     ".agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement.md",
      "100% test coverage requirement, per-package isolation, test placement."),
     ("structural-fix-scope-expansion-protocol",
-     ".agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol",
+     ".agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md",
      "Assume bugs are structural, name invariants, scope-expand across languages."),
-    ("signing-and-identity",
-     ".agent/agent_playbooks_protocols_sops_skills/signing-and-identity",
-     "Git identity verification and DCO sign-off requirements."),
     ("smart-test-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md",
      "Using pytest/smart-test alias, compact output, affected test selection."),
-    ("output-capture-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/output-capture-playbook",
-     "Redirect long-running command output to files, never pipe through tail."),
     ("pre-work-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md",
      "Pre-work checklist: PR gate, vPR flush, branch sync, spec review."),
     ("recover-state-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md",
      "Post-compaction recovery from last_stop_check.json and tracker."),
     ("pre-commit-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md",
      "Pre-commit checklist: identity, tests, changelog, tracker, sign-off."),
-    ("integration-protocol",
-     ".agent/agent_playbooks_protocols_sops_skills/integration-protocol",
-     "Feature branch workflow: tests, branch, commit, auto-pr, CI, merge."),
-    ("merge-strategy",
-     ".agent/agent_playbooks_protocols_sops_skills/merge-strategy",
-     "Fast-forward merge default, rebase if diverged, squash discouraged."),
     ("vpr-usage",
-     ".agent/agent_playbooks_protocols_sops_skills/vpr-usage",
+     ".agent/agent_playbooks_protocols_sops_skills/vpr-usage.md",
      "Virtual PR queue for offline resilience when remote is unavailable."),
-    ("auto-pr-ci-failure-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/auto-pr-ci-failure-playbook",
-     "Recovery by exit code when auto-pr fails or CI is stuck."),
     ("release-workflow",
-     ".agent/agent_playbooks_protocols_sops_skills/release-workflow",
+     ".agent/agent_playbooks_protocols_sops_skills/release-workflow.md",
      "Two-step release: agent prepares, human signs tag and pushes."),
     ("ci-debug-protocol",
-     ".agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol",
+     ".agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md",
      "CI debugging with ci-debug script, workflow topology, dependencies."),
     ("optional-dependency-testing-playbook",
-     ".agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md",
      "Testing tree-sitter grammars: real tests, mock only unavailability path."),
 ]
 
@@ -188,16 +170,121 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
     return ""
 
 
+INJECTION_STATE_FILENAME = ".transcript-injection-state.json"
+
+
+def _state_path(repo_root: str) -> str:
+    return os.path.join(repo_root, ".agent", INJECTION_STATE_FILENAME)
+
+
+def load_injection_state(repo_root: str) -> dict:
+    """Load injection tracking state.
+
+    State format:
+    {
+        "injections": {"pb_id": <byte_offset_at_injection_time>, ...},
+        "last_compact_offset": <byte_offset_of_last_compact_boundary>
+    }
+    """
+    path = _state_path(repo_root)
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {"injections": {}, "last_compact_offset": 0}
+
+
+def save_injection_state(repo_root: str, state: dict) -> None:
+    """Persist injection tracking state atomically."""
+    path = _state_path(repo_root)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, path)
+
+
+def find_last_compact_offset(transcript_path: str) -> int:
+    """Find the byte offset of the last compact_boundary event in the transcript.
+
+    Returns 0 if no compaction has occurred.
+    """
+    if not os.path.exists(transcript_path):
+        return 0
+
+    last_offset = 0
+    offset = 0
+    with open(transcript_path, "rb") as f:
+        for line in f:
+            if b'"compact_boundary"' in line:
+                last_offset = offset
+            offset += len(line)
+    return last_offset
+
+
+def recently_injected(
+    transcript_path: str,
+    playbook_ids: list[str],
+    repo_root: str,
+) -> tuple[set[str], dict]:
+    """Determine which playbooks should be skipped due to recent injection.
+
+    Uses a state file to track when each playbook was injected (by byte offset
+    in the transcript). Invalidates injections that occurred before the most
+    recent compact_boundary event, since the LLM no longer has that context.
+
+    Returns (set of pb_ids to skip, updated state dict).
+    """
+    state = load_injection_state(repo_root)
+    injections = state.get("injections", {})
+    prev_compact = state.get("last_compact_offset", 0)
+
+    # Find current compaction boundary
+    current_compact = find_last_compact_offset(transcript_path)
+
+    # If a new compaction occurred, invalidate all injections from before it
+    if current_compact > prev_compact:
+        injections = {
+            pid: offset for pid, offset in injections.items()
+            if offset > current_compact
+        }
+        state["last_compact_offset"] = current_compact
+
+    # Also apply a token-based window: even without compaction, don't suppress
+    # forever. If injection happened more than DEDUP_TOKENS ago, allow re-inject.
+    current_size = os.path.getsize(transcript_path) if os.path.exists(transcript_path) else 0
+    dedup_chars = int(DEDUP_TOKENS * CHARS_PER_TOKEN)
+
+    still_valid: dict[str, int] = {}
+    for pid, offset in injections.items():
+        if current_size - offset <= dedup_chars:
+            still_valid[pid] = offset
+
+    state["injections"] = still_valid
+
+    found = {pid for pid in playbook_ids if pid in still_valid}
+    return found, state
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    transcript_path = sys.argv[1] if len(sys.argv) > 1 else ""
+    dry_run = "--dry-run" in sys.argv
+    verbose = "--verbose" in sys.argv or dry_run
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    transcript_path = args[0] if args else ""
+
     if not transcript_path or not os.path.exists(transcript_path):
+        if verbose:
+            print(f"[dry-run] No transcript at: {transcript_path!r}", file=sys.stderr)
         sys.exit(0)
 
-    if not os.environ.get("OPENROUTER_API_KEY"):
+    if not dry_run and not os.environ.get("OPENROUTER_API_KEY"):
+        if verbose:
+            print("[dry-run] OPENROUTER_API_KEY not set", file=sys.stderr)
         sys.exit(0)
 
     # Determine repo root (this script lives at .agent/hooks/_shared/)
@@ -207,7 +294,14 @@ def main() -> None:
     # Step 0: Select recent entries within token budget
     recent = select_recent_entries(transcript_path)
     if not recent:
+        if verbose:
+            print("[dry-run] No entries selected from transcript", file=sys.stderr)
         sys.exit(0)
+
+    if verbose:
+        approx_tokens = len(recent) / CHARS_PER_TOKEN
+        print(f"[step 0] Selected {len(recent):,} chars (~{approx_tokens:,.0f} tokens) "
+              f"from {transcript_path}", file=sys.stderr)
 
     # Step 1: Distill agent goals
     step1_prompt = (
@@ -215,9 +309,26 @@ def main() -> None:
         "Please distill what the agent's present goals are.\n\n"
         + recent
     )
-    agent_goals = openrouter_chat(step1_prompt)
-    if not agent_goals:
-        sys.exit(0)
+
+    if verbose:
+        print(f"[step 1] Goal distillation prompt: {len(step1_prompt):,} chars", file=sys.stderr)
+
+    if dry_run:
+        print(f"[dry-run] Step 1 prompt ({len(step1_prompt):,} chars):", file=sys.stderr)
+        print(step1_prompt[:1000], file=sys.stderr)
+        if len(step1_prompt) > 1000:
+            print(f"... ({len(step1_prompt) - 1000:,} more chars)", file=sys.stderr)
+        print(file=sys.stderr)
+        agent_goals = "(DRY RUN — goals would be distilled by LLM)"
+    else:
+        agent_goals = openrouter_chat(step1_prompt)
+        if not agent_goals:
+            if verbose:
+                print("[step 1] LLM returned empty response", file=sys.stderr)
+            sys.exit(0)
+
+    if verbose:
+        print(f"[step 1] Agent goals: {agent_goals[:200]}", file=sys.stderr)
 
     # Step 2: Rate playbook relevance
     playbook_list = "\n".join(
@@ -233,23 +344,84 @@ def main() -> None:
         "just the number and document name for each, one per line.\n\n"
         + playbook_list
     )
+
+    if verbose:
+        print(f"[step 2] Relevance rating prompt: {len(step2_prompt):,} chars", file=sys.stderr)
+
+    if dry_run:
+        print(f"[dry-run] Step 2 prompt ({len(step2_prompt):,} chars):", file=sys.stderr)
+        print(step2_prompt, file=sys.stderr)
+        print(file=sys.stderr)
+        # In dry-run mode, show which playbooks exist on disk
+        print("[dry-run] Playbook file status:", file=sys.stderr)
+        for pb_id, pb_path, _ in PLAYBOOKS:
+            full = os.path.join(repo_root, pb_path)
+            status = "EXISTS" if os.path.exists(full) else "MISSING"
+            print(f"  {status}: {pb_path}", file=sys.stderr)
+        sys.exit(0)
+
     ratings_text = openrouter_chat(step2_prompt)
     if not ratings_text:
+        if verbose:
+            print("[step 2] LLM returned empty response", file=sys.stderr)
         sys.exit(0)
+
+    if verbose:
+        print(f"[step 2] Raw ratings:\n{ratings_text}", file=sys.stderr)
 
     ratings = parse_ratings(ratings_text)
 
-    # Step 3: Collect playbooks above threshold
+    if verbose:
+        print(f"[step 2] Parsed ratings: {ratings}", file=sys.stderr)
+
+    # Step 3: Collect playbooks above threshold, skipping recently injected ones
+    all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
+    already, inj_state = recently_injected(transcript_path, all_ids, repo_root)
+
+    if verbose:
+        compact_offset = inj_state.get("last_compact_offset", 0)
+        if compact_offset > 0:
+            print(f"[step 3] Last compaction at byte offset {compact_offset}", file=sys.stderr)
+        if already:
+            print(f"[step 3] Recently injected (still in context): "
+                  f"{', '.join(sorted(already))}", file=sys.stderr)
+
     relevant = []
+    skipped = []
     for pb_id, pb_path, pb_summary in PLAYBOOKS:
         score = ratings.get(pb_id, 0)
         if score >= THRESHOLD:
+            if pb_id in already:
+                skipped.append((pb_id, score))
+                continue
             content = read_playbook(repo_root, pb_path)
             if content:
                 relevant.append((pb_id, score, content))
+            elif verbose:
+                print(f"[step 3] {pb_id} scored {score} but file missing: {pb_path}",
+                      file=sys.stderr)
+
+    if verbose and skipped:
+        print(f"[step 3] Skipped (recently injected): "
+              f"{', '.join(f'{pid}({s})' for pid, s in skipped)}", file=sys.stderr)
 
     if not relevant:
+        if verbose:
+            print(f"[step 3] No playbooks to inject ({THRESHOLD}/10 threshold, "
+                  f"{len(skipped)} deduped)", file=sys.stderr)
+        # Save state even if nothing to inject (compaction tracking still matters)
+        if not dry_run:
+            save_injection_state(repo_root, inj_state)
         sys.exit(0)
+
+    # Record injection offsets before outputting
+    current_size = (os.path.getsize(transcript_path)
+                    if os.path.exists(transcript_path) else 0)
+    for pb_id, score, content in relevant:
+        inj_state["injections"][pb_id] = current_size
+
+    if not dry_run:
+        save_injection_state(repo_root, inj_state)
 
     # Output: injected into the agent's conversation
     print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s) "
