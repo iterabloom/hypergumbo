@@ -1,0 +1,624 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""G-Vendi-guided data selection and finetuning for the local transcript model.
+
+Implements the G-Vendi diversity measure from "Measuring and Improving Data
+Diversity via Gradient-Based Methods" (arXiv:2505.20161) to select maximally
+diverse training examples, then finetunes Qwen2.5-0.5B-Instruct as a local
+replacement for the OpenRouter-based transcript analysis pipeline (ADR-0018).
+
+Subcommands:
+    select   — Compute G-Vendi score and select diverse training examples
+    train    — Full finetune of Qwen2.5-0.5B-Instruct on selected data
+    quantize — Convert finetuned model to IQ4_XS GGUF via llama.cpp
+
+Usage:
+    ./scripts/finetune-transcript-model select
+    ./scripts/finetune-transcript-model train
+    ./scripts/finetune-transcript-model quantize
+    ./scripts/finetune-transcript-model select --data path/to/data.jsonl
+    ./scripts/finetune-transcript-model train --epochs 5 --lr 1e-5
+
+Dependencies (install in a venv, NOT in the hypergumbo editable install):
+    pip install torch transformers trl datasets scikit-learn
+
+For quantize, you also need llama.cpp built from source:
+    git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp && make
+
+References:
+    G-Vendi: arXiv:2505.20161 (§2.1 gradient representation, §2.1 CountSketch
+    projection, §2.1 Vendi Score eigenvalue entropy)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+DEFAULT_DATA = REPO_ROOT / ".agent" / ".training-data.jsonl"
+DEFAULT_SELECTED = REPO_ROOT / ".agent" / ".training-data-selected.jsonl"
+DEFAULT_MODEL_DIR = REPO_ROOT / ".agent" / "finetuned-model"
+DEFAULT_GGUF = REPO_ROOT / ".agent" / "transcript-model.gguf"
+DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+DEFAULT_PROJ_DIM = 1024
+
+# System prompts injected during training (not in raw logs) so the model
+# learns to distinguish the two tasks.  At inference time the same prompts
+# must be prepended in on_transcript_change.py.
+SYSTEM_PROMPTS = {
+    "goal_distillation": (
+        "You are a concise assistant that analyzes agentic coding session "
+        "transcripts. Given recent session activity, distill the agent's "
+        "current goals into a brief summary."
+    ),
+    "relevance_rating": (
+        "You are a concise assistant that rates document relevance. Given an "
+        "agent's goals and a list of playbook documents, rate each document's "
+        "relevance on a scale of 1-10. Reply with exactly one line per "
+        "document in the format: <document-name>: <score>"
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Dependency gating — allow --help without heavy imports
+# ---------------------------------------------------------------------------
+
+def _check_deps(*modules: str) -> None:
+    missing = []
+    for mod in modules:
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        print(
+            f"Missing dependencies: {', '.join(missing)}\n"
+            "Install them in a venv (NOT the hypergumbo editable install):\n"
+            "  pip install torch transformers trl datasets scikit-learn",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
+def load_training_data(
+    path: Path, step_filter: str = "all",
+) -> list[dict]:
+    """Load JSONL training data, optionally filtering by step."""
+    entries = []
+    with open(path) as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"  skip line {lineno}: invalid JSON", file=sys.stderr)
+                continue
+            if step_filter != "all" and entry.get("step") != step_filter:
+                continue
+            msgs = entry.get("messages", [])
+            roles = {m.get("role") for m in msgs}
+            if "user" not in roles or "assistant" not in roles:
+                print(f"  skip line {lineno}: missing user/assistant", file=sys.stderr)
+                continue
+            entries.append(entry)
+    return entries
+
+
+def inject_system_prompt(entry: dict) -> dict:
+    """Return a copy with a system prompt prepended based on the step field."""
+    step = entry.get("step", "")
+    sys_content = SYSTEM_PROMPTS.get(step, "")
+    messages = list(entry["messages"])
+    if sys_content:
+        messages.insert(0, {"role": "system", "content": sys_content})
+    return {"messages": messages}
+
+
+# ---------------------------------------------------------------------------
+# G-Vendi: gradient feature extraction via CountSketch
+# ---------------------------------------------------------------------------
+
+def compute_gradient_features(
+    entries: list[dict],
+    model_name: str,
+    proj_dim: int,
+    seed: int,
+) -> "np.ndarray":
+    """Compute CountSketch-projected gradient features for each entry.
+
+    For each training example:
+      1. Forward pass through the proxy model to get cross-entropy loss
+      2. Backward pass to populate .grad on all parameters
+      3. CountSketch projection: hash each parameter to one of d bins with
+         random ±1 signs, accumulate.  This is O(|θ|) per sample and
+         O(max_param_tensor + d) in memory — no full gradient vector needed.
+      4. L2-normalize the projected vector
+
+    Returns an (N, proj_dim) numpy array of normalized gradient features.
+
+    Reference: arXiv:2505.20161 §2.1, using CountSketch (Charikar 2002)
+    as the JL-preserving projection instead of dense Rademacher.
+    """
+    import numpy as np
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    print(f"Loading proxy model: {model_name}", file=sys.stderr)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, torch_dtype=torch.float32, trust_remote_code=True,
+    ).to(device)
+    model.train()  # Enable gradient computation
+
+    # Pre-compute total parameter count and per-tensor offsets for hashing
+    param_sizes = []
+    for p in model.parameters():
+        if p.requires_grad:
+            param_sizes.append(p.numel())
+    total_params = sum(param_sizes)
+    print(
+        f"Proxy model: {total_params:,} parameters on {device}",
+        file=sys.stderr,
+    )
+
+    features = np.zeros((len(entries), proj_dim), dtype=np.float32)
+
+    for idx, entry in enumerate(entries):
+        formatted = inject_system_prompt(entry)
+        text = tokenizer.apply_chat_template(
+            formatted["messages"], tokenize=False, add_generation_prompt=False,
+        )
+        inputs = tokenizer(
+            text, return_tensors="pt", truncation=True, max_length=2048,
+        ).to(device)
+
+        # Forward + backward
+        model.zero_grad()
+        outputs = model(**inputs, labels=inputs["input_ids"])
+        outputs.loss.backward()
+
+        # CountSketch projection: for each parameter tensor, hash its
+        # gradient entries into proj_dim bins with random ±1 signs.
+        sketch = np.zeros(proj_dim, dtype=np.float64)
+        global_offset = 0
+
+        for p in model.parameters():
+            if not p.requires_grad or p.grad is None:
+                global_offset += p.numel()
+                continue
+
+            grad = p.grad.detach().cpu().flatten().numpy().astype(np.float64)
+            n = grad.shape[0]
+
+            # Deterministic hash + sign from seed and global parameter offset
+            rng = np.random.RandomState(seed + global_offset)
+            bins = rng.randint(0, proj_dim, size=n)
+            signs = rng.choice([-1.0, 1.0], size=n)
+
+            # Scatter-add: sketch[bins[i]] += signs[i] * grad[i]
+            np.add.at(sketch, bins, signs * grad)
+
+            global_offset += n
+
+        # L2-normalize (arXiv:2505.20161 eq. 1)
+        norm = np.linalg.norm(sketch)
+        if norm > 0:
+            sketch /= norm
+        features[idx] = sketch.astype(np.float32)
+
+        if (idx + 1) % 10 == 0 or idx == len(entries) - 1:
+            print(
+                f"  [{idx + 1}/{len(entries)}] loss={outputs.loss.item():.4f}",
+                file=sys.stderr,
+            )
+
+    return features
+
+
+# ---------------------------------------------------------------------------
+# G-Vendi: Vendi Score (eigenvalue entropy of gradient kernel matrix)
+# ---------------------------------------------------------------------------
+
+def vendi_score(features: "np.ndarray") -> float:
+    """Compute the Vendi Score of an (N, d) feature matrix.
+
+    VendiScore = exp(-Σ λ_i log λ_i)  where λ_i are eigenvalues of the
+    normalized kernel matrix K = G @ G.T / N.
+
+    Reference: arXiv:2505.20161 eq. 3, building on Friedman & Dieng (2022).
+    """
+    import numpy as np
+
+    n = features.shape[0]
+    if n == 0:
+        return 0.0
+
+    # Kernel matrix (N x N) — cheap when N << d
+    K = (features @ features.T) / n
+    eigenvalues = np.linalg.eigvalsh(K)
+
+    # Entropy of the eigenvalue distribution (skip zeros/negatives from numerics)
+    eigenvalues = eigenvalues[eigenvalues > 1e-12]
+    entropy = -np.sum(eigenvalues * np.log(eigenvalues))
+    return float(np.exp(entropy))
+
+
+# ---------------------------------------------------------------------------
+# G-Vendi: K-means clustering and sparse-cluster selection
+# ---------------------------------------------------------------------------
+
+def select_diverse(
+    features: "np.ndarray",
+    fraction: float,
+    seed: int,
+) -> list[int]:
+    """Select a diverse subset by preferring samples from sparse gradient clusters.
+
+    Prismatic Synthesis approach (arXiv:2505.20161 §3): K-means cluster in
+    gradient space, then preferentially keep samples from the smallest clusters
+    (underrepresented gradient regions).  Within each cluster, samples closest
+    to the centroid are kept first (most representative of their region).
+
+    Returns indices into the original feature array.
+    """
+    import numpy as np
+    from sklearn.cluster import KMeans
+
+    n = features.shape[0]
+    target = max(1, int(n * fraction))
+    if target >= n:
+        return list(range(n))
+
+    # K = sqrt(N), clamped to [2, N/2] — heuristic from the paper
+    k = max(2, min(n // 2, int(math.sqrt(n))))
+
+    km = KMeans(n_clusters=k, random_state=seed, n_init=5)
+    labels = km.fit_predict(features)
+    centroids = km.cluster_centers_
+
+    # Score each sample: inverse cluster size * closeness to centroid.
+    # Sparse clusters get higher weight; within a cluster, representative
+    # (centroid-proximate) samples are preferred.
+    cluster_sizes = np.bincount(labels, minlength=k).astype(float)
+    cluster_sizes[cluster_sizes == 0] = 1.0  # avoid div-by-zero
+
+    scores = np.zeros(n)
+    for i in range(n):
+        c = labels[i]
+        dist = np.linalg.norm(features[i] - centroids[c])
+        # High score = sparse cluster + close to centroid
+        scores[i] = (1.0 / cluster_sizes[c]) - 0.01 * dist
+
+    selected = np.argsort(scores)[-target:]
+    return sorted(selected.tolist())
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: select
+# ---------------------------------------------------------------------------
+
+def cmd_select(args: argparse.Namespace) -> None:
+    """Compute gradient features, measure G-Vendi, select diverse subset."""
+    _check_deps("torch", "transformers", "numpy", "sklearn")
+    import numpy as np
+
+    data_path = Path(args.data)
+    if not data_path.exists():
+        print(f"Training data not found: {data_path}", file=sys.stderr)
+        print(
+            "Collect data first by running the transcript pipeline with "
+            "OPENROUTER_API_KEY set.  Inputs/outputs are logged to "
+            ".agent/.training-data.jsonl automatically.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    entries = load_training_data(data_path, args.step)
+    print(f"Loaded {len(entries)} examples (step={args.step})", file=sys.stderr)
+
+    if len(entries) < 10:
+        print(
+            f"Only {len(entries)} examples — need at least ~50 for meaningful "
+            "G-Vendi selection.  Collect more data first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Compute gradient features
+    features = compute_gradient_features(
+        entries, args.model, args.d, args.seed,
+    )
+
+    # Measure diversity before selection
+    vs_before = vendi_score(features)
+    print(f"G-Vendi score (all {len(entries)} examples): {vs_before:.2f}", file=sys.stderr)
+
+    # Select diverse subset
+    indices = select_diverse(features, args.fraction, args.seed)
+    selected_features = features[np.array(indices)]
+    vs_after = vendi_score(selected_features)
+
+    print(
+        f"Selected {len(indices)}/{len(entries)} examples "
+        f"(G-Vendi: {vs_before:.2f} → {vs_after:.2f})",
+        file=sys.stderr,
+    )
+
+    # Write selected subset with system prompts injected
+    output_path = Path(args.output)
+    with open(output_path, "w") as f:
+        for i in indices:
+            formatted = inject_system_prompt(entries[i])
+            f.write(json.dumps(formatted, ensure_ascii=False) + "\n")
+
+    print(f"Wrote {len(indices)} examples to {output_path}", file=sys.stderr)
+
+    if args.verbose:
+        # Per-step breakdown
+        for step in ("goal_distillation", "relevance_rating"):
+            step_idx = [i for i in indices if entries[i].get("step") == step]
+            total = sum(1 for e in entries if e.get("step") == step)
+            print(f"  {step}: {len(step_idx)}/{total} selected", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: train
+# ---------------------------------------------------------------------------
+
+def cmd_train(args: argparse.Namespace) -> None:
+    """Full finetune of Qwen2.5-0.5B-Instruct on selected training data."""
+    _check_deps("torch", "transformers", "trl", "datasets")
+    from datasets import load_dataset
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+    from trl import SFTConfig, SFTTrainer
+
+    data_path = Path(args.data)
+    if not data_path.exists():
+        print(
+            f"Selected data not found: {data_path}\n"
+            "Run 'select' first: ./scripts/finetune-transcript-model select",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading base model: {args.model}", file=sys.stderr)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model, trust_remote_code=True,
+    )
+
+    # Load dataset — each line has {"messages": [...]} with system prompts
+    dataset = load_dataset("json", data_files=str(data_path), split="train")
+
+    # Hold out 10% for evaluation
+    split = dataset.train_test_split(test_size=0.1, seed=args.seed)
+    train_ds, eval_ds = split["train"], split["test"]
+    print(
+        f"Dataset: {len(train_ds)} train, {len(eval_ds)} eval",
+        file=sys.stderr,
+    )
+
+    training_args = SFTConfig(
+        output_dir=str(output_dir),
+        num_train_epochs=args.epochs,
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size,
+        learning_rate=args.lr,
+        weight_decay=0.01,
+        warmup_ratio=0.1,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        logging_steps=10,
+        max_seq_length=args.max_seq_len,
+        seed=args.seed,
+        bf16=_has_bf16(),
+        report_to="none",
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        args=training_args,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
+    )
+
+    print("Starting training...", file=sys.stderr)
+    trainer.train()
+
+    # Save best checkpoint
+    trainer.save_model(str(output_dir))
+    tokenizer.save_pretrained(str(output_dir))
+    print(f"Model saved to {output_dir}", file=sys.stderr)
+
+
+def _has_bf16() -> bool:
+    """Check if bf16 is available (CUDA or recent CPU)."""
+    try:
+        import torch
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            return True
+        # CPU bf16 support check
+        return hasattr(torch, "bfloat16")
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: quantize
+# ---------------------------------------------------------------------------
+
+def cmd_quantize(args: argparse.Namespace) -> None:
+    """Convert finetuned model to IQ4_XS GGUF via llama.cpp."""
+    model_dir = Path(args.model_dir)
+    if not model_dir.exists():
+        print(
+            f"Model directory not found: {model_dir}\n"
+            "Run 'train' first: ./scripts/finetune-transcript-model train",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    output_path = Path(args.output)
+
+    # Find llama.cpp convert script
+    convert_script = shutil.which("convert_hf_to_gguf.py")
+    llama_cpp_dir = os.environ.get("LLAMA_CPP_DIR", "")
+    if not convert_script and llama_cpp_dir:
+        candidate = Path(llama_cpp_dir) / "convert_hf_to_gguf.py"
+        if candidate.exists():
+            convert_script = str(candidate)
+    if not convert_script:
+        print(
+            "convert_hf_to_gguf.py not found on PATH.\n"
+            "Install llama.cpp and set LLAMA_CPP_DIR:\n"
+            "  git clone https://github.com/ggerganov/llama.cpp\n"
+            "  cd llama.cpp && make\n"
+            "  export LLAMA_CPP_DIR=/path/to/llama.cpp",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    quantize_bin = shutil.which("llama-quantize")
+    if not quantize_bin and llama_cpp_dir:
+        candidate = Path(llama_cpp_dir) / "build" / "bin" / "llama-quantize"
+        if candidate.exists():
+            quantize_bin = str(candidate)
+    if not quantize_bin:
+        print(
+            "llama-quantize not found on PATH.\n"
+            "Build llama.cpp and add build/bin to PATH, or set LLAMA_CPP_DIR.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Step 1: Convert HF model to F16 GGUF
+    f16_gguf = output_path.with_suffix(".f16.gguf")
+    print(f"Converting to F16 GGUF: {f16_gguf}", file=sys.stderr)
+    subprocess.run(  # noqa: S603
+        [sys.executable, convert_script, str(model_dir),
+         "--outfile", str(f16_gguf), "--outtype", "f16"],
+        check=True,
+    )
+
+    # Step 2: Quantize to target format
+    quant = args.quantization.lower()
+    print(f"Quantizing to {quant}: {output_path}", file=sys.stderr)
+    cmd = [quantize_bin, str(f16_gguf), str(output_path), quant]
+
+    # Optional importance matrix for better quality
+    if args.imatrix:
+        imatrix_path = Path(args.imatrix)
+        if imatrix_path.exists():
+            cmd = [quantize_bin, "--imatrix", str(imatrix_path),
+                   str(f16_gguf), str(output_path), quant]
+        else:
+            print(f"Warning: imatrix file not found: {imatrix_path}", file=sys.stderr)
+
+    subprocess.run(cmd, check=True)  # noqa: S603
+
+    # Clean up F16 intermediate
+    if f16_gguf.exists() and output_path.exists():
+        f16_gguf.unlink()
+
+    size_mb = output_path.stat().st_size / (1024 * 1024)
+    print(f"Done: {output_path} ({size_mb:.1f} MB)", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="G-Vendi-guided finetuning pipeline for the local transcript model.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # -- select --
+    p_sel = sub.add_parser(
+        "select",
+        help="Compute G-Vendi score and select diverse training examples",
+    )
+    p_sel.add_argument("--data", default=str(DEFAULT_DATA),
+                       help=f"Training data JSONL (default: {DEFAULT_DATA})")
+    p_sel.add_argument("--output", default=str(DEFAULT_SELECTED),
+                       help=f"Output path (default: {DEFAULT_SELECTED})")
+    p_sel.add_argument("--model", default=DEFAULT_BASE_MODEL,
+                       help=f"Proxy model for gradients (default: {DEFAULT_BASE_MODEL})")
+    p_sel.add_argument("--step", default="all", choices=["all", "goal_distillation", "relevance_rating"],
+                       help="Filter by step (default: all)")
+    p_sel.add_argument("--fraction", type=float, default=0.7,
+                       help="Fraction of data to keep (default: 0.7)")
+    p_sel.add_argument("--d", type=int, default=DEFAULT_PROJ_DIM,
+                       help=f"Projection dimension (default: {DEFAULT_PROJ_DIM})")
+    p_sel.add_argument("--seed", type=int, default=42)
+    p_sel.add_argument("--verbose", action="store_true")
+
+    # -- train --
+    p_train = sub.add_parser(
+        "train",
+        help="Full finetune of Qwen2.5-0.5B-Instruct on selected data",
+    )
+    p_train.add_argument("--data", default=str(DEFAULT_SELECTED),
+                         help=f"Training data JSONL (default: {DEFAULT_SELECTED})")
+    p_train.add_argument("--model", default=DEFAULT_BASE_MODEL,
+                         help=f"Base model (default: {DEFAULT_BASE_MODEL})")
+    p_train.add_argument("--output-dir", default=str(DEFAULT_MODEL_DIR),
+                         help=f"Output directory (default: {DEFAULT_MODEL_DIR})")
+    p_train.add_argument("--epochs", type=int, default=3)
+    p_train.add_argument("--batch-size", type=int, default=4)
+    p_train.add_argument("--lr", type=float, default=2e-5)
+    p_train.add_argument("--max-seq-len", type=int, default=2048)
+    p_train.add_argument("--seed", type=int, default=42)
+
+    # -- quantize --
+    p_quant = sub.add_parser(
+        "quantize",
+        help="Convert finetuned model to IQ4_XS GGUF via llama.cpp",
+    )
+    p_quant.add_argument("--model-dir", default=str(DEFAULT_MODEL_DIR),
+                         help=f"Finetuned model directory (default: {DEFAULT_MODEL_DIR})")
+    p_quant.add_argument("--output", default=str(DEFAULT_GGUF),
+                         help=f"Output GGUF path (default: {DEFAULT_GGUF})")
+    p_quant.add_argument("--quantization", default="iq4_xs",
+                         help="Quantization type (default: iq4_xs)")
+    p_quant.add_argument("--imatrix", default="",
+                         help="Importance matrix file (optional, improves quality)")
+
+    args = parser.parse_args()
+    dispatch = {"select": cmd_select, "train": cmd_train, "quantize": cmd_quantize}
+    dispatch[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

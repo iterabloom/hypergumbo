@@ -133,8 +133,69 @@ All parameters are environment variables with sensible defaults:
 | `TRANSCRIPT_MAX_TOKENS` | `16000` | Token budget for transcript window |
 | `TRANSCRIPT_THRESHOLD` | `7` | Minimum relevance score (1-10) to inject a playbook |
 | `TRANSCRIPT_DEDUP_TOKENS` | `50000` | Token distance before allowing re-injection |
+| `TRANSCRIPT_TRAINING_LOG` | `.agent/.training-data.jsonl` | Path for finetuning data collection (ChatML JSONL) |
+
+### Training data collection for local model replacement
+
+The pipeline depends on an external LLM (mistral-nemo via OpenRouter), which conflicts with hypergumbo's local-first philosophy. To enable eventual replacement with a finetuned local model, the pipeline logs every successful LLM input/output pair to `.agent/.training-data.jsonl` (gitignored).
+
+Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrainer / Unsloth:
+
+```json
+{
+  "step": "goal_distillation",
+  "model": "mistralai/mistral-nemo",
+  "messages": [
+    {"role": "user", "content": "<prompt>"},
+    {"role": "assistant", "content": "<response>"}
+  ]
+}
+```
+
+The `step` field (`goal_distillation` or `relevance_rating`) allows filtering or weighting the two tasks independently during training. The `model` field tracks which model produced the response, so data quality can be assessed if the upstream model changes.
+
+**Target local model:** Qwen2.5-0.5B-Instruct (Apache-2.0, 0.5B parameters). At this size, full finetuning (not LoRA/QLoRA) is feasible on consumer hardware (~4-6 GB VRAM). Inference at runtime would use llama.cpp or llama-cpp-python, eliminating the OpenRouter dependency entirely.
+
+Logging is best-effort (OSError silently caught) and only fires on non-dry-run successful responses, so it never interferes with the pipeline. The log path is configurable via the `TRANSCRIPT_TRAINING_LOG` environment variable.
+
+### G-Vendi-guided data selection and finetuning pipeline
+
+Rather than finetuning on all collected examples indiscriminately, we apply the G-Vendi diversity measure (arXiv:2505.20161) to select a maximally diverse training subset. G-Vendi quantifies diversity via the entropy of model-induced loss gradients, achieving Spearman's ρ ≈ 0.9 correlation with OOD generalization — far stronger than surface-level metrics like embedding similarity or n-gram entropy. Notably, the paper uses Qwen2.5-0.5B-Instruct as its gradient proxy model — the same model we finetune.
+
+The pipeline is implemented in `scripts/finetune-transcript-model` with three subcommands:
+
+**Phase 1: `select` — G-Vendi data selection**
+1. Load collected training examples from `.agent/.training-data.jsonl`
+2. For each example, forward+backward through Qwen2.5-0.5B-Instruct to compute loss gradients
+3. Project gradients to d=1024 dimensions via CountSketch (a JL-preserving projection that avoids materializing the full ~500M-dimensional gradient vector — O(|θ|) time and O(max\_param\_tensor + d) memory per sample)
+4. Compute the Vendi Score: eigenvalue entropy of the normalized kernel matrix K = GG^T/N
+5. K-means cluster in gradient space; select samples preferring sparse clusters (underrepresented gradient regions — the Prismatic Synthesis insight from §3 of the paper)
+6. Inject task-specific system prompts (`goal_distillation` vs `relevance_rating`) and write the selected subset to `.agent/.training-data-selected.jsonl`
+
+**Phase 2: `train` — Full finetune**
+- Full finetune of Qwen2.5-0.5B-Instruct (HuggingFace weights, ~1GB float16) using HuggingFace TRL's SFTTrainer
+- 10% held-out evaluation split with early stopping on eval loss
+- Fits in ~4-6 GB VRAM (or CPU RAM) — no gradient checkpointing or LoRA needed at this model size
+- Saves the finetuned model to `.agent/finetuned-model/`
+
+**Phase 3: `quantize` — GGUF conversion**
+- Converts the finetuned HuggingFace model to F16 GGUF via llama.cpp's `convert_hf_to_gguf.py`
+- Quantizes to IQ4_XS (~350 MB) via `llama-quantize`
+- Optional importance matrix (`--imatrix`) for higher quality quantization
+- Outputs `.agent/transcript-model.gguf`
+
+```
+# Full pipeline
+./scripts/finetune-transcript-model select
+./scripts/finetune-transcript-model train
+./scripts/finetune-transcript-model quantize
+```
+
+Dependencies (`torch`, `transformers`, `trl`, `datasets`, `scikit-learn`) are NOT part of the hypergumbo install — they must be installed in a separate venv. The script gates all heavy imports behind dependency checks so `--help` always works.
 
 ### Future work
+- **Local model deployment**: Once the finetuned GGUF is produced, replace `openrouter_chat()` in `on_transcript_change.py` with local llama.cpp inference via `llama-cpp-python` or subprocess.
+- **Prismatic augmentation**: Use the sparse-cluster signal from G-Vendi selection to guide generation of additional synthetic training examples targeting underrepresented gradient regions (full Prismatic Synthesis loop from arXiv:2505.20161 §3).
 - **Streaming filter**: Currently reads all new bytes on each invocation. Could use a tail-follow approach for lower latency on very active sessions.
 - **Multi-tool compaction detection**: Only Claude Code's `compact_boundary` is currently detected. Codex and Gemini may have analogous signals.
 - **Playbook auto-discovery**: Currently uses a hardcoded registry. Could scan the playbooks directory and generate summaries automatically.

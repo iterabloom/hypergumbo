@@ -62,3 +62,7 @@ package-lock.json
 !**/config.yaml.template
 .agent/.cache-*.db
 .agent/.sync-logs/
+.agent/.training-data.jsonl
+.agent/.training-data-selected.jsonl
+.agent/finetuned-model/
+.agent/transcript-model.gguf

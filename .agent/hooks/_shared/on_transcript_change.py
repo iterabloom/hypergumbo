@@ -39,6 +39,10 @@ THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "7"))
 DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
 CHARS_PER_TOKEN = 4.4
 
+# Training data collection: log LLM inputs/outputs for future local model finetuning.
+# Set TRANSCRIPT_TRAINING_LOG to a path to enable. Default: .agent/.training-data.jsonl
+TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
+
 # Playbook registry: (id, path relative to repo root, one-line summary)
 # These match the files in .agent/agent_playbooks_protocols_sops_skills/.
 PLAYBOOKS = [
@@ -117,6 +121,40 @@ def openrouter_chat(prompt: str, max_completion_tokens: int = 1024) -> str:
             return data.get("choices", [{}])[0].get("message", {}).get("content", "")
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, IndexError):
         return ""
+
+
+def log_training_example(
+    repo_root: str, step: str, prompt: str, response: str,
+) -> None:
+    """Append a ChatML training example to the training log.
+
+    Each line is a JSON object with ``messages`` in the format expected by
+    HuggingFace SFTTrainer / Unsloth for Qwen2.5 ChatML finetuning::
+
+        {"step": "goal_distillation", "messages": [
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "..."}
+        ]}
+
+    The ``step`` field is metadata (not part of the chat) so training scripts
+    can filter or weight the two tasks independently.
+    """
+    log_path = TRAINING_LOG
+    if not log_path:
+        log_path = os.path.join(repo_root, ".agent", ".training-data.jsonl")
+    entry = json.dumps({
+        "step": step,
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": response},
+        ],
+    }, ensure_ascii=False)
+    try:
+        with open(log_path, "a") as f:
+            f.write(entry + "\n")
+    except OSError:
+        pass  # Best-effort — don't break the pipeline for logging failures
 
 
 def select_recent_entries(transcript_path: str) -> str:
@@ -340,6 +378,7 @@ def main() -> None:
             if verbose:
                 print("[step 1] LLM returned empty response", file=sys.stderr)
             sys.exit(0)
+        log_training_example(repo_root, "goal_distillation", step1_prompt, agent_goals)
 
     if verbose:
         print(f"[step 1] Agent goals: {agent_goals[:200]}", file=sys.stderr)
@@ -391,6 +430,7 @@ def main() -> None:
         if verbose:
             print("[step 2] LLM returned empty response", file=sys.stderr)
         sys.exit(0)
+    log_training_example(repo_root, "relevance_rating", step2_prompt, ratings_text)
 
     if verbose:
         print(f"[step 2] Raw ratings:\n{ratings_text}", file=sys.stderr)
