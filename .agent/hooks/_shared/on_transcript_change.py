@@ -142,13 +142,18 @@ def select_recent_entries(transcript_path: str) -> str:
 
 
 def parse_ratings(ratings_text: str) -> dict[str, int]:
-    """Parse the LLM's ratings response into {playbook_id: score}."""
+    """Parse the LLM's ratings response into {playbook_id: score}.
+
+    Preferred format is ``<id>: <score>`` (one per line).
+    Falls back to ``<score>/<max> <id>`` for robustness.
+    """
     results: dict[str, int] = {}
     for pb_id, _, _ in PLAYBOOKS:
-        # Look for patterns like "8 - autonomous-mode-guide" or
-        # "autonomous-mode-guide: 8" or "8/10 autonomous-mode-guide"
+        # Preferred: "experiment-design-playbook: 8" (prompt asks for this)
+        # Fallback: "8/10 experiment-design-playbook" or "8 - experiment-design-playbook"
         patterns = [
-            rf"(\d+)\s*[/\-–:]\s*(?:10\s*)?.*?{re.escape(pb_id)}",
+            rf"{re.escape(pb_id)}\s*[:]\s*(\d+)",
+            rf"(\d+)\s*/\s*10\s*.*?{re.escape(pb_id)}",
             rf"{re.escape(pb_id)}.*?(\d+)",
         ]
         for pattern in patterns:
@@ -291,7 +296,16 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.normpath(os.path.join(script_dir, "..", "..", ".."))
 
-    # Step 0: Select recent entries within token budget
+    # Step 0a: Check if all playbooks are recently injected (skip LLM calls entirely)
+    all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
+    already, inj_state = recently_injected(transcript_path, all_ids, repo_root)
+    if len(already) == len(PLAYBOOKS):
+        if verbose:
+            print("[step 0] All playbooks recently injected — skipping LLM calls",
+                  file=sys.stderr)
+        sys.exit(0)
+
+    # Step 0b: Select recent entries within token budget
     recent = select_recent_entries(transcript_path)
     if not recent:
         if verbose:
@@ -341,7 +355,19 @@ def main() -> None:
         "be relevant to the agent's goal. For each document, please rate on a "
         "scale of 1 to 10, with 10 being the most confident, how sure you are "
         "that the document would help the agent complete its goal. Reply with "
-        "just the number and document name for each, one per line.\n\n"
+        "one line per document in exactly this format:\n\n"
+        "  <document-name>: <score>\n\n"
+        "For example:\n"
+        "  watering-succulents: 1\n"
+        "  bread-dough-hydration: 10\n"
+        "  bicycle-tire-pressure: 2\n"
+        "  origami-crane-folding: 9\n"
+        "  banjo-tuning-guide: 3\n"
+        "  sourdough-starter-care: 8\n"
+        "  knitting-cable-stitch: 4\n"
+        "  hamster-wheel-sizing: 7\n"
+        "  umbrella-repair-manual: 5\n"
+        "  vintage-typewriter-ribbon: 6\n\n"
         + playbook_list
     )
 
@@ -375,8 +401,9 @@ def main() -> None:
         print(f"[step 2] Parsed ratings: {ratings}", file=sys.stderr)
 
     # Step 3: Collect playbooks above threshold, skipping recently injected ones
-    all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
-    already, inj_state = recently_injected(transcript_path, all_ids, repo_root)
+    # (Reuse the dedup state computed in step 0a — compaction/token-distance
+    # boundaries haven't changed since then.)
+
 
     if verbose:
         compact_offset = inj_state.get("last_compact_offset", 0)

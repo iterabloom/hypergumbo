@@ -34,7 +34,7 @@
     ],
     "FileChanged": [
       {
-        "matcher": ".current_session_transcript.jsonl",
+        "matcher": ".agent/.current_session_transcript.jsonl",
         "hooks": [
           {
             "type": "command",
