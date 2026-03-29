@@ -1,0 +1,47 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".agent/hooks/gemini-cli/session-start.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".agent/hooks/gemini-cli/after-agent.sh"
+          }
+        ]
+      }
+    ],
+    "BeforeModel": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".agent/hooks/gemini-cli/before-model-transcript.sh",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".agent/hooks/gemini-cli/session-end.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

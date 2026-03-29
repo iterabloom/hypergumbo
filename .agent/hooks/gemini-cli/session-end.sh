@@ -16,3 +16,6 @@ source "$SCRIPT_DIR/../_shared/session_end_logic.sh"
 if [[ "$SESSION_END_ACTED" == "true" ]]; then
     echo "Disabling autonomous mode since you are ending the session; run \`./scripts/loop-toggle ${SESSION_END_MODE}\` if you want autonomous mode to be active the next time you start a session in this shell." >&2
 fi
+
+# --- Kill transcript sync watcher ---
+"$SCRIPT_DIR/../_shared/kill-transcript-sync.sh" "$REPO_ROOT"

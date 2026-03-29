@@ -25,3 +25,6 @@ if [[ "$SESSION_END_ACTED" == "true" ]]; then
 ================================================================
 BANNER
 fi
+
+# --- Kill transcript sync watcher ---
+"$SCRIPT_DIR/../_shared/kill-transcript-sync.sh" "$REPO_ROOT"

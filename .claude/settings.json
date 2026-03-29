@@ -31,6 +31,17 @@
           }
         ]
       }
+    ],
+    "FileChanged": [
+      {
+        "matcher": ".current_session_transcript.jsonl",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/_shared/on_transcript_change.sh \"$CLAUDE_PROJECT_DIR/.agent/.current_session_transcript.jsonl\""
+          }
+        ]
+      }
     ]
   }
 }

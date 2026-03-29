@@ -32,6 +32,10 @@ AUTONOMOUS_MODE.txt
 .agent/disabled.LOOP
 .agent/last_stop_check.json
 .agent/invariant-ledger.md
+.agent/.current_session_transcript.jsonl
+.agent/.transcript-sync.pid
+.agent/.transcript-sync-state.json
+.agent/.transcript-poll-state
 
 # Coverage
 .coverage
