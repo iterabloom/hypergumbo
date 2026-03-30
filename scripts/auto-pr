@@ -304,6 +304,15 @@ Individual commits are preserved in the history."
 	  fi
 	done <"$QUEUE_FILE"
 
+	# --- INV-rahib fix: create gate BEFORE push (same as do_pr) ---
+	echo "preparing" >"$REPO_ROOT/.git/PR_PENDING"
+	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
+
+	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
+		echo "Error: tracker sync started while preparing flush. Retry after sync completes."
+		exit 1
+	fi
+
 	local PUSH_OUTPUT=""
 	while [[ $attempt -le $max_attempts ]]; do
 		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
@@ -365,9 +374,8 @@ Individual commits are preserved in the history."
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
-	# Gate file + cleanup trap
+	# Update gate file with actual PR number (gate already created before push)
 	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
-	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
@@ -620,6 +628,23 @@ do_pr() {
 		push_remote="selfh"
 	fi
 
+	# --- INV-rahib fix: create gate BEFORE push ---
+	# Previously PR_PENDING was created after push + PR identification,
+	# leaving a window where tracker auto-sync could start and advance dev.
+	# Now we create it early so tracker sync sees it immediately.
+	echo "preparing" >"$REPO_ROOT/.git/PR_PENDING"
+	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
+
+	# Re-check: tracker sync may have started since our initial preflight
+	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
+		echo "Error: tracker sync started while preparing push. Retry after sync completes."
+		exit 1
+	fi
+
+	# Record base SHA before push — used to detect dev divergence after CI poll
+	local BASE_SHA_BEFORE_PUSH
+	BASE_SHA_BEFORE_PUSH=$(git rev-parse "origin/$BASE_BRANCH" 2>/dev/null || true)
+
 	while [[ $attempt -le $max_attempts ]]; do
 		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 			push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
@@ -687,9 +712,8 @@ do_pr() {
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
-	# Gate file + cleanup trap
+	# Update gate file with actual PR number (gate already created before push)
 	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
-	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
 
 	echo "✅ Found PR #$PR_NUM"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
@@ -733,6 +757,41 @@ do_pr() {
 		# Do NOT clear PR_PENDING — this blocks subsequent PRs until human acts
 		trap - EXIT
 		exit 0
+	fi
+
+	# --- INV-rahib fix: proactive rebase if dev advanced during CI poll ---
+	# Mirrors tracker sync's proactive approach (sync.py:998-1009).
+	# Without this, do_merge discovers the divergence reactively and must
+	# rebase + force-push + re-poll CI, wasting time and risking failures.
+	if [[ -n "${BASE_SHA_BEFORE_PUSH:-}" ]]; then
+		git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+		local new_base_sha
+		new_base_sha=$(git rev-parse "origin/$BASE_BRANCH" 2>/dev/null || true)
+		if [[ -n "$new_base_sha" && "$BASE_SHA_BEFORE_PUSH" != "$new_base_sha" ]]; then
+			echo "---------------------------------------------------"
+			echo "⚠️  dev advanced during CI poll (${BASE_SHA_BEFORE_PUSH:0:8}→${new_base_sha:0:8}) — rebasing..."
+			if git rebase "origin/$BASE_BRANCH" --quiet 2>/dev/null; then
+				HEAD_SHA=$(git rev-parse HEAD)
+				if git push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o force-push=true --quiet 2>/dev/null; then
+					echo "   Rebased and force-pushed. Waiting for CI on new SHA..."
+					sleep 3  # Give Forgejo a moment to update PR head
+					poll_result=0
+					poll_ci "$HEAD_SHA" || poll_result=$?
+					if [[ $poll_result -eq 1 ]]; then
+						echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
+						exit 1
+					elif [[ $poll_result -eq 2 ]]; then
+						echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+						exit 2
+					fi
+				else
+					echo "   ⚠️  Force-push failed after rebase — do_merge will retry"
+				fi
+			else
+				echo "   ⚠️  Rebase failed (conflicts?) — do_merge will retry"
+				git rebase --abort 2>/dev/null || true
+			fi
+		fi
 	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
