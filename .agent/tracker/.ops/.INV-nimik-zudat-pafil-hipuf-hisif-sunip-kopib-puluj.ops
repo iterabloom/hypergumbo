@@ -300,3 +300,32 @@
   nonce: cfc4  # cfc4
   set:  # cfc4
     status: holding  # cfc4
+- op: discuss  # ca10
+  at: '2026-03-30T22:26:27Z'  # ca10
+  by: agent  # ca10
+  actor: jgstern_agent  # ca10
+  clock: 39  # ca10
+  nonce: ca10  # ca10
+  message: "Acknowledged. Will implement path_composition in framework_patterns.py as the approach for Spring @RequestMapping class-level prefix chaining. Starting now."  # ca10
+- op: discuss  # 029b
+  at: '2026-03-30T22:30:05Z'  # 029b
+  by: agent  # 029b
+  actor: jgstern_agent  # 029b
+  clock: 40  # 029b
+  nonce: 029b  # 029b
+  message: "Investigation complete. The framework_patterns.py infrastructure ALREADY supports JAX-RS path composition:\n\n1. prefix_from_parent: 'resource_path' on route concepts (line 1294)\n2. Sibling concept path inheritance for @GET+@Path on same method (lines 1307-1312)\n3. Sub-resource locator path chaining with _apply_subresource_locator_paths() (lines 993-1160)\n4. Object return type inference for sub-resource locators (lines 1049-1050)\n\nThe 124 empty-path routes from Keycloak are NOT a framework_patterns gap — the infrastructure handles them correctly. The issue is upstream in the Java analyzer's metadata extraction: either return_type isn't captured for some methods, or @Path annotation args aren't extracted for certain annotation styles. This IS an analyzer-specific issue, but it's about metadata completeness (giving the framework system the data it needs), not about path composition logic.\n\nStatus: holding at P3. The framework approach the human suggested is already implemented. Remaining work: improve Java analyzer's annotation arg and return_type extraction for edge cases."  # 029b
+- op: update  # c96b
+  at: '2026-03-30T22:40:27Z'  # c96b
+  by: human  # c96b
+  actor: jgstern  # c96b
+  clock: 41  # c96b
+  nonce: c96b  # c96b
+  set:  # c96b
+    status: violated  # c96b
+- op: discuss  # eea0
+  at: '2026-03-30T22:40:31Z'  # eea0
+  by: human  # eea0
+  actor: jgstern  # eea0
+  clock: 42  # eea0
+  nonce: eea0  # eea0
+  message: "ok, then your task is improving the Java analyzer's annotation arg and return_type extraction for edge cases. status is violated until the issue is resolved or you have provided an item id for a new item."  # eea0
