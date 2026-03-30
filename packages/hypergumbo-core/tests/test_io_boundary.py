@@ -650,6 +650,30 @@ class TestTagIoBoundaries:
         assert count == 1
         assert edge.meta["io_boundary"] == "fs_read"
 
+    def test_cgo_bridge_edge_traced(self) -> None:
+        """cgo_bridge edges are included in boundary tagging."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="go:/app/main.go:1:OpenDB:function",
+            dst="c:external:0-0:fopen:unresolved",
+            edge_type="cgo_bridge",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
+    def test_ffi_bridge_edge_traced(self) -> None:
+        """ffi_bridge edges are included in boundary tagging."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="rust:/lib.rs:1:read_file:function",
+            dst="python:/stdlib/os.py:1:os.listdir:function",
+            edge_type="ffi_bridge",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
     def test_ipc_calls_edge_traced(self) -> None:
         """ipc_calls edges are traced for I/O boundary tagging."""
         catalog = load_catalog("python")
@@ -959,6 +983,38 @@ class TestEntryPointTracing:
         fs_entry = bmap.entries.get("fs_read")
         assert fs_entry is not None
         assert "java_main" in fs_entry.entry_points
+
+    def test_cgo_bridge_edge_traced_to_entrypoint(self) -> None:
+        """Entry-point trace crosses cgo_bridge edges (Go→C)."""
+        catalog = load_catalog("c")
+        edges = [
+            self._make_edge(src="go_main", dst="go_wrapper"),
+            self._make_edge(src="go_wrapper", dst="c_impl", edge_type="cgo_bridge"),
+            self._make_edge(src="c_impl", dst="c:external:0-0:fopen:unresolved"),
+        ]
+        entrypoint_ids = {"go_main"}
+
+        bmap = compute_boundary_map(edges, {"c": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "go_main" in fs_entry.entry_points
+
+    def test_ffi_bridge_edge_traced_to_entrypoint(self) -> None:
+        """Entry-point trace crosses ffi_bridge edges (Python→Rust)."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="py_main", dst="py_wrapper"),
+            self._make_edge(src="py_wrapper", dst="rust_impl", edge_type="ffi_bridge"),
+            self._make_edge(src="rust_impl", dst="python:os:0-0:listdir:function"),
+        ]
+        entrypoint_ids = {"py_main"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "py_main" in fs_entry.entry_points
 
     def test_unreachable_entry_point_excluded(self) -> None:
         """Entrypoints that can't reach IO are not included."""

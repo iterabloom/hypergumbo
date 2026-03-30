@@ -478,6 +478,7 @@ def _trace_entry_points(
         "calls", "instantiates", "dispatches_to", "references",
         # FFI bridge edges
         "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
+        "cgo_bridge", "ffi_bridge",
         "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
     })
     reverse_graph: dict[str, set[str]] = {}
@@ -662,6 +663,7 @@ def tag_io_boundaries(
         "calls", "imports",
         # FFI edges — trace I/O boundaries across language boundaries
         "wasm_bridge", "wasm_load", "bridge_invokes",
+        "cgo_bridge", "ffi_bridge",
         "ipc_calls", "ipc_event",
         "grpc_calls", "implements_rpc",
     }),

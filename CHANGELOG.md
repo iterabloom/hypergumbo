@@ -64,6 +64,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Returns section loaded**: `DataflowConfig` now loads the `returns` YAML section (previously silently dropped). Return/yield statements correctly classify edges as "read".
 - **Net effect**: Dataflow slices are now tighter than structural slices. Forward slice follows only write/mutate edges; reverse slice follows only read edges. Previously both followed all edges identically because every annotation was "write".
 
+#### I/O boundary FFI tracing (INV-kagob)
+
+- **`cgo_bridge` and `ffi_bridge` edges now traced**: Added to both `call_types` in `tag_io_boundaries()` and `_TRACEABLE_TYPES` in `_trace_entry_points()`. IO chains now cross Go→C (cgo) and Python→Rust (PyO3/cffi) boundaries. Previously 116 cgo_bridge edges in go-sqlite3 and 5,617 ffi_bridge edges in polars had zero IO boundary metadata.
+
 #### I/O boundary detection
 
 - **Ambiguous name filtering for 10 catalogs**: Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C now have `ambiguous_names` lists (Scala and Swift already had them). Bare method names like `.String()`, `.Run()`, `.put()`, `.read()`, `.write()` no longer produce false-positive IO boundary matches without module context. Measured: age net_send 4→0, net_recv 14→0; polars net_send 285→89 (69% reduction).
