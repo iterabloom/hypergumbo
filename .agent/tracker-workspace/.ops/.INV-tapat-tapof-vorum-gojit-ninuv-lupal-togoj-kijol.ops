@@ -19,3 +19,18 @@
     fields:  # a67b
       statement: "IO boundary classification must verify the receiver type (or at minimum the containing module/import), not just the method name, because common method names (.String, .Run, .read, .put, .write) appear on unrelated types and produce false positives"  # a67b
       root_cause: "match_edge_to_primitive in io_boundary.py matches callee name against IO primitive catalog without checking the receiver type or import context"  # a67b
+- op: update  # bfba
+  at: '2026-03-30T09:54:40Z'  # bfba
+  by: agent  # bfba
+  actor: jgstern_agent  # bfba
+  clock: 2  # bfba
+  nonce: bfba  # bfba
+  set:  # bfba
+    status: holding  # bfba
+- op: discuss  # bfa7
+  at: '2026-03-30T09:54:40Z'  # bfa7
+  by: agent  # bfa7
+  actor: jgstern_agent  # bfa7
+  clock: 3  # bfa7
+  nonce: bfa7  # bfa7
+  message: "Fixed in PR #2628. Added ambiguous_names lists to 10 IO primitive catalogs (Go, Rust, Python, Java, C, JS, Erlang, Haskell, ObjC). 20 new tests. Bare method names no longer match without module context. Holding: needs re-validation via bakeoff to confirm false positive reduction."  # bfa7

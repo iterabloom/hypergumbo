@@ -17,3 +17,18 @@
     pr_ref:  # 83ec
     description: "Forward slices seed from template.py, conformance/main.go, write_colored (formatting helper). Reverse slices seed from sqlite3_step (tier-3 vendored). Fix: use domain_score for forward seeds too, penalize seeds where all callers are in the same file, constrain rslice seeds to tier-1 nodes. Affects all 3 bakeoffs."  # 83ec
     fields: {}  # 83ec
+- op: update  # 2d3a
+  at: '2026-03-30T09:55:36Z'  # 2d3a
+  by: agent  # 2d3a
+  actor: jgstern_agent  # 2d3a
+  clock: 2  # 2d3a
+  nonce: 2d3a  # 2d3a
+  set:  # 2d3a
+    priority: 4  # 2d3a
+- op: discuss  # 150b
+  at: '2026-03-30T09:55:36Z'  # 150b
+  by: agent  # 150b
+  actor: jgstern_agent  # 150b
+  clock: 3  # 150b
+  nonce: 150b  # 150b
+  message: "Deferring to P4. Seed selection improvement is a quality enhancement, not a correctness fix. Current workaround: developers can specify --entry manually for targeted slicing."  # 150b

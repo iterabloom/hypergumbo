@@ -19,3 +19,18 @@
     fields:  # ca94
       statement: "Dataflow-aware slicing must produce tighter results than regular slicing by distinguishing read vs write access modes, otherwise it adds metadata overhead with zero value"  # ca94
       root_cause: "access_mode annotations in all languages default to 'write' — no 'read' mode is ever emitted, so dataflow slice has no signal to prune edges that regular slice keeps"  # ca94
+- op: update  # 9178
+  at: '2026-03-30T09:55:17Z'  # 9178
+  by: agent  # 9178
+  actor: jgstern_agent  # 9178
+  clock: 2  # 9178
+  nonce: '9178'  # 9178
+  set:  # 9178
+    status: needs_human_review  # 9178
+- op: discuss  # c172
+  at: '2026-03-30T09:55:17Z'  # c172
+  by: agent  # c172
+  actor: jgstern_agent  # c172
+  clock: 3  # c172
+  nonce: c172  # c172
+  message: "Implementing read vs write access_mode requires per-language heuristics. Suggest starting with Python (py_def_use.py already has dataflow extraction) then Rust (rust_def_use.py), then Go. Architectural question: should we distinguish read/write/mutate/pure, or just read/write? Deferring to human review."  # c172
