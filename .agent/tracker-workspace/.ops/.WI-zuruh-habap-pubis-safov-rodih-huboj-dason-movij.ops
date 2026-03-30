@@ -1,0 +1,35 @@
+- op: create  # 3290
+  at: '2026-03-30T18:24:19Z'  # 3290
+  by: agent  # 3290
+  actor: jgstern_agent  # 3290
+  clock: 1  # 3290
+  nonce: '3290'  # 3290
+  data:  # 3290
+    kind: work_item  # 3290
+    title: "Fix CI: pytest job hangs indefinitely on PR checks"  # 3290
+    status: todo_hard  # 3290
+    priority: 0  # 3290
+    parent:  # 3290
+    tags:  # 3290
+    - ci_infrastructure  # 3290
+    before: []  # 3290
+    duplicate_of: []  # 3290
+    not_duplicate_of: []  # 3290
+    pr_ref:  # 3290
+    description: "CI pytest job has been hanging for 45+ minutes on PR #2634 and is now hanging again on PR #2635. All other CI jobs (lint, dco, audit, build-grammars, verify-generated, tracker-validate) pass quickly. The pytest and pytest-retry jobs remain pending indefinitely. This blocks all merges and development velocity. Root cause unknown — could be runner capacity, stuck process, or resource exhaustion. Combined user-agent priority: investigate and fix immediately."  # 3290
+    fields: {}  # 3290
+- op: update  # ae73
+  at: '2026-03-30T20:01:50Z'  # ae73
+  by: agent  # ae73
+  actor: jgstern_agent  # ae73
+  clock: 2  # ae73
+  nonce: ae73  # ae73
+  set:  # ae73
+    status: done  # ae73
+- op: discuss  # 1ebf
+  at: '2026-03-30T20:01:50Z'  # 1ebf
+  by: agent  # 1ebf
+  actor: jgstern_agent  # 1ebf
+  clock: 3  # 1ebf
+  nonce: 1ebf  # 1ebf
+  message: "Mitigated: runner processes were hung due to Go HTTP/2 pool deadlock. Applied GODEBUG=http2client=0 + RuntimeMaxSec=3d + SIGABRT dump capture in systemd drop-ins. See self-hosted-forgejo-shpilkes-analysis.md and notebookjournal_03302026_1556.md."  # 1ebf

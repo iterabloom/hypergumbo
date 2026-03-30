@@ -63,3 +63,25 @@
   nonce: 77a7  # 77a7
   set:  # 77a7
     status: violated  # 77a7
+- op: discuss  # 73c8
+  at: '2026-03-30T16:52:46Z'  # 73c8
+  by: agent  # 73c8
+  actor: jgstern_agent  # 73c8
+  clock: 8  # 73c8
+  nonce: 73c8  # 73c8
+  message: "Implemented position-aware access_mode classification. Two root causes fixed: (1) build_node_type_map() collapsed positional YAML rules into single mode — added build_positional_map() with byte-range child classification, (2) returns YAML section was silently dropped — now loaded. Python AST path reclassifies call edges on assignment lines as read. All 20 language YAML files benefit automatically (tree-sitter path). PR pending merge."  # 73c8
+- op: update  # daf0
+  at: '2026-03-30T18:02:57Z'  # daf0
+  by: agent  # daf0
+  actor: jgstern_agent  # daf0
+  clock: 9  # daf0
+  nonce: daf0  # daf0
+  set:  # daf0
+    status: holding  # daf0
+- op: discuss  # ffc6
+  at: '2026-03-30T18:02:57Z'  # ffc6
+  by: agent  # ffc6
+  actor: jgstern_agent  # ffc6
+  clock: 10  # ffc6
+  nonce: ffc6  # ffc6
+  message: "Fixed in PR #2634. Root cause: build_node_type_map() collapsed positional YAML rules, returns section silently dropped. Fix: position-aware classification via build_positional_map() + _classify_by_position(). Python AST path reclassifies call edges on assignment lines as read. All 20+ language YAML patterns benefit automatically. Holding: remaining work is Go-specific heuristics (pointer vs value receiver) which are a separate scope."  # ffc6

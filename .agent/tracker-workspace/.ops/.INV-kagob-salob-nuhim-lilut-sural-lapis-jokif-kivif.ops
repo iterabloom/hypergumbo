@@ -51,3 +51,10 @@
   clock: 5  # e202
   nonce: e202  # e202
   message: "Investigated. IO boundaries do NOT currently trace through cgo_bridge or ffi_bridge edges. Evidence:\n\n1. tag_io_boundaries() in io_boundary.py has a hardcoded call_types set that includes wasm_bridge, native_bridge, bridge_invokes, ipc_calls, grpc_calls, implements_rpc — but NOT cgo_bridge or ffi_bridge.\n2. _trace_entry_points() has the same gap in _TRACEABLE_TYPES.\n3. Bakeoff artifacts confirm: go-sqlite3 has 116 cgo_bridge edges with 0 io_boundary metadata. tokenizers has 361 ffi_bridge edges with 0 io_boundary metadata. polars has 5,617 ffi_bridge edges — all IO chains stay within Python boundaries.\n\nThe fix is straightforward: add 'cgo_bridge' and 'ffi_bridge' to both call_types in tag_io_boundaries() and _TRACEABLE_TYPES in _trace_entry_points(). Then write tests confirming a Python→Rust ffi_bridge edge carrying an IO call (e.g. fs.read_file in Rust) produces a chain traceable from the Python caller.\n\nValidation plan: after fix, re-run on tokenizers (361 ffi_bridge edges, Rust has real file IO) and go-sqlite3 (116 cgo_bridge edges, C has real file IO). Check that: (a) no generic-name false positives from the bridge edges (ambiguous_names should block bare .read()/.write()), (b) legitimate IO chains cross the language boundary, (c) entry_point tracing reaches the Python/Go caller.\n\nThis has not been tested before — it's a genuine gap, not a regression."  # e202
+- op: discuss  # d100
+  at: '2026-03-30T18:08:54Z'  # d100
+  by: agent  # d100
+  actor: jgstern_agent  # d100
+  clock: 6  # d100
+  nonce: d100  # d100
+  message: "Concurrent test: triggering tracker activity while auto-pr polls CI for PR on another branch. This is a deliberate INV-rahib test."  # d100

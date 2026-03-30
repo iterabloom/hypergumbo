@@ -79,3 +79,10 @@
   clock: 9  # 462c
   nonce: 462c  # 462c
   message: "Agreed. Status reverted to violated. The ambiguous_names fix (PR #2628) is deployed and validation bakeoff (deep-20260330-060143) shows significant improvement (age: net_send 4→0, net_recv 14→0; polars: net_send 285→89, 69% reduction). But full curriculum re-run needed to confirm no regressions before closing. Will re-run the polyglot-IO curriculum against current code in the next DEEP session."  # 462c
+- op: discuss  # 3dc3
+  at: '2026-03-30T18:21:47Z'  # 3dc3
+  by: agent  # 3dc3
+  actor: jgstern_agent  # 3dc3
+  clock: 10  # 3dc3
+  nonce: 3dc3  # 3dc3
+  message: "Additional concurrent test: pushing tracker ops closer to auto-sync threshold while auto-pr polls CI."  # 3dc3
