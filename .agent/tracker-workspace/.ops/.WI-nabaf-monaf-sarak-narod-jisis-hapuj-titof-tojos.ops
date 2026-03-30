@@ -1,0 +1,19 @@
+- op: create  # 458b
+  at: '2026-03-30T21:46:54Z'  # 458b
+  by: agent  # 458b
+  actor: jgstern_agent  # 458b
+  clock: 1  # 458b
+  nonce: 458b  # 458b
+  data:  # 458b
+    kind: work_item  # 458b
+    title: "Tier-1 slice drops nodes reachable only via dispatches_to edges"  # 458b
+    status: todo_soft  # 458b
+    priority: 3  # 458b
+    parent:  # 458b
+    tags: []  # 458b
+    before: []  # 458b
+    duplicate_of: []  # 458b
+    not_duplicate_of: []  # 458b
+    pr_ref:  # 458b
+    description: "Bakeoff assessment (deep-20260330-164900, age): tier-1 forward slice silently drops 11 tier-1 nodes reachable via dispatches_to from interface methods. The tier filter likely prunes before resolving interface dispatch. Fix: resolve dispatches_to edges before applying tier filter in slice BFS."  # 458b
+    fields: {}  # 458b

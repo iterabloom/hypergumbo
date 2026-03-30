@@ -224,3 +224,18 @@
   clock: 28  # 2674
   nonce: '2674'  # 2674
   message: "Additional concurrent test: deliberate tracker activity during auto-pr CI polling. Testing INV-rahib invariant."  # 2674
+- op: update  # e831
+  at: '2026-03-30T21:23:01Z'  # e831
+  by: agent  # e831
+  actor: jgstern_agent  # e831
+  clock: 29  # e831
+  nonce: e831  # e831
+  set:  # e831
+    status: holding  # e831
+- op: discuss  # e7bb
+  at: '2026-03-30T21:23:01Z'  # e7bb
+  by: agent  # e7bb
+  actor: jgstern_agent  # e7bb
+  clock: 30  # e7bb
+  nonce: e7bb  # e7bb
+  message: "Partial fix in PR #2640. Empty route paths normalized to '/' in make_route_stable_id() and materialize_route_symbols(). Routes now get proper stable IDs and display names. Holding: remaining work is Spring class-level @RequestMapping path chaining (combines class prefix + method path) and Express middleware path='*' emission — these require analyzer-level changes, not just normalization."  # e7bb

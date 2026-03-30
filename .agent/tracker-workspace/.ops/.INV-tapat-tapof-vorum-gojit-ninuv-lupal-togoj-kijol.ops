@@ -86,3 +86,18 @@
   clock: 10  # 3dc3
   nonce: 3dc3  # 3dc3
   message: "Additional concurrent test: pushing tracker ops closer to auto-sync threshold while auto-pr polls CI."  # 3dc3
+- op: update  # 77d1
+  at: '2026-03-30T20:58:10Z'  # 77d1
+  by: agent  # 77d1
+  actor: jgstern_agent  # 77d1
+  clock: 11  # 77d1
+  nonce: 77d1  # 77d1
+  set:  # 77d1
+    status: holding  # 77d1
+- op: discuss  # 6b5c
+  at: '2026-03-30T20:58:10Z'  # 6b5c
+  by: agent  # 6b5c
+  actor: jgstern_agent  # 6b5c
+  clock: 12  # 6b5c
+  nonce: 6b5c  # 6b5c
+  message: "Validated in DEEP bakeoff session deep-20260330-164900. age: access_mode_coverage 41%, io_tag_rate 8.5% (net_send/net_recv false positives eliminated per prior session). polars: access_mode_coverage 24.9%, io_tag_rate 0.5% (69% reduction from pre-fix). go-sqlite3: cross_language_io_pct 100%. All repos show correct ambiguous_names filtering. Holding: monitor for regressions in future bakeoffs."  # 6b5c
