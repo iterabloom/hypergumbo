@@ -7,6 +7,38 @@
 # transitively, so covering stdlib + OTP is sufficient.
 language: erlang
 
+# Function names that are too generic to match without module context.
+# Erlang modules use short, generic names for very different operations.
+ambiguous_names:
+  - read          # file:read vs any read/1
+  - write         # file:write vs any write/2
+  - open          # file:open vs gen_tcp:open, any open/1
+  - close         # file:close vs gen_tcp:close, any close/1
+  - send          # gen_tcp:send vs gen_server:send, Pid ! Msg
+  - recv          # gen_tcp:recv vs any recv/2
+  - connect       # gen_tcp:connect vs any connect/2
+  - accept        # gen_tcp:accept vs any accept/1
+  - listen        # gen_tcp:listen vs any listen/2
+  - start         # gen_server:start vs application:start, any start/1
+  - stop          # gen_server:stop vs application:stop, any stop/1
+  - call          # gen_server:call vs any call/2
+  - cast          # gen_server:cast vs any cast/2
+  - reply         # gen_server:reply vs any reply/2
+  - spawn         # erlang:spawn vs any spawn/1
+  - link          # erlang:link vs file:make_link
+  - delete        # ets:delete vs file:delete, any delete/1
+  - lookup        # ets:lookup vs any lookup/2
+  - insert        # ets:insert vs any insert/2
+  - new           # ets:new vs any new/1
+  - get           # application:get_env vs any get/1
+  - set           # application:set_env vs any set/2
+  - log           # logger:log vs math:log
+  - format        # io:format vs any format/2
+  - register      # erlang:register vs any register/2
+  - monitor       # erlang:monitor vs any monitor/2
+  - exit          # erlang:exit vs any exit/1
+  - error         # logger:error vs erlang:error
+
 fs_read:
   - module: file
     functions: [read_file, read, read_line, pread, open, consult, path_consult, eval, script, list_dir, list_dir_all, read_file_info, read_link_info, read_link]

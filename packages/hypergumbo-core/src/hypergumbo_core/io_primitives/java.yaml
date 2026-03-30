@@ -4,6 +4,33 @@
 # Maps Java standard library classes/methods to I/O boundary types.
 language: java
 
+# Method names that are too generic to match without module context.
+# Java interfaces mean .read(), .write(), .close() appear on many classes.
+ambiguous_names:
+  - read          # FileInputStream.read vs ByteBuffer.read, any .read()
+  - write         # FileOutputStream.write vs ByteBuffer.write, any .write()
+  - close         # Stream.close vs any AutoCloseable.close()
+  - flush         # OutputStream.flush vs any .flush()
+  - send          # Socket.send vs any .send()
+  - connect       # Socket.connect vs any .connect()
+  - accept        # ServerSocket.accept vs any .accept()
+  - bind          # ServerSocket.bind vs any .bind()
+  - put           # RestTemplate.put vs Map.put, ByteBuffer.put
+  - get           # RestTemplate.getForObject vs Map.get
+  - delete        # RestTemplate.delete vs Map.remove, File.delete
+  - exchange      # RestTemplate.exchange vs any .exchange()
+  - execute       # OkHttp.execute vs Executor.execute, Statement.execute
+  - enqueue       # OkHttp.enqueue vs Queue.enqueue
+  - start         # ProcessBuilder.start vs Thread.start, any .start()
+  - exec          # Runtime.exec vs any .exec()
+  - run           # actix.run vs Runnable.run, Thread.run
+  - next          # Scanner.next vs Iterator.next
+  - nextLine      # Scanner.nextLine vs any .nextLine()
+  - append        # FileWriter.append vs StringBuilder.append
+  - exists        # File.exists vs any .exists()
+  - list          # File.list vs Collection, any .list()
+  - readLine      # BufferedReader.readLine vs any .readLine()
+
 fs_read:
   - module: java.io.File
     methods: [exists, isFile, isDirectory, list, listFiles, length, lastModified, canRead]

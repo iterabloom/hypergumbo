@@ -5,6 +5,38 @@
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
 language: rust
 
+# Method names that are too generic to match without module context.
+# Rust traits mean .read(), .write(), .connect() etc. appear on many types;
+# only some are actual IO.
+ambiguous_names:
+  - read          # Read trait — Vec<u8>, Cursor, BufReader, not just TcpStream
+  - read_to_end   # Read::read_to_end on any impl Read, not just network
+  - read_to_string # Read::read_to_string on any impl Read
+  - write         # Write trait — Vec<u8>, BufWriter, not just TcpStream
+  - write_all     # Write::write_all on any impl Write
+  - write_fmt     # Write::write_fmt on any impl Write
+  - flush         # Write::flush on any impl Write
+  - connect       # TcpStream::connect vs any .connect() method
+  - bind          # TcpListener::bind vs any .bind() method
+  - accept        # TcpListener::accept vs any .accept() method
+  - send          # UdpSocket::send vs channel::Sender.send
+  - send_to       # UdpSocket::send_to vs any .send_to()
+  - recv          # UdpSocket::recv vs channel::Receiver.recv
+  - recv_from     # UdpSocket::recv_from vs any .recv_from()
+  - run           # actix_web::HttpServer.run vs tokio::Runtime.run, any .run()
+  - get           # reqwest::Client.get vs HashMap.get
+  - post          # reqwest::Client.post vs any .post()
+  - put           # reqwest::Client.put vs HashMap::insert (called .put in other APIs)
+  - delete        # reqwest::Client.delete vs any .delete()
+  - head          # reqwest::Client.head vs any .head()
+  - open          # File::open vs any .open()
+  - create        # File::create vs any .create()
+  - spawn         # Command::spawn vs tokio::spawn, thread::spawn
+  - new           # Command::new vs any constructor
+  - output        # Command::output vs any .output()
+  - status        # Command::status vs any .status()
+  - route         # axum::Router.route vs any .route()
+
 fs_read:
   - module: std::fs
     functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize]

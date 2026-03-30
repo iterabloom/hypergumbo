@@ -4,6 +4,31 @@
 # Maps Go standard library functions to I/O boundary types.
 language: go
 
+# Method names that are too generic to match without module context.
+# When the edge has no module_hint (or "external"), these names are skipped
+# to avoid false positives like t.Run() → gin.Engine.Run.
+ambiguous_names:
+  - Read          # io.Reader.Read vs any .Read() method
+  - Write         # io.Writer.Write vs any .Write() method
+  - Run           # gin.Engine.Run vs testing.T.Run, cobra.Command.Run
+  - Start         # echo.Echo.Start vs any .Start() method
+  - String        # gin.Context.String vs fmt.Stringer.String
+  - Close         # net.Conn.Close vs any .Close() method
+  - Do            # http.Client.Do vs any .Do() method
+  - Get           # http.Client.Get vs map.Get, cache.Get
+  - Post          # http.Client.Post vs forum.Post
+  - Head          # http.Client.Head vs list.Head
+  - Serve         # grpc.Server.Serve vs any .Serve() method
+  - Accept        # net.Listener.Accept vs any .Accept() method
+  - Listen        # net.Listen vs any .Listen() method
+  - Dial          # net.Dial vs any .Dial() method
+  - DialContext   # grpc.DialContext vs any .DialContext() method
+  - Output        # exec.Cmd.Output vs any .Output() method
+  - JSON          # gin.Context.JSON vs encoding/json (not IO)
+  - HTML          # gin.Context.HTML vs template.HTML (not IO)
+  - XML           # gin.Context.XML vs encoding/xml (not IO)
+  - Send          # net.UdpSocket.Send vs channel send
+
 fs_read:
   - module: os
     functions: [Open, ReadFile, ReadDir, Stat, Lstat, Readlink]

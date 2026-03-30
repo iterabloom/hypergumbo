@@ -1304,14 +1304,226 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Generic 'foreach' should not match SQL.foreach for unresolved externals"
 
     def test_go_external_still_works(self) -> None:
-        """Go catalog without ambiguous_names list keeps current fallback behavior."""
+        """Go catalog: distinctive names like 'Open' still match without module context."""
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/a.go:1:main:function",
             dst="go:external:0-0:Open:unresolved",
         )
         count = tag_io_boundaries([edge], {"go": catalog})
-        assert count == 1, "Go external matching should still work (backward compatible)"
+        assert count == 1, "Go external matching should still work for distinctive names"
+
+    # --- Go ambiguous names ---
+
+    def test_go_bare_run_not_matched(self) -> None:
+        """Go: bare 'Run' should NOT match gin.Engine.Run without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:TestFoo:function",
+            dst="go:external:0-0:Run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Run' is ambiguous (testing.T.Run, cobra.Command.Run)"
+
+    def test_go_bare_string_not_matched(self) -> None:
+        """Go: bare 'String' should NOT match gin.Context.String without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:handler:function",
+            dst="go:external:0-0:String:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'String' is ambiguous (fmt.Stringer.String)"
+
+    def test_go_bare_read_not_matched(self) -> None:
+        """Go: bare 'Read' should NOT match net.Conn.Read without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:process:function",
+            dst="go:external:0-0:Read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Read' is ambiguous (io.Reader.Read on many types)"
+
+    def test_go_bare_write_not_matched(self) -> None:
+        """Go: bare 'Write' should NOT match net.Conn.Write without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:process:function",
+            dst="go:external:0-0:Write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Write' is ambiguous (io.Writer.Write on many types)"
+
+    def test_go_qualified_run_still_matches(self) -> None:
+        """Go: 'Run' with gin.Engine module context should still match."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:main:function",
+            dst="go:gin.Engine:0-0:Run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1, "Qualified 'Run' on gin.Engine should match"
+
+    # --- Rust ambiguous names ---
+
+    def test_rust_bare_put_not_matched(self) -> None:
+        """Rust: bare 'put' should NOT match reqwest::Client.put without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:process:function",
+            dst="rust:external:0-0:put:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 0, "Bare 'put' is ambiguous (HashMap.insert pattern)"
+
+    def test_rust_bare_read_to_end_not_matched(self) -> None:
+        """Rust: bare 'read_to_end' should NOT match TcpStream without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:load:function",
+            dst="rust:external:0-0:read_to_end:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 0, "Bare 'read_to_end' is ambiguous (Read trait on Vec, Cursor, etc.)"
+
+    def test_rust_distinctive_read_dir_still_matches(self) -> None:
+        """Rust: distinctive 'read_dir' should still match without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:load:function",
+            dst="rust:external:0-0:read_dir:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 1, "Distinctive 'read_dir' should match even without module context"
+
+    # --- Python ambiguous names ---
+
+    def test_python_bare_write_not_matched(self) -> None:
+        """Python: bare 'write' should NOT match asyncio.StreamWriter without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:process:function",
+            dst="python:external:0-0:write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'write' is ambiguous (io.StringIO.write, any .write())"
+
+    def test_python_bare_read_not_matched(self) -> None:
+        """Python: bare 'read' should NOT match asyncio.StreamReader without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:process:function",
+            dst="python:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'read' is ambiguous (io.BytesIO.read, any .read())"
+
+    def test_python_bare_run_not_matched(self) -> None:
+        """Python: bare 'run' should NOT match subprocess.run without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:main:function",
+            dst="python:external:0-0:run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'run' is ambiguous (asyncio.run, flask.Flask.run, etc.)"
+
+    def test_python_qualified_run_still_matches(self) -> None:
+        """Python: 'run' with subprocess module context should still match."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:main:function",
+            dst="python:subprocess:0-0:run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1, "Qualified 'run' on subprocess should match"
+
+    # --- Java ambiguous names ---
+
+    def test_java_bare_put_not_matched(self) -> None:
+        """Java: bare 'put' should NOT match RestTemplate.put without module context."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:process:method",
+            dst="java:external:0-0:put:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, "Bare 'put' is ambiguous (Map.put, ByteBuffer.put)"
+
+    def test_java_bare_read_not_matched(self) -> None:
+        """Java: bare 'read' should NOT match FileInputStream.read without module context."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:process:method",
+            dst="java:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, "Bare 'read' is ambiguous (ByteBuffer.read, any .read())"
+
+    def test_java_qualified_read_still_matches(self) -> None:
+        """Java: 'read' with FileInputStream module context should still match."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:load:method",
+            dst="java:java.io.FileInputStream:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 1, "Qualified 'read' on FileInputStream should match"
+
+    # --- C ambiguous names ---
+
+    def test_c_bare_read_not_matched(self) -> None:
+        """C: bare 'read' should NOT match unistd read without module context."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="c:src/main.c:10:process:function",
+            dst="c:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 0, "Bare 'read' is ambiguous in C (project-local read() functions)"
+
+    def test_c_bare_write_not_matched(self) -> None:
+        """C: bare 'write' should NOT match unistd write without module context."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="c:src/main.c:10:process:function",
+            dst="c:external:0-0:write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 0, "Bare 'write' is ambiguous in C (project-local write() functions)"
+
+    # --- JavaScript ambiguous names ---
+
+    def test_js_bare_send_not_matched(self) -> None:
+        """JS: bare 'send' should NOT match socket.send without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:handler:function",
+            dst="javascript:external:0-0:send:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'send' is ambiguous (express.Response.send, EventEmitter)"
+
+    def test_js_bare_listen_not_matched(self) -> None:
+        """JS: bare 'listen' should NOT match net.Server.listen without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:main:function",
+            dst="javascript:external:0-0:listen:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'listen' is ambiguous (EventEmitter.on pattern)"
+
+    def test_js_distinctive_readFile_still_matches(self) -> None:
+        """JS: distinctive name 'readFile' should still match without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:load:function",
+            dst="javascript:external:0-0:readFile:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 1, "Distinctive 'readFile' should match even without module context"
 
 
 class TestCatalogMerge:

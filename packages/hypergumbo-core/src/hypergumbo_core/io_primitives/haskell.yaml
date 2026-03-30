@@ -8,6 +8,30 @@
 # transitively, so covering base + common libraries is sufficient.
 language: haskell
 
+# Function names that are too generic to match without module context.
+# Haskell Prelude auto-imports many names; same names appear in non-IO contexts.
+ambiguous_names:
+  - read          # Prelude.read (parse) vs System.IO.hGet
+  - write         # any .write vs System.IO.hPut
+  - run           # Warp.run vs IO.run, any .run
+  - send          # Network.Socket.send vs any .send
+  - recv          # Network.Socket.recv vs any .recv
+  - connect       # Network.Socket.connect vs any .connect
+  - bind          # Network.Socket.bind vs Monad.bind (>>=)
+  - accept        # Network.Socket.accept vs any .accept
+  - listen        # Network.Socket.listen vs any .listen
+  - close         # Network.Socket.close vs any .close
+  - open          # System.IO.openFile vs any .open
+  - new           # IORef.new, MVar.new, TVar.new (very common)
+  - get           # IORef.readIORef vs any .get
+  - put           # IORef.writeIORef vs any .put, putStrLn (Prelude)
+  - start         # Process.startProcess vs any .start
+  - spawn         # forkIO vs any .spawn
+  - print         # Prelude.print (IO) — common but often used for debugging
+  - log           # any logging framework vs math log
+  - trace         # Debug.Trace.trace vs any .trace
+  - yield         # Control.Concurrent.yield vs any .yield
+
 fs_read:
   - module: Prelude
     functions: [readFile, getContents, readIO, readLn, interact]

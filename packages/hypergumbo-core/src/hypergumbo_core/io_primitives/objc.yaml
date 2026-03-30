@@ -9,6 +9,21 @@
 # This catalog covers ObjC-specific Foundation/Cocoa wrappers.
 language: objc
 
+# Selector names that are too generic to match without class context.
+# ObjC message sends use short selectors that appear on many classes.
+ambiguous_names:
+  - read          # NSFileHandle read vs any read
+  - write         # NSFileHandle write vs any write
+  - open          # NSFileHandle open vs any open
+  - close         # NSFileHandle close vs any close
+  - send          # NSURLSession send vs any send
+  - start         # NSURLSessionTask start vs any start
+  - data          # NSData.data vs any .data property
+  - run           # NSRunLoop.run vs any run
+  - get           # NSURLSession GET vs NSDictionary.objectForKey
+  - delete        # NSFileManager delete vs any delete
+  - connect       # NSStream connect vs any connect
+
 fs_read:
   - module: NSFileManager
     methods:

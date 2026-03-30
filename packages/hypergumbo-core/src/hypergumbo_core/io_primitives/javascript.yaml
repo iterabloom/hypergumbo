@@ -6,6 +6,42 @@
 # Also used for TypeScript (same runtime primitives).
 language: javascript
 
+# Method/function names that are too generic to match without module context.
+# Node.js uses the same names across many modules and user code.
+ambiguous_names:
+  - read          # fs.read vs any .read()
+  - write         # fs.write vs any .write()
+  - open          # fs.open vs any .open()
+  - close         # fs.close vs any .close()
+  - end           # response.end vs stream.end, any .end()
+  - send          # socket.send vs express.Response.send
+  - on            # EventEmitter.on (universal in Node.js)
+  - get           # http.get vs Map.get, express.app.get (route definition)
+  - post          # axios.post vs any .post()
+  - put           # axios.put vs Map.set
+  - delete        # axios.delete vs Map.delete
+  - patch         # axios.patch vs any .patch()
+  - request       # http.request vs any .request()
+  - connect       # net.connect vs any .connect()
+  - listen        # net.Server.listen vs any .listen()
+  - create        # net.createServer vs Object.create, any .create()
+  - resolve       # path.resolve vs Promise.resolve
+  - join          # path.join vs Array.join
+  - spawn         # child_process.spawn vs any .spawn()
+  - exec          # child_process.exec vs any .exec()
+  - fork          # child_process.fork vs cluster.fork
+  - run           # uvicorn.run vs any .run()
+  - render        # express.Response.render vs any .render()
+  - redirect      # express.Response.redirect vs any .redirect()
+  - json          # express.Response.json vs JSON.parse
+  - status        # express.Response.status vs any .status()
+  - download      # express.Response.download vs any .download()
+  - type          # os.type vs typeof
+  - platform      # os.platform vs any .platform
+  - arch          # os.arch vs any .arch
+  - hostname      # os.hostname vs any .hostname
+  - release       # os.release vs any .release
+
 fs_read:
   - module: fs
     functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, accessSync, access, readlinkSync, readlink, realpathSync, realpath]
