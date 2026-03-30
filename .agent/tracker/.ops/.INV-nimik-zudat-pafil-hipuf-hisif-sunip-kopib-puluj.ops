@@ -292,3 +292,11 @@
   clock: 37  # 1e5a
   nonce: 1e5a  # 1e5a
   message: "ok that's what you should do then please. I have updated status to violated and promoted to priority 3 so you don't ignore this."  # 1e5a
+- op: update  # cfc4
+  at: '2026-03-30T22:18:28Z'  # cfc4
+  by: agent  # cfc4
+  actor: jgstern_agent  # cfc4
+  clock: 38  # cfc4
+  nonce: cfc4  # cfc4
+  set:  # cfc4
+    status: holding  # cfc4

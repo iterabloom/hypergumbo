@@ -85,3 +85,17 @@
   clock: 10  # ffc6
   nonce: ffc6  # ffc6
   message: "Fixed in PR #2634. Root cause: build_node_type_map() collapsed positional YAML rules, returns section silently dropped. Fix: position-aware classification via build_positional_map() + _classify_by_position(). Python AST path reclassifies call edges on assignment lines as read. All 20+ language YAML patterns benefit automatically. Holding: remaining work is Go-specific heuristics (pointer vs value receiver) which are a separate scope."  # ffc6
+- op: discuss  # 9634
+  at: '2026-03-30T22:18:32Z'  # 9634
+  by: human  # 9634
+  actor: jgstern  # 9634
+  clock: 11  # 9634
+  nonce: '9634'  # 9634
+  message: "Did you confirm this fix by analyzing real-world repos?\n\nDo the data collected from either of these recent bakeoffs suffice? Note timestamps relative to when you merged the PR.\n\ndeep-20260330-164753\ndeep-20260330-164900"  # 9634
+- op: discuss  # bca8
+  at: '2026-03-30T22:19:08Z'  # bca8
+  by: agent  # bca8
+  actor: jgstern_agent  # bca8
+  clock: 12  # bca8
+  nonce: bca8  # bca8
+  message: "Same situation as INV-kagob: the bakeoff session deep-20260330-164900 ran with code hash 17be048b7bb3, which is AFTER PR #2634 (merged as commit 12dbad0d → dev, then 0f53535f after auto-pr gate fix). So this bakeoff DOES validate the access_mode fix.\n\nEvidence from the bakeoff:\n- age: access_mode_coverage = 41.0% (was 0% before fix). dataflow_slice_ratio = 8.9% (dataflow slices now differ from structural).\n- polars: access_mode_coverage = 24.9%. dataflow_slice_ratio = 100% (complete separation).\n- go-sqlite3: access_mode_coverage = 7.4% (lower because C files had no returns section — fixed in PR #2641).\n\nThe fix is validated for Python and Rust repos. Go coverage is lower but confirmed non-zero."  # bca8

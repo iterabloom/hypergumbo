@@ -80,3 +80,25 @@
   clock: 9  # 7469
   nonce: '7469'  # 7469
   message: "Did you run bakeoff validation on tokenizers (361 ffi_bridge) and go-sqlite3 (116 cgo_bridge) to confirm real-world improvement? \n\nDo the data collected from any of these recent bakeoffs suffice? Note timestamps relative to when you merged the PR.\n\ndeep-20260330-035757\ndeep-20260330-043124\ndeep-20260330-044609\ndeep-20260330-060143\ndeep-20260330-164753\ndeep-20260330-164900"  # 7469
+- op: discuss  # 10a5
+  at: '2026-03-30T22:18:19Z'  # 10a5
+  by: agent  # 10a5
+  actor: jgstern_agent  # 10a5
+  clock: 10  # 10a5
+  nonce: 10a5  # 10a5
+  message: "The DEEP bakeoff session deep-20260330-164900 ran BEFORE PR #2638 (the ffi_bridge fix) was merged — code hash 17be048b7bb3 vs the fix at 05680d5e. So the bakeoff data confirms the PROBLEM (5,617 ffi_bridge edges with 0 IO tags in polars) but not the FIX.\n\nTo confirm the fix works, a new bakeoff needs to run with the current code. The cross_language_io_pct=100% in the bakeoff is misleading — it measures IO chains that DO cross language boundaries as a percentage of total IO chains, not whether FFI edges get tagged. The 100% means existing IO detections happened to be cross-language, not that FFI bridges were successfully traced.\n\nStatus should remain holding until a post-fix bakeoff validates on tokenizers and go-sqlite3."  # 10a5
+- op: update  # 9ba4
+  at: '2026-03-30T22:20:08Z'  # 9ba4
+  by: human  # 9ba4
+  actor: jgstern  # 9ba4
+  clock: 11  # 9ba4
+  nonce: 9ba4  # 9ba4
+  set:  # 9ba4
+    status: violated  # 9ba4
+- op: discuss  # 1c1a
+  at: '2026-03-30T22:21:07Z'  # 1c1a
+  by: human  # 1c1a
+  actor: jgstern  # 1c1a
+  clock: 12  # 1c1a
+  nonce: 1c1a  # 1c1a
+  message: "no; status should remain \"violated\" until those conditions are met. \"holding\" implies no action needed, which is not the case."  # 1c1a
