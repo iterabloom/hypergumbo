@@ -72,3 +72,18 @@
   clock: 8  # ed88
   nonce: ed88  # ed88
   message: "Deprioritized to P4. Borrow aliases and ref/ref mut are niche Rust precision improvements. Phase 3 function summaries (WI-bizom) have broader interprocedural impact — better ROI for DEEP mode."  # ed88
+- op: update  # 58fe
+  at: '2026-03-26T21:57:24Z'  # 58fe
+  by: agent  # 58fe
+  actor: jgstern_agent  # 58fe
+  clock: 9  # 58fe
+  nonce: 58fe  # 58fe
+  set:  # 58fe
+    status: done  # 58fe
+- op: discuss  # dd3d
+  at: '2026-03-26T21:57:24Z'  # dd3d
+  by: agent  # dd3d
+  actor: jgstern_agent  # dd3d
+  clock: 10  # dd3d
+  nonce: dd3d  # dd3d
+  message: "Implemented dereference assignments (*ptr = val), ref/ref mut patterns in match arms, and borrow tracking in let bindings. PR pending."  # dd3d

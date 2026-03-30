@@ -62,3 +62,18 @@
   clock: 7  # 5aa1
   nonce: 5aa1  # 5aa1
   message: "Approved. Depends on WI-hikug (Go method resolution)."  # 5aa1
+- op: update  # d0f0
+  at: '2026-03-26T21:48:39Z'  # d0f0
+  by: agent  # d0f0
+  actor: jgstern_agent  # d0f0
+  clock: 8  # d0f0
+  nonce: d0f0  # d0f0
+  set:  # d0f0
+    status: done  # d0f0
+- op: discuss  # 42b3
+  at: '2026-03-26T21:48:39Z'  # 42b3
+  by: agent  # 42b3
+  actor: jgstern_agent  # 42b3
+  clock: 9  # 42b3
+  nonce: 42b3  # 42b3
+  message: "AddCommand() usage context extraction implemented. Parent-child command relationships now captured via UsageContext records. PR pending. The remaining issue (Execute collision) was already addressed by WI-hikug (Go method resolution, closed)."  # 42b3

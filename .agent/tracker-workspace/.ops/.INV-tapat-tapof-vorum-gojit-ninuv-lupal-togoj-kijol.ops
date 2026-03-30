@@ -1,0 +1,21 @@
+- op: create  # a67b
+  at: '2026-03-30T09:26:41Z'  # a67b
+  by: agent  # a67b
+  actor: jgstern_agent  # a67b
+  clock: 1  # a67b
+  nonce: a67b  # a67b
+  data:  # a67b
+    kind: invariant  # a67b
+    title: "IO boundary classifier matches bare method names without receiver type verification"  # a67b
+    status: violated  # a67b
+    priority: 1  # a67b
+    parent:  # a67b
+    tags: []  # a67b
+    before: []  # a67b
+    duplicate_of: []  # a67b
+    not_duplicate_of: []  # a67b
+    pr_ref:  # a67b
+    description: "Identified across 3 DEEP bakeoffs (57 repos). Go: .String()→gin.Context.String, .Run()→gin.Engine.Run. Rust: .put()→reqwest, .read_to_end()→TcpStream. Python: .write()→asyncio.StreamWriter. Java: .put()→RestTemplate.put. Sessions: deep-20260330-035757, -043124, -044609."  # a67b
+    fields:  # a67b
+      statement: "IO boundary classification must verify the receiver type (or at minimum the containing module/import), not just the method name, because common method names (.String, .Run, .read, .put, .write) appear on unrelated types and produce false positives"  # a67b
+      root_cause: "match_edge_to_primitive in io_boundary.py matches callee name against IO primitive catalog without checking the receiver type or import context"  # a67b
