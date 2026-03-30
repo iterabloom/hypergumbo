@@ -61,7 +61,9 @@ class DataflowConfig:
 
     Each section maps tree-sitter node types to access mode rules.
     The ``library_patterns`` section defines regex-based patterns for
-    library-specific dataflow detection.
+    library-specific dataflow detection.  The ``returns`` section maps
+    return/yield node types to ``"read"`` (the function reads/produces
+    a value).
     """
 
     language: str
@@ -69,13 +71,16 @@ class DataflowConfig:
     calls: List[Dict[str, Any]] = field(default_factory=list)
     deletions: List[Dict[str, Any]] = field(default_factory=list)
     borrows: List[Dict[str, Any]] = field(default_factory=list)
+    returns: List[Dict[str, Any]] = field(default_factory=list)
     library_patterns: List[Dict[str, Any]] = field(default_factory=list)
 
     def build_node_type_map(self) -> Dict[str, str]:
-        """Build a lookup from tree-sitter node_type to access_mode.
+        """Build a simple lookup from tree-sitter node_type to access_mode.
 
         Returns a dict mapping node_type strings to the primary access mode
-        for that node type (the first access mode keyword found in the rule).
+        for that node type.  For assignment rules with both write and read
+        sides, this returns the write/mutate side (use
+        ``build_positional_map`` for position-aware classification).
         """
         result: Dict[str, str] = {}
         for rule in self.assignments:
@@ -89,6 +94,10 @@ class DataflowConfig:
         for rule in self.deletions:
             node_type = rule.get("node_type", "")
             result[node_type] = "delete"
+        for rule in self.returns:
+            node_type = rule.get("node_type", "")
+            if node_type and node_type not in result:
+                result[node_type] = "read"
         for rule in self.calls:
             node_type = rule.get("node_type", "")
             if node_type and node_type not in result:
@@ -99,6 +108,53 @@ class DataflowConfig:
                 result[node_type] = "mutate"
             elif "read_if" in rule:
                 result[node_type] = "read"
+        return result
+
+    def build_positional_map(self) -> Dict[str, Dict[str, str]]:
+        """Build a lookup from node_type to child-field-based access modes.
+
+        Assignment rules with both write and read sides (e.g.,
+        ``{node_type: assignment, write: left, read: right}``) produce
+        positional maps like ``{"assignment": {"left": "write", "right": "read"}}``.
+
+        Non-positional rules (deletions, returns, borrows, calls) produce
+        a single ``_default`` key: ``{"delete_statement": {"_default": "delete"}}``.
+        """
+        result: Dict[str, Dict[str, str]] = {}
+        for rule in self.assignments:
+            node_type = rule.get("node_type", "")
+            if not node_type:
+                continue
+            child_modes: Dict[str, str] = {}
+            for key, val in rule.items():
+                if key == "node_type":
+                    continue
+                # key is the access mode, val is the child field name
+                # e.g., {"write": "left", "read": "right"}
+                if key in ("write", "read", "mutate", "delete"):
+                    child_modes[val] = key
+            if child_modes:
+                result[node_type] = child_modes
+        for rule in self.deletions:
+            node_type = rule.get("node_type", "")
+            if node_type:
+                result[node_type] = {"_default": "delete"}
+        for rule in self.returns:
+            node_type = rule.get("node_type", "")
+            if node_type:
+                result[node_type] = {"_default": "read"}
+        for rule in self.calls:
+            node_type = rule.get("node_type", "")
+            if node_type and node_type not in result:
+                result[node_type] = {"_default": "read"}
+        for rule in self.borrows:
+            node_type = rule.get("node_type", "")
+            if not node_type:
+                continue
+            if "mutate_if" in rule:
+                result[node_type] = {"_default": "mutate"}
+            elif "read_if" in rule:
+                result[node_type] = {"_default": "read"}
         return result
 
 
@@ -127,6 +183,7 @@ def load_dataflow_config(yaml_path: Path) -> DataflowConfig:
         calls=data.get("calls", []),
         deletions=data.get("deletions", []),
         borrows=data.get("borrows", []),
+        returns=data.get("returns", []),
         library_patterns=data.get("library_patterns", []),
     )
 
@@ -189,6 +246,52 @@ def _build_line_index(root_node: Any) -> Dict[int, Any]:
     return index
 
 
+def _classify_by_position(
+    node: Any,
+    parent: Any,
+    child_modes: Dict[str, str],
+) -> Optional[str]:
+    """Classify an edge's node by its position within a parent AST node.
+
+    Uses byte-range containment to determine which named child field of
+    *parent* contains *node*, then returns the access mode for that child.
+
+    Args:
+        node: The deepest AST node at the edge's line.
+        parent: The matching ancestor node (e.g., an assignment node).
+        child_modes: Mapping of child-field-name → access_mode from the
+            positional map.
+
+    Returns:
+        Access mode string if position resolved, None otherwise.
+    """
+    if "_default" in child_modes:
+        return child_modes["_default"]
+
+    # Resolve position via tree-sitter child_by_field_name
+    child_by_field = getattr(parent, "child_by_field_name", None)
+    if child_by_field is None:
+        return None
+
+    node_start = getattr(node, "start_byte", None)
+    node_end = getattr(node, "end_byte", None)
+    if node_start is None or node_end is None:
+        return None
+
+    for field_name, mode in child_modes.items():
+        child = child_by_field(field_name)
+        if child is None:
+            continue
+        child_start = getattr(child, "start_byte", None)
+        child_end = getattr(child, "end_byte", None)
+        if child_start is None or child_end is None:
+            continue
+        if child_start <= node_start and node_end <= child_end:
+            return mode
+
+    return None
+
+
 def annotate_dataflow(
     edges: List["Edge"],
     tree: Any,
@@ -197,9 +300,11 @@ def annotate_dataflow(
 ) -> List["Edge"]:
     """Batch-annotate edges with access_mode from AST context (Tier 1).
 
-    For each edge, finds the AST node at the edge's line number, looks up
-    the node type in the language's dataflow config, and stamps access_mode
-    into the edge's meta dict.
+    For each edge, finds the AST node at the edge's line number, walks up
+    the AST to find a node type that matches the language's dataflow config,
+    then classifies the access mode.  For assignment nodes with positional
+    rules (e.g., ``write: left, read: right``), the mode depends on which
+    child subtree of the assignment the edge's node falls in.
 
     Edges that already have ``access_mode`` in their meta are skipped
     (Tier 2 precedence rule: explicit linker annotations beat automatic).
@@ -220,8 +325,8 @@ def annotate_dataflow(
     if not edges:
         return edges
 
-    node_type_map = config.build_node_type_map()
-    if not node_type_map:
+    positional_map = config.build_positional_map()
+    if not positional_map:
         return edges
 
     # Build line index once for O(1) per-edge lookup
@@ -242,8 +347,9 @@ def annotate_dataflow(
         current = node
         access_mode = None
         while current is not None:
-            if current.type in node_type_map:
-                access_mode = node_type_map[current.type]
+            if current.type in positional_map:
+                child_modes = positional_map[current.type]
+                access_mode = _classify_by_position(node, current, child_modes)
                 break
             current = getattr(current, "parent", None)
 
@@ -321,7 +427,10 @@ def annotate_dataflow_ast(
     """Annotate edges with access_mode using Python's ast module (Tier 1 for py.py).
 
     Walks the Python AST and builds a line-to-access-mode map from assignment,
-    augmented assignment, and delete statements. Then stamps matching edges.
+    augmented assignment, delete, return, and yield statements.  For assignment
+    lines, call edges are classified as ``"read"`` because the call produces a
+    value consumed by the assignment (RHS), regardless of whether the
+    assignment itself is a write or mutate.
 
     Skips edges that already have access_mode (Tier 2 precedence).
 
@@ -365,6 +474,11 @@ def annotate_dataflow_ast(
             continue
         mode = line_modes.get(edge.line)
         if mode is not None:
+            # Call edges on assignment/augmented-assignment lines are reads:
+            # the call produces a value consumed by the assignment (RHS).
+            # Even in `foo().bar = x`, the call reads the object.
+            if mode in ("write", "mutate") and edge.edge_type == "calls":
+                mode = "read"
             if edge.meta is None:
                 edge.meta = {}
             edge.meta["access_mode"] = mode
