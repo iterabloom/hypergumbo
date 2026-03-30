@@ -647,3 +647,53 @@ class TestSelectRecentEntries:
         path.write_bytes(b"")
         result = hook_mod.select_recent_entries(str(path))
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# _truncate_to_budget tests
+# ---------------------------------------------------------------------------
+
+class TestTruncateToBudget:
+    """Tests for on_transcript_change.py's _truncate_to_budget."""
+
+    def test_within_budget_unchanged(self, hook_mod: Any) -> None:
+        """Short inputs are returned unchanged."""
+        p, r = hook_mod._truncate_to_budget("hello", "world", max_tokens=1000)
+        assert p == "hello"
+        assert r == "world"
+
+    def test_truncates_longer_field(self, hook_mod: Any) -> None:
+        """The longer field is truncated, the shorter one is preserved."""
+        long_prompt = "A" * 10000
+        short_response = "B" * 100
+        max_tokens = 1000
+        p, r = hook_mod._truncate_to_budget(long_prompt, short_response, max_tokens)
+        assert r == short_response  # short field untouched
+        assert len(p) + len(r) <= int(max_tokens * hook_mod.CHARS_PER_TOKEN)
+
+    def test_truncates_from_front(self, hook_mod: Any) -> None:
+        """Truncation removes the beginning, preserving the end."""
+        prompt = "AAAA_IMPORTANT_END"
+        response = "ok"
+        # Budget that forces truncation of prompt
+        budget_chars = len(response) + 10
+        max_tokens = budget_chars / hook_mod.CHARS_PER_TOKEN
+        p, r = hook_mod._truncate_to_budget(prompt, response, max_tokens)
+        assert p.endswith("IMPORTANT_END") or p.endswith("_END") or p.endswith("END")
+
+    def test_truncates_response_when_longer(self, hook_mod: Any) -> None:
+        """When response is longer than prompt, response gets truncated."""
+        prompt = "short"
+        response = "X" * 10000
+        p, r = hook_mod._truncate_to_budget(prompt, response, max_tokens=500)
+        assert p == "short"
+        assert len(r) < len(response)
+
+    def test_exact_budget_unchanged(self, hook_mod: Any) -> None:
+        """Input exactly at budget is not truncated."""
+        max_tokens = 100
+        max_chars = int(max_tokens * hook_mod.CHARS_PER_TOKEN)
+        half = max_chars // 2
+        p, r = hook_mod._truncate_to_budget("A" * half, "B" * half, max_tokens)
+        assert len(p) == half
+        assert len(r) == half

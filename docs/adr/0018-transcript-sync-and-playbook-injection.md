@@ -130,7 +130,7 @@ All parameters are environment variables with sensible defaults:
 |----------|---------|---------|
 | `OPENROUTER_API_KEY` | (required) | API authentication |
 | `TRANSCRIPT_MODEL` | `mistralai/mistral-nemo` | LLM for goal distillation and rating |
-| `TRANSCRIPT_MAX_TOKENS` | `16000` | Token budget for transcript window |
+| `TRANSCRIPT_MAX_TOKENS` | `8000` | Token budget for transcript window |
 | `TRANSCRIPT_THRESHOLD` | `7` | Minimum relevance score (1-10) to inject a playbook |
 | `TRANSCRIPT_DEDUP_TOKENS` | `50000` | Token distance before allowing re-injection |
 | `TRANSCRIPT_TRAINING_LOG` | `.agent/.training-data.jsonl` | Path for finetuning data collection (ChatML JSONL) |

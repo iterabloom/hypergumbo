@@ -16,7 +16,7 @@ Requires: OPENROUTER_API_KEY environment variable.
 Configuration (environment variables):
   OPENROUTER_API_KEY     — required
   TRANSCRIPT_MODEL       — model to use (default: mistralai/mistral-nemo)
-  TRANSCRIPT_MAX_TOKENS  — token budget for transcript window (default: 16000)
+  TRANSCRIPT_MAX_TOKENS  — token budget for transcript window (default: 8000)
   TRANSCRIPT_THRESHOLD   — minimum confidence to include a playbook (default: 7)
   TRANSCRIPT_DEDUP_TOKENS — suppress re-injection within this many tokens (default: 50000)
 """
@@ -34,7 +34,7 @@ import urllib.error
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = os.environ.get("TRANSCRIPT_MODEL", "mistralai/mistral-nemo")
-MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "16000"))
+MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "8000"))
 THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "7"))
 DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
 CHARS_PER_TOKEN = 4.4
@@ -123,6 +123,27 @@ def openrouter_chat(prompt: str, max_completion_tokens: int = 1024) -> str:
         return ""
 
 
+def _truncate_to_budget(prompt: str, response: str, max_tokens: int) -> tuple[str, str]:
+    """Truncate the longest field from the front so total fits within max_tokens.
+
+    The step-1 prompt can contain the full transcript window plus framing text,
+    easily exceeding the token budget.  Truncating from the *beginning* of the
+    longest field preserves the most recent (most relevant) content.
+    """
+    max_chars = int(max_tokens * CHARS_PER_TOKEN)
+    total = len(prompt) + len(response)
+    if total <= max_chars:
+        return prompt, response
+
+    excess = total - max_chars
+    # Truncate whichever field is longest, from the front
+    if len(prompt) >= len(response):
+        prompt = prompt[excess:]
+    else:
+        response = response[excess:]
+    return prompt, response
+
+
 def log_training_example(
     repo_root: str, step: str, prompt: str, response: str,
 ) -> None:
@@ -137,8 +158,10 @@ def log_training_example(
         ]}
 
     The ``step`` field is metadata (not part of the chat) so training scripts
-    can filter or weight the two tasks independently.
+    can filter or weight the two tasks independently.  Entries exceeding
+    MAX_TOKENS are truncated from the front of the longest field.
     """
+    prompt, response = _truncate_to_budget(prompt, response, MAX_TOKENS)
     log_path = TRAINING_LOG
     if not log_path:
         log_path = os.path.join(repo_root, ".agent", ".training-data.jsonl")
