@@ -193,8 +193,34 @@ The pipeline is implemented in `scripts/finetune-transcript-model` with three su
 
 Dependencies (`torch`, `transformers`, `trl`, `datasets`, `scikit-learn`) are NOT part of the hypergumbo install — they must be installed in a separate venv. The script gates all heavy imports behind dependency checks so `--help` always works.
 
+### Local inference: build and runtime requirements
+
+CPU inference performance depends critically on two settings that are **not** enabled by default:
+
+1. **`llama-cpp-python` must be built from source with native CPU optimization.** PyPI does not publish pre-built wheels for this package — `pip install llama-cpp-python` always builds from source via scikit-build-core. However, the default cmake build targets a generic x86-64 instruction set (SSE3). To use the host CPU's SIMD instructions (AVX2, AVX-512, VNNI), rebuild with:
+
+   ```bash
+   CMAKE_ARGS="-DGGML_NATIVE=ON" pip install llama-cpp-python --force-reinstall --no-binary llama-cpp-python
+   ```
+
+   Verify the runtime detects the correct features by checking the `CPU :` line in verbose model loading output. On a Zen 4 CPU (e.g., Ryzen 8700G), expect to see `AVX = 1 | AVX2 = 1 | AVX512 = 1 | AVX512_VNNI = 1`.
+
+2. **Flash attention must be enabled at model load time** by passing `flash_attn=True` to the `Llama()` constructor. Without it, self-attention scales O(n²) with context length; with it, prefill throughput is roughly constant across context sizes. The `llm-gguf` plugin (Simon Willison's `llm` package) does not currently pass this flag — local inference code must use `llama-cpp-python` directly.
+
+3. **Virtualized environments** (Proxmox, QEMU/KVM, etc.) must expose the host CPU's instruction set to the guest. The default Proxmox CPU type (`x86-64-v2-AES`) hides AVX/AVX-512 for live-migration compatibility. Change to `host` type in the VM's processor settings if the machine is single-node.
+
+**Measured impact** (Qwen2.5-0.5B-Instruct-IQ4_XS, 6-core Ryzen 8700G, CPU-only):
+
+| Config | 8K input prefill | Extrapolated 16K pipeline |
+|--------|---:|---:|
+| Generic build, no flash attn | 577s | ~50 min |
+| Generic build, flash attn | 150s | ~5.8 min |
+| Native build, flash attn | **17s** | **~45s** |
+
+The benchmarks used `llama-cpp-python` directly (not the `llm` CLI), specifically to pass `flash_attn=True`. A complete benchmark script is at `/tmp/bench-q25.py` in the development environment.
+
 ### Future work
-- **Local model deployment**: Once the finetuned GGUF is produced, replace `openrouter_chat()` in `on_transcript_change.py` with local llama.cpp inference via `llama-cpp-python` or subprocess.
+- **Local model deployment**: Once the finetuned GGUF is produced, replace `openrouter_chat()` in `on_transcript_change.py` with local llama.cpp inference via `llama-cpp-python`. Must pass `flash_attn=True` to the `Llama()` constructor.
 - **Prismatic augmentation**: Use the sparse-cluster signal from G-Vendi selection to guide generation of additional synthetic training examples targeting underrepresented gradient regions (full Prismatic Synthesis loop from arXiv:2505.20161 §3).
 - **Streaming filter**: Currently reads all new bytes on each invocation. Could use a tail-follow approach for lower latency on very active sessions.
 - **Multi-tool compaction detection**: Only Claude Code's `compact_boundary` is currently detected. Codex and Gemini may have analogous signals.
