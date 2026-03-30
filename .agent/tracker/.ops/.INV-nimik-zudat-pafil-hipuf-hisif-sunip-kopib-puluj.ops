@@ -239,3 +239,33 @@
   clock: 30  # e7bb
   nonce: e7bb  # e7bb
   message: "Partial fix in PR #2640. Empty route paths normalized to '/' in make_route_stable_id() and materialize_route_symbols(). Routes now get proper stable IDs and display names. Holding: remaining work is Spring class-level @RequestMapping path chaining (combines class prefix + method path) and Express middleware path='*' emission — these require analyzer-level changes, not just normalization."  # e7bb
+- op: update  # f016
+  at: '2026-03-30T21:58:47Z'  # f016
+  by: human  # f016
+  actor: jgstern  # f016
+  clock: 31  # f016
+  nonce: f016  # f016
+  set:  # f016
+    status: violated  # f016
+- op: discuss  # ddbf
+  at: '2026-03-30T21:58:50Z'  # ddbf
+  by: human  # ddbf
+  actor: jgstern  # ddbf
+  clock: 32  # ddbf
+  nonce: ddbf  # ddbf
+  message: "could the remaining issues perhaps be addressed in improvements to how hypergumbo represents and analyzes frameworks, rather than analyzer-specific changes?"  # ddbf
+- op: update  # df93
+  at: '2026-03-30T22:02:15Z'  # df93
+  by: agent  # df93
+  actor: jgstern_agent  # df93
+  clock: 33  # df93
+  nonce: df93  # df93
+  set:  # df93
+    status: holding  # df93
+- op: discuss  # 5cb3
+  at: '2026-03-30T22:02:16Z'  # 5cb3
+  by: agent  # 5cb3
+  actor: jgstern_agent  # 5cb3
+  clock: 34  # 5cb3
+  nonce: 5cb3  # 5cb3
+  message: "Partial fix in PR #2640 (empty path normalization). Remaining: Spring @RequestMapping class-level path chaining, Express middleware path emission. P4 priority."  # 5cb3

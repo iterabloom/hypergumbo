@@ -17,3 +17,10 @@
     pr_ref:  # 9b4f
     description: "Bakeoff assessment (deep-20260330-164900, age): domain_score picked bech32.Encode (in=11) over Encrypt (in=17), Decrypt (in=17). For libraries, library_export-tagged nodes should be boosted in seed scoring."  # 9b4f
     fields: {}  # 9b4f
+- op: discuss  # 9cd5
+  at: '2026-03-30T22:00:00Z'  # 9cd5
+  by: agent  # 9cd5
+  actor: jgstern_agent  # 9cd5
+  clock: 2  # 9cd5
+  nonce: 9cd5  # 9cd5
+  message: "Investigated. The rslice seed selection is not in slice.py or profile.py — it's likely in the bakeoff scripts or CLI profile command that generates rslice artifacts. The ranking.py module has sink-dampening but not library_export boosting. Fix would be: in the seed scoring function (wherever it lives), add a boost factor for symbols tagged as library_export entrypoints. Leaving at P4 for future session."  # 9cd5

@@ -17,3 +17,18 @@
     pr_ref:  # 126b
     description: "Bakeoff assessment (deep-20260330-164900, age): age's plugin system uses execabs.Command but no process_exec boundary type exists. Add os/exec.Command, execabs.Command, subprocess.Popen (already partially covered) to IO catalogs."  # 126b
     fields: {}  # 126b
+- op: update  # 1c9a
+  at: '2026-03-30T21:57:55Z'  # 1c9a
+  by: agent  # 1c9a
+  actor: jgstern_agent  # 1c9a
+  clock: 2  # 1c9a
+  nonce: 1c9a  # 1c9a
+  set:  # 1c9a
+    status: done  # 1c9a
+- op: discuss  # edff
+  at: '2026-03-30T21:57:55Z'  # edff
+  by: agent  # edff
+  actor: jgstern_agent  # edff
+  clock: 3  # edff
+  nonce: edff  # edff
+  message: "Fixed in PR #2644. Added golang.org/x/sys/execabs (Command, CommandContext, LookPath) to Go subprocess IO catalog. os/exec was already present — execabs wraps it with PATH-attack prevention."  # edff
