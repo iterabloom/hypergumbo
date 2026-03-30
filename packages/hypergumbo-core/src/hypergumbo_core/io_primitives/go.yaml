@@ -117,6 +117,9 @@ subprocess:
     functions: [Command, CommandContext, LookPath]
   - module: os/exec.Cmd
     methods: [Run, Start, Output, CombinedOutput]
+  - module: golang.org/x/sys/execabs
+    functions: [Command, CommandContext, LookPath]
+    notes: "execabs wraps os/exec with PATH-attack prevention"
   - module: syscall
     functions: [Exec, ForkExec]
 
