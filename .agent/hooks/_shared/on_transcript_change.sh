@@ -8,7 +8,7 @@
 #   OPENROUTER_API_KEY     — required
 #   TRANSCRIPT_MODEL       — model (default: mistralai/mistral-nemo)
 #   TRANSCRIPT_MAX_TOKENS  — token budget for window (default: 8000)
-#   TRANSCRIPT_THRESHOLD   — min confidence to include playbook (default: 7)
+#   TRANSCRIPT_THRESHOLD   — min confidence to include playbook (default: 8)
 
 set -euo pipefail
 

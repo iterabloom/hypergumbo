@@ -21,6 +21,7 @@ Configuration (environment variables):
   TRANSCRIPT_DEDUP_TOKENS — suppress re-injection within this many tokens (default: 50000)
 """
 
+import datetime
 import json
 import os
 import re
@@ -220,6 +221,7 @@ def log_training_example(
     if not log_path:
         log_path = os.path.join(repo_root, ".agent", ".training-data.jsonl")
     obj = {
+        "timestamp": datetime.datetime.now().isoformat(),
         "step": step,
         "model": MODEL,
         "messages": [
