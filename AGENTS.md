@@ -35,7 +35,7 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status. For invariants: use `satisfied` (with positive evidence the invariant holds), `pending_validation` (fix deployed but not yet validated by bakeoff), or `violated` (still broken). Do NOT use `holding` (deprecated) — it is ambiguous and will be rejected by the tracker.
 
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 
@@ -74,7 +74,7 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   ```bash
   git log --oneline -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops'
   ```
-- **Resolution Rationale:** When changing a tracker item to a resolved state (`done`, `holding`, `wontfix`), always record WHY by following up with a discussion entry:
+- **Resolution Rationale:** When changing a tracker item to a resolved state (`done`, `satisfied`, `wont_do`), always record WHY by following up with a discussion entry:
   ```bash
   scripts/tracker update WI-foo --status done
   scripts/tracker discuss WI-foo "Fixed in PR #1234. Root cause was X, fix does Y."

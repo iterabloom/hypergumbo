@@ -534,6 +534,11 @@ class TestStoreAdd:
         with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
             store.add(kind="invariant", fields=_INV_FIELDS, title="Bad Status", status="done")
 
+    def test_add_deprecated_status_rejected(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        store = Store(ops_dir, config=_make_config())
+        with pytest.raises(ValueError, match="deprecated.*Use one of"):
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Bad", status="holding")
+
     def test_add_with_all_fields(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         item_id = store.add(
@@ -568,6 +573,12 @@ class TestStoreUpdate:
         item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Invariant Item")
         with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
             store.update(item_id, set_fields={"status": "done"})
+
+    def test_update_deprecated_status_rejected(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Test")
+        with pytest.raises(ValueError, match="deprecated.*Use one of"):
+            store.update(item_id, set_fields={"status": "holding"})
 
     def test_update_appends_op(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
