@@ -73,3 +73,10 @@
   clock: 8  # 126a
   nonce: 126a  # 126a
   message: "Fixed in PR #2638. Added cgo_bridge and ffi_bridge to both call_types and _TRACEABLE_TYPES in io_boundary.py. IO chains now cross Go→C and Python→Rust FFI boundaries. Holding: needs bakeoff validation on tokenizers (361 ffi_bridge) and go-sqlite3 (116 cgo_bridge) to confirm real-world improvement."  # 126a
+- op: discuss  # 7469
+  at: '2026-03-30T22:14:53Z'  # 7469
+  by: human  # 7469
+  actor: jgstern  # 7469
+  clock: 9  # 7469
+  nonce: '7469'  # 7469
+  message: "Did you run bakeoff validation on tokenizers (361 ffi_bridge) and go-sqlite3 (116 cgo_bridge) to confirm real-world improvement? \n\nDo the data collected from any of these recent bakeoffs suffice? Note timestamps relative to when you merged the PR.\n\ndeep-20260330-035757\ndeep-20260330-043124\ndeep-20260330-044609\ndeep-20260330-060143\ndeep-20260330-164753\ndeep-20260330-164900"  # 7469

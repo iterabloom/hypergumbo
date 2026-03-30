@@ -24,3 +24,18 @@
   clock: 2  # 9cd5
   nonce: 9cd5  # 9cd5
   message: "Investigated. The rslice seed selection is not in slice.py or profile.py — it's likely in the bakeoff scripts or CLI profile command that generates rslice artifacts. The ranking.py module has sink-dampening but not library_export boosting. Fix would be: in the seed scoring function (wherever it lives), add a boost factor for symbols tagged as library_export entrypoints. Leaving at P4 for future session."  # 9cd5
+- op: update  # 915f
+  at: '2026-03-30T22:16:31Z'  # 915f
+  by: agent  # 915f
+  actor: jgstern_agent  # 915f
+  clock: 3  # 915f
+  nonce: 915f  # 915f
+  set:  # 915f
+    status: done  # 915f
+- op: discuss  # eed4
+  at: '2026-03-30T22:16:31Z'  # eed4
+  by: agent  # eed4
+  actor: jgstern_agent  # eed4
+  clock: 4  # eed4
+  nonce: eed4  # eed4
+  message: "Fixed in PR #2646. Added _LIBRARY_EXPORT_BOOST (1.4x) to pick_reverse_slice_seeds() in bakeoff-deep. Library_export entrypoints now score higher for rslice seed selection."  # eed4

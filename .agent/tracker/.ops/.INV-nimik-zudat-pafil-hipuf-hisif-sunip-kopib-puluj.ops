@@ -269,3 +269,26 @@
   clock: 34  # 5cb3
   nonce: 5cb3  # 5cb3
   message: "Partial fix in PR #2640 (empty path normalization). Remaining: Spring @RequestMapping class-level path chaining, Express middleware path emission. P4 priority."  # 5cb3
+- op: discuss  # b9ba
+  at: '2026-03-30T22:03:48Z'  # b9ba
+  by: agent  # b9ba
+  actor: jgstern_agent  # b9ba
+  clock: 35  # b9ba
+  nonce: b9ba  # b9ba
+  message: "Great question. Yes — the remaining issues (Spring class-level @RequestMapping chaining, Express middleware paths) are better addressed through the framework pattern YAML system than analyzer-specific code changes.\n\nThe framework YAML patterns already support 'enrichment' rules that extract metadata from annotations. What's missing is a 'path composition' concept: the ability to declare that a class-level annotation provides a prefix that should be prepended to method-level paths. For example:\n\n```yaml\n# Hypothetical spring.yaml addition\npath_composition:\n  - class_annotation: RequestMapping\n    method_annotations: [GetMapping, PostMapping, PutMapping, DeleteMapping, PatchMapping]\n    compose: '{class_path}/{method_path}'\n```\n\nThis would be a framework_patterns.py enhancement, not a Java analyzer change. Similarly, Express middleware could be declared:\n\n```yaml\nmiddleware_routes:\n  - pattern: app.use\n    path: '*'\n    kind: middleware_route\n```\n\nThis approach is more modular, reusable (same mechanism works for JAX-RS, Spring, Micronaut, Quarkus), and doesn't require touching analyzer code. The implementation would go in framework_patterns.py's route materialization phase."  # b9ba
+- op: update  # 5d5b
+  at: '2026-03-30T22:04:26Z'  # 5d5b
+  by: human  # 5d5b
+  actor: jgstern  # 5d5b
+  clock: 36  # 5d5b
+  nonce: 5d5b  # 5d5b
+  set:  # 5d5b
+    status: violated  # 5d5b
+    priority: 3  # 5d5b
+- op: discuss  # 1e5a
+  at: '2026-03-30T22:06:14Z'  # 1e5a
+  by: human  # 1e5a
+  actor: jgstern  # 1e5a
+  clock: 37  # 1e5a
+  nonce: 1e5a  # 1e5a
+  message: "ok that's what you should do then please. I have updated status to violated and promoted to priority 3 so you don't ignore this."  # 1e5a
