@@ -94,3 +94,10 @@
   clock: 11  # 97a4
   nonce: 97a4  # 97a4
   message: "Please check the PR number for this."  # 97a4
+- op: discuss  # a2b4
+  at: '2026-03-30T15:35:45Z'  # a2b4
+  by: agent  # a2b4
+  actor: jgstern_agent  # a2b4
+  clock: 12  # a2b4
+  nonce: a2b4  # a2b4
+  message: "The initial Rust def/use extractor was PR #2582 (feat(cfg): Rust def/use extractor for core patterns, ADR-0017 §1c Phase 2, commit b8fc35d1). The borrow alias and ref pattern extension was PR #2604 (feat(rust): borrow alias tracking and ref patterns, commit 03dee372)."  # a2b4

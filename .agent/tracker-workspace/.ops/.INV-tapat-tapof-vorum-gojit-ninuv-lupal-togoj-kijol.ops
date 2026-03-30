@@ -57,3 +57,25 @@
   clock: 6  # 4d8a
   nonce: 4d8a  # 4d8a
   message: "if something needs re-validation then it shouldn't be \"holding\"; it should be presumed \"violated\"."  # 4d8a
+- op: update  # 572f
+  at: '2026-03-30T15:30:37Z'  # 572f
+  by: agent  # 572f
+  actor: jgstern_agent  # 572f
+  clock: 7  # 572f
+  nonce: 572f  # 572f
+  set:  # 572f
+    status: violated  # 572f
+- op: discuss  # b71a
+  at: '2026-03-30T15:30:37Z'  # b71a
+  by: agent  # b71a
+  actor: jgstern_agent  # b71a
+  clock: 8  # b71a
+  nonce: b71a  # b71a
+  message: "Corrected per human feedback: holding is wrong if re-validation is needed. Status set back to violated. PR #2628 added ambiguous_names to 10 catalogs. Validation bakeoff (deep-20260330-060143) showed age net_send 4→0, net_recv 14→0; polars net_send 285→89. But the fix needs full curriculum re-run to confirm no regressions and measure overall impact before closing."  # b71a
+- op: discuss  # 462c
+  at: '2026-03-30T15:36:33Z'  # 462c
+  by: agent  # 462c
+  actor: jgstern_agent  # 462c
+  clock: 9  # 462c
+  nonce: 462c  # 462c
+  message: "Agreed. Status reverted to violated. The ambiguous_names fix (PR #2628) is deployed and validation bakeoff (deep-20260330-060143) shows significant improvement (age: net_send 4→0, net_recv 14→0; polars: net_send 285→89, 69% reduction). But full curriculum re-run needed to confirm no regressions before closing. Will re-run the polyglot-IO curriculum against current code in the next DEEP session."  # 462c
