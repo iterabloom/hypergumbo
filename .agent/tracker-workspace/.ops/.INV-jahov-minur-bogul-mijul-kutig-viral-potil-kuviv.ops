@@ -1,0 +1,21 @@
+- op: create  # ca94
+  at: '2026-03-30T09:28:26Z'  # ca94
+  by: agent  # ca94
+  actor: jgstern_agent  # ca94
+  clock: 1  # ca94
+  nonce: ca94  # ca94
+  data:  # ca94
+    kind: invariant  # ca94
+    title: "Dataflow slice identical to regular slice — access_mode is blanket 'write' with no 'read' distinction"  # ca94
+    status: violated  # ca94
+    priority: 2  # ca94
+    parent:  # ca94
+    tags: []  # ca94
+    before: []  # ca94
+    duplicate_of: []  # ca94
+    not_duplicate_of: []  # ca94
+    pr_ref:  # ca94
+    description: "Confirmed across all 3 DEEP bakeoffs: dataflow slice and regular slice have 100% edge overlap in every repo tested. Go: 929/932 edges are 'write'. Rust: all annotated edges are 'write'. Python: same. The dataflow-heavy curriculum (26 repos) was designed to test this and the hypothesis was falsified — dataflow annotations add no value currently."  # ca94
+    fields:  # ca94
+      statement: "Dataflow-aware slicing must produce tighter results than regular slicing by distinguishing read vs write access modes, otherwise it adds metadata overhead with zero value"  # ca94
+      root_cause: "access_mode annotations in all languages default to 'write' — no 'read' mode is ever emitted, so dataflow slice has no signal to prune edges that regular slice keeps"  # ca94
