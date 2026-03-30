@@ -28,3 +28,19 @@
   clock: 2  # 5f6e
   nonce: 5f6e  # 5f6e
   message: "Created from tracker taxonomy analysis (Mar 24 lab notebook). Covers 19 items in the CI Pipeline & Auto-PR cluster. Falsifiable: run auto-pr while tracker sync is in flight, verify it either merges or reports clear actionable error. Case 5 in the oblivious pair analysis showed 4 reactive fixes to do_merge() over 4 days with zero cross-references."  # 5f6e
+- op: update  # a476
+  at: '2026-03-30T15:22:13Z'  # a476
+  by: human  # a476
+  actor: jgstern  # a476
+  clock: 3  # a476
+  nonce: a476  # a476
+  set:  # a476
+    status: violated  # a476
+    priority: 3  # a476
+- op: discuss  # f7ed
+  at: '2026-03-30T15:22:16Z'  # f7ed
+  by: human  # f7ed
+  actor: jgstern  # f7ed
+  clock: 4  # f7ed
+  nonce: f7ed  # f7ed
+  message: "\"run auto-pr while tracker sync is in flight, verify it either merges or reports clear actionable error\" -- let's try this -- or if we already tried it, find the tracker item or lab notebook entry showing the results ands report/reference that here."  # f7ed

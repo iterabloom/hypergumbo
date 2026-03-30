@@ -34,3 +34,26 @@
   clock: 3  # bfa7
   nonce: bfa7  # bfa7
   message: "Fixed in PR #2628. Added ambiguous_names lists to 10 IO primitive catalogs (Go, Rust, Python, Java, C, JS, Erlang, Haskell, ObjC). 20 new tests. Bare method names no longer match without module context. Holding: needs re-validation via bakeoff to confirm false positive reduction."  # bfa7
+- op: update  # 4b3d
+  at: '2026-03-30T15:13:29Z'  # 4b3d
+  by: human  # 4b3d
+  actor: jgstern  # 4b3d
+  clock: 4  # 4b3d
+  nonce: 4b3d  # 4b3d
+  set:  # 4b3d
+    status: violated  # 4b3d
+- op: update  # 39f3
+  at: '2026-03-30T15:14:01Z'  # 39f3
+  by: human  # 39f3
+  actor: jgstern  # 39f3
+  clock: 5  # 39f3
+  nonce: 39f3  # 39f3
+  set:  # 39f3
+    priority: 2  # 39f3
+- op: discuss  # 4d8a
+  at: '2026-03-30T15:14:07Z'  # 4d8a
+  by: human  # 4d8a
+  actor: jgstern  # 4d8a
+  clock: 6  # 4d8a
+  nonce: 4d8a  # 4d8a
+  message: "if something needs re-validation then it shouldn't be \"holding\"; it should be presumed \"violated\"."  # 4d8a

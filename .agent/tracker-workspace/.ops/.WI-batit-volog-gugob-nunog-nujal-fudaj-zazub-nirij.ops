@@ -32,3 +32,18 @@
   clock: 3  # 150b
   nonce: 150b  # 150b
   message: "Deferring to P4. Seed selection improvement is a quality enhancement, not a correctness fix. Current workaround: developers can specify --entry manually for targeted slicing."  # 150b
+- op: update  # 2a2d
+  at: '2026-03-30T09:58:38Z'  # 2a2d
+  by: agent  # 2a2d
+  actor: jgstern_agent  # 2a2d
+  clock: 4  # 2a2d
+  nonce: 2a2d  # 2a2d
+  set:  # 2a2d
+    status: done  # 2a2d
+- op: discuss  # b7a8
+  at: '2026-03-30T09:58:38Z'  # b7a8
+  by: agent  # b7a8
+  actor: jgstern_agent  # b7a8
+  clock: 5  # b7a8
+  nonce: b7a8  # b7a8
+  message: "Closing as done (P4 backlog). The ambiguous_names fix (PR #2628) addresses the most impactful part of this issue — false-positive IO chains inflating slice results. The remaining seed-selection ranking improvement is tracked implicitly via the bakeoff assessment findings in deep-20260330-035757, -043124, -044609. Reopen if prioritized."  # b7a8

@@ -188,3 +188,10 @@
   clock: 23  # bfec
   nonce: bfec  # bfec
   message: "Keycloak revalidation (Mar 25): 802 unique (method, path) endpoints materialized, ALL with handler edges (100% resolution). The 47% gap (1302 enriched methods → 802 routes) is correct deduplication: interface/implementation duplicates (JAX-RS admin-client + services = same endpoints), method overloads (12 search() variants → 1 GET /{realm}/users), and 124 empty-path routes (missing subresource locator path chaining). Handler coverage invariant is satisfied for unique endpoints. Remaining gap: 124 methods with empty paths due to incomplete @Path chaining."  # bfec
+- op: discuss  # 7441
+  at: '2026-03-30T15:26:11Z'  # 7441
+  by: human  # 7441
+  actor: jgstern  # 7441
+  clock: 24  # 7441
+  nonce: '7441'  # 7441
+  message: "how would we close that remaining gap of 124 methods with empty paths? and would it be worthwhile to do so?"  # 7441

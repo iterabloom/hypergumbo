@@ -29,3 +29,18 @@
   clock: 2  # 4dbc
   nonce: 4dbc  # 4dbc
   message: "Created from tracker taxonomy analysis (Mar 24 lab notebook). Covers 21 items in the IO Boundary & Dataflow cluster. Falsifiable: run io-boundaries on a repo with FFI, check no generic-name false positives, FFI bridge calls appear in chains."  # 4dbc
+- op: update  # 292a
+  at: '2026-03-30T15:16:05Z'  # 292a
+  by: human  # 292a
+  actor: jgstern  # 292a
+  clock: 3  # 292a
+  nonce: 292a  # 292a
+  set:  # 292a
+    status: violated  # 292a
+- op: discuss  # 9f2d
+  at: '2026-03-30T15:17:48Z'  # 9f2d
+  by: human  # 9f2d
+  actor: jgstern  # 9f2d
+  clock: 4  # 9f2d
+  nonce: 9f2d  # 9f2d
+  message: "we need to either run io-boundaries on a repo with FFI, check no generic-name false positives, FFI bridge calls appear in chains -- or find the artifact that proves we already did this, and explain it in this discussion."  # 9f2d

@@ -87,3 +87,10 @@
   clock: 10  # dd3d
   nonce: dd3d  # dd3d
   message: "Implemented dereference assignments (*ptr = val), ref/ref mut patterns in match arms, and borrow tracking in let bindings. PR pending."  # dd3d
+- op: discuss  # 97a4
+  at: '2026-03-30T15:04:56Z'  # 97a4
+  by: human  # 97a4
+  actor: jgstern  # 97a4
+  clock: 11  # 97a4
+  nonce: 97a4  # 97a4
+  message: "Please check the PR number for this."  # 97a4
