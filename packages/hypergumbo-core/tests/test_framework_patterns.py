@@ -18138,13 +18138,13 @@ class TestMaterializeRouteSymbols:
         assert routes[0].stable_id is not None
         assert len(routes[0].stable_id) == 64  # sha256 hex
 
-    def test_no_path_still_creates_route(self) -> None:
-        """Route with method but no path still gets materialized."""
+    def test_no_path_normalized_to_root(self) -> None:
+        """Route with method but no path gets normalized to '/' (INV-nimik)."""
         handler = self._make_handler("deleteItem", "DELETE")
         routes = materialize_route_symbols([handler])
         assert len(routes) == 1
-        assert routes[0].name == "DELETE route"
-        assert routes[0].stable_id is None  # No path → no stable_id
+        assert routes[0].name == "DELETE /"
+        assert routes[0].stable_id is not None  # Normalized path → has stable_id
 
     def test_no_method_skips(self) -> None:
         """Route concept without a method is skipped."""

@@ -64,6 +64,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Returns section loaded**: `DataflowConfig` now loads the `returns` YAML section (previously silently dropped). Return/yield statements correctly classify edges as "read".
 - **Net effect**: Dataflow slices are now tighter than structural slices. Forward slice follows only write/mutate edges; reverse slice follows only read edges. Previously both followed all edges identically because every annotation was "write".
 
+#### Route empty path normalization (INV-nimik)
+
+- **Empty route paths normalized to `/`**: `make_route_stable_id()` and `materialize_route_symbols()` now normalize empty string paths to `"/"`. Routes from annotations like `@GetMapping("")` or sub-resource locators without explicit paths now get proper stable IDs and display as `"GET /"` instead of `"GET route"`.
+
 #### I/O boundary FFI tracing (INV-kagob)
 
 - **`cgo_bridge` and `ffi_bridge` edges now traced**: Added to both `call_types` in `tag_io_boundaries()` and `_TRACEABLE_TYPES` in `_trace_entry_points()`. IO chains now cross Go→C (cgo) and Python→Rust (PyO3/cffi) boundaries. Previously 116 cgo_bridge edges in go-sqlite3 and 5,617 ffi_bridge edges in polars had zero IO boundary metadata.

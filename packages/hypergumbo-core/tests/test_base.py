@@ -281,6 +281,12 @@ class TestMakeRouteStableId:
         id2 = make_route_stable_id("POST", "/api/v1/items")
         assert id1 == id2
 
+    def test_empty_path_normalized_to_root(self) -> None:
+        """Empty string path is normalized to '/' (INV-nimik)."""
+        id_empty = make_route_stable_id("GET", "")
+        id_root = make_route_stable_id("GET", "/")
+        assert id_empty == id_root
+
 
 class TestMakeEntryStableId:
     """Tests for make_entry_stable_id — ADR-0014 §4 entry-point identity."""

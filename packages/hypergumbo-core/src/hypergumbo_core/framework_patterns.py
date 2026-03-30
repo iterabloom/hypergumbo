@@ -1612,13 +1612,12 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
                 continue
             seen_routes.add(route_key)
 
-            # Build route name
-            if path:
-                route_name = f"{method} {path}"
-            else:
-                route_name = f"{method} route"
+            # Normalize empty paths to "/" (INV-nimik)
+            if not path:
+                path = "/"
+            route_name = f"{method} {path}"
 
-            stable_id = make_route_stable_id(method, path) if path else None
+            stable_id = make_route_stable_id(method, path)
 
             # Create route symbol at the same location as the handler
             route_id = (
