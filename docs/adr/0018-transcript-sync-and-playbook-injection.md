@@ -205,7 +205,7 @@ CPU inference performance depends critically on two settings that are **not** en
 
    Verify the runtime detects the correct features by checking the `CPU :` line in verbose model loading output. On a Zen 4 CPU (e.g., Ryzen 8700G), expect to see `AVX = 1 | AVX2 = 1 | AVX512 = 1 | AVX512_VNNI = 1`.
 
-2. **Flash attention must be enabled at model load time** by passing `flash_attn=True` to the `Llama()` constructor. Without it, self-attention scales O(n²) with context length; with it, prefill throughput is roughly constant across context sizes. The `llm-gguf` plugin (Simon Willison's `llm` package) does not currently pass this flag — local inference code must use `llama-cpp-python` directly.
+2. **Flash attention must be enabled at model load time** by passing `flash_attn=True` to the `Llama()` constructor. Without it, self-attention scales O(n²) with context length; with it, prefill throughput is roughly constant across context sizes. The `llm-gguf` plugin does not currently pass this flag; the `llm-llama-server` plugin gets it via llama-server's auto default, but for embedded Python inference, `llama-cpp-python` must be called directly with `flash_attn=True`.
 
 3. **Virtualized environments** (Proxmox, QEMU/KVM, etc.) must expose the host CPU's instruction set to the guest. The default Proxmox CPU type (`x86-64-v2-AES`) hides AVX/AVX-512 for live-migration compatibility. Change to `host` type in the VM's processor settings if the machine is single-node.
 
