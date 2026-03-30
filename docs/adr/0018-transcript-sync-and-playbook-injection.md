@@ -49,12 +49,14 @@ This achieves ~83% line reduction on real sessions (measured: 110K → 18K lines
 
 | Tool | Hook event | Trigger cadence | Injection mechanism |
 |------|-----------|----------------|-------------------|
-| Claude Code | `FileChanged` | Event-driven (file change) | stdout → conversation context |
+| Claude Code | `PostToolUse` | After each tool call | `hookSpecificOutput.additionalContext` in JSON |
 | Codex CLI | `PostToolUse` | After each tool call | `additionalContext` in JSON |
 | Gemini CLI | `BeforeModel` | Before every LLM API call | Appends message to `llm_request.messages` |
 | Cursor | `stop` | At task completion | `followup_message` (auto-submits as next user prompt) |
 | Cursor | `afterAgentResponse` | After each assistant message | `additional_context` (documented, awaiting bug fix) |
 | Cursor | `postToolUse` | After each tool call | `additional_context` (documented, awaiting bug fix) |
+
+**Claude Code `FileChanged` bug (v2.1.83–v2.1.87+):** The original design used `FileChanged` for event-driven injection in Claude Code. However, `FileChanged` hooks do not fire as of v2.1.87 (2026-03-29): the configuration is parsed and displayed by `/hooks`, but the underlying file watcher never triggers the hook command. This affects all `FileChanged` matchers, confirmed with a trivial canary test. The workaround uses `PostToolUse` with `poll-transcript-change.sh`, which checks whether the filtered transcript has grown since the last poll (one `stat()` call, <1ms when nothing changed). When Claude Code fixes `FileChanged`, revert to the event-driven configuration for lower overhead.
 
 Cursor's `additional_context` and `agent_message` fields are non-functional as of March 2026 (confirmed regressions since v2.0.64). The hooks are written to the documented spec and will activate when Cursor fixes them. The `stop` hook with `followup_message` provides a working fallback.
 
@@ -86,7 +88,7 @@ The dedup scans the *filtered* transcript (not the native one), because:
 ├── filter-transcript.py        # Incremental noise filter
 ├── launch-transcript-sync.sh   # Shared: kill stale watcher, launch new
 ├── kill-transcript-sync.sh     # Shared: SIGTERM + PID file cleanup
-├── poll-transcript-change.sh   # For tools without FileChanged
+├── poll-transcript-change.sh   # Size-based polling for tools without FileChanged (or where it's broken)
 ├── on_transcript_change.sh     # Shell wrapper → Python
 ├── on_transcript_change.py     # Two-step LLM pipeline
 └── test-transcript-pipeline.sh # Dry-run test harness
@@ -94,13 +96,14 @@ The dedup scans the *filtered* transcript (not the native one), because:
 .agent/hooks/{claude-code,codex-cli,gemini-cli,cursor}/
 ├── session-start.sh            # Discovers transcript, launches watcher
 ├── session-end.sh              # Kills watcher
-└── *-transcript.sh             # Tool-specific feedback hook adapters
+└── post-tool-use-transcript.sh # Tool-specific feedback hook adapters
+                                # (wraps poll output in vendor JSON format)
 
 .agent/agent_playbooks_protocols_sops_skills/
 ├── *.md                        # 14 extracted playbook files
 
 Config files:
-├── .claude/settings.json       # FileChanged hook
+├── .claude/settings.json       # PostToolUse polling hook (FileChanged broken as of v2.1.87)
 ├── .codex/hooks.json           # PostToolUse hook
 ├── .gemini/settings.json       # BeforeModel hook
 └── .cursor/hooks.json          # stop + afterAgentResponse + postToolUse
@@ -119,7 +122,7 @@ Config files:
 - **External LLM dependency**: The relevance rating requires an OpenRouter API key and network access. If unavailable, the hook exits silently (no playbooks injected, but no errors either).
 - **Latency**: Two LLM calls per invocation add latency. Mitigated by using a fast, cheap model (mistral-nemo) and by the noise filter suppressing most invocations.
 - **State files**: Five gitignored runtime files (filtered transcript, PID file, filter state, poll state, injection state).
-- **Cursor limitations**: Two of three Cursor feedback hooks are non-functional due to bugs. The `stop` hook fallback means Cursor gets playbook injection only at task completion, not mid-task.
+- **Vendor hook bugs**: Claude Code's `FileChanged` hook does not fire (v2.1.83–v2.1.87+), requiring `PostToolUse` polling as a workaround. Two of three Cursor feedback hooks are non-functional (regressions since v2.0.64). Both workarounds add per-tool-call overhead (one `stat()` call) but no meaningful latency.
 - **Heuristic dedup**: The compaction + token-distance dedup is a heuristic. It's possible to re-inject a playbook the LLM still has (wasted tokens) or fail to re-inject one it lost (missed context). The heuristic errs on the side of re-injection.
 
 ### Configuration
@@ -226,3 +229,4 @@ The benchmarks used `llama-cpp-python` directly (not the `llm` CLI), specificall
 - **Multi-tool compaction detection**: Only Claude Code's `compact_boundary` is currently detected. Codex and Gemini may have analogous signals.
 - **Playbook auto-discovery**: Currently uses a hardcoded registry. Could scan the playbooks directory and generate summaries automatically.
 - **Cost tracking**: Log OpenRouter token usage per session to monitor the cost of the relevance-rating calls.
+- **Claude Code `FileChanged` revert**: When Anthropic fixes the `FileChanged` hook bug, revert `.claude/settings.json` from `PostToolUse` polling back to event-driven `FileChanged` on `.current_session_transcript.jsonl`. The original config is preserved in the lab notebook (`filechanged_hook_issue.md`).

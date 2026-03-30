@@ -32,13 +32,13 @@
         ]
       }
     ],
-    "FileChanged": [
+    "PostToolUse": [
       {
-        "matcher": ".agent/.current_session_transcript.jsonl",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/_shared/on_transcript_change.sh \"$CLAUDE_PROJECT_DIR/.agent/.current_session_transcript.jsonl\""
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.agent/hooks/claude-code/post-tool-use-transcript.sh"
           }
         ]
       }
