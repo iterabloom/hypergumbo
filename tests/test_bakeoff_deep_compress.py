@@ -566,6 +566,55 @@ class TestCompressedReadIntegration:
             f"Expected prod_func first (prod_in=3), got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_library_export_boost(self, tmp_path: Path) -> None:
+        """library_export entrypoints get boosted over internal functions.
+
+        Without the boost, internal_helper (in=15, out=5) outscores
+        public_encrypt (in=12, out=5) due to higher in-degree.  With
+        the 1.4x library_export boost, public_encrypt wins.
+        """
+        nodes = [
+            {"id": "internal_helper", "name": "internal_helper", "kind": "function", "language": "go"},
+            {"id": "public_encrypt", "name": "Encrypt", "kind": "function", "language": "go"},
+            {"id": "caller1", "name": "caller1", "kind": "function", "language": "go"},
+            {"id": "caller2", "name": "caller2", "kind": "function", "language": "go"},
+        ]
+        edges = []
+        # internal_helper: in=15 (higher), out=5
+        for i in range(15):
+            edges.append({"src": f"c{i}", "dst": "internal_helper", "type": "calls"})
+        for i in range(5):
+            edges.append({"src": "internal_helper", "dst": f"t{i}", "type": "calls"})
+        # public_encrypt: in=12 (lower), out=5
+        for i in range(12):
+            edges.append({"src": f"e{i}", "dst": "public_encrypt", "type": "calls"})
+        for i in range(5):
+            edges.append({"src": "public_encrypt", "dst": f"u{i}", "type": "calls"})
+        # Dummy callee nodes
+        for i in range(15):
+            nodes.append({"id": f"c{i}", "name": f"c{i}", "kind": "function", "language": "go"})
+        for i in range(12):
+            nodes.append({"id": f"e{i}", "name": f"e{i}", "kind": "function", "language": "go"})
+        for i in range(5):
+            nodes.append({"id": f"t{i}", "name": f"t{i}", "kind": "function", "language": "go"})
+            nodes.append({"id": f"u{i}", "name": f"u{i}", "kind": "function", "language": "go"})
+
+        data = {
+            "nodes": nodes,
+            "edges": edges,
+            "entrypoints": [
+                {"kind": "library_export", "symbol_id": "public_encrypt"},
+            ],
+        }
+        repo_out = _make_repo_output(tmp_path, "lib-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=2)
+        assert len(seeds) >= 1
+        assert seeds[0] == "public_encrypt", (
+            f"Expected library_export Encrypt to rank first with boost, got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)

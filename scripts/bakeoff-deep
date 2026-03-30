@@ -1058,6 +1058,23 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # (in=18, out=12).
     _API_HANDLER_BOOST = 1.5
 
+    # Library export boost: entrypoint symbols tagged as library_export
+    # represent the public API surface — the functions external consumers
+    # call.  For library repos (age, polars, tokenizers), reverse-slicing
+    # from Encrypt/Decrypt is more useful than from internal bech32.Encode.
+    # DEEP bakeoff assessment (deep-20260330-164900) showed domain_score
+    # picking Encode (in=11) over Encrypt (in=17) because Encode had
+    # better out-degree ratio.  This boost compensates.
+    _LIBRARY_EXPORT_BOOST = 1.4
+
+    # Identify library_export entrypoints for boosting.
+    library_export_ids: set = set()
+    for ep in data.get("entrypoints", []):
+        if ep.get("kind") == "library_export":
+            sid = ep.get("symbol_id", "")
+            if sid:
+                library_export_ids.add(sid)
+
     # Identify API handler targets: nodes that are dst of routes_to edges.
     api_handler_ids: set = set()
     for e in edges:
@@ -1105,7 +1122,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         lang = node.get("language", "unknown")
         lang_weight = lang_counts.get(lang, 1) / max_lang_count
 
-        # Route and architectural concept boost.
+        # Route, architectural concept, and library export boosts.
         concept_boost = 1.0
         meta = node.get("meta") or {}
         concepts = meta.get("concepts") or []
@@ -1119,6 +1136,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                         concept_boost = max(concept_boost, _ROUTE_BOOST)
                     elif cname in _BOOSTED_CONCEPTS:
                         concept_boost = max(concept_boost, _CONCEPT_BOOST)
+
+        # Library export boost: public API functions are high-value rslice
+        # seeds for library repos ("who calls Encrypt?").
+        if node_id in library_export_ids:
+            concept_boost = max(concept_boost, _LIBRARY_EXPORT_BOOST)
 
         score = base_score * lang_weight * concept_boost
         candidates.append((score, prod_in, entry, name))
