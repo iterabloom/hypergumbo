@@ -595,7 +595,7 @@ class TestConfigValidation:
                 "deprecated_statuses": ["nonexistent"],
             },
         }
-        with pytest.raises(ConfigValidationError, match="deprecated_statuses.*unknown"):
+        with pytest.raises(ConfigValidationError, match=r"deprecated_statuses.*unknown"):
             _parse_config_dict(raw)
 
     def test_deprecated_statuses_overlap_raises(self) -> None:
