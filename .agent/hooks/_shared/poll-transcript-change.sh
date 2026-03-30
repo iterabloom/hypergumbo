@@ -29,6 +29,12 @@ if [[ -f "$POLL_STATE" ]]; then
     LAST_SIZE=$(cat "$POLL_STATE" 2>/dev/null || echo 0)
 fi
 
+# If the file shrank, a new session started — reset so we process the new file.
+# (Mirrors filter-transcript.py's offset-reset logic for truncated files.)
+if [[ "$CURRENT_SIZE" -lt "$LAST_SIZE" ]]; then
+    LAST_SIZE=0
+fi
+
 # No new content
 if [[ "$CURRENT_SIZE" -le "$LAST_SIZE" ]]; then
     exit 1
