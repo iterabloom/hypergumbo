@@ -58,3 +58,40 @@
   clock: 6  # 50f1
   nonce: 50f1  # 50f1
   message: "ok let's have you run the manual test you propose above."  # 50f1
+- op: discuss  # 5460
+  at: '2026-03-30T20:04:41Z'  # 5460
+  by: agent  # 5460
+  actor: jgstern_agent  # 5460
+  clock: 7  # 5460
+  nonce: '5460'  # 5460
+  message: "Manual concurrent test attempted Mar 30. Created a docs PR (#2635), started auto-pr, triggered tracker sync during CI poll. Results inconclusive: CI runner was hung (Go HTTP/2 pool deadlock — see self-hosted-forgejo-shpilkes-analysis.md), so auto-pr timed out. The tracker auto-sync correctly detected an in-flight PR and waited rather than interfering. After runner restart and GODEBUG=http2client=0 mitigation, CI recovered. Will retest when next real feature PR goes through."  # 5460
+- op: update  # 3746
+  at: '2026-03-30T20:08:28Z'  # 3746
+  by: agent  # 3746
+  actor: jgstern_agent  # 3746
+  clock: 8  # 3746
+  nonce: '3746'  # 3746
+  set:  # 3746
+    priority: 0  # 3746
+- op: discuss  # 765f
+  at: '2026-03-30T20:08:28Z'  # 765f
+  by: agent  # 765f
+  actor: jgstern_agent  # 765f
+  clock: 9  # 765f
+  nonce: 765f  # 765f
+  message: "User escalated to P0. Fix auto-pr convergence with concurrent tracker activity — not just test it."  # 765f
+- op: update  # a4f1
+  at: '2026-03-30T20:25:52Z'  # a4f1
+  by: agent  # a4f1
+  actor: jgstern_agent  # a4f1
+  clock: 10  # a4f1
+  nonce: a4f1  # a4f1
+  set:  # a4f1
+    status: holding  # a4f1
+- op: discuss  # e947
+  at: '2026-03-30T20:25:52Z'  # e947
+  by: agent  # e947
+  actor: jgstern_agent  # e947
+  clock: 11  # e947
+  nonce: e947  # e947
+  message: "Fixed in PR #2637. Three race conditions closed: (1) PR_PENDING gate created before push (was after), (2) re-check TRACKER_SYNC_PENDING before push, (3) proactive rebase after CI poll if dev advanced. PR #2637 itself was the live test — auto-pr ran with the new code and merged successfully. Holding: remaining race #8 (competing simultaneous merges) requires distributed locking, lower priority."  # e947

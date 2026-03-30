@@ -58,3 +58,18 @@
   clock: 6  # d100
   nonce: d100  # d100
   message: "Concurrent test: triggering tracker activity while auto-pr polls CI for PR on another branch. This is a deliberate INV-rahib test."  # d100
+- op: update  # 40cf
+  at: '2026-03-30T20:45:26Z'  # 40cf
+  by: agent  # 40cf
+  actor: jgstern_agent  # 40cf
+  clock: 7  # 40cf
+  nonce: 40cf  # 40cf
+  set:  # 40cf
+    status: holding  # 40cf
+- op: discuss  # 126a
+  at: '2026-03-30T20:45:26Z'  # 126a
+  by: agent  # 126a
+  actor: jgstern_agent  # 126a
+  clock: 8  # 126a
+  nonce: 126a  # 126a
+  message: "Fixed in PR #2638. Added cgo_bridge and ffi_bridge to both call_types and _TRACEABLE_TYPES in io_boundary.py. IO chains now cross Go→C and Python→Rust FFI boundaries. Holding: needs bakeoff validation on tokenizers (361 ffi_bridge) and go-sqlite3 (116 cgo_bridge) to confirm real-world improvement."  # 126a
