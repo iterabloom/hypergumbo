@@ -1,0 +1,19 @@
+- op: create  # 9b4f
+  at: '2026-03-30T21:48:45Z'  # 9b4f
+  by: agent  # 9b4f
+  actor: jgstern_agent  # 9b4f
+  clock: 1  # 9b4f
+  nonce: 9b4f  # 9b4f
+  data:  # 9b4f
+    kind: work_item  # 9b4f
+    title: "rslice seed selection prefers internal utility over public API for libraries"  # 9b4f
+    status: todo_soft  # 9b4f
+    priority: 4  # 9b4f
+    parent:  # 9b4f
+    tags: []  # 9b4f
+    before: []  # 9b4f
+    duplicate_of: []  # 9b4f
+    not_duplicate_of: []  # 9b4f
+    pr_ref:  # 9b4f
+    description: "Bakeoff assessment (deep-20260330-164900, age): domain_score picked bech32.Encode (in=11) over Encrypt (in=17), Decrypt (in=17). For libraries, library_export-tagged nodes should be boosted in seed scoring."  # 9b4f
+    fields: {}  # 9b4f
