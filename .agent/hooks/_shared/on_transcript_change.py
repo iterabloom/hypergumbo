@@ -48,46 +48,90 @@ TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
 PLAYBOOKS = [
     ("experiment-design-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md",
-     "Mini trial runs before full experiments, 8-hour rule for long commands."),
+     "Always run a 1-repo mini trial before full experiments to validate setup and estimate "
+     "runtime. If extrapolated single-command wall-clock time exceeds 8 hours, document "
+     "the design in the lab notebook instead of running it. Do not draw conclusions from "
+     "mini-trials — they are only for smoke testing and ballpark timing."),
     ("bakeoff-broad-priorities",
      ".agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md",
-     "BROAD mode priority queue: reflect, aggregate, linkers, frameworks."),
+     "BROAD mode priority queue and script reference for coverage-breadth bakeoffs. "
+     "Priority order: reflect on results, aggregate across sessions, linkers, frameworks. "
+     "Includes pipeline overlap guidance (reflect agents can run concurrently with the next "
+     "cohort's run), batch workflow commands, and what to do when blocked."),
     ("bakeoff-deep-priorities",
      ".agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md",
-     "DEEP mode priority queue: reflect, aggregate, slice, tiers, centrality."),
+     "DEEP mode priority queue and script reference for feature-usefulness bakeoffs. "
+     "Priority order: reflect, aggregate, slice quality, reverse slice, supply chain tiers, "
+     "centrality, linkers. Includes session comparison (bakeoff-deep compare), introspection "
+     "subcommands (status, active), and curriculum-based cohort selection."),
     ("bakeoff-artifacts-guide",
      ".agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md",
-     "Where bakeoff artifacts are stored and how sessions are organized."),
+     "Bakeoff artifacts are stored in ~/hypergumbo_lab_notebook/bakeoff_artifacts/ as "
+     "timestamped session directories (broad-* or deep-*). Sessions are auto-discovered by "
+     "latest timestamp and never overwritten. Env var overrides available. Each session "
+     "contains state.json, cohorts/, out/, diag/, and reflect/ subdirectories."),
     ("coverage-and-test-placement",
      ".agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement.md",
-     "100% test coverage requirement, per-package isolation, test placement."),
+     "100% test coverage is required — no exceptions. Tests must live in the same package as "
+     "the code they cover because CI tests each package in isolation. Subprocess tests do not "
+     "contribute to coverage. Run check-package-coverage before pushing. Embedding-dependent "
+     "code uses a separate .coveragerc when sentence-transformers is unavailable."),
     ("structural-fix-scope-expansion-protocol",
      ".agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md",
-     "Assume bugs are structural, name invariants, scope-expand across languages."),
+     "When fixing bugs, assume they are structural: name the violated invariant, check for "
+     "analogues across languages/constructs/pipeline stages. Create tracker items immediately "
+     "(violated, todo_hard, todo_soft, or needs_human_review). Distinguish root-cause fixes "
+     "from workarounds. When in doubt, use todo_hard — the circuit breaker prevents death "
+     "spirals."),
     ("smart-test-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md",
-     "Using pytest/smart-test alias, compact output, affected test selection."),
+     "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "
+     "direct pytest. Smart-test provides a compact ~20-line summary, saves full output to "
+     ".ci/pytest-output.log, and runs only tests affected by changed files. Commit "
+     ".ci/affected-tests.txt with every PR for CI smart test selection."),
     ("pre-work-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md",
-     "Pre-work checklist: PR gate, vPR flush, branch sync, spec review."),
+     "Checklist before starting any new feature: verify no auto-pr is in flight "
+     "(PR_PENDING gate), flush queued vPRs if remote is available, sync dev and main "
+     "branches, review the spec and changelog for current progress, then create a feature "
+     "branch with the naming convention author/[feat|fix|docs|refactor]/description."),
     ("recover-state-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md",
-     "Post-compaction recovery from last_stop_check.json and tracker."),
+     "After context compaction, recover state from last_stop_check.json which records: "
+     "current branch, last PR number/state, pending hard/soft TODOs, free-text notes, "
+     "active bakeoff session path. Also check guidance_file for recent stop hook output "
+     "and run tracker ready for pending work items. Keep notes fresh after key milestones."),
     ("pre-commit-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md",
-     "Pre-commit checklist: identity, tests, changelog, tracker, sign-off."),
+     "Before every commit: verify git identity (user.name/user.email), run tests with "
+     "100% coverage (pytest -n auto --cov-fail-under=100), update CHANGELOG.md and spec "
+     "status indicators if feature status changed, check tracker for open items if fixing "
+     "a bakeoff signal, then commit with sign-off (git commit -s)."),
     ("vpr-usage",
      ".agent/agent_playbooks_protocols_sops_skills/vpr-usage.md",
-     "Virtual PR queue for offline resilience when remote is unavailable."),
+     "When the remote is unavailable, auto-pr queues virtual PRs (vPRs) in .git/PR_QUEUE. "
+     "vPRs form a linear chain; flush pushes all as a single atomic PR. Commands: auto-pr "
+     "list (show queue), auto-pr status (queue state and next steps), auto-pr flush (push "
+     "all). To add changes while queue is non-empty, branch from the queue tip."),
     ("release-workflow",
      ".agent/agent_playbooks_protocols_sops_skills/release-workflow.md",
-     "Two-step release: agent prepares, human signs tag and pushes."),
+     "Two-step release workflow: agent runs prepare-release VERSION (bumps version, updates "
+     "changelog, runs release-check, creates dev-to-main PR). Human then merges the PR and "
+     "runs tag-release VERSION to create a GPG-signed tag and push it, triggering the "
+     "release CI workflow. Separation ensures branch protection and human authorization."),
     ("ci-debug-protocol",
      ".agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md",
-     "CI debugging with ci-debug script, workflow topology, dependencies."),
+     "When CI fails but tests pass locally, use ci-debug runs/status/analyze-deps. Four CI "
+     "workflows: ci.yml (per-PR smart-test), full-suite (every 4 hours, all packages), "
+     "nightly (multi-Python matrix + integration tests), release (on tag push). Common root "
+     "causes: missing pyproject.toml dependencies, version mismatches, platform differences. "
+     "Never use pytest.skip() to hide failures."),
     ("optional-dependency-testing-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md",
-     "Testing tree-sitter grammars: real tests, mock only unavailability path."),
+     "For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no "
+     "mocking. For build-from-source grammars (built via scripts/build-source-grammars): "
+     "write real tests that call the analyzer directly, plus a mock test only for the "
+     "unavailability code path. Never use pytest.mark.skipif as an escape hatch."),
 ]
 
 
@@ -413,7 +457,7 @@ def main() -> None:
     )
     step2_prompt = (
         f"An agentic coder has the following goal:\n\n{agent_goals}\n\n"
-        "Below are several SOPs, protocols, or guidance documents that might "
+        "Below are filenames and content summaries for several SOPs, protocols, or guidance documents that might "
         "be relevant to the agent's goal. For each document, please rate on a "
         "scale of 1 to 10, with 10 being the most confident, how sure you are "
         "that the document would help the agent complete its goal. Reply with "
@@ -516,7 +560,8 @@ def main() -> None:
     # Output: injected into the agent's conversation
     print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s) "
           f"(threshold: {THRESHOLD}/10)]")
-    print(f"Agent goals: {agent_goals}")
+    if dry_run:
+        print(f"Agent goals: {agent_goals}")
     print()
     for pb_id, score, content in relevant:
         print(f"--- {pb_id} (relevance: {score}/10) ---")

@@ -39,7 +39,7 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 
-Run a 1-repo mini trial first to validate setup and estimate runtime. If extrapolated single-command runtime exceeds 8 hours, document instead of running. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md`.)
+Always run a 1-repo mini trial before full experiments to validate setup and estimate runtime. If extrapolated single-command wall-clock time exceeds 8 hours, document the design in the lab notebook instead of running it. Do not draw conclusions from mini-trials — they are only for smoke testing and timing. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md`.)
 
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
 - **Adjust specs based on experiments:** If experiments reveal better approaches, update `docs/hypergumbo-spec.md`.
@@ -49,13 +49,13 @@ Run a 1-repo mini trial first to validate setup and estimate runtime. If extrapo
 Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
 
 ### BROAD Mode Priority Queue:
-Priority: reflect → aggregate → linkers → frameworks. Use `bakeoff-broad cycle` for run+diagnose+reflect. Can overlap reflect with next cohort's run. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md`.)
+Priority: reflect → aggregate → linkers → frameworks. Use `bakeoff-broad cycle` for run+diagnose+reflect. Reflect agents only read artifacts, so they can overlap with the next cohort's run. When blocked (CI pending, bakeoff running), aggregate prior sessions or investigate diagnostics. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md`.)
 
 ### DEEP Mode Priority Queue:
-Priority: reflect → aggregate → slice quality → reverse slice → tiers → centrality → linkers. Use `bakeoff-deep cycle`. Compare sessions with `compare`. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md`.)
+Priority: reflect → aggregate → slice quality → reverse slice → supply chain tiers → centrality → linkers. Use `bakeoff-deep cycle`. Compare sessions with `bakeoff-deep compare`. Includes introspection subcommands (status, active) and curriculum-based cohort selection. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md`.)
 
 ### Bakeoff Artifacts
-Artifacts stored in `~/hypergumbo_lab_notebook/bakeoff_artifacts/{broad,deep}-TIMESTAMP/`. Auto-discovered by latest timestamp. Never overwritten. Env vars available for overrides. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md`.)
+Artifacts stored in `~/hypergumbo_lab_notebook/bakeoff_artifacts/` as timestamped session directories (broad-* or deep-*). Auto-discovered by latest timestamp, never overwritten. Env var overrides available. Each session contains state.json, cohorts/, out/, diag/, and reflect/ subdirectories. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md`.)
 
 
 ## Tracker (Structured Governance)
@@ -101,11 +101,11 @@ When documenting status, coverage, or completion:
 No weak shit. If you don't know, say you don't know. If you haven't checked, say you haven't checked.
 
 ## Required Checks
-- **100% Coverage Guidelines and Test Placement Guidelines:** 100% coverage required (`pytest -n auto --cov-fail-under=100`). Tests must live in same package as code they cover. Run `check-package-coverage` before pushing. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement.md`.)
+- **100% Coverage Guidelines and Test Placement Guidelines:** 100% coverage required — no exceptions. Tests must live in the same package as the code they cover (CI tests packages in isolation). Subprocess tests do not contribute to coverage. Run `check-package-coverage` before pushing to catch cross-package gaps. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement.md`.)
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
-- **Structural Fix and Scope Expansion Protocol:** Assume bugs are structural. Name the invariant. Scope-expand across languages/constructs/stages. Create tracker items immediately: `violated`, `todo_hard`, `todo_soft`, or `needs_human_review`. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md`.)
+- **Structural Fix and Scope Expansion Protocol:** When fixing bugs, assume structural: name the violated invariant, check for analogues across languages/constructs/pipeline stages, distinguish root-cause fixes from workarounds. Create tracker items immediately. When in doubt, use `todo_hard` — the circuit breaker prevents death spirals. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md`.)
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -113,7 +113,7 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
 ### Running Tests (smart-test)
-Always use `pytest` alias, never `python -m pytest`. Compact ~20-line summary; full log in `.ci/pytest-output.log`. Commit `.ci/affected-tests.txt` every PR. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md`.)
+Always use the `pytest` alias (which invokes smart-test), never `python -m pytest` or direct pytest. Provides compact ~20-line summary; full output saved to `.ci/pytest-output.log`. Runs only tests affected by changed files. Commit `.ci/affected-tests.txt` with every PR for CI smart test selection. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md`.)
 
 ### Output Capture for Long-Running Commands
 **NEVER** pipe the output of long-running commands through `| tail -N` or `| head -N` as the primary capture method. Truncated output loses critical information (error messages, coverage gaps, CI failures) and forces expensive re-runs.
@@ -141,13 +141,13 @@ some-long-command > /tmp/cmd-output.log 2>&1
 
 
 ## Pre-Work Checklist
-Check `PR_PENDING` gate, flush vPR queue, sync dev and main branches, review spec and changelog, then create feature branch. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
+Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, sync dev and main branches, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
 
 ## Post-Compaction State Recovery
-Read `last_stop_check.json` for branch, PR, and bakeoff state. Update notes after milestones so context survives compaction. Run `tracker ready`. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md`.)
+After context compaction, recover state from `last_stop_check.json` which records: current branch, last PR number/state, pending hard/soft TODOs, free-text notes, and active bakeoff session path. Check `guidance_file` for recent stop hook output. Run `tracker ready` for pending work items. Keep notes fresh after key milestones. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md`.)
 
 ## Pre-Commit Checklist
-Verify git identity, run tests at 100% coverage, update changelog/spec if status changed, check `tracker count-todos`, commit with `-s`. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md`.)
+Before every commit: verify git identity (user.name/user.email), run tests with 100% coverage (`pytest -n auto --cov-fail-under=100`), update CHANGELOG.md and spec status indicators if feature status changed, check tracker for open items if fixing a bakeoff signal, then commit with sign-off (`git commit -s`). (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md`.)
 
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `dev` green and deployable at all times.
@@ -183,7 +183,7 @@ Verify git identity, run tests at 100% coverage, update changelog/spec if status
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`
   - If file exists, wait for `auto-pr` to complete before starting new work.
   - Manual PRs do not create this gate; use `./scripts/ci-debug status` to check CI.
-- **vPR Queue (offline resilience):** When remote is unavailable, `auto-pr` queues virtual PRs in `.git/PR_QUEUE`. Flush atomically with `auto-pr flush` when remote returns. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/vpr-usage.md`.)
+- **vPR Queue (offline resilience):** When remote is unavailable, `auto-pr` queues virtual PRs in `.git/PR_QUEUE` as a linear chain. Flush pushes all as a single atomic PR. Commands: `auto-pr list`, `auto-pr status`, `auto-pr flush`. To add changes while queue is non-empty, branch from the queue tip. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/vpr-usage.md`.)
 - **CI Interaction Policy:**
   - **NEVER** write bash loops that poll CI via curl/wget/api calls.
   - **NEVER** call the Forgejo API directly outside of approved scripts.
@@ -200,13 +200,13 @@ Verify git identity, run tests at 100% coverage, update changelog/spec if status
 External contributors: see `docs/CONTRIBUTOR_MODE.AGENTS.md` for fork-based workflow instructions.
 
 ## Release Workflow (Agent + Human)
-Two-step: agent runs `prepare-release VERSION` (bump, changelog, PR). Human merges PR, then runs `tag-release VERSION` for GPG-signed tag. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/release-workflow.md`.)
+Agent runs `prepare-release VERSION` (bumps version, updates changelog, runs release-check, creates dev-to-main PR). Human merges the PR and runs `tag-release VERSION` to create a GPG-signed tag, triggering the release CI workflow. Separation ensures branch protection and human authorization. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/release-workflow.md`.)
 
 ## CI Debugging Protocol
-Use `ci-debug runs/status/analyze-deps`. Four CI workflows: ci.yml (per-PR), full-suite (4h), nightly (matrix), release (on tag). Never poll CI manually. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md`.)
+When CI fails but tests pass locally, use `ci-debug runs/status/analyze-deps`. Four CI workflows: ci.yml (per-PR smart-test), full-suite (every 4 hours), nightly (multi-Python matrix + integration), release (on tag). Common root causes: missing pyproject.toml deps, version mismatches, platform differences. Never poll CI manually. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md`.)
 
 ## Testing Optional Dependencies
-PyPI grammars: real tests, no mocking. Build-from-source grammars: real tests plus mock only for the unavailability code path. Never use `skipif`. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
+For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no mocking. For build-from-source grammars (built via `scripts/build-source-grammars`): write real tests calling the analyzer directly, plus a mock test only for the unavailability code path. Never use `pytest.mark.skipif` as an escape hatch. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
 
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
