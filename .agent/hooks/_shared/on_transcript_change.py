@@ -281,17 +281,42 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
 
 
 INJECTION_STATE_FILENAME = ".transcript-injection-state.json"
+SESSION_TOKEN_FILENAME = ".transcript-session-token"
 
 
 def _state_path(repo_root: str) -> str:
     return os.path.join(repo_root, ".agent", INJECTION_STATE_FILENAME)
 
 
+def _read_session_token(repo_root: str) -> str:
+    """Read the current session token (written by sync-transcript.sh on start)."""
+    path = os.path.join(repo_root, ".agent", SESSION_TOKEN_FILENAME)
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _empty_state(repo_root: str) -> dict:
+    """Return a fresh injection state tagged with the current session token."""
+    return {
+        "session_token": _read_session_token(repo_root),
+        "injections": {},
+        "last_compact_offset": 0,
+    }
+
+
 def load_injection_state(repo_root: str) -> dict:
     """Load injection tracking state.
 
+    Returns empty state if the state file is missing, corrupt, or belongs
+    to a different session (stale token).  This prevents cross-session
+    byte offsets from poisoning the dedup logic.
+
     State format:
     {
+        "session_token": "<token>",
         "injections": {"pb_id": <byte_offset_at_injection_time>, ...},
         "last_compact_offset": <byte_offset_of_last_compact_boundary>
     }
@@ -300,14 +325,26 @@ def load_injection_state(repo_root: str) -> dict:
     if os.path.exists(path):
         try:
             with open(path) as f:
-                return json.load(f)
+                state = json.load(f)
         except (json.JSONDecodeError, OSError):
-            pass
-    return {"injections": {}, "last_compact_offset": 0}
+            return _empty_state(repo_root)
+
+        # Validate session token — stale state from a prior session is
+        # meaningless because byte offsets reference a different transcript.
+        current_token = _read_session_token(repo_root)
+        if current_token and state.get("session_token") != current_token:
+            return _empty_state(repo_root)
+
+        return state
+    return _empty_state(repo_root)
 
 
 def save_injection_state(repo_root: str, state: dict) -> None:
-    """Persist injection tracking state atomically."""
+    """Persist injection tracking state atomically.
+
+    Embeds the current session token so future reads can detect staleness.
+    """
+    state["session_token"] = _read_session_token(repo_root)
     path = _state_path(repo_root)
     tmp = path + ".tmp"
     with open(tmp, "w") as f:

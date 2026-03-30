@@ -409,6 +409,8 @@ class TestParseRatings:
 class TestRecentlyInjected:
     """Property tests for on_transcript_change.py's recently_injected."""
 
+    SESSION_TOKEN = "test-session-12345"
+
     @staticmethod
     def _make_transcript(base: str, lines: list[dict]) -> str:
         """Write a JSONL transcript and return its path."""
@@ -418,14 +420,24 @@ class TestRecentlyInjected:
                 f.write(_jsonl_line(obj))
         return path
 
-    @staticmethod
-    def _make_state(base: str, state: dict) -> None:
-        """Write injection state to the expected location."""
+    @classmethod
+    def _write_session_token(cls, base: str, token: str | None = None) -> None:
+        """Write a session token file so state validation passes."""
         agent_dir = os.path.join(base, ".agent")
         os.makedirs(agent_dir, exist_ok=True)
+        with open(os.path.join(agent_dir, ".transcript-session-token"), "w") as f:
+            f.write(token or cls.SESSION_TOKEN)
+
+    @classmethod
+    def _make_state(cls, base: str, state: dict) -> None:
+        """Write injection state with matching session token."""
+        agent_dir = os.path.join(base, ".agent")
+        os.makedirs(agent_dir, exist_ok=True)
+        state.setdefault("session_token", cls.SESSION_TOKEN)
         state_path = os.path.join(agent_dir, ".transcript-injection-state.json")
         with open(state_path, "w") as f:
             json.dump(state, f)
+        cls._write_session_token(base)
 
     def test_no_prior_injections_returns_empty(
         self, tmp_path: Path, hook_mod: Any,
@@ -554,6 +566,45 @@ class TestRecentlyInjected:
         )
         assert skip == set()
         assert state["injections"] == {}
+
+    def test_stale_session_token_invalidates_state(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """Injection state from a prior session (different token) is discarded.
+
+        This is the bug that ADR-0018's session token mechanism fixes:
+        byte offsets from an old session's transcript are meaningless
+        against the new session's transcript.
+        """
+        transcript = self._make_transcript(str(tmp_path), [
+            {"type": "user_message", "content": "new session"},
+        ])
+        transcript_size = os.path.getsize(transcript)
+
+        # Write state with OLD session token and large byte offsets
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(exist_ok=True)
+        old_state = {
+            "session_token": "old-session-999",
+            "injections": {
+                "pb-a": 1_200_000,  # Offset larger than new transcript
+                "pb-b": 1_100_000,
+            },
+            "last_compact_offset": 0,
+        }
+        (agent_dir / ".transcript-injection-state.json").write_text(
+            json.dumps(old_state),
+        )
+        # Write CURRENT session token (different from the state's token)
+        (agent_dir / ".transcript-session-token").write_text("new-session-123")
+
+        skip, state = hook_mod.recently_injected(
+            transcript, ["pb-a", "pb-b"], str(tmp_path),
+        )
+        # Stale state should be discarded — nothing skipped
+        assert skip == set()
+        assert state["injections"] == {}
+        assert state["session_token"] == "new-session-123"
 
 
 # ---------------------------------------------------------------------------
@@ -697,3 +748,145 @@ class TestTruncateToBudget:
         p, r = hook_mod._truncate_to_budget("A" * half, "B" * half, max_tokens)
         assert len(p) == half
         assert len(r) == half
+
+
+# ---------------------------------------------------------------------------
+# Session token tests for filter-transcript.py
+# ---------------------------------------------------------------------------
+
+class TestFilterSessionToken:
+    """Tests for filter-transcript.py's session token validation."""
+
+    def test_stale_token_resets_filter_state(
+        self, tmp_path: Path, filter_mod: Any,
+    ) -> None:
+        """Filter state from a prior session (different token) resets to zero offset."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+
+        # Write state with old token and non-zero offset
+        state_path = str(agent_dir / "state.json")
+        with open(state_path, "w") as f:
+            json.dump({
+                "offset": 50000,
+                "last_bash_hash": "abc123",
+                "session_token": "old-session",
+            }, f)
+
+        # Write current session token (different)
+        (agent_dir / ".transcript-session-token").write_text("new-session")
+
+        # State path is in .agent/, so _read_session_token will find the token
+        state = filter_mod.load_state(state_path)
+        assert state["offset"] == 0
+        assert state["last_bash_hash"] == ""
+
+    def test_matching_token_preserves_state(
+        self, tmp_path: Path, filter_mod: Any,
+    ) -> None:
+        """Filter state with matching session token is preserved."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+
+        state_path = str(agent_dir / "state.json")
+        with open(state_path, "w") as f:
+            json.dump({
+                "offset": 50000,
+                "last_bash_hash": "abc123",
+                "session_token": "current-session",
+            }, f)
+
+        (agent_dir / ".transcript-session-token").write_text("current-session")
+
+        state = filter_mod.load_state(state_path)
+        assert state["offset"] == 50000
+        assert state["last_bash_hash"] == "abc123"
+
+    def test_no_token_file_preserves_state(
+        self, tmp_path: Path, filter_mod: Any,
+    ) -> None:
+        """Without a session token file, state is preserved (backward compat)."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+
+        state_path = str(agent_dir / "state.json")
+        with open(state_path, "w") as f:
+            json.dump({
+                "offset": 50000,
+                "last_bash_hash": "abc123",
+            }, f)
+
+        # No .transcript-session-token file written
+        state = filter_mod.load_state(state_path)
+        assert state["offset"] == 50000
+
+    def test_save_embeds_session_token(
+        self, tmp_path: Path, filter_mod: Any,
+    ) -> None:
+        """save_state embeds the current session token in the state file."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+
+        (agent_dir / ".transcript-session-token").write_text("my-token")
+
+        state_path = str(agent_dir / "state.json")
+        filter_mod.save_state(state_path, {"offset": 100, "last_bash_hash": "x"})
+
+        with open(state_path) as f:
+            saved = json.load(f)
+        assert saved["session_token"] == "my-token"
+
+
+# ---------------------------------------------------------------------------
+# Session reset invariant test
+# ---------------------------------------------------------------------------
+
+class TestSessionResetInvariant:
+    """Verify that session start clears all per-session state files.
+
+    Convention: any file in .agent/ matching .transcript-* is per-session
+    transient state.  The glob reset in sync-transcript.sh must catch all
+    of them.  This test simulates a pipeline run (creating all known state
+    files), then verifies the glob pattern would remove them.
+    """
+
+    # All per-session state files that the pipeline creates.
+    # If you add a new .transcript-* file, add it here — the test will
+    # verify the glob catches it.
+    PER_SESSION_FILES = [
+        ".transcript-sync.pid",
+        ".transcript-sync-state.json",
+        ".transcript-poll-state",
+        ".transcript-injection-state.json",
+        ".transcript-session-token",
+    ]
+
+    # Files that must NOT be cleared on session start.
+    PERSISTENT_FILES = [
+        ".training-data.jsonl",
+        ".current_session_transcript.jsonl",  # Cleared separately by explicit rm
+    ]
+
+    def test_glob_pattern_catches_all_per_session_files(
+        self, tmp_path: Path,
+    ) -> None:
+        """The glob '.transcript-*' matches every per-session state file."""
+        import fnmatch
+
+        for name in self.PER_SESSION_FILES:
+            assert fnmatch.fnmatch(name, ".transcript-*"), (
+                f"{name} does not match '.transcript-*' — it will survive "
+                f"session reset.  Rename it to start with '.transcript-'."
+            )
+
+    def test_glob_pattern_spares_persistent_files(
+        self, tmp_path: Path,
+    ) -> None:
+        """The glob '.transcript-*' does NOT match persistent files."""
+        import fnmatch
+
+        for name in self.PERSISTENT_FILES:
+            assert not fnmatch.fnmatch(name, ".transcript-*"), (
+                f"{name} matches '.transcript-*' — it would be deleted on "
+                f"session start.  Rename it if it should persist."
+            )

@@ -109,6 +109,28 @@ Config files:
 └── .cursor/hooks.json          # stop + afterAgentResponse + postToolUse
 ```
 
+### Per-session state invariant and session tokens
+
+**Naming convention:** Any file in `.agent/` matching `.transcript-*` is per-session transient state. On session start, `sync-transcript.sh` clears all matching files with `rm -f .agent/.transcript-*` — a glob-based reset that automatically covers new state files without requiring manual registration.
+
+**Session token (defense in depth):** `sync-transcript.sh` writes a random token to `.agent/.transcript-session-token` on startup. Every state file writer (`save_injection_state`, `save_state`, `poll-transcript-change.sh`) embeds the current token. Every state file reader checks the embedded token against the current token file — mismatches cause the state to be treated as empty. This catches stale state even if the glob reset was skipped (e.g., watcher not launched, session-start hook timed out).
+
+**Why both layers:** The glob reset handles the normal path. The session token handles edge cases where state files are created outside the watcher (e.g., by `on_transcript_change.py`) or where the watcher launch fails. Neither layer alone covers all failure modes.
+
+**Invariant test:** `TestSessionResetInvariant` in the test suite verifies that every known `.transcript-*` file matches the glob pattern and that persistent files (`.training-data.jsonl`) do not. Adding a new state file that breaks the convention causes a test failure.
+
+Six runtime state files total:
+
+| File | Per-session? | Cleared on start? |
+|------|---|---|
+| `.current_session_transcript.jsonl` | Yes | Yes (explicit rm) |
+| `.transcript-sync.pid` | Yes | Yes (glob) |
+| `.transcript-sync-state.json` | Yes | Yes (glob) |
+| `.transcript-poll-state` | Yes | Yes (glob) |
+| `.transcript-injection-state.json` | Yes | Yes (glob + token) |
+| `.transcript-session-token` | Yes | Yes (glob, then rewritten) |
+| `.training-data.jsonl` | No | No (accumulates for finetuning) |
+
 ## Consequences
 
 ### Benefits

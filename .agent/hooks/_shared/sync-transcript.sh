@@ -29,8 +29,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Reset state and destination for a fresh session
-rm -f "$STATE_FILE" "$DEST"
+# Reset ALL per-session state for a fresh session.
+# Convention: any file in .agent/ matching .transcript-* is per-session
+# transient state and gets blown away here.  New state files that follow
+# this naming convention are automatically covered — no registration needed.
+rm -f "$REPO_ROOT/.agent/.transcript-"* "$DEST"
+
+# Write a session token so consumers can detect stale state even if
+# this reset was somehow skipped (e.g., watcher not launched).
+echo "$(date +%s)-$$" > "$REPO_ROOT/.agent/.transcript-session-token"
 
 # Phase 1: Wait for the source file to exist (may not be created until
 # the first message is sent in the session).

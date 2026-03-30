@@ -22,20 +22,50 @@ import json
 import os
 import sys
 
+SESSION_TOKEN_FILENAME = ".transcript-session-token"
+
+
+def _read_session_token(state_path):
+    """Read the current session token from the .agent/ directory.
+
+    Derives the .agent/ directory from the state file's location (the state
+    file lives in .agent/).
+    """
+    agent_dir = os.path.dirname(state_path)
+    path = os.path.join(agent_dir, SESSION_TOKEN_FILENAME)
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
 
 def load_state(state_path):
-    """Load filter state (byte offset, last output hash)."""
+    """Load filter state (byte offset, last output hash).
+
+    Returns empty state if the state file belongs to a different session
+    (stale token), preventing cross-session byte offsets from causing
+    incorrect filtering.
+    """
     if os.path.exists(state_path):
         try:
             with open(state_path) as f:
-                return json.load(f)
+                state = json.load(f)
         except (json.JSONDecodeError, OSError):
-            pass
+            return {"offset": 0, "last_bash_hash": ""}
+
+        # Validate session token
+        current_token = _read_session_token(state_path)
+        if current_token and state.get("session_token") != current_token:
+            return {"offset": 0, "last_bash_hash": ""}
+
+        return state
     return {"offset": 0, "last_bash_hash": ""}
 
 
 def save_state(state_path, state):
-    """Persist filter state atomically."""
+    """Persist filter state atomically with session token."""
+    state["session_token"] = _read_session_token(state_path)
     tmp = state_path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(state, f)
