@@ -48,3 +48,18 @@
   clock: 5  # f049
   nonce: f049  # f049
   message: "Analysis of read/write/mutate vs read/write for access_mode:\n\n**Option A: Binary read/write**\n- Pros: Simpler to implement per language, fewer edge cases, easier to reason about in slice pruning (\"does this edge carry data toward the sink?\"), matches the mental model most developers have\n- Cons: Loses the distinction between \"reads a value and passes it along\" vs \"modifies a value in place\" — which matters for taint propagation (a read-only path can still propagate tainted data). Also can't distinguish pure computation from state mutation.\n\n**Option B: Ternary read/write/mutate**\n- Pros: Rust has a native distinction (&self vs &mut self vs move). Python has __getattr__ vs __setattr__. Go has pointer vs value receivers. This granularity lets slicing distinguish \"reads config to decide behavior\" from \"writes new state\" from \"modifies existing state in place\". Taint propagation benefits: read edges propagate taint, mutate edges both propagate and create new taint sources, write edges create new taint sources but don't propagate.\n- Cons: Harder to extract reliably — Python duck typing means you can't always tell if .set() mutates or returns a new object. JS property access is ambiguous (getter could have side effects). The third category adds complexity to every consumer of access_mode.\n\n**Option C: Ternary read/write/pure (alternative)**\n- Pros: Captures the most useful distinction for slicing — \"does this call have side effects?\" Pure calls (len(), str(), isinstance()) can be pruned from forward slices without losing correctness. This is the distinction that actually produces tighter slices.\n- Cons: Purity is hard to prove statically. Any function could have logging side effects.\n\n**Recommendation: Start with binary read/write**, with the schema allowing future extension to ternary. Reasons:\n1. The current state (100% write) means ANY read classification is a massive improvement\n2. Python's py_def_use.py already has the infrastructure — it tracks assignments (write) vs references (read) at the variable level, just doesn't propagate to edge metadata\n3. Rust's rust_def_use.py distinguishes &self (read) vs &mut self (write) — direct mapping\n4. TypeScript's ts_def_use.py has similar read/write tracking\n5. Binary is sufficient to make dataflow slices tighter than structural slices, which is the immediate goal\n\nFor the representation: the existing access_mode field on edges is a string enum. Propose keeping it as-is with values 'read', 'write', 'none' (unknown). Add 'mutate' later if taint propagation needs it. Each language extractor maps its native concepts:\n- Python: assignment targets → write, name references → read\n- Rust: &mut self / mut ref patterns → write, &self / shared ref → read\n- TypeScript: assignment LHS → write, expression RHS → read\n- Go: pointer receiver → write, value receiver → read (rougher approximation)\n\nImplementation order: Python → Rust → TypeScript (matching existing def_use extractor maturity)."  # f049
+- op: discuss  # ba84
+  at: '2026-03-30T15:51:18Z'  # ba84
+  by: human  # ba84
+  actor: jgstern  # ba84
+  clock: 6  # ba84
+  nonce: ba84  # ba84
+  message: "ok agreed; go for it"  # ba84
+- op: update  # 77a7
+  at: '2026-03-30T15:51:28Z'  # 77a7
+  by: human  # 77a7
+  actor: jgstern  # 77a7
+  clock: 7  # 77a7
+  nonce: 77a7  # 77a7
+  set:  # 77a7
+    status: violated  # 77a7

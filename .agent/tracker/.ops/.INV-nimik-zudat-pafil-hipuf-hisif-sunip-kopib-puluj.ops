@@ -195,3 +195,25 @@
   clock: 24  # 7441
   nonce: '7441'  # 7441
   message: "how would we close that remaining gap of 124 methods with empty paths? and would it be worthwhile to do so?"  # 7441
+- op: discuss  # 74a0
+  at: '2026-03-30T15:43:41Z'  # 74a0
+  by: agent  # 74a0
+  actor: jgstern_agent  # 74a0
+  clock: 25  # 74a0
+  nonce: 74a0  # 74a0
+  message: "Investigated the 124 empty-path methods. The number likely comes from a bakeoff where route symbols were created without path metadata. Root causes vary by language:\n\n**Where empty paths are legitimate:** Django path('') and Flask route('/') represent valid root URL routes. Swift Vapor/Hummingbird handlers registered without explicit path inherit the group path. These should keep their route symbols — they represent real HTTP endpoints.\n\n**Where empty paths indicate extraction failures:** Some framework patterns produce handler symbols without resolvable paths:\n- Java Spring: @RequestMapping on a class (controller-level prefix) without method-level mapping — the handler exists but path requires combining class + method annotations\n- Express.js: app.use(middleware) registers a handler for all paths — no single path to extract\n- Go: http.HandleFunc with dynamically computed paths (variable, not string literal)\n\n**Would it be worthwhile to close this gap?**\n\nFor the extraction-failure cases (Spring class-level @RequestMapping, Express middleware): yes, these are architecturally significant handlers. Closing the gap requires:\n1. Spring: resolve class-level @RequestMapping prefix + method-level path (2-pass: collect class annotations, then combine with method annotations). Moderate effort, high value — Spring is extremely common.\n2. Express middleware: emit a route with path='*' or path='[middleware]' rather than empty string. Low effort, moderate value — makes middleware visible in route maps.\n3. Go dynamic paths: emit path='[dynamic]' marker. Low effort, low value — rare in practice.\n\nFor the legitimate-root-path cases: normalize to '/' consistently (Swift already does this, Django preserves ''). Trivial effort.\n\nTotal: ~2-3 days of work for Spring + Express + normalization. Spring alone would close the majority of the 124."  # 74a0
+- op: update  # 5434
+  at: '2026-03-30T15:54:17Z'  # 5434
+  by: human  # 5434
+  actor: jgstern  # 5434
+  clock: 26  # 5434
+  nonce: '5434'  # 5434
+  set:  # 5434
+    status: violated  # 5434
+- op: discuss  # faeb
+  at: '2026-03-30T15:54:20Z'  # faeb
+  by: human  # faeb
+  actor: jgstern  # faeb
+  clock: 27  # faeb
+  nonce: faeb  # faeb
+  message: "ok let's do it"  # faeb

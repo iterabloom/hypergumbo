@@ -44,3 +44,17 @@
   clock: 4  # f7ed
   nonce: f7ed  # f7ed
   message: "\"run auto-pr while tracker sync is in flight, verify it either merges or reports clear actionable error\" -- let's try this -- or if we already tried it, find the tracker item or lab notebook entry showing the results ands report/reference that here."  # f7ed
+- op: discuss  # 3593
+  at: '2026-03-30T15:43:12Z'  # 3593
+  by: agent  # 3593
+  actor: jgstern_agent  # 3593
+  clock: 5  # 3593
+  nonce: '3593'  # 3593
+  message: "Investigated. Evidence found in lab notebook (notebookjournal_03242026_1730.md, Case 5):\n\nThe race condition WAS discovered in practice (WI-bukun, Mar 6): force-push after rebase triggered fresh CI, and concurrent tracker sync interfered. The do_merge() function in forgejo-api.sh (lines 654-777) now has explicit handling: it detects 'head behind base' errors from tracker sync, backs up .agent/tracker/.ops/ files before rebase, restores after, and retries the merge. auto-pr also excludes tracker ops from PR diffs (line 251-271).\n\nHowever: this has NOT been tested as a deliberate experiment since those fixes were deployed. The fixes were reactive (discovered during normal operation, patched incrementally). No automated test exists for the concurrent scenario.\n\nProposed test: (1) create a feature branch with a code change, (2) start auto-pr, (3) while CI is polling, trigger a tracker sync via `scripts/tracker update` on a separate item, (4) verify auto-pr either merges successfully or reports a clear actionable error. I can run this now if you'd like — it's a manual integration test, not something we can automate in pytest (requires real CI + real Forgejo API)."  # 3593
+- op: discuss  # 50f1
+  at: '2026-03-30T15:52:46Z'  # 50f1
+  by: human  # 50f1
+  actor: jgstern  # 50f1
+  clock: 6  # 50f1
+  nonce: 50f1  # 50f1
+  message: "ok let's have you run the manual test you propose above."  # 50f1
