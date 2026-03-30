@@ -57,6 +57,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Dataflow slice quality (INV-jahov)
+
+- **Position-aware access_mode classification**: `annotate_dataflow()` now uses tree-sitter child field names to distinguish LHS (write) from RHS (read) in assignments. Previously `build_node_type_map()` collapsed positional YAML rules into a single mode per node type, so `{write: left, read: right}` produced 100% "write" annotations. Now `build_positional_map()` preserves the child→mode mapping and `_classify_by_position()` resolves via byte-range containment.
+- **Python AST path**: `annotate_dataflow_ast()` reclassifies call edges on assignment/augmented-assignment lines as "read" (the call produces a value consumed by the assignment RHS). Non-call edges keep their statement mode (write/mutate).
+- **Returns section loaded**: `DataflowConfig` now loads the `returns` YAML section (previously silently dropped). Return/yield statements correctly classify edges as "read".
+- **Net effect**: Dataflow slices are now tighter than structural slices. Forward slice follows only write/mutate edges; reverse slice follows only read edges. Previously both followed all edges identically because every annotation was "write".
+
 #### I/O boundary detection
 
 - **Ambiguous name filtering for 10 catalogs**: Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C now have `ambiguous_names` lists (Scala and Swift already had them). Bare method names like `.String()`, `.Run()`, `.put()`, `.read()`, `.write()` no longer produce false-positive IO boundary matches without module context. Measured: age net_send 4→0, net_recv 14→0; polars net_send 285→89 (69% reduction).

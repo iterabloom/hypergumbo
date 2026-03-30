@@ -131,6 +131,86 @@ library_patterns:
         nmap = config.build_node_type_map()
         assert nmap["expression_statement"] == "read"
 
+    def test_load_with_returns_section(self, tmp_path: Path) -> None:
+        """Load a YAML with returns section."""
+        yaml_content = "language: python\n\nreturns:\n  - node_type: return_statement\n    read: expression\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        assert len(config.returns) == 1
+        assert config.returns[0]["node_type"] == "return_statement"
+        nmap = config.build_node_type_map()
+        assert nmap["return_statement"] == "read"
+
+    def test_positional_map_assignments(self, tmp_path: Path) -> None:
+        """build_positional_map preserves child-field → access_mode mapping."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+  - node_type: augmented_assignment
+    mutate: left
+    read: right
+
+deletions:
+  - node_type: delete_statement
+    delete: argument
+
+returns:
+  - node_type: return_statement
+    read: expression
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+        pmap = config.build_positional_map()
+
+        assert pmap["assignment"] == {"left": "write", "right": "read"}
+        assert pmap["augmented_assignment"] == {"left": "mutate", "right": "read"}
+        assert pmap["delete_statement"] == {"_default": "delete"}
+        assert pmap["return_statement"] == {"_default": "read"}
+
+    def test_positional_map_empty_node_type_skipped(self, tmp_path: Path) -> None:
+        """Assignment rule with empty node_type is skipped in positional map."""
+        yaml_content = "language: python\nassignments:\n  - node_type: ''\n    write: left\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+        pmap = config.build_positional_map()
+        assert pmap == {}
+
+    def test_positional_map_calls_section(self, tmp_path: Path) -> None:
+        """Calls section produces _default read in positional map."""
+        yaml_content = "language: python\ncalls:\n  - node_type: call\n    read: arguments\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+        pmap = config.build_positional_map()
+        assert pmap["call"] == {"_default": "read"}
+
+    def test_positional_map_borrows_section(self, tmp_path: Path) -> None:
+        """Borrows section produces _default mutate/read in positional map."""
+        yaml_content = "language: rust\nborrows:\n  - node_type: reference_expression\n    mutate_if: mutable\n  - node_type: borrow_expression\n    read_if: immutable\n"
+        yaml_file = tmp_path / "rust.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+        pmap = config.build_positional_map()
+        assert pmap["reference_expression"] == {"_default": "mutate"}
+        assert pmap["borrow_expression"] == {"_default": "read"}
+
+    def test_positional_map_borrows_empty_node_type(self, tmp_path: Path) -> None:
+        """Borrows rule with empty node_type is skipped."""
+        yaml_content = "language: rust\nborrows:\n  - node_type: ''\n    mutate_if: mutable\n"
+        yaml_file = tmp_path / "rust.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+        pmap = config.build_positional_map()
+        assert pmap == {}
+
     def test_load_empty_sections_default(self, tmp_path: Path) -> None:
         """Missing sections should default to empty lists."""
         yaml_content = "language: rust\n"
@@ -142,6 +222,7 @@ library_patterns:
         assert config.assignments == []
         assert config.calls == []
         assert config.deletions == []
+        assert config.returns == []
         assert config.library_patterns == []
 
 
@@ -152,7 +233,7 @@ class TestAnnotateDataflow:
     """Tests for the annotate_dataflow batch annotation function."""
 
     def _make_mock_tree(self, node_mappings: dict[int, str]) -> MagicMock:
-        """Create a mock tree-sitter tree with nodes at specific lines.
+        """Create a mock tree-sitter tree with simple (non-positional) nodes.
 
         Args:
             node_mappings: dict of {line_number: node_type}
@@ -182,8 +263,70 @@ class TestAnnotateDataflow:
 
         return tree
 
-    def test_annotates_assignment_edge(self, tmp_path: Path) -> None:
-        """Edges at assignment nodes get access_mode stamped."""
+    def _make_positional_tree(
+        self,
+        line: int,
+        parent_type: str,
+        children: dict[str, tuple[str, int, int]],
+    ) -> MagicMock:
+        """Create a mock tree with a parent node that has named children.
+
+        Supports position-aware classification: the parent node has
+        ``child_by_field_name()`` and children have byte ranges so that
+        ``_classify_by_position()`` can resolve which child field an
+        edge's node falls in.
+
+        Args:
+            line: 1-indexed line number for the parent node.
+            parent_type: node type of the parent (e.g., ``"assignment"``).
+            children: ``{field_name: (node_type, start_col, end_col)}``.
+                The LAST child in iteration order becomes the deepest
+                node in the line index (matching tree-sitter DFS behavior).
+        """
+        tree = MagicMock(spec=[])
+        root = MagicMock(spec=[])
+        tree.root_node = root
+
+        line0 = line - 1  # 0-indexed
+        base_byte = line0 * 100
+
+        parent = MagicMock(spec=[])
+        parent.type = parent_type
+        parent.start_point = (line0, 0)
+        parent.end_point = (line0, 20)
+        parent.start_byte = base_byte
+        parent.end_byte = base_byte + 20
+        parent.parent = root
+
+        child_by_name: dict[str, MagicMock] = {}
+        child_list = []
+        for field_name, (ntype, start_col, end_col) in children.items():
+            child = MagicMock(spec=[])
+            child.type = ntype
+            child.start_point = (line0, start_col)
+            child.end_point = (line0, end_col)
+            child.start_byte = base_byte + start_col
+            child.end_byte = base_byte + end_col
+            child.children = []
+            child.parent = parent
+            child_by_name[field_name] = child
+            child_list.append(child)
+
+        parent.children = child_list
+        parent.child_by_field_name = lambda name: child_by_name.get(name)
+
+        root.type = "module"
+        root.start_point = (0, 0)
+        root.end_point = (line0 + 1, 0)
+        root.start_byte = 0
+        root.end_byte = (line0 + 1) * 100
+        root.children = [parent]
+        root.parent = None
+
+        return tree
+
+    def test_assignment_rhs_gets_read(self, tmp_path: Path) -> None:
+        """Edge on RHS of assignment (e.g., the call in x = f()) gets read."""
         yaml_content = """\
 language: python
 
@@ -203,7 +346,51 @@ assignments:
             line=5,
         )
 
-        tree = self._make_mock_tree({5: "assignment"})
+        # RHS call_expression at cols 4-7 falls inside "right" child
+        tree = self._make_positional_tree(
+            line=5,
+            parent_type="assignment",
+            children={
+                "left": ("identifier", 0, 1),
+                "right": ("call_expression", 4, 7),
+            },
+        )
+        result = annotate_dataflow([edge], tree, b"x = f()", config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "read"
+
+    def test_assignment_lhs_gets_write(self, tmp_path: Path) -> None:
+        """Edge on LHS of assignment gets write."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:5:scope:function",
+            dst="py:a.py:5:x:variable",
+            edge_type="assigns",
+            line=5,
+        )
+
+        # LHS identifier at cols 0-1; make it the deepest node by listing it last
+        tree = self._make_positional_tree(
+            line=5,
+            parent_type="assignment",
+            children={
+                "right": ("call_expression", 4, 7),
+                "left": ("identifier", 0, 1),
+            },
+        )
         result = annotate_dataflow([edge], tree, b"x = f()", config)
 
         assert len(result) == 1
@@ -256,8 +443,8 @@ assignments:
         # No access_mode added for unmatched node types
         assert result[0].meta is None or "access_mode" not in result[0].meta
 
-    def test_augmented_assignment_gets_mutate(self, tmp_path: Path) -> None:
-        """Augmented assignments (x += 1) get access_mode=mutate."""
+    def test_augmented_assignment_lhs_gets_mutate(self, tmp_path: Path) -> None:
+        """LHS of augmented assignment (x += 1) gets access_mode=mutate."""
         yaml_content = """\
 language: python
 
@@ -271,18 +458,62 @@ assignments:
         config = load_dataflow_config(yaml_file)
 
         edge = Edge.create(
-            src="py:a.py:3:x:variable",
-            dst="py:a.py:3:literal:expression",
-            edge_type="calls",
+            src="py:a.py:3:scope:function",
+            dst="py:a.py:3:x:variable",
+            edge_type="assigns",
             line=3,
         )
 
-        tree = self._make_mock_tree({3: "augmented_assignment"})
+        # LHS identifier is the deepest node (listed last)
+        tree = self._make_positional_tree(
+            line=3,
+            parent_type="augmented_assignment",
+            children={
+                "right": ("integer", 5, 6),
+                "left": ("identifier", 0, 1),
+            },
+        )
         result = annotate_dataflow([edge], tree, b"x += 1", config)
 
         assert len(result) == 1
         assert result[0].meta is not None
         assert result[0].meta.get("access_mode") == "mutate"
+
+    def test_augmented_assignment_rhs_gets_read(self, tmp_path: Path) -> None:
+        """RHS of augmented assignment (x += f()) gets access_mode=read."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: augmented_assignment
+    mutate: left
+    read: right
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:3:scope:function",
+            dst="py:a.py:3:f:function",
+            edge_type="calls",
+            line=3,
+        )
+
+        # RHS call is the deepest node (listed last)
+        tree = self._make_positional_tree(
+            line=3,
+            parent_type="augmented_assignment",
+            children={
+                "left": ("identifier", 0, 1),
+                "right": ("call_expression", 5, 8),
+            },
+        )
+        result = annotate_dataflow([edge], tree, b"x += f()", config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "read"
 
     def test_deletion_gets_delete(self, tmp_path: Path) -> None:
         """Delete statements get access_mode=delete."""
@@ -335,33 +566,88 @@ deletions:
         yaml_content = """\
 language: python
 
-assignments:
-  - node_type: assignment
-    write: left
-    read: right
-
 deletions:
   - node_type: delete_statement
     delete: argument
+
+returns:
+  - node_type: return_statement
+    read: expression
 """
         yaml_file = tmp_path / "python.yaml"
         yaml_file.write_text(yaml_content)
         config = load_dataflow_config(yaml_file)
 
         edges = [
-            Edge.create(src="py:a.py:1:x:var", dst="py:a.py:1:f:fn",
+            Edge.create(src="py:a.py:1:scope:fn", dst="py:a.py:1:f:fn",
                         edge_type="calls", line=1),
             Edge.create(src="py:a.py:3:scope:fn", dst="py:a.py:3:y:var",
                         edge_type="calls", line=3),
         ]
-        tree = self._make_mock_tree({1: "assignment", 3: "delete_statement"})
-        result = annotate_dataflow(edges, tree, b"x = f()\n\ndel y", config)
+        tree = self._make_mock_tree({1: "return_statement", 3: "delete_statement"})
+        result = annotate_dataflow(edges, tree, b"return f()\n\ndel y", config)
 
         assert len(result) == 2
         assert result[0].meta is not None
-        assert result[0].meta.get("access_mode") == "write"
+        assert result[0].meta.get("access_mode") == "read"
         assert result[1].meta is not None
         assert result[1].meta.get("access_mode") == "delete"
+
+    def test_return_statement_gets_read(self, tmp_path: Path) -> None:
+        """Edge at return statement should get access_mode=read via returns section."""
+        yaml_content = """\
+language: python
+
+returns:
+  - node_type: return_statement
+    read: expression
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:5:scope:function",
+            dst="py:a.py:5:f:function",
+            edge_type="calls",
+            line=5,
+        )
+
+        tree = self._make_mock_tree({5: "return_statement"})
+        result = annotate_dataflow([edge], tree, b"return f()", config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "read"
+
+    def test_no_annotation_when_position_unresolvable(self, tmp_path: Path) -> None:
+        """Flat mock without child_by_field_name leaves edge unannotated."""
+        yaml_content = """\
+language: python
+
+assignments:
+  - node_type: assignment
+    write: left
+    read: right
+"""
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="py:a.py:5:x:var",
+            dst="py:a.py:5:f:fn",
+            edge_type="calls",
+            line=5,
+        )
+
+        # Flat mock without child_by_field_name — position can't be resolved
+        tree = self._make_mock_tree({5: "assignment"})
+        result = annotate_dataflow([edge], tree, b"x = f()", config)
+
+        assert len(result) == 1
+        # No annotation because position couldn't be determined
+        assert result[0].meta is None or "access_mode" not in result[0].meta
 
     def test_empty_edges_list(self, tmp_path: Path) -> None:
         """Empty edge list should return empty list."""
@@ -372,6 +658,167 @@ deletions:
         tree = self._make_mock_tree({1: "assignment"})
         result = annotate_dataflow([], tree, b"x = 1", config)
         assert result == []
+
+    def test_position_unresolvable_missing_bytes(self, tmp_path: Path) -> None:
+        """Edge node without start_byte/end_byte leaves edge unannotated."""
+        yaml_content = "language: python\nassignments:\n  - node_type: assignment\n    write: left\n    read: right\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
+                           edge_type="calls", line=5)
+
+        # Create tree with child_by_field_name but no start_byte on nodes
+        tree = MagicMock(spec=[])
+        root = MagicMock(spec=[])
+        tree.root_node = root
+
+        parent = MagicMock(spec=[])
+        parent.type = "assignment"
+        parent.start_point = (4, 0)
+        parent.end_point = (4, 10)
+        parent.children = []
+        parent.parent = root
+        parent.child_by_field_name = lambda name: None
+        # Deepest node has no start_byte
+        child = MagicMock(spec=[])
+        child.type = "call_expression"
+        child.start_point = (4, 4)
+        child.end_point = (4, 7)
+        child.children = []
+        child.parent = parent
+        parent.children = [child]
+
+        root.type = "module"
+        root.start_point = (0, 0)
+        root.end_point = (5, 0)
+        root.children = [parent]
+        root.parent = None
+
+        result = annotate_dataflow([edge], tree, b"x = f()", config)
+        assert result[0].meta is None or "access_mode" not in result[0].meta
+
+    def test_position_child_missing_bytes(self, tmp_path: Path) -> None:
+        """When child field node lacks byte info, that field is skipped."""
+        yaml_content = "language: python\nassignments:\n  - node_type: assignment\n    write: left\n    read: right\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
+                           edge_type="calls", line=5)
+
+        # Tree with child_by_field_name returning child without start_byte
+        tree = MagicMock(spec=[])
+        root = MagicMock(spec=[])
+        tree.root_node = root
+
+        parent = MagicMock(spec=[])
+        parent.type = "assignment"
+        parent.start_point = (4, 0)
+        parent.end_point = (4, 10)
+        parent.start_byte = 400
+        parent.end_byte = 410
+        parent.parent = root
+
+        # Child node without start_byte
+        bad_child = MagicMock(spec=[])
+        bad_child.type = "identifier"
+        bad_child.start_point = (4, 0)
+        bad_child.end_point = (4, 1)
+        bad_child.children = []
+        bad_child.parent = parent
+
+        # Deepest node with byte info
+        deep = MagicMock(spec=[])
+        deep.type = "call_expression"
+        deep.start_point = (4, 4)
+        deep.end_point = (4, 7)
+        deep.start_byte = 404
+        deep.end_byte = 407
+        deep.children = []
+        deep.parent = parent
+
+        parent.children = [bad_child, deep]
+        parent.child_by_field_name = lambda name: {"left": bad_child, "right": None}.get(name)
+
+        root.type = "module"
+        root.start_point = (0, 0)
+        root.end_point = (5, 0)
+        root.start_byte = 0
+        root.end_byte = 500
+        root.children = [parent]
+        root.parent = None
+
+        result = annotate_dataflow([edge], tree, b"x = f()", config)
+        # left child has no start_byte, right child is None → no match → no annotation
+        assert result[0].meta is None or "access_mode" not in result[0].meta
+
+    def test_position_no_field_match(self, tmp_path: Path) -> None:
+        """When edge node is outside all child byte ranges, no annotation."""
+        yaml_content = "language: python\nassignments:\n  - node_type: assignment\n    write: left\n    read: right\n"
+        yaml_file = tmp_path / "python.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
+                           edge_type="calls", line=5)
+
+        # Tree where deepest node is outside both children's byte ranges
+        tree = MagicMock(spec=[])
+        root = MagicMock(spec=[])
+        tree.root_node = root
+
+        parent = MagicMock(spec=[])
+        parent.type = "assignment"
+        parent.start_point = (4, 0)
+        parent.end_point = (4, 20)
+        parent.start_byte = 400
+        parent.end_byte = 420
+        parent.parent = root
+
+        left = MagicMock(spec=[])
+        left.type = "identifier"
+        left.start_point = (4, 0)
+        left.end_point = (4, 1)
+        left.start_byte = 400
+        left.end_byte = 401
+        left.children = []
+        left.parent = parent
+
+        right = MagicMock(spec=[])
+        right.type = "call_expression"
+        right.start_point = (4, 4)
+        right.end_point = (4, 7)
+        right.start_byte = 404
+        right.end_byte = 407
+        right.children = []
+        right.parent = parent
+
+        # Deepest node at bytes 410-415, outside both left [400-401] and right [404-407]
+        deep = MagicMock(spec=[])
+        deep.type = "comment"
+        deep.start_point = (4, 10)
+        deep.end_point = (4, 15)
+        deep.start_byte = 410
+        deep.end_byte = 415
+        deep.children = []
+        deep.parent = parent
+
+        parent.children = [left, right, deep]
+        parent.child_by_field_name = lambda name: {"left": left, "right": right}.get(name)
+
+        root.type = "module"
+        root.start_point = (0, 0)
+        root.end_point = (5, 0)
+        root.start_byte = 0
+        root.end_byte = 500
+        root.children = [parent]
+        root.parent = None
+
+        result = annotate_dataflow([edge], tree, b"x = f() # comment", config)
+        assert result[0].meta is None or "access_mode" not in result[0].meta
 
     def test_no_node_at_edge_line(self, tmp_path: Path) -> None:
         """Edge at a line with no AST node should pass through unchanged."""
@@ -852,8 +1299,8 @@ class TestBuiltInYamlFiles:
 class TestAnnotateDataflowAst:
     """Tests for the Python ast-based dataflow annotation."""
 
-    def test_assignment_gets_write(self) -> None:
-        """ast.Assign node should produce access_mode=write."""
+    def test_call_on_assignment_gets_read(self) -> None:
+        """Call edge on assignment line gets read (RHS consumes value)."""
         import ast
         tree = ast.parse("x = f()")
         edge = Edge.create(
@@ -864,35 +1311,77 @@ class TestAnnotateDataflowAst:
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_non_call_on_assignment_gets_write(self) -> None:
+        """Non-call edge on assignment line keeps write (target binding)."""
+        import ast
+        tree = ast.parse("x = f()")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:x:variable",
+            edge_type="assigns",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "write"
 
-    def test_augmented_assignment_gets_mutate(self) -> None:
-        """ast.AugAssign node should produce access_mode=mutate."""
+    def test_call_on_augmented_assignment_gets_read(self) -> None:
+        """Call edge on augmented assignment line gets read."""
+        import ast
+        tree = ast.parse("x += f()")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:f:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_non_call_on_augmented_assignment_gets_mutate(self) -> None:
+        """Non-call edge on augmented assignment line keeps mutate."""
         import ast
         tree = ast.parse("x += 1")
         edge = Edge.create(
             src="py:a.py:1:scope:function",
             dst="py:a.py:1:x:variable",
-            edge_type="calls",
+            edge_type="assigns",
             line=1,
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "mutate"
 
-    def test_annotated_assignment_gets_write(self) -> None:
-        """ast.AnnAssign node should produce access_mode=write."""
+    def test_call_on_annotated_assignment_gets_read(self) -> None:
+        """Call edge on annotated assignment gets read."""
         import ast
-        tree = ast.parse("x: int = 1")
+        tree = ast.parse("x: int = f()")
         edge = Edge.create(
             src="py:a.py:1:scope:function",
-            dst="py:a.py:1:x:variable",
+            dst="py:a.py:1:f:function",
             edge_type="calls",
             line=1,
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
-        assert result[0].meta["access_mode"] == "write"
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_return_gets_read(self) -> None:
+        """ast.Return node should produce access_mode=read."""
+        import ast
+        tree = ast.parse("def f():\n    return g()")
+        edge = Edge.create(
+            src="py:a.py:2:f:function",
+            dst="py:a.py:2:g:function",
+            edge_type="calls",
+            line=2,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
 
     def test_delete_gets_delete(self) -> None:
         """ast.Delete node should produce access_mode=delete."""
@@ -956,22 +1445,36 @@ class TestAnnotateDataflowAst:
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is None or "access_mode" not in result[0].meta
 
-    def test_for_loop_gets_write(self) -> None:
-        """ast.For node should produce access_mode=write (iteration variable)."""
+    def test_call_on_for_loop_gets_read(self) -> None:
+        """Call edge on for-loop line gets read (iterating over call result)."""
+        import ast
+        tree = ast.parse("for item in get_items():\n    pass")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:get_items:function",
+            edge_type="calls",
+            line=1,
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_non_call_on_for_loop_gets_write(self) -> None:
+        """Non-call edge on for-loop line keeps write (iteration variable)."""
         import ast
         tree = ast.parse("for item in collection:\n    pass")
         edge = Edge.create(
             src="py:a.py:1:scope:function",
             dst="py:a.py:1:collection:variable",
-            edge_type="calls",
+            edge_type="references",
             line=1,
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "write"
 
-    def test_with_statement_gets_write(self) -> None:
-        """ast.With node should produce access_mode=write (context variable)."""
+    def test_call_on_with_statement_gets_read(self) -> None:
+        """Call edge on with-statement line gets read (context manager call)."""
         import ast
         tree = ast.parse("with open('f') as fp:\n    pass")
         edge = Edge.create(
@@ -982,7 +1485,7 @@ class TestAnnotateDataflowAst:
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
-        assert result[0].meta["access_mode"] == "write"
+        assert result[0].meta["access_mode"] == "read"
 
     def test_yield_gets_read(self) -> None:
         """ast.Yield node should produce access_mode=read."""
