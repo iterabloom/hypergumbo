@@ -17,7 +17,7 @@ Configuration (environment variables):
   OPENROUTER_API_KEY     — required
   TRANSCRIPT_MODEL       — model to use (default: mistralai/mistral-nemo)
   TRANSCRIPT_MAX_TOKENS  — token budget for transcript window (default: 8000)
-  TRANSCRIPT_THRESHOLD   — minimum confidence to include a playbook (default: 7)
+  TRANSCRIPT_THRESHOLD   — minimum confidence to include a playbook (default: 8)
   TRANSCRIPT_DEDUP_TOKENS — suppress re-injection within this many tokens (default: 50000)
 """
 
@@ -27,6 +27,7 @@ import re
 import sys
 import urllib.request
 import urllib.error
+import uuid
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -35,13 +36,18 @@ import urllib.error
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = os.environ.get("TRANSCRIPT_MODEL", "mistralai/mistral-nemo")
 MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "8000"))
-THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "7"))
+THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "8"))
 DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
 CHARS_PER_TOKEN = 4.4
 
 # Training data collection: log LLM inputs/outputs for future local model finetuning.
 # Set TRANSCRIPT_TRAINING_LOG to a path to enable. Default: .agent/.training-data.jsonl
 TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
+
+# Parse outcome sidecar: records which playbook IDs failed to parse from the
+# LLM's relevance_rating response.  Entries share an event_id with the
+# corresponding training-data entry so the two files can be joined offline.
+PARSE_OUTCOME_LOG = os.environ.get("TRANSCRIPT_PARSE_OUTCOME_LOG", "")
 
 # Playbook registry: (id, path relative to repo root, one-line summary)
 # These match the files in .agent/agent_playbooks_protocols_sops_skills/.
@@ -190,6 +196,7 @@ def _truncate_to_budget(prompt: str, response: str, max_tokens: int) -> tuple[st
 
 def log_training_example(
     repo_root: str, step: str, prompt: str, response: str,
+    extra: dict | None = None,
 ) -> None:
     """Append a ChatML training example to the training log.
 
@@ -204,24 +211,54 @@ def log_training_example(
     The ``step`` field is metadata (not part of the chat) so training scripts
     can filter or weight the two tasks independently.  Entries exceeding
     MAX_TOKENS are truncated from the front of the longest field.
+
+    *extra* is an optional dict of additional metadata fields merged into the
+    top-level JSON object (e.g. ``{"parse_misses": ["id1", "id2"]}``).
     """
     prompt, response = _truncate_to_budget(prompt, response, MAX_TOKENS)
     log_path = TRAINING_LOG
     if not log_path:
         log_path = os.path.join(repo_root, ".agent", ".training-data.jsonl")
-    entry = json.dumps({
+    obj = {
         "step": step,
         "model": MODEL,
         "messages": [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": response},
         ],
-    }, ensure_ascii=False)
+    }
+    if extra:
+        obj.update(extra)
+    entry = json.dumps(obj, ensure_ascii=False)
     try:
         with open(log_path, "a") as f:
             f.write(entry + "\n")
     except OSError:
         pass  # Best-effort — don't break the pipeline for logging failures
+
+
+def log_parse_outcome(
+    repo_root: str, event_id: str, parse_misses: list[str],
+) -> None:
+    """Append a parse-outcome record to the sidecar log.
+
+    Each line is a JSON object with the *event_id* (shared with the
+    corresponding training-data entry) and the list of playbook IDs whose
+    scores could not be extracted from the LLM response.  Only called when
+    *parse_misses* is non-empty.
+    """
+    log_path = PARSE_OUTCOME_LOG
+    if not log_path:
+        log_path = os.path.join(repo_root, ".agent", ".parse-outcomes.jsonl")
+    entry = json.dumps({
+        "event_id": event_id,
+        "parse_misses": parse_misses,
+    }, ensure_ascii=False)
+    try:
+        with open(log_path, "a") as f:
+            f.write(entry + "\n")
+    except OSError:
+        pass  # Best-effort
 
 
 def select_recent_entries(transcript_path: str) -> str:
@@ -534,12 +571,20 @@ def main() -> None:
         if verbose:
             print("[step 2] LLM returned empty response", file=sys.stderr)
         sys.exit(0)
-    log_training_example(repo_root, "relevance_rating", step2_prompt, ratings_text)
+    event_id = str(uuid.uuid4())
+    log_training_example(
+        repo_root, "relevance_rating", step2_prompt, ratings_text,
+        extra={"event_id": event_id},
+    )
 
     if verbose:
         print(f"[step 2] Raw ratings:\n{ratings_text}", file=sys.stderr)
 
     ratings = parse_ratings(ratings_text)
+    all_ids = {pb_id for pb_id, _, _ in PLAYBOOKS}
+    parse_misses = sorted(all_ids - ratings.keys())
+    if parse_misses:
+        log_parse_outcome(repo_root, event_id, parse_misses)
 
     if verbose:
         print(f"[step 2] Parsed ratings: {ratings}", file=sys.stderr)

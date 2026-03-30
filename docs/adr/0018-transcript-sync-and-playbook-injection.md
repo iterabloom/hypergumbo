@@ -41,7 +41,7 @@ This achieves ~83% line reduction on real sessions (measured: 110K → 18K lines
 1. Selects the most recent entries within a token budget (default 16K tokens)
 2. Sends them to a cheap, fast LLM (mistral-nemo via OpenRouter) to distill the agent's current goals
 3. Sends the goals + 14 playbook summaries to the same LLM, asking for 1-10 relevance ratings
-4. Reads and outputs the full content of every playbook scoring above threshold (default 7/10)
+4. Reads and outputs the full content of every playbook scoring above threshold (default 8/10)
 
 **Stage 3: Context injection.** The hook's stdout is injected back into the agent's conversation via the AI tool's native hook system. The mechanism varies by tool (see §3 below).
 
@@ -130,6 +130,7 @@ Six runtime state files total:
 | `.transcript-injection-state.json` | Yes | Yes (glob + token) |
 | `.transcript-session-token` | Yes | Yes (glob, then rewritten) |
 | `.training-data.jsonl` | No | No (accumulates for finetuning) |
+| `.parse-outcomes.jsonl` | No | No (accumulates; sidecar for parse failures) |
 
 ## Consequences
 
@@ -156,9 +157,10 @@ All parameters are environment variables with sensible defaults:
 | `OPENROUTER_API_KEY` | (required) | API authentication |
 | `TRANSCRIPT_MODEL` | `mistralai/mistral-nemo` | LLM for goal distillation and rating |
 | `TRANSCRIPT_MAX_TOKENS` | `8000` | Token budget for transcript window |
-| `TRANSCRIPT_THRESHOLD` | `7` | Minimum relevance score (1-10) to inject a playbook |
+| `TRANSCRIPT_THRESHOLD` | `8` | Minimum relevance score (1-10) to inject a playbook |
 | `TRANSCRIPT_DEDUP_TOKENS` | `50000` | Token distance before allowing re-injection |
 | `TRANSCRIPT_TRAINING_LOG` | `.agent/.training-data.jsonl` | Path for finetuning data collection (ChatML JSONL) |
+| `TRANSCRIPT_PARSE_OUTCOME_LOG` | `.agent/.parse-outcomes.jsonl` | Path for parse-outcome sidecar (records rating parse failures) |
 
 ### Training data collection for local model replacement
 
@@ -169,6 +171,7 @@ Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrain
 ```json
 {
   "step": "goal_distillation",
+  "event_id": "a1b2c3d4-...",
   "model": "mistralai/mistral-nemo",
   "messages": [
     {"role": "user", "content": "<prompt>"},
@@ -177,11 +180,26 @@ Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrain
 }
 ```
 
-The `step` field (`goal_distillation` or `relevance_rating`) allows filtering or weighting the two tasks independently during training. The `model` field tracks which model produced the response, so data quality can be assessed if the upstream model changes.
+The `step` field (`goal_distillation` or `relevance_rating`) allows filtering or weighting the two tasks independently during training. The `model` field tracks which model produced the response, so data quality can be assessed if the upstream model changes. The `event_id` (UUID v4) is present on `relevance_rating` entries and serves as a join key to the parse-outcome sidecar (see below).
 
 **Target local model:** Qwen2.5-0.5B-Instruct (Apache-2.0, 0.5B parameters). At this size, full finetuning (not LoRA/QLoRA) is feasible on consumer hardware (~4-6 GB VRAM). Inference at runtime would use llama.cpp or llama-cpp-python, eliminating the OpenRouter dependency entirely.
 
 Logging is best-effort (OSError silently caught) and only fires on non-dry-run successful responses, so it never interferes with the pipeline. The log path is configurable via the `TRANSCRIPT_TRAINING_LOG` environment variable.
+
+### Parse-outcome sidecar
+
+The training data log records the raw LLM response *before* it is parsed into per-playbook scores. `parse_ratings()` uses two regex patterns per playbook ID; if neither matches (garbled ID, unexpected format, score outside 1-10), that playbook is silently treated as score 0. This is correct behavior (no erroneous rankings), but the failure is invisible.
+
+To surface parse failures without polluting the training data, a separate sidecar file (`.agent/.parse-outcomes.jsonl`) records which playbook IDs failed to parse for each `relevance_rating` event. Entries share the `event_id` UUID with the corresponding training data entry, enabling offline joins:
+
+```json
+{"event_id": "a1b2c3d4-...", "parse_misses": ["vpr-usage", "pre-work-playbook"]}
+```
+
+The sidecar is only written when there are actual misses (no entry = clean parse). This data is useful for:
+1. Monitoring whether the LLM's output format is drifting (increasing miss rates)
+2. Identifying playbook IDs that are systematically hard to parse (naming issues)
+3. Filtering training data: examples with high miss counts may be lower quality for finetuning
 
 ### G-Vendi-guided data selection and finetuning pipeline
 
