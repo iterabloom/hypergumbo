@@ -25,7 +25,7 @@ The four factors cover four distinct threat scenarios:
 
 ### Why SSH tunneling is insufficient
 
-The current access path is Mac → SSH gateway → VLAN 91 host, using Royal TSX for connectivity. This works for terminal sessions but does not extend to phone access over the internet, and does not satisfy the YubiKey auth invariant for web UI sessions.
+The current access path is an SSH tunnel to the VM via a terminal client. This works for terminal sessions but does not extend to phone access over the internet, and does not satisfy the YubiKey auth invariant for web UI sessions.
 
 ### Alternatives evaluated
 
