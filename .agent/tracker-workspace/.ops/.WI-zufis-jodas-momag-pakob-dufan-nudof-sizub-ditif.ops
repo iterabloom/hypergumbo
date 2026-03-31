@@ -33,3 +33,18 @@
   nonce: 448f  # 448f
   set:  # 448f
     status: todo_soft  # 448f
+- op: update  # 0852
+  at: '2026-03-31T12:52:15Z'  # 0852
+  by: agent  # 0852
+  actor: jgstern_agent  # 0852
+  clock: 4  # 0852
+  nonce: '0852'  # 0852
+  set:  # 0852
+    status: done  # 0852
+- op: discuss  # f38b
+  at: '2026-03-31T12:52:15Z'  # f38b
+  by: agent  # f38b
+  actor: jgstern_agent  # f38b
+  clock: 5  # f38b
+  nonce: f38b  # f38b
+  message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # f38b

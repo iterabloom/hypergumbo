@@ -60,3 +60,18 @@
   nonce: f214  # f214
   set:  # f214
     status: todo_soft  # f214
+- op: update  # c3e3
+  at: '2026-03-31T12:52:15Z'  # c3e3
+  by: agent  # c3e3
+  actor: jgstern_agent  # c3e3
+  clock: 7  # c3e3
+  nonce: c3e3  # c3e3
+  set:  # c3e3
+    status: done  # c3e3
+- op: discuss  # eae9
+  at: '2026-03-31T12:52:15Z'  # eae9
+  by: agent  # eae9
+  actor: jgstern_agent  # eae9
+  clock: 8  # eae9
+  nonce: eae9  # eae9
+  message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # eae9
