@@ -42,3 +42,18 @@
   nonce: d904  # d904
   set:  # d904
     status: todo_soft  # d904
+- op: update  # c526
+  at: '2026-03-31T10:56:54Z'  # c526
+  by: agent  # c526
+  actor: jgstern_agent  # c526
+  clock: 5  # c526
+  nonce: c526  # c526
+  set:  # c526
+    status: done  # c526
+- op: discuss  # 4ede
+  at: '2026-03-31T10:56:54Z'  # 4ede
+  by: agent  # 4ede
+  actor: jgstern_agent  # 4ede
+  clock: 6  # 4ede
+  nonce: 4ede  # 4ede
+  message: "Implemented in PR #2673 as screenshot_path() in annotations.py. Generates .agent/screenshots/<item-id>-<YYYYMMDD-HHMMSS>.svg paths."  # 4ede

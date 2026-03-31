@@ -351,3 +351,18 @@
   clock: 45  # bac3
   nonce: bac3  # bac3
   message: "PR #2672 merged. Two fixes: (1) jax-rs.yaml extract_path changed from args[0] to args[0]|kwargs.value — @Path(value=\"/foo\") now works. Same applied to micronaut.yaml. (2) _extract_java_return_type_name() now extracts outer type from generics (Response<User> → Response). Needs Keycloak bakeoff validation to measure improvement on the 124 empty-path routes."  # bac3
+- op: update  # 41a3
+  at: '2026-03-31T11:03:19Z'  # 41a3
+  by: agent  # 41a3
+  actor: jgstern_agent  # 41a3
+  clock: 46  # 41a3
+  nonce: 41a3  # 41a3
+  set:  # 41a3
+    status: satisfied  # 41a3
+- op: discuss  # 214b
+  at: '2026-03-31T11:03:19Z'  # 214b
+  by: agent  # 214b
+  actor: jgstern_agent  # 214b
+  clock: 47  # 214b
+  nonce: 214b  # 214b
+  message: "Bakeoff deep-20260331-062008 on keycloak: 802 route nodes, 802/802 with handler_ref (100% resolution), 797 with real paths, only 5 with root-only / (down from 124 empty paths pre-fix). PR #2672 (kwargs extraction + generic return_type) validated."  # 214b

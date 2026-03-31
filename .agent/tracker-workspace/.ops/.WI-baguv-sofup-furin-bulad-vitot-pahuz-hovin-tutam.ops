@@ -33,3 +33,18 @@
   nonce: 905b  # 905b
   set:  # 905b
     status: todo_soft  # 905b
+- op: update  # 3a4b
+  at: '2026-03-31T10:56:54Z'  # 3a4b
+  by: agent  # 3a4b
+  actor: jgstern_agent  # 3a4b
+  clock: 4  # 3a4b
+  nonce: 3a4b  # 3a4b
+  set:  # 3a4b
+    status: done  # 3a4b
+- op: discuss  # c142
+  at: '2026-03-31T10:56:54Z'  # c142
+  by: agent  # c142
+  actor: jgstern_agent  # c142
+  clock: 5  # c142
+  nonce: c142  # c142
+  message: "Implemented in PR #2673 as sanitize_label_text() in annotations.py. Escapes <, >, &, \", ' to XML entities."  # c142
