@@ -194,7 +194,7 @@ After WebAuthn succeeds, the password step is rate-limited per WebAuthn credenti
 
 A duress session must be **indistinguishable from a normal session** to someone watching over the user's shoulder. Same load time, same UI chrome, same apparent interaction patterns.
 
-The specific behavior triggered by a duress login is **deliberately not specified** in this ADR, in config files, or in source code comments. Instead, `htrac serve` exposes a **duress module interface** — a Python protocol class that users implement themselves:
+The specific behavior triggered by a duress login is **deliberately not specified** in this ADR, in config files, or in source code comments. Instead, `htrac serve` exposes a **duress module interface** — a Python protocol class that users implement themselves. **The duress module exists entirely server-side** — it is loaded by the `htrac serve` process on the VM and never ships with, is referenced by, or is visible to the client apps. The iOS and desktop apps see only a standard password field; they have no knowledge of whether duress detection exists.
 
 ```python
 class DuressHandler(Protocol):
