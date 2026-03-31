@@ -1,0 +1,20 @@
+- op: create  # 518d
+  at: '2026-03-31T09:09:20Z'  # 518d
+  by: agent  # 518d
+  actor: jgstern_agent  # 518d
+  clock: 1  # 518d
+  nonce: 518d  # 518d
+  data:  # 518d
+    kind: work_item  # 518d
+    title: "Annotation gestures: rectangle drag, label placement, arrow drawing"  # 518d
+    status: needs_human_review  # 518d
+    priority: 2  # 518d
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 518d
+    tags:  # 518d
+    - adr-0020  # 518d
+    before: []  # 518d
+    duplicate_of: []  # 518d
+    not_duplicate_of: []  # 518d
+    pr_ref:  # 518d
+    description: "Mouse-driven annotation on the frozen overlay: drag to draw rectangles, click to place labels (with text input), drag to draw arrows. Each gesture creates an Annotation dataclass instance. Rendered as styled characters on the Textual overlay in real time."  # 518d
+    fields: {}  # 518d

@@ -1,0 +1,20 @@
+- op: create  # ee67
+  at: '2026-03-31T09:09:01Z'  # ee67
+  by: agent  # ee67
+  actor: jgstern_agent  # ee67
+  clock: 1  # ee67
+  nonce: ee67  # ee67
+  data:  # ee67
+    kind: work_item  # ee67
+    title: "Annotation mode: freeze screen and overlay widget"  # ee67
+    status: needs_human_review  # ee67
+    priority: 2  # ee67
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # ee67
+    tags:  # ee67
+    - adr-0020  # ee67
+    before: []  # ee67
+    duplicate_of: []  # ee67
+    not_duplicate_of: []  # ee67
+    pr_ref:  # ee67
+    description: "After screenshot, TUI enters annotation mode: screen content freezes, semi-transparent overlay widget appears on top. Mouse support required (MouseDown, MouseMove, MouseUp). Known limitation: unavailable in terminals without mouse event support (e.g. screen/tmux with mouse passthrough disabled)."  # ee67
+    fields: {}  # ee67
