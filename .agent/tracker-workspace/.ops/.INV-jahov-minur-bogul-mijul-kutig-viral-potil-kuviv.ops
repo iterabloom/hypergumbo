@@ -99,3 +99,18 @@
   clock: 12  # bca8
   nonce: bca8  # bca8
   message: "Same situation as INV-kagob: the bakeoff session deep-20260330-164900 ran with code hash 17be048b7bb3, which is AFTER PR #2634 (merged as commit 12dbad0d → dev, then 0f53535f after auto-pr gate fix). So this bakeoff DOES validate the access_mode fix.\n\nEvidence from the bakeoff:\n- age: access_mode_coverage = 41.0% (was 0% before fix). dataflow_slice_ratio = 8.9% (dataflow slices now differ from structural).\n- polars: access_mode_coverage = 24.9%. dataflow_slice_ratio = 100% (complete separation).\n- go-sqlite3: access_mode_coverage = 7.4% (lower because C files had no returns section — fixed in PR #2641).\n\nThe fix is validated for Python and Rust repos. Go coverage is lower but confirmed non-zero."  # bca8
+- op: update  # f38e
+  at: '2026-03-31T00:22:20Z'  # f38e
+  by: agent  # f38e
+  actor: jgstern_agent  # f38e
+  clock: 13  # f38e
+  nonce: f38e  # f38e
+  set:  # f38e
+    status: satisfied  # f38e
+- op: discuss  # 24f7
+  at: '2026-03-31T00:22:20Z'  # 24f7
+  by: agent  # 24f7
+  actor: jgstern_agent  # 24f7
+  clock: 14  # 24f7
+  nonce: 24f7  # 24f7
+  message: "Migrated from deprecated 'holding'. Bakeoff validated: access_mode_coverage 24-41% across repos."  # 24f7

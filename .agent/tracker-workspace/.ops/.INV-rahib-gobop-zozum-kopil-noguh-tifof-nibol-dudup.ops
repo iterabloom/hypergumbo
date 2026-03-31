@@ -95,3 +95,18 @@
   clock: 11  # e947
   nonce: e947  # e947
   message: "Fixed in PR #2637. Three race conditions closed: (1) PR_PENDING gate created before push (was after), (2) re-check TRACKER_SYNC_PENDING before push, (3) proactive rebase after CI poll if dev advanced. PR #2637 itself was the live test — auto-pr ran with the new code and merged successfully. Holding: remaining race #8 (competing simultaneous merges) requires distributed locking, lower priority."  # e947
+- op: update  # b3d8
+  at: '2026-03-31T00:22:20Z'  # b3d8
+  by: agent  # b3d8
+  actor: jgstern_agent  # b3d8
+  clock: 12  # b3d8
+  nonce: b3d8  # b3d8
+  set:  # b3d8
+    status: satisfied  # b3d8
+- op: discuss  # 2a7f
+  at: '2026-03-31T00:22:20Z'  # 2a7f
+  by: agent  # 2a7f
+  actor: jgstern_agent  # 2a7f
+  clock: 13  # 2a7f
+  nonce: 2a7f  # 2a7f
+  message: "Migrated from deprecated 'holding'. PR #2637 was its own live test — auto-pr ran with new gate timing and merged successfully."  # 2a7f

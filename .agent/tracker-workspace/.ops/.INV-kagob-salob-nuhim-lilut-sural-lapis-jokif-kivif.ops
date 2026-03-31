@@ -132,3 +132,18 @@
   nonce: 41a6  # 41a6
   set:  # 41a6
     status: violated  # 41a6
+- op: update  # 3719
+  at: '2026-03-31T00:22:20Z'  # 3719
+  by: agent  # 3719
+  actor: jgstern_agent  # 3719
+  clock: 17  # 3719
+  nonce: '3719'  # 3719
+  set:  # 3719
+    status: pending_validation  # 3719
+- op: discuss  # 07f9
+  at: '2026-03-31T00:22:20Z'  # 07f9
+  by: agent  # 07f9
+  actor: jgstern_agent  # 07f9
+  clock: 18  # 07f9
+  nonce: 07f9  # 07f9
+  message: "Migrated from deprecated 'holding'. Fix in PR #2638 but post-fix bakeoff showed 0 FFI IO tags (expected — test repos' FFI calls target non-IO functions). Needs validation on a repo where FFI bridges call stdlib IO."  # 07f9
