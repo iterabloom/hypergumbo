@@ -6,9 +6,11 @@ Status: Proposed
 
 ## Context
 
-### From single-node to multi-node
+### From single-machine to multi-machine
 
-hypergumbo-tracker (ADR-0013) was designed for a single repository with one agent and one human. The append-only op-log, Lamport clock, nonce-on-every-line merge safety, and content-hash IDs were all motivated by concurrent git branches — but they are structurally identical to the primitives needed for multi-node replication over a network.
+hypergumbo-tracker (ADR-0013) was designed for a single repository with one agent and one human. The append-only op-log, Lamport clock, nonce-on-every-line merge safety, and content-hash IDs were all motivated by concurrent git branches — but they are structurally identical to the primitives needed for multi-machine replication over a network.
+
+Throughout this ADR, **"machine"** means a computer — a VM, a homelab server, a laptop — running its own htrac instance with its own ops files and identity. The `node:` key in config YAML retains the shorter name for brevity, but in prose we say "machine" to be concrete about what we mean: a physical or virtual computer, not an abstract graph vertex.
 
 ADR-0019 introduces authenticated, encrypted, NAT-traversing connectivity between machines that can only dial out (Tor onion service + opportunistic WireGuard). Once that transport exists, the question becomes: can multiple htrac instances share state?
 
@@ -17,14 +19,14 @@ ADR-0019 introduces authenticated, encrypted, NAT-traversing connectivity betwee
 Concrete scenarios:
 
 - **Multiple homelab VMs** running different agents (one per project, or one per language ecosystem). The human manages all of them from one phone via the web UI. Work items created on the phone propagate to the relevant agent's tracker. Status updates propagate back.
-- **Distributed team** where each contributor runs their own agent. Canonical-tier items sync across nodes; workspace-tier items stay local to each contributor's fork.
-- **Resilience.** If one node goes offline, the others continue operating. When it reconnects, ops catch up and `compile_ops()` produces the same result everywhere.
+- **Distributed team** where each contributor runs their own agent. Canonical-tier items sync across machines; workspace-tier items stay local to each contributor's fork.
+- **Resilience.** If one machine goes offline, the others continue operating. When it reconnects, ops catch up and `compile_ops()` produces the same result everywhere.
 
 ### Two orthogonal dimensions
 
 Federation involves two independent design axes:
 
-**Repo relationship** — what code are the nodes working on?
+**Repo relationship** — what code are the machines working on?
 
 | Type | Shared code? | Shared items make sense? | Example |
 |------|-------------|------------------------|---------|
@@ -53,7 +55,7 @@ Federation requires every participant to have a **name** — a human-readable id
 
 In a single-agent setup, there is no assignee — `ready` returns the top-priority item and the one agent works on it. With multiple agents, the question "which agent should work on this?" has no answer without an assignee field.
 
-The current `CompiledItem` has no `assignee`. The existing set-valued fields (`tags`, `before`, `duplicate_of`, `not_duplicate_of`) use accumulation semantics via `add`/`remove` in update ops. Assignee fits the same pattern — an item may be assigned to multiple nodes/agents, and assignments are added/removed over time.
+The current `CompiledItem` has no `assignee`. The existing set-valued fields (`tags`, `before`, `duplicate_of`, `not_duplicate_of`) use accumulation semantics via `add`/`remove` in update ops. Assignee fits the same pattern — an item may be assigned to multiple machines/agents, and assignments are added/removed over time.
 
 ### What the current architecture already provides
 
@@ -61,12 +63,12 @@ The tracker's data model is closer to federation-ready than a typical applicatio
 
 | Property | Current design | Federation implication |
 |----------|---------------|----------------------|
-| Append-only ops | Ops are never mutated or deleted | Each node's local history is durable and complete — ops stay on the origin |
-| Lamport clock | Causal ordering across git branches | Orders ops within each node; not needed across nodes (compiled-view sync doesn't exchange ops) |
-| Content-hash IDs | Same logical item produces same proquint ID everywhere | Natural deduplication — if two nodes independently create the same item, the IDs match and the collision is detectable |
-| SimHash dedup | Near-duplicate detection on `add()` | Catches semantically similar items created on different nodes via the write-at-origin API |
-| `compile_ops()` | Deterministic LWW fold over clock-ordered ops | Each node compiles its own ops; peers receive the compiled result, not the ops |
-| Three-tier visibility | canonical / workspace / stealth | Stealth items never leave the node. Workspace items are exposed only to peers configured for workspace sync. Canonical items sync everywhere. |
+| Append-only ops | Ops are never mutated or deleted | Each machine's local history is durable and complete — ops stay on the origin |
+| Lamport clock | Causal ordering across git branches | Orders ops within each machine; not needed across machines (compiled-view sync doesn't exchange ops) |
+| Content-hash IDs | Same logical item produces same proquint ID everywhere | Natural deduplication — if two machines independently create the same item, the IDs match and the collision is detectable |
+| SimHash dedup | Near-duplicate detection on `add()` | Catches semantically similar items created on different machines via the write-at-origin API |
+| `compile_ops()` | Deterministic LWW fold over clock-ordered ops | Each machine compiles its own ops; peers receive the compiled result, not the ops |
+| Three-tier visibility | canonical / workspace / stealth | Stealth items never leave the machine. Workspace items are exposed only to peers configured for workspace sync. Canonical items sync everywhere. |
 | Lock enforcement | Human-locked fields reject agent writes | Locks are enforced at the origin on every write request — both local and remote |
 
 ### What is missing
@@ -75,7 +77,7 @@ The current architecture uses **git as the transport**: `git push`, `git fetch`,
 
 1. **Peer discovery and identity.** Git has remotes. Federation needs a named peer registry with human and agent identities.
 2. **Read sync protocol.** Peers need to see each other's compiled item state in real-time, without exchanging ops.
-3. **Write routing.** Modifications to remote items must be sent to the origin node for validation and op-log append.
+3. **Write routing.** Modifications to remote items must be sent to the origin machine for validation and op-log append.
 4. **Partition handling.** Reads degrade gracefully (stale cache). Writes queue for delivery on reconnect.
 5. **Trust boundaries.** Authority is per-peer, per-scope, split by human/agent actor type, and non-totalizing.
 
@@ -83,13 +85,13 @@ The current architecture uses **git as the transport**: `git push`, `git fetch`,
 
 ### Replication model: compiled-view sync with write-at-origin
 
-Each htrac node maintains its own op-log files locally (unchanged from ADR-0013). **Raw ops — the append-only log with Lamport clocks, nonces, and causal ordering — never leave the node that created them.** Federation syncs **compiled item state**, not ops. Compiled state — including discussion thread text, field values, and metadata — is shared via the compiled-view feed. The security boundary is the raw op log (which contains structural information about branch merges, clock values, and nonce patterns), not the semantic content of items.
+Each htrac machine maintains its own op-log files locally (unchanged from ADR-0013). **Raw ops — the append-only log with Lamport clocks, nonces, and causal ordering — never leave the machine that created them.** Federation syncs **compiled item state**, not ops. Compiled state — including discussion thread text, field values, and metadata — is shared via the compiled-view feed. The security boundary is the raw op log (which contains structural information about branch merges, clock values, and nonce patterns), not the semantic content of items.
 
-This is a deliberate choice. The alternative — op-log gossip with vector clocks — is more powerful (offline writes, full history replication, mathematical convergence guarantees) but adds complexity that doesn't match how agents are actually used. Agents are long-lived, accumulate expertise, and are the entity you want to interact with. Writes should go to the agent that owns the item, not to a local log for later merge. If the origin node is down, the agent's expertise is unavailable regardless — queuing an op locally doesn't give you the agent's judgment, just a deferred message.
+This is a deliberate choice. The alternative — op-log gossip with vector clocks — is more powerful (offline writes, full history replication, mathematical convergence guarantees) but adds complexity that doesn't match how agents are actually used. Agents are long-lived, accumulate expertise, and are the entity you want to interact with. Writes should go to the agent that owns the item, not to a local log for later merge. If the origin machine is down, the agent's expertise is unavailable regardless — queuing an op locally doesn't give you the agent's judgment, just a deferred message.
 
 **Read path (compiled-view feed):**
 
-Each node exposes its compiled items as a read-only feed over WebSocket (via the ADR-0019 transport). Peers subscribe and receive typed events:
+Each machine exposes its compiled items as a read-only feed over WebSocket (via the ADR-0019 transport). Peers subscribe and receive typed events:
 
 | Event type | Payload | When sent |
 |------------|---------|-----------|
@@ -103,11 +105,11 @@ The receiver maintains a local cache. `item_update` patches the cached item's sc
 
 The feed is filtered by the peer's `sync_tiers` and `item_filter` config. Stealth items are never exposed. Workspace items are exposed only to peers configured for workspace sync.
 
-Receiving nodes store remote items in a local cache (keyed by origin node + item ID) for display in the TUI, web UI, and CLI. Remote items are clearly tagged with their origin. They are **not** written to the local ops directory — they exist only in the cache.
+Receiving machines store remote items in a local cache (keyed by origin machine + item ID) for display in the TUI, web UI, and CLI. Remote items are clearly tagged with their origin. They are **not** written to the local ops directory — they exist only in the cache.
 
 **Write path (API calls to origin):**
 
-To modify a remote item (update status, add discussion, change assignee), the local node sends a write request to the originating node's API:
+To modify a remote item (update status, add discussion, change assignee), the local machine sends a write request to the originating machine's API:
 
 ```
 POST /api/items/{id}/update   → update fields
@@ -115,11 +117,11 @@ POST /api/items/{id}/discuss  → add discussion entry
 POST /api/items/{id}/lock     → lock fields (human only)
 ```
 
-The originating node validates the request (authority checks, lock enforcement, role checks), appends the op to its local log, compiles, and pushes the updated compiled view to all subscribed peers.
+The originating machine validates the request (authority checks, lock enforcement, role checks), appends the op to its local log, compiles, and pushes the updated compiled view to all subscribed peers.
 
 **Queued writes for offline peers:**
 
-If the origin node is unreachable, the local node queues the write request. Each queued write carries a `based_on_version` field — the `item_version` from the compiled state the writer saw when making the decision.
+If the origin machine is unreachable, the local machine queues the write request. Each queued write carries a `based_on_version` field — the `item_version` from the compiled state the writer saw when making the decision.
 
 When connectivity is restored, queued writes are delivered in order. The origin checks each write's `based_on_version` against the item's current `item_version`. If the item has been modified since the queued write was created (current `item_version` > `based_on_version`), the origin rejects the write with a `stale_write` error containing the current compiled state. The sender can then:
 - **Retry** with updated state (re-evaluate the decision against current data),
@@ -134,9 +136,9 @@ This prevents stale queued writes from overwriting decisions made at the origin 
 
 **What this model does not provide:**
 
-- **Full history replication.** Peers see current state and discussion threads, not the sequence of all ops that produced that state. Status transitions, field change history, and who-changed-what-when are only available on the origin node.
+- **Full history replication.** Peers see current state and discussion threads, not the sequence of all ops that produced that state. Status transitions, field change history, and who-changed-what-when are only available on the origin machine.
 - **Offline writes that merge automatically.** Writes require connectivity to the origin. If both the origin and a peer independently modify the same item while disconnected, the peer's queued write is rejected on reconnect (via `based_on_version` staleness check) rather than silently overwriting the origin's changes. The sender must retry, escalate, or drop the write.
-- **Mathematical convergence guarantee.** With op-log sync, same ops → same compiled state everywhere. With compiled-view sync, you trust each node's `compile_ops()`. A bug in one node's compiler produces divergent state with no mechanism for peers to detect it. In practice, all nodes run the same htrac version, so this is unlikely but not impossible during rolling upgrades.
+- **Mathematical convergence guarantee.** With op-log sync, same ops → same compiled state everywhere. With compiled-view sync, you trust each machine's `compile_ops()`. A bug in one machine's compiler produces divergent state with no mechanism for peers to detect it. In practice, all machines run the same htrac version, so this is unlikely but not impossible during rolling upgrades.
 
 **Transport:** WebSocket connections established over the ADR-0019 transport (Tor or WireGuard). The feed uses a subscribe/push model: subscribe on connect, receive incremental updates in real-time, request full snapshot on reconnect.
 
@@ -151,7 +153,7 @@ assignment_source: dict[str, dict[str, str]] = field(default_factory=dict)
 # Maps assignee name -> {"by": "human"|"agent", "actor": "<name>", "at": "<ISO8601>"}
 ```
 
-`assignment_source` tracks who assigned each node and when. It is updated by `compile_ops()` whenever an `add: {assignee: [...]}` op is processed: the op's `by`, `actor`, and `at` fields are recorded for each added assignee. When an assignee is removed, its entry is deleted from `assignment_source`. This metadata is available in the compiled-view feed, so remote nodes can resolve authority without op-log access.
+`assignment_source` tracks who assigned each machine and when. It is updated by `compile_ops()` whenever an `add: {assignee: [...]}` op is processed: the op's `by`, `actor`, and `at` fields are recorded for each added assignee. When an assignee is removed, its entry is deleted from `assignment_source`. This metadata is available in the compiled-view feed, so remote machines can resolve authority without op-log access.
 
 **In `store.py` constants:**
 - Added to `_SET_VALUED_FIELDS` (accumulation via `add`/`remove` in update ops)
@@ -161,14 +163,14 @@ assignment_source: dict[str, dict[str, str]] = field(default_factory=dict)
 **In `CreateOp` data dict:**
 - `assignee` is an optional list of strings in the create op's data
 
-**Assignee values** are peer names from the federation config (e.g., `"lab-vm-1"`, `"ci-agent"`) or the special value `"self"` which resolves to the local node's name. In a non-federated setup, assignee values are free-form strings — the field is useful even without federation (e.g., tagging items for different human team members).
+**Assignee values** are peer names from the federation config (e.g., `"lab-vm-1"`, `"ci-agent"`) or the special value `"self"` which resolves to the local machine's name. In a non-federated setup, assignee values are free-form strings — the field is useful even without federation (e.g., tagging items for different human team members).
 
 **CLI:**
 ```bash
 htrac add --kind work_item --title "Fix parser" --assignee lab-vm-1
 htrac update INV-foo --add assignee=ci-agent
 htrac update INV-foo --remove assignee=lab-vm-1
-htrac ready                          # Shows items assigned to this node (or unassigned)
+htrac ready                          # Shows items assigned to this machine (or unassigned)
 htrac ready --all                    # Shows all actionable items regardless of assignee
 htrac list --assignee lab-vm-1       # Filter by assignee
 ```
@@ -176,37 +178,37 @@ htrac list --assignee lab-vm-1       # Filter by assignee
 **Interaction with `ready` and `count-todos`:**
 
 **Assignee filtering is always active** — not gated on federation configuration. `ready` shows items that are either:
-- Explicitly assigned to this node (matching `node.name` from config), or
-- Unassigned (empty assignee list — available for any node to claim)
+- Explicitly assigned to this machine (matching `node.name` from config), or
+- Unassigned (empty assignee list — available for any machine to claim)
 
-Items assigned to a different node are excluded from `ready` and `count-todos` — they don't block the local agent. This prevents a single `todo_hard` item assigned to Node A from blocking the agent on Node B.
+Items assigned to a different machine are excluded from `ready` and `count-todos` — they don't block the local agent. This prevents a single `todo_hard` item assigned to Machine A from blocking the agent on Machine B.
 
-**If no `node.name` is configured** (setup wizard not run), assignee filtering is disabled — all blocking items appear in `ready`, preserving current behavior. Once `htrac setup` establishes a node name, filtering activates. For free-form organizational tagging, use `tags` — `assignee` is always routing-significant.
+**If no `node.name` is configured** (setup wizard not run), assignee filtering is disabled — all blocking items appear in `ready`, preserving current behavior. Once `htrac setup` establishes a machine name, filtering activates. For free-form organizational tagging, use `tags` — `assignee` is always routing-significant.
 
 **Self-assignment constraint:** Agents can always self-assign (claim unassigned work). Whether an agent can **self-unassign** depends on the authority of the assignment, looked up from `assignment_source[this_node]`: if the recorded actor had **directive** authority (per the scoped authority rules), the agent cannot remove itself — the assignment is an obligation. If the assigning actor had **advisory** or **read_only** authority, the agent can self-unassign — the assignment was a suggestion, not a directive. The agent's own human's assignments are always directive (hardcoded invariant) and therefore always irrevocable by the agent. Since `assignment_source` is available in the compiled-view feed, this constraint works for both local and remote items without op-log access.
 
-### Node identity and the setup wizard
+### Machine identity and the setup wizard
 
-The setup wizard (`htrac setup`) establishes the identities for the node:
+The setup wizard (`htrac setup`) establishes the identities for the machine:
 
 ```yaml
 node:
   name: "lab-vm-1"        # unique within the federation, stable across sessions
-  human: "jake"           # the human who owns this node
-  agent: "lab-vm-1"       # the agent identity (often same as node name)
+  human: "jake"           # the human who owns this machine
+  agent: "lab-vm-1"       # the agent identity (often same as machine name)
 ```
 
 **The wizard prompts:**
 ```
-Node name: This identifies your tracker instance in the federation.
-Other nodes will see items from this name and can assign work to it.
-Enter a name for this node [default: hostname]:
+Machine name: This identifies your tracker instance in the federation.
+Other machines will see items from this name and can assign work to it.
+Enter a name for this machine [default: hostname]:
 
 Human name: Your identity in discussion threads and @mentions.
 Enter your name [default: OS username]:
 ```
 
-Defaulting node name to hostname and human name to OS username is reasonable — both are already locally unique and descriptive. The user can override with something more meaningful.
+Defaulting machine name to hostname and human name to OS username is reasonable — both are already locally unique and descriptive. The user can override with something more meaningful.
 
 **How identity changes `resolve_actor()`:**
 
@@ -219,11 +221,11 @@ Currently returns `("human", "jgstern")` or `("agent", "jgstern_agent")` — a r
 
 The `actor` field on every op becomes the configured name, not the OS username. This makes ops portable across machines and readable in discussion threads. The OS username is still used for the human-vs-agent role check (`os.getuid()` matching against `agent_usernames` patterns) — the name is for identity, the UID is for authorization.
 
-**Uniqueness enforcement:** Within a federation, two nodes cannot share a name — assignee values and `@` mentions would be ambiguous. On `register-peer`, existing nodes reject a peer whose name collides with an existing peer or with themselves. Human names must also be unique within the federation's human set.
+**Uniqueness enforcement:** Within a federation, two machines cannot share a name — assignee values and `@` mentions would be ambiguous. On `register-peer`, existing machines reject a peer whose name collides with an existing peer or with themselves. Human names must also be unique within the federation's human set.
 
-**Renaming and migration:** Discouraged, but supported. If a node or human is renamed, old ops retain their original `actor` field — the ops log is append-only and immutable, so `compile()` does not rewrite old actor values.
+**Renaming and migration:** Discouraged, but supported. If a machine or human is renamed, old ops retain their original `actor` field — the ops log is append-only and immutable, so `compile()` does not rewrite old actor values.
 
-Aliases live in the **node config** (`config.yaml` under `node:`):
+Aliases live in the **machine config** (`config.yaml` under `node:`):
 
 ```yaml
 node:
@@ -250,18 +252,18 @@ effective_actor: str = ""   # resolved name of the discussion author
 **How aliases flow through the system:**
 - **`compile_ops()`:** Resolves `actor` → `effective_actor` for each op as it is folded. The raw `actor` field on ops is preserved (append-only log is immutable); aliasing is a compile-time concern.
 - **Display (TUI, web UI, CLI `show`):** Uses `effective_actor` for all display. An op with `actor: "jgstern_agent"` renders as `lab-vm-1` because `compile_ops()` resolved the alias.
-- **`ready` filtering:** Uses `effective_actor` (and the current node name) when matching assignee values.
+- **`ready` filtering:** Uses `effective_actor` (and the current machine name) when matching assignee values.
 - **`@` mention detection:** Uses the current name and all aliases when scanning discussion text for mentions (aliases are needed here because the raw text contains `@jgstern_agent`, not `@lab-vm-1`).
 - **`check-messages`:** Uses `effective_actor` to determine who sent the last message.
-- **Wire format (federation feed):** Sends `effective_actor` in compiled items and discussion entries. Remote nodes never see raw aliases — they see resolved names.
+- **Wire format (federation feed):** Sends `effective_actor` in compiled items and discussion entries. Remote machines never see raw aliases — they see resolved names.
 
 This centralizes alias resolution in one place (`compile_ops()`) rather than duplicating it across ~9 downstream call sites.
 
-**Non-federated setups:** The node name is still useful — it shows up in discussion entries, `ready` output, and the TUI. A single-agent setup just has one node with one human. The wizard should always ask for names, not only when federation is configured.
+**Non-federated setups:** The machine name is still useful — it shows up in discussion entries, `ready` output, and the TUI. A single-machine setup just has one machine with one human. The wizard should always ask for names, not only when federation is configured.
 
 ### Peer identity and discovery
 
-Each node has a **peer ID** derived from its Tor onion service address (a v3 `.onion` address is a public key — it's already a cryptographic identity). Peers are registered in `config.yaml`:
+Each machine has a **peer ID** derived from its Tor onion service address (a v3 `.onion` address is a public key — it's already a cryptographic identity). Peers are registered in `config.yaml`:
 
 ```yaml
 federation:
@@ -302,13 +304,13 @@ federation:
 
 **`config_version`** enables forward-compatible config evolution. `htrac` validates the federation config against the expected version on startup. Unknown version → error with migration guidance. Unknown fields within a known version are ignored (same policy as the wire `protocol_version`). The version is bumped when: `authority_rules` syntax changes, new required peer fields are added, or `item_filter` predicate syntax changes.
 
-Discovery is manual (add peers to config via the human's phone app per ADR-0019). Automatic discovery is explicitly out of scope — federation is between known, trusted nodes, not an open mesh.
+Discovery is manual (add peers to config via a human's phone app per ADR-0019 — any human with auth access to the machine can manage its peer list). Automatic discovery is explicitly out of scope — federation is between known, trusted machines, not an open mesh.
 
 ### Authority hierarchy
 
-Authority is split by actor type — a peer's human and a peer's agent may have different authority levels over the local node. This reflects the natural hierarchy: you might trust another human's judgment (advisory) while treating their agent's output as informational only (read-only).
+Authority is split by actor type — a peer's human and a peer's agent may have different authority levels over the local machine. This reflects the natural hierarchy: you might trust another human's judgment (advisory) while treating their agent's output as informational only (read-only).
 
-**Non-totalizing by construction:** Authority is **per-peer, per-scope**, not per-peer globally. The same two nodes can have reversed authority depending on which project or context is in play. No peer is ever globally "the boss."
+**Non-totalizing by construction:** Authority is **per-peer, per-scope**, not per-peer globally. The same two machines can have reversed authority depending on which project or context is in play. No peer is ever globally "the boss."
 
 This prevents the federation from collapsing into a hierarchy. ci-server might be directive to sarah-vm for the project it runs CI on, but sarah-vm might be directive to ci-server for a different project where sarah-vm is the expert. Authority is always contextual.
 
@@ -371,21 +373,21 @@ Everything else is configurable per-scope.
 
 | Authority | `ready` | `count-todos` | Local agent can update? |
 |-----------|---------|---------------|------------------------|
-| `directive` | Included (if assigned to this node or unassigned) | Counts as blocking | Yes — peer's items are writable |
+| `directive` | Included (if assigned to this machine or unassigned) | Counts as blocking | Yes — peer's items are writable |
 | `advisory` | Excluded | Does not block | No — items are read-only locally |
 | `read_only` | Excluded | Does not block | No — items are displayed with `[remote]` tag |
 
 The `count-todos` / `ready` pipeline becomes:
 
 ```
-For each compiled item visible to this node:
+For each compiled item visible to this machine:
   if item.origin == local:
     apply normal blocking/ready rules
   if item.origin == peer:
-    if item.assignee does not contain this node AND item.assignee is not empty:
+    if item.assignee does not contain this machine AND item.assignee is not empty:
       skip — this item is someone else's problem
     identify the directing actor:
-      if this node is in item.assignment_source:
+      if this machine is in item.assignment_source:
         directing_actor = item.assignment_source[this_node]
         # {"by": "human"|"agent", "actor": "<name>", "at": "<timestamp>"}
       else:
@@ -402,9 +404,9 @@ For each compiled item visible to this node:
       never block, show in list only
 ```
 
-**The directing actor, not the last writer:** Authority is resolved against whoever directed work to this node — not whoever last touched any field on the item. The directing actor is looked up from `assignment_source` — the structured record of who added this node to the assignee set. If sarah (human) creates an item and sarah_agent later assigns it to lab-vm-1, the directing actor is sarah_agent (recorded in `assignment_source["lab-vm-1"]`). The `from_agent` authority level applies, regardless of who created the item or who last updated its description. For items relevant only via `item_filter` (no explicit assignment), the directing actor falls back to `effective_actor` — the resolved name of whoever last modified the item.
+**The directing actor, not the last writer:** Authority is resolved against whoever directed work to this machine — not whoever last touched any field on the item. The directing actor is looked up from `assignment_source` — the structured record of who added this machine to the assignee set. If sarah (human) creates an item and sarah_agent later assigns it to lab-vm-1, the directing actor is sarah_agent (recorded in `assignment_source["lab-vm-1"]`). The `from_agent` authority level applies, regardless of who created the item or who last updated its description. For items relevant only via `item_filter` (no explicit assignment), the directing actor falls back to `effective_actor` — the resolved name of whoever last modified the item.
 
-**Being human does not grant automatic directive authority over someone else's agent.** Sarah's authority over lab-vm-1 depends on the scope — if she is the expert in the relevant domain (her "element"), `from_human` might be configured as `directive`. If she is not, it might be `advisory` or `read_only`. Only the node's own human (e.g., jgstern for jgstern_agent) is unconditionally directive — this is the hardcoded invariant the YubiKey protects.
+**Being human does not grant automatic directive authority over someone else's agent.** Sarah's authority over lab-vm-1 depends on the scope — if she is the expert in the relevant domain (her "element"), `from_human` might be configured as `directive`. If she is not, it might be `advisory` or `read_only`. Only the machine's own human (e.g., jgstern for jgstern_agent) is unconditionally directive — this is the hardcoded invariant the YubiKey protects.
 
 **Item filter** (optional, for `different_project` peers) restricts which items are synced. Without a filter, all items in the synced tiers are exchanged. With a filter, only items matching the predicate are accepted. Supported predicates:
 - `tags:<tag>` — item has the specified tag
@@ -420,7 +422,7 @@ Discussion entries already have `by` and `actor` fields. `@` mentions are a conv
 
 **Registered name set:** The set of names eligible for `@` mention highlighting is: the local `node.human`, `node.agent`, and all `name` and `human` values from `federation.peers`. If `node:` config has not been set up (no setup wizard run), the registered set is empty and no `@` mentions are highlighted — graceful degradation. Names are matched case-insensitively.
 
-**Syntax:** `@name` in a discussion message, where `name` is any registered human name, agent name, or node name in the federation. Examples:
+**Syntax:** `@name` in a discussion message, where `name` is any registered human name, agent name, or machine name in the federation. Examples:
 
 ```bash
 htrac discuss INV-foo "@lab-vm-1 please investigate the parser edge case"
@@ -449,13 +451,13 @@ htrac discuss INV-foo "@ci-server what was the last failure on this?"
 
     The unread heuristic becomes: "last discussion entry is from someone other than me, OR I'm `@`-mentioned in a recent entry I haven't replied to."
 
-3. **Federation sync notification.** When a mention of a remote peer is detected in a newly synced discussion entry, the local node can flag it for priority delivery on the next sync cycle. This is a hint, not a guarantee — if the peer is offline, the mention waits.
+3. **Federation sync notification.** When a mention of a remote peer is detected in a newly synced discussion entry, the local machine can flag it for priority delivery on the next sync cycle. This is a hint, not a guarantee — if the peer is offline, the mention waits.
 
 **Mentioning across authority levels:**
 
 An `@` mention does not override authority. If `sarah` mentions `@lab-vm-1` in a discussion entry, and sarah's authority over lab-vm-1 is `advisory`, the mention surfaces in `check-messages` but does not make the item blocking. The agent sees it, can respond, but is not obligated to act on it. Only `directive` authority creates obligations.
 
-The one exception: **an `@` mention from the node's own human always surfaces as high-priority in `check-messages`**, regardless of which item or tier it appears in. The human-agent bond is unconditional.
+The one exception: **an `@` mention from the machine's own human always surfaces as high-priority in `check-messages`**, regardless of which item or tier it appears in. The human-agent bond is unconditional.
 
 ### Tier-based sync boundaries
 
@@ -465,35 +467,35 @@ The three-tier model maps directly to federation visibility:
 |------|--------------|
 | **Canonical** | Syncs to all peers by default. This is the "shared with upstream" tier. |
 | **Workspace** | Syncs only to peers explicitly listed in `sync_tiers: [workspace]`. This is fork-local collaboration. |
-| **Stealth** | Never syncs. Never leaves the node. This is the compartmentalization tier. |
+| **Stealth** | Never syncs. Never leaves the machine. This is the compartmentalization tier. |
 
-A node can have different trust relationships with different peers — peer A gets canonical only, peer B gets canonical + workspace. Stealth is always local.
+A machine can have different trust relationships with different peers — peer A gets canonical only, peer B gets canonical + workspace. Stealth is always local.
 
 ### Lock and freeze propagation
 
-**Lock enforcement is origin-side only.** Locks are enforced at the origin node on every write request — both local and remote. When a peer's compiled-view feed includes `locked_fields`, the receiving node uses this for **display only** (showing which fields are locked in the TUI/web UI). The receiver does not locally enforce remote locks. Instead, it sends write requests to the origin, and the origin rejects writes that violate locks. This is consistent with the write-at-origin model: all validation happens at the origin, and the receiver trusts the origin's decision.
+**Lock enforcement is origin-side only.** Locks are enforced at the origin machine on every write request — both local and remote. When a peer's compiled-view feed includes `locked_fields`, the receiving machine uses this for **display only** (showing which fields are locked in the TUI/web UI). The receiver does not locally enforce remote locks. Instead, it sends write requests to the origin, and the origin rejects writes that violate locks. This is consistent with the write-at-origin model: all validation happens at the origin, and the receiver trusts the origin's decision.
 
-The same applies to freeze, discuss_clear, and other human-authority ops. The `by: human` / `by: agent` distinction is still determined by `os.getuid()` at the originating node, but the `actor` field now carries the configured name (e.g., `"jake"` or `"lab-vm-1"`) rather than the OS username. The compiled-view feed includes lock/freeze state so that receivers can display it, but enforcement is always at the origin.
+The same applies to freeze, discuss_clear, and other human-authority ops. The `by: human` / `by: agent` distinction is still determined by `os.getuid()` at the originating machine, but the `actor` field now carries the configured name (e.g., `"jake"` or `"lab-vm-1"`) rather than the OS username. The compiled-view feed includes lock/freeze state so that receivers can display it, but enforcement is always at the origin.
 
 ### Partition recovery
 
-When a node has been offline and reconnects:
+When a machine has been offline and reconnects:
 
-1. **Reads recover immediately.** The reconnecting node requests a full compiled-view snapshot from each peer. Its cached remote items are replaced with current state. No vector clocks, no delta computation — just a fresh snapshot.
+1. **Reads recover immediately.** The reconnecting machine requests a full compiled-view snapshot from each peer. Its cached remote items are replaced with current state. No vector clocks, no delta computation — just a fresh snapshot.
 2. **Queued writes are delivered with staleness checks.** Any write requests that were queued while the origin was unreachable are sent in order. Each carries a `based_on_version` field. The origin validates each write — same authority checks, same lock enforcement — and additionally rejects writes whose `based_on_version` is behind the item's current `item_version` (stale write). Rejected writes surface in `check-messages` for human review.
-3. **Content-hash collisions are detected.** If two nodes independently created items with the same content-hash ID while disconnected, the collision surfaces when one node tries to write to the other's item. The origin rejects the write with a conflict error. The human resolves by marking one as `duplicate_of` the other.
+3. **Content-hash collisions are detected.** If two machines independently created items with the same content-hash ID while disconnected, the collision surfaces when one machine tries to write to the other's item. The origin rejects the write with a conflict error. The human resolves by marking one as `duplicate_of` the other.
 
-**Consistency model:** Each node is authoritative for its own items. Remote items are cached projections of the origin's state. There is no "global consistency" — each node's local items are always consistent (append-only ops, deterministic compile), and remote items are as fresh as the last sync. This is closer to a client-server model per item than to a peer-to-peer convergence model.
+**Consistency model:** Each machine is authoritative for its own items. Remote items are cached projections of the origin's state. There is no "global consistency" — each machine's local items are always consistent (append-only ops, deterministic compile), and remote items are as fresh as the last sync. This is closer to a client-server model per item than to a peer-to-peer convergence model.
 
 ### Stop hook implications
 
 `count-todos` currently counts blocking items across configured tiers. In a federated setup, the count is filtered by both **authority** and **assignee**:
 
-- Items from `directive` peers that are assigned to this node (or unassigned) count as blocking.
+- Items from `directive` peers that are assigned to this machine (or unassigned) count as blocking.
 - Items from `advisory` or `read_only` peers never block.
-- Items assigned to a different node never block, regardless of authority.
+- Items assigned to a different machine never block, regardless of authority.
 
-This enables precise cross-node coordination: a human can create a `todo_hard` item on Node A, assign it to Node B, and Node B's agent is blocked from stopping until it's done. Meanwhile Node C (also syncing with Node A) is unaffected because the item isn't assigned to it.
+This enables precise cross-machine coordination: a human can create a `todo_hard` item on Machine A, assign it to Machine B, and Machine B's agent is blocked from stopping until it's done. Meanwhile Machine C (also syncing with Machine A) is unaffected because the item isn't assigned to it.
 
 The existing stop hook logic (`count-todos`, `hash-todos`) does not need structural changes — it already operates on compiled local state. The new filtering is a predicate applied before counting, not a change to the counting mechanism.
 
@@ -501,23 +503,23 @@ The existing stop hook logic (`count-todos`, `hash-todos`) does not need structu
 
 ### Benefits
 
-- **Unified governance across nodes.** One human manages multiple agents from one interface (phone via ADR-0019, or TUI on any node).
-- **No single point of failure.** Any node can operate independently during partitions. No central server.
+- **Unified governance across machines.** One human manages multiple agents from one interface (phone via ADR-0019, or TUI on any machine).
+- **No single point of failure.** Any machine can operate independently during partitions. No central server.
 - **Existing data model works.** `compile_ops()`, content-hash IDs, lock enforcement — all work unchanged. Federation adds a sync layer on top; it does not modify the op-log or compile machinery.
-- **Tier-based compartmentalization.** Stealth items are provably node-local. Workspace items sync only to trusted peers. Canonical items are globally visible.
+- **Tier-based compartmentalization.** Stealth items are provably machine-local. Workspace items sync only to trusted peers. Canonical items are globally visible.
 - **Lock/freeze enforcement is natural.** Locks are enforced at the origin on every write — both local and remote. A remote human with directive authority can lock a field via the write API, and the origin enforces it. No special replication logic needed.
 - **Assignee enables directed work.** Items can be routed to specific named agents. Combined with authority, this gives precise control: "lab-vm-1 must fix this; sarah-vm should know about it; upstream-lib doesn't need to see it."
-- **Authority is receiver-decided and non-totalizing.** No negotiation protocol. Each node controls what blocks its own agent. Authority is scoped — the same two nodes can have reversed authority in different contexts. No peer is ever globally subordinate. A rogue peer claiming directive authority has no effect unless the receiver configures it that way.
+- **Authority is receiver-decided and non-totalizing.** No negotiation protocol. Each machine controls what blocks its own agent. Authority is scoped — the same two machines can have reversed authority in different contexts. No peer is ever globally subordinate. A rogue peer claiming directive authority has no effect unless the receiver configures it that way.
 - **Named identities make discussion social.** `@` mentions surface the right messages to the right participants. `check-messages` becomes identity-aware — "jake has an unread from lab-vm-1" rather than "a human message is pending."
 - **Human-agent bond is non-negotiable.** The one hardcoded rule: an agent always listens to its own human. No config can override this. This is the invariant the YubiKey protects (ADR-0019).
 
 ### Costs
 
-- **Writes require connectivity to origin.** You cannot modify a remote item while the origin node is offline. Queued writes are delivered on reconnect with `based_on_version` staleness checks — stale writes are rejected rather than silently applied. There is no offline merge. This is the fundamental tradeoff of compiled-view sync — simplicity and correctness at the cost of write availability.
-- **No full history on remote nodes.** Peers see current compiled state and discussion threads, but not the op-level history (status transitions, field changes, who-changed-what-when). That history lives only on the origin. If you need to audit a remote item's history, you must query the origin node.
-- **Peer management is manual.** Adding/removing peers requires the human's phone app (ADR-0019). There is no automatic peer discovery or key exchange ceremony.
-- **Screenshots (ADR-0020) in federation.** Screenshots are tracked by git (per ADR-0020), so they are available to peers that share the same git repository. For compiled-view-only federation (no shared git), screenshots referenced in discussion threads would need to be served via the federation API or displayed as "[screenshot on remote node — connect to view]".
-- **Testing distributed systems is hard.** Unit-testing the sync protocol requires simulating multi-node scenarios with partitions, clock skew, and concurrent writes. Property-based testing (Hypothesis) can help but the test harness is nontrivial.
+- **Writes require connectivity to origin.** You cannot modify a remote item while the origin machine is offline. Queued writes are delivered on reconnect with `based_on_version` staleness checks — stale writes are rejected rather than silently applied. There is no offline merge. This is the fundamental tradeoff of compiled-view sync — simplicity and correctness at the cost of write availability.
+- **No full history on remote machines.** Peers see current compiled state and discussion threads, but not the op-level history (status transitions, field changes, who-changed-what-when). That history lives only on the origin. If you need to audit a remote item's history, you must query the origin machine.
+- **Peer management is manual.** Adding/removing peers requires a human with auth access to the machine, via the phone app (ADR-0019). There is no automatic peer discovery or key exchange ceremony.
+- **Screenshots (ADR-0020) in federation.** Screenshots are tracked by git (per ADR-0020), so they are available to peers that share the same git repository. For compiled-view-only federation (no shared git), screenshots referenced in discussion threads would need to be served via the federation API or displayed as "[screenshot on remote machine — connect to view]".
+- **Testing distributed systems is hard.** Unit-testing the sync protocol requires simulating multi-machine scenarios with partitions, clock skew, and concurrent writes. Property-based testing (Hypothesis) can help but the test harness is nontrivial.
 - **Assignee (with `assignment_source`) adds fields to the data model.** Requires changes to `CompiledItem`, `_SET_VALUED_FIELDS`, `_UPDATABLE_FIELDS`, `_LOCKABLE_FIELDS`, `compile_ops()` (to populate `assignment_source`), `cache.py` (SQLite schema: `assignee` and `assignment_source` columns), `validation.py` (assignee value validation), `sync.py` (wire format), the CLI (`--assignee` flag), `ready` filtering, `count-todos` filtering, the TUI display, and `textconv_main()`. This is straightforward but touches 15+ files including tests.
 - **Named identity is a migration.** Existing ops have OS usernames in `actor` fields. Old ops are not rewritten (append-only). `compile_ops()` resolves old-style actor names to current names via the `aliases` config, producing an `effective_actor` field on `CompiledItem` and `DiscussionEntry`. This centralizes the migration in `compile_ops()` rather than spreading alias checks across downstream code. The raw `actor` field on ops is preserved.
 - **`@` mention parsing adds complexity to display code.** Every surface that renders discussion text (TUI detail panel, web UI, CLI `show` output) must parse and highlight mentions. False positives (e.g., email addresses containing `@`) need heuristic handling — only match against the known set of registered names.
@@ -525,9 +527,9 @@ The existing stop hook logic (`count-todos`, `hash-todos`) does not need structu
 
 ### Open questions
 
-- **Deletion visibility.** The `deleted` status is a logical delete — the item still exists on the origin node's op log. Should deleted items be included in the compiled-view feed? If yes, peers see tombstones accumulate. If no, a peer that cached the item before deletion may show stale data until the next full snapshot. Recommendation: include deleted items in the feed with a `deleted: true` flag; let the receiving node decide whether to display or hide them.
-- **Rate limiting across nodes.** The existing discussion rate limit (200K tokens/day per item) is per-node. With write-at-origin, the origin can enforce rate limits for all writers — both local and remote. Remote write requests that exceed the limit are rejected with a structured error.
-- **Binary artifact sync.** Screenshots (ADR-0020) are tracked by git, so they sync naturally to peers sharing the same repo. For compiled-view-only federation, attachments and media need a separate mechanism. Options: content-addressed blob requests over the control channel (peer requests a blob by hash, origin serves it), or explicit "artifact unavailable" markers in the compiled view that the TUI renders as "[screenshot on remote node — connect to view]".
+- **Deletion visibility.** The `deleted` status is a logical delete — the item still exists on the origin machine's op log. Should deleted items be included in the compiled-view feed? If yes, peers see tombstones accumulate. If no, a peer that cached the item before deletion may show stale data until the next full snapshot. Recommendation: include deleted items in the feed with a `deleted: true` flag; let the receiving machine decide whether to display or hide them.
+- **Rate limiting across machines.** The existing discussion rate limit (200K tokens/day per item) is per-machine. With write-at-origin, the origin can enforce rate limits for all writers — both local and remote. Remote write requests that exceed the limit are rejected with a structured error.
+- **Binary artifact sync.** Screenshots (ADR-0020) are tracked by git, so they sync naturally to peers sharing the same repo. For compiled-view-only federation, attachments and media need a separate mechanism. Options: content-addressed blob requests over the control channel (peer requests a blob by hash, origin serves it), or explicit "artifact unavailable" markers in the compiled view that the TUI renders as "[screenshot on remote machine — connect to view]".
 - **Human name uniqueness across independent federations.** Two humans named "jake" in separate federations that later merge would collide. Namespacing (e.g., `jake@lab-vm-1`) avoids this but is uglier. For v1, treat name collisions as a provisioning error caught by `register-peer`.
 - **`@` mention of groups or roles.** Should `@humans` or `@agents` work as group mentions? Useful for "all agents should be aware of this." Adds parsing complexity. Probably defer to v2.
 - **Discussion thread branching.** With multiple participants `@`-mentioning each other, discussion threads may become hard to follow. Threaded replies (reply-to a specific entry) would help but add a `reply_to` field to `DiscussOp`. Defer unless discussion threads become unreadable in practice.
@@ -535,6 +537,6 @@ The existing stop hook logic (`count-todos`, `hash-todos`) does not need structu
 
 ### Relationship to other ADRs
 
-- **ADR-0013 (Structured Tracker):** Federation extends the op-log model from single-repo to multi-node. All ADR-0013 invariants (append-only, LWW-fold, content-hash IDs, lock enforcement) are preserved.
+- **ADR-0013 (Structured Tracker):** Federation extends the op-log model from single-repo to multi-machine. All ADR-0013 invariants (append-only, LWW-fold, content-hash IDs, lock enforcement) are preserved.
 - **ADR-0019 (Remote Access Transport):** Provides the authenticated, encrypted transport over which federation sync operates. Tor onion addresses double as peer identities.
 - **ADR-0020 (TUI Screenshot Annotation):** Screenshots are tracked by git (per ADR-0020). Peers sharing the same repo receive them via git. Compiled-view-only federation may need to serve screenshots via the federation API or mark them as unavailable.
