@@ -27,3 +27,10 @@
   set: {}  # 464c
   add:  # 464c
     before: [WI-mozub-pozot-roruf-sutaj-midal-balit-humov-hatih]  # 464c
+- op: discuss  # f9fd
+  at: '2026-03-31T09:26:40Z'  # f9fd
+  by: agent  # f9fd
+  actor: jgstern_agent  # f9fd
+  clock: 3  # f9fd
+  nonce: f9fd  # f9fd
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # f9fd

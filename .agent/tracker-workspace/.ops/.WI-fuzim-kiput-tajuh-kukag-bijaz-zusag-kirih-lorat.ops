@@ -18,3 +18,10 @@
     pr_ref:  # f270
     description: "Textual-native annotation mode: keypress-triggered SVG screenshots, overlay widget for drawing rects/arrows/labels via mouse events, cell-to-SVG coordinate mapping, and vector element injection into SVG. No new dependencies required."  # f270
     fields: {}  # f270
+- op: discuss  # b1ff
+  at: '2026-03-31T09:26:40Z'  # b1ff
+  by: agent  # b1ff
+  actor: jgstern_agent  # b1ff
+  clock: 2  # b1ff
+  nonce: b1ff  # b1ff
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # b1ff

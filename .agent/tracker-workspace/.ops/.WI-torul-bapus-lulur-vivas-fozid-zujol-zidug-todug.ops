@@ -18,3 +18,10 @@
     pr_ref:  # b727
     description: "Epic for ADR-0020. Two parts: (1) TUI-native screenshot annotation mode using Textual overlays and SVG injection, (2) inline Chafa-based preview of annotated SVGs in discussion threads. See docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # b727
     fields: {}  # b727
+- op: discuss  # 3602
+  at: '2026-03-31T09:26:40Z'  # 3602
+  by: agent  # 3602
+  actor: jgstern_agent  # 3602
+  clock: 2  # 3602
+  nonce: '3602'  # 3602
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 3602

@@ -18,3 +18,10 @@
     pr_ref:  # 25db
     description: "SVG path detection in discussion messages, cairosvg+Chafa rendering pipeline (SVG→PNG→ANSI→Rich Text→Textual widget), caching, collapse/expand, and graceful degradation when optional deps are missing."  # 25db
     fields: {}  # 25db
+- op: discuss  # dbad
+  at: '2026-03-31T09:26:40Z'  # dbad
+  by: agent  # dbad
+  actor: jgstern_agent  # dbad
+  clock: 2  # dbad
+  nonce: dbad  # dbad
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # dbad
