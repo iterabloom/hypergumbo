@@ -1,0 +1,20 @@
+- op: create  # 9215
+  at: '2026-03-31T09:10:55Z'  # 9215
+  by: agent  # 9215
+  actor: jgstern_agent  # 9215
+  clock: 1  # 9215
+  nonce: '9215'  # 9215
+  data:  # 9215
+    kind: work_item  # 9215
+    title: "Annotation confirm/discard: arrow key adjustment, Enter/Escape flow"  # 9215
+    status: needs_human_review  # 9215
+    priority: 2  # 9215
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 9215
+    tags:  # 9215
+    - adr-0020  # 9215
+    before: []  # 9215
+    duplicate_of: []  # 9215
+    not_duplicate_of: []  # 9215
+    pr_ref:  # 9215
+    description: "After each annotation gesture, user can adjust position with arrow keys (mitigates SSH mouse coordinate drift). Enter confirms the annotation; Escape discards it. Confirmed annotations are appended to the annotation list."  # 9215
+    fields: {}  # 9215

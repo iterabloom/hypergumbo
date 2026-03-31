@@ -1,0 +1,20 @@
+- op: create  # 277c
+  at: '2026-03-31T09:11:22Z'  # 277c
+  by: agent  # 277c
+  actor: jgstern_agent  # 277c
+  clock: 1  # 277c
+  nonce: 277c  # 277c
+  data:  # 277c
+    kind: work_item  # 277c
+    title: "Cell-to-SVG coordinate mapping and SVG annotation injection"  # 277c
+    status: needs_human_review  # 277c
+    priority: 2  # 277c
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 277c
+    tags:  # 277c
+    - adr-0020  # 277c
+    before: []  # 277c
+    duplicate_of: []  # 277c
+    not_duplicate_of: []  # 277c
+    pr_ref:  # 277c
+    description: "Linear transform from Textual cell coords to SVG coords: svg_x = cell_col * cell_width_px + offset_x, svg_y = cell_row * cell_height_px + offset_y. Inject vector elements (<rect>, <text>, <line>, <polygon>) into the SVG as a <g class=\"annotations\"> group. Preserve original SVG alongside annotated version."  # 277c
+    fields: {}  # 277c
