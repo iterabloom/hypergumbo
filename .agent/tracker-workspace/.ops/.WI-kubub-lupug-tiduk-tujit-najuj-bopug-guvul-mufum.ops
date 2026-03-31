@@ -1,0 +1,20 @@
+- op: create  # 8a97
+  at: '2026-03-31T09:17:12Z'  # 8a97
+  by: agent  # 8a97
+  actor: jgstern_agent  # 8a97
+  clock: 1  # 8a97
+  nonce: 8a97  # 8a97
+  data:  # 8a97
+    kind: work_item  # 8a97
+    title: "Collapse/expand for inline screenshot previews"  # 8a97
+    status: needs_human_review  # 8a97
+    priority: 2  # 8a97
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # 8a97
+    tags:  # 8a97
+    - adr-0020  # 8a97
+    before: []  # 8a97
+    duplicate_of: []  # 8a97
+    not_duplicate_of: []  # 8a97
+    pr_ref:  # 8a97
+    description: "Inline previews collapsed by default to a single line: '[screenshot: inv-foo.svg — press Enter to expand]'. User expands inline with a keypress. Prevents discussion threads from being overwhelmed by preview content."  # 8a97
+    fields: {}  # 8a97

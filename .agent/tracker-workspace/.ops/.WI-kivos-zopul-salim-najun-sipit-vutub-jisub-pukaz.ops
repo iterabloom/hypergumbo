@@ -1,0 +1,20 @@
+- op: create  # c47f
+  at: '2026-03-31T09:17:38Z'  # c47f
+  by: agent  # c47f
+  actor: jgstern_agent  # c47f
+  clock: 1  # c47f
+  nonce: c47f  # c47f
+  data:  # c47f
+    kind: work_item  # c47f
+    title: "Graceful degradation when cairosvg or Chafa unavailable"  # c47f
+    status: needs_human_review  # c47f
+    priority: 2  # c47f
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # c47f
+    tags:  # c47f
+    - adr-0020  # c47f
+    before: []  # c47f
+    duplicate_of: []  # c47f
+    not_duplicate_of: []  # c47f
+    pr_ref:  # c47f
+    description: "If cairosvg is not installed or chafa is not on PATH, fall back to displaying the file path as an underlined reference with a note that preview is unavailable. Discussion message content is never corrupted by a missing optional dependency. ANSI preview is never serialized into ops log — purely a TUI display concern."  # c47f
+    fields: {}  # c47f
