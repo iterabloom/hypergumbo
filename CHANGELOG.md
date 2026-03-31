@@ -64,6 +64,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Returns section loaded**: `DataflowConfig` now loads the `returns` YAML section (previously silently dropped). Return/yield statements correctly classify edges as "read".
 - **Net effect**: Dataflow slices are now tighter than structural slices. Forward slice follows only write/mutate edges; reverse slice follows only read edges. Previously both followed all edges identically because every annotation was "write".
 
+#### Java annotation extraction edge cases (INV-nimik)
+
+- **JAX-RS `@Path(value="/foo")` kwargs extraction**: jax-rs.yaml `extract_path` now uses `args[0]|kwargs.value` (matching Spring's approach). `@Path(value="/users")` was silently producing empty paths because only positional args were checked. Same fix applied to Micronaut's `@Controller` and `@Get`/`@Post`/etc. annotations.
+- **Generic return type extraction**: `_extract_java_return_type_name()` now extracts the outer type name from generic return types (e.g., `Response<User>` → `Response`, `CompletionStage<Response>` → `CompletionStage`). Previously only simple identifiers were extracted, so methods returning generic types had no `return_type` in metadata, breaking subresource locator detection.
+
 #### Route empty path normalization (INV-nimik)
 
 - **Empty route paths normalized to `/`**: `make_route_stable_id()` and `materialize_route_symbols()` now normalize empty string paths to `"/"`. Routes from annotations like `@GetMapping("")` or sub-resource locators without explicit paths now get proper stable IDs and display as `"GET /"` instead of `"GET route"`.

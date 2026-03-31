@@ -24,7 +24,7 @@ patterns:
   # On methods: defines path segment (combined with class @Path via prefix_from_parent)
   - concept: resource_path
     decorator: "^Path$"
-    extract_path: "args[0]"
+    extract_path: "args[0]|kwargs.value"
 
   # Provider patterns
   - concept: provider
