@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# verify-tracker-pr: Check if a tracker sync PR's ops data is already
+# present in the local working tree before closing it.
+#
+# Usage:
+#   verify-tracker-pr <PR_NUMBER>
+#
+# For each .ops file in the PR, fetches the PR's version from the API
+# and compares line-by-line against the local file.  Reports whether
+# the local file is a superset (safe to close) or has missing lines
+# (data would be lost if closed).
+#
+# Exit codes:
+#   0 = all files safe (local is superset for every file)
+#   1 = data loss risk (some lines in PR are not in local)
+#   2 = usage error or API failure
+# ------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+load_env
+detect_api_base
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: verify-tracker-pr <PR_NUMBER>"
+    echo ""
+    echo "Checks if a tracker sync PR's ops data is already present locally."
+    echo "Safe to close the PR only if exit code is 0."
+    exit 2
+fi
+
+PR_NUM="$1"
+
+# Fetch PR metadata
+if ! api_get "$API_BASE/pulls/$PR_NUM"; then
+    echo "❌ Failed to fetch PR #$PR_NUM"
+    exit 2
+fi
+
+PR_TITLE=$(echo "$API_RESPONSE" | json_field "title")
+PR_STATE=$(echo "$API_RESPONSE" | json_field "state")
+HEAD_SHA=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+print(json.load(sys.stdin).get('head', {}).get('sha', ''))
+" 2>/dev/null)
+
+echo "PR #$PR_NUM: $PR_TITLE"
+echo "  State: $PR_STATE  HEAD: ${HEAD_SHA:0:12}"
+echo ""
+
+if [[ -z "$HEAD_SHA" ]]; then
+    echo "❌ Could not determine HEAD SHA"
+    exit 2
+fi
+
+# Fetch list of changed files
+if ! api_get "$API_BASE/pulls/$PR_NUM/files"; then
+    echo "❌ Failed to fetch PR files"
+    exit 2
+fi
+
+FILES=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+for f in json.load(sys.stdin):
+    print(f['filename'])
+" 2>/dev/null)
+
+if [[ -z "$FILES" ]]; then
+    echo "ℹ️  PR has no changed files (may already be included in base branch)"
+    exit 0
+fi
+
+FILE_COUNT=$(echo "$FILES" | wc -l)
+echo "Checking $FILE_COUNT file(s)..."
+echo ""
+
+loss_count=0
+ok_count=0
+missing_count=0
+
+for FILE in $FILES; do
+    # Fetch file content from PR's commit
+    if ! api_get "$API_BASE/contents/$FILE?ref=$HEAD_SHA"; then
+        echo "⚠️  SKIP: $FILE (API fetch failed)"
+        continue
+    fi
+
+    pr_content=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json, base64
+d = json.load(sys.stdin)
+print(base64.b64decode(d['content']).decode(), end='')
+" 2>/dev/null)
+
+    if [[ -z "$pr_content" ]]; then
+        echo "⚠️  SKIP: $FILE (empty content from API)"
+        continue
+    fi
+
+    # Check if local file exists
+    if [[ ! -f "$FILE" ]]; then
+        echo "❌ MISSING: $FILE (exists in PR but not locally)"
+        missing_count=$((missing_count + 1))
+        loss_count=$((loss_count + 1))
+        continue
+    fi
+
+    # Compare: are there lines in the PR version that are NOT in the local version?
+    diff_lines=$(comm -23 <(echo "$pr_content" | sort) <(sort "$FILE") | wc -l)
+
+    if [[ "$diff_lines" -gt 0 ]]; then
+        echo "❌ LOSS: $FILE ($diff_lines line(s) in PR but not in local)"
+        comm -23 <(echo "$pr_content" | sort) <(sort "$FILE") | head -5
+        if [[ "$diff_lines" -gt 5 ]]; then
+            echo "   ... and $((diff_lines - 5)) more"
+        fi
+        loss_count=$((loss_count + 1))
+    else
+        echo "✅ OK: $(basename "$FILE") (local is superset)"
+        ok_count=$((ok_count + 1))
+    fi
+done
+
+echo ""
+echo "---"
+echo "Results: $ok_count OK, $loss_count with data loss risk, $missing_count missing locally"
+
+if [[ $loss_count -gt 0 ]]; then
+    echo ""
+    echo "⚠️  NOT safe to close — $loss_count file(s) have data that would be lost."
+    echo "   Merge the PR first, or manually reconcile the differences."
+    exit 1
+else
+    echo ""
+    echo "✅ Safe to close — local ops are a superset of all PR content."
+    exit 0
+fi

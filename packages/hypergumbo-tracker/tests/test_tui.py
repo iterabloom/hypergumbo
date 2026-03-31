@@ -5060,6 +5060,55 @@ class TestDeliverScreenshot:
             assert len(svgs) == 1
 
 
+class TestCaptureScreenshot:
+    """Tests for the S keybinding that saves screenshot to .agent/screenshots/ (ADR-0020)."""
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_saves_svg(self, tmp_path: Path) -> None:
+        """Pressing S saves an SVG screenshot to .agent/screenshots/."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Patch screenshot_path at the source module
+            with patch(
+                "hypergumbo_tracker.annotations.screenshot_path",
+                side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+            ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            svgs = list((tmp_path / ".agent" / "screenshots").glob("*.svg"))
+            assert len(svgs) == 1
+            assert svgs[0].stat().st_size > 0
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_no_item_uses_screen_prefix(self, tmp_path: Path) -> None:
+        """When no item is selected, screenshot uses 'screen' as prefix."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Mock _get_selected_item to return None
+            with patch.object(app, "_get_selected_item", return_value=None), \
+                 patch(
+                     "hypergumbo_tracker.annotations.screenshot_path",
+                     side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+                 ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            svgs = list((tmp_path / ".agent" / "screenshots").glob("*.svg"))
+            assert len(svgs) == 1
+            assert "screen" in svgs[0].name
+
+
 class TestYankAction:
     """Tests for the Ctrl+C keybinding that copies detail text to clipboard."""
 

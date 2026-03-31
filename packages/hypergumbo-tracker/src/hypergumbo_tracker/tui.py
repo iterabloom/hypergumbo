@@ -1591,6 +1591,7 @@ class TrackerApp(App):
         ("R", "repair_drift", "Repair Drift"),
         ("i", "toggle_full_ids", "Full IDs"),
         ("ctrl+c", "yank", "Copy"),
+        ("S", "capture_screenshot", "Screenshot"),
     ]
 
     def deliver_screenshot(
@@ -2861,6 +2862,32 @@ class TrackerApp(App):
         plain_text = Text.from_markup("\n".join(lines)).plain
         self.copy_to_clipboard(plain_text)
         self.notify(f"Copied {item.id} to clipboard")
+
+    def action_capture_screenshot(self) -> None:
+        """Save SVG screenshot to .agent/screenshots/ (ADR-0020).
+
+        Saves the current TUI screen as an SVG file using the ADR-0020
+        naming convention: .agent/screenshots/<item-id>-<YYYYMMDD-HHMMSS>.svg.
+        When no item is selected, uses 'screen' as the identifier.
+        """
+        from datetime import datetime
+
+        from hypergumbo_tracker.annotations import screenshot_path as _screenshot_path
+
+        item = self._get_selected_item()
+        # Use short proquint prefix for filename readability
+        if item:
+            parts = item.id.split("-")
+            item_id = "-".join(parts[:3]) if len(parts) >= 3 else item.id
+        else:
+            item_id = "screen"
+
+        ts = datetime.now()
+        path = _screenshot_path(item_id, ts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        svg = self.export_screenshot()
+        path.write_text(svg)
+        self.notify(f"Screenshot saved: {path}")
 
     # ------------------------------------------------------------------
     # Write helpers
