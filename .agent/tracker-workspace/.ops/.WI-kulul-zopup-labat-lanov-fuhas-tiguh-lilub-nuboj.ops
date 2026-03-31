@@ -1,0 +1,20 @@
+- op: create  # e05b
+  at: '2026-03-31T09:15:24Z'  # e05b
+  by: agent  # e05b
+  actor: jgstern_agent  # e05b
+  clock: 1  # e05b
+  nonce: e05b  # e05b
+  data:  # e05b
+    kind: work_item  # e05b
+    title: "SVG→PNG→ANSI rendering pipeline (cairosvg + Chafa + Rich)"  # e05b
+    status: needs_human_review  # e05b
+    priority: 2  # e05b
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # e05b
+    tags:  # e05b
+    - adr-0020  # e05b
+    before: []  # e05b
+    duplicate_of: []  # e05b
+    not_duplicate_of: []  # e05b
+    pr_ref:  # e05b
+    description: "Pipeline: SVG → PNG via cairosvg.svg2png() at controlled resolution (fit to panel width) → ANSI via Chafa (sized to panel width) → Rich Text via Text.from_ansi() → Textual widget inline in discussion entry. Both cairosvg and chafa are optional dependencies."  # e05b
+    fields: {}  # e05b

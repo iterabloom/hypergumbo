@@ -1,0 +1,20 @@
+- op: create  # e4d2
+  at: '2026-03-31T09:15:57Z'  # e4d2
+  by: agent  # e4d2
+  actor: jgstern_agent  # e4d2
+  clock: 1  # e4d2
+  nonce: e4d2  # e4d2
+  data:  # e4d2
+    kind: work_item  # e4d2
+    title: "Inline preview caching keyed on (svg_path, mtime, panel_width)"  # e4d2
+    status: needs_human_review  # e4d2
+    priority: 2  # e4d2
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # e4d2
+    tags:  # e4d2
+    - adr-0020  # e4d2
+    before: []  # e4d2
+    duplicate_of: []  # e4d2
+    not_duplicate_of: []  # e4d2
+    pr_ref:  # e4d2
+    description: "Cache ANSI output keyed on (svg_path, svg_mtime, panel_width). Rasterization and Chafa invocation happen once per unique combination. Cache invalidated when SVG is modified (re-annotated) or panel width changes significantly."  # e4d2
+    fields: {}  # e4d2
