@@ -147,3 +147,10 @@
   clock: 18  # 07f9
   nonce: 07f9  # 07f9
   message: "Migrated from deprecated 'holding'. Fix in PR #2638 but post-fix bakeoff showed 0 FFI IO tags (expected — test repos' FFI calls target non-IO functions). Needs validation on a repo where FFI bridges call stdlib IO."  # 07f9
+- op: discuss  # 6461
+  at: '2026-03-31T10:29:02Z'  # 6461
+  by: agent  # 6461
+  actor: jgstern_agent  # 6461
+  clock: 19  # 6461
+  nonce: '6461'  # 6461
+  message: "Investigated available repos in ~/ALL_REPOS/curriculum_repos/ for FFI→IO validation. Results: Pillow (Python+C) has 0 ffi_bridge edges — uses C extensions (Python C API), not ctypes/cffi/PyO3. glfw (Go+C) has cgo but C code is window/display management, not stdlib IO. gocryptfs has cgo but C code is crypto (OpenSSL). No available repo has the pattern needed: an FFI bridge edge (ctypes/cffi/PyO3/cgo) whose target C/Rust function calls stdlib IO (fopen/fread/socket/etc). The fix IS code-correct (unit tests verify cgo_bridge and ffi_bridge are traceable). Need a repo with explicit FFI→IO to validate end-to-end. Options: (1) user suggests/clones one, (2) create a synthetic test fixture."  # 6461

@@ -58,3 +58,18 @@
   clock: 6  # 5087
   nonce: '5087'  # 5087
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 5087
+- op: update  # c3dd
+  at: '2026-03-31T10:55:07Z'  # c3dd
+  by: agent  # c3dd
+  actor: jgstern_agent  # c3dd
+  clock: 7  # c3dd
+  nonce: c3dd  # c3dd
+  set:  # c3dd
+    status: done  # c3dd
+- op: discuss  # 576b
+  at: '2026-03-31T10:55:08Z'  # 576b
+  by: agent  # 576b
+  actor: jgstern_agent  # 576b
+  clock: 8  # 576b
+  nonce: 576b  # 576b
+  message: "PR #2673 merged. RectAnnotation, ArrowAnnotation, LabelAnnotation dataclasses with to_dict/from_dict round-trip, sanitize_label_text, screenshot_path."  # 576b

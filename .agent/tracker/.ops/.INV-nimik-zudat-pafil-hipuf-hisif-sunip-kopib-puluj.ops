@@ -329,3 +329,25 @@
   clock: 42  # eea0
   nonce: eea0  # eea0
   message: "ok, then your task is improving the Java analyzer's annotation arg and return_type extraction for edge cases. status is violated until the issue is resolved or you have provided an item id for a new item."  # eea0
+- op: update  # 4291
+  at: '2026-03-31T10:18:27Z'  # 4291
+  by: agent  # 4291
+  actor: jgstern_agent  # 4291
+  clock: 43  # 4291
+  nonce: '4291'  # 4291
+  set:  # 4291
+    status: pending_validation  # 4291
+- op: discuss  # c542
+  at: '2026-03-31T10:18:27Z'  # c542
+  by: agent  # c542
+  actor: jgstern_agent  # c542
+  clock: 44  # c542
+  nonce: c542  # c542
+  message: "PR #2672 merged. Fixed JAX-RS @Path kwargs extraction and generic return_type extraction. Needs Keycloak bakeoff to validate improvement on the 124 empty-path routes."  # c542
+- op: discuss  # bac3
+  at: '2026-03-31T10:18:39Z'  # bac3
+  by: agent  # bac3
+  actor: jgstern_agent  # bac3
+  clock: 45  # bac3
+  nonce: bac3  # bac3
+  message: "PR #2672 merged. Two fixes: (1) jax-rs.yaml extract_path changed from args[0] to args[0]|kwargs.value — @Path(value=\"/foo\") now works. Same applied to micronaut.yaml. (2) _extract_java_return_type_name() now extracts outer type from generics (Response<User> → Response). Needs Keycloak bakeoff validation to measure improvement on the 124 empty-path routes."  # bac3
