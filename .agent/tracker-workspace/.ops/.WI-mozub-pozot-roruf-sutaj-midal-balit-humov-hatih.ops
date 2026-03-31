@@ -27,3 +27,25 @@
   set: {}  # 7672
   add:  # 7672
     before: [WI-zozos-polot-pokor-vukut-tolud-ramis-hupum-vakih]  # 7672
+- op: update  # f7c7
+  at: '2026-03-31T09:28:23Z'  # f7c7
+  by: agent  # f7c7
+  actor: jgstern_agent  # f7c7
+  clock: 3  # f7c7
+  nonce: f7c7  # f7c7
+  set:  # f7c7
+    status: todo_soft  # f7c7
+- op: discuss  # 4867
+  at: '2026-03-31T09:29:57Z'  # 4867
+  by: human  # 4867
+  actor: jgstern  # 4867
+  clock: 4  # 4867
+  nonce: '4867'  # 4867
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 4867
+- op: discuss  # 780a
+  at: '2026-03-31T09:40:25Z'  # 780a
+  by: agent  # 780a
+  actor: jgstern_agent  # 780a
+  clock: 5  # 780a
+  nonce: 780a  # 780a
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 780a

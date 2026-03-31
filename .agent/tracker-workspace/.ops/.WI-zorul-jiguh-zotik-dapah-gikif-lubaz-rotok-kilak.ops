@@ -27,3 +27,18 @@
   set: {}  # 2e86
   add:  # 2e86
     before: [WI-kulul-zopup-labat-lanov-fuhas-tiguh-lilub-nuboj]  # 2e86
+- op: discuss  # 302b
+  at: '2026-03-31T09:28:21Z'  # 302b
+  by: agent  # 302b
+  actor: jgstern_agent  # 302b
+  clock: 3  # 302b
+  nonce: 302b  # 302b
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 302b
+- op: update  # 97ca
+  at: '2026-03-31T09:28:24Z'  # 97ca
+  by: agent  # 97ca
+  actor: jgstern_agent  # 97ca
+  clock: 4  # 97ca
+  nonce: 97ca  # 97ca
+  set:  # 97ca
+    status: todo_soft  # 97ca

@@ -27,3 +27,25 @@
   set: {}  # 2c9c
   add:  # 2c9c
     before: [WI-fubij-tubun-lipon-hunuk-ripoj-tomiz-ratum-tuzag]  # 2c9c
+- op: update  # c8b1
+  at: '2026-03-31T09:28:23Z'  # c8b1
+  by: agent  # c8b1
+  actor: jgstern_agent  # c8b1
+  clock: 3  # c8b1
+  nonce: c8b1  # c8b1
+  set:  # c8b1
+    status: todo_soft  # c8b1
+- op: discuss  # 94b2
+  at: '2026-03-31T09:30:31Z'  # 94b2
+  by: human  # 94b2
+  actor: jgstern  # 94b2
+  clock: 4  # 94b2
+  nonce: 94b2  # 94b2
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 94b2
+- op: discuss  # 8c05
+  at: '2026-03-31T09:40:25Z'  # 8c05
+  by: agent  # 8c05
+  actor: jgstern_agent  # 8c05
+  clock: 5  # 8c05
+  nonce: 8c05  # 8c05
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 8c05

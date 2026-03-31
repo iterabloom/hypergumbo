@@ -25,3 +25,11 @@
   clock: 2  # b1ff
   nonce: b1ff  # b1ff
   message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # b1ff
+- op: update  # fb15
+  at: '2026-03-31T09:28:22Z'  # fb15
+  by: agent  # fb15
+  actor: jgstern_agent  # fb15
+  clock: 3  # fb15
+  nonce: fb15  # fb15
+  set:  # fb15
+    status: todo_soft  # fb15

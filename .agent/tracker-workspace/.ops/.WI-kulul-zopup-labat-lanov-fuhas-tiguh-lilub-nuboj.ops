@@ -45,3 +45,18 @@
   set: {}  # 01f0
   add:  # 01f0
     before: [WI-kivos-zopul-salim-najun-sipit-vutub-jisub-pukaz]  # 01f0
+- op: discuss  # e18c
+  at: '2026-03-31T09:28:22Z'  # e18c
+  by: agent  # e18c
+  actor: jgstern_agent  # e18c
+  clock: 5  # e18c
+  nonce: e18c  # e18c
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # e18c
+- op: update  # f214
+  at: '2026-03-31T09:28:24Z'  # f214
+  by: agent  # f214
+  actor: jgstern_agent  # f214
+  clock: 6  # f214
+  nonce: f214  # f214
+  set:  # f214
+    status: todo_soft  # f214

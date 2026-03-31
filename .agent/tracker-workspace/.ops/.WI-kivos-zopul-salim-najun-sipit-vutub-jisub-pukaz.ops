@@ -18,3 +18,18 @@
     pr_ref:  # c47f
     description: "If cairosvg is not installed or chafa is not on PATH, fall back to displaying the file path as an underlined reference with a note that preview is unavailable. Discussion message content is never corrupted by a missing optional dependency. ANSI preview is never serialized into ops log — purely a TUI display concern."  # c47f
     fields: {}  # c47f
+- op: discuss  # 8760
+  at: '2026-03-31T09:28:22Z'  # 8760
+  by: agent  # 8760
+  actor: jgstern_agent  # 8760
+  clock: 2  # 8760
+  nonce: '8760'  # 8760
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 8760
+- op: update  # 0a0c
+  at: '2026-03-31T09:28:24Z'  # 0a0c
+  by: agent  # 0a0c
+  actor: jgstern_agent  # 0a0c
+  clock: 3  # 0a0c
+  nonce: 0a0c  # 0a0c
+  set:  # 0a0c
+    status: todo_soft  # 0a0c

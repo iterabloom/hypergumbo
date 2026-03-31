@@ -36,3 +36,25 @@
   set: {}  # 2af5
   add:  # 2af5
     before: [WI-lidip-giluh-nukak-tanak-sasuk-fanib-faduv-suhok]  # 2af5
+- op: update  # 6ee2
+  at: '2026-03-31T09:28:23Z'  # 6ee2
+  by: agent  # 6ee2
+  actor: jgstern_agent  # 6ee2
+  clock: 4  # 6ee2
+  nonce: 6ee2  # 6ee2
+  set:  # 6ee2
+    status: todo_soft  # 6ee2
+- op: discuss  # 3466
+  at: '2026-03-31T09:30:20Z'  # 3466
+  by: human  # 3466
+  actor: jgstern  # 3466
+  clock: 5  # 3466
+  nonce: '3466'  # 3466
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 3466
+- op: discuss  # 5087
+  at: '2026-03-31T09:40:25Z'  # 5087
+  by: agent  # 5087
+  actor: jgstern_agent  # 5087
+  clock: 6  # 5087
+  nonce: '5087'  # 5087
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 5087

@@ -34,3 +34,11 @@
   clock: 3  # f9fd
   nonce: f9fd  # f9fd
   message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # f9fd
+- op: update  # d904
+  at: '2026-03-31T09:28:23Z'  # d904
+  by: agent  # d904
+  actor: jgstern_agent  # d904
+  clock: 4  # d904
+  nonce: d904  # d904
+  set:  # d904
+    status: todo_soft  # d904

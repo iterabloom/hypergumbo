@@ -27,3 +27,25 @@
   set: {}  # 967b
   add:  # 967b
     before: [WI-baguv-sofup-furin-bulad-vitot-pahuz-hovin-tutam]  # 967b
+- op: update  # 587b
+  at: '2026-03-31T09:28:23Z'  # 587b
+  by: agent  # 587b
+  actor: jgstern_agent  # 587b
+  clock: 3  # 587b
+  nonce: 587b  # 587b
+  set:  # 587b
+    status: todo_soft  # 587b
+- op: discuss  # 03c5
+  at: '2026-03-31T09:30:56Z'  # 03c5
+  by: human  # 03c5
+  actor: jgstern  # 03c5
+  clock: 4  # 03c5
+  nonce: 03c5  # 03c5
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 03c5
+- op: discuss  # 2883
+  at: '2026-03-31T09:40:25Z'  # 2883
+  by: agent  # 2883
+  actor: jgstern_agent  # 2883
+  clock: 5  # 2883
+  nonce: '2883'  # 2883
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 2883

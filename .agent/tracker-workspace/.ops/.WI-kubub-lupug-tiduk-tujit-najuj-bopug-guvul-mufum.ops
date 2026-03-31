@@ -18,3 +18,18 @@
     pr_ref:  # 8a97
     description: "Inline previews collapsed by default to a single line: '[screenshot: inv-foo.svg — press Enter to expand]'. User expands inline with a keypress. Prevents discussion threads from being overwhelmed by preview content."  # 8a97
     fields: {}  # 8a97
+- op: discuss  # 27a3
+  at: '2026-03-31T09:28:22Z'  # 27a3
+  by: agent  # 27a3
+  actor: jgstern_agent  # 27a3
+  clock: 2  # 27a3
+  nonce: 27a3  # 27a3
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 27a3
+- op: update  # 692d
+  at: '2026-03-31T09:28:24Z'  # 692d
+  by: agent  # 692d
+  actor: jgstern_agent  # 692d
+  clock: 3  # 692d
+  nonce: 692d  # 692d
+  set:  # 692d
+    status: todo_soft  # 692d

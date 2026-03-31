@@ -18,3 +18,18 @@
     pr_ref:  # e4d2
     description: "Cache ANSI output keyed on (svg_path, svg_mtime, panel_width). Rasterization and Chafa invocation happen once per unique combination. Cache invalidated when SVG is modified (re-annotated) or panel width changes significantly."  # e4d2
     fields: {}  # e4d2
+- op: discuss  # cf40
+  at: '2026-03-31T09:28:22Z'  # cf40
+  by: agent  # cf40
+  actor: jgstern_agent  # cf40
+  clock: 2  # cf40
+  nonce: cf40  # cf40
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # cf40
+- op: update  # 448f
+  at: '2026-03-31T09:28:24Z'  # 448f
+  by: agent  # 448f
+  actor: jgstern_agent  # 448f
+  clock: 3  # 448f
+  nonce: 448f  # 448f
+  set:  # 448f
+    status: todo_soft  # 448f

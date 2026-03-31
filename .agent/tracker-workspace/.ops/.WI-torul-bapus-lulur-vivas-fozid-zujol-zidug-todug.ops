@@ -25,3 +25,11 @@
   clock: 2  # 3602
   nonce: '3602'  # 3602
   message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 3602
+- op: update  # f8b5
+  at: '2026-03-31T09:28:22Z'  # f8b5
+  by: agent  # f8b5
+  actor: jgstern_agent  # f8b5
+  clock: 3  # f8b5
+  nonce: f8b5  # f8b5
+  set:  # f8b5
+    status: todo_soft  # f8b5

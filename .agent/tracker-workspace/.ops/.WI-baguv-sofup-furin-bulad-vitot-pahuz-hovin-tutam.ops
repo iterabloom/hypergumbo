@@ -18,3 +18,18 @@
     pr_ref:  # 416d
     description: "XML-escape annotation label text before injection into SVG <text> elements. Replace <, >, &, quote, apos with XML entity equivalents. Prevents malformed SVGs from label text containing markup-significant characters."  # 416d
     fields: {}  # 416d
+- op: discuss  # 84f1
+  at: '2026-03-31T09:28:21Z'  # 84f1
+  by: agent  # 84f1
+  actor: jgstern_agent  # 84f1
+  clock: 2  # 84f1
+  nonce: 84f1  # 84f1
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 84f1
+- op: update  # 905b
+  at: '2026-03-31T09:28:24Z'  # 905b
+  by: agent  # 905b
+  actor: jgstern_agent  # 905b
+  clock: 3  # 905b
+  nonce: 905b  # 905b
+  set:  # 905b
+    status: todo_soft  # 905b

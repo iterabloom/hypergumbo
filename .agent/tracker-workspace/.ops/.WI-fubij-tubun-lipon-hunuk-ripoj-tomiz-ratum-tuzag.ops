@@ -27,3 +27,25 @@
   set: {}  # eb78
   add:  # eb78
     before: [WI-lapob-lidob-tulid-tifuh-jivur-botus-gapaj-buzoh]  # eb78
+- op: update  # cc71
+  at: '2026-03-31T09:28:23Z'  # cc71
+  by: agent  # cc71
+  actor: jgstern_agent  # cc71
+  clock: 3  # cc71
+  nonce: cc71  # cc71
+  set:  # cc71
+    status: todo_soft  # cc71
+- op: discuss  # 8a4a
+  at: '2026-03-31T09:30:39Z'  # 8a4a
+  by: human  # 8a4a
+  actor: jgstern  # 8a4a
+  clock: 4  # 8a4a
+  nonce: 8a4a  # 8a4a
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 8a4a
+- op: discuss  # 69b1
+  at: '2026-03-31T09:40:24Z'  # 69b1
+  by: agent  # 69b1
+  actor: jgstern_agent  # 69b1
+  clock: 5  # 69b1
+  nonce: 69b1  # 69b1
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 69b1
