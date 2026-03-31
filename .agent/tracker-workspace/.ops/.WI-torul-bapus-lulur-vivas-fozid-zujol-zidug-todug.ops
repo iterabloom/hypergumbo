@@ -1,0 +1,20 @@
+- op: create  # b727
+  at: '2026-03-31T09:05:21Z'  # b727
+  by: agent  # b727
+  actor: jgstern_agent  # b727
+  clock: 1  # b727
+  nonce: b727  # b727
+  data:  # b727
+    kind: work_item  # b727
+    title: "ADR-0020: TUI Screenshot Annotation and Inline Preview"  # b727
+    status: needs_human_review  # b727
+    priority: 2  # b727
+    parent:  # b727
+    tags:  # b727
+    - adr-0020  # b727
+    before: []  # b727
+    duplicate_of: []  # b727
+    not_duplicate_of: []  # b727
+    pr_ref:  # b727
+    description: "Epic for ADR-0020. Two parts: (1) TUI-native screenshot annotation mode using Textual overlays and SVG injection, (2) inline Chafa-based preview of annotated SVGs in discussion threads. See docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # b727
+    fields: {}  # b727

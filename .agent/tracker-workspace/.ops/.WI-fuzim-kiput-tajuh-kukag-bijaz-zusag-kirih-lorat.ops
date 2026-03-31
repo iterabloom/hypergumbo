@@ -1,0 +1,20 @@
+- op: create  # f270
+  at: '2026-03-31T09:05:36Z'  # f270
+  by: agent  # f270
+  actor: jgstern_agent  # f270
+  clock: 1  # f270
+  nonce: f270  # f270
+  data:  # f270
+    kind: work_item  # f270
+    title: "Part 1: TUI Screenshot Annotation Mode"  # f270
+    status: needs_human_review  # f270
+    priority: 2  # f270
+    parent: WI-torul-bapus-lulur-vivas-fozid-zujol-zidug-todug  # f270
+    tags:  # f270
+    - adr-0020  # f270
+    before: []  # f270
+    duplicate_of: []  # f270
+    not_duplicate_of: []  # f270
+    pr_ref:  # f270
+    description: "Textual-native annotation mode: keypress-triggered SVG screenshots, overlay widget for drawing rects/arrows/labels via mouse events, cell-to-SVG coordinate mapping, and vector element injection into SVG. No new dependencies required."  # f270
+    fields: {}  # f270
