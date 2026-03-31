@@ -18,3 +18,12 @@
     pr_ref:  # 6cc1
     description: "TUI discussion renderer detects paths ending in .svg that exist on disk within discussion message text. Convention: 'Fix the layout issue highlighted in .agent/screenshots/INV-foo-20260330-1422.svg'. Detected paths are passed to the rendering pipeline."  # 6cc1
     fields: {}  # 6cc1
+- op: update  # 2e86
+  at: '2026-03-31T09:19:50Z'  # 2e86
+  by: agent  # 2e86
+  actor: jgstern_agent  # 2e86
+  clock: 2  # 2e86
+  nonce: '2e86'  # 2e86
+  set: {}  # 2e86
+  add:  # 2e86
+    before: [WI-kulul-zopup-labat-lanov-fuhas-tiguh-lilub-nuboj]  # 2e86

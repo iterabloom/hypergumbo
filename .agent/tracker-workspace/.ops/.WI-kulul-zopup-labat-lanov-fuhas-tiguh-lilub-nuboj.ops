@@ -18,3 +18,12 @@
     pr_ref:  # e05b
     description: "Pipeline: SVG → PNG via cairosvg.svg2png() at controlled resolution (fit to panel width) → ANSI via Chafa (sized to panel width) → Rich Text via Text.from_ansi() → Textual widget inline in discussion entry. Both cairosvg and chafa are optional dependencies."  # e05b
     fields: {}  # e05b
+- op: update  # f307
+  at: '2026-03-31T09:19:50Z'  # f307
+  by: agent  # f307
+  actor: jgstern_agent  # f307
+  clock: 2  # f307
+  nonce: f307  # f307
+  set: {}  # f307
+  add:  # f307
+    before: [WI-zufis-jodas-momag-pakob-dufan-nudof-sizub-ditif]  # f307

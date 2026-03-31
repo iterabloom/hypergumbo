@@ -18,3 +18,12 @@
     pr_ref:  # 9215
     description: "After each annotation gesture, user can adjust position with arrow keys (mitigates SSH mouse coordinate drift). Enter confirms the annotation; Escape discards it. Confirmed annotations are appended to the annotation list."  # 9215
     fields: {}  # 9215
+- op: update  # 656b
+  at: '2026-03-31T09:19:50Z'  # 656b
+  by: agent  # 656b
+  actor: jgstern_agent  # 656b
+  clock: 2  # 656b
+  nonce: 656b  # 656b
+  set: {}  # 656b
+  add:  # 656b
+    before: [WI-lidip-giluh-nukak-tanak-sasuk-fanib-faduv-suhok]  # 656b

@@ -18,3 +18,12 @@
     pr_ref:  # 277c
     description: "Linear transform from Textual cell coords to SVG coords: svg_x = cell_col * cell_width_px + offset_x, svg_y = cell_row * cell_height_px + offset_y. Inject vector elements (<rect>, <text>, <line>, <polygon>) into the SVG as a <g class=\"annotations\"> group. Preserve original SVG alongside annotated version."  # 277c
     fields: {}  # 277c
+- op: update  # 967b
+  at: '2026-03-31T09:19:50Z'  # 967b
+  by: agent  # 967b
+  actor: jgstern_agent  # 967b
+  clock: 2  # 967b
+  nonce: 967b  # 967b
+  set: {}  # 967b
+  add:  # 967b
+    before: [WI-baguv-sofup-furin-bulad-vitot-pahuz-hovin-tutam]  # 967b
