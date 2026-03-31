@@ -18,3 +18,12 @@
     pr_ref:  # ee67
     description: "After screenshot, TUI enters annotation mode: screen content freezes, semi-transparent overlay widget appears on top. Mouse support required (MouseDown, MouseMove, MouseUp). Known limitation: unavailable in terminals without mouse event support (e.g. screen/tmux with mouse passthrough disabled)."  # ee67
     fields: {}  # ee67
+- op: update  # 2c9c
+  at: '2026-03-31T09:18:42Z'  # 2c9c
+  by: agent  # 2c9c
+  actor: jgstern_agent  # 2c9c
+  clock: 2  # 2c9c
+  nonce: 2c9c  # 2c9c
+  set: {}  # 2c9c
+  add:  # 2c9c
+    before: [WI-fubij-tubun-lipon-hunuk-ripoj-tomiz-ratum-tuzag]  # 2c9c

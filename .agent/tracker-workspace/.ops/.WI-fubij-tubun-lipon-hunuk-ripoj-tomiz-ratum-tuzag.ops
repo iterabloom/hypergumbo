@@ -18,3 +18,12 @@
     pr_ref:  # 518d
     description: "Mouse-driven annotation on the frozen overlay: drag to draw rectangles, click to place labels (with text input), drag to draw arrows. Each gesture creates an Annotation dataclass instance. Rendered as styled characters on the Textual overlay in real time."  # 518d
     fields: {}  # 518d
+- op: update  # eb78
+  at: '2026-03-31T09:18:42Z'  # eb78
+  by: agent  # eb78
+  actor: jgstern_agent  # eb78
+  clock: 2  # eb78
+  nonce: eb78  # eb78
+  set: {}  # eb78
+  add:  # eb78
+    before: [WI-lapob-lidob-tulid-tifuh-jivur-botus-gapaj-buzoh]  # eb78

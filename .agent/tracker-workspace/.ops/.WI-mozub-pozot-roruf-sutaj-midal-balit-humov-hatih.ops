@@ -18,3 +18,12 @@
     pr_ref:  # f8b6
     description: "Bind a key (e.g. S) in the TUI to call Textual save_screenshot(), writing the current screen as SVG to .agent/screenshots/<item-id>-<timestamp>.svg. Preserves original SVG alongside any future annotated version."  # f8b6
     fields: {}  # f8b6
+- op: update  # 7672
+  at: '2026-03-31T09:18:41Z'  # 7672
+  by: agent  # 7672
+  actor: jgstern_agent  # 7672
+  clock: 2  # 7672
+  nonce: '7672'  # 7672
+  set: {}  # 7672
+  add:  # 7672
+    before: [WI-zozos-polot-pokor-vukut-tolud-ramis-hupum-vakih]  # 7672

@@ -18,3 +18,12 @@
     pr_ref:  # 5af9
     description: "Discriminated union types: RectAnnotation(cell_x1/y1/x2/y2/color), ArrowAnnotation(from_x/y, to_x/y, color), LabelAnnotation(cell_x/y, text, color). Serialized as tagged JSON ({kind: rect, ...}). Stored as JSON sidecar or SVG <metadata> element."  # 5af9
     fields: {}  # 5af9
+- op: update  # 15a6
+  at: '2026-03-31T09:18:41Z'  # 15a6
+  by: agent  # 15a6
+  actor: jgstern_agent  # 15a6
+  clock: 2  # 15a6
+  nonce: 15a6  # 15a6
+  set: {}  # 15a6
+  add:  # 15a6
+    before: [WI-fubij-tubun-lipon-hunuk-ripoj-tomiz-ratum-tuzag]  # 15a6

@@ -18,3 +18,12 @@
     pr_ref:  # fe1f
     description: "Create .agent/screenshots/ directory (git-tracked). Naming: <item-id>-<YYYYMMDD-HHMMSS>.svg. No automatic cleanup; future htrac screenshots --prune is out of scope for now."  # fe1f
     fields: {}  # fe1f
+- op: update  # 464c
+  at: '2026-03-31T09:18:41Z'  # 464c
+  by: agent  # 464c
+  actor: jgstern_agent  # 464c
+  clock: 2  # 464c
+  nonce: 464c  # 464c
+  set: {}  # 464c
+  add:  # 464c
+    before: [WI-mozub-pozot-roruf-sutaj-midal-balit-humov-hatih]  # 464c
