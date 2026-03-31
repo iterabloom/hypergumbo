@@ -49,3 +49,18 @@
   clock: 5  # 2883
   nonce: '2883'  # 2883
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 2883
+- op: update  # c67b
+  at: '2026-03-31T11:39:03Z'  # c67b
+  by: agent  # c67b
+  actor: jgstern_agent  # c67b
+  clock: 6  # c67b
+  nonce: c67b  # c67b
+  set:  # c67b
+    status: done  # c67b
+- op: discuss  # 5a16
+  at: '2026-03-31T11:39:03Z'  # 5a16
+  by: agent  # 5a16
+  actor: jgstern_agent  # 5a16
+  clock: 7  # 5a16
+  nonce: 5a16  # 5a16
+  message: "PR pending (SVG injection branch). cell_to_svg() maps Textual cells to SVG pixels. annotation_to_svg_element() generates rect/line/text SVG. inject_annotations_into_svg() inserts annotation group before </svg>."  # 5a16
