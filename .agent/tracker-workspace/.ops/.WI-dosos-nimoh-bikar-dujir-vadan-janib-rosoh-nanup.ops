@@ -1,0 +1,20 @@
+- op: create  # 25db
+  at: '2026-03-31T09:06:31Z'  # 25db
+  by: agent  # 25db
+  actor: jgstern_agent  # 25db
+  clock: 1  # 25db
+  nonce: 25db  # 25db
+  data:  # 25db
+    kind: work_item  # 25db
+    title: "Part 2: Inline Preview in Discussion Threads"  # 25db
+    status: needs_human_review  # 25db
+    priority: 2  # 25db
+    parent: WI-torul-bapus-lulur-vivas-fozid-zujol-zidug-todug  # 25db
+    tags:  # 25db
+    - adr-0020  # 25db
+    before: []  # 25db
+    duplicate_of: []  # 25db
+    not_duplicate_of: []  # 25db
+    pr_ref:  # 25db
+    description: "SVG path detection in discussion messages, cairosvg+Chafa rendering pipeline (SVG→PNG→ANSI→Rich Text→Textual widget), caching, collapse/expand, and graceful degradation when optional deps are missing."  # 25db
+    fields: {}  # 25db

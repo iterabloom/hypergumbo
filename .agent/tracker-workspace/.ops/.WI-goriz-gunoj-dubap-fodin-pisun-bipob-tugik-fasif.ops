@@ -1,0 +1,20 @@
+- op: create  # fe1f
+  at: '2026-03-31T09:06:50Z'  # fe1f
+  by: agent  # fe1f
+  actor: jgstern_agent  # fe1f
+  clock: 1  # fe1f
+  nonce: fe1f  # fe1f
+  data:  # fe1f
+    kind: work_item  # fe1f
+    title: "Screenshot storage: .agent/screenshots/ directory and naming convention"  # fe1f
+    status: needs_human_review  # fe1f
+    priority: 2  # fe1f
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # fe1f
+    tags:  # fe1f
+    - adr-0020  # fe1f
+    before: []  # fe1f
+    duplicate_of: []  # fe1f
+    not_duplicate_of: []  # fe1f
+    pr_ref:  # fe1f
+    description: "Create .agent/screenshots/ directory (git-tracked). Naming: <item-id>-<YYYYMMDD-HHMMSS>.svg. No automatic cleanup; future htrac screenshots --prune is out of scope for now."  # fe1f
+    fields: {}  # fe1f
