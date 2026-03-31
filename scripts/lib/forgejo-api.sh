@@ -218,6 +218,7 @@ find_open_pr() {
 poll_ci() {
 	local head_sha="$1"
 	local timeout="${CI_TIMEOUT_SECONDS:-2400}"
+	local stale_pending_threshold="${CI_STALE_PENDING_SECONDS:-300}"  # 5 min default
 	local start_time elapsed
 	start_time=$(date +%s)
 
@@ -225,6 +226,9 @@ poll_ci() {
 	local ci_complete_sole_holdout_since=0
 	local poll_count=0
 	local prev_summary=""
+
+	# Track whether any job has left pending state (stale-pending detection)
+	local any_job_started=false
 
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
@@ -248,6 +252,45 @@ poll_ci() {
 
 		local state
 		state=$(echo "$API_RESPONSE" | json_field "state")
+
+		# Stale-pending detection: if no job has ever left pending state
+		# and we've been waiting longer than the threshold, the CI run
+		# likely never started (hung runner, dispatch failure).
+		if [[ "$any_job_started" == "false" && $elapsed -ge $stale_pending_threshold ]]; then
+			local has_non_pending
+			has_non_pending=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    statuses = data.get('statuses', [])
+    non_pending = [s for s in statuses if s.get('status') != 'pending']
+    print('yes' if non_pending else 'no')
+except Exception:
+    print('unknown')
+" 2>/dev/null || echo "unknown")
+			if [[ "$has_non_pending" == "yes" ]]; then
+				any_job_started=true
+			elif [[ "$has_non_pending" == "no" ]]; then
+				echo ""
+				echo "⚠️  No CI jobs have started after ${stale_pending_threshold}s — possible hung runner (exit code 3)"
+				return 3
+			fi
+		elif [[ "$any_job_started" == "false" ]]; then
+			# Check if any job has started (so we don't re-check after it's set)
+			local _check_started
+			_check_started=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    non_pending = [s for s in data.get('statuses', []) if s.get('status') != 'pending']
+    print('yes' if non_pending else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null || echo "no")
+			if [[ "$_check_started" == "yes" ]]; then
+				any_job_started=true
+			fi
+		fi
 
 		if [[ "$state" == "success" ]]; then
 			echo ""

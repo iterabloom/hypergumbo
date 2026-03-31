@@ -20,6 +20,7 @@ set -euo pipefail
 #   0 = success (merged, or vPR queued)
 #   1 = failure (CI failed, merge rejected, auth error)
 #   2 = timeout (CI still pending after deadline)
+#   3 = hung (no CI jobs started; retries exhausted)
 #
 # Merge Strategy:
 #   Default: fast-forward merge (preserves commit bodies + DCO sign-offs)
@@ -395,7 +396,12 @@ Individual commits are preserved in the history."
 	local poll_result=0
 	poll_ci "$HEAD_SHA" || poll_result=$?
 
-	if [[ $poll_result -eq 1 ]]; then
+	if [[ $poll_result -eq 3 ]]; then
+		echo ""
+		echo "⚠️  CI hung (no jobs started). For flush, retry manually:"
+		echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		exit 3
+	elif [[ $poll_result -eq 1 ]]; then
 		echo ""
 		echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
 		exit 1
@@ -731,7 +737,58 @@ do_pr() {
 	fi
 
 	local poll_result=0
+	local hung_retries=0
+	local hung_backoff=120  # Start at 2 minutes
+
 	poll_ci "$HEAD_SHA" || poll_result=$?
+
+	# Hung-run retry loop: if no CI jobs started (exit 3), close PR,
+	# wait with exponential backoff, and repush to trigger a fresh run.
+	while [[ $poll_result -eq 3 && $hung_retries -lt 4 ]]; do
+		hung_retries=$((hung_retries + 1))
+		echo ""
+		echo "🔄 Hung-run retry $hung_retries/4: closing PR #$PR_NUM, waiting ${hung_backoff}s..."
+
+		# Close the PR to cancel the stuck CI run
+		api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "closed"}' >/dev/null 2>&1 || true
+
+		sleep "$hung_backoff"
+		hung_backoff=$((hung_backoff * 2))
+
+		# Repush to create a new PR and trigger fresh CI
+		echo "📤 Re-pushing to trigger fresh CI run..."
+		if ! git push "$PUSH_REMOTE" "HEAD:refs/for/dev/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+			git push "$PUSH_REMOTE" "HEAD:refs/for/dev/$BRANCH" 2>/dev/null || {
+				echo "❌ Re-push failed"
+				exit 1
+			}
+		fi
+
+		# Find the new PR
+		if find_open_pr "branch" "$BRANCH"; then
+			PR_NUM="$FOUND_PR_NUM"
+		elif find_open_pr "sha" "$HEAD_SHA"; then
+			PR_NUM="$FOUND_PR_NUM"
+		else
+			echo "❌ Could not find new PR after re-push"
+			exit 1
+		fi
+		echo "✅ New PR #$PR_NUM"
+
+		poll_result=0
+		poll_ci "$HEAD_SHA" || poll_result=$?
+	done
+
+	if [[ $poll_result -eq 3 ]]; then
+		echo ""
+		echo "⚠️  CI hung on all $hung_retries retries (exit code 3)"
+		echo ""
+		echo "Scenario C: CI runners may be down. Recovery steps:"
+		echo "  1. Do NOT accumulate more changes to hypergumbo code"
+		echo "  2. Check runner health: ssh ci-runner systemctl status forgejo-runner-*"
+		echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		exit 3
+	fi
 
 	if [[ $poll_result -eq 1 ]]; then
 		echo ""
