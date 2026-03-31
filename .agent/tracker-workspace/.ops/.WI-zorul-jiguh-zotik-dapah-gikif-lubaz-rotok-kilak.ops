@@ -1,0 +1,20 @@
+- op: create  # 6cc1
+  at: '2026-03-31T09:14:08Z'  # 6cc1
+  by: agent  # 6cc1
+  actor: jgstern_agent  # 6cc1
+  clock: 1  # 6cc1
+  nonce: 6cc1  # 6cc1
+  data:  # 6cc1
+    kind: work_item  # 6cc1
+    title: "SVG path detection in discussion message renderer"  # 6cc1
+    status: needs_human_review  # 6cc1
+    priority: 2  # 6cc1
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # 6cc1
+    tags:  # 6cc1
+    - adr-0020  # 6cc1
+    before: []  # 6cc1
+    duplicate_of: []  # 6cc1
+    not_duplicate_of: []  # 6cc1
+    pr_ref:  # 6cc1
+    description: "TUI discussion renderer detects paths ending in .svg that exist on disk within discussion message text. Convention: 'Fix the layout issue highlighted in .agent/screenshots/INV-foo-20260330-1422.svg'. Detected paths are passed to the rendering pipeline."  # 6cc1
+    fields: {}  # 6cc1

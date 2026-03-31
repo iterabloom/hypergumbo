@@ -1,0 +1,20 @@
+- op: create  # 416d
+  at: '2026-03-31T09:13:35Z'  # 416d
+  by: agent  # 416d
+  actor: jgstern_agent  # 416d
+  clock: 1  # 416d
+  nonce: 416d  # 416d
+  data:  # 416d
+    kind: work_item  # 416d
+    title: "Label text XML sanitization for SVG injection"  # 416d
+    status: needs_human_review  # 416d
+    priority: 2  # 416d
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 416d
+    tags:  # 416d
+    - adr-0020  # 416d
+    before: []  # 416d
+    duplicate_of: []  # 416d
+    not_duplicate_of: []  # 416d
+    pr_ref:  # 416d
+    description: "XML-escape annotation label text before injection into SVG <text> elements. Replace <, >, &, quote, apos with XML entity equivalents. Prevents malformed SVGs from label text containing markup-significant characters."  # 416d
+    fields: {}  # 416d
