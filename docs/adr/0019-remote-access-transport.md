@@ -48,7 +48,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 - Tor is used for initial bootstrap (endpoint exchange for WireGuard), as the fallback when WireGuard can't establish a path, and as the primary transport when the user wants location privacy (traveling, hostile network).
 
 **WireGuard (automatic optimization):**
-- The client discovers its current public UDP mapping via a **STUN reflector** operated as part of the htrac service infrastructure (see below).
+- The client discovers its current public UDP mapping via a **STUN reflector** (see below).
 - The client sends its candidate endpoint to the VM over the Tor control channel.
 - Both sides attempt WireGuard handshake with `PersistentKeepalive`.
 - If a direct UDP path forms, bulk traffic (WebSocket events, UI updates, canvas interactions) moves to WireGuard.
@@ -56,7 +56,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 
 **Transport selection is automatic.** The user does not choose or see which path is active, except optionally via a status indicator. The system always starts on Tor, attempts WireGuard upgrade in the background, and falls back to Tor if WireGuard drops.
 
-### STUN reflector (operated infrastructure)
+### NAT traversal: STUN and TURN
 
 WireGuard needs to know the client's public IP:port to establish a direct UDP path. Any **STUN-compatible UDP reflector** can answer this question — it receives a UDP packet and replies with the observed source address.
 
@@ -71,6 +71,10 @@ Properties of any STUN reflector:
 - **Stateless.** No user data, no logs, no sessions.
 - **Privacy-neutral.** It doesn't know htrac exists. It's a generic UDP echo service.
 - **Not a relay.** It does not forward packets between peers or store anything.
+
+**TURN for symmetric NAT (mobile networks).** STUN works for full-cone and restricted-cone NAT, but fails on symmetric NAT — common on mobile carriers and behind CGNAT. Since the primary use case for remote access is phone connectivity, this is a significant gap. A **TURN relay** solves this: when STUN-discovered endpoints cannot establish a direct path, both sides relay traffic through the TURN server instead.
+
+The NAT traversal strategy becomes: STUN first (direct path, zero relay cost) → TURN fallback (relayed path, adds latency but works on any NAT) → Tor fallback (always available, highest latency). `coturn` supports both STUN and TURN in a single deployment, so a self-hosted `coturn` instance covers both tiers. TURN relay credentials are short-lived (generated per-session by `htrac serve` using a shared secret with the TURN server) to prevent unauthorized relay use.
 
 ### Server: `htrac serve`
 
@@ -402,7 +406,7 @@ systemd
 - **Four-factor auth** with hardware presence (YubiKey), knowledge (password), biometric (Face ID), and voluntary intent (duress detection). Each factor defeats a distinct threat.
 - **Duress resilience.** Under coercion, the system accepts a valid-looking login but triggers a user-defined, deliberately unspecified response.
 - **Good Tor citizenship.** Tor is valued infrastructure, always available. WireGuard automatically takes bulk traffic off volunteer relays when a direct path exists.
-- **No managed infrastructure required.** STUN is pluggable — any public or self-hosted STUN server works. No proprietary service dependency.
+- **No managed infrastructure required.** STUN/TURN is pluggable — any public or self-hosted server works. `coturn` handles both STUN and TURN in a single deployment. No proprietary service dependency.
 - **One web frontend, shared Rust core, two thin shells.** UI code is written once. The transport state machine (Tor, STUN, failover) and crypto (Ed25519) are implemented once in Rust and shared via FFI. WireGuard tunnel management is platform-native (`boringtun` on desktop, `NEPacketTunnelProvider` on iOS) — a deliberate split that follows each platform's grain. Platform-specific code is limited to auth gating, WireGuard integration, and OS integration (~500-800 lines of Swift on iOS, Tauri framework on desktop).
 - **Self-contained Python server:** `py_webauthn` and the WebSocket server are pip dependencies. No companion binaries on the server side.
 - **Phone + YubiKey as root of trust for federation.** The same device that authenticates the human also provisions machine-to-machine trust (ADR-0021).
@@ -413,7 +417,7 @@ systemd
 - **Web frontend is the largest piece of new code.** The canvas/diagramming UI, WebSocket client, responsive layout, and offline-capable state management are substantial — this is a real web application, not a simple dashboard.
 - **Four-factor auth UX** adds friction to every session. The configurable TTL (default 15 minutes) means re-authenticating frequently. This is the intended tradeoff — security over convenience. Users who want less friction can increase the TTL in `config.yaml`.
 - **Duress module** shifts implementation burden to the user. The framework provides the hooks (`on_duress_login`, `filter_response`) but the user must write a handler that produces a convincing session. No default implementation is shipped — shipping one would document the behavior.
-- **STUN dependency for WireGuard.** WireGuard requires a STUN server for NAT discovery. Public STUN servers are freely available but are third-party dependencies that could be deprecated. Self-hosting a STUN server is simple but is still infrastructure to maintain.
+- **STUN/TURN dependency for WireGuard.** WireGuard requires STUN for NAT discovery and TURN for relay fallback on symmetric NAT (common on mobile carriers). Public STUN servers are freely available; TURN requires a self-hosted or paid relay (`coturn` handles both). Self-hosting is simple but is still infrastructure to maintain.
 - **Two transport paths** means testing and debugging transport selection, failover, and session continuity across path changes. The Tor → WireGuard upgrade and fallback must be transparent and reliable.
 - **Ed25519 key management** for federation adds operational surface: key generation, distribution, storage, revocation. Lost keys require human re-provisioning.
 
@@ -454,7 +458,7 @@ systemd
 - Build toolchain (Vite, esbuild, or similar)
 
 **External (not bundled, pluggable):**
-- STUN server — any public or self-hosted STUN-compatible reflector for WireGuard NAT discovery
+- STUN/TURN server — any public or self-hosted reflector/relay for WireGuard NAT discovery and traversal (e.g., `coturn` for both)
 
 ### Open questions
 
