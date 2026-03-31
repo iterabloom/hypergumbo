@@ -1,0 +1,20 @@
+- op: create  # 5af9
+  at: '2026-03-31T09:08:06Z'  # 5af9
+  by: agent  # 5af9
+  actor: jgstern_agent  # 5af9
+  clock: 1  # 5af9
+  nonce: 5af9  # 5af9
+  data:  # 5af9
+    kind: work_item  # 5af9
+    title: "Annotation data model: Rect/Arrow/Label dataclasses and JSON serialization"  # 5af9
+    status: needs_human_review  # 5af9
+    priority: 2  # 5af9
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 5af9
+    tags:  # 5af9
+    - adr-0020  # 5af9
+    before: []  # 5af9
+    duplicate_of: []  # 5af9
+    not_duplicate_of: []  # 5af9
+    pr_ref:  # 5af9
+    description: "Discriminated union types: RectAnnotation(cell_x1/y1/x2/y2/color), ArrowAnnotation(from_x/y, to_x/y, color), LabelAnnotation(cell_x/y, text, color). Serialized as tagged JSON ({kind: rect, ...}). Stored as JSON sidecar or SVG <metadata> element."  # 5af9
+    fields: {}  # 5af9

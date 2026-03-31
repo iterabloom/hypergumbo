@@ -1,0 +1,20 @@
+- op: create  # f8b6
+  at: '2026-03-31T09:07:51Z'  # f8b6
+  by: agent  # f8b6
+  actor: jgstern_agent  # f8b6
+  clock: 1  # f8b6
+  nonce: f8b6  # f8b6
+  data:  # f8b6
+    kind: work_item  # f8b6
+    title: "Screenshot capture: keypress-triggered save_screenshot() to SVG"  # f8b6
+    status: needs_human_review  # f8b6
+    priority: 2  # f8b6
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # f8b6
+    tags:  # f8b6
+    - adr-0020  # f8b6
+    before: []  # f8b6
+    duplicate_of: []  # f8b6
+    not_duplicate_of: []  # f8b6
+    pr_ref:  # f8b6
+    description: "Bind a key (e.g. S) in the TUI to call Textual save_screenshot(), writing the current screen as SVG to .agent/screenshots/<item-id>-<timestamp>.svg. Preserves original SVG alongside any future annotated version."  # f8b6
+    fields: {}  # f8b6
