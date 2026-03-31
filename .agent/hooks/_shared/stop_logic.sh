@@ -368,20 +368,22 @@ if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     now_epoch=$(date +%s)
     local threshold=$((6 * 3600))  # 6 hours in seconds
 
-    # Parse PRs: filter to those older than 6 hours
-    local stale_prs
-    stale_prs=$(python3 -c "
+    # Parse PRs: filter to those older than 6 hours, collect tracker sync PR numbers
+    local stale_prs tracker_sync_prs
+    read -r stale_prs tracker_sync_prs < <(python3 -c "
 import json, sys, datetime
 now = $now_epoch
 threshold = $threshold
 prs = json.loads(sys.stdin.read())
 if not isinstance(prs, list):
+    print('', '')
     sys.exit(0)
+lines = []
+tracker_nums = []
 for pr in prs:
     created = pr.get('created_at', '')
     if not created:
         continue
-    # Parse ISO 8601 timestamp
     try:
         dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
         age_s = now - int(dt.timestamp())
@@ -398,12 +400,46 @@ for pr in prs:
             ci_note = ' [NOT MERGEABLE]'
         elif mergeable is True:
             ci_note = ' [mergeable]'
-        print(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
-        print(f'  Branch: {branch}')
+        lines.append(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
+        lines.append(f'  Branch: {branch}')
+        # Detect tracker sync PRs for verify-tracker-pr integration
+        if title.startswith('tracker: sync'):
+            tracker_nums.append(str(num))
+# Output: stale_prs text (newline-escaped) | tracker PR numbers (comma-separated)
+import base64
+stale_text = '\n'.join(lines) if lines else ''
+tracker_text = ','.join(tracker_nums)
+# Use base64 to avoid newline issues with read
+print(base64.b64encode(stale_text.encode()).decode(), tracker_text)
 " <<< "$API_RESPONSE" 2>/dev/null) || return 0
 
+    # Decode base64-encoded stale PRs text
+    stale_prs=$(echo "$stale_prs" | base64 -d 2>/dev/null) || stale_prs=""
+
+    # For tracker sync PRs, run verify-tracker-pr to check if safe to close
+    local verify_script="$REPO_ROOT/scripts/verify-tracker-pr"
+    local tracker_verdicts=""
+    if [[ -n "$tracker_sync_prs" && -x "$verify_script" ]]; then
+      IFS=',' read -ra _tracker_nums <<< "$tracker_sync_prs"
+      for _pr_num in "${_tracker_nums[@]}"; do
+        [[ -z "$_pr_num" ]] && continue
+        local _verdict
+        if "$verify_script" "$_pr_num" > /dev/null 2>&1; then
+          tracker_verdicts+=$'\n'"  **PR #${_pr_num}: ✅ safe to close** (local ops are a superset)"
+        else
+          tracker_verdicts+=$'\n'"  **PR #${_pr_num}: ⚠️ NOT safe to close** — merge first or reconcile"
+        fi
+      done
+    fi
+
     if [[ -n "$stale_prs" ]]; then
-      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\nThe following open PRs are older than 6 hours. Consider: merge (if CI green),\nrebase + re-push (if out of date), fix (if CI failed), or close (if superseded).\n\n%s\n' "$stale_prs")
+      local header="The following open PRs are older than 6 hours. Consider: merge (if CI green),"
+      header+=$'\n'"rebase + re-push (if out of date), fix (if CI failed), or close (if superseded)."
+      if [[ -n "$tracker_verdicts" ]]; then
+        header+=$'\n\n'"**Tracker sync PR safety check** (via \`scripts/verify-tracker-pr\`):"
+        header+="$tracker_verdicts"
+      fi
+      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\n%s\n\n%s\n' "$header" "$stale_prs")
     fi
   }
   _stale_pr_audit
