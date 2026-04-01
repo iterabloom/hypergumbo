@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0015: Dataflow patterns for Go (tree-sitter grammar)
+#
+# Go lacks assignment-level mutation markers (no &mut, no augmented assign
+# for collections). State-mutating operations are method calls on pointer
+# receivers: s.Set(), m.Delete(), q.Add(). Name-based heuristics in
+# library_patterns fill this gap, analogous to Erlang's approach.
 language: go
 
 assignments:
@@ -24,3 +29,69 @@ assignments:
 returns:
   - node_type: return_statement
     read: expression_list
+
+# Name-based heuristics for Go method calls on receivers.
+# Go convention: exported methods on pointer receivers that modify state
+# follow naming patterns like Set, Add, Delete, Update, etc.
+library_patterns:
+  # Write/mutate patterns: methods that modify receiver state
+  - match: '\.Set\('
+    access_mode: write
+  - match: '\.Add\('
+    access_mode: write
+  - match: '\.Put\('
+    access_mode: write
+  - match: '\.Delete\('
+    access_mode: write
+  - match: '\.Remove\('
+    access_mode: write
+  - match: '\.Update\('
+    access_mode: write
+  - match: '\.Insert\('
+    access_mode: write
+  - match: '\.Append\('
+    access_mode: write
+  - match: '\.Push\('
+    access_mode: write
+  - match: '\.Pop\('
+    access_mode: write
+  - match: '\.Clear\('
+    access_mode: write
+  - match: '\.Reset\('
+    access_mode: write
+  - match: '\.Close\('
+    access_mode: write
+  - match: '\.Store\('
+    access_mode: write
+  - match: '\.Swap\('
+    access_mode: write
+
+  # Read patterns: methods that retrieve data without mutation
+  - match: '\.Get\('
+    access_mode: read
+  - match: '\.Find\('
+    access_mode: read
+  - match: '\.Lookup\('
+    access_mode: read
+  - match: '\.Load\('
+    access_mode: read
+  - match: '\.Fetch\('
+    access_mode: read
+  - match: '\.Query\('
+    access_mode: read
+  - match: '\.Search\('
+    access_mode: read
+  - match: '\.Select\('
+    access_mode: read
+  - match: '\.Has\('
+    access_mode: read
+  - match: '\.Contains\('
+    access_mode: read
+  - match: '\.Exists\('
+    access_mode: read
+  - match: '\.Len\('
+    access_mode: read
+  - match: '\.Size\('
+    access_mode: read
+  - match: '\.Count\('
+    access_mode: read

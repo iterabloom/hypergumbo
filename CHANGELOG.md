@@ -61,6 +61,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Go cgo → C stdlib IO tracing**: `tag_io_boundaries()` now recognizes the `go:C:` pseudo-namespace from cgo calls and redirects catalog lookup to the C catalog. Previously, `Go code → C.fopen()` produced a `calls` edge to `go:C:0-0:fopen:unresolved`; the tagger extracted `lang="go"`, consulted the Go catalog (which has `os.Open` but not `fopen`), and found nothing. Now the `_resolve_ffi_catalog()` function detects `module_hint == "C"` and redirects to the `c` catalog without module filtering. Validated on chai2010/cgo: 0→7 IO edges (`fopen`, `fread`, `fwrite`, `fgetc`, `fgets`, `fputc`, `fputs`).
 
+#### Go dataflow library patterns (WI-satuv)
+
+- **Go `library_patterns` for mutating method calls**: Added 30 regex patterns (15 write, 15 read) to `go.yaml`. Methods like `.Set(`, `.Add(`, `.Delete(` are now annotated `access_mode=write`; `.Get(`, `.Find(`, `.Lookup(` as `read`. Previously Go had no `library_patterns` section, so method calls on pointer receivers had no access_mode, making dataflow slices undirected.
+
 #### Java System.in/out/err false positives (WI-tojuz)
 
 - **Added `in`, `out`, `err` to Java `ambiguous_names`**: JPA `CriteriaBuilder.in()` produced edges to `java:external:0-0:in:unresolved` that matched `System.in` (ipc_recv) without module context, causing 20 false positives in keycloak. `out` and `err` had the same risk (scope expansion from `in`).

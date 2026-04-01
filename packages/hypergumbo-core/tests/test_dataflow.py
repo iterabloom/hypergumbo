@@ -1099,6 +1099,78 @@ class TestErlangLibraryPatterns:
         assert len(write_sites) >= 1  # gen_server:cast
 
 
+# ==================== GO LIBRARY PATTERNS TESTS ====================
+
+
+class TestGoLibraryPatterns:
+    """Tests for Go name-based dataflow heuristics.
+
+    Go methods like .Set(), .Add(), .Delete() on pointer receivers are
+    state-mutating operations. Without library_patterns, these edges have
+    no access_mode, making dataflow slices undirected.
+    """
+
+    def _load_go_config(self):
+        from pathlib import Path
+        go_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "go.yaml"
+        )
+        return load_dataflow_config(go_yaml)
+
+    def test_go_config_has_library_patterns(self) -> None:
+        """Go dataflow config should include library_patterns."""
+        config = self._load_go_config()
+        assert config.language == "go"
+        assert len(config.library_patterns) > 0
+
+    def test_mutating_method_calls(self) -> None:
+        """Go .Set(), .Add(), .Delete() should match as write/mutate."""
+        config = self._load_go_config()
+        content = (
+            "func updateSilence(s *Silences, id string) {\n"
+            "\ts.Set(id, newSilence)\n"
+            "\ts.Add(entry)\n"
+            "\ts.Delete(oldID)\n"
+            "\ts.Remove(staleEntry)\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        write_sites = [s for s in sites if s.access_mode in ("write", "mutate")]
+        assert len(write_sites) >= 3, (
+            f"Expected >=3 write/mutate sites for Set/Add/Delete, got {len(write_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_read_method_calls(self) -> None:
+        """Go .Get(), .Find(), .Lookup() should match as read."""
+        config = self._load_go_config()
+        content = (
+            "func lookupAlert(a *Alerts) Alert {\n"
+            "\tresult := a.Get(id)\n"
+            "\tentry := a.Find(name)\n"
+            "\tval := a.Lookup(key)\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        assert len(read_sites) >= 2, (
+            f"Expected >=2 read sites for Get/Find/Lookup, got {len(read_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_non_matching_methods_ignored(self) -> None:
+        """Normal method calls like .String(), .Len() should not match."""
+        config = self._load_go_config()
+        content = (
+            "func display(s *Silence) string {\n"
+            "\treturn s.String()\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        assert len(sites) == 0
+
+
 # ==================== DATAFLOW SITE TESTS ====================
 
 
