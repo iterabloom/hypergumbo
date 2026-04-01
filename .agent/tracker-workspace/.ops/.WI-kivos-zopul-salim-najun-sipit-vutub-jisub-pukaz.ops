@@ -55,3 +55,10 @@
   clock: 6  # fd16
   nonce: fd16  # fd16
   message: "please provide the PR number or the commit hash?"  # fd16
+- op: discuss  # 81d8
+  at: '2026-04-01T09:02:05Z'  # 81d8
+  by: agent  # 81d8
+  actor: jgstern_agent  # 81d8
+  clock: 7  # 81d8
+  nonce: 81d8  # 81d8
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Graceful degradation when cairosvg or Chafa unavailable was part of this commit. Pushed directly to dev."  # 81d8

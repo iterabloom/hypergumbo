@@ -55,3 +55,10 @@
   clock: 6  # 2bec
   nonce: 2bec  # 2bec
   message: "please provide the PR number or the commit hash?"  # 2bec
+- op: discuss  # 6826
+  at: '2026-04-01T09:01:29Z'  # 6826
+  by: agent  # 6826
+  actor: jgstern_agent  # 6826
+  clock: 7  # 6826
+  nonce: '6826'  # 6826
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Preview caching keyed on (svg_path, mtime, panel_width) was part of this commit. Pushed directly to dev."  # 6826

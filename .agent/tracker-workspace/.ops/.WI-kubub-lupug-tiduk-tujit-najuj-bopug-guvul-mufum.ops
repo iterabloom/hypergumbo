@@ -55,3 +55,10 @@
   clock: 6  # 7e2f
   nonce: 7e2f  # 7e2f
   message: "please provide the PR number or the commit hash?"  # 7e2f
+- op: discuss  # 91c6
+  at: '2026-04-01T09:01:45Z'  # 91c6
+  by: agent  # 91c6
+  actor: jgstern_agent  # 91c6
+  clock: 7  # 91c6
+  nonce: 91c6  # 91c6
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Collapse/expand for inline screenshot previews was part of this commit. Pushed directly to dev."  # 91c6

@@ -71,3 +71,10 @@
   clock: 8  # ebc6
   nonce: ebc6  # ebc6
   message: "please provide a PR or commit?"  # ebc6
+- op: discuss  # 71a1
+  at: '2026-04-01T09:00:45Z'  # 71a1
+  by: agent  # 71a1
+  actor: jgstern_agent  # 71a1
+  clock: 9  # 71a1
+  nonce: 71a1  # 71a1
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). This commit added cell-to-SVG coordinate mapping using Rich export constants, SVG annotation element generation, and injection. Pushed directly to dev (no separate PR)."  # 71a1

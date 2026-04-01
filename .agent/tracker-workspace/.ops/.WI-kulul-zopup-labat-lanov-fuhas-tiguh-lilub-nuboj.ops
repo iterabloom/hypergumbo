@@ -82,3 +82,10 @@
   clock: 9  # b86a
   nonce: b86a  # b86a
   message: "please provide the PR number or the commit hash?"  # b86a
+- op: discuss  # cbad
+  at: '2026-04-01T09:01:20Z'  # cbad
+  by: agent  # cbad
+  actor: jgstern_agent  # cbad
+  clock: 10  # cbad
+  nonce: cbad  # cbad
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG→PNG→ANSI rendering pipeline (cairosvg + Chafa + Rich) was part of this commit. Pushed directly to dev."  # cbad

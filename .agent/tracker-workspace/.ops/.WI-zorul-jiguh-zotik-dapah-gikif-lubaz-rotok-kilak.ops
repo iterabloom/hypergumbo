@@ -64,3 +64,10 @@
   clock: 7  # 3ba9
   nonce: 3ba9  # 3ba9
   message: "please provide the PR number or the commit id?"  # 3ba9
+- op: discuss  # 01f3
+  at: '2026-04-01T09:01:04Z'  # 01f3
+  by: agent  # 01f3
+  actor: jgstern_agent  # 01f3
+  clock: 8  # 01f3
+  nonce: 01f3  # 01f3
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG path detection in discussion message renderer was part of this commit. Pushed directly to dev."  # 01f3
