@@ -37,3 +37,18 @@
   clock: 3  # a286
   nonce: a286  # a286
   message: "Proposed fix: update pre-work playbook (.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md) and AGENTS.md summary to check .git/CI_FAILOVER_ACTIVE before choosing remote. Both are governance files. Changes ready on branch jgstern-agent/fix/cgo-io-catalog-redirect (staged locally, not committed yet). Requesting human approval before creating PR."  # a286
+- op: update  # a1e5
+  at: '2026-04-01T21:26:38Z'  # a1e5
+  by: agent  # a1e5
+  actor: jgstern_agent  # a1e5
+  clock: 4  # a1e5
+  nonce: a1e5  # a1e5
+  set:  # a1e5
+    status: pending_validation  # a1e5
+- op: discuss  # 81f4
+  at: '2026-04-01T21:26:38Z'  # 81f4
+  by: agent  # 81f4
+  actor: jgstern_agent  # 81f4
+  clock: 5  # 81f4
+  nonce: 81f4  # 81f4
+  message: "Fix merged in PR #37. Pre-work playbook now checks .git/CI_FAILOVER_ACTIVE to determine authoritative remote (selfh vs origin). AGENTS.md summary updated. Pending validation: next time agent starts fresh work during failover, the playbook should guide it to the correct remote."  # 81f4
