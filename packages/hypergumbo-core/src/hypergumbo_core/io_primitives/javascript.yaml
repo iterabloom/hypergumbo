@@ -41,6 +41,8 @@ ambiguous_names:
   - arch          # os.arch vs any .arch
   - hostname      # os.hostname vs any .hostname
   - release       # os.release vs any .release
+  - remove        # Deno.remove vs Array/DOM .remove(), react-hook-form useFieldArray
+  - rename        # Deno.rename vs DOM .rename(), refactoring APIs
 
 fs_read:
   - module: fs

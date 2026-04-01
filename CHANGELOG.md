@@ -80,6 +80,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### I/O boundary detection
 
 - **Ambiguous name filtering for 10 catalogs**: Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C now have `ambiguous_names` lists (Scala and Swift already had them). Bare method names like `.String()`, `.Run()`, `.put()`, `.read()`, `.write()` no longer produce false-positive IO boundary matches without module context. Measured: age net_send 4→0, net_recv 14→0; polars net_send 285→89 (69% reduction).
+- **JavaScript `remove`/`rename` added to `ambiguous_names`**: `Deno.remove` was falsely matching `useFieldArray().remove()` from react-hook-form and `Array.remove()` as `fs_write` IO boundaries. Keycloak bakeoff: 8 false `fs_write` chains from React components eliminated.
 - Case-insensitive module matching (camelCase receiver hints now match PascalCase catalog modules).
 - ObjC catalog key bridging (`objc:` prefix vs `objective-c` language field).
 - Scala fs2/akka ops reclassified from `net_recv` to `fs_read`/`fs_write` (YAML indentation fix).

@@ -1581,6 +1581,21 @@ class TestAmbiguousNameFiltering:
         count = tag_io_boundaries([edge], {"javascript": catalog})
         assert count == 1, "Distinctive 'readFile' should match even without module context"
 
+    def test_js_bare_remove_not_matched(self) -> None:
+        """JS: bare 'remove' should NOT match Deno.remove without module context.
+
+        react-hook-form's useFieldArray().remove() and Array operations use
+        'remove' extensively.  Without module context, this must not be tagged
+        as Deno fs_write.
+        """
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/components/Form.tsx:42:FormComponent:function",
+            dst="javascript:external:0-0:remove:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'remove' is ambiguous (Array.remove, react-hook-form, etc.)"
+
 
 class TestCatalogMerge:
     """Tests for catalog parent merging."""
