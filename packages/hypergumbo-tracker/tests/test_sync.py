@@ -37,6 +37,7 @@ from hypergumbo_tracker.sync import (
     _git,
     _load_env,
     _check_pr_merged,
+    _close_pr,
     _log,
     _merge_pr,
     _poll_ci,
@@ -614,7 +615,8 @@ class TestPollCi:
     def test_pending_then_success(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        mock_time.monotonic.side_effect = [0, 10, 20, 30]
+        # deadline(0)+start(10)+while(20)+stale_check(30)+while(40)
+        mock_time.monotonic.side_effect = [0, 10, 20, 30, 40]
         mock_time.sleep = MagicMock()
         mock_api.side_effect = [
             (200, {"state": "pending", "statuses": [
@@ -638,7 +640,7 @@ class TestPollCi:
     def test_failure(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        mock_time.monotonic.side_effect = [0, 1]
+        mock_time.monotonic.side_effect = [0, 0, 1]
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
@@ -656,7 +658,7 @@ class TestPollCi:
     def test_error_state(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        mock_time.monotonic.side_effect = [0, 1]
+        mock_time.monotonic.side_effect = [0, 0, 1]
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
@@ -674,8 +676,8 @@ class TestPollCi:
     def test_timeout(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        # First check: within deadline; second check: past deadline
-        mock_time.monotonic.side_effect = [0, 5, 301]
+        # deadline(0)+start(5)+while(10)+stale_check(20)+while(301)
+        mock_time.monotonic.side_effect = [0, 5, 10, 20, 301]
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
@@ -721,8 +723,8 @@ class TestPollCi:
     def test_sole_holdout_bypass(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        # After 60+ seconds with one holdout, bypass succeeds
-        mock_time.monotonic.side_effect = [0, 61, 62]
+        # deadline(0)+start(61)+while(62)+holdout_check(63)
+        mock_time.monotonic.side_effect = [0, 61, 62, 63]
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
@@ -769,7 +771,8 @@ class TestPollCi:
     def test_non_dict_body_retries(
         self, mock_api: MagicMock, mock_time: MagicMock
     ) -> None:
-        mock_time.monotonic.side_effect = [0, 5, 301]
+        # deadline(0)+start(5)+while(10)+while(301)
+        mock_time.monotonic.side_effect = [0, 5, 10, 301]
         mock_time.sleep = MagicMock()
         mock_api.return_value = (200, [])  # non-dict body
         result = _poll_ci(
@@ -779,6 +782,112 @@ class TestPollCi:
             timeout=300,
         )
         assert result == "timeout"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_stale_pending_detection(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """Return stale_pending when all jobs stay pending past threshold."""
+        # monotonic: start=0, first poll at 5, second at 95 (past 90s threshold)
+        mock_time.monotonic.side_effect = [0, 0, 5, 5, 95, 95]
+        mock_time.sleep = MagicMock()
+        mock_api.return_value = (
+            200,
+            {"state": "pending", "statuses": [
+                {"status": "pending", "context": "Tracker CI / tracker-ci"},
+            ]},
+        )
+        result = _poll_ci(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=600,
+            stale_pending_threshold=90,
+        )
+        assert result == "stale_pending"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_stale_pending_not_triggered_when_job_starts(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """No stale_pending if a job transitions out of pending."""
+        # First poll: pending. Second poll (past threshold): success.
+        mock_time.monotonic.side_effect = [0, 0, 5, 5, 95, 95]
+        mock_time.sleep = MagicMock()
+        mock_api.side_effect = [
+            (200, {"state": "pending", "statuses": [
+                {"status": "pending", "context": "Tracker CI / tracker-ci"},
+            ]}),
+            (200, {"state": "success", "statuses": [
+                {"status": "success", "context": "Tracker CI / tracker-ci"},
+            ]}),
+        ]
+        result = _poll_ci(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=600,
+            stale_pending_threshold=90,
+        )
+        assert result == "success"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_stale_pending_skipped_when_running(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """No stale_pending if a job is running (not pending) before threshold."""
+        mock_time.monotonic.side_effect = [0, 0, 50, 50, 95, 95, 120, 120]
+        mock_time.sleep = MagicMock()
+        mock_api.side_effect = [
+            (200, {"state": "pending", "statuses": [
+                {"status": "pending", "context": "a"},
+                {"status": "success", "context": "b"},  # one already done
+            ]}),
+            (200, {"state": "pending", "statuses": [
+                {"status": "pending", "context": "a"},
+                {"status": "success", "context": "b"},
+            ]}),
+            (200, {"state": "success", "statuses": [
+                {"status": "success", "context": "a"},
+                {"status": "success", "context": "b"},
+            ]}),
+        ]
+        result = _poll_ci(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=600,
+            stale_pending_threshold=90,
+        )
+        assert result == "success"
+
+
+# ---------------------------------------------------------------------------
+# TestClosePr
+# ---------------------------------------------------------------------------
+
+
+class TestClosePr:
+    """Tests for _close_pr."""
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_close_success(self, mock_api: MagicMock) -> None:
+        mock_api.return_value = (200, {"state": "closed"})
+        assert _close_pr("https://api.example.com/repos/o/r", "tok", 42)
+        mock_api.assert_called_once_with(
+            "PATCH",
+            "https://api.example.com/repos/o/r/pulls/42",
+            "tok",
+            data={"state": "closed"},
+        )
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_close_failure(self, mock_api: MagicMock) -> None:
+        mock_api.return_value = (404, None)
+        assert not _close_pr("https://api.example.com/repos/o/r", "tok", 99)
 
 
 # ---------------------------------------------------------------------------
@@ -3410,6 +3519,110 @@ class TestCloseLogAndGetLogDir:
 
         sl._log_dir = None
         assert sl.get_log_dir() is None
+
+
+# ---------------------------------------------------------------------------
+# TestDoSync stale-pending retry paths
+# ---------------------------------------------------------------------------
+
+
+class TestDoSyncStalePending:
+    """Tests for stale-pending detection and retry in do_sync."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_init_sync_log(self) -> Any:
+        with patch("hypergumbo_tracker.sync.init_sync_log"):
+            yield
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._close_pr")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_stale_pending_retry_then_success(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_close: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """First CI poll returns stale_pending, retry succeeds."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *TestDoSync._plumbing_setup(),  # 9 plumbing calls
+            _make_completed_process(),       # initial push (1 attempt)
+            # stale_pending retry: close PR, repush
+            _make_completed_process(),       # repush
+            # success: rebase check + cleanup
+            *TestDoSync._rebase_check_no_diverge(),  # 2 calls
+            *TestDoSync._cleanup(),                   # 5 calls
+        ]
+        # First find_open_pr for initial, second for after repush
+        mock_find_pr.side_effect = [(42, "sha123"), (43, "sha456")]
+        # First poll: stale_pending; second: success
+        mock_poll.side_effect = ["stale_pending", "success"]
+        mock_close.return_value = True
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert result.success
+        assert result.pr_number == 43
+        mock_close.assert_called_once()
+        assert mock_poll.call_count == 2
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._close_pr")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_stale_pending_all_retries_exhausted(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_close: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """All retries return stale_pending → exit code 3."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *TestDoSync._plumbing_setup(),  # 9 plumbing calls
+            _make_completed_process(),       # initial push
+            # retry 1: repush
+            _make_completed_process(),
+            # retry 2: repush
+            _make_completed_process(),
+            # stale_pending exit: cleanup
+            *TestDoSync._cleanup(),          # 5 calls
+        ]
+        mock_find_pr.side_effect = [
+            (42, "sha1"), (43, "sha2"), (44, "sha3"),
+        ]
+        # 3 polls: initial + 2 retries, all stale_pending
+        mock_poll.return_value = "stale_pending"
+        mock_close.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert not result.success
+        assert result.exit_code == 3
+        assert "hung" in result.error.lower()
+        assert mock_close.call_count == 2  # closed twice during retries
+        assert mock_poll.call_count == 3   # initial + 2 retries
 
 
 # ---------------------------------------------------------------------------
