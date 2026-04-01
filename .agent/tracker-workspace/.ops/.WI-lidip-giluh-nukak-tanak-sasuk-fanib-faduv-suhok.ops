@@ -64,3 +64,10 @@
   clock: 7  # 5a16
   nonce: 5a16  # 5a16
   message: "PR pending (SVG injection branch). cell_to_svg() maps Textual cells to SVG pixels. annotation_to_svg_element() generates rect/line/text SVG. inject_annotations_into_svg() inserts annotation group before </svg>."  # 5a16
+- op: discuss  # ebc6
+  at: '2026-04-01T00:15:28Z'  # ebc6
+  by: human  # ebc6
+  actor: jgstern  # ebc6
+  clock: 8  # ebc6
+  nonce: ebc6  # ebc6
+  message: "please provide a PR or commit?"  # ebc6

@@ -48,3 +48,10 @@
   clock: 5  # f38b
   nonce: f38b  # f38b
   message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # f38b
+- op: discuss  # 2bec
+  at: '2026-04-01T00:16:38Z'  # 2bec
+  by: human  # 2bec
+  actor: jgstern  # 2bec
+  clock: 6  # 2bec
+  nonce: 2bec  # 2bec
+  message: "please provide the PR number or the commit hash?"  # 2bec
