@@ -1,0 +1,21 @@
+- op: create  # 2890
+  at: '2026-04-01T09:25:22Z'  # 2890
+  by: agent  # 2890
+  actor: jgstern_agent  # 2890
+  clock: 1  # 2890
+  nonce: '2890'  # 2890
+  data:  # 2890
+    kind: work_item  # 2890
+    title: "Java System.in ipc_recv false positive on JPA query methods"  # 2890
+    status: todo_hard  # 2890
+    priority: 3  # 2890
+    parent:  # 2890
+    tags:  # 2890
+    - io-boundary  # 2890
+    - adr-0016  # 2890
+    before: []  # 2890
+    duplicate_of: []  # 2890
+    not_duplicate_of: []  # 2890
+    pr_ref:  # 2890
+    description: "Keycloak bakeoff: 20 ipc_recv chains falsely tag JPA query methods (JPAPermissionTicketStore.getPredicates, JPAPolicyStore.find, etc.) as reading from System.in. These files contain no System.in usage. Root cause: 'in' attribute from java.lang.System likely matching without module context. 'in' is not in Java ambiguous_names. Structural analogue of Deno.remove fix (add 'in' to Java ambiguous_names)."  # 2890
+    fields: {}  # 2890
