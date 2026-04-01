@@ -686,6 +686,75 @@ class TestTagIoBoundaries:
         assert count == 1
         assert edge.meta["io_boundary"] == "subprocess"
 
+    def test_cgo_stdlib_call_uses_c_catalog(self) -> None:
+        """Go cgo calls to C stdlib (go:C:0-0:fopen) use the C catalog.
+
+        When Go code calls C.fopen() via cgo, the Go analyzer emits a
+        plain 'calls' edge to go:C:0-0:fopen:unresolved. The cgo linker
+        does NOT create a cgo_bridge edge because fopen is in libc, not
+        a repo-local C function. The IO boundary tagger must recognize
+        the go:C: pseudo-namespace and redirect to the C catalog.
+        """
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/file.go:57-59:OpenFile:function",
+            dst="go:C:0-0:fopen:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+        assert "fopen" in edge.meta["io_primitive"]
+
+    def test_cgo_stdlib_fwrite_uses_c_catalog(self) -> None:
+        """Go cgo C.fwrite() is tagged as fs_write via C catalog."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/file.go:89-99:File.Write:method",
+            dst="go:C:0-0:fwrite:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_write"
+
+    def test_cgo_stdlib_socket_uses_c_catalog(self) -> None:
+        """Go cgo C.socket() is tagged as net_send via C catalog."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/net.go:10-20:Connect:function",
+            dst="go:C:0-0:socket:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta is not None
+        assert "net" in edge.meta["io_boundary"]
+
+    def test_cgo_non_io_function_not_tagged(self) -> None:
+        """Go cgo C.strlen() is NOT tagged (not an IO primitive)."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/util.go:5:Len:function",
+            dst="go:C:0-0:strlen:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 0
+        assert edge.meta is None
+
 
 class TestModuleQualifiedMatching:
     """Tests for module-qualified IO boundary matching.

@@ -141,7 +141,7 @@ some-long-command > /tmp/cmd-output.log 2>&1
 
 
 ## Pre-Work Checklist
-Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, sync dev and main branches, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
+Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, **determine the authoritative remote** (check `.git/CI_FAILOVER_ACTIVE` — use `selfh` if present, `origin` otherwise), sync dev from that remote, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
 
 ## Post-Compaction State Recovery
 After context compaction, recover state from `last_stop_check.json` which records: current branch, last PR number/state, pending hard/soft TODOs, free-text notes, and active bakeoff session path. Check `guidance_file` for recent stop hook output. Run `tracker ready` for pending work items. Keep notes fresh after key milestones. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md`.)

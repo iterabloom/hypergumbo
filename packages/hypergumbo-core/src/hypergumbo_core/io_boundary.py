@@ -655,6 +655,32 @@ def _extract_callee_name(edge_dst: str) -> str:
     return parts[-1] if parts else edge_dst
 
 
+def _resolve_ffi_catalog(
+    lang: str,
+    module_hint: str | None,
+    catalogs: dict[str, "IoBoundaryCatalog"],
+) -> tuple["IoBoundaryCatalog | None", str | None]:
+    """Redirect FFI pseudo-namespace lookups to the actual target catalog.
+
+    Go's cgo pseudo-package ``C`` produces edges like
+    ``go:C:0-0:fopen:unresolved`` when calling C stdlib functions.  The
+    ``go`` catalog contains Go-native IO (``os.Open``, ``net.Listen``),
+    not C stdlib entries.  This function detects the ``go:C:`` prefix
+    and redirects to the ``c`` catalog, dropping the module hint because
+    ``"C"`` is Go's import alias, not a C header/module name.
+
+    Returns:
+        (catalog, adjusted_module_hint) — the catalog to use for lookup
+        and the module hint (``None`` when the pseudo-namespace module
+        is not a real module in the target language).
+    """
+    # Go cgo → C stdlib: go:C:0-0:<name>:unresolved
+    if lang == "go" and module_hint == "C":
+        return catalogs.get("c"), None
+
+    return catalogs.get(lang), module_hint
+
+
 def tag_io_boundaries(
     edges: list,
     catalogs: dict[str, IoBoundaryCatalog],
@@ -673,6 +699,12 @@ def tag_io_boundaries(
     For each call-type edge, extracts the callee name from the destination
     symbol ID, looks it up in the appropriate language catalog, and stamps
     ``io_boundary`` and ``io_primitive`` into ``edge.meta`` if matched.
+
+    When the destination belongs to an FFI pseudo-namespace (e.g.,
+    ``go:C:0-0:fopen:unresolved`` for cgo calls), the lookup is
+    redirected to the actual target-language catalog (``c`` in this case)
+    so C stdlib IO primitives are recognized even when the cgo linker
+    could not resolve the call to a repo-local C symbol.
 
     Args:
         edges: List of Edge objects to scan (mutated in place).
@@ -693,13 +725,18 @@ def tag_io_boundaries(
         dst_parts = edge.dst.split(":")
         lang = dst_parts[0]
 
-        catalog = catalogs.get(lang)
+        callee = _extract_callee_name(edge.dst)
+        module_hint = _extract_module_hint(edge.dst)
+
+        # Try FFI pseudo-namespace redirect first (e.g., go:C: → c catalog),
+        # then fall back to the primary language catalog.
+        catalog, adjusted_hint = _resolve_ffi_catalog(
+            lang, module_hint, catalogs,
+        )
         if catalog is None:
             continue
 
-        callee = _extract_callee_name(edge.dst)
-        module_hint = _extract_module_hint(edge.dst)
-        match = catalog.lookup_with_module(callee, module_hint)
+        match = catalog.lookup_with_module(callee, adjusted_hint)
         if match is None:
             continue
 

@@ -57,6 +57,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### FFI IO boundary catalog redirect (INV-kagob)
+
+- **Go cgo → C stdlib IO tracing**: `tag_io_boundaries()` now recognizes the `go:C:` pseudo-namespace from cgo calls and redirects catalog lookup to the C catalog. Previously, `Go code → C.fopen()` produced a `calls` edge to `go:C:0-0:fopen:unresolved`; the tagger extracted `lang="go"`, consulted the Go catalog (which has `os.Open` but not `fopen`), and found nothing. Now the `_resolve_ffi_catalog()` function detects `module_hint == "C"` and redirects to the `c` catalog without module filtering. Validated on chai2010/cgo: 0→7 IO edges (`fopen`, `fread`, `fwrite`, `fgetc`, `fgets`, `fputc`, `fputs`).
+
 #### Dataflow slice quality (INV-jahov)
 
 - **Position-aware access_mode classification**: `annotate_dataflow()` now uses tree-sitter child field names to distinguish LHS (write) from RHS (read) in assignments. Previously `build_node_type_map()` collapsed positional YAML rules into a single mode per node type, so `{write: left, read: right}` produced 100% "write" annotations. Now `build_positional_map()` preserves the child→mode mapping and `_classify_by_position()` resolves via byte-range containment.
