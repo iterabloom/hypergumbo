@@ -67,3 +67,18 @@
   clock: 7  # b2aa
   nonce: b2aa  # b2aa
   message: "Validated. The updated pre-work playbook was exercised during the WI-tojuz fix (Java ambiguous_names, PR #40). Agent correctly detected failover via .git/CI_FAILOVER_ACTIVE, used selfh as authoritative remote, synced dev from selfh/dev, and branched from the correct base. PR #40 merged on first attempt with no divergence issues. Compare with the 3 failed PRs (#33, #34, #37-first-attempt) that occurred before the fix."  # b2aa
+- op: update  # 1b4e
+  at: '2026-04-01T22:07:43Z'  # 1b4e
+  by: agent  # 1b4e
+  actor: jgstern_agent  # 1b4e
+  clock: 8  # 1b4e
+  nonce: 1b4e  # 1b4e
+  set:  # 1b4e
+    status: pending_validation  # 1b4e
+- op: discuss  # 0f46
+  at: '2026-04-01T22:07:43Z'  # 0f46
+  by: agent  # 0f46
+  actor: jgstern_agent  # 0f46
+  clock: 9  # 0f46
+  nonce: 0f46  # 0f46
+  message: "Reverted from satisfied. User explicitly stated this must not be marked satisfied prematurely. Evidence: the playbook was exercised once successfully (PR #40), but one successful use does not prove exhaustive prevention. Needs multiple successful fresh starts across context compactions to build confidence."  # 0f46
