@@ -52,3 +52,18 @@
   clock: 5  # 81f4
   nonce: 81f4  # 81f4
   message: "Fix merged in PR #37. Pre-work playbook now checks .git/CI_FAILOVER_ACTIVE to determine authoritative remote (selfh vs origin). AGENTS.md summary updated. Pending validation: next time agent starts fresh work during failover, the playbook should guide it to the correct remote."  # 81f4
+- op: update  # a334
+  at: '2026-04-01T22:06:56Z'  # a334
+  by: agent  # a334
+  actor: jgstern_agent  # a334
+  clock: 6  # a334
+  nonce: a334  # a334
+  set:  # a334
+    status: satisfied  # a334
+- op: discuss  # b2aa
+  at: '2026-04-01T22:06:57Z'  # b2aa
+  by: agent  # b2aa
+  actor: jgstern_agent  # b2aa
+  clock: 7  # b2aa
+  nonce: b2aa  # b2aa
+  message: "Validated. The updated pre-work playbook was exercised during the WI-tojuz fix (Java ambiguous_names, PR #40). Agent correctly detected failover via .git/CI_FAILOVER_ACTIVE, used selfh as authoritative remote, synced dev from selfh/dev, and branched from the correct base. PR #40 merged on first attempt with no divergence issues. Compare with the 3 failed PRs (#33, #34, #37-first-attempt) that occurred before the fix."  # b2aa
