@@ -197,3 +197,18 @@
   clock: 25  # 8417
   nonce: '8417'  # 8417
   message: "Fix merged in PR #37 (commit 9b79920). tag_io_boundaries() now redirects go:C: pseudo-namespace to C catalog via _resolve_ffi_catalog(). Validated locally on chai2010/cgo: 0→7 IO edges (fopen, fread, fwrite, fgetc, fgets, fputc, fputs). Needs bakeoff validation to confirm no regressions."  # 8417
+- op: update  # 909f
+  at: '2026-04-01T22:05:50Z'  # 909f
+  by: agent  # 909f
+  actor: jgstern_agent  # 909f
+  clock: 26  # 909f
+  nonce: 909f  # 909f
+  set:  # 909f
+    status: satisfied  # 909f
+- op: discuss  # 33bb
+  at: '2026-04-01T22:05:50Z'  # 33bb
+  by: agent  # 33bb
+  actor: jgstern_agent  # 33bb
+  clock: 27  # 33bb
+  nonce: 33bb  # 33bb
+  message: "Bakeoff validated. deep-20260401-180246 cohort-001 on chai2010/cgo: 7 IO edges detected (fopen, fread, fwrite, fgetc, fgets, fputc, fputs) via cgo pseudo-namespace redirect to C catalog. Before fix: 0 IO edges. The LOW_IO_TAG_RATE WARN (1.6% < 5.0%) is expected for a tiny 16-file utility library — the IO edges exist and are correct, just diluted by 434 total call edges. The invariant 'IO boundary chains must be traceable through FFI bridges' is satisfied for the cgo→C stdlib path."  # 33bb
