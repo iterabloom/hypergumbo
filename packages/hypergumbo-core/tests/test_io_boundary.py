@@ -168,6 +168,12 @@ class TestLoadCatalog:
         assert catalog.lookup("stdio.fopen").boundary == "fs_read"
         assert catalog.lookup("unistd.fork").boundary == "subprocess"
 
+    def test_c_catalog_tmpfile(self) -> None:
+        """C catalog includes tmpfile/mkstemp temp file creation."""
+        catalog = load_catalog("c")
+        assert catalog.lookup("stdio.tmpfile").boundary == "fs_write"
+        assert catalog.lookup("stdlib.mkstemp").boundary == "fs_write"
+
     def test_c_catalog_has_all_boundary_types(self) -> None:
         catalog = load_catalog("c")
         boundaries = {p.boundary for p in catalog.primitives}

@@ -40,7 +40,11 @@ fs_read:
 
 fs_write:
   - module: stdio
-    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename]
+    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam]
+    notes: "tmpfile/tmpnam create temp files on the filesystem"
+  - module: stdlib
+    functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
+    notes: "POSIX temp file/dir creation"
   - module: unistd
     functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
   - module: sys/stat
