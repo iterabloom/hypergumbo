@@ -182,3 +182,18 @@
   clock: 23  # 4fd5
   nonce: 4fd5  # 4fd5
   message: "Validation on 5 FFI repos (~/ffi_repos/) reveals the fix from PR #2638 is necessary but not sufficient. Results:\n\n- cgo: 38 cgo_bridge edges (Go→local C wrappers), 0 IO tags. The actual IO calls (C.fopen, C.fread etc) produce plain 'calls' edges to go:C:0-0:fopen:unresolved — NOT cgo_bridge edges.\n- Robyn: 4 ffi_bridge edges (Python→Rust set_cookie), 0 IO tags. The Rust TcpListener IO is detected independently but chains don't cross the bridge.\n- pyo3-file: 0 bridge edges. PyO3 #[pyfunction] not producing ffi_bridge edges.\n- python-sounddevice: 0 bridge edges. CFFI ffi.dlopen + lib.fopen not producing ffi_bridge edges.\n- ffi-rzmq-core: 0 bridge edges. Ruby FFI attach_function not producing ffi_bridge edges.\n\nRoot cause: two-level miss. (1) cgo/pyffi linkers only bridge to repo-local C symbols; C stdlib calls remain as plain 'calls' edges. (2) tag_io_boundaries extracts lang from dst (go:C:0-0:fopen → lang='go'), consults Go catalog, finds nothing. C catalog has fopen but is never consulted.\n\nFix needed: when tag_io_boundaries sees dst matching go:C:0-0:*:unresolved, redirect catalog lookup to C catalog without module filtering. Similar for Python CFFI/ctypes patterns. Status remains violated."  # 4fd5
+- op: update  # 7ced
+  at: '2026-04-01T21:25:46Z'  # 7ced
+  by: agent  # 7ced
+  actor: jgstern_agent  # 7ced
+  clock: 24  # 7ced
+  nonce: 7ced  # 7ced
+  set:  # 7ced
+    status: pending_validation  # 7ced
+- op: discuss  # 8417
+  at: '2026-04-01T21:25:46Z'  # 8417
+  by: agent  # 8417
+  actor: jgstern_agent  # 8417
+  clock: 25  # 8417
+  nonce: '8417'  # 8417
+  message: "Fix merged in PR #37 (commit 9b79920). tag_io_boundaries() now redirects go:C: pseudo-namespace to C catalog via _resolve_ffi_catalog(). Validated locally on chai2010/cgo: 0→7 IO edges (fopen, fread, fwrite, fgetc, fgets, fputc, fputs). Needs bakeoff validation to confirm no regressions."  # 8417
