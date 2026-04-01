@@ -1,0 +1,24 @@
+- op: create  # 0860
+  at: '2026-04-01T21:09:30Z'  # 0860
+  by: agent  # 0860
+  actor: jgstern_agent  # 0860
+  clock: 1  # 0860
+  nonce: '0860'  # 0860
+  data:  # 0860
+    kind: invariant  # 0860
+    title: "Agent must branch from the authoritative remote, not a stale one"  # 0860
+    status: violated  # 0860
+    priority: 1  # 0860
+    parent:  # 0860
+    tags:  # 0860
+    - process  # 0860
+    - failover  # 0860
+    - ci  # 0860
+    before: []  # 0860
+    duplicate_of: []  # 0860
+    not_duplicate_of: []  # 0860
+    pr_ref:  # 0860
+    description: ""  # 0860
+    fields:  # 0860
+      statement: "All git branch, pull, and rebase operations during the pre-work checklist must target the authoritative remote (selfh when failover is engaged, origin otherwise). Branching from a stale remote causes silent divergence that wastes hours of CI debugging."  # 0860
+      root_cause: "Pre-work playbook hardcodes 'git pull origin dev'. During failover, origin (Codeberg) is stale; selfh (self-hosted Forgejo) is authoritative. No check exists. The agent pulled from origin, branched from it, and all subsequent CI pushes to selfh diverged."  # 0860
