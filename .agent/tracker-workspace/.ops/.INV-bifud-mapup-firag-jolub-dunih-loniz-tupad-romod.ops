@@ -22,3 +22,18 @@
     fields:  # 0860
       statement: "All git branch, pull, and rebase operations during the pre-work checklist must target the authoritative remote (selfh when failover is engaged, origin otherwise). Branching from a stale remote causes silent divergence that wastes hours of CI debugging."  # 0860
       root_cause: "Pre-work playbook hardcodes 'git pull origin dev'. During failover, origin (Codeberg) is stale; selfh (self-hosted Forgejo) is authoritative. No check exists. The agent pulled from origin, branched from it, and all subsequent CI pushes to selfh diverged."  # 0860
+- op: update  # bb7d
+  at: '2026-04-01T21:14:14Z'  # bb7d
+  by: agent  # bb7d
+  actor: jgstern_agent  # bb7d
+  clock: 2  # bb7d
+  nonce: bb7d  # bb7d
+  set:  # bb7d
+    status: needs_human_review  # bb7d
+- op: discuss  # a286
+  at: '2026-04-01T21:14:14Z'  # a286
+  by: agent  # a286
+  actor: jgstern_agent  # a286
+  clock: 3  # a286
+  nonce: a286  # a286
+  message: "Proposed fix: update pre-work playbook (.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md) and AGENTS.md summary to check .git/CI_FAILOVER_ACTIVE before choosing remote. Both are governance files. Changes ready on branch jgstern-agent/fix/cgo-io-catalog-redirect (staged locally, not committed yet). Requesting human approval before creating PR."  # a286
