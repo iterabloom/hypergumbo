@@ -15,6 +15,9 @@ ambiguous_names:
   - connect       # Socket.connect vs any .connect()
   - accept        # ServerSocket.accept vs any .accept()
   - bind          # ServerSocket.bind vs any .bind()
+  - in            # System.in vs CriteriaBuilder.in(), Kotlin keyword
+  - out           # System.out vs PrintWriter.out(), any .out()
+  - err           # System.err vs any .err()
   - put           # RestTemplate.put vs Map.put, ByteBuffer.put
   - get           # RestTemplate.getForObject vs Map.get
   - delete        # RestTemplate.delete vs Map.remove, File.delete

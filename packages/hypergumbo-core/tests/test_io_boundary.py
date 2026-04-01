@@ -1814,6 +1814,36 @@ class TestSwiftCatalog:
                 f"'{name}' should be in ambiguous_names to prevent false positives"
             )
 
+    def test_java_in_out_err_are_ambiguous(self) -> None:
+        """System.in/out/err are ambiguous — must not match without module context.
+
+        JPA CriteriaBuilder.in(), PrintWriter.out(), etc. produce edges like
+        java:external:0-0:in:unresolved. Without ambiguous_names, 'in' matches
+        System.in (ipc_recv), causing 20 false positives in keycloak.
+        """
+        catalog = load_catalog("java")
+        for name in ["in", "out", "err"]:
+            assert name in catalog.ambiguous_names, (
+                f"'{name}' should be in ambiguous_names to prevent false positives "
+                f"(e.g., JPA .in() matching System.in)"
+            )
+
+    def test_java_in_blocked_for_external(self) -> None:
+        """'in' should NOT match for unresolved external calls."""
+        catalog = load_catalog("java")
+        hit = catalog.lookup_with_module("in", module_hint="external")
+        assert hit is None, (
+            "'in' matched as System.in for external module hint — "
+            "this causes false ipc_recv on JPA .in() calls"
+        )
+
+    def test_java_in_matches_with_system_module(self) -> None:
+        """'in' SHOULD match when module context is System."""
+        catalog = load_catalog("java")
+        hit = catalog.lookup_with_module("in", module_hint="System")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
+
     def test_swift_distinctive_names_match_unresolved(self) -> None:
         """Distinctive I/O names should match even for unresolved externals."""
         catalog = load_catalog("swift")
