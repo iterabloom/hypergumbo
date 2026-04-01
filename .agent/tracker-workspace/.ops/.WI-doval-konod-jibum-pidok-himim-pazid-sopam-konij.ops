@@ -1,0 +1,22 @@
+- op: create  # fa33
+  at: '2026-04-01T22:11:32Z'  # fa33
+  by: agent  # fa33
+  actor: jgstern_agent  # fa33
+  clock: 1  # fa33
+  nonce: fa33  # fa33
+  data:  # fa33
+    kind: work_item  # fa33
+    title: "Per-call-site interface dispatch narrowing in type_hierarchy linker"  # fa33
+    status: todo_soft  # fa33
+    priority: 2  # fa33
+    parent:  # fa33
+    tags:  # fa33
+    - linker  # fa33
+    - dispatch  # fa33
+    - go  # fa33
+    before: []  # fa33
+    duplicate_of: []  # fa33
+    not_duplicate_of: []  # fa33
+    pr_ref:  # fa33
+    description: "Bakeoff finding (alertmanager, score 65.7): type_hierarchy linker broadcasts dispatches_to from every interface method to ALL implementors. 28 spurious edges in alertmanager (email/jira/discord all → discord.Notify). The Go analyzer already narrows for typed_receiver_call (local concrete vars), but misses interface-typed declarations with concrete RHS (var n Notifier = &SlackNotifier{}). Fix: either expand Go analyzer var_types to track concrete RHS through interface declarations, or add meta.concrete_receiver to call edges for the linker to consume."  # fa33
+    fields: {}  # fa33
