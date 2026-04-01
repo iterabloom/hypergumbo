@@ -68,6 +68,8 @@ net_send:
     functions: [Get, Post, PostForm, Head, NewRequest]
   - module: net/http.Client
     methods: [Do, Get, Post, Head]
+  - module: net/http.Transport
+    methods: [RoundTrip]
   # Gin/Echo/Fiber/Chi frameworks (response writing)
   - module: gin.Context
     methods: [JSON, String, HTML, XML, YAML, Data, IndentedJSON]
