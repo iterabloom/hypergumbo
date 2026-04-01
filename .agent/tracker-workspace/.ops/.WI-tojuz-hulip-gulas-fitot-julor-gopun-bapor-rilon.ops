@@ -19,3 +19,18 @@
     pr_ref:  # 2890
     description: "Keycloak bakeoff: 20 ipc_recv chains falsely tag JPA query methods (JPAPermissionTicketStore.getPredicates, JPAPolicyStore.find, etc.) as reading from System.in. These files contain no System.in usage. Root cause: 'in' attribute from java.lang.System likely matching without module context. 'in' is not in Java ambiguous_names. Structural analogue of Deno.remove fix (add 'in' to Java ambiguous_names)."  # 2890
     fields: {}  # 2890
+- op: update  # 7f67
+  at: '2026-04-01T21:58:24Z'  # 7f67
+  by: agent  # 7f67
+  actor: jgstern_agent  # 7f67
+  clock: 2  # 7f67
+  nonce: 7f67  # 7f67
+  set:  # 7f67
+    status: done  # 7f67
+- op: discuss  # 9efb
+  at: '2026-04-01T21:58:24Z'  # 9efb
+  by: agent  # 9efb
+  actor: jgstern_agent  # 9efb
+  clock: 3  # 9efb
+  nonce: 9efb  # 9efb
+  message: "Fixed in PR #40 (commit 0c2de3c). Added 'in', 'out', 'err' to Java ambiguous_names. JPA CriteriaBuilder.in() no longer falsely matches System.in. Module-qualified lookups (module_hint=System) still work correctly."  # 9efb
