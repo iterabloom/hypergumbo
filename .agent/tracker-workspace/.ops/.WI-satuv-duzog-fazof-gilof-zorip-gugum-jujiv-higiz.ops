@@ -1,0 +1,21 @@
+- op: create  # 0770
+  at: '2026-04-01T22:17:05Z'  # 0770
+  by: agent  # 0770
+  actor: jgstern_agent  # 0770
+  clock: 1  # 0770
+  nonce: '0770'  # 0770
+  data:  # 0770
+    kind: work_item  # 0770
+    title: "Go dataflow: add library_patterns for mutating method calls"  # 0770
+    status: todo_soft  # 0770
+    priority: 3  # 0770
+    parent:  # 0770
+    tags:  # 0770
+    - dataflow  # 0770
+    - go  # 0770
+    before: []  # 0770
+    duplicate_of: []  # 0770
+    not_duplicate_of: []  # 0770
+    pr_ref:  # 0770
+    description: "Bakeoff finding (alertmanager): Go dataflow_patterns/go.yaml has no call_expression or library_patterns section. Methods like Silences.Set, Alerts.Set on pointer receivers are never annotated with access_mode=write. Fix: add library_patterns with naming conventions (Set, Add, Put, Delete, Remove, Update, Insert, Append, Push, Pop, Clear, Reset) analogous to Erlang's approach. This would make Go dataflow slices tighter (forward follows writes only, reverse follows reads only)."  # 0770
+    fields: {}  # 0770
