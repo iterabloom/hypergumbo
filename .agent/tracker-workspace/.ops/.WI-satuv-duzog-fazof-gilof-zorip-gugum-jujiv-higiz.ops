@@ -19,3 +19,18 @@
     pr_ref:  # 0770
     description: "Bakeoff finding (alertmanager): Go dataflow_patterns/go.yaml has no call_expression or library_patterns section. Methods like Silences.Set, Alerts.Set on pointer receivers are never annotated with access_mode=write. Fix: add library_patterns with naming conventions (Set, Add, Put, Delete, Remove, Update, Insert, Append, Push, Pop, Clear, Reset) analogous to Erlang's approach. This would make Go dataflow slices tighter (forward follows writes only, reverse follows reads only)."  # 0770
     fields: {}  # 0770
+- op: update  # ed75
+  at: '2026-04-01T22:40:15Z'  # ed75
+  by: agent  # ed75
+  actor: jgstern_agent  # ed75
+  clock: 2  # ed75
+  nonce: ed75  # ed75
+  set:  # ed75
+    status: done  # ed75
+- op: discuss  # 3a8c
+  at: '2026-04-01T22:40:16Z'  # 3a8c
+  by: agent  # 3a8c
+  actor: jgstern_agent  # 3a8c
+  clock: 3  # 3a8c
+  nonce: 3a8c  # 3a8c
+  message: "Fixed in PR #47 (commit d138d7b). Added 30 library_patterns to go.yaml: 15 write (.Set, .Add, .Put, .Delete, .Remove, .Update, .Insert, .Append, .Push, .Pop, .Clear, .Reset, .Close, .Store, .Swap) and 15 read (.Get, .Find, .Lookup, .Load, .Fetch, .Query, .Search, .Select, .Has, .Contains, .Exists, .Len, .Size, .Count)."  # 3a8c
