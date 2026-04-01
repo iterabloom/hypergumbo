@@ -75,3 +75,10 @@
   clock: 8  # eae9
   nonce: eae9  # eae9
   message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # eae9
+- op: discuss  # b86a
+  at: '2026-04-01T00:16:27Z'  # b86a
+  by: human  # b86a
+  actor: jgstern  # b86a
+  clock: 9  # b86a
+  nonce: b86a  # b86a
+  message: "please provide the PR number or the commit hash?"  # b86a
