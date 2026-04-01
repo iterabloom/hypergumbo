@@ -757,8 +757,8 @@ do_pr() {
 
 		# Repush to create a new PR and trigger fresh CI
 		echo "📤 Re-pushing to trigger fresh CI run..."
-		if ! git push "$PUSH_REMOTE" "HEAD:refs/for/dev/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
-			git push "$PUSH_REMOTE" "HEAD:refs/for/dev/$BRANCH" 2>/dev/null || {
+		if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+			git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 				echo "❌ Re-push failed"
 				exit 1
 			}
