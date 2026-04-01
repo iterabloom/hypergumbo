@@ -1,0 +1,22 @@
+- op: create  # 1764
+  at: '2026-04-01T18:59:15Z'  # 1764
+  by: agent  # 1764
+  actor: jgstern_agent  # 1764
+  clock: 1  # 1764
+  nonce: '1764'  # 1764
+  data:  # 1764
+    kind: work_item  # 1764
+    title: "Python CFFI/ctypes calls to C stdlib IO not traced by io-boundaries"  # 1764
+    status: todo_soft  # 1764
+    priority: 3  # 1764
+    parent:  # 1764
+    tags:  # 1764
+    - io-boundary  # 1764
+    - ffi  # 1764
+    - cffi  # 1764
+    before: []  # 1764
+    duplicate_of: []  # 1764
+    not_duplicate_of: []  # 1764
+    pr_ref:  # 1764
+    description: "The pyffi linker only creates ffi_bridge edges for CFFI/ctypes calls targeting repo-local C symbols. Calls to C stdlib via ffi.dlopen(None) produce no bridge edges and no IO tags. Scope expansion from INV-kagob."  # 1764
+    fields: {}  # 1764
