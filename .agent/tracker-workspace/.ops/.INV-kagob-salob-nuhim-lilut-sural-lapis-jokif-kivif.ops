@@ -175,3 +175,10 @@
   clock: 22  # ad9f
   nonce: ad9f  # ad9f
   message: "five new repos at `~/ffi_repos/`\nfull report at ~/hypergumbo_lab_notebook/FFI_repos.md"  # ad9f
+- op: discuss  # 4fd5
+  at: '2026-04-01T18:36:29Z'  # 4fd5
+  by: agent  # 4fd5
+  actor: jgstern_agent  # 4fd5
+  clock: 23  # 4fd5
+  nonce: 4fd5  # 4fd5
+  message: "Validation on 5 FFI repos (~/ffi_repos/) reveals the fix from PR #2638 is necessary but not sufficient. Results:\n\n- cgo: 38 cgo_bridge edges (Go→local C wrappers), 0 IO tags. The actual IO calls (C.fopen, C.fread etc) produce plain 'calls' edges to go:C:0-0:fopen:unresolved — NOT cgo_bridge edges.\n- Robyn: 4 ffi_bridge edges (Python→Rust set_cookie), 0 IO tags. The Rust TcpListener IO is detected independently but chains don't cross the bridge.\n- pyo3-file: 0 bridge edges. PyO3 #[pyfunction] not producing ffi_bridge edges.\n- python-sounddevice: 0 bridge edges. CFFI ffi.dlopen + lib.fopen not producing ffi_bridge edges.\n- ffi-rzmq-core: 0 bridge edges. Ruby FFI attach_function not producing ffi_bridge edges.\n\nRoot cause: two-level miss. (1) cgo/pyffi linkers only bridge to repo-local C symbols; C stdlib calls remain as plain 'calls' edges. (2) tag_io_boundaries extracts lang from dst (go:C:0-0:fopen → lang='go'), consults Go catalog, finds nothing. C catalog has fopen but is never consulted.\n\nFix needed: when tag_io_boundaries sees dst matching go:C:0-0:*:unresolved, redirect catalog lookup to C catalog without module filtering. Similar for Python CFFI/ctypes patterns. Status remains violated."  # 4fd5
