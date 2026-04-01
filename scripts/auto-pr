@@ -253,14 +253,24 @@ Individual commits are preserved in the history."
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
 	# tree. `git checkout <base> -- <file>` would destroy locally-appended
 	# ops (status updates, discussion entries) that haven't synced yet.
+	#
+	# When failover is active, diff against the self-hosted remote's dev
+	# (which may be ahead due to tracker auto-sync) so CI's base matches.
+	local ops_diff_base="$base_branch"
+	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
+	if [[ -f "$failover_file" ]]; then
+		if git fetch selfh "$base_branch" --quiet 2>/dev/null; then
+			ops_diff_base="selfh/$base_branch"
+		fi
+	fi
 	local ops_files
-	ops_files=$(git diff --name-only "$base_branch"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
 		echo "🔧 Excluding tracker ops from flush PR (flows through tracker sync)..."
 		while IFS= read -r f; do
-			if git cat-file -e "$base_branch:$f" 2>/dev/null; then
+			if git cat-file -e "$ops_diff_base:$f" 2>/dev/null; then
 				# Restore base version in index only (working tree keeps local ops)
-				git show "$base_branch:$f" | git hash-object -w --stdin | \
+				git show "$ops_diff_base:$f" | git hash-object -w --stdin | \
 					xargs -I {} git update-index --cacheinfo 100644,{},"$f"
 			else
 				git rm --cached --quiet "$f" 2>/dev/null || true
@@ -568,15 +578,26 @@ do_pr() {
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
 	# tree. `git checkout <base> -- <file>` would destroy locally-appended
 	# ops (status updates, discussion entries) that haven't synced yet.
+	#
+	# When failover is active, the self-hosted Forgejo's dev may be ahead
+	# of local origin/dev (tracker auto-sync merges happen there).  Diff
+	# against the actual PR target so CI's base matches what we exclude.
+	local ops_diff_base="$BASE_BRANCH"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		local selfh_remote="${push_remote:-selfh}"
+		if git fetch "$selfh_remote" "$BASE_BRANCH" --quiet 2>/dev/null; then
+			ops_diff_base="$selfh_remote/$BASE_BRANCH"
+		fi
+	fi
 	local ops_files
-	ops_files=$(git diff --name-only "$BASE_BRANCH"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
 		echo "---------------------------------------------------"
 		echo "🔧 Excluding tracker ops from PR (flows through tracker sync)..."
 		while IFS= read -r f; do
-			if git cat-file -e "$BASE_BRANCH:$f" 2>/dev/null; then
+			if git cat-file -e "$ops_diff_base:$f" 2>/dev/null; then
 				# Restore base version in index only (working tree keeps local ops)
-				git show "$BASE_BRANCH:$f" | git hash-object -w --stdin | \
+				git show "$ops_diff_base:$f" | git hash-object -w --stdin | \
 					xargs -I {} git update-index --cacheinfo 100644,{},"$f"
 			else
 				git rm --cached --quiet "$f" 2>/dev/null || true
