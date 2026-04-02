@@ -26,6 +26,9 @@ import pytest
 from hypergumbo_tracker.preview import (
     _SVG_PATH_RE,
     _cache,
+    _cairosvg_available,
+    _chafa_available,
+    _svg_to_png,
     clear_cache,
     extract_svg_paths,
     format_preview_placeholder,
@@ -263,3 +266,67 @@ class TestRenderSvgPreview:
             result = render_svg_preview(svg)
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Availability check and _svg_to_png coverage
+# ---------------------------------------------------------------------------
+
+
+class TestAvailabilityChecks:
+    """Tests for _cairosvg_available, _chafa_available, and _svg_to_png."""
+
+    def test_cairosvg_available_when_installed(self) -> None:
+        """Returns True when cairosvg is importable."""
+        # cairosvg IS installed in dev env
+        assert _cairosvg_available() is True
+
+    def test_cairosvg_unavailable(self) -> None:
+        """Returns False when cairosvg import fails."""
+        import builtins
+        original_import = builtins.__import__
+
+        def block_cairosvg(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "cairosvg":
+                raise ImportError("mocked")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=block_cairosvg):
+            assert _cairosvg_available() is False
+
+    def test_chafa_available_when_present(self) -> None:
+        """Returns True when chafa is on PATH."""
+        with patch("hypergumbo_tracker.preview.shutil.which", return_value="/usr/bin/chafa"):
+            assert _chafa_available() is True
+
+    def test_chafa_unavailable(self) -> None:
+        """Returns False when chafa is not on PATH."""
+        with patch("hypergumbo_tracker.preview.shutil.which", return_value=None):
+            assert _chafa_available() is False
+
+    def test_svg_to_png_calls_cairosvg(self, tmp_path: Path) -> None:
+        """_svg_to_png delegates to cairosvg.svg2png."""
+        svg = tmp_path / "test.svg"
+        svg.write_text("<svg></svg>")
+
+        mock_cairo = MagicMock()
+        mock_cairo.svg2png.return_value = b"\x89PNG"
+        with patch.dict("sys.modules", {"cairosvg": mock_cairo}):
+            # Force re-import inside the function
+            result = _svg_to_png(svg, 60)
+
+        assert result == b"\x89PNG"
+        mock_cairo.svg2png.assert_called_once()
+
+    @patch("hypergumbo_tracker.preview._svg_to_png", return_value=None)
+    @patch("hypergumbo_tracker.preview._chafa_available", return_value=True)
+    @patch("hypergumbo_tracker.preview._cairosvg_available", return_value=True)
+    def test_render_returns_none_when_svg_to_png_returns_none(
+        self, mock_cairo: Any, mock_chafa: Any, mock_png: Any,
+        tmp_path: Path,
+    ) -> None:
+        """render_svg_preview returns None when _svg_to_png returns None."""
+        clear_cache()
+        svg = tmp_path / "test.svg"
+        svg.write_text("<svg></svg>")
+        assert render_svg_preview(svg) is None
