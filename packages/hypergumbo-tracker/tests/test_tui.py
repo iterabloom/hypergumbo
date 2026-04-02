@@ -5201,8 +5201,9 @@ class TestCaptureScreenshot:
                 await pilot.pause()
 
             # Should have saved to /tmp fallback
+            import os
             import tempfile
-            fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
+            fallback = Path(tempfile.gettempdir()) / f"{os.getuid()}-htrac-screenshots"
             svgs = list(fallback.glob("*.svg")) if fallback.exists() else []
             assert len(svgs) >= 1
 
@@ -5238,8 +5239,9 @@ class TestCaptureScreenshot:
                 await pilot.press("S")
                 await pilot.pause()
 
+            import os
             import tempfile
-            fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
+            fallback = Path(tempfile.gettempdir()) / f"{os.getuid()}-htrac-screenshots"
             svgs = list(fallback.glob("*.svg")) if fallback.exists() else []
             assert len(svgs) >= 1
 

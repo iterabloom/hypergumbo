@@ -3242,16 +3242,19 @@ class TrackerApp(App):
         rel_path = _screenshot_path(item_id, ts)
         svg = self.export_screenshot()
 
-        # Try .agent/screenshots/ first, fall back to /tmp if not writable
-        # (e.g., different user than .agent/ owner).
+        # Try .agent/screenshots/ first, fall back to a user-owned temp dir
+        # if not writable (e.g., different user than .agent/ owner).
+        import os
+        import tempfile
+
         path = self._tracker_set._tracker_root / "screenshots" / rel_path.name
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(svg)
         except PermissionError:
-            import tempfile
-
-            fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
+            # Use $TMPDIR/<uid>-htrac-screenshots/ so each user gets their
+            # own writable directory (avoids cross-user permission issues).
+            fallback = Path(tempfile.gettempdir()) / f"{os.getuid()}-htrac-screenshots"
             fallback.mkdir(parents=True, exist_ok=True)
             path = fallback / rel_path.name
             path.write_text(svg)
