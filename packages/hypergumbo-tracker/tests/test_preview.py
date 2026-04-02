@@ -277,9 +277,19 @@ class TestAvailabilityChecks:
     """Tests for _cairosvg_available, _chafa_available, and _svg_to_png."""
 
     def test_cairosvg_available_when_installed(self) -> None:
-        """Returns True when cairosvg is importable."""
-        # cairosvg IS installed in dev env
-        assert _cairosvg_available() is True
+        """Returns True when cairosvg is importable (mocked for CI)."""
+        import builtins
+        original_import = builtins.__import__
+        # Always allow cairosvg import (even in CI where it's not installed)
+        mock_cairo = MagicMock()
+
+        def allow_cairosvg(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "cairosvg":
+                return mock_cairo
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=allow_cairosvg):
+            assert _cairosvg_available() is True
 
     def test_cairosvg_unavailable(self) -> None:
         """Returns False when cairosvg import fails."""
