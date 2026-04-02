@@ -9,6 +9,7 @@
 # === CHANGED_SOURCE_FILES ===
 packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py
 # === SELECTED_TESTS ===
+packages/hypergumbo-core/tests/test_ir.py
 packages/hypergumbo-tracker/tests/test_cli.py
 packages/hypergumbo-tracker/tests/test_tui.py
 packages/hypergumbo-tracker/tests/test_tui_annotation.py
