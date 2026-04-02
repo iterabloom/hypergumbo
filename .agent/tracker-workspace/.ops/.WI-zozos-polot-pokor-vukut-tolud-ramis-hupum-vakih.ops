@@ -49,3 +49,18 @@
   clock: 5  # 8c05
   nonce: 8c05  # 8c05
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 8c05
+- op: update  # 1613
+  at: '2026-04-02T10:33:04Z'  # 1613
+  by: agent  # 1613
+  actor: jgstern_agent  # 1613
+  clock: 6  # 1613
+  nonce: '1613'  # 1613
+  set:  # 1613
+    status: done  # 1613
+- op: discuss  # 0761
+  at: '2026-04-02T10:33:04Z'  # 0761
+  by: agent  # 0761
+  actor: jgstern_agent  # 0761
+  clock: 7  # 0761
+  nonce: '0761'  # 0761
+  message: "Done in PR #64. AnnotationScreen modal freezes the underlying screen (Textual modal pauses parent) and shows _AnnotationCanvas overlay. Mouse events handled via on_mouse_down/move/up."  # 0761

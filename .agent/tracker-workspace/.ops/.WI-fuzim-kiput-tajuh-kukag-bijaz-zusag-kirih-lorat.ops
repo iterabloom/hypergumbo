@@ -33,3 +33,18 @@
   nonce: fb15  # fb15
   set:  # fb15
     status: todo_soft  # fb15
+- op: update  # ac2d
+  at: '2026-04-02T10:23:18Z'  # ac2d
+  by: agent  # ac2d
+  actor: jgstern_agent  # ac2d
+  clock: 4  # ac2d
+  nonce: ac2d  # ac2d
+  set:  # ac2d
+    status: done  # ac2d
+- op: discuss  # 73bf
+  at: '2026-04-02T10:23:18Z'  # 73bf
+  by: agent  # 73bf
+  actor: jgstern_agent  # 73bf
+  clock: 5  # 73bf
+  nonce: 73bf  # 73bf
+  message: "Part 1 (TUI Screenshot Annotation Mode) implemented. AnnotationScreen modal with mouse rect drawing, label placement, undo, SVG injection. 29 tests at 100% coverage."  # 73bf

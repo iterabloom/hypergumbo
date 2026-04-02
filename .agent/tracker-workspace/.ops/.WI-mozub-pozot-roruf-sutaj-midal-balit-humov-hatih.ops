@@ -49,3 +49,18 @@
   clock: 5  # 780a
   nonce: 780a  # 780a
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 780a
+- op: update  # 9b60
+  at: '2026-04-02T10:22:57Z'  # 9b60
+  by: agent  # 9b60
+  actor: jgstern_agent  # 9b60
+  clock: 6  # 9b60
+  nonce: 9b60  # 9b60
+  set:  # 9b60
+    status: done  # 9b60
+- op: discuss  # f711
+  at: '2026-04-02T10:22:57Z'  # f711
+  by: agent  # f711
+  actor: jgstern_agent  # f711
+  clock: 7  # f711
+  nonce: f711  # f711
+  message: "Implemented in PR on branch jgstern-agent/feat/tui-annotation-mode. Screenshot capture with annotation overlay, mouse rect drawing, label placement, SVG injection."  # f711
