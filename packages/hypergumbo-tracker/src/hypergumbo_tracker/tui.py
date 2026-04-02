@@ -3239,7 +3239,10 @@ class TrackerApp(App):
             item_id = "screen"
 
         ts = datetime.now()
-        path = _screenshot_path(item_id, ts)
+        rel_path = _screenshot_path(item_id, ts)
+        # Resolve against tracker root (.agent/) so mkdir works
+        # regardless of the user's cwd.
+        path = self._tracker_set._tracker_root / "screenshots" / rel_path.name
         path.parent.mkdir(parents=True, exist_ok=True)
         svg = self.export_screenshot()
         path.write_text(svg)
