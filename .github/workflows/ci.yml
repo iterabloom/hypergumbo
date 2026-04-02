@@ -654,7 +654,9 @@ jobs:
           echo "Running: pytest ($TEST_COUNT test files)"
           # SMART_TEST_ACTIVE=1 bypasses smart-test wrapper to use real pytest
           # (CI already computed test selection via manifest - don't re-compute)
-          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          # --rootdir=. pins pytest to repo root so manifest paths resolve
+          # correctly even for single-package PRs (see ADR-0010 §Rootdir Pinning)
+          SMART_TEST_ACTIVE=1 pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           # Check 100% coverage for changed source files only
@@ -880,7 +882,7 @@ jobs:
           TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
 
           echo "=== Running $TEST_COUNT selected tests (retry on self-hosted) ==="
-          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          SMART_TEST_ACTIVE=1 pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then

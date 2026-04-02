@@ -278,8 +278,20 @@ fast-ci:
         done
 
     - name: Run affected tests
-      run: pytest $(cat .ci/affected-tests.txt) --cov=packages --cov-fail-under=100
+      run: pytest --rootdir=. $(cat .ci/affected-tests.txt) --cov=packages --cov-fail-under=100
 ```
+
+#### Pytest Rootdir Pinning
+
+**Invariant:** CI must invoke pytest with `--rootdir=.` to ensure the repo root is used regardless of which packages appear in the manifest.
+
+**Why:** Manifest paths are repo-root-relative (`packages/hypergumbo-tracker/tests/test_tui.py`). When all selected tests belong to a single package, pytest's rootdir detection algorithm finds that package's `pyproject.toml` and uses the package subdirectory as rootdir. The repo-root-relative paths then fail to resolve, producing `0 items collected`.
+
+Multi-package manifests avoid this by accident: the shared prefix (`packages/`) has no `pyproject.toml`, so pytest falls back to the repo root. Single-package PRs break silently.
+
+**Fix:** Add `--rootdir=.` to the CI pytest invocation. This is a one-line change in `ci.yml` that makes the behavior explicit rather than relying on pytest's heuristic.
+
+**Discovery:** 2026-04-02. Five consecutive CI failures on tracker-only PRs before the rootdir interaction was identified. Workaround was padding manifests with a cross-package test file — fragile and incorrect.
 
 #### Full Suite (Lazy, Singleton, Non-blocking)
 
