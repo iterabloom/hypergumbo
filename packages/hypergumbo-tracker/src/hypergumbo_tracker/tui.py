@@ -312,9 +312,23 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
         lines.append(f"(showing last {limit} of {len(entries)} entries)")
         entries = entries[-limit:]
 
+    from hypergumbo_tracker.preview import (
+        extract_svg_paths,
+        format_preview_placeholder,
+    )
+
     for entry in entries:
         ts = _format_timestamp(entry.at)
         lines.append(f"{ts} \\[{entry.by}]: {entry.message}")
+
+        # Detect SVG paths and add inline preview placeholders (ADR-0020)
+        svg_paths = extract_svg_paths(entry.message)
+        for svg_path_str in svg_paths:
+            svg_path = Path(svg_path_str)
+            if svg_path.is_file():
+                lines.append(f"  {format_preview_placeholder(svg_path_str)}")
+            elif not svg_path.exists():
+                lines.append(f"  \\[screenshot: {svg_path.name} — file not found]")
 
     return lines
 

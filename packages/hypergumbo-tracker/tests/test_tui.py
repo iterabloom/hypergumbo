@@ -779,6 +779,71 @@ class TestFormatActivityLines:
         assert "showing last 5 of 15" in lines[0].lower()
         assert "Message 14" in lines[-1]
 
+    def test_svg_reference_adds_placeholder(self, tmp_path: Path) -> None:
+        """Discussion entry referencing an existing SVG gets a placeholder."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        # Create an SVG file
+        screenshots = tmp_path / ".agent" / "screenshots"
+        screenshots.mkdir(parents=True)
+        svg = screenshots / "INV-foo-20260401-1422.svg"
+        svg.write_text("<svg></svg>")
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message=f"See {svg} for the issue",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 2
+        assert "[screenshot:" in lines[1]
+
+    def test_svg_reference_missing_file(self) -> None:
+        """Discussion entry referencing a missing SVG shows file-not-found."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message="See /nonexistent/path/test.svg for details",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 2
+        assert "file not found" in lines[1]
+
+    def test_no_svg_reference_no_extra_lines(self) -> None:
+        """Discussion entry without SVG refs produces no extra lines."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message="Just a regular message, no screenshots",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 1
+
 
 # ---------------------------------------------------------------------------
 # Pilot tests: compact layout

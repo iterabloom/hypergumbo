@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Arrow key adjustment**: After drawing any annotation, press `←↑↓→` to nudge it by 1 cell. Mitigates SSH mouse coordinate drift (ADR-0020 §1 step 4).
 - **_AnnotationCanvas widget**: Full-screen character grid overlay that renders committed rects (solid `█`), draft rects (dashed `░`), arrows, and text labels in real-time during annotation.
 - **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection. Arrow annotations include `<defs>` with arrowhead marker.
+- **Inline SVG preview** (Part 2): Discussion entries referencing `.svg` files show `[screenshot: filename.svg]` placeholders. Preview module (`preview.py`) provides the SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa`. Graceful degradation when either is missing.
 
 #### Taint-flow analysis (ADR-0017)
 
