@@ -139,6 +139,9 @@ class TestPyFFILinkerCtypes:
         assert edge.edge_type == "ffi_bridge"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "ctypes_call"
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
 
     def test_links_cdll_variant_names(self, tmp_path: Path) -> None:
         """Handles CDLL, cdll.LoadLibrary, WinDLL, OleDLL, PyDLL."""

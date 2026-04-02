@@ -136,6 +136,9 @@ class TestJniLinker:
         assert edge.edge_type == "native_bridge"
         assert "MyClass.processData" in edge.src
         assert "Java_MyClass_processData" in edge.dst
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
 
     def test_links_with_package(self) -> None:
         """Links Java native method with package to C JNI function."""

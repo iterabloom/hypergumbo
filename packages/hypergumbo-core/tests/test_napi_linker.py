@@ -133,6 +133,9 @@ class TestNAPILinkerCAPI:
         assert edge.edge_type == "napi_bridge"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "napi_create_function"
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
 
     def test_napi_set_named_property_export(self, tmp_path: Path) -> None:
         """Detects napi_set_named_property as an export registration."""

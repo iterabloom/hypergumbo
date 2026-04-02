@@ -203,6 +203,8 @@ def link_lua_ffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type=evidence_type,
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     # --- Phase 2: Match unresolved Lua call edges against C symbols ---
@@ -233,6 +235,8 @@ def link_lua_ffi(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="luajit_ffi_unresolved",
+            access_mode="write",
+            dest_access_mode="read",
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

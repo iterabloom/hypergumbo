@@ -217,6 +217,8 @@ def link_ruby_ffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ruby_ffi_attach",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     # --- Phase 2: Scan C files for rb_define_method patterns ---
@@ -255,6 +257,8 @@ def link_ruby_ffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ruby_c_extension",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

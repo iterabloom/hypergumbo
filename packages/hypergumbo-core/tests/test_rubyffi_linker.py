@@ -96,6 +96,9 @@ class TestRubyFFIGem:
         assert edge.edge_type == "ffi_bridge"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "ruby_ffi_attach"
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
 
     def test_attach_function_with_explicit_c_name(self, tmp_path: Path) -> None:
         """attach_function with different Ruby and C names uses the C name."""

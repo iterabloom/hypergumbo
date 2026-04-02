@@ -57,6 +57,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### FFI bridge edges missing access_mode (INV-zogun)
+
+- **All FFI linkers now annotate bridge edges with `access_mode=write, dest_access_mode=read`**: cgo, JNI, PyFFI, N-API, Lua FFI, and Ruby FFI linkers all create cross-language bridge edges. Previously none of them set `access_mode`, leaving 100% of FFI edges unannotated for dataflow. Tier 1 automatic annotation (AST-based) cannot work across language boundaries, so the linker itself must set it (Tier 2). Fixed: 9 `Edge.create()` calls across 6 linkers. Validated on chai2010/cgo: 0→38 edges now have access_mode.
+
 #### FFI IO boundary catalog redirect (INV-kagob)
 
 - **Go cgo → C stdlib IO tracing**: `tag_io_boundaries()` now recognizes the `go:C:` pseudo-namespace from cgo calls and redirects catalog lookup to the C catalog. Previously, `Go code → C.fopen()` produced a `calls` edge to `go:C:0-0:fopen:unresolved`; the tagger extracted `lang="go"`, consulted the Go catalog (which has `os.Open` but not `fopen`), and found nothing. Now the `_resolve_ffi_catalog()` function detects `module_hint == "C"` and redirects to the `c` catalog without module filtering. Validated on chai2010/cgo: 0→7 IO edges (`fopen`, `fread`, `fwrite`, `fgetc`, `fgets`, `fputc`, `fputs`).

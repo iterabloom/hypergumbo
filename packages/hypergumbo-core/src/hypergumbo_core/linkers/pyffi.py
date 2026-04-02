@@ -269,6 +269,8 @@ def link_pyffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type=evidence_type,
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
@@ -306,6 +308,8 @@ def link_pyffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="pyo3_bridge",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
