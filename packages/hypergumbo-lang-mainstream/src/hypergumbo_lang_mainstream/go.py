@@ -1260,15 +1260,22 @@ def _extract_go_var_types(
                 func_vars[var_name] = ""
 
         # Pattern 2: Var declaration  var c Client  or  var p *Client
+        # Also handles: var n Notifier = &DiscordNotifier{}
+        # When an initializer with a concrete type exists, prefer it over
+        # the declared (interface) type for dispatch narrowing.
         elif node.type == "var_spec":
-            # var_spec children: identifier, type_identifier (or pointer_type)
+            # var_spec children: identifier, type_identifier (or pointer_type),
+            # and optionally an expression_list with the initializer
             name_node = None
             type_node = None
+            init_node = None
             for child in node.children:
                 if child.type == "identifier" and name_node is None:
                     name_node = child
                 elif child.type in ("type_identifier", "pointer_type"):
                     type_node = child
+                elif child.type == "expression_list":
+                    init_node = child
 
             if name_node is None or type_node is None:
                 continue
@@ -1283,9 +1290,20 @@ def _extract_go_var_types(
             if var_name in func_vars:
                 continue  # pragma: no cover - Go forbids redeclaration in same scope
 
-            type_name = _type_identifier_from_node(type_node, source)
-            if type_name and type_name not in _GO_BUILTINS:
-                func_vars[var_name] = type_name
+            # If there's an initializer, try to extract the concrete type
+            # from the RHS (e.g., &DiscordNotifier{} → DiscordNotifier).
+            # Prefer the concrete type over the declared (interface) type
+            # for dispatch narrowing.
+            concrete_type = None
+            if init_node is not None:
+                concrete_type = _type_from_rhs(init_node, source)
+
+            declared_type = _type_identifier_from_node(type_node, source)
+
+            if concrete_type and concrete_type not in _GO_BUILTINS:
+                func_vars[var_name] = concrete_type
+            elif declared_type and declared_type not in _GO_BUILTINS:
+                func_vars[var_name] = declared_type
 
         # Pattern 3: Function/method parameters
         elif node.type == "parameter_declaration":

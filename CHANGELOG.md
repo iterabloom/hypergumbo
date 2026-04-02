@@ -21,6 +21,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection. Arrow annotations include `<defs>` with arrowhead marker.
 - **Inline SVG preview** (Part 2): Discussion entries referencing `.svg` files show `[screenshot: filename.svg]` placeholders. Preview module (`preview.py`) provides the SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa`. Graceful degradation when either is missing.
 
+#### Interface dispatch narrowing (WI-doval)
+
+- **Go `var` declaration with concrete initializer**: `var n Notifier = &DiscordNotifier{}` now tracks the concrete type (`DiscordNotifier`) instead of the declared interface type (`Notifier`). Calls on `n` resolve to the concrete type's method, eliminating spurious `dispatches_to` edges from the type_hierarchy linker.
+
 #### Taint-flow analysis (ADR-0017)
 
 - **Structural propagation** (Phase 1): YAML-driven taint catalogs (crypto, key material, fs writes, network sends) for Python, Rust, TS, Go, Java. Call-graph BFS with sanitizer checking. `verify-claims` supports `taint_flow` constraints.

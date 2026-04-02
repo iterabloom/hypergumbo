@@ -3506,6 +3506,75 @@ func second(s *Client) {
             f"found: {[e.dst for e in second_calls]}"
         )
 
+    def test_interface_var_with_concrete_initializer(self, tmp_path: Path) -> None:
+        """var n Notifier = &DiscordNotifier{} resolves to concrete type.
+
+        When an interface-typed variable is initialized with a concrete type,
+        calls on that variable should resolve to the concrete type's method,
+        not produce unresolved/interface dispatch edges.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Notifier interface {
+    Notify()
+}
+
+type DiscordNotifier struct{}
+type EmailNotifier struct{}
+
+func (d *DiscordNotifier) Notify() {}
+func (e *EmailNotifier) Notify() {}
+
+func send() {
+    var n Notifier = &DiscordNotifier{}
+    n.Notify()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_calls = [e for e in call_edges if "send" in e.src]
+
+        # n.Notify() should resolve to DiscordNotifier.Notify (concrete type)
+        # not produce an unresolved edge to Notifier.Notify
+        assert any("DiscordNotifier.Notify" in e.dst for e in send_calls), (
+            f"send's n.Notify() should resolve to DiscordNotifier.Notify, "
+            f"found: {[e.dst for e in send_calls]}"
+        )
+
+    def test_interface_var_without_initializer_uses_declared_type(
+        self, tmp_path: Path,
+    ) -> None:
+        """var s Server (no initializer) still resolves via declared type."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+
+func (s *Server) Start() {}
+
+func run() {
+    var s Server
+    s.Start()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "run" in e.src]
+
+        assert any("Server.Start" in e.dst for e in run_calls), (
+            f"run's s.Start() should resolve to Server.Start, "
+            f"found: {[e.dst for e in run_calls]}"
+        )
+
     def test_skips_builtin_type_parameters(self, tmp_path: Path) -> None:
         """Parameters with builtin types (string, int) are not tracked.
 
