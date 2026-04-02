@@ -1,0 +1,509 @@
+# SPDX-License-Identifier: MPL-2.0
+"""Tests for TUI annotation mode (ADR-0020 Part 1).
+
+Covers the AnnotationScreen modal, _AnnotationCanvas widget, and the
+screenshot annotation flow in TrackerApp.action_capture_screenshot.
+
+Test strategy:
+- Unit tests for _AnnotationCanvas: rect drawing, label placement,
+  draft lifecycle, undo, get_annotations() round-trip
+- Unit tests for AnnotationScreen: mode switching, dismiss results
+- Integration test for SVG injection in _on_annotation_result
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from textual.geometry import Size
+
+from hypergumbo_tracker.annotations import (
+    LabelAnnotation,
+    RectAnnotation,
+    sanitize_label_text,
+)
+from hypergumbo_tracker.tui import (
+    AnnotationScreen,
+    _AnnotationCanvas,
+)
+
+
+# ---------------------------------------------------------------------------
+# _AnnotationCanvas unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationCanvas:
+    """Unit tests for the _AnnotationCanvas widget."""
+
+    def _make_canvas(self, width: int = 40, height: int = 10) -> _AnnotationCanvas:
+        """Create a canvas with a mocked size."""
+        canvas = _AnnotationCanvas()
+        # Override the size property to return our test dimensions
+        type(canvas).size = property(lambda self: Size(width, height))
+        # Stub update() to capture rendered text
+        canvas._rendered: list[str] = []
+
+        def capture_update(content: str = "", *a: Any, **kw: Any) -> None:
+            canvas._rendered.append(content)
+
+        canvas.update = capture_update  # type: ignore[assignment]
+        return canvas
+
+    def test_empty_canvas(self) -> None:
+        """Fresh canvas renders all spaces."""
+        canvas = self._make_canvas(10, 3)
+        canvas._render_canvas()
+        assert len(canvas._rendered) == 1
+        lines = canvas._rendered[0].split("\n")
+        assert len(lines) == 3
+        assert all(line == " " * 10 for line in lines)
+
+    def test_set_draft_rect(self) -> None:
+        """Draft rect renders with dashed characters."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(2, 2, 8, 5)
+        assert canvas._draft_rect == (2, 2, 8, 5)
+        assert len(canvas._rendered) == 1
+        lines = canvas._rendered[0].split("\n")
+        # Top edge at y=2 should have ░ characters from x=2 to x=8
+        assert "░" in lines[2]
+
+    def test_set_draft_rect_normalizes_coords(self) -> None:
+        """Draft rect normalizes coordinates (handles drag in any direction)."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(8, 5, 2, 2)
+        assert canvas._draft_rect == (2, 2, 8, 5)
+
+    def test_commit_rect(self) -> None:
+        """Committing promotes draft to permanent rect."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(2, 2, 8, 5)
+        canvas.commit_rect()
+        assert canvas._draft_rect is None
+        assert len(canvas._rects) == 1
+        assert canvas._rects[0] == (2, 2, 8, 5, "#ff3333")
+
+    def test_commit_rect_custom_color(self) -> None:
+        """Committing with a custom color."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(1, 1, 5, 5)
+        canvas.commit_rect(color="#00ff00")
+        assert canvas._rects[0][4] == "#00ff00"
+
+    def test_commit_without_draft_is_noop(self) -> None:
+        """Committing when no draft exists does nothing."""
+        canvas = self._make_canvas(20, 10)
+        canvas.commit_rect()
+        assert len(canvas._rects) == 0
+
+    def test_discard_draft(self) -> None:
+        """Discarding clears the draft rect."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(2, 2, 8, 5)
+        canvas.discard_draft()
+        assert canvas._draft_rect is None
+
+    def test_add_label(self) -> None:
+        """Adding a label stores it."""
+        canvas = self._make_canvas(40, 10)
+        canvas.add_label(5, 3, "Hello")
+        assert len(canvas._labels) == 1
+        assert canvas._labels[0] == (5, 3, "Hello", "#ff3333")
+
+    def test_add_label_renders(self) -> None:
+        """Label text appears in the rendered grid."""
+        canvas = self._make_canvas(40, 10)
+        canvas.add_label(5, 3, "Hi")
+        lines = canvas._rendered[0].split("\n")
+        assert lines[3][5] == "H"
+        assert lines[3][6] == "i"
+
+    def test_get_annotations_empty(self) -> None:
+        """Empty canvas returns empty annotations list."""
+        canvas = self._make_canvas()
+        assert canvas.get_annotations() == []
+
+    def test_get_annotations_with_rects_and_labels(self) -> None:
+        """get_annotations returns proper dataclass instances."""
+        canvas = self._make_canvas()
+        canvas.set_draft_rect(1, 2, 5, 8)
+        canvas.commit_rect()
+        canvas.add_label(10, 3, "Test")
+
+        anns = canvas.get_annotations()
+        assert len(anns) == 2
+        assert isinstance(anns[0], RectAnnotation)
+        assert anns[0].cell_x1 == 1
+        assert anns[0].cell_y1 == 2
+        assert anns[0].cell_x2 == 5
+        assert anns[0].cell_y2 == 8
+        assert isinstance(anns[1], LabelAnnotation)
+        assert anns[1].cell_x == 10
+        assert anns[1].cell_y == 3
+        assert anns[1].text == "Test"
+
+    def test_committed_rect_renders_solid(self) -> None:
+        """Committed rects render with solid block characters."""
+        canvas = self._make_canvas(20, 10)
+        canvas.set_draft_rect(2, 2, 8, 5)
+        canvas.commit_rect()
+        canvas._rendered.clear()
+        canvas._render_canvas()
+        lines = canvas._rendered[0].split("\n")
+        assert "█" in lines[2]
+
+    def test_multiple_rects(self) -> None:
+        """Multiple rects all render."""
+        canvas = self._make_canvas(40, 20)
+        canvas.set_draft_rect(1, 1, 5, 5)
+        canvas.commit_rect()
+        canvas.set_draft_rect(10, 10, 15, 15)
+        canvas.commit_rect()
+        assert len(canvas._rects) == 2
+
+    def test_label_clipped_at_edge(self) -> None:
+        """Label text that extends past canvas width is clipped."""
+        canvas = self._make_canvas(10, 3)
+        canvas.add_label(8, 1, "Hello")
+        lines = canvas._rendered[0].split("\n")
+        # Only "He" fits at columns 8-9
+        assert lines[1][8] == "H"
+        assert lines[1][9] == "e"
+
+
+# ---------------------------------------------------------------------------
+# AnnotationScreen unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationScreen:
+    """Unit tests for the AnnotationScreen modal."""
+
+    def test_initial_mode_is_rect(self) -> None:
+        """AnnotationScreen starts in rect drawing mode."""
+        screen = AnnotationScreen("<svg></svg>")
+        assert screen._mode == "rect"
+
+    def test_stores_svg_content(self) -> None:
+        """Screen stores the SVG for later injection."""
+        svg = "<svg>test content</svg>"
+        screen = AnnotationScreen(svg)
+        assert screen._svg_content == svg
+
+    def test_discard_returns_none(self) -> None:
+        """action_discard dismisses with None."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen.dismiss = MagicMock()
+        screen.action_discard()
+        screen.dismiss.assert_called_once_with(None)
+
+    def test_confirm_empty_returns_none(self) -> None:
+        """Confirming with no annotations dismisses with None."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen.dismiss = MagicMock()
+        # Mock the canvas query
+        mock_canvas = MagicMock()
+        mock_canvas.get_annotations.return_value = []
+        screen.query_one = MagicMock(return_value=mock_canvas)
+        screen.action_confirm()
+        screen.dismiss.assert_called_once_with(None)
+
+    def test_confirm_with_annotations_returns_list(self) -> None:
+        """Confirming with annotations returns the annotation list."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen.dismiss = MagicMock()
+        ann = RectAnnotation(1, 2, 5, 8)
+        mock_canvas = MagicMock()
+        mock_canvas.get_annotations.return_value = [ann]
+        mock_canvas._labels = []
+        mock_canvas._rects = [(1, 2, 5, 8, "#ff3333")]
+        screen.query_one = MagicMock(return_value=mock_canvas)
+        screen.action_confirm()
+        screen.dismiss.assert_called_once_with([ann])
+
+    def test_label_mode_switch(self) -> None:
+        """action_label_mode switches to label mode."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_status = MagicMock()
+        screen.query_one = MagicMock(return_value=mock_status)
+        screen.action_label_mode()
+        assert screen._mode == "label"
+
+    def test_undo_removes_last_label(self) -> None:
+        """action_undo removes the most recent label."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = [(5, 3, "Hi", "#ff3333")]
+        mock_canvas._rects = []
+        screen.query_one = MagicMock(return_value=mock_canvas)
+        screen.action_undo()
+        assert mock_canvas._labels == []
+        mock_canvas._render_canvas.assert_called_once()
+
+    def test_undo_removes_last_rect_when_no_labels(self) -> None:
+        """action_undo removes the most recent rect when no labels exist."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._rects = [(1, 2, 5, 8, "#ff3333")]
+        screen.query_one = MagicMock(return_value=mock_canvas)
+        screen.action_undo()
+        assert mock_canvas._rects == []
+
+    def test_undo_noop_when_empty(self) -> None:
+        """action_undo does nothing when no annotations exist."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._rects = []
+        screen.query_one = MagicMock(return_value=mock_canvas)
+        screen.action_undo()
+        mock_canvas._render_canvas.assert_not_called()
+
+    def test_mouse_down_starts_rect_drag(self) -> None:
+        """MouseDown in rect mode starts dragging."""
+        screen = AnnotationScreen("<svg></svg>")
+        event = MagicMock()
+        event.x = 10
+        event.y = 5
+        screen.on_mouse_down(event)
+        assert screen._dragging is True
+        assert screen._drag_start == (10, 5)
+
+    def test_mouse_down_in_label_mode_sets_position(self) -> None:
+        """MouseDown in label mode sets the label placement position."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "label"
+        mock_status = MagicMock()
+        screen.query_one = MagicMock(return_value=mock_status)
+        event = MagicMock()
+        event.x = 15
+        event.y = 8
+        screen.on_mouse_down(event)
+        assert screen._label_pending is True
+        assert screen._label_pos == (15, 8)
+
+    def test_mouse_move_updates_draft_rect(self) -> None:
+        """MouseMove while dragging updates the draft rect."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 20
+        event.y = 10
+        screen.on_mouse_move(event)
+        mock_canvas.set_draft_rect.assert_called_once_with(5, 3, 20, 10)
+
+    def test_mouse_move_no_drag_is_noop(self) -> None:
+        """MouseMove without active drag does nothing."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 20
+        event.y = 10
+        screen.on_mouse_move(event)
+        mock_canvas.set_draft_rect.assert_not_called()
+
+    def test_mouse_up_commits_rect(self) -> None:
+        """MouseUp with sufficient area commits the rect."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 20
+        event.y = 10
+        screen.on_mouse_up(event)
+        mock_canvas.commit_rect.assert_called_once()
+        assert screen._dragging is False
+
+    def test_mouse_up_tiny_rect_discards(self) -> None:
+        """MouseUp with tiny area (< 2px) discards the draft."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 6  # Only 1 cell away
+        event.y = 3
+        screen.on_mouse_up(event)
+        mock_canvas.discard_draft.assert_called_once()
+        mock_canvas.commit_rect.assert_not_called()
+
+    def test_confirm_with_pending_label(self) -> None:
+        """Confirm with a pending label commits the label first."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._label_pending = True
+        screen._label_pos = (10, 5)
+        screen._label_text_buf = "Bug here"
+        screen._mode = "label"
+        mock_canvas = MagicMock()
+        mock_status = MagicMock()
+
+        # Override the canvas property and query_one for status bar
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen.query_one = MagicMock(return_value=mock_status)
+        screen.dismiss = MagicMock()
+        screen.action_confirm()
+        mock_canvas.add_label.assert_called_once_with(10, 5, "Bug here")
+        assert screen._label_pending is False
+        assert screen._mode == "rect"
+        # Should NOT dismiss — just commits the label
+        screen.dismiss.assert_not_called()
+        # Restore property to avoid polluting other tests
+        del type(screen).canvas
+
+    def test_on_key_captures_printable_chars(self) -> None:
+        """on_key captures printable characters when label is pending."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._label_pending = True
+        screen._label_text_buf = ""
+        event = MagicMock()
+        event.character = "H"
+        screen.on_key(event)
+        event.character = "i"
+        screen.on_key(event)
+        assert screen._label_text_buf == "Hi"
+
+    def test_on_key_ignores_when_not_pending(self) -> None:
+        """on_key does nothing when no label is pending."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._label_pending = False
+        event = MagicMock()
+        event.character = "X"
+        screen.on_key(event)
+        assert not hasattr(screen, "_label_text_buf") or screen._label_text_buf == ""
+
+    def test_on_key_creates_buf_if_missing(self) -> None:
+        """on_key initializes _label_text_buf if it doesn't exist."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._label_pending = True
+        # Intentionally don't set _label_text_buf
+        if hasattr(screen, "_label_text_buf"):
+            del screen._label_text_buf
+        event = MagicMock()
+        event.character = "A"
+        screen.on_key(event)
+        assert screen._label_text_buf == "A"
+
+
+# ---------------------------------------------------------------------------
+# SVG injection tests
+# ---------------------------------------------------------------------------
+
+
+class TestSVGInjection:
+    """Tests for _on_annotation_result SVG annotation injection."""
+
+    def test_inject_rect_into_svg(self, tmp_path: Path) -> None:
+        """RectAnnotation is injected as SVG <rect> before </svg>."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg><text>hello</text></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [RectAnnotation(2, 3, 10, 8, "#ff3333")]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert '<g class="annotations">' in result
+        assert "<rect " in result
+        assert 'stroke="#ff3333"' in result
+        assert "</svg>" in result
+
+    def test_inject_label_into_svg(self, tmp_path: Path) -> None:
+        """LabelAnnotation is injected as SVG <text> before </svg>."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg><text>hello</text></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [LabelAnnotation(5, 3, "Bug here", "#ff3333")]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert "<text " in result
+        assert "Bug here" in result
+
+    def test_inject_label_sanitizes_xml(self, tmp_path: Path) -> None:
+        """Label text with XML chars is sanitized."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [LabelAnnotation(0, 0, "<script>alert('xss')</script>")]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert "&lt;script&gt;" in result
+        assert "<script>" not in result
+
+    def test_none_result_is_noop(self, tmp_path: Path) -> None:
+        """None result from annotation screen does nothing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp.__new__(TrackerApp)
+        # Should not raise — just returns
+        app._on_annotation_result(None)
+
+    def test_empty_list_is_noop(self, tmp_path: Path) -> None:
+        """Empty annotation list does nothing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._on_annotation_result([])
+
+    def test_multiple_annotations(self, tmp_path: Path) -> None:
+        """Multiple annotations of different types are all injected."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [
+            RectAnnotation(1, 1, 10, 5),
+            LabelAnnotation(3, 7, "Note"),
+            RectAnnotation(15, 2, 20, 8, "#00ff00"),
+        ]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert result.count("<rect ") == 2
+        assert result.count("<text ") == 1
+        assert "Note" in result
+        assert "#00ff00" in result

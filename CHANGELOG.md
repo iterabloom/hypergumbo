@@ -12,6 +12,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+#### TUI screenshot annotation mode (ADR-0020 Part 1)
+
+- **AnnotationScreen modal**: Press `S` in the TUI to capture a screenshot, then enter annotation mode. Draw rectangles via mouse drag, place text labels via `L` + click + type. `U` undoes the last annotation. `Enter` confirms and injects `<rect>`/`<text>` SVG elements into the screenshot. `Escape` discards.
+- **_AnnotationCanvas widget**: Full-screen character grid overlay that renders committed rects (solid `█`), draft rects (dashed `░`), and text labels in real-time during annotation.
+- **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection.
+
 #### Taint-flow analysis (ADR-0017)
 
 - **Structural propagation** (Phase 1): YAML-driven taint catalogs (crypto, key material, fs writes, network sends) for Python, Rust, TS, Go, Java. Call-graph BFS with sanitizer checking. `verify-claims` supports `taint_flow` constraints.

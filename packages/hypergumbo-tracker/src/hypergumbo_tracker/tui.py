@@ -59,7 +59,7 @@ from typing import Any, ClassVar
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
-from textual.events import Click, Resize
+from textual.events import Click, MouseDown, MouseMove, MouseUp, Resize
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -1408,6 +1408,258 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# Annotation overlay (ADR-0020 Part 1)
+# ---------------------------------------------------------------------------
+
+
+class _AnnotationCanvas(Static):
+    """Full-screen overlay widget for drawing annotations.
+
+    Renders a character grid that shows annotation shapes (rects, labels)
+    on top of the frozen TUI screen.  Mouse events on this widget drive
+    the drawing interaction.  The canvas is transparent except where
+    annotations are drawn — Textual composites it over the frozen screen
+    content.
+    """
+
+    DEFAULT_CSS = """
+    _AnnotationCanvas {
+        width: 100%;
+        height: 100%;
+    }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__("", **kwargs)
+        self._rects: list[tuple[int, int, int, int, str]] = []
+        self._labels: list[tuple[int, int, str, str]] = []
+        self._draft_rect: tuple[int, int, int, int] | None = None
+
+    def set_draft_rect(
+        self, x1: int, y1: int, x2: int, y2: int,
+    ) -> None:
+        """Update the in-progress rectangle (shown while dragging)."""
+        self._draft_rect = (
+            min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2),
+        )
+        self._render_canvas()
+
+    def commit_rect(self, color: str = "#ff3333") -> None:
+        """Promote the draft rectangle to a committed annotation."""
+        if self._draft_rect is not None:
+            self._rects.append((*self._draft_rect, color))
+            self._draft_rect = None
+            self._render_canvas()
+
+    def discard_draft(self) -> None:
+        """Discard the in-progress rectangle."""
+        self._draft_rect = None
+        self._render_canvas()
+
+    def add_label(
+        self, x: int, y: int, text: str, color: str = "#ff3333",
+    ) -> None:
+        """Add a text label annotation."""
+        self._labels.append((x, y, text, color))
+        self._render_canvas()
+
+    def get_annotations(self) -> list[object]:
+        """Return all committed annotations as dataclass instances."""
+        from hypergumbo_tracker.annotations import (
+            LabelAnnotation,
+            RectAnnotation,
+        )
+
+        result: list[object] = []
+        for x1, y1, x2, y2, color in self._rects:
+            result.append(RectAnnotation(
+                cell_x1=x1, cell_y1=y1, cell_x2=x2, cell_y2=y2, color=color,
+            ))
+        for x, y, text, color in self._labels:
+            result.append(LabelAnnotation(cell_x=x, cell_y=y, text=text, color=color))
+        return result
+
+    def _render_canvas(self) -> None:
+        """Re-render the canvas text with all annotations."""
+        width = self.size.width or 80
+        height = self.size.height or 24
+        grid = [[" "] * width for _ in range(height)]
+
+        def _draw_rect(
+            x1: int, y1: int, x2: int, y2: int, ch: str = "█",
+        ) -> None:
+            for x in range(max(0, x1), min(width, x2 + 1)):
+                if 0 <= y1 < height:
+                    grid[y1][x] = ch
+                if 0 <= y2 < height:
+                    grid[y2][x] = ch
+            for y in range(max(0, y1), min(height, y2 + 1)):
+                if 0 <= x1 < width:
+                    grid[y][x1] = ch
+                if 0 <= x2 < width:
+                    grid[y][x2] = ch
+
+        # Draw committed rects
+        for x1, y1, x2, y2, _color in self._rects:
+            _draw_rect(x1, y1, x2, y2, "█")
+
+        # Draw draft rect (dashed)
+        if self._draft_rect is not None:
+            x1, y1, x2, y2 = self._draft_rect
+            _draw_rect(x1, y1, x2, y2, "░")
+
+        # Draw labels
+        for lx, ly, text, _color in self._labels:
+            if 0 <= ly < height:
+                for i, ch in enumerate(text):
+                    cx = lx + i
+                    if 0 <= cx < width:
+                        grid[ly][cx] = ch
+
+        self.update("\n".join("".join(row) for row in grid))
+
+
+class AnnotationScreen(ModalScreen[list[object] | None]):
+    """Full-screen annotation overlay for screenshot markup (ADR-0020).
+
+    Enters annotation mode: the screen content is frozen, a transparent
+    overlay appears on top. The user draws rectangles via mouse drag,
+    places labels via ``L`` key + click, and confirms with Enter or
+    discards with Escape.
+
+    Returns a list of Annotation dataclass instances on confirm, or
+    None on discard.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "discard", "Discard"),
+        ("enter", "confirm", "Confirm"),
+        ("l", "label_mode", "Label"),
+        ("u", "undo", "Undo"),
+    ]
+
+    DEFAULT_CSS = """
+    AnnotationScreen {
+        align: center middle;
+    }
+
+    #annotation-canvas {
+        width: 100%;
+        height: 1fr;
+    }
+
+    #annotation-status {
+        height: 1;
+        dock: bottom;
+        background: $accent;
+        color: $text;
+        text-align: center;
+    }
+    """
+
+    def __init__(self, svg_content: str) -> None:
+        super().__init__()
+        self._svg_content = svg_content
+        self._mode: str = "rect"  # "rect" or "label"
+        self._dragging = False
+        self._drag_start: tuple[int, int] | None = None
+        self._label_pending = False
+
+    def compose(self) -> ComposeResult:
+        yield _AnnotationCanvas(id="annotation-canvas")
+        yield Static(
+            "  [R]ect draw  |  [L]abel  |  [U]ndo  |  Enter=Confirm  |  Esc=Discard  ",
+            id="annotation-status",
+        )
+
+    @property
+    def canvas(self) -> _AnnotationCanvas:
+        """The annotation canvas widget."""
+        return self.query_one("#annotation-canvas", _AnnotationCanvas)
+
+    def on_mouse_down(self, event: MouseDown) -> None:
+        """Start a rect drag or place a label."""
+        if self._mode == "label":
+            self._label_pending = True
+            self._label_pos = (event.x, event.y)
+            self.query_one("#annotation-status", Static).update(
+                "  Type label text, then press Enter  "
+            )
+        else:
+            self._dragging = True
+            self._drag_start = (event.x, event.y)
+
+    def on_mouse_move(self, event: MouseMove) -> None:
+        """Update draft rect while dragging."""
+        if self._dragging and self._drag_start is not None:
+            sx, sy = self._drag_start
+            self.canvas.set_draft_rect(sx, sy, event.x, event.y)
+
+    def on_mouse_up(self, event: MouseUp) -> None:
+        """Commit the rect on mouse release."""
+        if self._dragging and self._drag_start is not None:
+            sx, sy = self._drag_start
+            # Only commit if the rect has some area
+            if abs(event.x - sx) > 1 or abs(event.y - sy) > 1:
+                self.canvas.set_draft_rect(sx, sy, event.x, event.y)
+                self.canvas.commit_rect()
+            else:
+                self.canvas.discard_draft()
+            self._dragging = False
+            self._drag_start = None
+
+    def action_discard(self) -> None:
+        """Discard all annotations and exit."""
+        self.dismiss(None)
+
+    def action_confirm(self) -> None:
+        """Confirm annotations and return them."""
+        if self._label_pending and hasattr(self, "_label_text_buf"):
+            # Commit pending label first
+            x, y = self._label_pos
+            self.canvas.add_label(x, y, self._label_text_buf)
+            self._label_pending = False
+            del self._label_text_buf
+            self._mode = "rect"
+            self.query_one("#annotation-status", Static).update(
+                "  [R]ect draw  |  [L]abel  |  [U]ndo  |  Enter=Confirm  |  Esc=Discard  "
+            )
+            return
+        annotations = self.canvas.get_annotations()
+        self.dismiss(annotations if annotations else None)
+
+    def action_label_mode(self) -> None:
+        """Switch to label placement mode."""
+        self._mode = "label"
+        self._label_text_buf = ""
+        self.query_one("#annotation-status", Static).update(
+            "  LABEL MODE: Click to place, type text, Enter to confirm  "
+        )
+
+    def action_undo(self) -> None:
+        """Remove the last annotation."""
+        canvas = self.canvas
+        if canvas._labels:
+            canvas._labels.pop()
+            canvas._render_canvas()
+        elif canvas._rects:
+            canvas._rects.pop()
+            canvas._render_canvas()
+
+    def on_key(self, event: object) -> None:
+        """Capture keystrokes for label text input."""
+        if not self._label_pending:
+            return
+        if not hasattr(event, "character"):
+            return  # pragma: no cover
+        char = event.character  # type: ignore[attr-defined]
+        if char and len(char) == 1 and char.isprintable():
+            if not hasattr(self, "_label_text_buf"):
+                self._label_text_buf = ""
+            self._label_text_buf += char
 
 
 # ---------------------------------------------------------------------------
@@ -2864,11 +3116,11 @@ class TrackerApp(App):
         self.notify(f"Copied {item.id} to clipboard")
 
     def action_capture_screenshot(self) -> None:
-        """Save SVG screenshot to .agent/screenshots/ (ADR-0020).
+        """Save SVG screenshot and open annotation mode (ADR-0020).
 
-        Saves the current TUI screen as an SVG file using the ADR-0020
-        naming convention: .agent/screenshots/<item-id>-<YYYYMMDD-HHMMSS>.svg.
-        When no item is selected, uses 'screen' as the identifier.
+        Captures the current TUI screen as SVG, saves it, then opens
+        the annotation overlay. If the user adds annotations, the SVG
+        is re-saved with annotation elements injected.
         """
         from datetime import datetime
 
@@ -2888,6 +3140,70 @@ class TrackerApp(App):
         svg = self.export_screenshot()
         path.write_text(svg)
         self.notify(f"Screenshot saved: {path}")
+
+        # Open annotation mode
+        self._pending_screenshot_path = path
+        self._pending_svg = svg
+        self.push_screen(
+            AnnotationScreen(svg),
+            callback=self._on_annotation_result,
+        )
+
+    def _on_annotation_result(
+        self, annotations: list[object] | None,
+    ) -> None:
+        """Handle annotation screen result — inject annotations into SVG."""
+        if annotations is None or not annotations:
+            return
+
+        from hypergumbo_tracker.annotations import (
+            LabelAnnotation,
+            RectAnnotation,
+            sanitize_label_text,
+        )
+
+        path = self._pending_screenshot_path
+        svg = self._pending_svg
+
+        # Build SVG annotation group
+        # Textual SVGs use 8.65px cell width and 18px cell height
+        cell_w, cell_h = 8.65, 18.0
+        elements: list[str] = []
+        for ann in annotations:
+            if isinstance(ann, RectAnnotation):
+                x = ann.cell_x1 * cell_w
+                y = ann.cell_y1 * cell_h
+                w = (ann.cell_x2 - ann.cell_x1) * cell_w
+                h = (ann.cell_y2 - ann.cell_y1) * cell_h
+                elements.append(
+                    f'<rect x="{x:.1f}" y="{y:.1f}" '
+                    f'width="{w:.1f}" height="{h:.1f}" '
+                    f'fill="none" stroke="{ann.color}" '
+                    f'stroke-width="2" opacity="0.8"/>'
+                )
+            elif isinstance(ann, LabelAnnotation):
+                x = ann.cell_x * cell_w
+                y = ann.cell_y * cell_h + cell_h * 0.75  # baseline offset
+                text = sanitize_label_text(ann.text)
+                elements.append(
+                    f'<text x="{x:.1f}" y="{y:.1f}" '
+                    f'fill="{ann.color}" font-size="14" '
+                    f'font-family="monospace">{text}</text>'
+                )
+
+        if elements:
+            group = (
+                '<g class="annotations">\n'
+                + "\n".join(f"  {e}" for e in elements)
+                + "\n</g>"
+            )
+            # Inject before closing </svg>
+            svg_annotated = svg.replace("</svg>", f"{group}\n</svg>")
+            path.write_text(svg_annotated)
+            self.notify(
+                f"Annotated screenshot saved: {path}",
+                severity="information",
+            )
 
     # ------------------------------------------------------------------
     # Write helpers
