@@ -82,3 +82,10 @@
   clock: 9  # 0f46
   nonce: 0f46  # 0f46
   message: "Reverted from satisfied. User explicitly stated this must not be marked satisfied prematurely. Evidence: the playbook was exercised once successfully (PR #40), but one successful use does not prove exhaustive prevention. Needs multiple successful fresh starts across context compactions to build confidence."  # 0f46
+- op: discuss  # 0877
+  at: '2026-04-02T03:33:35Z'  # 0877
+  by: human  # 0877
+  actor: jgstern  # 0877
+  clock: 10  # 0877
+  nonce: '0877'  # 0877
+  message: "maybe there is one or multiple git hooks we could use that would run some kind of \"state reminder\" script with reminder instructions appropriate for the current failover state? what do you think?"  # 0877
