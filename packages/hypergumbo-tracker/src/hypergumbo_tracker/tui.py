@@ -61,6 +61,8 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.events import Click, MouseDown, MouseMove, MouseUp, Resize
 from textual.screen import ModalScreen
+from textual.strip import Strip
+from textual.widget import Widget
 from textual.widgets import (
     Button,
     DataTable,
@@ -1429,27 +1431,26 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
 # ---------------------------------------------------------------------------
 
 
-class _AnnotationCanvas(Static):
+class _AnnotationCanvas(Widget):
     """Full-screen overlay widget for drawing annotations.
 
-    Renders a character grid that shows annotation shapes (rects, labels)
-    on top of the frozen TUI screen.  Mouse events on this widget drive
-    the drawing interaction.  The canvas is transparent except where
-    annotations are drawn — Textual composites it over the frozen screen
-    content.
+    Uses ``render_line()`` to produce per-line Strips where annotation
+    cells have colored characters and non-annotation cells are truly
+    transparent (Rich Segments with ``bgcolor=None``).  This lets the
+    frozen TUI screen show through the overlay.
     """
 
     DEFAULT_CSS = """
     _AnnotationCanvas {
         width: 100%;
         height: 100%;
-        background: transparent;
-        color: #ff3333;
     }
     """
 
+    can_focus = False
+
     def __init__(self, **kwargs: Any) -> None:
-        super().__init__("", **kwargs)
+        super().__init__(**kwargs)
         self._rects: list[tuple[int, int, int, int, str]] = []
         self._labels: list[tuple[int, int, str, str]] = []
         self._arrows: list[tuple[int, int, int, int, str]] = []
@@ -1512,16 +1513,10 @@ class _AnnotationCanvas(Static):
             result.append(LabelAnnotation(cell_x=x, cell_y=y, text=text, color=color))
         return result
 
-    def _render_canvas(self) -> None:
-        """Re-render the canvas with annotation shapes only.
-
-        Uses a sparse grid: cells without annotations are spaces (transparent
-        against the ModalScreen background, letting the frozen TUI show
-        through).  Annotation characters are drawn in red via Rich markup.
-        """
+    def _build_grid(self) -> list[list[str | None]]:
+        """Build a sparse annotation grid (None = transparent cell)."""
         width = self.size.width or 80
         height = self.size.height or 24
-        # None means transparent (no character drawn)
         grid: list[list[str | None]] = [[None] * width for _ in range(height)]
 
         def _draw_rect(
@@ -1538,16 +1533,13 @@ class _AnnotationCanvas(Static):
                 if 0 <= x2 < width:
                     grid[y][x2] = ch
 
-        # Draw committed rects
         for x1, y1, x2, y2, _color in self._rects:
             _draw_rect(x1, y1, x2, y2, "█")
 
-        # Draw draft rect (dashed)
         if self._draft_rect is not None:
             x1, y1, x2, y2 = self._draft_rect
             _draw_rect(x1, y1, x2, y2, "░")
 
-        # Draw arrows (Bresenham-style line with arrowhead)
         for fx, fy, tx, ty, _color in self._arrows:
             dx = tx - fx
             dy = ty - fy
@@ -1557,14 +1549,12 @@ class _AnnotationCanvas(Static):
                 cy = fy + round(dy * i / steps)
                 if 0 <= cy < height and 0 <= cx < width:
                     if i == steps:
-                        # Arrowhead
                         grid[cy][cx] = "▶" if abs(dx) >= abs(dy) and dx >= 0 else \
                                        "◀" if abs(dx) >= abs(dy) else \
                                        "▼" if dy >= 0 else "▲"
                     else:
                         grid[cy][cx] = "─" if abs(dx) >= abs(dy) else "│"
 
-        # Draw labels
         for lx, ly, text, _color in self._labels:
             if 0 <= ly < height:
                 for i, ch in enumerate(text):
@@ -1572,11 +1562,41 @@ class _AnnotationCanvas(Static):
                     if 0 <= cx < width:
                         grid[ly][cx] = ch
 
-        # Render: annotation chars in red, empty cells as spaces
-        self.update("\n".join(
-            "".join(ch if ch is not None else " " for ch in row)
-            for row in grid
-        ))
+        return grid
+
+    def _render_canvas(self) -> None:
+        """Trigger a re-render by refreshing the widget."""
+        self.refresh()
+
+    def render_line(self, y: int) -> Strip:
+        """Render a single line as a Strip with transparent non-annotation cells.
+
+        Annotation characters are bright red; non-annotation cells use
+        Segment(" ") with no background, which Textual composites
+        transparently over the underlying screen content.
+        """
+        from rich.segment import Segment
+        from rich.style import Style
+
+        width = self.size.width or 80
+        height = self.size.height or 24
+        if y < 0 or y >= height:
+            return Strip([Segment(" " * width)])
+
+        grid = self._build_grid()
+        if y >= len(grid):
+            return Strip([Segment(" " * width)])
+
+        row = grid[y]
+        ann_style = Style(color="red", bold=True)
+        segments: list[Segment] = []
+        for ch in row:
+            if ch is not None:
+                segments.append(Segment(ch, ann_style))
+            else:
+                segments.append(Segment(" "))
+
+        return Strip(segments)
 
 
 class AnnotationScreen(ModalScreen[list[object] | None]):

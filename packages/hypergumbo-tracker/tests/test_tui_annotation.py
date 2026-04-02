@@ -46,31 +46,31 @@ class TestAnnotationCanvas:
         canvas = _AnnotationCanvas()
         # Override the size property to return our test dimensions
         type(canvas).size = property(lambda self: Size(width, height))
-        # Stub update() to capture rendered text
-        canvas._rendered: list[str] = []
-
-        def capture_update(content: str = "", *a: Any, **kw: Any) -> None:
-            canvas._rendered.append(content)
-
-        canvas.update = capture_update  # type: ignore[assignment]
+        # Stub refresh() since we're not mounted in a real app
+        canvas.refresh = lambda *a, **kw: None  # type: ignore[assignment]
         return canvas
 
+    def _grid_lines(self, canvas: _AnnotationCanvas) -> list[str]:
+        """Convert canvas grid to lines of text for assertions."""
+        grid = canvas._build_grid()
+        return [
+            "".join(ch if ch is not None else " " for ch in row)
+            for row in grid
+        ]
+
     def test_empty_canvas(self) -> None:
-        """Fresh canvas renders all spaces."""
+        """Fresh canvas has all-None grid (transparent)."""
         canvas = self._make_canvas(10, 3)
-        canvas._render_canvas()
-        assert len(canvas._rendered) == 1
-        lines = canvas._rendered[0].split("\n")
-        assert len(lines) == 3
-        assert all(line == " " * 10 for line in lines)
+        grid = canvas._build_grid()
+        assert len(grid) == 3
+        assert all(all(ch is None for ch in row) for row in grid)
 
     def test_set_draft_rect(self) -> None:
         """Draft rect renders with dashed characters."""
         canvas = self._make_canvas(20, 10)
         canvas.set_draft_rect(2, 2, 8, 5)
         assert canvas._draft_rect == (2, 2, 8, 5)
-        assert len(canvas._rendered) == 1
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         # Top edge at y=2 should have ░ characters from x=2 to x=8
         assert "░" in lines[2]
 
@@ -120,7 +120,7 @@ class TestAnnotationCanvas:
         """Label text appears in the rendered grid."""
         canvas = self._make_canvas(40, 10)
         canvas.add_label(5, 3, "Hi")
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         assert lines[3][5] == "H"
         assert lines[3][6] == "i"
 
@@ -153,9 +153,7 @@ class TestAnnotationCanvas:
         canvas = self._make_canvas(20, 10)
         canvas.set_draft_rect(2, 2, 8, 5)
         canvas.commit_rect()
-        canvas._rendered.clear()
-        canvas._render_canvas()
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         assert "█" in lines[2]
 
     def test_multiple_rects(self) -> None:
@@ -171,7 +169,7 @@ class TestAnnotationCanvas:
         """Label text that extends past canvas width is clipped."""
         canvas = self._make_canvas(10, 3)
         canvas.add_label(8, 1, "Hello")
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         # Only "He" fits at columns 8-9
         assert lines[1][8] == "H"
         assert lines[1][9] == "e"
@@ -187,7 +185,7 @@ class TestAnnotationCanvas:
         """Horizontal arrow renders with ─ and ▶ characters."""
         canvas = self._make_canvas(30, 10)
         canvas.add_arrow(5, 3, 15, 3)
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         # Body should have ─ characters
         assert lines[3][10] == "─"
         # Head should have ▶
@@ -197,7 +195,7 @@ class TestAnnotationCanvas:
         """Vertical arrow renders with │ and ▼ characters."""
         canvas = self._make_canvas(20, 15)
         canvas.add_arrow(5, 2, 5, 10)
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         assert lines[5][5] == "│"
         assert lines[10][5] == "▼"
 
@@ -205,14 +203,14 @@ class TestAnnotationCanvas:
         """Upward arrow ends with ▲."""
         canvas = self._make_canvas(20, 15)
         canvas.add_arrow(5, 10, 5, 2)
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         assert lines[2][5] == "▲"
 
     def test_arrow_renders_leftward(self) -> None:
         """Leftward arrow ends with ◀."""
         canvas = self._make_canvas(30, 10)
         canvas.add_arrow(20, 3, 5, 3)
-        lines = canvas._rendered[0].split("\n")
+        lines = self._grid_lines(canvas)
         assert lines[3][5] == "◀"
 
     def test_get_annotations_with_arrows(self) -> None:
