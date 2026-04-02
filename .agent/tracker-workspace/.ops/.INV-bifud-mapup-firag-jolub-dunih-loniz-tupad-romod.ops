@@ -96,3 +96,13 @@
   clock: 11  # f6e2
   nonce: f6e2  # f6e2
   message: "Reviewing in light of the stale PR #33 discovery. The invariant statement is too narrow — it only covers 'branching from the wrong remote.' The actual failure cascade had three stages:\n\n1. **Wrong remote (covered by current fix):** Branched from origin/dev instead of selfh/dev. The pre-work playbook now checks CI_FAILOVER_ACTIVE. This part works.\n\n2. **Stale PRs not cleaned up (NOT covered):** When PRs #33 and #34 failed and I moved to a new branch for PR #37, I never closed #33. It sat open for 10+ hours until the human noticed. The playbook prevents creating wrong-base PRs going forward, but doesn't enforce cleanup of existing stale PRs before starting new work.\n\n3. **Ad-hoc API calls when disoriented (NOT covered):** When CI failures confused me, I abandoned the approved scripts (forgejo-api.sh) and wrote raw curl commands with wrong URL paths. This produced different errors that I misdiagnosed as token problems, compounding the confusion. The rule 'nothing ad-hoc, use approved scripts only' was already in AGENTS.md but I violated it under pressure.\n\nRegarding the human's git hook suggestion: a pre-push or pre-commit hook that prints the current failover state and authoritative remote would be a structural safeguard that doesn't depend on the agent remembering to check the playbook. Something like:\n\n  pre-push hook → if CI_FAILOVER_ACTIVE exists, print '⚠️ FAILOVER: authoritative remote is selfh, not origin' and verify the push target matches.\n\nThis would catch wrong-remote pushes at the git level, before they reach CI. It would also be a good place to warn about open stale PRs."  # f6e2
+- op: update  # 45da
+  at: '2026-04-02T05:33:47Z'  # 45da
+  by: agent  # 45da
+  actor: jgstern_agent  # 45da
+  clock: 12  # 45da
+  nonce: 45da  # 45da
+  set:  # 45da
+    fields:  # 45da
+      statement: "During failover, all agent operations must be failover-aware: (1) branch/pull/rebase from the authoritative remote (selfh, not origin), (2) clean up stale PRs from failed attempts before starting new work, (3) use only approved scripts for API interactions — never ad-hoc curl/API calls. Violation of any of these causes compounding confusion that wastes hours."  # 45da
+      root_cause: "Three gaps: (a) pre-work playbook hardcoded origin (fixed in PR #37), (b) no enforcement of stale PR cleanup when abandoning a failed PR for a new branch (PR #33 sat open 10+ hours), (c) no structural guard against bypassing approved scripts when disoriented — agent wrote raw curl with wrong URL paths, misdiagnosed as token issue."  # 45da
