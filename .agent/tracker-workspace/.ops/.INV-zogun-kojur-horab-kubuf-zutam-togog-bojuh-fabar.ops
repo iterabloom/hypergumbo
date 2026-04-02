@@ -1,0 +1,24 @@
+- op: create  # 68ea
+  at: '2026-04-02T07:20:37Z'  # 68ea
+  by: agent  # 68ea
+  actor: jgstern_agent  # 68ea
+  clock: 1  # 68ea
+  nonce: 68ea  # 68ea
+  data:  # 68ea
+    kind: invariant  # 68ea
+    title: "Cross-language FFI linkers must set access_mode on bridge edges"  # 68ea
+    status: pending_validation  # 68ea
+    priority: 2  # 68ea
+    parent:  # 68ea
+    tags:  # 68ea
+    - dataflow  # 68ea
+    - linkers  # 68ea
+    - ffi  # 68ea
+    before: []  # 68ea
+    duplicate_of: []  # 68ea
+    not_duplicate_of: []  # 68ea
+    pr_ref:  # 68ea
+    description: ""  # 68ea
+    fields:  # 68ea
+      statement: "Cross-language FFI linker edges must carry access_mode and dest_access_mode so the dataflow pass can evaluate them. Tier 1 automatic annotation cannot work across language boundaries."  # 68ea
+      root_cause: "FFI linkers (cgo, jni, pyffi, napi, lua_ffi, ruby_ffi) all create bridge edges without access_mode. Only messaging/crypto linkers set it. Fix: add access_mode=write, dest_access_mode=read to all FFI bridge edge creation."  # 68ea
