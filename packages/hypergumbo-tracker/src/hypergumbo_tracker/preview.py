@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 — used only for chafa (validated binary path)
 from pathlib import Path
 
 # In-memory cache: (path_str, mtime_ns, width) → ANSI string
@@ -99,7 +99,7 @@ def render_svg_preview(
         chafa_path = shutil.which("chafa")
         if chafa_path is None:
             return None  # pragma: no cover — checked by _chafa_available
-        result = subprocess.run(  # noqa: S603 — chafa_path from shutil.which
+        result = subprocess.run(  # nosec B603 # noqa: S603 — chafa_path from shutil.which
             [
                 chafa_path,
                 "--size", f"{width_columns}x",
