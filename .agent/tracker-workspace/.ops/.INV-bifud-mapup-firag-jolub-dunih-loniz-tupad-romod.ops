@@ -113,3 +113,10 @@
   clock: 13  # bdcd
   nonce: bdcd  # bdcd
   message: "Responding to the git hook suggestion.\n\nYes, git hooks would be stronger than playbook instructions because they fire automatically — the agent can't forget to check them.\n\nSpecific hooks that would help:\n\n**1. pre-push hook (most impactful):**\n- If CI_FAILOVER_ACTIVE exists, verify the push target is selfh, not origin\n- If pushing to a PR ref (refs/for/dev/*), check for other open PRs from the same agent on the same topic (stale PR detection)\n- Print a clear state reminder: 'FAILOVER ACTIVE: authoritative remote is selfh'\n\n**2. post-checkout hook (for branch creation):**\n- When creating a new branch (git checkout -b), verify the current HEAD is reachable from the authoritative remote's dev\n- If HEAD is only reachable from the stale remote, warn loudly: 'WARNING: you branched from origin/dev which is N commits behind selfh/dev'\n\n**3. Claude Code session-start hook (already exists as startup hook):**\n- The startup hook already runs. It could include a failover state check that prints the authoritative remote and any open stale PRs.\n- This is where the 'state reminder' would live — it runs at the start of every conversation.\n\nThe pre-push hook is the most valuable because it's the last line of defense before a wrong-base PR hits CI. The post-checkout hook catches it earlier. The session-start hook catches it earliest.\n\nI'd recommend implementing the pre-push hook first since it prevents the most expensive failure (CI cycles wasted on divergent branches). It's also a governance file (.githooks/**) so it needs human approval."  # bdcd
+- op: discuss  # 2d73
+  at: '2026-04-02T05:43:38Z'  # 2d73
+  by: human  # 2d73
+  actor: jgstern  # 2d73
+  clock: 14  # 2d73
+  nonce: 2d73  # 2d73
+  message: "pre-push hook sounds good, although I'm not sure how we would precisely check for stale PRs \"from the same agent on the same topic\"?"  # 2d73
