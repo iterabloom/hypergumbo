@@ -3001,6 +3001,55 @@ class TestPendingSyncLines:
         diff_call = mock_git.call_args_list[1]
         assert "HEAD" in diff_call.args[1:]
 
+    @patch("hypergumbo_tracker.sync._git")
+    def test_uses_selfh_dev_during_failover(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Uses selfh/dev as diff base when CI_FAILOVER_ACTIVE exists.
+
+        During failover, origin/dev is stale. The authoritative remote is
+        selfh. pending_sync_lines should diff against selfh/dev to avoid
+        inflated pending counts from ops already synced via selfh.
+        """
+        # Create .git/CI_FAILOVER_ACTIVE marker
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "CI_FAILOVER_ACTIVE").write_text("{}")
+
+        mock_git.side_effect = [
+            _make_completed_process(stdout="def456\n"),  # rev-parse selfh/dev
+            _make_completed_process(
+                stdout="3\t0\t.agent/tracker/.ops/.WI-a.ops\n"
+            ),  # diff selfh/dev --numstat
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 3
+
+        # Verify diff was against selfh/dev, not origin/dev
+        rev_parse_call = mock_git.call_args_list[0]
+        assert "selfh/dev" in rev_parse_call.args[1:]
+        diff_call = mock_git.call_args_list[1]
+        assert "selfh/dev" in diff_call.args[1:]
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_failover_falls_back_to_origin_when_selfh_missing(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Falls back to origin/dev when failover is active but selfh/dev missing."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+        (git_dir / "CI_FAILOVER_ACTIVE").write_text("{}")
+
+        mock_git.side_effect = [
+            self._REV_PARSE_FAIL,  # rev-parse selfh/dev fails
+            self._REV_PARSE_OK,  # rev-parse origin/dev succeeds
+            _make_completed_process(
+                stdout="2\t0\t.agent/tracker/.ops/.WI-a.ops\n"
+            ),  # diff origin/dev
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 2
+
 
 # ---------------------------------------------------------------------------
 # TestSyncSetupCheck

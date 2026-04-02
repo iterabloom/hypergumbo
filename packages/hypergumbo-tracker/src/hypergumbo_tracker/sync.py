@@ -602,14 +602,20 @@ def pending_sync_lines(repo_root: Path) -> int:
     """
     total = 0
 
-    # 0. Determine diff base: prefer origin/dev (the sync target),
-    #    fall back to HEAD if origin/dev doesn't exist.
+    # 0. Determine diff base: prefer the authoritative remote's dev branch.
+    #    During failover (.git/CI_FAILOVER_ACTIVE exists), selfh is
+    #    authoritative and origin is stale — diffing against origin/dev
+    #    inflates the pending count with ops already synced via selfh.
     diff_base = "HEAD"
-    rev_result = _git(
-        repo_root, "rev-parse", "--verify", "origin/dev", check=False,
-    )
-    if rev_result.returncode == 0 and rev_result.stdout.strip():
-        diff_base = "origin/dev"
+    failover_active = (repo_root / ".git" / "CI_FAILOVER_ACTIVE").is_file()
+    remotes = ["selfh/dev", "origin/dev"] if failover_active else ["origin/dev"]
+    for remote_ref in remotes:
+        rev_result = _git(
+            repo_root, "rev-parse", "--verify", remote_ref, check=False,
+        )
+        if rev_result.returncode == 0 and rev_result.stdout.strip():
+            diff_base = remote_ref
+            break
 
     # 1. Tracked changes (staged + unstaged) relative to diff base
     numstat_args = ["diff", diff_base, "--numstat", "--"]
