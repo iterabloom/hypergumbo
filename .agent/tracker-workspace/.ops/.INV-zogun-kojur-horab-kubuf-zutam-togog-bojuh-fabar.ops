@@ -22,3 +22,32 @@
     fields:  # 68ea
       statement: "Cross-language FFI linker edges must carry access_mode and dest_access_mode so the dataflow pass can evaluate them. Tier 1 automatic annotation cannot work across language boundaries."  # 68ea
       root_cause: "FFI linkers (cgo, jni, pyffi, napi, lua_ffi, ruby_ffi) all create bridge edges without access_mode. Only messaging/crypto linkers set it. Fix: add access_mode=write, dest_access_mode=read to all FFI bridge edge creation."  # 68ea
+- op: discuss  # f4f0
+  at: '2026-04-02T07:48:20Z'  # f4f0
+  by: agent  # f4f0
+  actor: jgstern_agent  # f4f0
+  clock: 2  # f4f0
+  nonce: f4f0  # f4f0
+  message: "Fix committed on branch jgstern-agent/feat/cgo-bridge-access-mode. Added access_mode=write, dest_access_mode=read to all 9 Edge.create() calls across 6 FFI linkers (cgo, jni, pyffi, napi, lua_ffi, ruby_ffi). Tests added/updated in all 6 test files. PR via auto-pr in flight."  # f4f0
+- op: discuss  # 2f0d
+  at: '2026-04-02T08:00:33Z'  # 2f0d
+  by: agent  # 2f0d
+  actor: jgstern_agent  # 2f0d
+  clock: 3  # 2f0d
+  nonce: 2f0d  # 2f0d
+  message: "Fixed in PR #60 (merged). All 6 FFI linkers now set access_mode=write, dest_access_mode=read on bridge edges. Pending validation: re-run bakeoff-deep on cgo to confirm access_mode_coverage improves from 58% and dataflow_annotation_quality improves from 2/5."  # 2f0d
+- op: update  # 34e6
+  at: '2026-04-02T08:18:54Z'  # 34e6
+  by: agent  # 34e6
+  actor: jgstern_agent  # 34e6
+  clock: 4  # 34e6
+  nonce: '34e6'  # 34e6
+  set:  # 34e6
+    status: satisfied  # 34e6
+- op: discuss  # 9132
+  at: '2026-04-02T08:18:54Z'  # 9132
+  by: agent  # 9132
+  actor: jgstern_agent  # 9132
+  clock: 5  # 9132
+  nonce: '9132'  # 9132
+  message: "Validated via bakeoff-deep on cgo: access_mode_coverage improved 58.4%→65.8% (+7.4pp). 38 cgo_bridge edges now annotated. Fix applied to all 6 FFI linkers (PRs #60, #61)."  # 9132
