@@ -33,3 +33,18 @@
   nonce: f8b5  # f8b5
   set:  # f8b5
     status: todo_soft  # f8b5
+- op: update  # 2063
+  at: '2026-04-02T13:56:35Z'  # 2063
+  by: agent  # 2063
+  actor: jgstern_agent  # 2063
+  clock: 4  # 2063
+  nonce: '2063'  # 2063
+  set:  # 2063
+    status: done  # 2063
+- op: discuss  # 1c0f
+  at: '2026-04-02T13:56:35Z'  # 1c0f
+  by: agent  # 1c0f
+  actor: jgstern_agent  # 1c0f
+  clock: 5  # 1c0f
+  nonce: 1c0f  # 1c0f
+  message: "ADR-0020 fully implemented across PRs #60-68. Part 1: AnnotationScreen with rects/arrows/labels, arrow key nudge, SVG injection. Part 2: preview.py with SVG→PNG→ANSI pipeline, caching, graceful degradation. All sub-items (WI-mozub, WI-fuzim, WI-zozos, WI-fubij, WI-lapob, WI-dosos) done."  # 1c0f

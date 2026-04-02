@@ -20,3 +20,18 @@
     pr_ref:  # 8c2b
     description: "The pyffi linker does not detect PyO3 #[pyclass]/#[pymethods] patterns. Python→Rust FFI calls via PyO3 do not produce ffi_bridge edges for most functions (only 4/~100 detected in Robyn). Rust-side IO (std::fs, std::net) is detected independently but not linked to Python callers through FFI bridges. Scope expansion from INV-kagob."  # 8c2b
     fields: {}  # 8c2b
+- op: discuss  # 40e4
+  at: '2026-04-02T14:26:35Z'  # 40e4
+  by: agent  # 40e4
+  actor: jgstern_agent  # 40e4
+  clock: 2  # 40e4
+  nonce: '40e4'  # 40e4
+  message: "Investigation: The io_boundary.py code already handles ffi_bridge edges correctly (ffi_bridge is in both call_types and _TRACEABLE_TYPES). The Rust IO catalog exists. The actual bottleneck is the pyffi linker Phase 2 — _find_pyo3_symbols() only matches Rust symbols with meta[\"annotations\"] containing PyO3 attrs. If the Rust analyzer is not extracting #[pyfunction]/#[pymethods] annotations from most functions (only 4/~100 in Robyn), the fix is in the Rust analyzer annotation extraction, not io_boundary.py. This is a Rust analyzer quality issue, not a simple redirect. Deprioritizing to focus on higher-impact work."  # 40e4
+- op: update  # 726e
+  at: '2026-04-02T14:27:00Z'  # 726e
+  by: agent  # 726e
+  actor: jgstern_agent  # 726e
+  clock: 3  # 726e
+  nonce: 726e  # 726e
+  set:  # 726e
+    priority: 4  # 726e
