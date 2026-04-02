@@ -22,6 +22,7 @@ import pytest
 from textual.geometry import Size
 
 from hypergumbo_tracker.annotations import (
+    ArrowAnnotation,
     LabelAnnotation,
     RectAnnotation,
     sanitize_label_text,
@@ -175,6 +176,57 @@ class TestAnnotationCanvas:
         assert lines[1][8] == "H"
         assert lines[1][9] == "e"
 
+    def test_add_arrow(self) -> None:
+        """Adding an arrow stores it."""
+        canvas = self._make_canvas(40, 10)
+        canvas.add_arrow(5, 3, 20, 3)
+        assert len(canvas._arrows) == 1
+        assert canvas._arrows[0] == (5, 3, 20, 3, "#ff3333")
+
+    def test_arrow_renders_horizontal(self) -> None:
+        """Horizontal arrow renders with ─ and ▶ characters."""
+        canvas = self._make_canvas(30, 10)
+        canvas.add_arrow(5, 3, 15, 3)
+        lines = canvas._rendered[0].split("\n")
+        # Body should have ─ characters
+        assert lines[3][10] == "─"
+        # Head should have ▶
+        assert lines[3][15] == "▶"
+
+    def test_arrow_renders_vertical(self) -> None:
+        """Vertical arrow renders with │ and ▼ characters."""
+        canvas = self._make_canvas(20, 15)
+        canvas.add_arrow(5, 2, 5, 10)
+        lines = canvas._rendered[0].split("\n")
+        assert lines[5][5] == "│"
+        assert lines[10][5] == "▼"
+
+    def test_arrow_renders_upward(self) -> None:
+        """Upward arrow ends with ▲."""
+        canvas = self._make_canvas(20, 15)
+        canvas.add_arrow(5, 10, 5, 2)
+        lines = canvas._rendered[0].split("\n")
+        assert lines[2][5] == "▲"
+
+    def test_arrow_renders_leftward(self) -> None:
+        """Leftward arrow ends with ◀."""
+        canvas = self._make_canvas(30, 10)
+        canvas.add_arrow(20, 3, 5, 3)
+        lines = canvas._rendered[0].split("\n")
+        assert lines[3][5] == "◀"
+
+    def test_get_annotations_with_arrows(self) -> None:
+        """get_annotations includes ArrowAnnotation instances."""
+        canvas = self._make_canvas()
+        canvas.add_arrow(1, 2, 10, 5)
+        anns = canvas.get_annotations()
+        assert len(anns) == 1
+        assert isinstance(anns[0], ArrowAnnotation)
+        assert anns[0].from_x == 1
+        assert anns[0].from_y == 2
+        assert anns[0].to_x == 10
+        assert anns[0].to_y == 5
+
 
 # ---------------------------------------------------------------------------
 # AnnotationScreen unit tests
@@ -239,31 +291,37 @@ class TestAnnotationScreen:
         screen = AnnotationScreen("<svg></svg>")
         mock_canvas = MagicMock()
         mock_canvas._labels = [(5, 3, "Hi", "#ff3333")]
+        mock_canvas._arrows = []
         mock_canvas._rects = []
-        screen.query_one = MagicMock(return_value=mock_canvas)
+        type(screen).canvas = property(lambda self: mock_canvas)
         screen.action_undo()
         assert mock_canvas._labels == []
         mock_canvas._render_canvas.assert_called_once()
+        del type(screen).canvas
 
-    def test_undo_removes_last_rect_when_no_labels(self) -> None:
-        """action_undo removes the most recent rect when no labels exist."""
+    def test_undo_removes_last_rect_when_no_labels_or_arrows(self) -> None:
+        """action_undo removes the most recent rect when no labels or arrows."""
         screen = AnnotationScreen("<svg></svg>")
         mock_canvas = MagicMock()
         mock_canvas._labels = []
+        mock_canvas._arrows = []
         mock_canvas._rects = [(1, 2, 5, 8, "#ff3333")]
-        screen.query_one = MagicMock(return_value=mock_canvas)
+        type(screen).canvas = property(lambda self: mock_canvas)
         screen.action_undo()
         assert mock_canvas._rects == []
+        del type(screen).canvas
 
     def test_undo_noop_when_empty(self) -> None:
         """action_undo does nothing when no annotations exist."""
         screen = AnnotationScreen("<svg></svg>")
         mock_canvas = MagicMock()
         mock_canvas._labels = []
+        mock_canvas._arrows = []
         mock_canvas._rects = []
-        screen.query_one = MagicMock(return_value=mock_canvas)
+        type(screen).canvas = property(lambda self: mock_canvas)
         screen.action_undo()
         mock_canvas._render_canvas.assert_not_called()
+        del type(screen).canvas
 
     def test_mouse_down_starts_rect_drag(self) -> None:
         """MouseDown in rect mode starts dragging."""
@@ -396,6 +454,144 @@ class TestAnnotationScreen:
         screen.on_key(event)
         assert screen._label_text_buf == "A"
 
+    def test_arrow_mode_switch(self) -> None:
+        """action_arrow_mode switches to arrow mode."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_status = MagicMock()
+        screen.query_one = MagicMock(return_value=mock_status)
+        screen.action_arrow_mode()
+        assert screen._mode == "arrow"
+
+    def test_rect_mode_switch(self) -> None:
+        """action_rect_mode switches back to rect mode."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "arrow"
+        mock_status = MagicMock()
+        screen.query_one = MagicMock(return_value=mock_status)
+        screen.action_rect_mode()
+        assert screen._mode == "rect"
+
+    def test_mouse_up_arrow_mode_adds_arrow(self) -> None:
+        """MouseUp in arrow mode adds an arrow to the canvas."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "arrow"
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 20
+        event.y = 10
+        screen.on_mouse_up(event)
+        mock_canvas.add_arrow.assert_called_once_with(5, 3, 20, 10)
+        del type(screen).canvas
+
+    def test_mouse_up_arrow_mode_small_drag_noop(self) -> None:
+        """MouseUp in arrow mode with tiny drag doesn't add arrow."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "arrow"
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 6
+        event.y = 3
+        screen.on_mouse_up(event)
+        mock_canvas.add_arrow.assert_not_called()
+        del type(screen).canvas
+
+    def test_mouse_move_arrow_mode_no_draft(self) -> None:
+        """MouseMove in arrow mode doesn't update draft rect."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "arrow"
+        screen._dragging = True
+        screen._drag_start = (5, 3)
+        mock_canvas = MagicMock()
+        type(screen).canvas = property(lambda self: mock_canvas)
+        event = MagicMock()
+        event.x = 20
+        event.y = 10
+        screen.on_mouse_move(event)
+        mock_canvas.set_draft_rect.assert_not_called()
+        del type(screen).canvas
+
+    def test_nudge_label(self) -> None:
+        """Nudge moves the last label."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = [(10, 5, "Hi", "#ff3333")]
+        mock_canvas._arrows = []
+        mock_canvas._rects = []
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen._nudge(1, -1)
+        assert mock_canvas._labels[-1] == (11, 4, "Hi", "#ff3333")
+        mock_canvas._render_canvas.assert_called_once()
+        del type(screen).canvas
+
+    def test_nudge_arrow(self) -> None:
+        """Nudge moves the last arrow when no labels exist."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._arrows = [(5, 3, 20, 10, "#ff3333")]
+        mock_canvas._rects = []
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen._nudge(2, 0)
+        assert mock_canvas._arrows[-1] == (7, 3, 22, 10, "#ff3333")
+        del type(screen).canvas
+
+    def test_nudge_rect(self) -> None:
+        """Nudge moves the last rect when no labels or arrows exist."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._arrows = []
+        mock_canvas._rects = [(1, 2, 5, 8, "#ff3333")]
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen._nudge(0, 3)
+        assert mock_canvas._rects[-1] == (1, 5, 5, 11, "#ff3333")
+        del type(screen).canvas
+
+    def test_nudge_empty_noop(self) -> None:
+        """Nudge with no annotations does nothing."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._arrows = []
+        mock_canvas._rects = []
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen._nudge(1, 0)
+        mock_canvas._render_canvas.assert_not_called()
+        del type(screen).canvas
+
+    def test_action_nudge_directions(self) -> None:
+        """All four nudge actions call _nudge with correct deltas."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._nudge = MagicMock()
+        screen.action_nudge_up()
+        screen._nudge.assert_called_with(0, -1)
+        screen.action_nudge_down()
+        screen._nudge.assert_called_with(0, 1)
+        screen.action_nudge_left()
+        screen._nudge.assert_called_with(-1, 0)
+        screen.action_nudge_right()
+        screen._nudge.assert_called_with(1, 0)
+
+    def test_undo_removes_arrow_before_rect(self) -> None:
+        """Undo removes arrows before rects (labels first, arrows second)."""
+        screen = AnnotationScreen("<svg></svg>")
+        mock_canvas = MagicMock()
+        mock_canvas._labels = []
+        mock_canvas._arrows = [(5, 3, 20, 10, "#ff3333")]
+        mock_canvas._rects = [(1, 2, 5, 8, "#ff3333")]
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen.action_undo()
+        assert mock_canvas._arrows == []
+        # Rects should be untouched
+        assert len(mock_canvas._rects) == 1
+        del type(screen).canvas
+
 
 # ---------------------------------------------------------------------------
 # SVG injection tests
@@ -497,6 +693,7 @@ class TestSVGInjection:
 
         annotations = [
             RectAnnotation(1, 1, 10, 5),
+            ArrowAnnotation(3, 3, 15, 8),
             LabelAnnotation(3, 7, "Note"),
             RectAnnotation(15, 2, 20, 8, "#00ff00"),
         ]
@@ -504,6 +701,52 @@ class TestSVGInjection:
 
         result = path.read_text()
         assert result.count("<rect ") == 2
+        assert result.count("<line ") == 1
         assert result.count("<text ") == 1
         assert "Note" in result
         assert "#00ff00" in result
+        assert "marker-end" in result
+        assert "<defs>" in result
+        assert "arrowhead" in result
+
+    def test_inject_arrow_into_svg(self, tmp_path: Path) -> None:
+        """ArrowAnnotation is injected as SVG <line> with arrowhead marker."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [ArrowAnnotation(5, 3, 20, 10, "#ff3333")]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert "<line " in result
+        assert 'stroke="#ff3333"' in result
+        assert "marker-end" in result
+        assert "<defs>" in result
+        assert "arrowhead" in result
+
+    def test_no_arrowhead_defs_without_arrows(self, tmp_path: Path) -> None:
+        """SVG defs with arrowhead marker are only added when arrows exist."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        svg = "<svg></svg>"
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        annotations = [RectAnnotation(1, 1, 10, 5)]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert "<defs>" not in result

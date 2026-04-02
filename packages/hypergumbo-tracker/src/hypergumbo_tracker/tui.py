@@ -1436,6 +1436,7 @@ class _AnnotationCanvas(Static):
         super().__init__("", **kwargs)
         self._rects: list[tuple[int, int, int, int, str]] = []
         self._labels: list[tuple[int, int, str, str]] = []
+        self._arrows: list[tuple[int, int, int, int, str]] = []
         self._draft_rect: tuple[int, int, int, int] | None = None
 
     def set_draft_rect(
@@ -1459,6 +1460,14 @@ class _AnnotationCanvas(Static):
         self._draft_rect = None
         self._render_canvas()
 
+    def add_arrow(
+        self, from_x: int, from_y: int, to_x: int, to_y: int,
+        color: str = "#ff3333",
+    ) -> None:
+        """Add an arrow annotation."""
+        self._arrows.append((from_x, from_y, to_x, to_y, color))
+        self._render_canvas()
+
     def add_label(
         self, x: int, y: int, text: str, color: str = "#ff3333",
     ) -> None:
@@ -1469,6 +1478,7 @@ class _AnnotationCanvas(Static):
     def get_annotations(self) -> list[object]:
         """Return all committed annotations as dataclass instances."""
         from hypergumbo_tracker.annotations import (
+            ArrowAnnotation,
             LabelAnnotation,
             RectAnnotation,
         )
@@ -1477,6 +1487,10 @@ class _AnnotationCanvas(Static):
         for x1, y1, x2, y2, color in self._rects:
             result.append(RectAnnotation(
                 cell_x1=x1, cell_y1=y1, cell_x2=x2, cell_y2=y2, color=color,
+            ))
+        for fx, fy, tx, ty, color in self._arrows:
+            result.append(ArrowAnnotation(
+                from_x=fx, from_y=fy, to_x=tx, to_y=ty, color=color,
             ))
         for x, y, text, color in self._labels:
             result.append(LabelAnnotation(cell_x=x, cell_y=y, text=text, color=color))
@@ -1511,6 +1525,23 @@ class _AnnotationCanvas(Static):
             x1, y1, x2, y2 = self._draft_rect
             _draw_rect(x1, y1, x2, y2, "░")
 
+        # Draw arrows (Bresenham-style line with arrowhead)
+        for fx, fy, tx, ty, _color in self._arrows:
+            dx = tx - fx
+            dy = ty - fy
+            steps = max(abs(dx), abs(dy), 1)
+            for i in range(steps + 1):
+                cx = fx + round(dx * i / steps)
+                cy = fy + round(dy * i / steps)
+                if 0 <= cy < height and 0 <= cx < width:
+                    if i == steps:
+                        # Arrowhead
+                        grid[cy][cx] = "▶" if abs(dx) >= abs(dy) and dx >= 0 else \
+                                       "◀" if abs(dx) >= abs(dy) else \
+                                       "▼" if dy >= 0 else "▲"
+                    else:
+                        grid[cy][cx] = "─" if abs(dx) >= abs(dy) else "│"
+
         # Draw labels
         for lx, ly, text, _color in self._labels:
             if 0 <= ly < height:
@@ -1537,8 +1568,14 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("escape", "discard", "Discard"),
         ("enter", "confirm", "Confirm"),
+        ("r", "rect_mode", "Rect"),
+        ("a", "arrow_mode", "Arrow"),
         ("l", "label_mode", "Label"),
         ("u", "undo", "Undo"),
+        ("up", "nudge_up", "Nudge up"),
+        ("down", "nudge_down", "Nudge down"),
+        ("left", "nudge_left", "Nudge left"),
+        ("right", "nudge_right", "Nudge right"),
     ]
 
     DEFAULT_CSS = """
@@ -1568,12 +1605,11 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         self._drag_start: tuple[int, int] | None = None
         self._label_pending = False
 
+    _STATUS_TEXT = "  [R]ect  |  [A]rrow  |  [L]abel  |  [U]ndo  |  ←↑↓→=Nudge  |  Enter=Confirm  |  Esc=Discard  "
+
     def compose(self) -> ComposeResult:
         yield _AnnotationCanvas(id="annotation-canvas")
-        yield Static(
-            "  [R]ect draw  |  [L]abel  |  [U]ndo  |  Enter=Confirm  |  Esc=Discard  ",
-            id="annotation-status",
-        )
+        yield Static(self._STATUS_TEXT, id="annotation-status")
 
     @property
     def canvas(self) -> _AnnotationCanvas:
@@ -1581,7 +1617,7 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         return self.query_one("#annotation-canvas", _AnnotationCanvas)
 
     def on_mouse_down(self, event: MouseDown) -> None:
-        """Start a rect drag or place a label."""
+        """Start a rect/arrow drag or place a label."""
         if self._mode == "label":
             self._label_pending = True
             self._label_pos = (event.x, event.y)
@@ -1594,20 +1630,25 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     def on_mouse_move(self, event: MouseMove) -> None:
         """Update draft rect while dragging."""
-        if self._dragging and self._drag_start is not None:
+        if self._dragging and self._drag_start is not None and self._mode == "rect":
             sx, sy = self._drag_start
             self.canvas.set_draft_rect(sx, sy, event.x, event.y)
 
     def on_mouse_up(self, event: MouseUp) -> None:
-        """Commit the rect on mouse release."""
+        """Commit the rect or arrow on mouse release."""
         if self._dragging and self._drag_start is not None:
             sx, sy = self._drag_start
-            # Only commit if the rect has some area
-            if abs(event.x - sx) > 1 or abs(event.y - sy) > 1:
-                self.canvas.set_draft_rect(sx, sy, event.x, event.y)
-                self.canvas.commit_rect()
+            has_area = abs(event.x - sx) > 1 or abs(event.y - sy) > 1
+            if self._mode == "arrow":
+                if has_area:
+                    self.canvas.add_arrow(sx, sy, event.x, event.y)
+                # No draft to discard for arrows
             else:
-                self.canvas.discard_draft()
+                if has_area:
+                    self.canvas.set_draft_rect(sx, sy, event.x, event.y)
+                    self.canvas.commit_rect()
+                else:
+                    self.canvas.discard_draft()
             self._dragging = False
             self._drag_start = None
 
@@ -1624,12 +1665,22 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
             self._label_pending = False
             del self._label_text_buf
             self._mode = "rect"
-            self.query_one("#annotation-status", Static).update(
-                "  [R]ect draw  |  [L]abel  |  [U]ndo  |  Enter=Confirm  |  Esc=Discard  "
-            )
+            self.query_one("#annotation-status", Static).update(self._STATUS_TEXT)
             return
         annotations = self.canvas.get_annotations()
         self.dismiss(annotations if annotations else None)
+
+    def action_rect_mode(self) -> None:
+        """Switch to rectangle drawing mode."""
+        self._mode = "rect"
+        self.query_one("#annotation-status", Static).update(self._STATUS_TEXT)
+
+    def action_arrow_mode(self) -> None:
+        """Switch to arrow drawing mode."""
+        self._mode = "arrow"
+        self.query_one("#annotation-status", Static).update(
+            "  ARROW MODE: Drag from start to end  |  Esc=Discard  "
+        )
 
     def action_label_mode(self) -> None:
         """Switch to label placement mode."""
@@ -1639,11 +1690,50 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
             "  LABEL MODE: Click to place, type text, Enter to confirm  "
         )
 
+    def _nudge(self, dx: int, dy: int) -> None:
+        """Nudge the last annotation by (dx, dy) cells.
+
+        Arrow key adjustment mitigates SSH mouse coordinate drift (ADR-0020).
+        Applies to the most recently added annotation (rect, arrow, or label).
+        """
+        canvas = self.canvas
+        if canvas._labels:
+            x, y, text, color = canvas._labels[-1]
+            canvas._labels[-1] = (x + dx, y + dy, text, color)
+            canvas._render_canvas()
+        elif canvas._arrows:
+            fx, fy, tx, ty, color = canvas._arrows[-1]
+            canvas._arrows[-1] = (fx + dx, fy + dy, tx + dx, ty + dy, color)
+            canvas._render_canvas()
+        elif canvas._rects:
+            x1, y1, x2, y2, color = canvas._rects[-1]
+            canvas._rects[-1] = (x1 + dx, y1 + dy, x2 + dx, y2 + dy, color)
+            canvas._render_canvas()
+
+    def action_nudge_up(self) -> None:
+        """Move last annotation up by 1 cell."""
+        self._nudge(0, -1)
+
+    def action_nudge_down(self) -> None:
+        """Move last annotation down by 1 cell."""
+        self._nudge(0, 1)
+
+    def action_nudge_left(self) -> None:
+        """Move last annotation left by 1 cell."""
+        self._nudge(-1, 0)
+
+    def action_nudge_right(self) -> None:
+        """Move last annotation right by 1 cell."""
+        self._nudge(1, 0)
+
     def action_undo(self) -> None:
         """Remove the last annotation."""
         canvas = self.canvas
         if canvas._labels:
             canvas._labels.pop()
+            canvas._render_canvas()
+        elif canvas._arrows:
+            canvas._arrows.pop()
             canvas._render_canvas()
         elif canvas._rects:
             canvas._rects.pop()
@@ -3157,6 +3247,7 @@ class TrackerApp(App):
             return
 
         from hypergumbo_tracker.annotations import (
+            ArrowAnnotation,
             LabelAnnotation,
             RectAnnotation,
             sanitize_label_text,
@@ -3181,6 +3272,17 @@ class TrackerApp(App):
                     f'fill="none" stroke="{ann.color}" '
                     f'stroke-width="2" opacity="0.8"/>'
                 )
+            elif isinstance(ann, ArrowAnnotation):
+                x1 = ann.from_x * cell_w + cell_w / 2
+                y1 = ann.from_y * cell_h + cell_h / 2
+                x2 = ann.to_x * cell_w + cell_w / 2
+                y2 = ann.to_y * cell_h + cell_h / 2
+                elements.append(
+                    f'<line x1="{x1:.1f}" y1="{y1:.1f}" '
+                    f'x2="{x2:.1f}" y2="{y2:.1f}" '
+                    f'stroke="{ann.color}" stroke-width="2" '
+                    f'marker-end="url(#arrowhead)" opacity="0.8"/>'
+                )
             elif isinstance(ann, LabelAnnotation):
                 x = ann.cell_x * cell_w
                 y = ann.cell_y * cell_h + cell_h * 0.75  # baseline offset
@@ -3192,8 +3294,21 @@ class TrackerApp(App):
                 )
 
         if elements:
+            # Add arrowhead marker if any arrows present
+            has_arrows = any(
+                isinstance(a, ArrowAnnotation) for a in annotations
+            )
+            defs = ""
+            if has_arrows:
+                defs = (
+                    '<defs><marker id="arrowhead" markerWidth="10" '
+                    'markerHeight="7" refX="10" refY="3.5" orient="auto">'
+                    '<polygon points="0 0, 10 3.5, 0 7" fill="#ff3333"/>'
+                    '</marker></defs>\n'
+                )
             group = (
-                '<g class="annotations">\n'
+                defs
+                + '<g class="annotations">\n'
                 + "\n".join(f"  {e}" for e in elements)
                 + "\n</g>"
             )

@@ -15,8 +15,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### TUI screenshot annotation mode (ADR-0020 Part 1)
 
 - **AnnotationScreen modal**: Press `S` in the TUI to capture a screenshot, then enter annotation mode. Draw rectangles via mouse drag, place text labels via `L` + click + type. `U` undoes the last annotation. `Enter` confirms and injects `<rect>`/`<text>` SVG elements into the screenshot. `Escape` discards.
-- **_AnnotationCanvas widget**: Full-screen character grid overlay that renders committed rects (solid `█`), draft rects (dashed `░`), and text labels in real-time during annotation.
-- **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection.
+- **Arrow drawing**: `A` key switches to arrow mode. Drag from start to end to draw an arrow. Arrows render as `─`/`│` lines with directional heads (`▶▼◀▲`). SVG injection uses `<line>` with `<marker>` arrowheads.
+- **Arrow key adjustment**: After drawing any annotation, press `←↑↓→` to nudge it by 1 cell. Mitigates SSH mouse coordinate drift (ADR-0020 §1 step 4).
+- **_AnnotationCanvas widget**: Full-screen character grid overlay that renders committed rects (solid `█`), draft rects (dashed `░`), arrows, and text labels in real-time during annotation.
+- **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection. Arrow annotations include `<defs>` with arrowhead marker.
 
 #### Taint-flow analysis (ADR-0017)
 
