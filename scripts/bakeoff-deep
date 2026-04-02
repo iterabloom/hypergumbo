@@ -2298,23 +2298,38 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                     "express.": "js", "axios.": "js", "fastify.": "js",
                     "pathlib.": "python", "subprocess.": "python",
                 }
-                io_langs: set[str] = set()
-                for boundary_entry in boundaries.values():
-                    for prim in boundary_entry.get("primitives_used", []):
-                        for prefix, lang in _PRIMITIVE_LANG_PREFIXES.items():
-                            if prim.startswith(prefix):
-                                io_langs.add(lang)
-                                break
-                # If IO primitives from 2+ distinct languages, compute percentage
+                def _prim_lang(prim: str) -> str | None:
+                    """Get the catalog language for a primitive name."""
+                    for prefix, lang in _PRIMITIVE_LANG_PREFIXES.items():
+                        if prim.startswith(prefix):
+                            return lang
+                    return None
+
+                def _edge_src_lang(src_id: str) -> str | None:
+                    """Extract source language from edge src id (e.g. 'go:file.go:...' → 'go')."""
+                    if ":" in src_id:
+                        return src_id.split(":")[0]
+                    return None
+
+                def _is_cross_lang_chain(chain: dict) -> bool:
+                    """A chain is cross-language if src language differs from primitive catalog."""
+                    src_lang = _edge_src_lang(chain.get("io_edge_src", ""))
+                    prim = chain.get("primitive", "")
+                    catalog_lang = _prim_lang(prim)
+                    if src_lang and catalog_lang:
+                        # Normalize ambiguous catalogs
+                        if catalog_lang in ("go_or_python", "js_or_go"):
+                            return False  # Can't determine, don't count
+                        return src_lang != catalog_lang
+                    return False
+
+                # Count chains where edge source language differs from
+                # primitive catalog language (e.g. Go calling C stdio via cgo).
                 cross_lang_chains = 0
-                if len(io_langs) >= 2:
-                    # Count chains from non-primary languages
-                    total_chains = sum(
-                        b.get("chain_count", 0) for b in boundaries.values()
-                    )
-                    # Heuristic: all chains are considered cross-language
-                    # when primitives from multiple languages are present
-                    cross_lang_chains = total_chains
+                for boundary_entry in boundaries.values():
+                    for chain in boundary_entry.get("chains", []):
+                        if _is_cross_lang_chain(chain):
+                            cross_lang_chains += 1
                 if total_io_chains > 0:
                     metrics.cross_language_io_pct = cross_lang_chains / total_io_chains * 100
             except (json.JSONDecodeError, OSError):
