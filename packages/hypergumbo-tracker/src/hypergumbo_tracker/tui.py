@@ -3240,21 +3240,21 @@ class TrackerApp(App):
 
         ts = datetime.now()
         rel_path = _screenshot_path(item_id, ts)
-        # Resolve against tracker root (.agent/) so mkdir works
-        # regardless of the user's cwd.
+        svg = self.export_screenshot()
+
+        # Try .agent/screenshots/ first, fall back to /tmp if not writable
+        # (e.g., different user than .agent/ owner).
         path = self._tracker_set._tracker_root / "screenshots" / rel_path.name
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(svg)
         except PermissionError:
-            # Fall back to /tmp if .agent/screenshots/ is not writable
-            # (e.g., different user than .agent/ owner)
             import tempfile
 
             fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
             fallback.mkdir(parents=True, exist_ok=True)
             path = fallback / rel_path.name
-        svg = self.export_screenshot()
-        path.write_text(svg)
+            path.write_text(svg)
         self.notify(f"Screenshot saved: {path}")
 
         # Open annotation mode
