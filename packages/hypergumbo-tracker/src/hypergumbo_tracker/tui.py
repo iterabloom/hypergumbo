@@ -3243,7 +3243,16 @@ class TrackerApp(App):
         # Resolve against tracker root (.agent/) so mkdir works
         # regardless of the user's cwd.
         path = self._tracker_set._tracker_root / "screenshots" / rel_path.name
-        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            # Fall back to /tmp if .agent/screenshots/ is not writable
+            # (e.g., different user than .agent/ owner)
+            import tempfile
+
+            fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
+            fallback.mkdir(parents=True, exist_ok=True)
+            path = fallback / rel_path.name
         svg = self.export_screenshot()
         path.write_text(svg)
         self.notify(f"Screenshot saved: {path}")

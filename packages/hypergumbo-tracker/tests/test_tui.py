@@ -5174,6 +5174,39 @@ class TestCaptureScreenshot:
             assert "screen" in svgs[0].name
 
 
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_permission_fallback(self, tmp_path: Path) -> None:
+        """Falls back to /tmp when .agent/screenshots is not writable."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+
+            original_mkdir = Path.mkdir
+
+            def failing_mkdir(self_path: Path, *a: Any, **kw: Any) -> None:
+                if ".agent" in str(self_path) and "screenshots" in str(self_path):
+                    raise PermissionError("not writable")
+                return original_mkdir(self_path, *a, **kw)
+
+            with patch.object(Path, "mkdir", failing_mkdir), \
+                 patch(
+                     "hypergumbo_tracker.annotations.screenshot_path",
+                     side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+                 ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            # Should have saved to /tmp fallback
+            import tempfile
+            fallback = Path(tempfile.gettempdir()) / "htrac-screenshots"
+            svgs = list(fallback.glob("*.svg")) if fallback.exists() else []
+            assert len(svgs) >= 1
+
+
 class TestYankAction:
     """Tests for the Ctrl+C keybinding that copies detail text to clipboard."""
 
