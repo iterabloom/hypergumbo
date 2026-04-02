@@ -1443,6 +1443,8 @@ class _AnnotationCanvas(Static):
     _AnnotationCanvas {
         width: 100%;
         height: 100%;
+        background: transparent;
+        color: #ff3333;
     }
     """
 
@@ -1511,10 +1513,16 @@ class _AnnotationCanvas(Static):
         return result
 
     def _render_canvas(self) -> None:
-        """Re-render the canvas text with all annotations."""
+        """Re-render the canvas with annotation shapes only.
+
+        Uses a sparse grid: cells without annotations are spaces (transparent
+        against the ModalScreen background, letting the frozen TUI show
+        through).  Annotation characters are drawn in red via Rich markup.
+        """
         width = self.size.width or 80
         height = self.size.height or 24
-        grid = [[" "] * width for _ in range(height)]
+        # None means transparent (no character drawn)
+        grid: list[list[str | None]] = [[None] * width for _ in range(height)]
 
         def _draw_rect(
             x1: int, y1: int, x2: int, y2: int, ch: str = "█",
@@ -1564,7 +1572,11 @@ class _AnnotationCanvas(Static):
                     if 0 <= cx < width:
                         grid[ly][cx] = ch
 
-        self.update("\n".join("".join(row) for row in grid))
+        # Render: annotation chars in red, empty cells as spaces
+        self.update("\n".join(
+            "".join(ch if ch is not None else " " for ch in row)
+            for row in grid
+        ))
 
 
 class AnnotationScreen(ModalScreen[list[object] | None]):
@@ -1594,12 +1606,13 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     DEFAULT_CSS = """
     AnnotationScreen {
-        align: center middle;
+        background: transparent;
     }
 
     #annotation-canvas {
         width: 100%;
         height: 1fr;
+        background: transparent;
     }
 
     #annotation-status {
