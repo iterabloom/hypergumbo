@@ -127,3 +127,10 @@
   clock: 15  # 7b1d
   nonce: 7b1d  # 7b1d
   message: "Replying to the stale PR detection question.\n\nYou're right — precisely matching 'same agent, same topic' is fragile. A simpler and more robust approach for the pre-push hook:\n\n**Option A: Skip stale PR detection in the hook entirely.** The pre-push hook focuses on what it can reliably check: (1) failover remote correctness, (2) base branch freshness. Stale PR cleanup is better handled by the session-start hook (which already runs at conversation start and can call `scripts/list-my-prs` to show all open PRs for awareness).\n\n**Option B: Warn about ALL open PRs from this user on push.** No topic matching needed — just list open PRs and let the agent/human decide if any are stale. Something like: 'You have 2 open PRs: #33 (cgo-linker-fix, 6h old), #37 (cgo-io-catalog). Is #33 still needed?' This is informational, not blocking.\n\nI'd recommend Option A (keep the hook simple) plus adding an open-PR listing to the session-start hook output. The pre-push hook would be:\n1. If CI_FAILOVER_ACTIVE exists, verify push target is selfh (block if origin)\n2. Verify the branch's merge-base with dev is fresh (warn if >10 commits behind)\n\nThis avoids the 'same topic' matching problem entirely. Want me to implement this?"  # 7b1d
+- op: discuss  # 09ee
+  at: '2026-04-02T14:41:30Z'  # 09ee
+  by: human  # 09ee
+  actor: jgstern  # 09ee
+  clock: 16  # 09ee
+  nonce: 09ee  # 09ee
+  message: "yes option A please"  # 09ee

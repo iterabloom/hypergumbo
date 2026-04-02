@@ -35,3 +35,10 @@
   clock: 3  # 14ed
   nonce: 14ed  # 14ed
   message: "Go analyzer now extracts concrete type from var declarations with initializer (e.g. var n Notifier = &DiscordNotifier{}). Calls resolve to concrete type, eliminating spurious dispatches_to edges. PR in flight on branch jgstern-agent/feat/interface-dispatch-narrowing."  # 14ed
+- op: discuss  # eca5
+  at: '2026-04-02T14:49:08Z'  # eca5
+  by: human  # eca5
+  actor: jgstern  # eca5
+  clock: 4  # eca5
+  nonce: eca5  # eca5
+  message: "PR number/commit id please?"  # eca5

@@ -48,3 +48,10 @@
   clock: 5  # 73bf
   nonce: 73bf  # 73bf
   message: "Part 1 (TUI Screenshot Annotation Mode) implemented. AnnotationScreen modal with mouse rect drawing, label placement, undo, SVG injection. 29 tests at 100% coverage."  # 73bf
+- op: discuss  # 53f3
+  at: '2026-04-02T14:47:40Z'  # 53f3
+  by: human  # 53f3
+  actor: jgstern  # 53f3
+  clock: 6  # 53f3
+  nonce: 53f3  # 53f3
+  message: "PR numbers/ commit ids please?"  # 53f3

@@ -20,3 +20,17 @@
     pr_ref:  # 1764
     description: "The pyffi linker only creates ffi_bridge edges for CFFI/ctypes calls targeting repo-local C symbols. Calls to C stdlib via ffi.dlopen(None) produce no bridge edges and no IO tags. Scope expansion from INV-kagob."  # 1764
     fields: {}  # 1764
+- op: discuss  # 7f0b
+  at: '2026-04-02T14:27:52Z'  # 7f0b
+  by: agent  # 7f0b
+  actor: jgstern_agent  # 7f0b
+  clock: 2  # 7f0b
+  nonce: 7f0b  # 7f0b
+  message: "Investigation: The pyffi linker only creates ffi_bridge edges against repo-local C symbols. When Python uses ffi.dlopen(None) to call C stdlib directly, there are no local C symbols to match — the linker needs to either (a) create unresolved edges similar to cgo pseudo-namespace pattern, or (b) the io_boundary tagger needs a Python-side catalog for ctypes/cffi stdlib calls. This is a design-level change, not a simple fix. Deprioritizing."  # 7f0b
+- op: discuss  # 6dab
+  at: '2026-04-02T14:43:06Z'  # 6dab
+  by: human  # 6dab
+  actor: jgstern  # 6dab
+  clock: 3  # 6dab
+  nonce: 6dab  # 6dab
+  message: "what are the pros/cons of these options? is this related to multi-fidelity analysis?"  # 6dab

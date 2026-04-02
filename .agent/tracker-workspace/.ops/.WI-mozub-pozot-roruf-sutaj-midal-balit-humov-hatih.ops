@@ -64,3 +64,10 @@
   clock: 7  # f711
   nonce: f711  # f711
   message: "Implemented in PR on branch jgstern-agent/feat/tui-annotation-mode. Screenshot capture with annotation overlay, mouse rect drawing, label placement, SVG injection."  # f711
+- op: discuss  # de07
+  at: '2026-04-02T14:46:59Z'  # de07
+  by: human  # de07
+  actor: jgstern  # de07
+  clock: 8  # de07
+  nonce: de07  # de07
+  message: "PR number/commit please?"  # de07
