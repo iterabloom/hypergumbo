@@ -1432,12 +1432,19 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
 
 
 class _AnnotationCanvas(Widget):
-    """Full-screen overlay widget for drawing annotations.
+    """Full-screen widget that replays captured screen strips with annotations merged in.
 
-    Uses ``render_line()`` to produce per-line Strips where annotation
-    cells have colored characters and non-annotation cells are truly
-    transparent (Rich Segments with ``bgcolor=None``).  This lets the
-    frozen TUI screen show through the overlay.
+    Uses the "merged render" approach: the original screen's fully-styled
+    ``Strip`` objects (captured via ``screen._compositor.render_strips()``)
+    are stored and replayed in ``render_line()``.  Annotation characters
+    are merged into those strips at specific cell positions, so the user
+    sees the original screen content with red annotation shapes on top.
+
+    Textual's compositor is an occlusion engine with no per-cell
+    transparency — mounting any full-screen widget on a ModalScreen
+    paints over everything underneath.  This merged approach bypasses
+    that limitation by programmatically combining both layers in a
+    single ``render_line()`` call.
     """
 
     DEFAULT_CSS = """
@@ -1449,9 +1456,9 @@ class _AnnotationCanvas(Widget):
 
     can_focus = False
 
-    def __init__(self, background_lines: list[str] | None = None, **kwargs: Any) -> None:
+    def __init__(self, frozen_strips: list | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._background_lines = background_lines or []
+        self._frozen_strips: list = frozen_strips or []
         self._rects: list[tuple[int, int, int, int, str]] = []
         self._labels: list[tuple[int, int, str, str]] = []
         self._arrows: list[tuple[int, int, int, int, str]] = []
@@ -1514,32 +1521,26 @@ class _AnnotationCanvas(Widget):
             result.append(LabelAnnotation(cell_x=x, cell_y=y, text=text, color=color))
         return result
 
-    def _build_grid(self) -> list[list[str | None]]:
-        """Build a sparse annotation grid (None = transparent cell)."""
-        width = self.size.width or 80
-        height = self.size.height or 24
-        grid: list[list[str | None]] = [[None] * width for _ in range(height)]
+    def _build_annotations_for_line(self, y: int, width: int) -> dict[int, str]:
+        """Build annotation chars for a single line: {x_col: char}."""
+        anns: dict[int, str] = {}
 
-        def _draw_rect(
-            x1: int, y1: int, x2: int, y2: int, ch: str = "█",
-        ) -> None:
-            for x in range(max(0, x1), min(width, x2 + 1)):
-                if 0 <= y1 < height:
-                    grid[y1][x] = ch
-                if 0 <= y2 < height:
-                    grid[y2][x] = ch
-            for y in range(max(0, y1), min(height, y2 + 1)):
+        def _rect_line(x1: int, y1: int, x2: int, y2: int, ch: str) -> None:
+            if y == y1 or y == y2:
+                for x in range(max(0, x1), min(width, x2 + 1)):
+                    anns[x] = ch
+            if y1 <= y <= y2:
                 if 0 <= x1 < width:
-                    grid[y][x1] = ch
+                    anns[x1] = ch
                 if 0 <= x2 < width:
-                    grid[y][x2] = ch
+                    anns[x2] = ch
 
         for x1, y1, x2, y2, _color in self._rects:
-            _draw_rect(x1, y1, x2, y2, "█")
+            _rect_line(x1, y1, x2, y2, "█")
 
         if self._draft_rect is not None:
             x1, y1, x2, y2 = self._draft_rect
-            _draw_rect(x1, y1, x2, y2, "░")
+            _rect_line(x1, y1, x2, y2, "░")
 
         for fx, fy, tx, ty, _color in self._arrows:
             dx = tx - fx
@@ -1548,63 +1549,73 @@ class _AnnotationCanvas(Widget):
             for i in range(steps + 1):
                 cx = fx + round(dx * i / steps)
                 cy = fy + round(dy * i / steps)
-                if 0 <= cy < height and 0 <= cx < width:
+                if cy == y and 0 <= cx < width:
                     if i == steps:
-                        grid[cy][cx] = "▶" if abs(dx) >= abs(dy) and dx >= 0 else \
-                                       "◀" if abs(dx) >= abs(dy) else \
-                                       "▼" if dy >= 0 else "▲"
+                        anns[cx] = "▶" if abs(dx) >= abs(dy) and dx >= 0 else \
+                                   "◀" if abs(dx) >= abs(dy) else \
+                                   "▼" if dy >= 0 else "▲"
                     else:
-                        grid[cy][cx] = "─" if abs(dx) >= abs(dy) else "│"
+                        anns[cx] = "─" if abs(dx) >= abs(dy) else "│"
 
         for lx, ly, text, _color in self._labels:
-            if 0 <= ly < height:
+            if ly == y:
                 for i, ch in enumerate(text):
                     cx = lx + i
                     if 0 <= cx < width:
-                        grid[ly][cx] = ch
+                        anns[cx] = ch
 
-        return grid
+        return anns
 
     def _render_canvas(self) -> None:
         """Trigger a re-render by refreshing the widget."""
         self.refresh()
 
     def render_line(self, y: int) -> Strip:
-        """Render a single line with frozen screen content as background.
+        """Render a single line by merging annotations onto the frozen screen strip.
 
-        Non-annotation cells show the captured screen text (the frozen
-        TUI state from before annotation mode was entered). Annotation
-        characters are rendered in bold red on top.
+        Replays the captured Strip from the original screen and overlays
+        annotation characters at specific cell positions.  This produces
+        a faithful reproduction of the original screen with red annotation
+        shapes drawn on top — no transparency needed.
         """
         from rich.segment import Segment
         from rich.style import Style
 
         width = self.size.width or 80
-        height = self.size.height or 24
-        if y < 0 or y >= height:
+
+        # Get the frozen background strip for this line
+        if y < len(self._frozen_strips):
+            base_strip = self._frozen_strips[y]
+        else:
             return Strip([Segment(" " * width)])
 
-        grid = self._build_grid()
-        if y >= len(grid):  # pragma: no cover — defensive for size change between calls
-            return Strip([Segment(" " * width)])
+        # Get annotation characters for this line
+        anns = self._build_annotations_for_line(y, width)
+        if not anns:
+            return base_strip
 
-        # Get background line (frozen screen content)
-        bg_line = ""
-        if y < len(self._background_lines):
-            bg_line = self._background_lines[y]
-
-        row = grid[y]
+        # Merge: walk through base strip segments, replacing annotated cells
         ann_style = Style(color="red", bold=True)
-        segments: list[Segment] = []
-        for i, ch in enumerate(row):
-            if ch is not None:
-                segments.append(Segment(ch, ann_style))
-            elif i < len(bg_line):
-                segments.append(Segment(bg_line[i]))
+        result: list[Segment] = []
+        col = 0
+        for seg in base_strip:
+            seg_text = seg.text
+            seg_style = seg.style
+            seg_len = len(seg_text)
+            # Check if any annotation chars overlap this segment
+            has_overlap = any(col + i in anns for i in range(seg_len))
+            if not has_overlap:
+                result.append(seg)
             else:
-                segments.append(Segment(" "))
+                # Split segment char-by-char at annotation positions
+                for i, ch in enumerate(seg_text):
+                    if (col + i) in anns:
+                        result.append(Segment(anns[col + i], ann_style))
+                    else:
+                        result.append(Segment(ch, seg_style))
+            col += seg_len
 
-        return Strip(segments)
+        return Strip(result)
 
 
 class AnnotationScreen(ModalScreen[list[object] | None]):
@@ -1654,11 +1665,11 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     def __init__(
         self, svg_content: str,
-        background_lines: list[str] | None = None,
+        frozen_strips: list | None = None,
     ) -> None:
         super().__init__()
         self._svg_content = svg_content
-        self._background_lines = background_lines or []
+        self._frozen_strips = frozen_strips or []
         self._mode: str = "rect"  # "rect" or "label"
         self._dragging = False
         self._drag_start: tuple[int, int] | None = None
@@ -1668,7 +1679,7 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     def compose(self) -> ComposeResult:
         yield _AnnotationCanvas(
-            background_lines=self._background_lines,
+            frozen_strips=self._frozen_strips,
             id="annotation-canvas",
         )
         yield Static(self._STATUS_TEXT, id="annotation-status")
@@ -3308,21 +3319,20 @@ class TrackerApp(App):
             path.write_text(svg)
         self.notify(f"Screenshot saved: {path}")
 
-        # Capture screen text for annotation overlay background
-        from textual.geometry import Region
-
-        screen_region = Region(0, 0, self.size.width, self.size.height)
+        # Capture fully-styled screen strips for the annotation overlay.
+        # Uses _compositor.render_strips() which returns Strip objects with
+        # all Rich styles intact — these are replayed by the canvas widget
+        # to show the original screen content behind annotations.
         try:
-            strips = self.screen.render_lines(screen_region)
-            bg_lines = [strip.text for strip in strips]
-        except Exception:  # pragma: no cover — defensive for render failure
-            bg_lines = []  # pragma: no cover
+            frozen_strips = list(self.screen._compositor.render_strips())
+        except Exception:  # pragma: no cover — defensive for compositor access
+            frozen_strips = []  # pragma: no cover
 
         # Open annotation mode
         self._pending_screenshot_path = path
         self._pending_svg = svg
         self.push_screen(
-            AnnotationScreen(svg, background_lines=bg_lines),
+            AnnotationScreen(svg, frozen_strips=frozen_strips),
             callback=self._on_annotation_result,
         )
 

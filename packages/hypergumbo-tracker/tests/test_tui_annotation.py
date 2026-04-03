@@ -51,19 +51,21 @@ class TestAnnotationCanvas:
         return canvas
 
     def _grid_lines(self, canvas: _AnnotationCanvas) -> list[str]:
-        """Convert canvas grid to lines of text for assertions."""
-        grid = canvas._build_grid()
-        return [
-            "".join(ch if ch is not None else " " for ch in row)
-            for row in grid
-        ]
+        """Convert annotation data to lines of text for assertions."""
+        width = canvas.size.width
+        height = canvas.size.height
+        lines = []
+        for y in range(height):
+            anns = canvas._build_annotations_for_line(y, width)
+            line = "".join(anns.get(x, " ") for x in range(width))
+            lines.append(line)
+        return lines
 
     def test_empty_canvas(self) -> None:
-        """Fresh canvas has all-None grid (transparent)."""
+        """Fresh canvas has no annotations."""
         canvas = self._make_canvas(10, 3)
-        grid = canvas._build_grid()
-        assert len(grid) == 3
-        assert all(all(ch is None for ch in row) for row in grid)
+        anns = canvas._build_annotations_for_line(0, 10)
+        assert anns == {}
 
     def test_set_draft_rect(self) -> None:
         """Draft rect renders with dashed characters."""
@@ -232,54 +234,60 @@ class TestAnnotationCanvas:
 
 
 class TestCanvasRenderLine:
-    """Tests for _AnnotationCanvas.render_line() with background lines."""
+    """Tests for _AnnotationCanvas.render_line() with frozen strips."""
 
-    def _make_canvas(
+    def _make_strips(self, lines: list[str]) -> list:
+        """Create Strip objects from plain text lines."""
+        from textual.strip import Strip as TStrip
+        from rich.segment import Segment
+        return [TStrip([Segment(line)]) for line in lines]
+
+    def _make_canvas_with_strips(
         self, width: int = 40, height: int = 10,
-        bg_lines: list[str] | None = None,
+        lines: list[str] | None = None,
     ) -> _AnnotationCanvas:
-        canvas = _AnnotationCanvas(background_lines=bg_lines)
+        strips = self._make_strips(lines) if lines else []
+        canvas = _AnnotationCanvas(frozen_strips=strips)
         type(canvas).size = property(lambda self: Size(width, height))
         canvas.refresh = lambda *a, **kw: None  # type: ignore[assignment]
         return canvas
 
-    def test_render_line_shows_background(self) -> None:
-        """Non-annotation cells show background text."""
-        canvas = self._make_canvas(10, 3, bg_lines=["ABCDEFGHIJ", "0123456789", "XXXXXXXXXX"])
+    def test_render_line_shows_frozen_background(self) -> None:
+        """Non-annotation cells show frozen screen content."""
+        canvas = self._make_canvas_with_strips(
+            10, 3, lines=["ABCDEFGHIJ", "0123456789", "XXXXXXXXXX"],
+        )
         strip = canvas.render_line(1)
         assert strip.text == "0123456789"
 
     def test_render_line_annotation_overrides_background(self) -> None:
-        """Annotation chars override background at their positions."""
-        canvas = self._make_canvas(10, 3, bg_lines=["ABCDEFGHIJ"])
+        """Annotation chars override frozen content at their positions."""
+        canvas = self._make_canvas_with_strips(10, 3, lines=["ABCDEFGHIJ"])
         canvas._rects = [(2, 0, 5, 0, "#ff3333")]
         strip = canvas.render_line(0)
         text = strip.text
         assert text[0] == "A"
         assert text[1] == "B"
-        # Positions 2-5 are annotation chars (rect border)
         assert text[2] == "█"
         assert text[6] == "G"
 
     def test_render_line_out_of_range(self) -> None:
         """Out-of-range y returns blank strip."""
-        canvas = self._make_canvas(10, 3)
-        strip = canvas.render_line(-1)
+        canvas = self._make_canvas_with_strips(10, 3)
+        strip = canvas.render_line(5)
         assert strip.text == " " * 10
-        strip2 = canvas.render_line(5)
-        assert strip2.text == " " * 10
 
-    def test_render_line_no_background_uses_spaces(self) -> None:
-        """Without background lines, non-annotation cells are spaces."""
-        canvas = self._make_canvas(10, 3)
+    def test_render_line_no_strips_uses_spaces(self) -> None:
+        """Without frozen strips, returns spaces."""
+        canvas = self._make_canvas_with_strips(10, 3)
         strip = canvas.render_line(0)
         assert strip.text == " " * 10
 
-    def test_render_line_short_background_pads_with_spaces(self) -> None:
-        """Background lines shorter than width pad with spaces."""
-        canvas = self._make_canvas(10, 3, bg_lines=["ABC"])
+    def test_render_line_no_annotation_returns_base_strip(self) -> None:
+        """Line with no annotations returns the frozen strip unchanged."""
+        canvas = self._make_canvas_with_strips(10, 3, lines=["ABCDEFGHIJ"])
         strip = canvas.render_line(0)
-        assert strip.text == "ABC       "
+        assert strip.text == "ABCDEFGHIJ"
 
 
 # ---------------------------------------------------------------------------
