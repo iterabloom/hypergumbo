@@ -811,6 +811,38 @@ class TestSVGInjection:
         assert "<defs>" in result
         assert "arrowhead" in result
 
+    def test_extracts_cell_geometry_from_realistic_svg(self, tmp_path: Path) -> None:
+        """Cell dimensions are extracted from Textual's SVG structure."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        # Realistic SVG with Textual's background rects and text elements
+        svg = (
+            '<svg class="rich-terminal" viewBox="0 0 3056 1758.0">'
+            '<rect x="0" y="123.5" width="3037.8" height="24.4"/>'
+            '<rect x="0" y="147.9" width="3037.8" height="24.4"/>'
+            '<rect x="0" y="172.3" width="3037.8" height="24.4"/>'
+            '<text x="12.2" y="20" textLength="12.2">X</text>'
+            '</svg>'
+        )
+        path = tmp_path / "test.svg"
+        path.write_text(svg)
+
+        app = TrackerApp.__new__(TrackerApp)
+        app._pending_screenshot_path = path
+        app._pending_svg = svg
+        app.notify = MagicMock()
+
+        # Place a rect at cell (10, 5) — should use extracted geometry
+        annotations = [RectAnnotation(10, 5, 20, 10)]
+        app._on_annotation_result(annotations)
+
+        result = path.read_text()
+        assert "<rect " in result
+        # With cell_w=12.2, x = 10*12.2 = 122.0
+        assert 'x="122.0"' in result
+        # With cell_h=24.4, y_offset=123.5, y = 5*24.4 + 123.5 = 245.5
+        assert 'y="245.5"' in result
+
     def test_no_arrowhead_defs_without_arrows(self, tmp_path: Path) -> None:
         """SVG defs with arrowhead marker are only added when arrows exist."""
         from hypergumbo_tracker.tui import TrackerApp
