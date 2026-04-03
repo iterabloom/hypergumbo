@@ -1690,35 +1690,39 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         return self.query_one("#annotation-canvas", _AnnotationCanvas)
 
     def on_mouse_down(self, event: MouseDown) -> None:
-        """Start a rect/arrow drag or place a label."""
+        """Start a rect/arrow drag or place a label.
+
+        Uses screen_x/screen_y (screen-absolute coordinates) so
+        positions align with the captured frozen strips.
+        """
         if self._mode == "label":
             self._label_pending = True
-            self._label_pos = (event.x, event.y)
+            self._label_pos = (event.screen_x, event.screen_y)
             self.query_one("#annotation-status", Static).update(
                 "  Type label text, then press Enter  "
             )
         else:
             self._dragging = True
-            self._drag_start = (event.x, event.y)
+            self._drag_start = (event.screen_x, event.screen_y)
 
     def on_mouse_move(self, event: MouseMove) -> None:
         """Update draft rect while dragging."""
         if self._dragging and self._drag_start is not None and self._mode == "rect":
             sx, sy = self._drag_start
-            self.canvas.set_draft_rect(sx, sy, event.x, event.y)
+            self.canvas.set_draft_rect(sx, sy, event.screen_x, event.screen_y)
 
     def on_mouse_up(self, event: MouseUp) -> None:
         """Commit the rect or arrow on mouse release."""
         if self._dragging and self._drag_start is not None:
             sx, sy = self._drag_start
-            has_area = abs(event.x - sx) > 1 or abs(event.y - sy) > 1
+            has_area = abs(event.screen_x - sx) > 1 or abs(event.screen_y - sy) > 1
             if self._mode == "arrow":
                 if has_area:
-                    self.canvas.add_arrow(sx, sy, event.x, event.y)
+                    self.canvas.add_arrow(sx, sy, event.screen_x, event.screen_y)
                 # No draft to discard for arrows
             else:
                 if has_area:
-                    self.canvas.set_draft_rect(sx, sy, event.x, event.y)
+                    self.canvas.set_draft_rect(sx, sy, event.screen_x, event.screen_y)
                     self.canvas.commit_rect()
                 else:
                     self.canvas.discard_draft()

@@ -33,6 +33,16 @@ from hypergumbo_tracker.tui import (
 )
 
 
+def _mouse_event(x: int, y: int) -> MagicMock:
+    """Create a mock mouse event with both widget-relative and screen coords."""
+    event = MagicMock()
+    event.x = x
+    event.y = y
+    event.screen_x = x
+    event.screen_y = y
+    return event
+
+
 # ---------------------------------------------------------------------------
 # _AnnotationCanvas unit tests
 # ---------------------------------------------------------------------------
@@ -413,9 +423,7 @@ class TestAnnotationScreen:
     def test_mouse_down_starts_rect_drag(self) -> None:
         """MouseDown in rect mode starts dragging."""
         screen = AnnotationScreen("<svg></svg>")
-        event = MagicMock()
-        event.x = 10
-        event.y = 5
+        event = _mouse_event(10, 5)
         screen.on_mouse_down(event)
         assert screen._dragging is True
         assert screen._drag_start == (10, 5)
@@ -426,9 +434,7 @@ class TestAnnotationScreen:
         screen._mode = "label"
         mock_status = MagicMock()
         screen.query_one = MagicMock(return_value=mock_status)
-        event = MagicMock()
-        event.x = 15
-        event.y = 8
+        event = _mouse_event(15, 8)
         screen.on_mouse_down(event)
         assert screen._label_pending is True
         assert screen._label_pos == (15, 8)
@@ -440,9 +446,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 20
-        event.y = 10
+        event = _mouse_event(20, 10)
         screen.on_mouse_move(event)
         mock_canvas.set_draft_rect.assert_called_once_with(5, 3, 20, 10)
 
@@ -451,9 +455,7 @@ class TestAnnotationScreen:
         screen = AnnotationScreen("<svg></svg>")
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 20
-        event.y = 10
+        event = _mouse_event(20, 10)
         screen.on_mouse_move(event)
         mock_canvas.set_draft_rect.assert_not_called()
 
@@ -464,9 +466,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 20
-        event.y = 10
+        event = _mouse_event(20, 10)
         screen.on_mouse_up(event)
         mock_canvas.commit_rect.assert_called_once()
         assert screen._dragging is False
@@ -478,9 +478,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 6  # Only 1 cell away
-        event.y = 3
+        event = _mouse_event(6, 3)  # Only 1 cell away
         screen.on_mouse_up(event)
         mock_canvas.discard_draft.assert_called_once()
         mock_canvas.commit_rect.assert_not_called()
@@ -566,9 +564,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 20
-        event.y = 10
+        event = _mouse_event(20, 10)
         screen.on_mouse_up(event)
         mock_canvas.add_arrow.assert_called_once_with(5, 3, 20, 10)
         del type(screen).canvas
@@ -581,9 +577,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 6
-        event.y = 3
+        event = _mouse_event(6, 3)
         screen.on_mouse_up(event)
         mock_canvas.add_arrow.assert_not_called()
         del type(screen).canvas
@@ -596,9 +590,7 @@ class TestAnnotationScreen:
         screen._drag_start = (5, 3)
         mock_canvas = MagicMock()
         type(screen).canvas = property(lambda self: mock_canvas)
-        event = MagicMock()
-        event.x = 20
-        event.y = 10
+        event = _mouse_event(20, 10)
         screen.on_mouse_move(event)
         mock_canvas.set_draft_rect.assert_not_called()
         del type(screen).canvas
