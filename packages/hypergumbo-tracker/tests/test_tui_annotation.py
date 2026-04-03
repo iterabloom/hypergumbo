@@ -289,6 +289,31 @@ class TestCanvasRenderLine:
         strip = canvas.render_line(0)
         assert strip.text == "ABCDEFGHIJ"
 
+    def test_render_line_partial_segment_overlap(self) -> None:
+        """Segments without annotation overlap are passed through unchanged."""
+        from textual.strip import Strip as TStrip
+        from rich.segment import Segment
+        from rich.style import Style
+
+        # Multi-segment strip: "AAAA" + "BBBB" (2 segments, 8 chars)
+        style_a = Style(color="green")
+        style_b = Style(color="blue")
+        base = TStrip([Segment("AAAA", style_a), Segment("BBBB", style_b)])
+        canvas = _AnnotationCanvas(frozen_strips=[base])
+        type(canvas).size = property(lambda self: Size(8, 1))
+        canvas.refresh = lambda *a, **kw: None  # type: ignore[assignment]
+        # Annotation only on first segment (x=1)
+        canvas._labels = [(1, 0, "X", "#ff3333")]
+        strip = canvas.render_line(0)
+        text = strip.text
+        # First segment split: A, X, A, A (annotation at pos 1)
+        assert text[0] == "A"
+        assert text[1] == "X"
+        assert text[2] == "A"
+        # Second segment passed through unchanged (no overlap)
+        assert text[4] == "B"
+        assert text[7] == "B"
+
 
 # ---------------------------------------------------------------------------
 # AnnotationScreen unit tests
