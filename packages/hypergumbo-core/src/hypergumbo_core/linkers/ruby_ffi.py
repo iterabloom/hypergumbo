@@ -50,6 +50,11 @@ from .registry import (
 
 PASS_ID = make_pass_id("ruby-ffi-linker")
 
+# Pseudo-namespace prefix for FFI calls to external shared libraries.
+# Follows the cgo/pyffi pattern so the io_boundary tagger can redirect
+# to the C catalog via _resolve_ffi_catalog().
+RUBY_FFI_STDLIB_PREFIX = "ruby:C_ffi:0-0:"
+
 # Regex for attach_function declarations in Ruby FFI gem
 # Matches:
 #   attach_function :name, [params], :return
@@ -182,9 +187,6 @@ def link_ruby_ffi(
         ffi_calls = _scan_ruby_file_for_ffi(rb_path)
 
         for func_name, line_num in ffi_calls:
-            if func_name not in c_lookup:
-                continue
-
             # Find the enclosing Ruby symbol for this file
             src_sym = None
             for sym in ruby_symbols:
@@ -207,19 +209,36 @@ def link_ruby_ffi(
                 continue
             seen_edges.add(dedup_key)
 
-            c_sym = c_lookup[func_name]
-            result_edges.append(Edge.create(
-                src=src_sym.id,
-                dst=c_sym.id,
-                edge_type="ffi_bridge",
-                line=line_num,
-                confidence=0.90,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type="ruby_ffi_attach",
-                access_mode="write",
-                dest_access_mode="read",
-            ))
+            if func_name in c_lookup:
+                # Resolved: repo-local C symbol
+                c_sym = c_lookup[func_name]
+                result_edges.append(Edge.create(
+                    src=src_sym.id,
+                    dst=c_sym.id,
+                    edge_type="ffi_bridge",
+                    line=line_num,
+                    confidence=0.90,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ruby_ffi_attach",
+                    access_mode="write",
+                    dest_access_mode="read",
+                ))
+            else:
+                # Unresolved: external library (e.g., libzmq, libc)
+                dst = f"{RUBY_FFI_STDLIB_PREFIX}{func_name}:unresolved"
+                result_edges.append(Edge.create(
+                    src=src_sym.id,
+                    dst=dst,
+                    edge_type="ffi_bridge",
+                    line=line_num,
+                    confidence=0.75,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ruby_ffi_attach_unresolved",
+                    access_mode="write",
+                    dest_access_mode="read",
+                ))
 
     # --- Phase 2: Scan C files for rb_define_method patterns ---
     c_files: set[str] = set()

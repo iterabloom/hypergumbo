@@ -687,6 +687,10 @@ def _resolve_ffi_catalog(
     if lang == "python" and module_hint == "C_stdlib":
         return catalogs.get("c"), None
 
+    # Ruby FFI gem attach_function → C stdlib/external lib
+    if lang == "ruby" and module_hint == "C_ffi":
+        return catalogs.get("c"), None
+
     return catalogs.get(lang), module_hint
 
 

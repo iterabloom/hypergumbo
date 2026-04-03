@@ -164,9 +164,9 @@ class TestRubyFFIGem:
         assert c_add.id in dst_ids
         assert c_mul.id in dst_ids
 
-    def test_no_link_when_c_function_missing(self, tmp_path: Path) -> None:
-        """No edge when attach_function references a C function not in symbols."""
-        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+    def test_unresolved_edge_when_c_function_missing(self, tmp_path: Path) -> None:
+        """Unresolved edge when attach_function references a C function not in symbols."""
+        from hypergumbo_core.linkers.ruby_ffi import RUBY_FFI_STDLIB_PREFIX, link_ruby_ffi
 
         rb_file = tmp_path / "lib" / "mylib.rb"
         rb_file.parent.mkdir(parents=True)
@@ -189,7 +189,9 @@ class TestRubyFFIGem:
             edges=[],
         )
 
-        assert len(result.edges) == 0
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == f"{RUBY_FFI_STDLIB_PREFIX}nonexistent:unresolved"
+        assert result.edges[0].evidence_type == "ruby_ffi_attach_unresolved"
 
     def test_attach_function_with_string_name(self, tmp_path: Path) -> None:
         """attach_function with string name (instead of symbol)."""
@@ -219,6 +221,119 @@ class TestRubyFFIGem:
 
         assert len(result.edges) == 1
         assert result.edges[0].dst == c_func.id
+
+
+class TestRubyFFIUnresolvedEdges:
+    """Tests for unresolved edges when C symbols are from external libraries."""
+
+    def test_attach_function_external_lib_creates_unresolved(self, tmp_path: Path) -> None:
+        """attach_function to external lib creates unresolved edge."""
+        from hypergumbo_core.linkers.ruby_ffi import RUBY_FFI_STDLIB_PREFIX, link_ruby_ffi
+
+        rb_file = tmp_path / "lib" / "zmq.rb"
+        rb_file.parent.mkdir(parents=True)
+        rb_file.write_text(
+            "require 'ffi'\n"
+            "module LibZMQ\n"
+            "  extend FFI::Library\n"
+            "  ffi_lib 'libzmq'\n"
+            "  attach_function :zmq_send, [:pointer, :pointer, :size_t, :int], :int\n"
+            "end\n"
+        )
+
+        rb_sym = _make_ruby_symbol(
+            "LibZMQ", kind="module", path=str(rb_file), start_line=2, end_line=6
+        )
+
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[rb_sym],
+            c_symbols=[],  # No repo-local C symbols
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.edge_type == "ffi_bridge"
+        assert edge.dst == f"{RUBY_FFI_STDLIB_PREFIX}zmq_send:unresolved"
+        assert edge.evidence_type == "ruby_ffi_attach_unresolved"
+        assert edge.confidence == 0.75
+
+    def test_prefers_resolved_when_c_symbol_exists(self, tmp_path: Path) -> None:
+        """Resolved edge preferred over unresolved when C symbol is repo-local."""
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        rb_file = tmp_path / "lib" / "mylib.rb"
+        rb_file.parent.mkdir(parents=True)
+        rb_file.write_text(
+            "require 'ffi'\n"
+            "module MyLib\n"
+            "  extend FFI::Library\n"
+            "  attach_function :compute, [:int], :int\n"
+            "end\n"
+        )
+
+        rb_sym = _make_ruby_symbol(
+            "MyLib", kind="module", path=str(rb_file), start_line=2, end_line=5
+        )
+        c_func = _make_c_symbol("compute", path="src/compute.c")
+
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[rb_sym],
+            c_symbols=[c_func],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == c_func.id
+        assert result.edges[0].evidence_type == "ruby_ffi_attach"
+
+    def test_multiple_external_functions(self, tmp_path: Path) -> None:
+        """Multiple attach_function to external lib each get unresolved edges."""
+        from hypergumbo_core.linkers.ruby_ffi import RUBY_FFI_STDLIB_PREFIX, link_ruby_ffi
+
+        rb_file = tmp_path / "lib" / "libc.rb"
+        rb_file.parent.mkdir(parents=True)
+        rb_file.write_text(
+            "require 'ffi'\n"
+            "module LibC\n"
+            "  extend FFI::Library\n"
+            "  ffi_lib FFI::Library::LIBC\n"
+            "  attach_function :malloc, [:size_t], :pointer\n"
+            "  attach_function :free, [:pointer], :void\n"
+            "  attach_function :memcpy, [:pointer, :pointer, :size_t], :pointer\n"
+            "end\n"
+        )
+
+        rb_sym = _make_ruby_symbol(
+            "LibC", kind="module", path=str(rb_file), start_line=2, end_line=8
+        )
+
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[rb_sym],
+            c_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 3
+        dst_set = {e.dst for e in result.edges}
+        assert f"{RUBY_FFI_STDLIB_PREFIX}malloc:unresolved" in dst_set
+        assert f"{RUBY_FFI_STDLIB_PREFIX}free:unresolved" in dst_set
+        assert f"{RUBY_FFI_STDLIB_PREFIX}memcpy:unresolved" in dst_set
+
+    def test_io_boundary_resolves_ruby_ffi(self) -> None:
+        """The io_boundary tagger redirects ruby:C_ffi: to the C catalog."""
+        from hypergumbo_core.io_boundary import _resolve_ffi_catalog
+
+        class FakeCatalog:
+            pass
+        catalogs = {"c": FakeCatalog(), "ruby": FakeCatalog()}
+
+        catalog, hint = _resolve_ffi_catalog("ruby", "C_ffi", catalogs)
+        assert catalog is catalogs["c"]
+        assert hint is None
 
 
 class TestRubyCExtension:
