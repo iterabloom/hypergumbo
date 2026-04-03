@@ -58,7 +58,7 @@ def create_app() -> Starlette:
     Returns a configured Starlette app. Does not start the server;
     use ``run_server()`` for that.
     """
-    global _start_time  # noqa: PLW0603
+    global _start_time
     _start_time = time.monotonic()
 
     routes = [
