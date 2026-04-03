@@ -27,3 +27,18 @@
   nonce: f80c  # f80c
   set:  # f80c
     parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # f80c
+- op: update  # 67af
+  at: '2026-04-03T22:02:03Z'  # 67af
+  by: agent  # 67af
+  actor: jgstern_agent  # 67af
+  clock: 3  # 67af
+  nonce: 67af  # 67af
+  set:  # 67af
+    status: done  # 67af
+- op: discuss  # 5a69
+  at: '2026-04-03T22:02:03Z'  # 5a69
+  by: agent  # 5a69
+  actor: jgstern_agent  # 5a69
+  clock: 4  # 5a69
+  nonce: 5a69  # 5a69
+  message: "Backend implemented in PR #114. save_screenshot() and save_screenshot_with_item() utilities. TUI wiring (calling these from annotation screen) is part of WI-fubij/WI-gikut."  # 5a69
