@@ -141,6 +141,17 @@ class TestApiAddItem:
         resp = client.post("/api/items", json={"kind": "work_item"})
         assert resp.status_code == 400
 
+    def test_add_item_invalid_tier(self, tmp_path: Path) -> None:
+        """Returns 400 when tier is invalid."""
+        client, _ = _make_client(tmp_path)
+        resp = client.post("/api/items", json={
+            "kind": "work_item",
+            "title": "Bad tier",
+            "tier": "nonexistent_tier",
+        })
+        assert resp.status_code == 400
+        assert "Invalid tier" in resp.json()["error"]
+
 
 class TestApiUpdateItem:
     """Tests for POST /api/items/{id}/update endpoint."""
