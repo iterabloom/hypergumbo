@@ -27,3 +27,18 @@
   nonce: da90  # da90
   set:  # da90
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # da90
+- op: update  # 8a83
+  at: '2026-04-03T19:45:15Z'  # 8a83
+  by: agent  # 8a83
+  actor: jgstern_agent  # 8a83
+  clock: 3  # 8a83
+  nonce: 8a83  # 8a83
+  set:  # 8a83
+    status: done  # 8a83
+- op: discuss  # aa6e
+  at: '2026-04-03T19:45:15Z'  # aa6e
+  by: agent  # aa6e
+  actor: jgstern_agent  # aa6e
+  clock: 4  # aa6e
+  nonce: aa6e  # aa6e
+  message: "Already addressed in PR #96 and PR #100/103. starlette, uvicorn, httpx, watchfiles, bcrypt added to base dependencies (not optional extras) so CI installs them automatically."  # aa6e

@@ -28,3 +28,18 @@
   nonce: '6e93'  # 6e93
   set:  # 6e93
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 6e93
+- op: update  # 33a2
+  at: '2026-04-03T20:30:35Z'  # 33a2
+  by: agent  # 33a2
+  actor: jgstern_agent  # 33a2
+  clock: 3  # 33a2
+  nonce: 33a2  # 33a2
+  set:  # 33a2
+    status: done  # 33a2
+- op: discuss  # 11e2
+  at: '2026-04-03T20:30:35Z'  # 11e2
+  by: agent  # 11e2
+  actor: jgstern_agent  # 11e2
+  clock: 4  # 11e2
+  nonce: '11e2'  # 11e2
+  message: "Implemented in PR #107. systemd unit file with security hardening + DEPLOYMENT.md guide (Tor, auth config, health check)."  # 11e2
