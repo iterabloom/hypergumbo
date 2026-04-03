@@ -27,3 +27,18 @@
   nonce: c27c  # c27c
   set:  # c27c
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # c27c
+- op: update  # d792
+  at: '2026-04-03T16:45:15Z'  # d792
+  by: agent  # d792
+  actor: jgstern_agent  # d792
+  clock: 3  # d792
+  nonce: d792  # d792
+  set:  # d792
+    status: done  # d792
+- op: discuss  # ae04
+  at: '2026-04-03T16:45:15Z'  # ae04
+  by: agent  # ae04
+  actor: jgstern_agent  # ae04
+  clock: 4  # ae04
+  nonce: ae04  # ae04
+  message: "Implemented in PR #99 (pending merge). WebSocket /ws endpoint with typed JSON messages: state_snapshot on connect, command for tracker ops, event for mutations, error for failures. 10 tests."  # ae04

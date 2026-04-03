@@ -27,3 +27,18 @@
   nonce: fea5  # fea5
   set:  # fea5
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # fea5
+- op: update  # f226
+  at: '2026-04-03T16:21:54Z'  # f226
+  by: agent  # f226
+  actor: jgstern_agent  # f226
+  clock: 3  # f226
+  nonce: f226  # f226
+  set:  # f226
+    status: done  # f226
+- op: discuss  # aaec
+  at: '2026-04-03T16:21:54Z'  # aaec
+  by: agent  # aaec
+  actor: jgstern_agent  # aaec
+  clock: 4  # aaec
+  nonce: aaec  # aaec
+  message: "Implemented in PR #98. REST API endpoints: GET /api/items, GET /api/items/{id}, GET /api/ready, POST /api/items, POST /api/items/{id}/update, POST /api/items/{id}/discuss. Wired to TrackerSet — same core engine as CLI/TUI."  # aaec

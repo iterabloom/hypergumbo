@@ -27,3 +27,18 @@
   nonce: 0fda  # 0fda
   set:  # 0fda
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 0fda
+- op: update  # fd9a
+  at: '2026-04-03T17:37:08Z'  # fd9a
+  by: agent  # fd9a
+  actor: jgstern_agent  # fd9a
+  clock: 3  # fd9a
+  nonce: fd9a  # fd9a
+  set:  # fd9a
+    status: done  # fd9a
+- op: discuss  # 6b67
+  at: '2026-04-03T17:37:08Z'  # 6b67
+  by: agent  # 6b67
+  actor: jgstern_agent  # 6b67
+  clock: 4  # 6b67
+  nonce: 6b67  # 6b67
+  message: "Implemented in PR #100 (pending merge). watchfiles integration: filesystem watcher detects CLI/TUI ops file changes, broadcasts state_snapshot to WebSocket clients. Starlette lifespan lifecycle. 11 tests."  # 6b67
