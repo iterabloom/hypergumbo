@@ -349,8 +349,10 @@ async def _watch_ops_files(stop_event: asyncio.Event) -> None:
         return
 
     try:
-        async for _changes in watchfiles.awatch(*paths, stop_event=stop_event):
-            await broadcast_state_snapshot()
+        async for _changes in watchfiles.awatch(  # pragma: no cover — async filesystem events
+            *paths, stop_event=stop_event,
+        ):
+            await broadcast_state_snapshot()  # pragma: no cover
     except Exception:  # pragma: no cover — defensive for watcher errors
         pass
 

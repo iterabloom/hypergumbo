@@ -236,6 +236,50 @@ class TestStartStopWatcher:
             serve_mod._watcher_task = old_task
 
 
+class TestWatchOpsFilesEarlyReturn:
+    """Test _watch_ops_files returns early when no paths."""
+
+    @pytest.mark.asyncio
+    async def test_watch_returns_when_no_paths(self) -> None:
+        """_watch_ops_files returns immediately when no watch paths."""
+        import hypergumbo_tracker.serve as serve_mod
+
+        old_ts = serve_mod._tracker_set
+        serve_mod._tracker_set = None  # No tracker → no paths
+
+        try:
+            stop = asyncio.Event()
+            # Should return immediately since get_watch_paths() is empty
+            await serve_mod._watch_ops_files(stop)
+        finally:
+            serve_mod._tracker_set = old_ts
+
+
+class TestLifespanIntegration:
+    """Test Starlette lifespan triggers watcher start/stop."""
+
+    def test_lifespan_starts_and_stops_watcher(self, tmp_path: Path) -> None:
+        """TestClient triggers lifespan which starts/stops the watcher."""
+        import hypergumbo_tracker.serve as serve_mod
+        from starlette.testclient import TestClient
+
+        ts = _make_tracker(tmp_path)
+        app = serve_mod.create_app(tracker_set=ts)
+
+        old_task = serve_mod._watcher_task
+        serve_mod._watcher_task = None
+
+        try:
+            # TestClient with raise_server_exceptions triggers lifespan
+            with TestClient(app) as client:
+                resp = client.get("/health")
+                assert resp.status_code == 200
+            # After exiting the context, stop_watcher should have been called
+            assert serve_mod._watcher_task is None
+        finally:
+            serve_mod._watcher_task = old_task
+
+
 class TestWatcherIntegration:
     """Integration test: file change triggers broadcast."""
 
