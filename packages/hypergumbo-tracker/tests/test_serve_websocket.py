@@ -176,6 +176,40 @@ class TestWebSocketCommand:
             resp = ws.receive_json()
             assert resp["type"] == "error"
 
+    def test_unknown_message_type_returns_error(self, tmp_path: Path) -> None:
+        """Message with unrecognized type returns error."""
+        client, _ = _make_ws_client(tmp_path)
+
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()  # consume state_snapshot
+            ws.send_json({"type": "subscribe", "channel": "items"})
+            resp = ws.receive_json()
+            assert resp["type"] == "error"
+            assert "Unknown message type" in resp["message"]
+
+    def test_command_ready(self, tmp_path: Path) -> None:
+        """'ready' command returns actionable items."""
+        client, ts = _make_ws_client(tmp_path)
+        ts.add(kind="work_item", title="Ready item", tier=Tier.WORKSPACE)
+
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()  # consume state_snapshot
+            ws.send_json({"type": "command", "action": "ready"})
+            resp = ws.receive_json()
+            assert resp["type"] == "result"
+            assert len(resp["items"]) >= 1
+
+    def test_command_missing_item_id_returns_error(self, tmp_path: Path) -> None:
+        """Command requiring item_id but missing it returns error."""
+        client, _ = _make_ws_client(tmp_path)
+
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_json()  # consume state_snapshot
+            ws.send_json({"type": "command", "action": "update", "set_fields": {"status": "done"}})
+            resp = ws.receive_json()
+            assert resp["type"] == "error"
+            assert "Missing field" in resp["message"]
+
 
 class TestWebSocketWithoutTracker:
     """WebSocket without TrackerSet configured."""
