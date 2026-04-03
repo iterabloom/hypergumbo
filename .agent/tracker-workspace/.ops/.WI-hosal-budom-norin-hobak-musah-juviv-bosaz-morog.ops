@@ -20,3 +20,11 @@
     pr_ref:  # 43b5
     description: "Serve built BlockSuite static assets from htrac serve. Starlette StaticFiles mount or equivalent. Assets built by Vite, served at a known path. Must work behind Tor (high latency first load — service worker caches app shell for subsequent loads). See docs/adr/0019-remote-access-transport.md §Web frontend, §Server."  # 43b5
     fields: {}  # 43b5
+- op: update  # 9913
+  at: '2026-04-03T08:26:56Z'  # 9913
+  by: agent  # 9913
+  actor: jgstern_agent  # 9913
+  clock: 2  # 9913
+  nonce: '9913'  # 9913
+  set:  # 9913
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9913

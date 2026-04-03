@@ -19,3 +19,11 @@
     pr_ref:  # 19de
     description: "Define config.yaml schema for auth section: session_ttl_minutes, duress_module path, brute_force rate limit params (base delay, max delay, max consecutive failures), WebAuthn RP ID/origin. Validate on startup. See docs/adr/0019-remote-access-transport.md §Session management, §Password brute-force protection."  # 19de
     fields: {}  # 19de
+- op: update  # c113
+  at: '2026-04-03T08:26:56Z'  # c113
+  by: agent  # c113
+  actor: jgstern_agent  # c113
+  clock: 2  # c113
+  nonce: c113  # c113
+  set:  # c113
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # c113

@@ -19,3 +19,11 @@
     pr_ref:  # 1854
     description: "Implement typed JSON WebSocket messages: client→server 'command' (invoke tracker ops), server→client 'event' (state change), 'state_snapshot' (full state on connect/reconnect), 'error' (structured error). Define formal message schema before implementation. See docs/adr/0019-remote-access-transport.md §WebSocket protocol."  # 1854
     fields: {}  # 1854
+- op: update  # c27c
+  at: '2026-04-03T08:26:55Z'  # c27c
+  by: agent  # c27c
+  actor: jgstern_agent  # c27c
+  clock: 2  # c27c
+  nonce: c27c  # c27c
+  set:  # c27c
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # c27c

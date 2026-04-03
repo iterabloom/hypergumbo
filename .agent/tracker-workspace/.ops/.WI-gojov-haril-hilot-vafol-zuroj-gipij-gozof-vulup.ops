@@ -19,3 +19,11 @@
     pr_ref:  # 8f55
     description: "WebSocket client connecting to htrac serve. Handle state_snapshot on connect/reconnect, event messages for live updates, command messages for user actions. Responsive layout: full canvas on iPad/desktop, triage-optimized on phone. See docs/adr/0019-remote-access-transport.md §WebSocket protocol, §Web frontend."  # 8f55
     fields: {}  # 8f55
+- op: update  # 6879
+  at: '2026-04-03T08:26:56Z'  # 6879
+  by: agent  # 6879
+  actor: jgstern_agent  # 6879
+  clock: 2  # 6879
+  nonce: '6879'  # 6879
+  set:  # 6879
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 6879

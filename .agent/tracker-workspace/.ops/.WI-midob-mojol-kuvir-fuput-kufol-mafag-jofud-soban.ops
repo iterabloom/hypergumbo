@@ -19,3 +19,11 @@
     pr_ref:  # 34e5
     description: "Document torrc config for publishing v3 onion service forwarding to htrac serve local listener (127.0.0.1 or Unix socket). Enable v3 client authorization (x25519 keypair). Outbound-only — no inbound ports, no public IP, no DNS. See docs/adr/0019-remote-access-transport.md §Transport: Tor."  # 34e5
     fields: {}  # 34e5
+- op: update  # 2ef1
+  at: '2026-04-03T08:26:56Z'  # 2ef1
+  by: agent  # 2ef1
+  actor: jgstern_agent  # 2ef1
+  clock: 2  # 2ef1
+  nonce: 2ef1  # 2ef1
+  set:  # 2ef1
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 2ef1

@@ -19,3 +19,11 @@
     pr_ref:  # a87f
     description: "Opaque cryptographically random session tokens, stored server-side only. Configurable TTL (default 15 min, fixed window — no interaction reset). Session record: creation time, expiry, auth class (normal/duress), client fingerprint. All sessions invalidated on restart. Cookie-based delivery. See docs/adr/0019-remote-access-transport.md §Session management."  # a87f
     fields: {}  # a87f
+- op: update  # ab48
+  at: '2026-04-03T08:26:55Z'  # ab48
+  by: agent  # ab48
+  actor: jgstern_agent  # ab48
+  clock: 2  # ab48
+  nonce: ab48  # ab48
+  set:  # ab48
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ab48

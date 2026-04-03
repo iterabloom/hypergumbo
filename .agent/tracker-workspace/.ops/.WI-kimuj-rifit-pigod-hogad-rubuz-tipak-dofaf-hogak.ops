@@ -19,3 +19,11 @@
     pr_ref:  # 1de2
     description: "Set up BlockSuite + Vite project for the htrac web frontend. Block-based document editor + infinite canvas (edgeless mode). Build as static assets served by htrac serve. Service worker for app shell caching (critical for Tor latency — only first load is heavy). See docs/adr/0019-remote-access-transport.md §Web frontend."  # 1de2
     fields: {}  # 1de2
+- op: update  # 9989
+  at: '2026-04-03T08:26:56Z'  # 9989
+  by: agent  # 9989
+  actor: jgstern_agent  # 9989
+  clock: 2  # 9989
+  nonce: '9989'  # 9989
+  set:  # 9989
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9989

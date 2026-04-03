@@ -19,3 +19,11 @@
     pr_ref:  # c9af
     description: "Use watchfiles (Rust-based, async-native) to detect when CLI or TUI writes ops files. On change: recompile TrackerSet state, push updated state to connected WebSocket clients. Sub-second latency. No IPC — just flock + inotify. See docs/adr/0019-remote-access-transport.md §CLI/server coexistence."  # c9af
     fields: {}  # c9af
+- op: update  # 0fda
+  at: '2026-04-03T08:26:55Z'  # 0fda
+  by: agent  # 0fda
+  actor: jgstern_agent  # 0fda
+  clock: 2  # 0fda
+  nonce: 0fda  # 0fda
+  set:  # 0fda
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 0fda

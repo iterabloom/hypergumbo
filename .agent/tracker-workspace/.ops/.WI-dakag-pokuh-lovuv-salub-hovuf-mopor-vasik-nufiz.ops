@@ -19,3 +19,11 @@
     pr_ref:  # 1a79
     description: "PLACEHOLDER — requires Apple Developer account ($99/year). Xcode project, signing, provisioning profiles. TestFlight distribution for personal use (avoids App Store review). Universal binary target. See docs/adr/0019-remote-access-transport.md §Costs."  # 1a79
     fields: {}  # 1a79
+- op: update  # db2d
+  at: '2026-04-03T08:26:56Z'  # db2d
+  by: agent  # db2d
+  actor: jgstern_agent  # db2d
+  clock: 2  # db2d
+  nonce: db2d  # db2d
+  set:  # db2d
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # db2d

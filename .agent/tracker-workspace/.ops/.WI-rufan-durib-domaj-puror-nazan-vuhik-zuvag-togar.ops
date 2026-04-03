@@ -19,3 +19,11 @@
     pr_ref:  # e243
     description: "Server stores bcrypt hashes for both real and duress passwords. After WebAuthn success, verify password. Real password → normal session. Duress password → session tagged server-side as duress (indistinguishable token). Rate limiting per WebAuthn credential with exponential backoff. Configurable max failures before credential lockout. See docs/adr/0019-remote-access-transport.md §Authentication factor 3-4."  # e243
     fields: {}  # e243
+- op: update  # ca9b
+  at: '2026-04-03T08:26:55Z'  # ca9b
+  by: agent  # ca9b
+  actor: jgstern_agent  # ca9b
+  clock: 2  # ca9b
+  nonce: ca9b  # ca9b
+  set:  # ca9b
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ca9b

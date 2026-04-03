@@ -19,3 +19,11 @@
     pr_ref:  # d197
     description: "Define DuressHandler Protocol: on_duress_login(session, context) called once per duress session, filter_response(session, response) called on every response. User implements their own handler (gitignored, not tracked). Loaded from config.yaml auth.duress_module at startup. Timeout enforcement to prevent timing side-channel. See docs/adr/0019-remote-access-transport.md §Duress session behavior."  # d197
     fields: {}  # d197
+- op: update  # 64f1
+  at: '2026-04-03T08:26:56Z'  # 64f1
+  by: agent  # 64f1
+  actor: jgstern_agent  # 64f1
+  clock: 2  # 64f1
+  nonce: 64f1  # 64f1
+  set:  # 64f1
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 64f1

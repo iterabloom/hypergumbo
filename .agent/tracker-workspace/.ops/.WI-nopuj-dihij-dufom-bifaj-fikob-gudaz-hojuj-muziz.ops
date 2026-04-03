@@ -19,3 +19,11 @@
     pr_ref:  # 2da1
     description: "Render tracker items in BlockSuite block mode: item details, status, discussion threads, checklists. Support update/discuss/lock actions via WebSocket commands. Edgeless mode for spatial layout and diagramming. See docs/adr/0019-remote-access-transport.md §Web frontend."  # 2da1
     fields: {}  # 2da1
+- op: update  # 8f54
+  at: '2026-04-03T08:26:56Z'  # 8f54
+  by: agent  # 8f54
+  actor: jgstern_agent  # 8f54
+  clock: 2  # 8f54
+  nonce: 8f54  # 8f54
+  set:  # 8f54
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 8f54

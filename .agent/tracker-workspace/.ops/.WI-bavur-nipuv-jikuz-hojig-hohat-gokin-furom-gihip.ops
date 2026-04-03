@@ -19,3 +19,11 @@
     pr_ref:  # 2028
     description: "Wire htrac serve to the existing TrackerSet with flock-based locking. Command handlers (add, update, discuss, lock, etc.) callable from HTTP/WebSocket adapter. Same core as CLI/TUI — no separate state. Event bus: state changes push to all subscribers. See docs/adr/0019-remote-access-transport.md §Server architecture."  # 2028
     fields: {}  # 2028
+- op: update  # fea5
+  at: '2026-04-03T08:26:55Z'  # fea5
+  by: agent  # fea5
+  actor: jgstern_agent  # fea5
+  clock: 2  # fea5
+  nonce: fea5  # fea5
+  set:  # fea5
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # fea5

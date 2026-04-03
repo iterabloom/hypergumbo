@@ -19,3 +19,11 @@
     pr_ref:  # bbe0
     description: "Create htrac serve command in hypergumbo-tracker. Starlette + uvicorn, binds 127.0.0.1 only. PID file, --background/--stop/--status flags. /health endpoint. Graceful shutdown (drain WebSocket, flush ops). Logs to file or journald. See docs/adr/0019-remote-access-transport.md §Server."  # bbe0
     fields: {}  # bbe0
+- op: update  # ddca
+  at: '2026-04-03T08:26:55Z'  # ddca
+  by: agent  # ddca
+  actor: jgstern_agent  # ddca
+  clock: 2  # ddca
+  nonce: ddca  # ddca
+  set:  # ddca
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ddca

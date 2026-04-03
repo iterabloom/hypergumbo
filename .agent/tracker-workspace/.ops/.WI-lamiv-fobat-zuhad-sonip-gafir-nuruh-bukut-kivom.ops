@@ -19,3 +19,11 @@
     pr_ref:  # 40da
     description: "Add hypergumbo-tracker[serve] extras in pyproject.toml: starlette, uvicorn, py_webauthn, bcrypt, watchfiles. Optional cairosvg for SVG preview (ADR-0020). See docs/adr/0019-remote-access-transport.md §Dependencies."  # 40da
     fields: {}  # 40da
+- op: update  # da90
+  at: '2026-04-03T08:26:56Z'  # da90
+  by: agent  # da90
+  actor: jgstern_agent  # da90
+  clock: 2  # da90
+  nonce: da90  # da90
+  set:  # da90
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # da90

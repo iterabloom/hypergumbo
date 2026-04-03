@@ -19,3 +19,11 @@
     pr_ref:  # 1e3c
     description: "Implement /auth/webauthn endpoint: server issues challenge, client (native app) sends signed assertion, py_webauthn verifies. YubiKey registration flow. Proves physical possession of registered hardware token. See docs/adr/0019-remote-access-transport.md §Authentication factor 2."  # 1e3c
     fields: {}  # 1e3c
+- op: update  # 1f6e
+  at: '2026-04-03T08:26:55Z'  # 1f6e
+  by: agent  # 1f6e
+  actor: jgstern_agent  # 1f6e
+  clock: 2  # 1f6e
+  nonce: 1f6e  # 1f6e
+  set:  # 1f6e
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 1f6e
