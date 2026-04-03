@@ -39,7 +39,8 @@ from typing import TYPE_CHECKING, Any
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route, WebSocketRoute
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
 if TYPE_CHECKING:
@@ -389,12 +390,19 @@ async def stop_watcher() -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
+def create_app(
+    *,
+    tracker_set: TrackerSet | None = None,
+    static_dir: Path | None = None,
+) -> Starlette:
     """Create the Starlette application with routes.
 
     Args:
         tracker_set: Optional TrackerSet to wire into the API routes.
             If None, API routes return 503 but /health still works.
+        static_dir: Optional path to a directory of static files (BlockSuite
+            frontend build output). Mounted at ``/`` as a fallback after all
+            API/WebSocket routes. If None, no static files are served.
 
     Returns a configured Starlette app. Does not start the server;
     use ``run_server()`` for that.
@@ -424,6 +432,8 @@ def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
         Route("/api/ready", _api_ready, methods=["GET"]),
         WebSocketRoute("/ws", _ws_handler),
     ]
+    if static_dir is not None and static_dir.is_dir():
+        routes.append(Mount("/", app=StaticFiles(directory=str(static_dir), html=True)))
     return Starlette(routes=routes, lifespan=lifespan)
 
 
