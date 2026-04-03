@@ -155,3 +155,25 @@
   clock: 19  # dedf
   nonce: dedf  # dedf
   message: "(for changes touching governance for this item)"  # dedf
+- op: update  # a4fd
+  at: '2026-04-03T08:58:35Z'  # a4fd
+  by: agent  # a4fd
+  actor: jgstern_agent  # a4fd
+  clock: 20  # a4fd
+  nonce: a4fd  # a4fd
+  set:  # a4fd
+    status: pending_validation  # a4fd
+- op: discuss  # f33d
+  at: '2026-04-03T08:58:36Z'  # f33d
+  by: agent  # f33d
+  actor: jgstern_agent  # f33d
+  clock: 21  # f33d
+  nonce: f33d  # f33d
+  message: "Pre-push hook merged in PR #92. Blocks pushes to origin when CI_FAILOVER_ACTIVE exists. Validation: next time a push is attempted during failover, the hook will block origin and guide to selfh. Existing pre-push tests now isolated from real failover state."  # f33d
+- op: discuss  # 7147
+  at: '2026-04-03T08:58:45Z'  # 7147
+  by: agent  # 7147
+  actor: jgstern_agent  # 7147
+  clock: 22  # 7147
+  nonce: '7147'  # 7147
+  message: "Implemented Option A (pre-push hook only, no stale PR detection) per human approval. PR #92 adds: (1) failover remote check — blocks origin when CI_FAILOVER_ACTIVE exists, (2) 4 new test scenarios for failover states, (3) GIT_DIR isolation for existing pre-push tests so real repo failover state doesn't interfere. Session-start hook open-PR listing deferred (can be a follow-up if needed)."  # 7147

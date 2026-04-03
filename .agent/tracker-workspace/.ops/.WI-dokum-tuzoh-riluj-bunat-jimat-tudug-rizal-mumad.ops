@@ -48,3 +48,18 @@
   clock: 5  # 761a
   nonce: 761a  # 761a
   message: "ok let's go with option A"  # 761a
+- op: update  # d8ba
+  at: '2026-04-03T09:25:30Z'  # d8ba
+  by: agent  # d8ba
+  actor: jgstern_agent  # d8ba
+  clock: 6  # d8ba
+  nonce: d8ba  # d8ba
+  set:  # d8ba
+    status: done  # d8ba
+- op: discuss  # 992d
+  at: '2026-04-03T09:25:30Z'  # 992d
+  by: agent  # 992d
+  actor: jgstern_agent  # 992d
+  clock: 7  # 992d
+  nonce: 992d  # 992d
+  message: "Implemented Option A in PR #93. pyffi linker emits python:C_stdlib:0-0:<name>:unresolved edges for ctypes.CDLL(None) and ffi.dlopen(None). io_boundary tagger redirects to C catalog. If repo-local C symbol exists, resolved edge preferred. 7 new tests, all at 100% coverage."  # 992d
