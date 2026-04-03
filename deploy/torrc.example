@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MPL-2.0
+# Tor onion service configuration for htrac serve (ADR-0019)
+#
+# This configures a v3 onion service that forwards connections to the
+# htrac serve local listener. The server never exposes a public IP,
+# opens inbound ports, or requires DNS — Tor handles all routing.
+#
+# Install: append this to /etc/tor/torrc (or include via %include)
+# Then: sudo systemctl restart tor
+# Get address: sudo cat /var/lib/tor/htrac-serve/hostname
+
+# --- htrac onion service ---
+HiddenServiceDir /var/lib/tor/htrac-serve/
+HiddenServiceVersion 3
+HiddenServicePort 7380 127.0.0.1:7380
+
+# Client authorization (v3 onion service)
+# Restricts access to clients with a pre-shared x25519 key.
+# Without this, anyone who discovers the .onion address can connect
+# (though they'd still need WebAuthn + password to authenticate).
+#
+# To enable:
+# 1. Generate a client keypair:
+#    openssl genpkey -algorithm x25519 -out client.pem
+#    openssl pkey -in client.pem -pubout -outform DER | tail -c 32 | base32
+#
+# 2. Create authorized_clients file:
+#    echo "descriptor:x25519:<base32-pubkey>" > /var/lib/tor/htrac-serve/authorized_clients/client.auth
+#
+# 3. Give the client their private key (for Tor Browser or Orbot):
+#    <onion-address>:descriptor:x25519:<base32-privkey>
+#
+# Uncomment the next line to require client authorization:
+# HiddenServiceAuthorizeClient stealth htrac-client
