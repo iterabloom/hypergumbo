@@ -661,21 +661,33 @@ _find_job_from_log_probe() {
 	local best_index="" best_name=""
 	local first_failed_index="" first_failed_name=""
 	local first_index="" first_name=""
+	local empty_count=0 named_count=0
 
 	for idx in $(seq 0 20); do
-		local first_line
-		first_line=$(curl -sS --http1.1 --max-time 5 \
+		# Fetch first line of log. Avoid pipe (curl | head) because
+		# set -o pipefail + SIGPIPE causes false failures.  Instead,
+		# capture a bounded chunk and extract the first line.
+		local raw_chunk="" first_line=""
+		raw_chunk=$(curl -sS --http1.1 --max-time 5 -r 0-1023 \
 			-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-			"$web_base/actions/runs/$run_number/jobs/$idx/logs" 2>/dev/null \
-			| head -1) || continue
+			"$web_base/actions/runs/$run_number/jobs/$idx/logs" 2>/dev/null) || true
+		first_line=$(echo "$raw_chunk" | head -1)
 
-		# No content means we've exhausted jobs
-		[[ -z "$first_line" ]] && break
+		# Empty response: log not ready or job index gap — skip, don't
+		# stop.  Self-hosted Forgejo may return empty for valid indices
+		# whose logs haven't been flushed yet.
+		if [[ -z "$first_line" ]]; then
+			empty_count=$((empty_count + 1))
+			continue
+		fi
 
 		# Extract job name: "received task NNN of job <name>, be triggered by"
 		local name
 		name=$(echo "$first_line" | sed -n 's/.*of job \([^,]*\),.*/\1/p')
-		[[ -z "$name" ]] && continue
+		if [[ -z "$name" ]]; then
+			continue
+		fi
+		named_count=$((named_count + 1))
 
 		# Track first job seen
 		if [[ -z "$first_index" ]]; then
@@ -690,15 +702,19 @@ _find_job_from_log_probe() {
 			echo "$idx $name"
 			return 0
 		fi
-
-		# Track first failed job (status=failure in tasks response would be
-		# better, but we don't have it here — caller can pass target_name)
 	done
 
 	# No target match — return first job if no target was specified
 	if [[ -z "$target_lower" && -n "$first_index" ]]; then
 		echo "$first_index $first_name"
 		return 0
+	fi
+
+	# Diagnostic for debugging probe failures
+	if [[ $named_count -eq 0 && $empty_count -gt 0 ]]; then
+		echo "Log probe: all $empty_count responses empty (logs may not be ready yet)" >&2
+	elif [[ $named_count -gt 0 ]]; then
+		echo "Log probe: found $named_count jobs but none matching '$target_name'" >&2
 	fi
 
 	return 1
